@@ -51,6 +51,11 @@ impl Backend for TesBackend {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
+        if job.placement.offline {
+            return Err(ExecutorError::Unsupported(
+                "the TES executor cannot run a task without network".into(),
+            ));
+        }
         let root = self.scratch.join(job.name);
         tokio::fs::create_dir_all(root.join("empty")).await?;
         let result = self.attempt(job, &root, cancel).await;
@@ -302,7 +307,13 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
         }],
         // The work directory, the home folder and `/tmp` are writable, also when the image's
         // own files are not.
-        volumes: vec![work, HOME.into(), "/tmp".into()],
+        volumes: vec![
+            work,
+            HOME.into(),
+            "/tmp".into(),
+            CONTROL.into(),
+            OUTBOX.into(),
+        ],
         tags: BTreeMap::from([("iunctus-attempt".to_owned(), job.name.to_owned())]),
     })
 }
@@ -415,6 +426,8 @@ mod tests {
         ];
         assert_eq!(paths, expected);
         assert_eq!(task.outputs[0].url, "file:///scratch/run-P-1-1/work");
+        assert!(task.volumes.contains(&CONTROL.to_owned()));
+        assert!(task.volumes.contains(&OUTBOX.to_owned()));
         let resources = task.resources.expect("resources");
         assert_eq!(
             (resources.cpu_cores, resources.ram_gb),

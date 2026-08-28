@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use executor::registry::{ImageConfig, ImageConfigs};
-use executor::{Backend, Job, Staged, Staging};
+use executor::{Backend, ExecutorError, Job, Staged, Staging};
 use task_model::{ContainerSpec, FORMAT, Image, OutputRule, Placement, TaskSpec};
 use tes_executor::{Client, TesBackend};
 use tokio_util::sync::CancellationToken;
@@ -159,6 +159,21 @@ fn tasks_run_on_the_server_and_give_back_their_outputs() {
         "{wrapper}"
     );
     assert_eq!(sent["inputs"][1]["path"], "/iunctus/work/in.txt");
+    let placement = Placement {
+        offline: true,
+        ..Placement::default()
+    };
+    let job = Job {
+        name: "offline",
+        placement: &placement,
+        ..job
+    };
+    let result = runtime.block_on(backend.run(job, &CancellationToken::new()));
+    assert!(
+        matches!(result, Err(ExecutorError::Unsupported(_))),
+        "{result:?}"
+    );
+    assert!(!backend.scratch.join("offline").exists());
 }
 
 #[test]

@@ -125,6 +125,7 @@ pub fn job(name: &str, label: &str, runs: &[ContainerRun<'_>], limits: &Limits) 
             "metadata": {"labels": labels},
             "spec": {
                 "restartPolicy": "Never",
+                "automountServiceAccountToken": false,
                 "containers": containers,
                 "volumes": volumes,
             },
@@ -203,6 +204,7 @@ mod tests {
         assert_eq!(spec["backoffLimit"], 0);
         let pod = &spec["template"]["spec"];
         assert_eq!(pod["activeDeadlineSeconds"], 60);
+        assert_eq!(pod["automountServiceAccountToken"], false);
         let container = &pod["containers"][0];
         let security = &container["securityContext"];
         assert_eq!(security["runAsUser"], 1000);

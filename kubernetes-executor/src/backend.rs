@@ -87,6 +87,11 @@ impl Backend for KubernetesBackend {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
+        if job.placement.offline {
+            return Err(ExecutorError::Unsupported(
+                "the Kubernetes executor cannot run a task without network".into(),
+            ));
+        }
         let root = self.scratch.join(job.name);
         let placed = {
             let (root, staging) = (root.clone(), job.staging.clone());
@@ -278,6 +283,7 @@ impl KubernetesBackend {
                 Look::Stopped(reason) => return Ok(Ended::Stopped(reason)),
                 Look::Stuck(reason) => Some(format!("the pod cannot start: {reason}")),
                 Look::Missing => Some("the Job has no pod".to_owned()),
+                Look::Unavailable(error) => Some(format!("cannot list the pods: {error}")),
             };
             // A pod may appear late, and an image may be pulled at the next try.
             match (problem, trouble) {

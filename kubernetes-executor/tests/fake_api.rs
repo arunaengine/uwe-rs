@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use executor::{Backend, ExecutorError, Job, Staged, Staging};
-use kubernetes_executor::{Cluster, KubernetesBackend, LABEL};
+use kubernetes_executor::{Cluster, KubernetesBackend, LABEL, Look, Pods};
 use serde_json::{Value, json};
 use task_model::{ContainerSpec, FORMAT, Image, OutputRule, Placement, TaskSpec};
 use tokio_util::sync::CancellationToken;
@@ -374,6 +374,49 @@ fn placement() -> Placement {
         memory_bytes: Some(256 << 20),
         ..Placement::default()
     }
+}
+
+#[tokio::test]
+async fn failed_pod_lists_preserve_the_api_error() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (kubeconfig, _) = serve(root.path());
+    let text = std::fs::read_to_string(&kubeconfig).expect("a kubeconfig");
+    std::fs::write(&kubeconfig, text.replace(TOKEN, "wrong-token")).expect("writes");
+    let cluster = Cluster::connect(&kubeconfig, None)
+        .await
+        .expect("a cluster");
+    let pods = Pods::default();
+    pods.add("task").await;
+    let look = pods.look("task", Duration::ZERO, &cluster, "test").await;
+    assert!(
+        matches!(look, Look::Unavailable(ref error) if error.contains("401")),
+        "{look:?}"
+    );
+}
+
+#[tokio::test]
+async fn offline_tasks_are_rejected_before_submission() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (backend, state) = backend(root.path()).await;
+    let spec = spec("debian:stable-slim", "true");
+    let staging = Staging::default();
+    let placement = Placement {
+        offline: true,
+        ..placement()
+    };
+    let job = Job {
+        name: "offline",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let result = backend.run(job, &CancellationToken::new()).await;
+    assert!(
+        matches!(result, Err(ExecutorError::Unsupported(_))),
+        "{result:?}"
+    );
+    assert!(state.lock().expect("the state").calls.is_empty());
+    assert!(!backend.scratch.exists());
 }
 
 #[tokio::test]

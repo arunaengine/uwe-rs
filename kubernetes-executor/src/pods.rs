@@ -40,6 +40,8 @@ pub enum Look {
     Missing,
     /// Nothing is known yet: the Job is newer than the last answer, or `kubectl` failed.
     Unknown,
+    /// The API could not list the pods; repeated errors must not look like active work.
+    Unavailable(String),
 }
 
 /// The Jobs of a backend and what the cluster last said about their pods.
@@ -54,8 +56,8 @@ struct Snapshot {
     taken: Option<Instant>,
     /// The Jobs that existed when the cluster was last asked.
     asked: BTreeSet<String>,
-    /// What the cluster said about the pod of each Job; `None` when `kubectl` failed.
-    looks: Option<HashMap<String, Look>>,
+    /// What the cluster said about the pod of each Job.
+    looks: Option<Result<HashMap<String, Look>, String>>,
 }
 
 impl Pods {
@@ -73,7 +75,7 @@ impl Pods {
         let mut snapshot = self.inner.lock().await;
         if snapshot.taken.is_none_or(|taken| taken.elapsed() >= poll) {
             snapshot.asked = snapshot.jobs.clone();
-            snapshot.looks = ask(cluster, label).await;
+            snapshot.looks = Some(ask(cluster, label).await);
             snapshot.taken = Some(Instant::now());
         }
         if !snapshot.asked.contains(job) {
@@ -81,16 +83,22 @@ impl Pods {
         }
         match &snapshot.looks {
             None => Look::Unknown,
-            Some(looks) => looks.get(job).cloned().unwrap_or(Look::Missing),
+            Some(Ok(looks)) => looks.get(job).cloned().unwrap_or(Look::Missing),
+            Some(Err(error)) => Look::Unavailable(error.clone()),
         }
     }
 }
 
 /// The pods with the label of a backend, by the name of their Job.
-async fn ask(cluster: &Cluster, label: &str) -> Option<HashMap<String, Look>> {
+async fn ask(cluster: &Cluster, label: &str) -> Result<HashMap<String, Look>, String> {
     let selector = ListParams::default().labels(&format!("{LABEL}={label}"));
-    let list = cluster.pods().list(&selector).await.ok()?;
-    Some(looks(&serde_json::to_value(&list).ok()?))
+    let list = cluster
+        .pods()
+        .list(&selector)
+        .await
+        .map_err(|error| error.to_string())?;
+    let list = serde_json::to_value(&list).map_err(|error| error.to_string())?;
+    Ok(looks(&list))
 }
 
 /// What a list of pods says about each Job. With more pods of one Job, the last one counts.

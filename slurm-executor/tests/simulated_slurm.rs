@@ -230,6 +230,33 @@ fn placement() -> Placement {
 }
 
 #[tokio::test]
+async fn singularity_rejects_offline_tasks_before_staging() {
+    let root = tempfile::tempdir().expect("a folder");
+    let backend = SlurmBackend::new(
+        root.path().join("scratch"),
+        Container::Apptainer("singularity".into()),
+    );
+    let spec = spec("true");
+    let staging = Staging::default();
+    let placement = Placement {
+        offline: true,
+        ..Placement::default()
+    };
+    let job = Job {
+        name: "offline",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let result = backend.run(job, &CancellationToken::new()).await;
+    assert!(
+        matches!(result, Err(ExecutorError::Unsupported(_))),
+        "{result:?}"
+    );
+    assert!(!backend.scratch.exists());
+}
+
+#[tokio::test]
 async fn jobs_run_tasks_and_give_their_outputs() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);

@@ -308,3 +308,401 @@ Include stable, secret-free provider identity in the download namespace and defi
 `task-runner/src/entry.rs:111` propagates malformed entry JSON instead of treating it as a recoverable stale entry. Ordinary output completeness checks only existence, so externally modified output bytes can also remain accepted; log corruption is checked later during reconstruction. Immutable-store assumptions are therefore stronger than corruption detection.
 
 Define a repair/quarantine policy and distinguish unavailable/corrupt artifacts from backend outages. Regression: truncated entry, damaged logs, and modified output bytes must produce explicit safe recovery or integrity errors, never silent reuse.
+
+## Nextflow parser, evaluator, configuration, and plugins
+
+### NFL-01 (P2): Script type annotations disappear during lowering
+
+`nextflow-evaluator/src/lower/mod.rs:429` drops function parameter/return annotations; `nextflow-evaluator/src/lower/statement.rs:38` drops local annotations. Invocation checks arity rather than those types (`nextflow-evaluator/src/interpreter/call.rs:85`). For example, a String-typed local initialized with 5 can compute numeric 6 instead of string '51'; an Integer parameter can accept a Long contrary to the recorded oracle (`docs/research/nextflow-groovy.md:29`).
+
+Preserve and enforce supported conversions/dispatch, or reject unsupported annotations. Regression: typed initialization/reassignment, same-arity parameter matching, and return conversion, rather than only typed class fields.
+
+### NFL-02 (P2): nf-schema path validation silently skips referenced or root schemas
+
+`nextflow-plugins/src/nf_schema/paths.rs:40`, `:129` collects inline property paths without resolving references. Required custom checks return success when lookup state is absent (`:169`, `:232`). A property referencing a `$defs` file-path schema with `exists: true`, or the same schema at a scalar root, can accept a missing file.
+
+Resolve schema references while pairing instance paths and never interpret missing required lookup state as success. Regression: missing/wrong-kind paths under `$ref`, inline properties, array items, and scalar roots.
+
+### NFL-03 (P2): Aliased static imports invoke the alias instead of the imported member
+
+`nextflow-evaluator/src/lower/mod.rs:489` retains alias/class but loses the original member; `nextflow-evaluator/src/lower/expression.rs:445` emits the alias as the method name. `import static java.lang.Math.max as min` followed by `min(1,2)` can call Math.min and return 1 rather than 2.
+
+Retain original member identity when lowering local aliases. Regression: alias collides with another real method, and alias has no real method of its own.
+
+### NFL-04 (P2): Inclusive integer-limit ranges wrap after their final element
+
+`nextflow-evaluator/src/value/range.rs:142` appends the inclusive endpoint and then increments it; numeric arithmetic wraps (`nextflow-evaluator/src/number/arithmetic.rs:57`). `(2147483647..2147483647).size()` can grow to the ten-million-element guard instead of returning 1, consuming substantial memory for a tiny expression.
+
+Terminate immediately after appending the final inclusive element. Regression: ascending maximum and descending minimum endpoints for supported integer widths.
+
+### NFL-05 (P2): Config include cycles overflow the native stack
+
+`nextflow-config/src/file.rs:481` recursively evaluates includes without an active include stack/depth guard. Its source cache (`:181`) does not track evaluation. `includeConfig 'nextflow.config'` within that same file repeatedly reparses cached text and can abort the process.
+
+Detect cycles using normalized active source identities and report the include chain. Regression: direct/indirect cycles in a guarded child process, plus repeated sequential noncyclic includes that must remain valid.
+
+### NFL-06 (P2): Explicit default `standard` profile is rejected without a declared block
+
+`nextflow-config/src/lib.rs:137` checks all explicitly selected profiles against declared names. Empty config plus exactly `-profile standard` fails, although the recorded contract exempts that singleton (`docs/research/nextflow-config.md:138`).
+
+Apply the singleton exception without exempting mixed unknown selections. Regression: implicit standard, singleton explicit standard, declared standard, and standard combined with another profile.
+
+### NFL-07 (P2): Numeric overload selection depends on declaration order
+
+`nextflow-evaluator/src/interpreter/classes.rs:470`, `:502` treats every supported numeric variant as fitting every numeric type and ranks by typed-parameter count. Same-arity Long and Integer overloads therefore tie; placing Long first can cause an Integer call to select it.
+
+Rank exact types and supported conversion specificity, then reject unresolved ambiguity. Regression: both declaration orders for equal-arity numeric overloads. Existing different-arity overload tests cannot establish this behavior.
+
+### NFL-08 (P2): Class inheritance is accepted and discarded
+
+`nextflow-parser/src/parser/class.rs:67` consumes extends/implements but excludes them from the resulting AST. A Child extending Parent parses successfully yet cannot call Parent's inherited member when executed. The evaluator supports instances as well as statics, so this is not merely discarded metadata.
+
+Reject inheritance at load time until its intended subset is implemented. Regression: inherited static/instance members and constructors, or explicit unsupported diagnostics. Complete Groovy inheritance is not required to stop silent acceptance.
+
+## Nextflow channels and task runtime
+
+### NFR-01 (P1): Process env and stdin inputs are discarded
+
+`nextflow-evaluator/src/interpreter/task.rs:209` does nothing for accepted env/stdin input kinds. `nextflow-runtime/src/process.rs:29` carries neither value into TaskRequest; `driver.rs:683` sets config-only environment and no stdin. `input: stdin` with `cat`, or `env 'SAMPLE'` read by a literal shell script, executes with missing data and can omit channel differences from cache identity.
+
+Carry per-round env/stdin into the concrete task and its hash, including tuple forms, or reject those inputs. Regression: inspect emitted tasks for distinct values, then verify execution bytes and distinct keys.
+
+### NFR-02 (P1): `cache false` does not prevent cache reuse
+
+`nextflow-runtime/src/driver.rs:692` always assigns Reuse::Allowed; no effective directive handling reaches the runner's reuse decision (`task-runner/src/request.rs:67`). A process explicitly forbidding cache can receive an old result on a repeat run.
+
+Map its evaluated cache policy to the existing task reuse controls. Regression: cache a task, set/retain `cache false`, and verify emitted policy plus actual backend invocation on subsequent runs.
+
+### NFR-03 (P1): Join integrity options are accepted but ignored
+
+`nextflow-runtime/src/build.rs:831` extracts by/remainder but drops failOnDuplicate/failOnMismatch; `keyed.rs:168` has no corresponding enforcement. Joining unmatched keys with `failOnMismatch: true` silently drops samples, while duplicate IDs can pair despite requested uniqueness.
+
+Enforce or explicitly reject those options and incompatible combinations. Regression: unmatched IDs, duplicates before/after a match, and remainder combined with failOnMismatch (`docs/research/nextflow-channels.md:703`).
+
+### NFR-04 (P1): Default operator files collide between concurrent runs
+
+`nextflow-runtime/src/build.rs:925`, `:974` names collectFile and split-file locations under `work/<operator>/<channel-id>` without a run namespace. IDs restart per network, and `files.rs:118` writes directly there. Two runs in one launch directory can overwrite each other's intermediates before downstream staging.
+
+Use unique run-owned scratch for implicit destinations while retaining explicit user destinations. Regression: pause staging in two drivers with the same launch directory and assert distinct operator paths and correct bytes.
+
+### NFR-05 (P2): Closed process inputs are ignored until other inputs become ready
+
+`nextflow-runtime/src/process.rs:119` returns on an unavailable input before checking accumulated STOP messages; `route.rs:94` has a related ordering problem. `P(channel.empty(), channel.value())` can remain open and report deadlock even though it can never fire.
+
+Check termination independently of complete round readiness. Regression: closed/unbound inputs in both orders and downstream ifEmpty; compare with the STOP contract at `docs/research/nextflow-channels.md:1077`.
+
+### NFR-06 (P2): Output arity is neither validated nor reflected in singleton shape
+
+`nextflow-runtime/src/process.rs:486` only uses arity presence to force a list; bounds are never applied. Earlier missing-output handling (`:452`) ignores a zero minimum. `arity: '1'` accepts two files and returns a list for one; `0..1` fails on zero.
+
+Parse/enforce cardinality and return the specified singleton shape. Regression: 1, 2, 0..1, and 1..* with below/within/above-bound matches (`docs/research/nextflow-channels.md:1121`).
+
+### NFR-07 (P2): Output collection failures bypass process failure policy
+
+`nextflow-runtime/src/process.rs:150` applies failed/errorStrategy only to nonzero exit status. Missing-output errors escape directly; eval failures become DriverError before the process handles them (`driver.rs:767`). A zero-exit task with missing output aborts despite retry/ignore, and keep-going is bypassed.
+
+Route output/eval failures through the owning process's failure policy, preserving the cause. Regression: exit-zero missing output and failing eval under retry, ignore, and keep-going. Individual exception parity still needs oracle confirmation.
+
+### NFR-08 (P2): Early-stopped readers retain later channel messages
+
+`nextflow-runtime/src/channel.rs:118` reclaims against every cursor. Node stop (`network.rs:407`) never unregisters inputs; take/until stops advancing its cursor (`operator.rs:183`). A live draining subscriber therefore cannot free later messages while another subscriber has already stopped.
+
+Unsubscribe inactive readers or exclude them from reclamation. Regression: one take(1) reader plus one draining reader across many batches, with retained-buffer size bounded rather than merely correct final values.
+
+### NFR-09 (P2): groupTuple custom sort is replaced with natural ordering
+
+`nextflow-runtime/src/build.rs:817` collapses any truthy sort policy, including a closure, to a boolean; `keyed.rs:153` then uses number-aware comparison. A descending comparator returns ascending values instead. Hash/deep modes also collapse.
+
+Preserve supported sort semantics or reject unsupported modes. Regression: descending comparator, key closure, and supported named modes with observably different ordering.
+
+### NFR-10 (P2): Registered workflow failure handlers never execute
+
+`nextflow-runtime/src/lib.rs:171` invokes handlers only on success with on_error=false. Failure returns earlier; `workflow.rs:185` nevertheless accepts both onError/onComplete registration. Task failure or cancellation can omit expected failure reporting/cleanup and completion callbacks.
+
+Finalize metadata and invoke appropriate handlers on each terminal path, or refuse unsupported handlers. Regression: markers and workflow.success/status for success, task failure, and cancellation.
+
+### NFR-11 (P2): Several accepted directives and callbacks have no effective handling
+
+Accepted beforeScript/afterScript/fair/maxErrors and subscribe(onError) do not reach the corresponding runtime behavior. Option extraction in `nextflow-runtime/src/build.rs` and task conversion in `driver.rs` discards them. A beforeScript that creates a required file fails; fair output ordering and process-wide error limits are not enforced. collectFile also uses lexical sorting where its own comment records a hash-based upstream default (`files.rs:24`, `:97`).
+
+Publish precise support status and enforce or reject behavior-changing options at their existing dispatch points. Regression: one observable example per supported directive/mode; parser acceptance alone is insufficient.
+
+## Snakemake parsing, planning, and execution
+
+### SNK-01 (P1): Existing checkpoint outputs can prevent a needed checkpoint rerun
+
+`snakemake-runtime/src/objects.rs:562` considers checkpoint output existence sufficient for get(). `plan.rs:456` records consulted checkpoints but builds dependencies from returned filenames; `driver.rs:530` orders only checkpoint tasks already present. An old manifest selecting sample A can therefore plan downstream A after the checkpoint's source changes to B, without scheduling the checkpoint.
+
+Make consulted checkpoints actual dependencies and defer dynamic expansion while they require rerun. Regression: run A, change its source to B, remove only the aggregate output, then require checkpoint execution and B selection.
+
+### SNK-02 (P1): ensure output integrity checks disappear at completion
+
+`snakemake-runtime/src/functions.rs:1245` records non_empty/checksum ensure options, but `driver.rs:915` converts tags to strings and checks only output presence. `ensure('result', non_empty=True)` with touch, or a wrong checksum, can succeed and feed downstream work.
+
+Validate supported tags before delivery and refuse unsupported options. Regression: exit-zero empty and wrong-checksum outputs must fail before acceptance.
+
+### SNK-03 (P1): Storage outputs remain local while consumers fetch stale remote data
+
+`snakemake-runtime/src/task.rs:678` loses the tagged remote destination during output construction; `driver.rs:751` delivers the local path. Downstream `task.rs:383` prefers the storage tag's remote URL over the produced artifact. A producer writes new bytes while its consumer reads an older bucket object, or fails if that object is absent.
+
+Preserve output destinations and resolve produced dependencies before remote lookup, or reject unsupported storage-output semantics. Regression: a fake provider containing old bytes, producer of new bytes, and matching consumer must publish/read new bytes.
+
+### SNK-04 (P1): before_update snapshots collide on basename
+
+`snakemake-runtime/src/task.rs:414` snapshots to `before_update/<task-id>/<basename>`. Inputs a/data.txt and b/data.txt overwrite the same snapshot, so both task inputs can contain the second file's bytes.
+
+Use a unique complete-path or input-index identity. Regression: same-basename inputs with different contents must remain distinct after task construction and staging.
+
+### SNK-05 (P2): Remote checkpoint directories bypass file resolution
+
+`snakemake-runtime/src/files.rs:164` lists with std::fs::read_dir on the recorded location, whereas read uses Files. A remote directory URI fails during glob_wildcards/traversal instead of materializing the directory through its provider.
+
+Resolve directories through Files before listing. Regression: extend the remote Elsewhere fake with directory listing, including nested entries.
+
+### SNK-06 (P2): A service group stalls when consumers depend on each other
+
+`snakemake-runtime/src/driver.rs:835` starts a service group only when every consumer has exactly one remaining dependency. With S feeding B and C, and B also feeding C, C has two dependencies; B waits for S and the whole valid acyclic group stalls.
+
+Account for internal consumer dependencies and sequence them, or emit a targeted unsupported error. Regression: the three-rule graph must complete with S alive through both consumers.
+
+### SNK-07 (P2): Accepted pipes lack FIFO and concurrent execution semantics
+
+`snakemake-runtime/src/driver.rs:494` validates pipe consumers, but `services.rs:17` groups only services. A pipe producer runs alone and its consumer waits for completion. Redirection creates a regular file instead of a FIFO; an explicit FIFO producer can deadlock waiting for the unscheduled consumer.
+
+Reject pipe workflows until supported, or provide FIFO creation and concurrent producer/consumer execution. Regression must transfer actual streamed bytes; synthetic output creation cannot establish pipe behavior.
+
+### SNK-08 (P2): Output-validation and service failures bypass retries
+
+`snakemake-runtime/src/driver.rs:657`, `:685` retries ordinary nonzero task exits, while exit-zero missing outputs and group failures go directly to failed. Declared retries therefore do not cover those task failures.
+
+Apply the appropriate retry policy after validation and define group retry/resource reevaluation. Regression: first exit-zero outcome lacks an output, second supplies it; add a service group failing its first attempt.
+
+### SNK-09 (P2, support gap): Rerun and protection contracts remain narrower than native execution
+
+`snakemake-runtime/src/plan.rs:639` bases needrun on existence/dependency/incompleteness and mtime/checksum, so changing params, command, image, or input set can leave old outputs untouched. This broader rerun work is historically staged later. protected outputs are not made read-only; lifecycle hooks/resource scopes (`workflow.rs:809`) and shadow/cache/handover (`:1164`) are ignored.
+
+Publish these exact boundaries and reject ignored options where they change computation or safety. Add behavioral parity checks before claiming native rerun/protection equivalence; this is a documented scope gap plus unsafe acceptance risk, not authorization for redesign.
+
+## Native Python and pandas/Polars compatibility
+
+### PY-01 (P1): math.isqrt can panic or fail to terminate
+
+`python-evaluator/src/modules/misc.rs:355` squares i64 values in correction loops seeded by a floating square root. `math.isqrt(9223372036854775807)` overflows with checks; under wrapping arithmetic its second comparison can remain true forever. Interpreter step limits do not cover this native loop.
+
+Use overflow-safe integer square root/comparisons. Regression: maximum i64 must return 3037000499 under both debug and release, guarded by a subprocess deadline.
+
+### PY-02 (P1): Formatting cyclic containers can overflow the native stack
+
+`python-evaluator/src/interpreter/mod.rs:363` recursively formats lists/dicts without active-object detection or interpreter call accounting. `a=[]; a.append(a); print(a)` can abort the process instead of producing a bounded recursive representation.
+
+Track formatting recursion identities and emit appropriate placeholders/errors. Regression: cyclic lists/dicts in a core-disabled child process; ordinary function recursion tests do not cover this path.
+
+### PY-03 (P1): Invalid dataframe index lengths reach unchecked native indexing
+
+`python-evaluator/src/pandas/reshape.rs:74` installs an external index without checking row count; `frame.rs:70` indexes its selected position unchecked. A one-row frame given labels a,b, followed by `.loc['b','x']`, can panic. Unequal MultiIndex levels also index unchecked (`labels.rs:39`).
+
+Validate row/level lengths before installing indexes. Regression: mismatched Index/MultiIndex shapes must produce catchable errors, preserving valid duplicate-index behavior.
+
+### PY-04 (P2): Series arithmetic pairs positions instead of labels
+
+`python-evaluator/src/pandas/series.rs:181`, `values.rs:318`, `sequence.rs:30` strips the second index and zips values. Series [1,2] at A,B plus [10,20] at B,A yields [11,22] instead of aligned [21,12]. Comparisons likewise lose their specific index contract.
+
+Align supported arithmetic or reject incompatible indexes before computing. Regression: reversed/disjoint indexes and index-sensitive comparisons to prevent metrics being assigned to the wrong samples.
+
+### PY-05 (P2): Boolean Series masks ignore their labels
+
+`python-evaluator/src/pandas/indexer.rs:71` and `sequence.rs:75` recognize equal-length booleans then select positions after discarding labels. Mask True,False at B,A selects A from a frame at A,B, rather than B. Disjoint labels can also pass rather than fail alignment.
+
+Align Series masks and reject unalignable labels; retain positional list masks. Regression: independently reordered masks and completely disjoint indexes.
+
+### PY-06 (P2): Horizontal concat drops duplicate-index rows
+
+`python-evaluator/src/pandas/combine.rs:135` builds a unique label union and takes only each label's first position. Two two-row frames both indexed S,S concatenate into one row, losing a replicate instead of preserving both rows.
+
+Preserve positions for identical duplicate indexes and explicitly reject unsupported ambiguous reindexing. Regression: duplicate axis=1 concat and nonidentical duplicate-index cases.
+
+### PY-07 (P2): Accepted CSV options silently alter data interpretation
+
+`python-evaluator/src/pandas/read.rs:71`, `:334`, `:372` accepts decimal, thousands, parse_dates, encoding, and encoding_errors without applying them. For decimal=',', textual 1,5 remains text instead of numeric 1.5. chunksize/iterator also return a full frame rather than a bounded iterator.
+
+Implement the supported behavior or reject nondefault unsupported options. Regression: decimal separators, non-UTF8 identifiers, date parsing, and iterator result shape/memory.
+
+### PY-08 (P2): Polars named filter constraints are ignored
+
+`python-evaluator/src/pandas/polars/methods.rs:86` evaluates positional predicates only. `df.filter(sample='A')` leaves all rows selected; LazyFrame delegates to the same implementation. A supported-looking filter can plan unwanted samples.
+
+Apply named equality constraints or reject them. Regression: positional/named/combined filters on both eager and lazy frames.
+
+### PY-09 (P2): Generators eagerly execute unused tails
+
+`python-evaluator/src/interpreter/expression.rs:162`, `call.rs:96` materializes generator expressions/functions before returning an iterator. `next(1 // x for x in [1,0])` fails before yielding 1; a yield followed by an unused raise also fails immediately. Bounded consumers cannot prevent large eager allocations or early side effects.
+
+Implement suspended evaluation for the supported subset or reject incompatible constructs. Regression: one-item consumption with an exceptional/large unused tail, plus effect timing.
+
+### PY-10 (P2): Subprocess options are dropped before container dispatch
+
+`python-evaluator/src/modules/subprocess.rs:47`, `:159` ignores cwd/env/input/timeout kwargs; `host.rs:25` cannot carry several of them. A valid container host receives the wrong working directory/environment and no requested deadline. This trace is not a host-command fallback: commands still use Host dispatch.
+
+Honor supported arguments and explicitly reject the rest. Regression: a mock command host checks cwd and whether environment/stdin/deadline are forwarded or refused.
+
+### PY-11 (P2): Virtual append hides the original disk content
+
+`python-evaluator/src/host.rs:285` creates an empty overlay on first append; `builtins.rs:1664` flushes only new bytes into it. Disk-backed old plus appended new is subsequently read as new rather than oldnew. The actual host file is not modified by this LocalHost overlay.
+
+Seed first append from the currently visible file. Regression: existing disk file and subsequent virtual append/read, alongside new-file and deleted-overlay cases.
+
+### PY-12 (P2): Label slices ignore step and reverse direction
+
+`python-evaluator/src/pandas/indexer.rs:48` considers only slice endpoints and creates an ascending contiguous selection. `.loc[::-1]` remains unreversed, and `.loc[::2]` retains every row.
+
+Honor signed nonzero steps/inclusive endpoints or reject unsupported steps. Regression: reversed, strided, bounded, and empty label slices.
+
+### PY-13 (P2): Validation flags, truthiness, and flush do not honor accepted contracts
+
+`python-evaluator/src/pandas/reshape.rs:51` discards verify_integrity; merge cardinality validation is not applied. `python-evaluator/src/interpreter/operators.rs:574` gives pandas objects length-based truthiness rather than ambiguous-truth errors. Public flush is a no-op (`builtins.rs:1631`), so reopening after write/flush sees stale data until close.
+
+Enforce or reject behavioral flags, provide correct supported truth semantics, and implement repeat-safe virtual flush. Regression: duplicate-index integrity, merge validation, bool(Series), and successive write/flush/read cycles. These are separate API cases sharing the same acceptance-without-enforcement pattern.
+
+## CWL loading and runtime
+
+### CWL-01 (P1): cwl.output.json can publish host-only files
+
+`cwl-runtime/src/tool/collect.rs:257`, `:280` accepts arbitrary file: locations/absolute paths and unchecked relative traversal. Collection then checksums and final delivery reads those host locations. A task naming a host-only sentinel in its output JSON can access bytes it was never mounted.
+
+Accept only confined output locations and explicitly staged input mappings, including symlink resolution. Regression: absolute path, file: URL, and ../ output references must fail before reading a sentinel outside task storage.
+
+### CWL-02 (P1): Output basenames escape the requested output folder
+
+`cwl-runtime/src/results.rs:43`, `:77` joins an unvalidated basename and immediately writes literals. An ExpressionTool literal File with basename ../victim or an absolute name overwrites outside output_dir; literal Directory listings share the path.
+
+Require one normal basename component and prevent destination-symlink redirection. Regression: sibling sentinel, absolute name, and nested literal Directory must fail without modifying anything outside output_dir.
+
+### CWL-03 (P1): Same-basename outputs overwrite one another
+
+`cwl-runtime/src/results.rs:28` assigns every array/scatter output folder/basename; `workflow-graph/src/files.rs:56` removes an existing destination before copying. Distinct result.txt files become the same final pathname and only the last survives; equal-name directories can replace whole results.
+
+Allocate distinct destinations while preserving secondary-file grouping, or fail atomically on collision. Regression: two scattered files with distinct bytes and the same basename must remain separately addressable or produce an explicit safe failure.
+
+### CWL-04 (P1): Output checksum calculation loads whole files into memory
+
+`cwl-runtime/src/files.rs:328` reads the entire file before hashing; local std::fs::read and remote read_to_end (`:233`, `:268`) are unbounded. A completed scientific output larger than available memory can kill the coordinator although hashing needs constant space.
+
+Stream checksum and size with bounded buffers, keeping loadContents semantics separate. Regression: a large sparse/output file under a memory ceiling with reference digest and peak-RSS measurement.
+
+### CWL-05 (P1): JavaScript loop limits do not bound total expression work
+
+`cwl-runtime/src/javascript.rs:43` configures a loop-iteration limit but evaluates synchronously in the coordinator. A depth-55 binary-recursive function can perform enormous work without loops or reaching Boa's recursion limit. Cancellation/task progress can remain blocked; allocation-heavy expressions also lack a total memory budget.
+
+Enforce a total evaluation/cancellation budget covering calls and builtins. Regression: a loop-free recursive expression must fail within its configured budget in a watchdog-protected process. A loop-count test cannot establish this guarantee.
+
+### CWL-06 (P1): Same-document fragment imports bypass cycle detection
+
+`cwl-parser/src/salad/import.rs:22` tracks document cycles, while same-file fragment imports at `:69` recurse directly through resolve. A #loop fragment importing itself, or two such fragments, can overflow the native stack before model validation.
+
+Track active fragment expansions as well as documents. Regression: direct/indirect fragment cycles in a guarded process plus valid repeated fragment references.
+
+### CWL-07 (P2): Literal output write failures are silently successful
+
+`cwl-runtime/src/results.rs:89` discards write errors; its vector-only delivery API gives `driver.rs:274` no error to propagate. An existing regular file selected as output_dir can make an ExpressionTool report success without producing its literal result.
+
+Make materialization fallible and carry errors through finish. Regression: output_dir is an existing file, avoiding root-sensitive permission assumptions; require a failure and no successful result object.
+
+### CWL-08 (P1): In-place writers lack exclusive-access scheduling
+
+`cwl-runtime/src/run/mod.rs:594` launches every source-ready step without conflict checks; `cwl-runtime/src/tool/mod.rs:522` creates no ordering. Concurrent InplaceUpdate writers see the original snapshot, and completion rewrites skip already-created tasks (`cwl-runtime/src/run/mod.rs:246`), so a later update can disappear from downstream state. The exclusive-access requirement is recorded at `docs/research/cwl.md:54`.
+
+Serialize conflicting reads/writes by original identity and construct delayed inputs after updates, or reject the unsupported requirement. Regression: two writers and a downstream reader with both completion orders must be deterministic or explicitly rejected. Static confidence is high; differential execution remains needed.
+
+### CWL-09 (P2): Any declared ontology disables format compatibility globally
+
+`cwl-runtime/src/driver.rs:61` passes only whether schemas exist; `inputs.rs:350` accepts every input format when true. An unrelated ontology can therefore allow a known incompatible file format.
+
+Resolve supported subclass/equivalence relationships or explicitly refuse unsupported ontology checking. Regression: unrelated schema plus incompatible format must still fail.
+
+### CWL-10 (P2): Remote directory listings become empty in real runs
+
+`cwl-runtime/src/files.rs:381` gives nonlocal directories listing=[] even when actual deep/shallow listing is requested. A workflow scattering over that listing silently emits no work.
+
+Use provider-backed listing/materialization or return a clear unsupported/error result. Regression: local and remote representations of the same directory must enumerate the same supported entries.
+
+## Argo parsing and runtime
+
+### ARG-01 (P1): Nested workflows lose the Files service
+
+`argo-runtime/src/lib.rs:147` installs Files only on the root; `child.rs:150` creates children without inheriting it. Remote output parameters fall back to host reads, and `run.rs:204` suppresses failures into empty text. Nested conditions/fanout can therefore change silently.
+
+Install the parent's Files before child operation and propagate genuine read failures. Regression: child JSON-list parameters at a fake S3 URI must produce the same fanout as local files.
+
+### ARG-02 (P1): Remote directory outputs vanish from shared volumes and hostPath writeback
+
+`argo-runtime/src/volumes.rs:340`, `:395` turns URI locations into PathBuf and read_dir, suppressing errors into empty lists. A remote writer succeeds while dependent volume readers and hostPath recipients receive no files.
+
+Enumerate/materialize through Files or reject unsupported locations before accepting completion. Regression: fake remote directory containing a.txt must reach both a dependent reader and writable hostPath destination.
+
+### ARG-03 (P1): Simulator leniency silently removes real fanout
+
+`argo-runtime/src/items.rs:51`, `:79` converts whitespace-only, unresolved, or placeholder loop input to zero iterations without checking assume_inputs. A real producer returning invalid JSON-list data can cause required downstream work to disappear while the final workflow succeeds. Related output-resolution suppression occurs in `scope.rs:233`.
+
+Limit accommodations to simulation and fail invalid real data; genuine [] remains valid. Regression: real-mode whitespace/unresolved withParam must fail, while [] and skipped steps retain their intended behavior.
+
+### ARG-04 (P1): Workflow/template parallelism is accepted but unenforced
+
+`argo-parser/src/model.rs:135`, `:236` parses limits, but runtime checks only validity (`checks.rs:219`). `steps.rs:125` and `dag.rs:449` emit all ready tasks. parallelism=1 fails to serialize shared-volume updates and can lose increments or overload resources.
+
+Apply admission limits at workflow/template scope or reject them explicitly. Regression: two ready leaves under limit one, followed by a shared counter update scenario.
+
+### ARG-05 (P1): hostPath subPath reads the host root rather than the selected subtree
+
+`argo-runtime/src/volumes.rs:213` uses host.path as initial input regardless of subPath, while writeback uses the subpath (`:358`). /data plus sample-a reads the wrong relative tree and writes back elsewhere; file subpaths also lack correct representation.
+
+Resolve and validate the selected host path before type/existence/input construction. Regression: root and selected-subtree sentinels, plus file subPath, must expose only the requested source.
+
+### ARG-06 (P1): hostPath writeback escapes its selected root
+
+`argo-runtime/src/volumes.rs:358` joins unchecked subPath into host destinations; :370 copies through existing destination symlinks. ../outside writes into a sibling with native user permissions. Arbitrary explicit hostPath workflows are trusted, but this still violates the selected mount's boundary.
+
+Reject absolute/parent-traversing subpaths and confine writes across symlink components. Regression: temporary sibling directories and redirected destination symlink must remain untouched outside the selected root.
+
+### ARG-07 (P2): Aggregated parameter strings change type
+
+`argo-runtime/src/scope.rs:154` reparses strings as JSON for outputs.parameters.NAME. Text 42/null becomes [42,null] rather than ["42","null"], changing downstream conditions and items. The [Argo controller](https://raw.githubusercontent.com/argoproj/argo-workflows/v4.1.4/workflow/controller/operator.go) maintains parameter aggregates as string lists.
+
+Preserve strings separately from result JSON aggregation. Regression: numeric/null/object-looking/quoted parameter text across both aggregate access forms.
+
+### ARG-08 (P2): Main completion replays older init-volume writes
+
+`argo-runtime/src/volumes.rs:340` processes every completed Written slot after each init and main completion (`pod.rs:383`, `:441`). Init A writes old, independent B writes new, then A's main without that mount finishes and can restore old again.
+
+Consume writeback per newly completed slot once. Regression: that controlled completion order must leave B's newer bytes available to the next reader.
+
+### ARG-09 (P2): Literal HTTP bodies starting with @ become filenames
+
+`argo-runtime/src/http.rs:60` uses curl --data, which interprets a leading @ as a file reference regardless of shell quoting. body='@literal' can fail or transmit image-file content instead of the requested bytes.
+
+Use literal-body semantics such as --data-raw, with explicit binary handling where needed. Regression: capture a request containing a leading @ and require exact literal bytes.
+
+### ARG-10 (P2): Accepted HTTP fields and retry timing are fabricated or ignored
+
+`argo-parser/src/model.rs:510` accepts bodyFrom/timeoutSeconds without runtime consumers; `argo-runtime/src/http.rs:97` always supplies empty response.headers. `retry.rs:58` sets lastRetry.duration to zero, and node timing uses workflow creation time (`run.rs:789`, `:824`). Header-dependent conditions and duration-based retries can be wrong.
+
+Implement supported fields/timing or reject unsupported contracts. Regression: bodyFrom, deadline, response-header condition, and a timed failure tested with a duration-dependent retry expression. Documented absent backoff sleeping is a separate intentional boundary.
+
+### ARG-11 (P2): Required ConfigMap item keys can disappear silently
+
+`argo-runtime/src/volumes.rs:288` skips missing requested keys instead of reporting the required missing file. A ConfigMap containing a while its items requires b can let fallback-driven tools compute different results.
+
+Fail missing required keys and honor explicit optional behavior. Regression: present, missing-required, and missing-optional selected items.
+
+## Input schema and CLI contracts
+
+### SCH-01 (P2): Recursive input schemas can crash help or preprocessing
+
+`input-schema/src/text.rs:109` recursively renders array items after $ref resolution without active-reference tracking. A valid tree array schema referring to itself can overflow the stack through `iunctus inputs -format text`. `values.rs:12` similarly traverses recursive allOf before validator creation (`check.rs:49`).
+
+Terminate recursive rendering/preprocessing using active identities or bounded expansion without discarding valid recursive schemas. Regression: valid recursive help schema, recursive preprocessing, and nonrecursive nested schemas in guarded processes.
+
+### SCH-02 (P2, behavioral validation needed): Alternative schemas turn missing simulated paths into fatal errors
+
+`input-schema/src/check.rs:140` processes anyOf/oneOf children with simulation flags false and leaves the enclosing error fatal. A simulated CWL [File,Directory] input (`cwl-runtime/src/schema.rs:227`) can fail for a missing path while a plain File yields a warning.
+
+Evaluate alternatives under simulated existence rules while preserving real type errors. Regression: missing file/directory union versus a direct file schema in simulated and real checks.

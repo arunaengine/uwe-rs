@@ -457,6 +457,42 @@ fn a_replay_runs_its_task_whatever_the_cache_holds() {
 }
 
 #[test]
+fn disabled_reuse_neither_reads_nor_writes_cached_results() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let runner = runner(root.path(), 0);
+    let mut disabled = task(root.path(), "a");
+    disabled.reuse = workflow_graph::Reuse::Disabled;
+    let prepared = request(&runner, &disabled);
+    let key = prepared.request.spec.cache_key().expect("a key");
+    let store = Store::local(&root.path().join("store")).expect("a store");
+    assert!(!execute(&runner, &prepared).reused);
+    assert!(
+        block_on(store.get_entry("", &key))
+            .expect("reads")
+            .is_none()
+    );
+    let allowed = task(root.path(), "a");
+    execute(&runner, &request(&runner, &allowed));
+    assert!(!execute(&runner, &prepared).reused);
+    let lookup = task_runner::Lookup::new(
+        store,
+        Settings {
+            downloads: root.path().join("downloads"),
+            import_inputs: false,
+            storage: storage::Storage::default(),
+            digests: None,
+        },
+    );
+    assert!(
+        block_on(lookup.find(&disabled, Some("debian@sha256:00".into())))
+            .expect("looks")
+            .is_none()
+    );
+    assert!(execute(&runner, &request(&runner, &allowed)).reused);
+    assert_eq!(runner.backend().runs.lock().unwrap().len(), 3);
+}
+
+#[test]
 fn a_task_that_denies_reuse_runs_every_time_and_its_result_is_stored() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);

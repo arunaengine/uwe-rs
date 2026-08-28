@@ -123,6 +123,7 @@ impl RunnerError {
     pub fn unsupported(&self) -> bool {
         match self {
             RunnerError::Remote(_) | RunnerError::NotInPlace(_) => true,
+            RunnerError::Executor(ExecutorError::Unsupported(_)) => true,
             RunnerError::Storage(error) => error.unsupported(),
             _ => false,
         }
@@ -395,6 +396,7 @@ impl<B: Backend> Runner<B> {
             &task,
             request.attempt,
             digests,
+            &staging,
         )
         .await;
         let stored = match stored {
@@ -408,8 +410,8 @@ impl<B: Backend> Runner<B> {
             }
             Err(error) => Err(error),
         };
-        (tokio::fs::remove_dir_all(&finished.root).await).map_err(at(&finished.root))?;
         let result = stored?;
+        (tokio::fs::remove_dir_all(&finished.root).await).map_err(at(&finished.root))?;
         if let Some(earlier) = earlier {
             return self
                 .checked(earlier, &result, tool.as_ref(), prepared, &task)

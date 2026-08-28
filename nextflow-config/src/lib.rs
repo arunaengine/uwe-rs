@@ -134,7 +134,9 @@ pub fn load(
         let tree = evaluator.top_level(path)?;
         tree::deep_merge(&merged, &tree);
     }
-    if let Some(profiles) = &options.profiles {
+    if let Some(profiles) = &options.profiles
+        && !matches!(profiles.as_slice(), [name] if name == "standard")
+    {
         let unknown: Vec<&String> = profiles
             .iter()
             .filter(|name| !evaluator.declared_profiles.contains(*name))

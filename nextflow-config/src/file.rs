@@ -29,6 +29,7 @@ pub(crate) struct Evaluator<'a> {
     /// The names of all profiles defined in the files and includes that ran.
     pub declared_profiles: BTreeSet<String>,
     sources: HashMap<PathBuf, Rc<str>>,
+    active: Vec<PathBuf>,
 }
 
 /// The file being evaluated.
@@ -86,6 +87,7 @@ impl<'a> Evaluator<'a> {
             host,
             declared_profiles: BTreeSet::new(),
             sources: HashMap::new(),
+            active: Vec::new(),
         }
     }
 
@@ -103,6 +105,23 @@ impl<'a> Evaluator<'a> {
         params: Value,
         includer: Option<&File>,
     ) -> Result<Value, ConfigError> {
+        let text = path.to_string_lossy();
+        let identity = if text.contains("://") {
+            PathBuf::from(PathValue::parse(&text, "/").uri())
+        } else {
+            path.canonicalize().unwrap_or_else(|_| path.to_owned())
+        };
+        if self.active.contains(&identity) {
+            let chain: Vec<_> = self
+                .active
+                .iter()
+                .chain(std::iter::once(&identity))
+                .map(|path| path.display().to_string())
+                .collect();
+            return Err(ConfigError::Invalid {
+                messages: vec![format!("Config include cycle: {}", chain.join(" -> "))],
+            });
+        }
         let source = self.source(path)?;
         let parsed = parse_config(&source);
         if !parsed.errors.is_empty() {
@@ -121,7 +140,10 @@ impl<'a> Evaluator<'a> {
         };
         file.module = self.module(&mut file, &parsed.tree.statements, includer)?;
         *file.module.source.borrow_mut() = Some(file.source.clone());
-        self.statements(&mut file, &parsed.tree.statements, &[], false)?;
+        self.active.push(identity);
+        let result = self.statements(&mut file, &parsed.tree.statements, &[], false);
+        self.active.pop();
+        result?;
         Ok(file.tree)
     }
 

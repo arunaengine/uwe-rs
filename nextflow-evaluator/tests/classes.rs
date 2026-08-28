@@ -178,6 +178,14 @@ fn missing_members_fail_as_in_groovy() {
     );
 }
 
+#[test]
+fn static_import_aliases_keep_the_original_member() {
+    let source = "import static java.lang.Math.max as min\n\
+                  import static java.lang.Math.min as smallest\n\
+                  def f() { [min(1, 2), smallest(1, 2)] }\n";
+    assert_eq!(run(source).expect("runs"), "[2, 1]");
+}
+
 const SWITCHES: &str = r#"
 def size(text) {
     def number

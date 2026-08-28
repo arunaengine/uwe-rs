@@ -442,10 +442,10 @@ impl Lowering<'_> {
             Ok(call) => return call,
             Err(arguments) => arguments,
         };
-        if let Some(class) = self.static_imports.get(name).cloned() {
+        if let Some((class, member)) = self.static_imports.get(name).cloned() {
             return Kind::CallStatic {
                 class,
-                name: name.into(),
+                name: member,
                 arguments,
             };
         }

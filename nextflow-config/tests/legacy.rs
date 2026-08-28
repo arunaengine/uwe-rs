@@ -67,6 +67,29 @@ fn get(config: &Config, path: &[&str]) -> String {
     }
 }
 
+#[test]
+fn include_cycles_fail_and_repeated_includes_still_run() {
+    for files in [
+        vec![("nextflow.config", "includeConfig './nextflow.config'\n")],
+        vec![
+            ("nextflow.config", "includeConfig 'other.config'\n"),
+            ("other.config", "includeConfig 'nextflow.config'\n"),
+        ],
+    ] {
+        let error = load_files(&files).0.unwrap_err().to_string();
+        assert!(error.contains("Config include cycle:"), "{error}");
+        assert!(error.contains("nextflow.config"), "{error}");
+    }
+    let (config, _) = load_files(&[
+        (
+            "nextflow.config",
+            "params.n = 0\nincludeConfig 'other.config'\nincludeConfig 'other.config'\n",
+        ),
+        ("other.config", "params.n = params.n + 1\n"),
+    ]);
+    assert_eq!(get(&config.unwrap(), &["params", "n"]), "2");
+}
+
 /// Calls a closure of the config without arguments, with the final params.
 fn call(config: &Config, path: &[&str]) -> String {
     let Some(Value::Closure(closure)) = config.get(path) else {

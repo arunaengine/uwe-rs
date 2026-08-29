@@ -49,24 +49,56 @@ pub fn select(
         if parts.iter().all(Value::is_none) {
             return Ok(Selection::all(labels));
         }
-        let start = match &parts[0] {
-            value if value.is_none() => 0,
-            value => *labels
-                .find(value)
-                .first()
-                .ok_or_else(|| Error::key_error(value.clone()))?,
+        let step = if parts[2].is_none() {
+            1
+        } else {
+            parts[2]
+                .as_int()
+                .ok_or_else(|| Error::type_error("slice step must be an integer"))?
         };
-        let stop = match &parts[1] {
-            value if value.is_none() => labels.len(),
-            value => {
-                labels
-                    .find(value)
-                    .last()
-                    .ok_or_else(|| Error::key_error(value.clone()))?
-                    + 1
+        if step == 0 {
+            return Err(Error::value_error("slice step cannot be zero"));
+        }
+        if labels.is_empty() {
+            return Ok(Selection::many(labels, Vec::new()));
+        }
+        let endpoint = |value: &Value, start: bool| -> Result<i64, Error> {
+            if value.is_none() {
+                return Ok(if start == (step > 0) {
+                    0
+                } else {
+                    labels.len() as i64 - 1
+                });
             }
+            let found = labels.find(value);
+            let position = if start == (step > 0) {
+                found.first()
+            } else {
+                found.last()
+            };
+            position
+                .copied()
+                .map(|position| position as i64)
+                .ok_or_else(|| Error::key_error(value.clone()))
         };
-        return Ok(Selection::many(labels, (start..stop.max(start)).collect()));
+        let mut position = endpoint(&parts[0], true)?;
+        let stop = endpoint(&parts[1], false)?;
+        let mut positions = Vec::new();
+        while if step > 0 {
+            position <= stop
+        } else {
+            position >= stop
+        } {
+            positions.push(position as usize);
+            let Some(next) = position.checked_add(step) else {
+                break;
+            };
+            position = next;
+        }
+        return Ok(Selection::many(labels, positions));
+    }
+    if let Some(positions) = super::sequence::aligned_mask(key, labels)? {
+        return Ok(Selection::many(labels, positions));
     }
     if is_mask(interpreter, key, labels.len())? {
         let positions = positions_of(interpreter, key, labels.len())?;

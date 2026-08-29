@@ -94,6 +94,46 @@ fn ignores_input_order() {
 }
 
 #[test]
+fn normalized_input_overlays_include_their_order_in_the_key() {
+    for (parent, child) in [
+        ("x", "./x"),
+        ("d", "d/x"),
+        ("d/", "./d//x"),
+        ("/d", "//d/./x"),
+        (".", "x"),
+    ] {
+        let mut spec = fastqc();
+        spec.inputs = vec![input(parent, "first"), input(child, "second")];
+        if parent != "x" {
+            spec.inputs[0].kind = FileKind::Directory;
+        }
+        let canonical = spec.canonical().expect("valid overlay");
+        let key = spec.cache_key().expect("valid overlay");
+        assert_ne!(
+            key,
+            Digest::sha256(&canonical),
+            "old ambiguous key {parent}"
+        );
+        spec.inputs.reverse();
+        assert_eq!(spec.canonical().expect("valid overlay"), canonical);
+        assert_ne!(spec.cache_key().expect("valid overlay"), key, "{parent}");
+        assert_eq!(spec.format, FORMAT);
+    }
+}
+
+#[test]
+fn disjoint_normalized_destinations_preserve_the_format_two_key() {
+    for paths in [["d", "d-other/x"], ["/d", "d/x"], ["./a", "b//x"]] {
+        let mut spec = fastqc();
+        spec.inputs = paths.iter().map(|path| input(path, path)).collect();
+        let key = spec.cache_key().expect("valid specification");
+        assert_eq!(key, Digest::sha256(&spec.canonical().unwrap()));
+        spec.inputs.reverse();
+        assert_eq!(spec.cache_key().unwrap(), key);
+    }
+}
+
+#[test]
 fn every_field_counts() {
     let base = fastqc().cache_key().expect("valid specification");
     let changes: Vec<fn(&mut TaskSpec)> = vec![

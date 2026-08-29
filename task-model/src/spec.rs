@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Component, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -226,8 +227,8 @@ impl TaskSpec {
         Some(order)
     }
 
-    /// The RFC 8785 canonical JSON of the specification. Inputs and outputs are sorted, because
-    /// their order does not change what the task computes.
+    /// The RFC 8785 canonical JSON of the specification, preserving the sorted format encoding.
+    /// The cache key additionally records input order when destinations overlap.
     pub fn canonical(&self) -> Result<Vec<u8>, SpecError> {
         self.validate()?;
         let mut sorted = self.clone();
@@ -238,7 +239,32 @@ impl TaskSpec {
     }
 
     pub fn cache_key(&self) -> Result<Digest, SpecError> {
-        Ok(Digest::sha256(&self.canonical()?))
+        let mut bytes = self.canonical()?;
+        let paths: Vec<PathBuf> = self
+            .inputs
+            .iter()
+            .map(|input| {
+                PathBuf::from(&input.path)
+                    .components()
+                    .filter(|part| *part != Component::CurDir)
+                    .collect()
+            })
+            .collect();
+        let destinations: BTreeSet<PathBuf> = paths.iter().cloned().collect();
+        let overlays = destinations.len() != paths.len()
+            || paths.iter().any(|path| {
+                path.ancestors()
+                    .skip(1)
+                    .any(|parent| destinations.contains(parent))
+            });
+        if overlays {
+            bytes.extend_from_slice(b"\0iunctus:ordered-input-overlays:v1\0");
+            bytes.extend(
+                serde_jcs::to_vec(&self.inputs)
+                    .map_err(|error| SpecError::Encoding(error.to_string()))?,
+            );
+        }
+        Ok(Digest::sha256(&bytes))
     }
 
     /// Whether the image is pinned to a digest, one condition for sharing results across runs.

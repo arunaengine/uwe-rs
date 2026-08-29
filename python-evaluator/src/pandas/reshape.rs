@@ -73,6 +73,9 @@ pub fn set_index(
         }
         if is_list_like(&key) {
             let labels = labels_of(interpreter, &key)?;
+            if labels.len() != data.rows() {
+                return Err(Error::value_error("Length mismatch when setting the index"));
+            }
             levels.push(labels.values);
             names.push(labels.names[0].clone());
             continue;

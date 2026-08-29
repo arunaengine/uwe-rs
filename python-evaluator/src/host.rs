@@ -283,8 +283,17 @@ impl Host for LocalHost {
     }
 
     fn write(&self, path: &Path, data: &[u8], append: bool) -> std::io::Result<()> {
+        let initial = if append && !self.written.borrow().contains_key(path) {
+            match self.read(path) {
+                Ok(data) => data,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+                Err(error) => return Err(error),
+            }
+        } else {
+            Vec::new()
+        };
         let mut written = self.written.borrow_mut();
-        let entry = written.entry(path.to_owned()).or_default();
+        let entry = written.entry(path.to_owned()).or_insert(initial);
         if !append {
             entry.clear();
         }

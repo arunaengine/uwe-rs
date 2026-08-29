@@ -161,6 +161,7 @@ pub struct Interpreter {
     pub stack_limit: usize,
     /// Exceptions being handled, innermost last, for a bare `raise`.
     handling: Vec<Error>,
+    representing: Vec<usize>,
     /// The `sys.argv` and similar values that code may ask for.
     pub argv: Vec<String>,
     /// The Python process of the packages without a stand-in (decision 19).
@@ -187,6 +188,7 @@ impl Interpreter {
             stack_start: stack_address(),
             stack_limit: 1 << 20,
             handling: Vec::new(),
+            representing: Vec::new(),
             argv: vec!["snakemake".into()],
             packages: Rc::default(),
         };
@@ -361,6 +363,31 @@ impl Interpreter {
 
     /// `repr(value)`.
     pub fn repr(&mut self, value: &Value) -> Result<String, Error> {
+        let recursive = match value.plain() {
+            Value::List(_) => Some("[...]"),
+            Value::Dict(_) => Some("{...}"),
+            Value::Tuple(_) => Some("(...)"),
+            _ => None,
+        };
+        let identity = value.address();
+        if let Some(placeholder) = recursive
+            && self.representing.contains(&identity)
+        {
+            return Ok(placeholder.to_owned());
+        }
+        self.enter_call()?;
+        if recursive.is_some() {
+            self.representing.push(identity);
+        }
+        let result = self.repr_inner(value);
+        if recursive.is_some() {
+            self.representing.pop();
+        }
+        self.leave_call();
+        result
+    }
+
+    fn repr_inner(&mut self, value: &Value) -> Result<String, Error> {
         let value = value.plain();
         match value {
             Value::List(items) => {

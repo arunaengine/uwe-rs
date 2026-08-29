@@ -353,18 +353,14 @@ pub fn math() -> Vec<(&'static str, Value)> {
         (
             "isqrt",
             function("isqrt", |_, args| {
-                let value = args.positional[0].as_int().unwrap_or(0);
-                if value < 0 {
+                args.expect("isqrt", 1, 1)?;
+                args.no_keywords("isqrt")?;
+                let value = crate::number::to_bigint(&args.positional[0])
+                    .ok_or_else(|| Error::type_error("isqrt() argument must be an integer"))?;
+                if value.sign() == num_bigint::Sign::Minus {
                     return Err(Error::value_error("isqrt() argument must be nonnegative"));
                 }
-                let mut root = (value as f64).sqrt() as i64;
-                while root * root > value {
-                    root -= 1;
-                }
-                while (root + 1) * (root + 1) <= value {
-                    root += 1;
-                }
-                Ok(Value::Int(root))
+                Ok(Value::from_bigint(value.sqrt()))
             }),
         ),
         (

@@ -183,10 +183,19 @@ fn multi_index(
     levels: Vec<Vec<Value>>,
     names: Option<Value>,
 ) -> Result<Value, Error> {
+    let length = levels.first().map_or(0, Vec::len);
+    if levels.iter().any(|level| level.len() != length) {
+        return Err(Error::value_error("all arrays must be same length"));
+    }
     let names = match names {
         Some(names) if !names.is_none() => seq_values(interpreter, &names)?,
         _ => vec![Value::None; levels.len()],
     };
+    if names.len() != levels.len() {
+        return Err(Error::value_error(
+            "Length of names must match number of levels",
+        ));
+    }
     Ok(IndexObject::value(Labels::from_levels(levels, names)))
 }
 
@@ -222,7 +231,9 @@ fn series(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error>
     };
     if let Some(index) = index {
         let given = labels_of(interpreter, &index)?;
-        if values.len() == 1 && given.len() != 1 && !is_list_like(&data) {
+        if data.is_none() {
+            values = vec![nan(); given.len()];
+        } else if values.len() == 1 && given.len() != 1 && !is_list_like(&data) {
             values = vec![data.clone(); given.len()];
         } else if matches!(data.plain(), Value::Dict(_)) || data.as_native::<Series>().is_some() {
             values = given
@@ -237,6 +248,11 @@ fn series(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error>
                 .collect();
         }
         labels = given;
+    }
+    if values.len() != labels.len() {
+        return Err(Error::value_error(
+            "Length of values does not match length of index",
+        ));
     }
     if let Some(dtype) = dtype {
         values = super::cast_values(interpreter, &values, &dtype)?;
@@ -359,9 +375,10 @@ pub fn data_frame(interpreter: &mut Interpreter, mut args: Args) -> Result<Value
     };
     if let Some(index) = index {
         let labels = labels_of(interpreter, &index)?;
-        if labels.len() == frame.rows() {
-            *frame.index.borrow_mut() = labels;
+        if labels.len() != frame.rows() {
+            return Err(Error::value_error("Length mismatch when setting the index"));
         }
+        *frame.index.borrow_mut() = labels;
     }
     if let Some(columns) = columns
         && matches!(data.plain(), Value::Dict(_))

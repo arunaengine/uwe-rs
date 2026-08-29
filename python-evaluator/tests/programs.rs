@@ -184,3 +184,65 @@ fn missing_standard_modules_are_unsupported() {
     let error = evaluate("import turtle\n").expect_err("no stand-in");
     assert!(error.is_unsupported(), "{error}");
 }
+
+#[test]
+fn integer_square_roots_do_not_overflow() {
+    assert_eq!(
+        evaluate("import math\nprint(math.isqrt(9223372036854775807), math.isqrt(10 ** 100), math.isqrt(0))\n")
+            .expect("integer roots"),
+        format!("3037000499 1{} 0\n", "0".repeat(50))
+    );
+    for code in ["math.isqrt()", "math.isqrt(1.5)"] {
+        assert!(
+            evaluate(&format!("import math\n{code}\n"))
+                .expect_err("invalid argument")
+                .is("TypeError")
+        );
+    }
+    assert!(
+        evaluate("import math\nmath.isqrt(-1)\n")
+            .expect_err("negative root")
+            .is("ValueError")
+    );
+}
+
+#[test]
+fn recursive_containers_have_bounded_representations() {
+    assert_eq!(
+        evaluate("a = []\na.append(a)\nd = {}\nd['self'] = d\nprint(a, d)\nprint([a, a])\n")
+            .expect("recursive repr"),
+        "[[...]] {'self': {...}}\n[[[...]], [[...]]]\n"
+    );
+}
+
+#[test]
+fn dataframe_indexes_reject_invalid_shapes_before_access() {
+    for expression in [
+        "pd.DataFrame({'x': [1]}).set_index(pd.Index(['a', 'b']))",
+        "pd.MultiIndex.from_arrays([[1, 2], ['a']])",
+        "pd.MultiIndex.from_arrays([[1], ['a']], names=['one'])",
+        "pd.Series([1], index=['a', 'b'])",
+        "pd.DataFrame([[1]], index=['a', 'b'])",
+    ] {
+        let error = evaluate(&format!("import pandas as pd\n{expression}\n"))
+            .expect_err("invalid index shape");
+        assert!(error.is("ValueError"), "{expression}: {error}");
+    }
+    assert_eq!(
+        evaluate("import pandas as pd\nprint(pd.Series(index=['a', 'b']).isna().tolist())\n")
+            .expect("empty series"),
+        "[True, True]\n"
+    );
+}
+
+#[test]
+fn appending_preserves_disk_content_without_writing_it() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let path = folder.path().join("existing.txt");
+    std::fs::write(&path, "old").expect("initial content");
+    let host = Rc::new(LocalHost::new(folder.path()));
+    let mut interpreter = Interpreter::new(host.clone());
+    interpreter.run_text("<test>", "with open('existing.txt', 'a') as f:\n    f.write('new')\nwith open('existing.txt', 'a') as f:\n    f.write('again')\nprint(open('existing.txt').read())\n").expect("appends");
+    assert_eq!(*host.output.borrow(), "oldnewagain\n");
+    assert_eq!(std::fs::read_to_string(path).expect("disk content"), "old");
+}

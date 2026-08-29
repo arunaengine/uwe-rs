@@ -101,8 +101,12 @@ pub fn positions_of(
 pub fn mask_or_positional_slice(
     interpreter: &mut Interpreter,
     key: &Value,
-    length: usize,
+    labels: &super::labels::Labels,
 ) -> Result<Option<Vec<usize>>, Error> {
+    if let Some(positions) = aligned_mask(key, labels)? {
+        return Ok(Some(positions));
+    }
+    let length = labels.len();
     if is_mask(interpreter, key, length)? {
         return positions_of(interpreter, key, length).map(Some);
     }
@@ -114,4 +118,53 @@ pub fn mask_or_positional_slice(
         return positions_of(interpreter, key, length).map(Some);
     }
     Ok(None)
+}
+
+pub(super) fn aligned_mask(
+    key: &Value,
+    labels: &super::labels::Labels,
+) -> Result<Option<Vec<usize>>, Error> {
+    let Some(series) = key.as_native::<Series>() else {
+        return Ok(None);
+    };
+    let data = series.data();
+    if !data
+        .values
+        .iter()
+        .all(|value| matches!(value.plain(), Value::Bool(_)))
+    {
+        return Ok(None);
+    }
+    let identical = labels.len() == data.index.len()
+        && labels
+            .values
+            .iter()
+            .zip(&data.index.values)
+            .all(|(a, b)| super::same_label(a, b));
+    let mut positions = Vec::new();
+    for (position, label) in labels.values.iter().enumerate() {
+        let source = if identical {
+            position
+        } else {
+            let found: Vec<usize> = data
+                .index
+                .values
+                .iter()
+                .enumerate()
+                .filter(|(_, known)| super::same_label(known, label))
+                .map(|(position, _)| position)
+                .collect();
+            if found.len() != 1 {
+                return Err(Error::new(
+                    "IndexingError",
+                    "Unalignable boolean Series provided as indexer",
+                ));
+            }
+            found[0]
+        };
+        if matches!(data.values[source].plain(), Value::Bool(true)) {
+            positions.push(position);
+        }
+    }
+    Ok(Some(positions))
 }

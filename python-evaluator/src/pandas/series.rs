@@ -98,9 +98,7 @@ impl Native for Series {
     ) -> Result<Option<Value>, Error> {
         let data = self.data();
         // A mask or a slice of positions selects by position.
-        if let Some(positions) =
-            super::mask_or_positional_slice(interpreter, key, data.values.len())?
-        {
+        if let Some(positions) = super::mask_or_positional_slice(interpreter, key, &data.index)? {
             return Ok(Some(Series::from_data(data.take(&positions))));
         }
         match select(interpreter, &data.index, key) {
@@ -135,8 +133,8 @@ impl Native for Series {
         key: &Value,
         value: Value,
     ) -> Result<bool, Error> {
-        let length = self.data.borrow().values.len();
-        let positions = match super::mask_or_positional_slice(interpreter, key, length)? {
+        let index = self.data.borrow().index.clone();
+        let positions = match super::mask_or_positional_slice(interpreter, key, &index)? {
             Some(positions) => positions,
             None => {
                 let index = self.data.borrow().index.clone();
@@ -144,7 +142,10 @@ impl Native for Series {
             }
         };
         let mut data = self.data.borrow_mut();
-        if positions.is_empty() && !matches!(key.plain(), Value::List(_) | Value::Slice(_)) {
+        if positions.is_empty()
+            && !super::is_list_like(key)
+            && !matches!(key.plain(), Value::Slice(_))
+        {
             data.values.push(value);
             data.index.values.push(key.clone());
             return Ok(true);
@@ -179,6 +180,85 @@ impl Native for Series {
         reflected: bool,
     ) -> Result<Option<Value>, Error> {
         let data = self.data();
+        if let Some(series) = other.as_native::<Series>() {
+            let other = series.data();
+            let identical = data.index.len() == other.index.len()
+                && data
+                    .index
+                    .values
+                    .iter()
+                    .zip(&other.index.values)
+                    .all(|(a, b)| super::same_label(a, b));
+            if !identical
+                && matches!(
+                    operator,
+                    Operator::Eq
+                        | Operator::NotEq
+                        | Operator::Lt
+                        | Operator::LtE
+                        | Operator::Gt
+                        | Operator::GtE
+                )
+            {
+                return Err(Error::value_error(
+                    "Can only compare identically-labeled Series objects",
+                ));
+            }
+            if !identical {
+                let unique = |index: &Labels| {
+                    index.values.iter().enumerate().all(|(position, label)| {
+                        !index.values[..position]
+                            .iter()
+                            .any(|known| super::same_label(known, label))
+                    })
+                };
+                if !unique(&data.index) || !unique(&other.index) {
+                    return Err(Error::unsupported(
+                        "Series arithmetic reindexing with duplicate labels",
+                    ));
+                }
+                let mut labels = data.index.values.clone();
+                for label in &other.index.values {
+                    if !labels.iter().any(|known| super::same_label(known, label)) {
+                        labels.push(label.clone());
+                    }
+                }
+                let (missing, present): (Vec<Value>, Vec<Value>) =
+                    labels.into_iter().partition(super::is_missing);
+                let mut labels = crate::builtins::sort_values(interpreter, present, None, false)?;
+                labels.extend(missing);
+                let aligned = |source: &SeriesData| -> Vec<Value> {
+                    labels
+                        .iter()
+                        .map(|label| {
+                            source
+                                .index
+                                .values
+                                .iter()
+                                .position(|known| super::same_label(known, label))
+                                .map_or_else(super::nan, |position| source.values[position].clone())
+                        })
+                        .collect()
+                };
+                let values = super::elementwise(
+                    interpreter,
+                    operator,
+                    &aligned(&data),
+                    &Value::list(aligned(&other)),
+                    reflected,
+                )?;
+                return Ok(values.map(|values| {
+                    Series::value(
+                        values,
+                        Labels {
+                            values: labels,
+                            names: data.index.names.clone(),
+                        },
+                        data.name.clone(),
+                    )
+                }));
+            }
+        }
         let result = super::elementwise(interpreter, operator, &data.values, other, reflected)?;
         Ok(result.map(|values| Series::from_data(data.with_values(values))))
     }

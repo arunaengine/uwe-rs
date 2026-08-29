@@ -93,6 +93,14 @@ fn filter(interpreter: &mut Interpreter, frame: &PolarsFrame, args: &Args) -> Re
             }
         }
     }
+    for (name, value) in &args.keywords {
+        let column = data
+            .column_position(&Value::str(name.to_string()))
+            .ok_or_else(|| Error::new("ColumnNotFoundError", name.to_string()))?;
+        for (row, item) in data.data[column].iter().enumerate() {
+            keep[row] &= !item.is_none() && !value.is_none() && interpreter.equals(item, value)?;
+        }
+    }
     let rows: Vec<usize> = (0..data.rows()).filter(|row| keep[*row]).collect();
     Ok(frame.take_rows(&rows))
 }

@@ -94,7 +94,7 @@ pub fn concat(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Er
         })?);
     }
     if by_columns {
-        return Ok(DataFrame::from_data(side_by_side(&frames)));
+        return Ok(DataFrame::from_data(side_by_side(&frames)?));
     }
     let mut columns: Vec<Value> = Vec::new();
     for frame in &frames {
@@ -133,7 +133,42 @@ pub fn concat(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Er
 }
 
 /// Tables side by side, their rows matched by label.
-fn side_by_side(frames: &[FrameData]) -> FrameData {
+fn side_by_side(frames: &[FrameData]) -> Result<FrameData, Error> {
+    let first = frames[0].index();
+    if frames.iter().all(|frame| {
+        let index = frame.index();
+        index.len() == first.len()
+            && index
+                .values
+                .iter()
+                .zip(&first.values)
+                .all(|(a, b)| same_label(a, b))
+    }) {
+        return Ok(FrameData::new(
+            Labels::single(
+                frames
+                    .iter()
+                    .flat_map(|frame| frame.columns.values.clone())
+                    .collect(),
+                Value::None,
+            ),
+            frames.iter().flat_map(|frame| frame.data.clone()).collect(),
+            first,
+        ));
+    }
+    if frames.iter().any(|frame| {
+        let index = frame.index();
+        index.values.iter().enumerate().any(|(position, label)| {
+            index.values[..position]
+                .iter()
+                .any(|known| same_label(known, label))
+        })
+    }) {
+        return Err(Error::new(
+            "InvalidIndexError",
+            "Reindexing only valid with uniquely valued Index objects",
+        ));
+    }
     let mut labels: Vec<Value> = Vec::new();
     for frame in frames {
         for label in frame.index().values {
@@ -161,11 +196,11 @@ fn side_by_side(frames: &[FrameData]) -> FrameData {
             );
         }
     }
-    FrameData::new(
+    Ok(FrameData::new(
         Labels::single(columns, Value::None),
         data,
         Labels::single(labels, frames[0].index().names[0].clone()),
-    )
+    ))
 }
 
 fn column_names(

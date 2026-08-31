@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -30,6 +31,7 @@ const POLL: Duration = Duration::from_secs(5);
 
 /// How long a cancelled task may take to end before the backend stops waiting for it.
 const CANCEL_GRACE: Duration = Duration::from_secs(60);
+const READ_GRACE: Duration = Duration::from_secs(120);
 
 /// The TES executor's backend.
 #[derive(Debug)]
@@ -56,10 +58,17 @@ impl Backend for TesBackend {
                 "the TES executor cannot run a task without network".into(),
             ));
         }
+        if job.placement.accelerators.iter().any(|gpu| gpu.count > 0) {
+            return Err(ExecutorError::Unsupported(
+                "TES GPU placement is not supported".into(),
+            ));
+        }
         let root = self.scratch.join(job.name);
-        tokio::fs::create_dir_all(root.join("empty")).await?;
+        tokio::fs::create_dir_all(&self.scratch).await?;
+        tokio::fs::create_dir(&root).await?;
+        tokio::fs::create_dir(root.join("empty")).await?;
         let result = self.attempt(job, &root, cancel).await;
-        if result.is_err() {
+        if result.is_err() && !root.join("remote.json").exists() {
             let _ = tokio::fs::remove_dir_all(&root).await;
         }
         result
@@ -75,18 +84,40 @@ impl TesBackend {
     ) -> Result<Finished, ExecutorError> {
         // The command runs through the entrypoint of the image, as `docker run` and the local
         // executor run it; a task without one runs the image's default command.
-        let image = job.spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
-        let config = self.configs.get(&image.reference).await?;
         let mut spec = job.spec.clone();
+        let image = spec.image.as_mut().ok_or(ExecutorError::NoImage)?;
+        let config = if image.platform.is_some() {
+            let resolved = self
+                .configs
+                .resolved_for(&image.reference, image.platform.as_deref())
+                .await?;
+            image.reference = resolved.reference;
+            resolved.config
+        } else {
+            self.configs.get(&image.reference).await?
+        };
         if !spec.replaces_entrypoint || spec.arguments.is_empty() {
             spec.arguments = config.command(&job.spec.arguments);
         }
         for container in &mut spec.containers {
-            let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
+            let image = container.image.as_mut().ok_or(ExecutorError::NoImage)?;
+            let selected = if image.platform.is_some() {
+                let resolved = self
+                    .configs
+                    .resolved_for(&image.reference, image.platform.as_deref())
+                    .await?;
+                image.reference = resolved.reference;
+                Some(resolved.config)
+            } else {
+                None
+            };
             if container.replaces_entrypoint && !container.arguments.is_empty() {
                 continue;
             }
-            let config = self.configs.get(&image.reference).await?;
+            let config = match selected {
+                Some(config) => config,
+                None => self.configs.get(&image.reference).await?,
+            };
             container.arguments = config.command(&container.arguments);
             if container.arguments.is_empty() {
                 return Err(ExecutorError::NoCommand(image.reference.clone()));
@@ -110,8 +141,42 @@ impl TesBackend {
             }
             false => several(&spec, &folders, root, &mut task).await?,
         }
-        let id = self.client.create(&task).await.map_err(machine)?;
-        let status = self.wait(&id, cancel).await?;
+        if cancel.is_cancelled() {
+            return Err(ExecutorError::Cancelled);
+        }
+        let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
+        let started = owner_start(std::process::id())
+            .ok_or_else(|| std::io::Error::other("cannot identify the TES coordinator process"))?;
+        let mut journal = serde_json::json!({"backend": "TES", "server": self.client.server(),
+            "name": job.name, "id": null, "owner": std::process::id(), "host": host, "started": started});
+        journal_at(root, &journal)?;
+        let id = self
+            .client
+            .create(&task)
+            .await
+            .map_err(|error| unresolved(root, error))?;
+        journal["id"] = serde_json::json!(id);
+        journal_at(root, &journal)?;
+        let (status, timed_out) = self
+            .wait(&id, root, job.placement.time_seconds, cancel)
+            .await?;
+        if timed_out {
+            tokio::fs::create_dir_all(root.join("control")).await?;
+            tokio::fs::write(
+                root.join("control/stderr"),
+                format!(
+                    "iunctus: TES stopped the task after its time of {} seconds\n",
+                    job.placement.time_seconds.unwrap_or_default()
+                ),
+            )
+            .await?;
+            return Ok(Finished {
+                exit_code: Some(143),
+                files: Vec::new(),
+                usage: executor::Usage::of(root),
+                root: root.to_owned(),
+            });
+        }
         match status.state {
             State::Complete | State::ExecutorError => Finished::from_control(root.to_owned())
                 .map(|finished| recorded(finished, &spec))
@@ -124,35 +189,155 @@ impl TesBackend {
         }
     }
 
-    /// Waits for a task to end, and cancels it when `cancel` fires.
+    /// Resolves submissions whose coordinator no longer runs before accepting a new run.
+    pub async fn reconcile(&self, peers: &[&TesBackend]) -> Result<(), ExecutorError> {
+        let entries = match std::fs::read_dir(&self.scratch) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error.into()),
+        };
+        let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
+        for entry in entries {
+            let root = entry?.path();
+            let path = root.join("remote.json");
+            if !path.exists() {
+                continue;
+            }
+            let journal: serde_json::Value = serde_json::from_slice(&std::fs::read(&path)?)
+                .map_err(|error| unresolved(&root, error))?;
+            if journal["host"].as_str() != Some(host.as_str()) {
+                return Err(unresolved(
+                    &root,
+                    "the coordinator host changed; confirm its remote task ended before removing the journal",
+                ));
+            }
+            if let Some(owner) = journal["owner"]
+                .as_u64()
+                .and_then(|pid| u32::try_from(pid).ok())
+                && owner_start(owner).as_deref() == journal["started"].as_str()
+                && journal["started"].is_string()
+            {
+                continue;
+            }
+            let backend = peers
+                .iter()
+                .find(|peer| Some(peer.client.server()) == journal["server"].as_str())
+                .ok_or_else(|| unresolved(&root, "the original TES server is not configured"))?;
+            let id = journal["id"].as_str().filter(|id| !id.is_empty())
+                .ok_or_else(|| unresolved(&root, "the submission response was not recorded; resolve it on the TES server before removing its journal"))?;
+            backend.stop(id, &root, CANCEL_GRACE).await?;
+        }
+        Ok(())
+    }
+
+    /// Waits through transient reads, stopping accepted work on cancellation or timeout.
     async fn wait(
         &self,
         id: &str,
+        root: &Path,
+        seconds: Option<u64>,
         cancel: &CancellationToken,
-    ) -> Result<crate::client::Status, ExecutorError> {
+    ) -> Result<(crate::client::Status, bool), ExecutorError> {
         let mut pause = Duration::from_millis(250);
+        let mut deadline = None;
+        let mut trouble: Option<tokio::time::Instant> = None;
         loop {
-            tokio::select! {
-                () = tokio::time::sleep(pause) => {}
+            let read = async {
+                tokio::time::sleep(pause).await;
+                self.client.status(id).await
+            };
+            let expiry = async {
+                match deadline {
+                    Some(deadline) => tokio::time::sleep_until(deadline).await,
+                    None => std::future::pending().await,
+                }
+            };
+            let answer = tokio::select! {
+                answer = read => answer,
                 () = cancel.cancelled() => {
-                    let _ = self.client.cancel(id).await;
-                    let deadline = tokio::time::Instant::now() + CANCEL_GRACE;
-                    while tokio::time::Instant::now() < deadline {
-                        match self.client.status(id).await {
-                            Ok(status) if status.state.is_final() => break,
-                            _ => tokio::time::sleep(Duration::from_secs(1)).await,
-                        }
-                    }
+                    self.stop(id, root, CANCEL_GRACE).await?;
                     return Err(ExecutorError::Cancelled);
                 }
-            }
-            let status = self.client.status(id).await.map_err(machine)?;
-            if status.state.is_final() {
-                return Ok(status);
+                () = expiry => return self.stop(id, root, CANCEL_GRACE).await.map(|status| (status, true)),
+            };
+            match answer {
+                Ok(status) => {
+                    trouble = None;
+                    if status.state.is_final() {
+                        std::fs::remove_file(root.join("remote.json"))?;
+                        return Ok((status, false));
+                    }
+                    if status.state == State::Running && deadline.is_none() {
+                        deadline = seconds.map(|seconds| {
+                            tokio::time::Instant::now() + Duration::from_secs(seconds)
+                        });
+                    }
+                }
+                Err(error) => {
+                    let since = trouble.get_or_insert_with(tokio::time::Instant::now);
+                    if since.elapsed() >= READ_GRACE {
+                        self.stop(id, root, CANCEL_GRACE).await?;
+                        return Err(machine(error));
+                    }
+                }
             }
             pause = (pause * 2).min(POLL);
         }
     }
+
+    /// Cancellation is complete only when the server reports a terminal state.
+    async fn stop(
+        &self,
+        id: &str,
+        root: &Path,
+        grace: Duration,
+    ) -> Result<crate::client::Status, ExecutorError> {
+        let stopped = async {
+            loop {
+                let request_grace = grace.min(Duration::from_secs(5));
+                let _ = tokio::time::timeout(request_grace, self.client.cancel(id)).await;
+                if let Ok(Ok(status)) =
+                    tokio::time::timeout(request_grace, self.client.status(id)).await
+                    && status.state.is_final()
+                {
+                    return status;
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        };
+        let status = tokio::time::timeout(grace, stopped)
+            .await
+            .map_err(|_| unresolved(root, format!("task {id} termination was not confirmed")))?;
+        std::fs::remove_file(root.join("remote.json"))?;
+        Ok(status)
+    }
+}
+
+fn owner_start(pid: u32) -> Option<String> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let (_, fields) = stat.rsplit_once(')')?;
+    if matches!(fields.split_whitespace().next()?, "Z" | "X") {
+        return None;
+    }
+    fields.split_whitespace().nth(19).map(str::to_owned)
+}
+
+fn unresolved(root: &Path, error: impl std::fmt::Display) -> ExecutorError {
+    std::io::Error::other(format!(
+        "TES ownership is unresolved: {error}; retained {}",
+        root.join("remote.json").display()
+    ))
+    .into()
+}
+
+fn journal_at(root: &Path, journal: &serde_json::Value) -> Result<(), ExecutorError> {
+    let path = root.join("remote.json.next");
+    let mut file = std::fs::File::create(&path)?;
+    file.write_all(journal.to_string().as_bytes())?;
+    file.sync_all()?;
+    std::fs::rename(path, root.join("remote.json"))?;
+    std::fs::File::open(root)?.sync_all()?;
+    Ok(())
 }
 
 /// The TES executors of a task of several containers, one per container, one after the other
@@ -367,6 +552,79 @@ mod tests {
     use super::*;
     use executor::{Staged, Staging};
     use task_model::{FORMAT, Image, OutputRule, Placement, TaskSpec};
+
+    #[test]
+    fn unconfirmed_termination_keeps_the_journal() {
+        let folder = tempfile::tempdir().unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let server = format!("http://{}", listener.local_addr().unwrap());
+        listener.set_nonblocking(true).unwrap();
+        let thread = std::thread::spawn(move || {
+            use std::io::{BufRead, Read};
+            let until = std::time::Instant::now() + Duration::from_millis(300);
+            let mut calls = Vec::new();
+            while std::time::Instant::now() < until {
+                let Ok((mut stream, _)) = listener.accept() else {
+                    std::thread::sleep(Duration::from_millis(2));
+                    continue;
+                };
+                stream
+                    .set_read_timeout(Some(Duration::from_millis(100)))
+                    .unwrap();
+                let mut reader = std::io::BufReader::new(&mut stream);
+                let mut first = String::new();
+                reader.read_line(&mut first).unwrap();
+                let mut length = 0;
+                loop {
+                    let mut header = String::new();
+                    reader.read_line(&mut header).unwrap();
+                    if header.trim().is_empty() {
+                        break;
+                    }
+                    if let Some((key, value)) = header.split_once(':')
+                        && key.eq_ignore_ascii_case("content-length")
+                    {
+                        length = value.trim().parse().unwrap();
+                    }
+                }
+                reader.read_exact(&mut vec![0; length]).unwrap();
+                calls.push(first.clone());
+                if first.starts_with("POST ") {
+                    stream
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                        )
+                        .unwrap();
+                } else {
+                    std::thread::sleep(Duration::from_millis(150));
+                }
+            }
+            calls
+        });
+        let backend = TesBackend {
+            client: Client::new(&server, None).unwrap(),
+            scratch: folder.path().to_owned(),
+            configs: ImageConfigs::default(),
+        };
+        journal_at(folder.path(), &serde_json::json!({"id": "accepted"})).unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let error = runtime
+            .block_on(backend.stop("accepted", folder.path(), Duration::from_millis(50)))
+            .expect_err("a stalled response cannot confirm termination");
+        assert!(!error.retryable());
+        assert!(folder.path().join("remote.json").exists());
+        let calls = thread.join().unwrap();
+        assert!(
+            calls
+                .first()
+                .unwrap()
+                .starts_with("POST /ga4gh/tes/v1/tasks/accepted:cancel ")
+        );
+        assert!(calls.iter().any(|call| call.starts_with("GET ")));
+    }
 
     #[test]
     fn attempts_become_tes_tasks() {

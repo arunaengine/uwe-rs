@@ -161,6 +161,10 @@ impl Client {
         Ok(Client { base, http, token })
     }
 
+    pub fn server(&self) -> &str {
+        &self.base
+    }
+
     /// Creates a task and gives its id.
     pub async fn create(&self, task: &Task) -> Result<String, TesError> {
         let url = format!("{}/tasks", self.base);

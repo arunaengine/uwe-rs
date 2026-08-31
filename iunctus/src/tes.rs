@@ -55,6 +55,13 @@ pub fn executor(
             .sites
             .insert(site.name.clone(), backend(&site.server, token)?);
     }
+    let runtime = workflow_graph::runtime().map_err(|error| error.to_string())?;
+    let peers: Vec<&TesBackend> = std::iter::once(&backends.default)
+        .chain(backends.sites.values())
+        .collect();
+    runtime
+        .block_on(backends.default.reconcile(&peers))
+        .map_err(|error| error.to_string())?;
     // The server reads the inputs from the store, so they are copied there.
     let runner = Runner::new(store, backends, run, crate::runner_settings(storage, true));
     let mut executor = RunnerExecutor::new(runner, default_image);

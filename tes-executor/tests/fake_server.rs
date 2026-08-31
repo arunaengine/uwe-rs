@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use executor::registry::{ImageConfig, ImageConfigs};
 use executor::{Backend, ExecutorError, Job, Staged, Staging};
-use task_model::{ContainerSpec, FORMAT, Image, OutputRule, Placement, TaskSpec};
+use task_model::{Accelerator, ContainerSpec, FORMAT, Image, OutputRule, Placement, TaskSpec};
 use tes_executor::{Client, TesBackend};
 use tokio_util::sync::CancellationToken;
 
@@ -174,6 +174,23 @@ fn tasks_run_on_the_server_and_give_back_their_outputs() {
         "{result:?}"
     );
     assert!(!backend.scratch.join("offline").exists());
+    let placement = Placement {
+        accelerators: vec![Accelerator {
+            count: 1,
+            kind: None,
+        }],
+        ..Placement::default()
+    };
+    let job = Job {
+        name: "gpu",
+        placement: &placement,
+        ..job
+    };
+    assert!(matches!(
+        runtime.block_on(backend.run(job, &CancellationToken::new())),
+        Err(ExecutorError::Unsupported(_))
+    ));
+    assert!(!backend.scratch.join("gpu").exists());
 }
 
 #[test]
@@ -267,4 +284,149 @@ fn containers_of_a_task_are_executors_in_their_order() {
         .filter_map(|input| input["path"].as_str())
         .collect();
     assert!(!paths.contains(&"/iunctus/wrapper.sh"), "{paths:?}");
+}
+
+#[test]
+fn accepted_tasks_survive_transient_reads_and_stop_at_their_time() {
+    for timed_out in [false, true] {
+        let folder = tempfile::tempdir().expect("a folder");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let recorded = calls.clone();
+        let server = std::thread::spawn(move || {
+            let answers = if timed_out {
+                vec![
+                    (200, r#"{"id":"task-1"}"#),
+                    (200, r#"{"id":"task-1","state":"RUNNING"}"#),
+                    (200, "{}"),
+                    (200, r#"{"id":"task-1","state":"CANCELED"}"#),
+                ]
+            } else {
+                vec![
+                    (200, r#"{"id":"task-1"}"#),
+                    (503, "unavailable"),
+                    (200, r#"{"id":"task-1","state":"RUNNING"}"#),
+                    (200, r#"{"id":"task-1","state":"COMPLETE"}"#),
+                ]
+            };
+            for (status, answer) in answers {
+                let (mut stream, _) = listener.accept().unwrap();
+                let (first, body) = request(&mut stream);
+                if first.starts_with("POST /ga4gh/tes/v1/tasks ") {
+                    let document: serde_json::Value = serde_json::from_str(&body).unwrap();
+                    for output in document["outputs"].as_array().unwrap() {
+                        leave(output);
+                    }
+                }
+                recorded.lock().unwrap().push(first);
+                let reply = format!(
+                    "HTTP/1.1 {status} Reply\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
+                    answer.len()
+                );
+                stream.write_all(reply.as_bytes()).unwrap();
+            }
+        });
+        let backend = TesBackend {
+            client: Client::new(&address, None).unwrap(),
+            scratch: folder.path().join("scratch"),
+            configs: ImageConfigs::known([("test".into(), ImageConfig::default())]),
+        };
+        let spec = TaskSpec {
+            format: FORMAT,
+            namespace: String::new(),
+            image: Some(Image {
+                reference: "test".into(),
+                platform: None,
+            }),
+            arguments: vec!["true".into()],
+            replaces_entrypoint: true,
+            run_as: None,
+            workdir: None,
+            environment: Default::default(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            stdin: None,
+            containers: Vec::new(),
+        };
+        let placement = Placement {
+            time_seconds: timed_out.then_some(0),
+            ..Placement::default()
+        };
+        let staging = Staging::default();
+        let job = Job {
+            name: "run-P-1-1",
+            spec: &spec,
+            staging: &staging,
+            placement: &placement,
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let finished = runtime
+            .block_on(async {
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    backend.run(job, &CancellationToken::new()),
+                )
+                .await
+            })
+            .expect("bounded lifecycle")
+            .expect("terminal task");
+        server.join().unwrap();
+        assert_eq!(finished.exit_code, Some(if timed_out { 143 } else { 0 }));
+        assert!(!finished.root.join("remote.json").exists());
+        let calls = calls.lock().unwrap();
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|line| line.starts_with("POST /ga4gh/tes/v1/tasks "))
+                .count(),
+            1
+        );
+        assert_eq!(calls.iter().any(|line| line.contains(":cancel")), timed_out);
+    }
+}
+
+#[test]
+fn ambiguous_submissions_keep_scratch_and_block_restart() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path().join("scratch/attempt");
+    std::fs::create_dir_all(&root).unwrap();
+    let backend = TesBackend {
+        client: Client::new("http://localhost:1", None).unwrap(),
+        scratch: folder.path().join("scratch"),
+        configs: ImageConfigs::default(),
+    };
+    std::fs::write(root.join("remote.json"), serde_json::json!({
+        "backend": "TES", "server": backend.client.server(), "id": null, "owner": u32::MAX, "started": "",
+        "host": std::fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap() }).to_string()).unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let error = runtime
+        .block_on(backend.reconcile(&[&backend]))
+        .expect_err("unknown remote ID blocks recovery");
+    assert!(!error.retryable());
+    assert!(
+        error
+            .to_string()
+            .contains("submission response was not recorded")
+    );
+    assert!(root.join("remote.json").exists());
+    let address = serve(Arc::new(Mutex::new(None)));
+    let backend = TesBackend {
+        client: Client::new(&address, None).unwrap(),
+        ..backend
+    };
+    std::fs::write(root.join("remote.json"), serde_json::json!({
+        "backend": "TES", "server": backend.client.server(), "id": "accepted", "owner": u32::MAX, "started": "",
+        "host": std::fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap() }).to_string()).unwrap();
+    runtime
+        .block_on(backend.reconcile(&[&backend]))
+        .expect("a terminal accepted task reconciles");
+    assert!(!root.join("remote.json").exists());
+    assert!(root.exists());
 }

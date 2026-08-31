@@ -5,6 +5,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -33,7 +34,7 @@ pub struct Job {
     pub assumed: bool,
     /// The input files of this job that were assumed to exist.
     pub missing: Vec<String>,
-    /// The first outputs of the done checkpoints that the input functions asked for.
+    /// The first outputs of the checkpoints that the input functions consulted.
     pub checkpoints: Vec<String>,
 }
 
@@ -117,6 +118,9 @@ pub struct Planner {
     index: HashMap<JobKey, usize>,
     /// Jobs whose task was asked for; they keep their plan when the workflow is planned again.
     pub fixed: HashSet<usize>,
+    /// Outputs of checkpoints that completed successfully in this run.
+    pub checkpoints_done: HashSet<String>,
+    checkpoints_ready: Rc<RefCell<HashSet<String>>>,
     producers: HashMap<String, Option<usize>>,
     failed: HashMap<JobKey, Failure>,
     stack: Vec<(usize, Wildcards)>,
@@ -143,6 +147,8 @@ impl Planner {
             jobs: Vec::new(),
             index: HashMap::new(),
             fixed: HashSet::new(),
+            checkpoints_done: HashSet::new(),
+            checkpoints_ready: Rc::default(),
             producers: HashMap::new(),
             failed: HashMap::new(),
             stack: Vec::new(),
@@ -158,6 +164,7 @@ impl Planner {
         self.producers.clear();
         self.failed.clear();
         self.stack.clear();
+        *self.checkpoints_ready.borrow_mut() = self.checkpoints_done.clone();
     }
 
     /// The jobs that the roots need, each after the jobs it depends on.
@@ -453,10 +460,53 @@ impl Planner {
         target: Option<&str>,
     ) -> Result<Job, Failure> {
         let rule = self.rules[rule_index].clone();
-        crate::objects::take_consulted();
-        let (input, incomplete) =
-            expand_input(interpreter, &rule, wildcards).map_err(Failure::Error)?;
-        let checkpoints = crate::objects::take_consulted();
+        let mut checkpoint_dependencies = Vec::new();
+        let (input, incomplete, checkpoints) = loop {
+            crate::objects::set_checkpoint_ready(Some(&self.checkpoints_ready));
+            crate::objects::take_consulted();
+            let expanded = expand_input(interpreter, &rule, wildcards);
+            crate::objects::set_checkpoint_ready(None);
+            let (input, incomplete) = expanded.map_err(Failure::Error)?;
+            let checkpoints = crate::objects::take_consulted();
+            let mut newly_ready = false;
+            for (file, name) in &checkpoints {
+                let rule = self.rules.iter().position(|rule| rule.name == *name);
+                let producer = match rule {
+                    Some(rule) => match self.wildcards_for(rule, file, Some(wildcards)) {
+                        Some(values) => {
+                            Some(self.plan_job(interpreter, rule, values, Some(file))?)
+                        }
+                        None => self.plan_file(interpreter, file, Some(wildcards))?,
+                    },
+                    None => self.plan_file(interpreter, file, Some(wildcards))?,
+                };
+                if let Some(producer) = producer {
+                    if !checkpoint_dependencies
+                        .iter()
+                        .any(|known| known == &(file.clone(), producer))
+                    {
+                        checkpoint_dependencies.push((file.clone(), producer));
+                    }
+                    if !self.checkpoints_ready.borrow().contains(file)
+                        && !self
+                            .needrun(interpreter, &[producer])
+                            .get(&producer)
+                            .copied()
+                            .unwrap_or(true)
+                    {
+                        self.checkpoints_ready.borrow_mut().insert(file.clone());
+                        newly_ready = true;
+                    }
+                }
+            }
+            if !newly_ready {
+                break (
+                    input,
+                    incomplete,
+                    checkpoints.into_iter().map(|(file, _)| file).collect(),
+                );
+            }
+        };
         let fill = |items: &Items, what: &str| -> Result<Items, Failure> {
             let mut filled = items.clone();
             filled.values = items
@@ -499,7 +549,7 @@ impl Planner {
             output,
             log,
             benchmark,
-            dependencies: Vec::new(),
+            dependencies: checkpoint_dependencies,
             incomplete,
             assumed: false,
             missing: Vec::new(),

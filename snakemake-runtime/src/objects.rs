@@ -5,6 +5,7 @@
 
 use std::any::Any;
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use indexmap::IndexMap;
@@ -462,13 +463,18 @@ impl Native for CheckpointsObject {
 }
 
 thread_local! {
-    /// The first output of each checkpoint that `get` found done, since the last `take`.
-    static CONSULTED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    /// The first output of each checkpoint that `get` consulted, since the last `take`.
+    static CONSULTED: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
+    static CHECKPOINTS_READY: RefCell<Option<Rc<RefCell<HashSet<String>>>>> = const { RefCell::new(None) };
 }
 
-/// The outputs of the done checkpoints that input functions asked for since the last call;
+pub fn set_checkpoint_ready(ready: Option<&Rc<RefCell<HashSet<String>>>>) {
+    CHECKPOINTS_READY.with(|allowed| *allowed.borrow_mut() = ready.cloned());
+}
+
+/// The outputs and rules of the checkpoints that input functions asked for since the last call;
 /// the jobs of those functions run after the checkpoints.
-pub fn take_consulted() -> Vec<String> {
+pub fn take_consulted() -> Vec<(String, String)> {
     CONSULTED.with(|consulted| std::mem::take(&mut *consulted.borrow_mut()))
 }
 
@@ -565,16 +571,26 @@ fn checkpoint_get(
             .resolve(output.as_str().unwrap_or_default());
         interpreter.host.stat(&path).is_some()
     });
-    if created {
-        if let Some(first) = outputs.first().and_then(Value::as_str) {
-            let first = first.to_owned();
-            CONSULTED.with(|consulted| {
-                let mut consulted = consulted.borrow_mut();
-                if !consulted.contains(&first) {
-                    consulted.push(first);
-                }
-            });
-        }
+    let ready = if let Some(first) = outputs.first().and_then(Value::as_str) {
+        CONSULTED.with(|consulted| {
+            let mut consulted = consulted.borrow_mut();
+            if !consulted
+                .iter()
+                .any(|(file, rule)| file == first && rule == rule_name)
+            {
+                consulted.push((first.to_owned(), rule_name.to_owned()));
+            }
+        });
+        CHECKPOINTS_READY.with(|allowed| {
+            allowed
+                .borrow()
+                .as_ref()
+                .is_none_or(|ready| ready.borrow().contains(first))
+        })
+    } else {
+        true
+    };
+    if created && ready {
         let output = NamedList {
             values: outputs,
             names,

@@ -799,8 +799,11 @@ impl Session {
                 }
             }
         }
-        let planner = self.planner.as_ref().expect("a planner");
+        let planner = self.planner.as_mut().expect("a planner");
         if planner.rules[planner.jobs[job].rule].checkpoint {
+            planner
+                .checkpoints_done
+                .extend(planner.jobs[job].output_files());
             self.replan = true;
         }
         Ok(None)

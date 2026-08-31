@@ -80,6 +80,8 @@ pub(crate) fn joinable(job: &Job<'_>) -> bool {
     let spec = job.spec;
     spec.image.is_some()
         && spec.containers.is_empty()
+        && spec.replaces_entrypoint
+        && job.placement.time_seconds.is_none()
         // A task that runs as its image says may run as another user, in another folder.
         && spec.run_as.is_none()
         && !spec.arguments.is_empty()
@@ -502,13 +504,19 @@ mod tests {
     #[test]
     fn tasks_with_absolute_paths_run_alone() {
         let (mut task, _) = member("r-A-1-1", "out.txt");
+        task.spec.replaces_entrypoint = true;
+        task.placement.time_seconds = None;
         assert!(joinable(&task.job()));
         task.spec.outputs[0].pattern = "/results/out.txt".into();
         assert!(!joinable(&task.job()));
         let (mut task, _) = member("r-A-1-1", "out.txt");
+        task.spec.replaces_entrypoint = true;
+        task.placement.time_seconds = None;
         task.spec.workdir = Some("/work".into());
         assert!(!joinable(&task.job()));
         let (mut task, _) = member("r-A-1-1", "out.txt");
+        task.spec.replaces_entrypoint = true;
+        task.placement.time_seconds = None;
         task.spec.run_as = Some(task_model::RunAs::default());
         assert!(!joinable(&task.job()));
     }

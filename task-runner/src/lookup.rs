@@ -51,6 +51,12 @@ impl Lookup {
         if prepared.request.scope != ReuseScope::Shared || !prepared.reuse {
             return Ok(None);
         }
+        if let Some(image) = &spec.image {
+            let tool = crate::check::tool(&image.reference, &prepared.step);
+            if self.store.unreproducible(&tool).await?.is_some() {
+                return Ok(None);
+            }
+        }
         let key = spec.cache_key()?;
         let found = entry::stored(&self.store, &spec.namespace, &key, Stale::Keep).await?;
         match found {

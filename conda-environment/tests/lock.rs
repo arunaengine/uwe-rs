@@ -169,7 +169,7 @@ fn what_cannot_be_locked_says_why() {
 fn unsupported_package_constraints_are_reported() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let mut user = package("numpy-user", "1.0", "0", &["numpy"]);
-    user.1["constrains"] = json!(["numpy !=1.2.*"]);
+    user.1["constrains"] = json!(["numpy[version='>=1.2']"]);
     write(
         folder.path(),
         "conda-forge",
@@ -184,7 +184,41 @@ fn unsupported_package_constraints_are_reported() {
         )
         .expect_err("the unsupported constraint must not disappear");
         assert!(matches!(error, LockError::Package { .. }), "{error}");
-        assert!(error.to_string().contains("numpy !=1.2.*"), "{error}");
+        assert!(
+            error.to_string().contains("numpy[version='>=1.2']"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn negated_wildcard_constraints_exclude_matching_versions() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let mut user = package("numpy-user", "1.0", "0", &["numpy"]);
+    user.1["constrains"] = json!(["numpy !=1.2.*"]);
+    write(folder.path(), "conda-forge", "noarch", vec![]);
+    for with_fallback in [false, true] {
+        let mut packages = vec![user.clone(), package("numpy", "1.2", "0", &[])];
+        if with_fallback {
+            packages.push(package("numpy", "1.1", "0", &[]));
+        }
+        write(folder.path(), "conda-forge", "linux-64", packages);
+        for dependencies in ["  - numpy-user\n", "  - numpy\n  - numpy-user\n"] {
+            let result = locked(
+                folder.path(),
+                &format!("channels:\n  - conda-forge\ndependencies:\n{dependencies}"),
+            );
+            if with_fallback {
+                assert!(
+                    result
+                        .expect("an allowed older version")
+                        .contains(&"conda-forge::numpy=1.1".into())
+                );
+            } else {
+                let error = result.expect_err("the only version is excluded");
+                assert!(matches!(error, LockError::Conflict { .. }), "{error}");
+            }
+        }
     }
 }
 

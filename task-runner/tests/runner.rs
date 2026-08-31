@@ -20,6 +20,7 @@ struct Fake {
     scratch: std::path::PathBuf,
     runs: Mutex<Vec<String>>,
     staged: Mutex<Vec<Staging>>,
+    policies: Mutex<Vec<(bool, Option<u64>)>>,
     exit_code: i32,
     /// How long each task takes.
     delay: std::time::Duration,
@@ -39,6 +40,10 @@ impl Backend for Fake {
     ) -> Result<Finished, ExecutorError> {
         self.runs.lock().unwrap().push(job.name.to_owned());
         self.staged.lock().unwrap().push(job.staging.clone());
+        self.policies
+            .lock()
+            .unwrap()
+            .push((job.spec.replaces_entrypoint, job.placement.time_seconds));
         tokio::time::sleep(self.delay).await;
         let mut finished = Finished {
             exit_code: Some(self.exit_code),
@@ -116,6 +121,7 @@ fn runner_with(
         scratch: root.join("scratch"),
         runs: Mutex::new(Vec::new()),
         staged: Mutex::new(Vec::new()),
+        policies: Mutex::new(Vec::new()),
         exit_code,
         delay,
         varies,
@@ -392,6 +398,61 @@ fn outcomes_give_the_stored_files_with_size_and_digest() {
     assert_eq!(file.size, Some(5));
     let digest = task_model::Digest::sha256(b"data\n").to_string();
     assert_eq!(file.digest.as_deref(), Some(digest.as_str()));
+}
+
+#[test]
+fn grouping_keeps_entrypoints_and_member_deadlines_on_individual_jobs() {
+    use std::sync::Arc;
+    use task_runner::RunnerExecutor;
+    use workflow_graph::{Attempt, Executor};
+    for (replaces, times) in [
+        (false, [None, None]),
+        (true, [Some(1), None]),
+        (true, [Some(1), Some(2)]),
+    ] {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let mut executor = RunnerExecutor::new(runner(root.path(), 0), None);
+        executor.together = true;
+        executor.measured = Arc::new(
+            [(
+                "P".into(),
+                vec![task_model::Measured {
+                    milliseconds: 1,
+                    overhead: Some(100),
+                    ..Default::default()
+                }],
+            )]
+            .into(),
+        );
+        let attempt = |number: usize| {
+            let mut task = task(root.path(), "a");
+            task.id = TaskId(number as u64 + 1);
+            task.replaces_entrypoint = replaces;
+            task.resources.time_seconds = times[number];
+            task.inputs[0].content = Some(format!("bytes-{number}\n"));
+            Attempt {
+                task: Arc::new(task),
+                number: 1,
+                cancel: CancellationToken::new(),
+            }
+        };
+        let first = executor.run(attempt(0));
+        let second = executor.run(attempt(1));
+        let (first, second) = block_on(async { tokio::join!(first, second) });
+        for (number, outcome) in [first, second].into_iter().enumerate() {
+            let outcome = outcome.expect("an individual job succeeds");
+            assert_eq!(outcome.exit_code, 0);
+            assert_eq!(
+                std::fs::read_to_string(&outcome.files[0].location).expect("reads"),
+                format!("bytes-{number}\n")
+            );
+        }
+        let policies = executor.runner().backend().policies.lock().unwrap();
+        assert_eq!(policies.len(), 2);
+        for time in times {
+            assert!(policies.contains(&(replaces, time)));
+        }
+    }
 }
 
 #[test]
@@ -865,6 +926,21 @@ fn the_reproducibility_check_keeps_tools_that_give_other_bytes_from_sharing() {
     assert_eq!(later.backend().runs.lock().unwrap().len(), 1);
     let marks = std::fs::read_dir(root.path().join("store/tools")).expect("marks");
     assert_eq!(marks.count(), 1);
+    let store = Store::local(&root.path().join("store")).expect("a store");
+    let lookup = task_runner::Lookup::new(
+        store,
+        Settings {
+            downloads: root.path().join("downloads"),
+            import_inputs: false,
+            storage: storage::Storage::default(),
+            digests: None,
+        },
+    );
+    assert!(
+        block_on(lookup.find(&made, Some("debian@sha256:00".into())))
+            .expect("looks")
+            .is_none()
+    );
     // Another step with the same image is another tool.
     let mut other = task(root.path(), "a");
     other.step = "Q".into();

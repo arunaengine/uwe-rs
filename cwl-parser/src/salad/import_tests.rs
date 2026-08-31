@@ -102,6 +102,22 @@ fn rejects_import_cycles() {
 }
 
 #[test]
+fn rejects_active_fragment_cycles_but_allows_repeated_imports() {
+    for text in [
+        "types: [{name: loop, child: {$import: '#loop'}}]\n",
+        "types: [{name: first, child: {$import: '#second'}}, \
+         {name: second, child: {$import: '#first'}}]\n",
+    ] {
+        let error = failed(&[(URL, text)]);
+        assert!(error.contains("imports itself"), "{error}");
+    }
+    let text = "types: [{name: Item, type: enum, symbols: [a]}, \
+                {$import: '#Item'}, {$import: '#Item'}]\n";
+    let value = resolved(&[(URL, text)]);
+    assert_eq!(value.matches("type: enum").count(), 3, "{value}");
+}
+
+#[test]
 fn reports_missing_files() {
     let files = [(
         URL,

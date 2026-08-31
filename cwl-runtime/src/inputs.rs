@@ -42,8 +42,8 @@ pub struct Setting<'a> {
     /// Location prefixes of files that have the formats and secondary files asked of them, as
     /// a job that works gives them: placeholder files, and the outputs of abstract steps.
     pub assumed: &'a [String],
-    /// Whether the documents name ontologies in `$schemas`. iunctus does not read them, so a
-    /// file format that differs from the declared ones may be a subclass of one, and passes.
+    /// Whether the documents name ontologies in `$schemas`, whose format relationships
+    /// iunctus cannot check.
     pub ontologies: bool,
 }
 
@@ -347,8 +347,16 @@ impl Walk<'_, '_> {
         let Some(format) = file.get("format").and_then(Value::as_str) else {
             return Err(format!("the file `{name}` has no format, but needs one"));
         };
-        if self.setting.ontologies || allowed.iter().any(|allowed| allowed == format) {
+        if allowed.iter().any(|allowed| allowed == format) {
             return Ok(());
+        }
+        if self.setting.ontologies {
+            return Err(format!(
+                "{}the file `{name}` has the format `{format}`, not one of `{}`; \
+                 ontology format relationships from `$schemas` are not supported",
+                crate::tool::UNSUPPORTED,
+                allowed.join("`, `")
+            ));
         }
         Err(format!(
             "the file `{name}` has the format `{format}`, not one of `{}`",

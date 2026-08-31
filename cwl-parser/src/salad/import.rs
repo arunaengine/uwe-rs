@@ -67,9 +67,17 @@ impl Resolver {
                 Ok(Node::new(Value::String(text.to_string()), location))
             }
             "$import" if document == file && fragment.is_some() => {
+                if self.importing.iter().any(|open| open == &url) {
+                    return Err(Error::new(at, format!("`{url}` imports itself")));
+                }
                 let raw = self.documents.tree(file, at)?;
                 match find_raw(&raw, file, &url, namespaces) {
-                    Some((object, base)) => self.resolve(object, &base, file, namespaces),
+                    Some((object, base)) => {
+                        self.importing.push(url);
+                        let resolved = self.resolve(object, &base, file, namespaces);
+                        self.importing.pop();
+                        resolved
+                    }
                     None => Err(Error::new(at, format!("`{url}` is not defined"))),
                 }
             }

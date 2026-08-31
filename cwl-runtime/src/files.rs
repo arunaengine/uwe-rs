@@ -326,9 +326,42 @@ impl Access {
 
     /// Sets `size` and `checksum` from the bytes of a file, as cwltool does for outputs.
     pub fn add_checksum(&self, file: &mut Map) -> Result<(), String> {
-        let bytes = self.read(file, None)?;
-        file.insert("size".into(), Value::Integer(bytes.len() as i64));
-        file.insert("checksum".into(), Value::String(checksum_of(&bytes)));
+        let location = file.get("location").and_then(Value::as_str).unwrap_or("");
+        let failed = |error| format!("cannot read {location}: {error}");
+        let mut input: Box<dyn Read + '_> = if let Some(path) = local_path(location) {
+            match std::fs::File::open(path) {
+                Ok(input) => Box::new(input),
+                Err(_) if self.assume_present => Box::new(std::io::empty()),
+                Err(error) => return Err(failed(error)),
+            }
+        } else if let Some(Value::String(contents)) = file.get("contents") {
+            Box::new(contents.as_bytes())
+        } else if self.assume_present {
+            Box::new(std::io::empty())
+        } else if address::scheme(location).is_some() {
+            let storage = self.remote.storage.blocking();
+            let copy = storage
+                .fetch(location, &self.remote.downloads)
+                .map_err(|error| format!("cannot read {location}: {error}"))?;
+            Box::new(std::fs::File::open(copy).map_err(failed)?)
+        } else {
+            return Err(format!("cannot read `{location}`"));
+        };
+        let mut digest = Sha1::new();
+        let mut size = 0;
+        let mut buffer = [0; 64 * 1024];
+        loop {
+            let read = input.read(&mut buffer).map_err(failed)?;
+            if read == 0 {
+                break;
+            }
+            digest.update(&buffer[..read]);
+            size += read as i64;
+        }
+        drop(input);
+        let checksum = format!("sha1${}", hex(&digest.finalize()));
+        file.insert("size".into(), Value::Integer(size));
+        file.insert("checksum".into(), Value::String(checksum));
         Ok(())
     }
 

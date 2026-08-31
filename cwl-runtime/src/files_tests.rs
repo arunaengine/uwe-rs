@@ -75,6 +75,35 @@ fn absent_files_count_as_empty_in_a_simulated_run() {
     assert_eq!(map.get("contents"), Some(&Value::string("")));
     assert_eq!(map.get("size"), Some(&Value::Integer(0)));
     assert!(Access::default().read(map, None).is_err());
+    simulated.add_checksum(map).expect("empty checksum");
+    assert_eq!(map.get("checksum"), Some(&Value::string(checksum_of(&[]))));
+}
+
+#[test]
+fn checksums_sparse_files_in_bounded_chunks() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let path = folder.path().join("large.bin");
+    std::fs::File::create(&path)
+        .expect("a file")
+        .set_len(16 * 1024 * 1024)
+        .expect("a sparse file");
+    let mut map = Map::new();
+    map.insert("location".into(), Value::string(iri::file_url(&path)));
+    Access::default()
+        .add_checksum(&mut map)
+        .expect("a checksum");
+    let mut expected = Sha1::new();
+    for _ in 0..256 {
+        expected.update([0; 64 * 1024]);
+    }
+    assert_eq!(map.get("size"), Some(&Value::Integer(16 * 1024 * 1024)));
+    assert_eq!(
+        map.get("checksum"),
+        Some(&Value::string(format!(
+            "sha1${}",
+            hex(&expected.finalize())
+        )))
+    );
 }
 
 /// A web server on a local port that answers only requests with the bearer token `t0k3n`. It
@@ -147,6 +176,15 @@ fn contents_and_sizes_of_files_at_addresses_come_through_the_storage_providers()
     real.load_contents(map).expect("the provider has a token");
     assert_eq!(map.get("size"), Some(&Value::Integer(13)));
     assert_eq!(map.get("contents"), Some(&Value::string("hello remote\n")));
+
+    let mut remote_output = file("data.txt");
+    let map = remote_output.as_map_mut().expect("a map");
+    real.add_checksum(map).expect("a remote checksum");
+    assert_eq!(map.get("size"), Some(&Value::Integer(13)));
+    assert_eq!(
+        map.get("checksum"),
+        Some(&Value::string(checksum_of(b"hello remote\n")))
+    );
 
     // A file over the limit of `loadContents` is refused before it is downloaded.
     let mut big = file("big.txt");

@@ -166,12 +166,16 @@ fn checks_file_formats_as_cwltool_does_without_an_ontology() {
         job.get("regular").and_then(|file| file.text("format")),
         Some(one)
     );
-    // With ontologies named, another format may be a subclass of a declared one.
+    // Naming an ontology does not establish a relationship between different formats.
     let named = Setting {
         ontologies: true,
         ..setting
     };
-    assert!(prepare(&tool, formats(Some(other), two), &named).is_ok());
+    assert!(prepare(&tool, formats(Some(one), two), &named).is_ok());
+    let wrong =
+        prepare(&tool, formats(Some(other), two), &named).expect_err("unknown relationship");
+    assert!(wrong.contains("ontology format relationships"), "{wrong}");
+    assert!(wrong.contains(crate::tool::UNSUPPORTED), "{wrong}");
 }
 
 const INDEXED: &str = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\n\

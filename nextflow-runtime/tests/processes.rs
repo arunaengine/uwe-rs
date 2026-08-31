@@ -90,6 +90,24 @@ fn a_task_per_value() {
 }
 
 #[test]
+fn tuple_environment_and_stdin_are_preserved_per_round() {
+    let source = "process P {\n    input:\n    tuple env('SAMPLE'), stdin\n    script:\n    'cat'\n}\n\
+                  workflow {\n    P(channel.of(['one', 'first\\n'], ['two', 'second\\n']))\n}\n";
+    let (tasks, _) = run(source, &Options::default()).expect("runs");
+    assert_eq!(tasks.len(), 2);
+    for (task, (sample, stdin)) in tasks.iter().zip([("one", "first\n"), ("two", "second\n")]) {
+        assert_eq!(task.input_environment.len(), 1);
+        assert_eq!(&*task.input_environment[0].0, "SAMPLE");
+        assert_eq!(task.input_environment[0].1.to_string(), sample);
+        assert_eq!(
+            task.stdin.as_ref().map(ToString::to_string).as_deref(),
+            Some(stdin)
+        );
+        assert!(task.staged.is_empty());
+    }
+}
+
+#[test]
 fn singletons_run_once() {
     let source = format!(
         "{DOUBLE}workflow {{\n    DOUBLE(5).view()\n    DOUBLE(channel.value(7)).view()\n}}"

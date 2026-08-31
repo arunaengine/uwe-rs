@@ -639,8 +639,15 @@ fn environment(config: &Config) -> BTreeMap<String, String> {
 /// The container task of a Nextflow task: `.command.sh`, with the code that captures `env` and
 /// `eval` outputs, runs in the shell of the `shell` directive; the staged files are its inputs.
 pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Task {
+    let mut environment = environment.clone();
+    environment.extend(
+        request
+            .input_environment
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.to_string())),
+    );
     if request.made.is_some() {
-        return exec_task(request);
+        return exec_task(request, environment);
     }
     let mut inputs = vec![Input {
         path: SCRIPT.into(),
@@ -680,10 +687,10 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
         command: command(request),
         script: Some(request.script.clone()),
         workdir: None,
-        environment: environment.clone(),
+        environment,
         inputs,
         outputs,
-        stdin: None,
+        stdin: request.stdin.as_ref().map(Value::to_string),
         resources: resources(request),
         network: workflow_graph::Network::Unstated,
         after: Vec::new(),
@@ -709,7 +716,7 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
 /// The task of an `exec:` section, which ran in the interpreter when it was asked for (decision
 /// 17): it has no image and no command, so the engine finishes it at once (decision 11 asks
 /// no container of it), and it stands in the graph with the files it read.
-fn exec_task(request: &TaskRequest) -> Task {
+fn exec_task(request: &TaskRequest, environment: BTreeMap<String, String>) -> Task {
     let inputs = (request.staged.iter())
         .map(|(source, name)| Input {
             path: name.clone(),
@@ -731,10 +738,10 @@ fn exec_task(request: &TaskRequest) -> Task {
         command: Vec::new(),
         script: None,
         workdir: None,
-        environment: BTreeMap::new(),
+        environment,
         inputs,
         outputs: Vec::new(),
-        stdin: None,
+        stdin: request.stdin.as_ref().map(Value::to_string),
         resources: workflow_graph::Resources::default(),
         network: workflow_graph::Network::Denied,
         after: Vec::new(),

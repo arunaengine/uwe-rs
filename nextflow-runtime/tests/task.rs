@@ -32,6 +32,8 @@ fn request(eval: &[&str], env: &[&str], container: Option<&str>) -> TaskRequest 
         script: "#!/bin/bash -ue\nFOO='a b'\necho hi\n".into(),
         directives,
         staged: vec![(PathValue::parse("/data/x.gz", "/"), "x.gz".into())],
+        input_environment: Vec::new(),
+        stdin: None,
         output_patterns: vec!["out.txt".into()],
         env: env.iter().map(|name| Rc::from(*name)).collect(),
         eval: eval.iter().map(|command| (*command).to_owned()).collect(),
@@ -81,6 +83,26 @@ fn cache_false_disables_task_reuse() {
         });
         assert_eq!(task(&request, &BTreeMap::new()).reuse, expected);
     }
+}
+
+#[test]
+fn input_environment_and_stdin_reach_container_tasks() {
+    let mut request = request(&[], &[], None);
+    request.input_environment = vec![("SAMPLE".into(), Value::string("round one"))];
+    request.stdin = Some(Value::string("first\nsecond\n"));
+    let environment = BTreeMap::from([
+        ("SAMPLE".into(), "config".into()),
+        ("CONFIG_ONLY".into(), "retained".into()),
+    ]);
+    let first = task(&request, &environment);
+    assert_eq!(first.environment["SAMPLE"], "round one");
+    assert_eq!(first.environment["CONFIG_ONLY"], "retained");
+    assert_eq!(first.stdin.as_deref(), Some("first\nsecond\n"));
+    request.input_environment[0].1 = Value::string("round two");
+    request.stdin = Some(Value::string("different\n"));
+    let second = task(&request, &environment);
+    assert_ne!(first.environment, second.environment);
+    assert_ne!(first.stdin, second.stdin);
 }
 
 #[test]

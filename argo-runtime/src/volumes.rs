@@ -8,7 +8,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use argo_parser::model::Template;
 use argo_parser::{Node, Value as Yaml};
@@ -180,6 +180,19 @@ impl Run {
         for mount in mounts {
             let text = |key: &str| mount.get(key).map(scalar_text).unwrap_or_default();
             let (name, sub_path) = (text("name"), text("subPath"));
+            let mut selected = PathBuf::new();
+            for component in Path::new(&sub_path).components() {
+                match component {
+                    Component::Normal(part) => selected.push(part),
+                    Component::CurDir => {}
+                    _ => {
+                        return Err(Failure::error(format!(
+                            "volume {name} has invalid subPath {sub_path}"
+                        )));
+                    }
+                }
+            }
+            let sub_path = selected.to_string_lossy().into_owned();
             let path = clean(&text("mountPath"));
             let read_only = matches!(
                 mount.get("readOnly").map(|node| &node.value),
@@ -203,22 +216,34 @@ impl Run {
                 Source::Shared { key, host } => {
                     let before = task.inputs.len();
                     // A mounted host file is read, not written.
-                    let file = host.as_ref().is_some_and(|host| host.file);
+                    let mut file = host.as_ref().is_some_and(|host| host.file);
                     let host_input = host.as_ref().is_some_and(|host| !host.path.is_empty());
                     if let Some(host) = host.filter(|host| !host.path.is_empty()) {
-                        let exists = Path::new(&host.path).exists();
+                        let selected = if sub_path.is_empty() {
+                            PathBuf::from(&host.path)
+                        } else {
+                            Path::new(&host.path).join(&sub_path)
+                        };
+                        if Path::new(&host.path).exists() {
+                            confined(Path::new(&host.path), &selected).map_err(Failure::error)?;
+                        }
+                        let exists = selected.exists();
+                        if !sub_path.is_empty() && exists {
+                            file = selected.is_file();
+                        }
                         if exists || self.options.assume_inputs {
                             task.inputs.push(Input {
                                 path: path.clone(),
-                                source: host.path.clone(),
-                                directory: !host.file,
+                                source: selected.to_string_lossy().into_owned(),
+                                directory: !file,
                                 content: None,
                                 ..Default::default()
                             });
                         } else if !host.create {
                             return Err(Failure::error(format!(
                                 "template {} mounts the host path {}, which does not exist on this machine",
-                                template.name, host.path
+                                template.name,
+                                selected.display()
                             )));
                         }
                     }
@@ -236,6 +261,15 @@ impl Run {
                     };
                     let files = self.volumes.get(&key).cloned().unwrap_or_default();
                     for (relative, location) in files {
+                        if file && relative == sub_path {
+                            task.inputs.push(Input {
+                                path: path.clone(),
+                                source: location.to_string_lossy().into_owned(),
+                                writable,
+                                ..Default::default()
+                            });
+                            continue;
+                        }
                         if let Some(inside) = relative.strip_prefix(&prefix) {
                             task.inputs.push(Input {
                                 executable: false,
@@ -285,6 +319,7 @@ impl Run {
                     } else {
                         items
                     };
+                    let before = task.inputs.len();
                     for (key, file) in wanted {
                         if let Some((_, value)) = entries.iter().find(|(known, _)| *known == key) {
                             task.inputs.push(Input {
@@ -294,7 +329,19 @@ impl Run {
                                 content: Some(value.clone()),
                                 ..Default::default()
                             });
+                        } else if !reference.optional {
+                            let message = format!(
+                                "volume {name} of template {} requires missing ConfigMap {} key {key}",
+                                template.name, reference.name
+                            );
+                            if !self.options.assume_inputs {
+                                return Err(Failure::error(message));
+                            }
+                            self.warn(message);
                         }
+                    }
+                    if task.inputs.len() == before {
+                        task.inputs.push(empty(&path));
                     }
                 }
                 Source::Secret { reference, items } => {
@@ -357,11 +404,16 @@ impl Run {
                 .strip_prefix("host:")
                 .filter(|_| !self.options.assume_inputs)
                 .map(PathBuf::from);
+            let selected = host.as_ref().map(|host| host.join(&mount.sub_path));
+            if let Some(host) = &host {
+                std::fs::create_dir_all(host).map_err(|error| error.to_string())?;
+                confined(host, selected.as_ref().unwrap())?;
+            }
             let volume = self.volumes.entry(mount.key.clone()).or_default();
             for (relative, file) in files {
                 let relative = format!("{}{relative}", mount.sub_path);
-                if let Some(host) = &host {
-                    write_back(&file, &host.join(&relative))?;
+                if let (Some(host), Some(selected)) = (&host, &selected) {
+                    write_back(&file, selected, &host.join(&relative))?;
                 }
                 volume.insert(relative, file);
             }
@@ -379,17 +431,38 @@ impl Run {
 }
 
 /// Copies a file that a task wrote into a host path to that path, over a file of the same name.
-fn write_back(file: &Path, target: &Path) -> std::result::Result<(), String> {
+fn write_back(file: &Path, root: &Path, target: &Path) -> std::result::Result<(), String> {
     let failed = |error: std::io::Error| {
         format!(
             "cannot write {} back to the host path: {error}",
             target.display()
         )
     };
+    std::fs::create_dir_all(root).map_err(failed)?;
+    confined(root, target)?;
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent).map_err(failed)?;
     }
     std::fs::copy(file, target).map_err(failed)?;
+    Ok(())
+}
+
+fn confined(root: &Path, target: &Path) -> std::result::Result<(), String> {
+    let root = root.canonicalize().map_err(|error| error.to_string())?;
+    let mut existing = target;
+    while std::fs::symlink_metadata(existing).is_err() {
+        existing = existing
+            .parent()
+            .ok_or_else(|| format!("invalid host path {}", target.display()))?;
+    }
+    let resolved = existing.canonicalize().map_err(|error| error.to_string())?;
+    if !resolved.starts_with(&root) {
+        return Err(format!(
+            "host path {} escapes {}",
+            target.display(),
+            root.display()
+        ));
+    }
     Ok(())
 }
 

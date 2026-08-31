@@ -124,6 +124,12 @@ impl ContainerProcess {
     pub fn start(spec: &ContainerSpec) -> Result<ContainerProcess, ProcessError> {
         let engine = engine(spec)?;
         let runtime = runtime()?;
+        runtime
+            .block_on(crate::image::available(&engine, &spec.image))
+            .map_err(|error| ProcessError::Start {
+                engine: engine.name.clone(),
+                reason: error.to_string(),
+            })?;
         let failed = |error: bollard::errors::Error| ProcessError::Start {
             engine: engine.name.clone(),
             reason: error.to_string(),
@@ -351,6 +357,12 @@ fn create(spec: &ContainerSpec, engine: &ContainerEngine, remove: bool) -> Conta
 pub fn run_to_end(spec: &ContainerSpec) -> Result<(), ProcessError> {
     let engine = engine(spec)?;
     let runtime = runtime()?;
+    runtime
+        .block_on(crate::image::available(&engine, &spec.image))
+        .map_err(|error| ProcessError::Failed {
+            image: spec.image.clone(),
+            reason: error.to_string(),
+        })?;
     let failed = |reason: String| ProcessError::Failed {
         image: spec.image.clone(),
         reason,

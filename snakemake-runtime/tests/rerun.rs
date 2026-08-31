@@ -202,3 +202,113 @@ rule copy:
         b"second\n"
     );
 }
+
+#[test]
+fn a_changed_checkpoint_reruns_before_its_previous_outputs_are_read() {
+    use workflow_graph::{Driver, Files, LocalFiles, Outcome, OutputFile, Task};
+
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        r#"
+def selected(wildcards):
+    with open(checkpoints.pick.get().output[0]) as manifest:
+        return manifest.read().strip() + ".txt"
+rule aggregate:
+    input: selected
+    output: "aggregate.txt"
+    shell: "cat {input} > {output}"
+checkpoint pick:
+    input: "source.txt"
+    output: "selection.txt"
+    shell: "cp {input} {output}"
+"#,
+    )
+    .expect("writes the Snakefile");
+    for (path, content) in [
+        ("source.txt", "A"),
+        ("A.txt", "first\n"),
+        ("B.txt", "second\n"),
+    ] {
+        std::fs::write(folder.path().join(path), content).expect("writes an input");
+    }
+    let launch = Launch {
+        target: folder.path().to_owned(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let complete = |driver: &mut dyn Driver, task: &Task, bytes: &[u8]| {
+        let made = folder.path().join(format!("made-{}", task.id));
+        std::fs::write(&made, bytes).expect("writes task output");
+        let next = driver
+            .complete(Outcome {
+                id: task.id,
+                files: vec![OutputFile {
+                    path: task.outputs[0].clone(),
+                    location: made.to_string_lossy().into_owned(),
+                    ..OutputFile::default()
+                }],
+                ..Outcome::default()
+            })
+            .expect("accepts the output");
+        for delivery in driver.deliveries() {
+            LocalFiles.deliver(&delivery).expect("delivers output");
+        }
+        next
+    };
+    let mut first = snakemake_runtime::driver(&launch).expect("a driver");
+    let tasks = first.start().expect("starts the first run");
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].step, "pick");
+    let tasks = complete(first.as_mut(), &tasks[0], b"A");
+    assert_eq!(tasks.len(), 1);
+    assert!(tasks[0].inputs.iter().any(|input| input.path == "A.txt"));
+    assert!(complete(first.as_mut(), &tasks[0], b"first\n").is_empty());
+    first.finish().expect("finishes the first run");
+
+    let now = SystemTime::now();
+    std::fs::write(folder.path().join("source.txt"), "B").expect("changes the checkpoint source");
+    for (path, age) in [("selection.txt", 100), ("source.txt", 10)] {
+        std::fs::File::options()
+            .write(true)
+            .open(folder.path().join(path))
+            .expect("opens")
+            .set_modified(now - Duration::from_secs(age))
+            .expect("sets the time");
+    }
+    std::fs::remove_file(folder.path().join("aggregate.txt")).expect("removes only the aggregate");
+    let mut second = snakemake_runtime::driver(&launch).expect("a driver");
+    let tasks = second
+        .start()
+        .expect("plans without reading the stale manifest");
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].step, "pick");
+    let checkpoint = tasks[0].id;
+    let tasks = complete(second.as_mut(), &tasks[0], b"B");
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].step, "aggregate");
+    assert!(tasks[0].after.contains(&checkpoint));
+    let input = tasks[0]
+        .inputs
+        .iter()
+        .find(|input| input.path == "B.txt")
+        .expect("the selected input");
+    let bytes = std::fs::read(&input.source).expect("reads selected bytes");
+    assert_eq!(bytes, b"second\n");
+    assert!(complete(second.as_mut(), &tasks[0], &bytes).is_empty());
+    second.finish().expect("finishes the second run");
+    assert_eq!(
+        std::fs::read(folder.path().join("aggregate.txt")).expect("reads result"),
+        b"second\n"
+    );
+    std::fs::remove_file(folder.path().join("aggregate.txt")).expect("removes the aggregate again");
+    let mut third = snakemake_runtime::driver(&launch).expect("a driver");
+    let tasks = third
+        .start()
+        .expect("uses the checkpoint that is up to date");
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].step, "aggregate");
+    assert!(tasks[0].inputs.iter().any(|input| input.path == "B.txt"));
+    assert!(complete(third.as_mut(), &tasks[0], b"second\n").is_empty());
+    third.finish().expect("finishes the third run");
+}

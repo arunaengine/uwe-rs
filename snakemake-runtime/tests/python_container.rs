@@ -10,11 +10,13 @@ use python_evaluator::{Interpreter, LocalHost};
 use snakemake_runtime::{ContainerStarter, PythonContainers};
 
 #[test]
+#[ignore = "needs a container engine and network; set IUNCTUS_CONTAINER_TESTS=1 and run with --ignored"]
 fn packages_run_in_a_container() {
-    if std::env::var_os("IUNCTUS_CONTAINER_TESTS").is_none() {
-        eprintln!("skipped: set IUNCTUS_CONTAINER_TESTS=1 to run code in a container");
-        return;
-    }
+    assert_eq!(
+        std::env::var("IUNCTUS_CONTAINER_TESTS").as_deref(),
+        Ok("1"),
+        "set IUNCTUS_CONTAINER_TESTS=1 to run code in a container"
+    );
     let folder = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(folder.path().join("data.fa"), ">a\nACGT\n>b\nGG\n").expect("writes");
     let host = Rc::new(LocalHost::new(folder.path()));

@@ -68,6 +68,15 @@ fn configs_equal_the_oracle() {
         })
         .collect();
     pipelines.sort();
+    let mut inventory: Vec<&str> =
+        include_str!("../../nextflow-parser/tests/fixtures/nf_core_revisions.txt")
+            .lines()
+            .filter(|line| !line.starts_with('#') && !line.is_empty())
+            .filter_map(|line| line.split_whitespace().next())
+            .filter(|name| *name != "modules")
+            .collect();
+    inventory.sort();
+    assert_eq!(pipelines, inventory, "the pinned pipeline inventory");
     let mut problems = Vec::new();
     for name in &pipelines {
         let read =

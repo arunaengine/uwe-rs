@@ -121,17 +121,31 @@ impl ImageConfig {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolvedImage {
+    pub reference: String,
+    pub config: ImageConfig,
+}
+
 /// The configs of images, each asked of its registry once.
 #[derive(Debug, Default)]
 pub struct ImageConfigs {
-    known: Mutex<HashMap<String, Arc<OnceCell<ImageConfig>>>>,
+    known: Mutex<HashMap<(String, String), Arc<OnceCell<ResolvedImage>>>>,
 }
 
 impl ImageConfigs {
     /// Configs that are known already, as for images that no registry has.
     pub fn known(configs: impl IntoIterator<Item = (String, ImageConfig)>) -> ImageConfigs {
         let known = (configs.into_iter())
-            .map(|(reference, config)| (reference, Arc::new(OnceCell::new_with(Some(config)))))
+            .map(|(reference, config)| {
+                (
+                    (reference.clone(), native_platform()),
+                    Arc::new(OnceCell::new_with(Some(ResolvedImage {
+                        reference,
+                        config,
+                    }))),
+                )
+            })
             .collect();
         ImageConfigs {
             known: Mutex::new(known),
@@ -140,21 +154,72 @@ impl ImageConfigs {
 
     /// The config of an image, from its registry the first time.
     pub async fn get(&self, reference: &str) -> Result<ImageConfig, ExecutorError> {
+        self.get_for(reference, None).await
+    }
+
+    /// The config for the target platform, or the native Linux platform when omitted.
+    pub async fn get_for(
+        &self,
+        reference: &str,
+        platform: Option<&str>,
+    ) -> Result<ImageConfig, ExecutorError> {
+        Ok(self.resolved_for(reference, platform).await?.config)
+    }
+
+    /// The selected manifest reference and config for the target platform.
+    pub async fn resolved_for(
+        &self,
+        reference: &str,
+        platform: Option<&str>,
+    ) -> Result<ResolvedImage, ExecutorError> {
+        let platform = platform.map(str::to_owned).unwrap_or_else(native_platform);
         let cell = {
             let mut known = self
                 .known
                 .lock()
                 .unwrap_or_else(|poison| poison.into_inner());
-            known.entry(reference.to_owned()).or_default().clone()
+            known
+                .entry((reference.to_owned(), platform.clone()))
+                .or_default()
+                .clone()
         };
-        let config = cell.get_or_try_init(|| config(reference)).await?;
+        let config = cell
+            .get_or_try_init(|| resolve_for(reference, Some(&platform)))
+            .await?;
         Ok(config.clone())
     }
 }
 
-/// The config of an image from its registry: the manifest of its tag or digest, of the
-/// platform `linux/amd64` in an index of several, then the config blob it names.
+/// The config of an image from its registry for the native Linux platform.
 pub async fn config(reference: &str) -> Result<ImageConfig, ExecutorError> {
+    config_for(reference, None).await
+}
+
+fn native_platform() -> String {
+    let architecture = match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        "aarch64" => "arm64",
+        "x86" => "386",
+        architecture => architecture,
+    };
+    format!("linux/{architecture}")
+}
+
+/// The manifest config for a target platform, including an optional architecture variant.
+pub async fn config_for(
+    reference: &str,
+    platform: Option<&str>,
+) -> Result<ImageConfig, ExecutorError> {
+    Ok(resolve_for(reference, platform).await?.config)
+}
+
+/// Resolves an index to the manifest whose metadata and execution match the platform.
+pub async fn resolve_for(
+    reference: &str,
+    platform: Option<&str>,
+) -> Result<ResolvedImage, ExecutorError> {
+    let wanted = platform.map(str::to_owned).unwrap_or_else(native_platform);
+    let mut resolved = reference.to_owned();
     let parsed = Reference::parse(reference);
     let failed = |message: String| ExecutorError::Engine {
         engine: parsed.registry.clone(),
@@ -170,13 +235,22 @@ pub async fn config(reference: &str) -> Result<ImageConfig, ExecutorError> {
     let response = ask(&parsed, Method::GET, &manifest_url(&parsed), MANIFESTS).await?;
     let mut manifest = read(text(response).await?)?;
     if let Some(manifests) = manifest.get("manifests").and_then(|list| list.as_array()) {
-        let linux = manifests.iter().find(|entry| {
+        let parts: Vec<&str> = wanted.split('/').collect();
+        let selected = manifests.iter().find(|entry| {
             let platform = &entry["platform"];
-            platform["os"] == "linux" && platform["architecture"] == "amd64"
+            (2..=3).contains(&parts.len())
+                && platform["os"] == parts[0]
+                && platform["architecture"] == parts[1]
+                && (parts.len() == 2 || platform["variant"] == parts[2])
         });
-        let digest = (linux.or(manifests.first()))
+        let digest = selected
             .and_then(|entry| entry["digest"].as_str())
-            .ok_or_else(|| failed(format!("the index of {reference} names no image")))?;
+            .ok_or_else(|| {
+                ExecutorError::Unsupported(format!(
+                    "the index of {reference} has no image for {wanted}"
+                ))
+            })?;
+        resolved = format!("{}@{digest}", parsed.name);
         let url = registry_url(&parsed, &format!("manifests/{digest}"));
         let response = ask(&parsed, Method::GET, &url, MANIFESTS).await?;
         manifest = read(text(response).await?)?;
@@ -187,15 +261,30 @@ pub async fn config(reference: &str) -> Result<ImageConfig, ExecutorError> {
     let url = registry_url(&parsed, &format!("blobs/{digest}"));
     let response = ask(&parsed, Method::GET, &url, "*/*").await?;
     let blob = read(text(response).await?)?;
+    if platform.is_some() {
+        let parts: Vec<&str> = wanted.split('/').collect();
+        if !(2..=3).contains(&parts.len())
+            || blob["os"] != parts[0]
+            || blob["architecture"] != parts[1]
+            || (parts.len() == 3 && blob["variant"] != parts[2])
+        {
+            return Err(ExecutorError::Unsupported(format!(
+                "the image {resolved} does not match {wanted}"
+            )));
+        }
+    }
     let words = |value: &serde_json::Value| -> Vec<String> {
         (value.as_array().into_iter().flatten())
             .filter_map(|word| word.as_str().map(str::to_owned))
             .collect()
     };
-    Ok(ImageConfig {
-        entrypoint: words(&blob["config"]["Entrypoint"]),
-        cmd: words(&blob["config"]["Cmd"]),
-        user: (blob["config"]["User"].as_str().unwrap_or_default()).to_owned(),
+    Ok(ResolvedImage {
+        reference: resolved,
+        config: ImageConfig {
+            entrypoint: words(&blob["config"]["Entrypoint"]),
+            cmd: words(&blob["config"]["Cmd"]),
+            user: (blob["config"]["User"].as_str().unwrap_or_default()).to_owned(),
+        },
     })
 }
 
@@ -395,8 +484,12 @@ mod tests {
                         r#"{"manifests": [{"digest": "sha256:aa", "platform": {"os": "linux", "architecture": "arm64"}}, {"digest": "sha256:bb", "platform": {"os": "linux", "architecture": "amd64"}}]}"#
                     }
                     "/v2/tool/manifests/sha256:bb" => r#"{"config": {"digest": "sha256:cc"}}"#,
+                    "/v2/tool/manifests/sha256:aa" => r#"{"config": {"digest": "sha256:dd"}}"#,
                     "/v2/tool/blobs/sha256:cc" => {
-                        r#"{"config": {"Entrypoint": ["/usr/local/env-execute"], "Cmd": ["bash"]}}"#
+                        r#"{"os":"linux","architecture":"amd64","config": {"Entrypoint": ["/usr/local/env-execute"], "Cmd": ["bash"], "User": "1000"}}"#
+                    }
+                    "/v2/tool/blobs/sha256:dd" => {
+                        r#"{"os":"linux","architecture":"arm64","config": {"Entrypoint": ["/arm-entry"], "Cmd": ["arm-command"], "User": "2000"}}"#
                     }
                     _ => "",
                 };
@@ -427,9 +520,43 @@ mod tests {
         let registry = registry();
         let configs = ImageConfigs::default();
         let reference = format!("{registry}/tool:1");
-        let config = configs.get(&reference).await.expect("a config");
+        let config = configs
+            .get_for(&reference, Some("linux/amd64"))
+            .await
+            .expect("a config");
         assert_eq!(config.entrypoint, ["/usr/local/env-execute"]);
         assert_eq!(config.cmd, ["bash"]);
+        assert_eq!(config.user, "1000");
+        let arm = configs
+            .get_for(&reference, Some("linux/arm64"))
+            .await
+            .unwrap();
+        assert_eq!(arm.entrypoint, ["/arm-entry"]);
+        assert_eq!(arm.cmd, ["arm-command"]);
+        assert_eq!(arm.user, "2000");
+        let resolved = configs
+            .resolved_for(&reference, Some("linux/arm64"))
+            .await
+            .unwrap();
+        assert_eq!(resolved.reference, format!("{registry}/tool@sha256:aa"));
+        assert_eq!(resolved.config, arm);
+        let wrong = config_for(&format!("{registry}/tool@sha256:bb"), Some("linux/arm64"))
+            .await
+            .unwrap_err();
+        assert!(matches!(wrong, ExecutorError::Unsupported(_)), "{wrong}");
+        assert_eq!(
+            configs
+                .get_for(&reference, Some("linux/amd64"))
+                .await
+                .unwrap(),
+            config
+        );
+        let error = configs
+            .get_for(&reference, Some("linux/ppc64le"))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, ExecutorError::Unsupported(_)), "{error}");
+        assert!(!error.retryable());
         // The entrypoint runs the task's arguments, or the image's command when it has none.
         let arguments = ["bash".to_owned(), "-c".to_owned(), "true".to_owned()];
         let command = config.command(&arguments);

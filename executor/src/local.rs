@@ -52,7 +52,7 @@ pub struct LocalContainer {
     pub pool: Pool,
     /// What containers of each image run by default, asked once per run, as the runner pins
     /// each image once per run.
-    commands: Mutex<HashMap<String, Arc<OnceCell<Commands>>>>,
+    commands: Mutex<HashMap<(String, Option<String>), Arc<OnceCell<Commands>>>>,
 }
 
 /// How a container ended.
@@ -340,7 +340,7 @@ impl LocalContainer {
         // some images need to set up their tools, unless it replaces the entrypoint.
         let entrypoint = !spec.replaces_entrypoint || spec.arguments.is_empty();
         let commands = match entrypoint || spec.run_as.is_some() {
-            true => self.commands(&image.reference).await?,
+            true => self.commands(image).await?,
             false => Commands::default(),
         };
         if entrypoint {
@@ -389,7 +389,7 @@ impl LocalContainer {
             if container.replaces_entrypoint && !container.arguments.is_empty() {
                 continue;
             }
-            let commands = self.commands(&image.reference).await?;
+            let commands = self.commands(image).await?;
             let arguments = std::mem::take(&mut container.arguments);
             container.arguments = commands.arguments(&image.reference, arguments)?;
         }
@@ -398,7 +398,7 @@ impl LocalContainer {
         let main = (spec.containers.first().and_then(|main| main.image.clone()))
             .ok_or(ExecutorError::NoImage)?;
         let commands = match spec.run_as {
-            Some(_) => self.commands(&main.reference).await?,
+            Some(_) => self.commands(&main).await?,
             None => Commands::default(),
         };
         let access = self
@@ -547,12 +547,17 @@ impl LocalContainer {
     }
 
     /// What containers of an image run by default, asked once per run.
-    async fn commands(&self, reference: &str) -> Result<Commands, ExecutorError> {
+    async fn commands(&self, image: &Image) -> Result<Commands, ExecutorError> {
         let cell = {
             let mut commands = (self.commands.lock()).unwrap_or_else(|poison| poison.into_inner());
-            commands.entry(reference.to_owned()).or_default().clone()
+            commands
+                .entry((image.reference.clone(), image.platform.clone()))
+                .or_default()
+                .clone()
         };
-        let asked = cell.get_or_try_init(|| Commands::of(&self.engine, reference));
+        let asked = cell.get_or_try_init(|| {
+            Commands::of(&self.engine, &image.reference, image.platform.as_deref())
+        });
         asked.await.cloned()
     }
 
@@ -575,7 +580,21 @@ impl LocalContainer {
             name: Some(run.name.to_owned()),
             platform: run.image.platform.clone().unwrap_or_default(),
         };
-        let body = run.create();
+        let image = image::available_for(
+            &self.engine,
+            &run.image.reference,
+            run.image.platform.as_deref(),
+        )
+        .await?;
+        let mut body = run.create();
+        if run.image.platform.is_some() {
+            body.image = Some(image.id.ok_or_else(|| {
+                ExecutorError::Unsupported(format!(
+                    "the engine's image {} has no ID for its requested platform",
+                    run.image.reference
+                ))
+            })?);
+        }
         client
             .create_container(Some(options), body)
             .await

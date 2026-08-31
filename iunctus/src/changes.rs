@@ -134,7 +134,7 @@ pub fn found(
     resolve: Resolve,
 ) -> Result<Changes, Failure> {
     let recorded = database.sources(&run.id).map_err(broken)?;
-    let arguments = recorded_arguments(&run)?;
+    let arguments = recorded_arguments(database, &run)?;
     let runtime = runtime()?;
     let now = runtime.block_on(sources::collect(Path::new(&run.workflow), &arguments));
     let mut workflow = compared(
@@ -171,7 +171,71 @@ pub fn found(
 }
 
 /// The command line of a run, with its paths made absolute from the folder the run started in.
-pub fn recorded_arguments(run: &Run) -> Result<Arguments, Failure> {
+pub fn recorded_arguments(database: &Database, run: &Run) -> Result<Arguments, Failure> {
+    let mut ancestry = vec![run.clone()];
+    let mut seen = BTreeSet::from([run.id.clone()]);
+    while ancestry
+        .last()
+        .is_some_and(|run| run.arguments.first().is_some_and(|word| word == "repeat"))
+    {
+        let current = ancestry.last().unwrap();
+        let parent = current.repeats.as_ref().ok_or_else(|| {
+            failure(format!(
+                "iunctus: run {} recorded no repeat parent; its original options are unavailable",
+                current.id
+            ))
+        })?;
+        if !seen.insert(parent.clone()) {
+            return Err(failure(format!(
+                "iunctus: repeat ancestry of run {} contains a cycle",
+                run.id
+            )));
+        }
+        let parent = database.run(parent).map_err(broken)?.ok_or_else(|| {
+            failure(format!(
+                "iunctus: repeat parent {parent} is missing; its original options are unavailable"
+            ))
+        })?;
+        ancestry.push(parent);
+    }
+    let original = ancestry.pop().unwrap();
+    let mut parsed = parsed_arguments(&original)?;
+    let mut parent = original;
+    while let Some(current) = ancestry.pop() {
+        let given = parsed_arguments(&current)?;
+        crate::repeat::chosen_here(&mut parsed, &given);
+        let previous = database.sources(&parent.id).map_err(broken)?;
+        let sources = database.sources(&current.id).map_err(broken)?;
+        let previous: Vec<_> = previous
+            .iter()
+            .filter(|source| source.kind == SourceKind::Named)
+            .collect();
+        let named: Vec<_> = sources
+            .iter()
+            .filter(|source| source.kind == SourceKind::Named)
+            .collect();
+        let moved = |path: &PathBuf| {
+            let index = previous
+                .iter()
+                .position(|source| Path::new(&source.path) == path);
+            index
+                .and_then(|index| {
+                    named
+                        .get(index)
+                        .filter(|source| source.digest == previous[index].digest)
+                })
+                .map_or_else(|| path.clone(), |source| PathBuf::from(&source.path))
+        };
+        parsed.configs = parsed.configs.iter().map(moved).collect();
+        parsed.inputs = parsed.inputs.as_ref().map(moved);
+        parsed.params = current.parameters.clone();
+        parsed.target = Some(PathBuf::from(&current.workflow));
+        parent = current;
+    }
+    Ok(parsed)
+}
+
+fn parsed_arguments(run: &Run) -> Result<Arguments, Failure> {
     let mut parsed = match run.arguments.split_first() {
         Some((_, rest)) => arguments::parse(rest).map_err(|message| {
             failure(format!(
@@ -495,5 +559,111 @@ mod tests {
         );
         let detail = part.changes[0].detail.as_deref().unwrap_or_default();
         assert!(detail.contains("debian@sha256:33 now"), "{detail}");
+    }
+
+    #[test]
+    fn legacy_repeat_ancestry_preserves_inputs_and_rejects_missing_or_cyclic_parents() {
+        let root = tempfile::tempdir().expect("a folder");
+        let path = root.path().join("runs.sqlite");
+        let start = |id: &str, parent: Option<&str>, words: &[&str]| run_database::RunStart {
+            id: id.into(),
+            resumes: None,
+            workflow: "/launch/main.nf".into(),
+            language: workflow_graph::Language::Nextflow,
+            revision: None,
+            arguments: words.iter().map(|word| (*word).into()).collect(),
+            parameters: vec![("sample".into(), "alpha".into())],
+            executor: "local".into(),
+            simulated: true,
+            store: None,
+            program: None,
+            launch: Some("/launch".into()),
+            workflow_folder: Some("/launch".into()),
+            repeats: parent.map(str::to_owned),
+        };
+        let original = start(
+            "original",
+            None,
+            &[
+                "run",
+                "main.nf",
+                "-profile",
+                "analysis",
+                "-configfile",
+                "extra.config",
+                "-inputs",
+                "inputs.json",
+                "--sample=alpha",
+                "-no-cache",
+            ],
+        );
+        let mut first = start(
+            "first",
+            Some("original"),
+            &["repeat", "original", "-executor", "local"],
+        );
+        first.workflow = "/restored/main.nf".into();
+        let mut second = start(
+            "second",
+            Some("first"),
+            &["repeat", "first", "-max-pending", "3"],
+        );
+        second.workflow = first.workflow.clone();
+        for run in [&original, &first, &second] {
+            let named = if run.repeats.is_none() {
+                "/launch"
+            } else {
+                "/restored/named"
+            };
+            let mut recorder = Database::open(&path)
+                .expect("opens")
+                .record(run)
+                .expect("records");
+            recorder.sources(&[
+                source(
+                    SourceKind::Named,
+                    &format!("{named}/extra.config"),
+                    "sha256:1",
+                ),
+                source(
+                    SourceKind::Named,
+                    &format!("{named}/inputs.json"),
+                    "sha256:2",
+                ),
+            ]);
+            recorder.ended(None);
+            recorder.close().expect("closes");
+        }
+        let database = Database::open(&path).expect("opens");
+        let run = database.run("second").expect("reads").expect("a run");
+        let options =
+            recorded_arguments(&database, &run).unwrap_or_else(|error| panic!("{}", error.message));
+        assert_eq!(options.profiles, Some(vec!["analysis".into()]));
+        assert_eq!(options.params, original.parameters);
+        assert_eq!(
+            options.configs,
+            vec![PathBuf::from("/restored/named/extra.config")]
+        );
+        assert_eq!(options.inputs, Some("/restored/named/inputs.json".into()));
+        assert_eq!(options.executor.as_deref(), Some("local"));
+        assert_eq!(options.max_pending, Some(3));
+        assert!(options.no_cache);
+        drop(database);
+        for (id, parent, diagnostic) in [
+            ("missing", "gone", "is missing"),
+            ("cycle", "cycle", "cycle"),
+        ] {
+            let run = start(id, Some(parent), &["repeat", parent]);
+            let mut recorder = Database::open(&path)
+                .expect("opens")
+                .record(&run)
+                .expect("records");
+            recorder.ended(None);
+            recorder.close().expect("closes");
+            let database = Database::open(&path).expect("opens");
+            let run = database.run(id).expect("reads").expect("a run");
+            let error = recorded_arguments(&database, &run).expect_err("unavailable ancestry");
+            assert!(error.message.contains(diagnostic), "{}", error.message);
+        }
     }
 }

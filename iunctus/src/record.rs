@@ -60,7 +60,11 @@ pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure>
         workflow,
         language: run.language,
         revision: revision::revision(run.target),
-        arguments: std::env::args().skip(1).collect(),
+        arguments: if run.repeats.is_some() {
+            run_arguments(arguments)
+        } else {
+            std::env::args().skip(1).collect()
+        },
         parameters: arguments.params.clone(),
         executor: run.executor.to_owned(),
         simulated: run.simulated,
@@ -73,6 +77,127 @@ pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure>
     let mut recorder = database.record(&start).map_err(broken)?;
     recorder.sources(&run.sources.files);
     Ok(Recording { recorder, reusable })
+}
+
+pub(crate) fn run_arguments(arguments: &Arguments) -> Vec<String> {
+    let mut words = vec!["run".into()];
+    let path = |path: &std::path::PathBuf| {
+        std::path::absolute(path)
+            .unwrap_or_else(|_| path.clone())
+            .to_string_lossy()
+            .into_owned()
+    };
+    if let Some(target) = &arguments.target {
+        words.push(path(target));
+    }
+    macro_rules! text {
+        ($($field:ident => $option:literal),* $(,)?) => {
+            $(if let Some(value) = &arguments.$field {
+                words.extend([$option.into(), value.to_string()]);
+            })*
+        };
+    }
+    macro_rules! paths {
+        ($($field:ident => $option:literal),* $(,)?) => {
+            $(if let Some(value) = &arguments.$field {
+                words.extend([$option.into(), path(value)]);
+            })*
+        };
+    }
+    macro_rules! flags {
+        ($($field:ident => $option:literal),* $(,)?) => {
+            $(if arguments.$field { words.push($option.into()); })*
+        };
+    }
+    text!(language => "-lang", store => "-store", executor => "-executor",
+        tes_server => "-tes-server", slurm_container => "-slurm-container",
+        slurm_options => "-slurm-options", kubernetes_namespace => "-kubernetes-namespace",
+        default_image => "-default-image", python_image => "-python-image",
+        max_pending => "-max-pending", address => "-address", port => "-port",
+        format => "-format", fold => "-fold", platform => "-platform", license => "-license",
+        keep_days => "-keep-days");
+    paths!(config_file => "-iunctus-config", inputs => "-inputs", graph => "-graph",
+        report => "-report", output_dir => "-output-dir", kubeconfig => "-kubeconfig",
+        database => "-database", output => "-output");
+    flags!(stub => "-stub", keep_going => "-keep-going", page => "-page",
+        no_cache => "-no-cache", no_network => "-no-network", no_right_sizing => "-no-right-sizing",
+        no_grouping => "-no-grouping", check => "-check", remove => "-remove");
+    if let Some(profiles) = &arguments.profiles {
+        words.extend(["-profile".into(), profiles.join(",")]);
+    }
+    for config in &arguments.configs {
+        words.extend(["-configfile".into(), path(config)]);
+    }
+    for (name, value) in &arguments.params {
+        words.push(format!("--{name}={value}"));
+    }
+    for target in &arguments.targets {
+        words.extend(["-entry".into(), target.clone()]);
+    }
+    if let Some(order) = arguments.order {
+        let order = match order {
+            workflow_graph::Order::AsAsked => "asked".into(),
+            workflow_graph::Order::Reversed => "reversed".into(),
+            workflow_graph::Order::Finished => "finished".into(),
+            workflow_graph::Order::Shuffled { seed } => format!("shuffled:{seed}"),
+        };
+        words.extend(["-order".into(), order]);
+    }
+    if let Some(view) = arguments.view {
+        let view = match view {
+            workflow_graph::render::View::Tasks => "tasks",
+            workflow_graph::render::View::Steps => "steps",
+        };
+        words.extend(["-view".into(), view.into()]);
+    }
+    if let Some(direction) = arguments.direction {
+        words.extend(["-direction".into(), direction.name().into()]);
+    }
+    if let Some(share) = arguments.check_reproducibility {
+        words.extend(["-check-reproducibility".into(), (share * 100.0).to_string()]);
+    }
+    words
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn effective_repeat_options_roundtrip() {
+        let arguments = Arguments {
+            target: Some("/restored/workflow/main.nf".into()),
+            language: Some(Language::Nextflow),
+            profiles: Some(vec!["analysis".into(), "local".into()]),
+            configs: vec!["/restored/named/settings,extra.config".into()],
+            inputs: Some("/restored/named/params.json".into()),
+            params: vec![
+                ("reads".into(), "a b.fq".into()),
+                ("flag".into(), "false".into()),
+            ],
+            targets: vec!["CUSTOM".into()],
+            executor: Some("local".into()),
+            store: Some("/cache/store".into()),
+            default_image: Some("busybox:stable".into()),
+            python_image: Some("python:3".into()),
+            stub: true,
+            keep_going: true,
+            no_cache: true,
+            no_network: true,
+            no_right_sizing: true,
+            no_grouping: true,
+            check_reproducibility: Some(0.25),
+            max_pending: Some(3),
+            order: Some(workflow_graph::Order::Shuffled { seed: 42 }),
+            output_dir: Some("/results".into()),
+            ..Arguments::default()
+        };
+        let words = run_arguments(&arguments);
+        assert_eq!(
+            crate::arguments::parse(&words[1..]).expect("parses"),
+            arguments
+        );
+    }
 }
 
 /// The run that `-resume` names, checked: it ran the same workflow, it has ended, and a real

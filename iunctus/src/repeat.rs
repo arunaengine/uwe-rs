@@ -45,8 +45,8 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let changes = changes::found(&database, run.clone(), &setup.storage, &changes::registry)?;
     eprint!("{}", changes::report(&changes));
     let store = kept_by(&setup, &run)?;
-    let folder = cache_directory().join("repeats").join(&run.id);
-    let mut repeated = changes::recorded_arguments(&run)?;
+    let folder = restoration_folder(&cache_directory().join("repeats"), &run.id)?;
+    let mut repeated = changes::recorded_arguments(&database, &run)?;
     chosen_here(&mut repeated, arguments);
     if changes.sources_changed() {
         restore(&database, &run, store.as_ref(), &folder, &mut repeated)?;
@@ -75,7 +75,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
 /// The options of `iunctus repeat` that choose where and how the run runs again: its executor
 /// and store, the settings of the executor, the page, and the reproducibility check. The
 /// workflow and its parameters stay those of the run.
-fn chosen_here(repeated: &mut Arguments, given: &Arguments) {
+pub(crate) fn chosen_here(repeated: &mut Arguments, given: &Arguments) {
     macro_rules! take {
         ($($field:ident),*) => {
             $(if given.$field.is_some() { repeated.$field = given.$field.clone(); })*
@@ -100,6 +100,24 @@ fn chosen_here(repeated: &mut Arguments, given: &Arguments) {
     );
     repeated.page |= given.page;
     repeated.resume = None;
+}
+
+fn restoration_folder(root: &Path, run: &str) -> Result<PathBuf, Failure> {
+    let parent = root.join(run);
+    std::fs::create_dir_all(&parent).map_err(|error| Failure::setup(error.to_string()))?;
+    let now = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    for number in 0_u64.. {
+        let folder = parent.join(format!("{}-{now}-{number}", std::process::id()));
+        match std::fs::create_dir(&folder) {
+            Ok(()) => return Ok(folder),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(Failure::setup(error.to_string())),
+        }
+    }
+    unreachable!()
 }
 
 /// The store that kept the files of the run: none for a simulated run.
@@ -138,7 +156,6 @@ fn restore(
             run.id
         )));
     };
-    let _ = std::fs::remove_dir_all(folder);
     let workflow = folder.join("workflow");
     let runtime = runtime()?;
     let mut named: HashMap<PathBuf, PathBuf> = HashMap::new();
@@ -272,4 +289,25 @@ fn compared(run: &Run, repeat: &str, differences: &[run_database::StepDifference
         text.push_str(&format!("  {}{outputs}\n", difference.step));
     }
     text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn concurrent_restorations_keep_independent_sources() {
+        let root = tempfile::tempdir().expect("a folder");
+        let first = restoration_folder(root.path(), "original")
+            .unwrap_or_else(|error| panic!("{}", error.message));
+        std::fs::write(first.join("main.nf"), "original workflow").expect("writes");
+        let second = restoration_folder(root.path(), "original")
+            .unwrap_or_else(|error| panic!("{}", error.message));
+        std::fs::write(second.join("main.nf"), "other workflow").expect("writes");
+        assert_ne!(first, second);
+        assert_eq!(
+            std::fs::read_to_string(first.join("main.nf")).expect("reads"),
+            "original workflow"
+        );
+    }
 }

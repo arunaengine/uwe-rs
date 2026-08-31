@@ -235,6 +235,7 @@ enum Constraint {
     LessOrEqual(Version),
     /// `1.8.*` or `1.8*`, and `=1.8`: versions that start with these components.
     StartsWith(Version),
+    NotStartsWith(Version),
     /// `~=1.8.1`: at least this version, and the same components but the last.
     Compatible(Version),
 }
@@ -293,9 +294,12 @@ fn constraint(text: &str, exact: bool) -> Option<Constraint> {
                 .trim()
                 .strip_suffix(".*")
                 .or(rest.trim().strip_suffix('*'))
-                && matches!(operator, "==")
+                && matches!(operator, "==" | "!=")
             {
-                return Some(Constraint::StartsWith(version(prefix)?));
+                return Some(match operator {
+                    "!=" => Constraint::NotStartsWith(version(prefix)?),
+                    _ => Constraint::StartsWith(version(prefix)?),
+                });
             }
             return Some(make(version(rest)?));
         }
@@ -327,6 +331,7 @@ impl Constraint {
             Constraint::Less(want) => have < want,
             Constraint::LessOrEqual(want) => have <= want,
             Constraint::StartsWith(want) => have.starts_with(want),
+            Constraint::NotStartsWith(want) => !have.starts_with(want),
             Constraint::Compatible(want) => {
                 let mut prefix = want.clone();
                 if prefix.main.len() > 1 {
@@ -407,6 +412,11 @@ mod tests {
         assert!(spec("~=1.4.2", false).matches(&version("1.4.9")));
         assert!(!spec("~=1.4.2", false).matches(&version("1.5")));
         assert!(spec("!=1.4", false).matches(&version("1.5")));
+        assert!(!spec("!=1.2.*", false).matches(&version("1.2")));
+        assert!(!spec("!=1.2.*", false).matches(&version("1.2.3")));
+        assert!(spec("!=1.2.*", false).matches(&version("1.20")));
+        assert!(!spec("!=1.2*", false).matches(&version("1.2.3")));
+        assert!(spec(">=1,!=1.2.*", false).matches(&version("1.3")));
         assert!(spec("==3.9.*", false).matches(&version("3.9.18")));
         assert!(spec("=3.9", false).matches(&version("3.9.18")));
         assert!(spec("*", true).matches(&version("0")));

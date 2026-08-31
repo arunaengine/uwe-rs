@@ -20,6 +20,8 @@ pub struct TaskFrame {
     frame: Frame,
     /// Each input file and the name it is staged under.
     pub staged: Vec<(PathValue, String)>,
+    pub input_environment: Vec<(Rc<str>, Value)>,
+    pub stdin: Option<Value>,
     /// The inputs and section variables by name, for config closures.
     variables: Vec<(Rc<str>, Rc<RefCell<Value>>)>,
     /// The name of the process, for messages.
@@ -104,6 +106,8 @@ impl Interpreter<'_> {
                 unset: RefCell::default(),
             },
             staged: Vec::new(),
+            input_environment: Vec::new(),
+            stdin: None,
             variables,
             process: name.into(),
         };
@@ -206,6 +210,10 @@ impl Interpreter<'_> {
                     task.frame.set(Place::Local(*slot), staged);
                 }
             }
+            Input::Env(name) if !paths => {
+                task.input_environment.push((name.clone(), value.clone()));
+            }
+            Input::Stdin if !paths => task.stdin = Some(value.clone()),
             Input::Env(_) | Input::Stdin => {}
         }
         Ok(())

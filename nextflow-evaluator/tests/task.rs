@@ -106,3 +106,37 @@ fn directives_and_outputs() {
     assert!(matches!(&versions.parts[2], RenderedPart::Eval(eval) if eval == command));
     assert_eq!(versions.topic.as_deref(), Some("versions"));
 }
+
+#[test]
+fn environment_and_stdin_inputs_survive_binding_each_round() {
+    for declaration in [
+        "env('SAMPLE')\n    stdin",
+        "each env('SAMPLE')\n    stdin",
+        "tuple env('SAMPLE'), stdin",
+    ] {
+        let source =
+            format!("process INPUTS {{\n    input:\n    {declaration}\n    script:\n    'cat'\n}}");
+        let parsed = parse_script(&source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let module = Rc::new(lower_module(&parsed.tree, &source).expect("lowers"));
+        let process = &module.processes[0];
+        let mut host = Launch;
+        let mut interpreter = Interpreter::new(&mut host);
+        for sample in ["A", "B"] {
+            let values = vec![Value::string(sample), Value::string("/literal/input\n")];
+            let inputs = if declaration.starts_with("tuple") {
+                vec![Value::list(values)]
+            } else {
+                values
+            };
+            let task = interpreter
+                .bind_task(&module, process, &inputs)
+                .expect("binds");
+            assert_eq!(task.input_environment.len(), 1);
+            assert_eq!(&*task.input_environment[0].0, "SAMPLE");
+            assert_eq!(task.input_environment[0].1.to_string(), sample);
+            assert_eq!(task.stdin.unwrap().to_string(), "/literal/input\n");
+            assert!(task.staged.is_empty());
+        }
+    }
+}

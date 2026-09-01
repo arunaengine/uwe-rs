@@ -176,7 +176,13 @@ fn graph(arguments: &Arguments) -> Result<(), Failure> {
 /// Ends a command with its run: the error of a failed run comes first, so that it is the first
 /// line on standard error, then the note of a simulated run.
 fn finish(execution: Execution) -> Result<(), Failure> {
-    let notes = simulation_notes(&execution.graph);
+    let mut notes = simulation_notes(&execution.graph);
+    if let Some(error) = &execution.failure_hook_error {
+        notes.insert(
+            0,
+            format!("iunctus: error while ending the failed workflow: {error}"),
+        );
+    }
     match execution.into_result() {
         Ok(_) => {
             for note in notes {
@@ -900,4 +906,30 @@ fn run_id() -> String {
         .map(|elapsed| elapsed.as_millis())
         .unwrap_or_default();
     format!("{now:x}-{:x}", std::process::id())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failure_hook_diagnostic_preserves_the_original_exit_code() {
+        let execution = Execution {
+            graph: ExecutionGraph::default(),
+            error: Some(workflow_graph::ExecuteError::Machine {
+                task: "task".into(),
+                message: "original machine failure".into(),
+            }),
+            failure_hook_error: Some(DriverError::unsupported("failure hook problem")),
+        };
+        let failure = finish(execution).err().expect("failed execution");
+        assert_eq!(failure.code, failure::SETUP);
+        assert!(failure.message.contains("original machine failure"));
+        assert!(
+            failure
+                .after
+                .iter()
+                .any(|note| note.contains("failure hook problem"))
+        );
+    }
 }

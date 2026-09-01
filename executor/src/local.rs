@@ -35,8 +35,7 @@ use crate::wrapper::{ENDED, Folders, MANIFEST, STDERR, wrapper};
 /// How long a task may take to end after it was asked to stop, before it is killed.
 const STOP_GRACE: Duration = Duration::from_secs(10);
 
-/// The least memory that Docker and Podman give a container (6 MiB); a task that asks for
-/// less, as a Snakemake rule with `mem_mb` of a file's size may, gets that much.
+/// The least memory that Docker and Podman give a container (6 MiB).
 const LEAST_MEMORY: u64 = 6 << 20;
 
 /// The memory of the container that hands the files of a task back to the user (64 MiB).
@@ -92,13 +91,22 @@ impl crate::Backend for LocalContainer {
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
         let placement = job.placement;
+        let groups = crate::containers::groups(job.spec).ok_or(ExecutorError::NoImage)?;
+        let memory = placement.memory_bytes.map(|bytes| {
+            if groups.len() <= 1 {
+                bytes.max(LEAST_MEMORY)
+            } else {
+                bytes
+            }
+        });
         // A task that waits for its share when the run is held never starts.
         let share = tokio::select! {
             biased;
             () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
             () = self.pool.held() => return Err(ExecutorError::Cancelled),
-            share = self.pool.share(placement.cpus, placement.memory_bytes, placement.priority) => share,
+            share = self.pool.share(placement.cpus, memory, placement.priority) => share,
         };
+        group_resources(share.cpus, share.memory, groups.len().max(1))?;
         let root = self.scratch.join(job.name);
         let placed = {
             let (root, staging) = (root.clone(), job.staging.clone());
@@ -231,6 +239,10 @@ impl ContainerRun<'_> {
     /// The container that runs the wrapper with the shell of the image, for the engine's API.
     /// The folders are mounts, not `source:target` binds, so that a path may hold a `:`.
     pub fn create(&self) -> ContainerCreateBody {
+        self.create_with_cpus(i64::from(self.cpus) * 1_000_000_000)
+    }
+
+    fn create_with_cpus(&self, nano_cpus: i64) -> ContainerCreateBody {
         let mounts = (self.binds().into_iter())
             .map(|bind| bollard::models::Mount {
                 target: Some(bind.target),
@@ -263,7 +275,7 @@ impl ContainerRun<'_> {
                 // that the task need not wait for it.
                 auto_remove: Some(true),
                 mounts: Some(mounts),
-                nano_cpus: Some(i64::from(self.cpus) * 1_000_000_000),
+                nano_cpus: Some(nano_cpus),
                 memory: self.memory.map(|bytes| bytes.max(LEAST_MEMORY) as i64),
                 network_mode: self.offline.then(|| "none".to_owned()),
                 ..HostConfig::default()
@@ -366,7 +378,9 @@ impl LocalContainer {
         };
         tokio::fs::write(run.script(), run.wrapper(&spec)).await?;
         let time = job.placement.time_seconds.map(Duration::from_secs);
-        let ending = self.run_to_end(&run, time, cancel).await;
+        let ending = self
+            .run_to_end(&run, i64::from(share.cpus) * 1_000_000_000, time, cancel)
+            .await;
         self.hand_back(&access, image, root, owner.uid()).await;
         self.finish(ending?, root.to_owned(), &spec).await
     }
@@ -394,32 +408,55 @@ impl LocalContainer {
             container.arguments = commands.arguments(&image.reference, arguments)?;
         }
         let owner = tokio::fs::metadata(root).await?;
-        // The containers run as the main one does.
-        let main = (spec.containers.first().and_then(|main| main.image.clone()))
-            .ok_or(ExecutorError::NoImage)?;
-        let commands = match spec.run_as {
-            Some(_) => self.commands(&main).await?,
-            None => Commands::default(),
-        };
-        let access = self
-            .access(root, (owner.uid(), owner.gid()), &spec, &commands)
-            .await?;
+        let groups = crate::containers::groups(&spec).ok_or(ExecutorError::NoImage)?;
+        let resources = group_resources(share.cpus, share.memory, groups.len())?;
+        let mut accesses = Vec::new();
+        for group in &groups {
+            let commands = match spec.run_as {
+                Some(_) => self.commands(&group.image).await?,
+                None => Commands::default(),
+            };
+            accesses.push(Access::of(
+                (owner.uid(), owner.gid()),
+                self.engine.rootless,
+                spec.run_as,
+                &commands.user,
+            ));
+        }
         let (control, home) = (root.join(CONTROL), text(&root.join(HOME)));
         let work = match spec.run_as {
             Some(_) => text(&root.join(WORK)),
             None => (spec.workdir.clone()).unwrap_or_else(|| text(&root.join(WORK))),
         };
-        let owner_text = access.owner();
         let folders = Folders {
             work: &work,
             control: &text(&control),
             home: &home,
             outbox: "",
-            owner: &owner_text,
+            owner: "",
         };
         let groups = crate::containers::write_wrappers(&spec, &control, &folders)?;
+        for (index, (group, path)) in groups.iter().enumerate() {
+            let members: Vec<_> = group
+                .members
+                .iter()
+                .map(|&position| {
+                    (
+                        text(&control.join(crate::containers::wrapper_path(&spec, position))),
+                        text(&control.join(crate::containers::exit_file(&spec, position))),
+                    )
+                })
+                .collect();
+            tokio::fs::write(
+                path,
+                crate::containers::group_wrapper(&members, &accesses[index].owner(), &text(root)),
+            )
+            .await?;
+        }
         // The folders of the wrappers are new, so they are opened after them.
-        open(&access, root).await?;
+        if let Some(access) = accesses.iter().find(|access| access.hand_back.is_some()) {
+            open(access, root).await?;
+        }
         let names: Vec<String> = (0..groups.len())
             .map(|index| format!("iunctus-{}-{index}", job.name))
             .collect();
@@ -433,16 +470,16 @@ impl LocalContainer {
                 mounts,
                 owner: (owner.uid(), owner.gid()),
                 cpus: share.cpus,
-                memory: share.memory,
+                memory: resources[index].1,
                 offline: job.placement.offline,
                 wrapper_path: Some(&paths[index]),
-                access: &access,
+                access: &accesses[index],
             })
             .collect();
         let time = job.placement.time_seconds.map(Duration::from_secs);
         let stop = cancel.child_token();
-        let mut running: futures_util::stream::FuturesUnordered<_> = (runs.iter())
-            .map(|run| self.run_to_end(run, time, &stop))
+        let mut running: futures_util::stream::FuturesUnordered<_> = (runs.iter().enumerate())
+            .map(|(index, run)| self.run_to_end(run, resources[index].0, time, &stop))
             .collect();
         let mut first: Option<Result<Ending, ExecutorError>> = None;
         let mut normal = None;
@@ -459,7 +496,10 @@ impl LocalContainer {
             }
         }
         drop(running);
-        self.hand_back(&access, &main, root, owner.uid()).await;
+        for (index, access) in accesses.iter().enumerate() {
+            self.hand_back(access, &groups[index].0.image, root, owner.uid())
+                .await;
+        }
         let ending = match (first, normal) {
             (Some(result), _) | (None, Some(result)) => result?,
             (None, None) => return Err(ExecutorError::NoImage),
@@ -571,6 +611,7 @@ impl LocalContainer {
     async fn run_to_end(
         &self,
         run: &ContainerRun<'_>,
+        nano_cpus: i64,
         time: Option<Duration>,
         cancel: &CancellationToken,
     ) -> Result<Ending, ExecutorError> {
@@ -586,7 +627,7 @@ impl LocalContainer {
             run.image.platform.as_deref(),
         )
         .await?;
-        let mut body = run.create();
+        let mut body = run.create_with_cpus(nano_cpus);
         if run.image.platform.is_some() {
             body.image = Some(image.id.ok_or_else(|| {
                 ExecutorError::Unsupported(format!(
@@ -819,6 +860,40 @@ impl Output {
     }
 }
 
+fn group_resources(
+    cpus: u32,
+    memory: Option<u64>,
+    groups: usize,
+) -> Result<Vec<(i64, Option<u64>)>, ExecutorError> {
+    if groups == 0 {
+        return Err(ExecutorError::NoImage);
+    }
+    let count = groups as i64;
+    let nano_cpus = i64::from(cpus) * 1_000_000_000;
+    if nano_cpus / count < 10_000_000 {
+        return Err(ExecutorError::Unsupported(format!(
+            "the granted {cpus} CPUs cannot cover {groups} image groups at the engine minimum of 0.01 CPU each"
+        )));
+    }
+    if let Some(bytes) = memory {
+        if bytes / (groups as u64) < LEAST_MEMORY {
+            return Err(ExecutorError::Unsupported(format!(
+                "the granted {bytes} bytes cannot cover {groups} image groups at the engine minimum of {LEAST_MEMORY} bytes each"
+            )));
+        }
+    }
+    Ok((0..groups)
+        .map(|index| {
+            (
+                nano_cpus / count + i64::from((index as i64) < nano_cpus % count),
+                memory.map(|bytes| {
+                    bytes / (groups as u64) + u64::from((index as u64) < bytes % (groups as u64))
+                }),
+            )
+        })
+        .collect())
+}
+
 /// Opens the scratch directory `root` to every user when the container may run as another
 /// user (see [`access::open`]).
 async fn open(access: &Access, root: &Path) -> std::io::Result<()> {
@@ -873,6 +948,131 @@ fn read(path: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_groups_partition_the_aggregate_grant_in_generated_configs() {
+        let image = Image {
+            reference: "debian".into(),
+            platform: None,
+        };
+        let accesses = [
+            Access::of(
+                (1000, 100),
+                true,
+                Some(task_model::RunAs::default()),
+                "root",
+            ),
+            Access::of(
+                (1000, 100),
+                true,
+                Some(task_model::RunAs::default()),
+                "nobody",
+            ),
+        ];
+        let grant = 2 * LEAST_MEMORY + 1;
+        let resources = group_resources(1, Some(grant), 2).expect("can divide");
+        let configs: Vec<_> = resources
+            .iter()
+            .enumerate()
+            .map(|(index, &(cpus, memory))| {
+                ContainerRun {
+                    name: "task",
+                    image: &image,
+                    root: Path::new("/scratch/task"),
+                    workdir: None,
+                    mounts: &[],
+                    owner: (1000, 100),
+                    cpus: 1,
+                    memory,
+                    offline: false,
+                    wrapper_path: None,
+                    access: &accesses[index],
+                }
+                .create_with_cpus(cpus)
+            })
+            .collect();
+        assert_eq!(
+            configs
+                .iter()
+                .map(|config| config.host_config.as_ref().unwrap().nano_cpus.unwrap())
+                .sum::<i64>(),
+            1_000_000_000
+        );
+        assert_eq!(
+            configs
+                .iter()
+                .map(|config| config.host_config.as_ref().unwrap().memory.unwrap())
+                .sum::<i64>(),
+            grant as i64
+        );
+        assert_eq!(resources[0].0, 500_000_000);
+        assert_eq!(accesses[0].hand_back, None);
+        assert_eq!(accesses[1].hand_back, Some((0, 0)));
+        let members = [(
+            "/scratch/task/control/wrapper.sh".into(),
+            "/scratch/task/control/exit".into(),
+        )];
+        assert!(
+            !crate::containers::group_wrapper(&members, &accesses[0].owner(), "/scratch/task")
+                .contains("chown")
+        );
+        assert!(
+            crate::containers::group_wrapper(&members, &accesses[1].owner(), "/scratch/task")
+                .contains("chown -hR '0:0'")
+        );
+    }
+
+    #[test]
+    fn image_group_limits_preserve_remainders_and_reject_undersized_grants() {
+        let resources = group_resources(1, Some(3 * LEAST_MEMORY + 2), 3).unwrap();
+        assert_eq!(
+            resources.iter().map(|(cpus, _)| cpus).sum::<i64>(),
+            1_000_000_000
+        );
+        assert_eq!(
+            resources
+                .iter()
+                .map(|(_, memory)| memory.unwrap())
+                .sum::<u64>(),
+            3 * LEAST_MEMORY + 2
+        );
+        assert!(
+            group_resources(1, None, 2)
+                .unwrap()
+                .iter()
+                .all(|(_, memory)| memory.is_none())
+        );
+        let error = group_resources(1, Some(2 * LEAST_MEMORY - 1), 2).unwrap_err();
+        assert!(error.to_string().contains("engine minimum"));
+        assert!(group_resources(1, None, 101).is_err());
+        assert!(group_resources(1, Some(LEAST_MEMORY - 1), 1).is_err());
+    }
+
+    #[tokio::test]
+    async fn a_secondary_image_opens_new_shared_control_folders() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().unwrap();
+        let root = folder.path().join("task");
+        std::fs::create_dir_all(root.join("control/containers/secondary")).unwrap();
+        std::fs::write(
+            root.join("control/containers/secondary/wrapper.sh"),
+            "true\n",
+        )
+        .unwrap();
+        let access = Access::of(
+            (1000, 100),
+            true,
+            Some(task_model::RunAs::default()),
+            "nobody",
+        );
+        open(&access, &root).await.unwrap();
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&root.join("control/containers/secondary")), 0o777);
+        assert_eq!(
+            mode(&root.join("control/containers/secondary/wrapper.sh")) & 0o666,
+            0o666
+        );
+    }
 
     #[test]
     fn binds_put_relative_mounts_in_the_work_directory() {

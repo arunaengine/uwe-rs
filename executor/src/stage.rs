@@ -169,6 +169,10 @@ fn copy_tree(source: &Path, target: &Path) -> std::io::Result<()> {
     for entry in std::fs::read_dir(source)? {
         let entry = entry?;
         let to = target.join(entry.file_name());
+        if entry.file_type()?.is_symlink() && !entry.path().is_file() {
+            std::os::unix::fs::symlink(std::fs::read_link(entry.path())?, &to)?;
+            continue;
+        }
         let metadata = std::fs::metadata(entry.path())?;
         if metadata.is_dir() {
             copy_tree(&entry.path(), &to)?;
@@ -368,6 +372,69 @@ mod tests {
         };
         assert_eq!(mode("work_dir/c/d"), 0o644);
         assert_eq!(mode("work_dir/c"), 0o755);
+    }
+
+    #[test]
+    fn copied_directory_links_keep_relative_targets_and_parent_cycles() {
+        let folder = tempfile::tempdir().unwrap();
+        let source = folder.path().join("stored");
+        std::fs::create_dir_all(source.join("child")).unwrap();
+        std::fs::write(source.join("child/file"), "original").unwrap();
+        std::os::unix::fs::symlink("child", source.join("alias")).unwrap();
+        std::os::unix::fs::symlink("..", source.join("child/parent")).unwrap();
+        std::os::unix::fs::symlink("child/file", source.join("file-link")).unwrap();
+        std::os::unix::fs::symlink("missing", source.join("dangling")).unwrap();
+        std::os::unix::fs::symlink("b", source.join("a")).unwrap();
+        std::os::unix::fs::symlink("a", source.join("b")).unwrap();
+        let root = folder.path().join("scratch/task");
+        let copied = Staged {
+            path: "copied".into(),
+            source: source.clone(),
+            directory: true,
+            copy: true,
+            ..Staged::default()
+        };
+        place(
+            &root,
+            &Staging {
+                inputs: vec![copied],
+                ..Staging::default()
+            },
+        )
+        .unwrap();
+        let copied = root.join("work/copied");
+        for (name, target) in [("dangling", "missing"), ("a", "b"), ("b", "a")] {
+            assert_eq!(
+                std::fs::read_link(copied.join(name)).unwrap(),
+                Path::new(target)
+            );
+        }
+        assert_eq!(
+            std::fs::read_link(copied.join("alias")).unwrap(),
+            Path::new("child")
+        );
+        assert_eq!(
+            std::fs::read_link(copied.join("child/parent")).unwrap(),
+            Path::new("..")
+        );
+        assert!(
+            !std::fs::symlink_metadata(copied.join("file-link"))
+                .unwrap()
+                .is_symlink()
+        );
+        assert_eq!(
+            std::fs::read_to_string(copied.join("file-link")).unwrap(),
+            "original"
+        );
+        std::fs::write(copied.join("alias/file"), "changed").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(source.join("child/file")).unwrap(),
+            "original"
+        );
+        assert_eq!(
+            std::fs::read_to_string(copied.join("child/parent/child/file")).unwrap(),
+            "changed"
+        );
     }
 
     #[test]

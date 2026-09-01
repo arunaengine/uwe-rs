@@ -520,6 +520,82 @@ fn containers_of_a_task_share_its_folders_in_their_order() {
 }
 
 #[test]
+#[ignore = "needs rootless Docker/Podman, cgroup v2 delegation, and IUNCTUS_TEST_NONROOT_IMAGE with USER nobody and Debian tools"]
+fn rootless_image_groups_share_limits_and_recover_secondary_user_outputs() {
+    use std::os::unix::fs::MetadataExt;
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let executor = executor(root.path());
+    assert!(executor.engine.rootless, "requires a rootless engine");
+    let secondary = std::env::var("IUNCTUS_TEST_NONROOT_IMAGE").expect("a USER nobody image");
+    let inspected = runtime()
+        .block_on(executor.engine.client().inspect_image(&secondary))
+        .unwrap();
+    assert_eq!(inspected.config.unwrap().user.as_deref(), Some("nobody"));
+    let me = std::fs::metadata(root.path()).unwrap().uid();
+    let mut task = several(
+        vec![
+            container(
+                "main",
+                "debian:stable-slim",
+                "cat /workspace/message > /workspace/out.txt; cat /sys/fs/cgroup/cpu.max > /workspace/main.cpu; cat /sys/fs/cgroup/memory.max > /workspace/main.memory",
+                &["secondary"],
+            ),
+            container(
+                "secondary",
+                &secondary,
+                "echo secondary > /workspace/message; cat /sys/fs/cgroup/cpu.max > /workspace/secondary.cpu; cat /sys/fs/cgroup/memory.max > /workspace/secondary.memory",
+                &[],
+            ),
+        ],
+        &["/workspace/"],
+    );
+    task.run_as = Some(task_model::RunAs::default());
+    let staged = Staging {
+        directories: vec!["/workspace".into()],
+        ..Staging::default()
+    };
+    let placement = Placement {
+        cpus: 1,
+        memory_bytes: Some(256 << 20),
+        time_seconds: Some(30),
+        ..Placement::default()
+    };
+    let finished = run_with(
+        &executor,
+        "rootless-mixed-groups",
+        &task,
+        &staged,
+        &placement,
+    )
+    .expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    let read = |name: &str| {
+        std::fs::read_to_string(finished.local_path(&format!("/workspace/{name}"))).unwrap()
+    };
+    assert_eq!(read("out.txt"), "secondary\n");
+    assert!(
+        !executor::access::foreign(&finished.root, me),
+        "all artifacts must belong to the caller"
+    );
+    let cpu = |name| {
+        read(name)
+            .split_whitespace()
+            .map(|part| part.parse::<u64>().unwrap())
+            .collect::<Vec<_>>()
+    };
+    let main = cpu("main.cpu");
+    let secondary = cpu("secondary.cpu");
+    assert_eq!(main[1], secondary[1]);
+    assert!(
+        main[0] + secondary[0] <= main[1],
+        "combined CPU quota exceeds one CPU"
+    );
+    let memory = read("main.memory").trim().parse::<u64>().unwrap()
+        + read("secondary.memory").trim().parse::<u64>().unwrap();
+    assert_eq!(memory, placement.memory_bytes.unwrap());
+}
+
+#[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
 fn a_container_after_one_that_failed_does_not_run() {
     let root = tempfile::tempdir().expect("a temporary directory");

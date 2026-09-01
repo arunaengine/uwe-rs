@@ -20,6 +20,7 @@ struct Tasks {
     first: Vec<Task>,
     retries: u32,
     heard: Vec<(TaskId, u32, i32)>,
+    cancel_on_finish: Option<CancellationToken>,
 }
 
 impl Driver for Tasks {
@@ -41,6 +42,9 @@ impl Driver for Tasks {
     }
 
     fn finish(&mut self) -> Result<(), DriverError> {
+        if let Some(cancel) = &self.cancel_on_finish {
+            cancel.cancel();
+        }
         Ok(())
     }
 }
@@ -187,8 +191,14 @@ fn the_engine_runs_a_task_again_after_the_machine_failed() {
         ..Sleeper::default()
     };
     let execution = Engine::new(&mut executor)
+        .observer(&mut retries)
         .retries(1)
         .run("machine", &mut driver);
+    assert_eq!(execution.graph.nodes[0].exit_code, Some(-1));
+    assert_eq!(
+        retries.0[2..],
+        [(TaskId(1), 1, true), (TaskId(1), 2, false)]
+    );
     assert!(
         matches!(execution.error, Some(ExecuteError::Machine { .. })),
         "{:?}",
@@ -246,6 +256,13 @@ fn a_cancelled_run_stops_its_attempts() {
     let mut stopped = cancelled.lock().unwrap().clone();
     stopped.sort();
     assert_eq!(stopped, [TaskId(1), TaskId(2)]);
+    assert!(
+        execution
+            .graph
+            .nodes
+            .iter()
+            .all(|node| node.exit_code == Some(-1))
+    );
 }
 
 /// Asks for fixed tasks at the start, notes the outcomes it hears, and drains the run after
@@ -342,4 +359,215 @@ fn a_draining_run_lets_running_tasks_end_and_starts_no_other() {
     assert_eq!(executor.holds, 1);
     let ended: Vec<TaskId> = finished.0.iter().map(|(id, _, _)| *id).collect();
     assert_eq!(ended, [TaskId(1), TaskId(3), TaskId(2)]);
+    assert_eq!(execution.graph.nodes[2].exit_code, Some(-1));
+}
+
+struct Synchronous {
+    calls: usize,
+    cancel: Option<CancellationToken>,
+}
+
+impl Executor for Synchronous {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        self.calls += 1;
+        if let Some(cancel) = &self.cancel {
+            cancel.cancel();
+        }
+        Running::ended(Ok(Outcome {
+            id: attempt.task.id,
+            ..Outcome::default()
+        }))
+    }
+}
+
+#[test]
+fn cancellation_stops_synchronous_admission_and_outcomes() {
+    for pre_cancelled in [true, false] {
+        let cancel = CancellationToken::new();
+        if pre_cancelled {
+            cancel.cancel();
+        }
+        let mut driver = Tasks {
+            first: vec![task(1, &[]), task(2, &[])],
+            ..Tasks::default()
+        };
+        let mut executor = Synchronous {
+            calls: 0,
+            cancel: Some(cancel.clone()),
+        };
+        let mut finished = Retries::default();
+        let execution = Engine::new(&mut executor)
+            .options(options(2, Order::AsAsked))
+            .observer(&mut finished)
+            .cancel(cancel)
+            .run("synchronous", &mut driver);
+        assert!(matches!(execution.error, Some(ExecuteError::Cancelled)));
+        assert_eq!(executor.calls, usize::from(!pre_cancelled));
+        assert!(driver.heard.is_empty());
+        assert_eq!(finished.0.len(), executor.calls);
+        assert!(
+            execution
+                .graph
+                .nodes
+                .iter()
+                .take(executor.calls)
+                .all(|node| node.exit_code == Some(0))
+        );
+        assert_eq!(driver.first.is_empty(), !pre_cancelled);
+    }
+}
+
+#[test]
+fn cancellation_during_finish_prevents_success() {
+    let cancel = CancellationToken::new();
+    let mut driver = Tasks {
+        cancel_on_finish: Some(cancel.clone()),
+        ..Tasks::default()
+    };
+    let mut executor = Synchronous {
+        calls: 0,
+        cancel: None,
+    };
+    let execution = Engine::new(&mut executor)
+        .cancel(cancel)
+        .run("finish", &mut driver);
+    assert!(matches!(execution.error, Some(ExecuteError::Cancelled)));
+}
+
+#[test]
+fn a_panicking_future_records_a_bounded_terminal_failure() {
+    struct Panics;
+    impl Executor for Panics {
+        fn run(&mut self, _attempt: Attempt) -> Running {
+            Running::new(async { panic!("executor panic regression") })
+        }
+    }
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let mut driver = Tasks {
+            first: vec![task(1, &[])],
+            ..Tasks::default()
+        };
+        let mut finished = Retries::default();
+        let execution = Engine::new(&mut Panics)
+            .observer(&mut finished)
+            .run("panic", &mut driver);
+        sender.send((execution, finished.0)).unwrap();
+    });
+    let (execution, finished) = receiver
+        .recv_timeout(Duration::from_secs(5))
+        .expect("a panic must not strand its pending attempt");
+    worker.join().unwrap();
+    assert!(matches!(
+        execution.error,
+        Some(ExecuteError::Executor { .. })
+    ));
+    assert_eq!(execution.graph.nodes[0].exit_code, Some(-1));
+    assert_eq!(finished, [(TaskId(1), 1, false)]);
+}
+
+#[test]
+fn machine_failures_do_not_retry_while_draining() {
+    struct Failures(Vec<TaskId>);
+    impl Executor for Failures {
+        fn run(&mut self, attempt: Attempt) -> Running {
+            self.0.push(attempt.task.id);
+            Running::ended(if attempt.task.id == TaskId(1) {
+                Ok(Outcome {
+                    id: attempt.task.id,
+                    exit_code: 1,
+                    ..Outcome::default()
+                })
+            } else {
+                Err(ExecuteError::Machine {
+                    task: attempt.task.name.clone(),
+                    message: "machine failed".into(),
+                })
+            })
+        }
+    }
+    let mut driver = Draining {
+        first: vec![task(1, &[]), task(2, &[])],
+        ..Draining::default()
+    };
+    let mut executor = Failures(Vec::new());
+    let mut finished = Retries::default();
+    let execution = Engine::new(&mut executor)
+        .options(options(2, Order::AsAsked))
+        .observer(&mut finished)
+        .run("draining-machine", &mut driver);
+    assert_eq!(execution.error.unwrap().to_string(), "a task failed");
+    assert_eq!(executor.0, [TaskId(1), TaskId(2)]);
+    assert_eq!(finished.0, [(TaskId(1), 1, false), (TaskId(2), 1, false)]);
+    assert_eq!(execution.graph.nodes[1].exit_code, Some(-1));
+}
+
+#[test]
+fn failure_hooks_run_once_after_cleanup_and_preserve_the_cause() {
+    struct Hook {
+        calls: usize,
+        events: Arc<Mutex<Vec<String>>>,
+    }
+    impl Driver for Hook {
+        fn language(&self) -> Language {
+            Language::Snakemake
+        }
+        fn start(&mut self) -> Result<Vec<Task>, DriverError> {
+            Ok(vec![task(1, &[]), task(2, &[])])
+        }
+        fn complete(&mut self, _outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+            Err(DriverError::new("original failure"))
+        }
+        fn finish(&mut self) -> Result<(), DriverError> {
+            Ok(())
+        }
+        fn failed(&mut self, error: &ExecuteError) -> Result<(), DriverError> {
+            self.calls += 1;
+            assert_eq!(error.to_string(), "original failure");
+            self.events.lock().unwrap().push("hook".into());
+            Err(DriverError::new("secondary failure"))
+        }
+    }
+    struct Events(Arc<Mutex<Vec<String>>>);
+    impl Observer for Events {
+        fn event(&mut self, event: Event<'_>) {
+            let event = match event {
+                Event::Finished { outcome, .. } => format!("finished {}", outcome.id),
+                Event::Ended { .. } => "ended".into(),
+                _ => return,
+            };
+            self.0.lock().unwrap().push(event);
+        }
+    }
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let mut driver = Hook {
+        calls: 0,
+        events: events.clone(),
+    };
+    let mut observer = Events(events.clone());
+    let mut executor = Synchronous {
+        calls: 0,
+        cancel: None,
+    };
+    let execution = Engine::new(&mut executor)
+        .options(options(2, Order::AsAsked))
+        .observer(&mut observer)
+        .run("hooks", &mut driver);
+    assert_eq!(driver.calls, 1);
+    assert_eq!(execution.error.unwrap().to_string(), "original failure");
+    assert_eq!(
+        execution.failure_hook_error.unwrap().message,
+        "secondary failure"
+    );
+    assert_eq!(
+        *events.lock().unwrap(),
+        ["finished 1", "finished 2", "hook", "ended"]
+    );
+    assert!(
+        execution
+            .graph
+            .nodes
+            .iter()
+            .all(|node| node.exit_code == Some(0))
+    );
 }

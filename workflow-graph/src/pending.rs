@@ -95,6 +95,17 @@ impl Pending {
         }
     }
 
+    pub(crate) fn cancel_remaining(&mut self) {
+        for slot in self.slots.iter_mut().filter(|slot| slot.end.is_none()) {
+            self.arrivals += 1;
+            slot.end = Some(End {
+                result: Err(ExecuteError::Cancelled),
+                time: SystemTime::now(),
+                arrival: self.arrivals,
+            });
+        }
+    }
+
     /// Takes any attempt that has ended, whatever the order, as when the run stopped.
     pub(crate) fn take_any(&mut self) -> Take {
         match self.slots.iter().position(|slot| slot.end.is_some()) {
@@ -222,5 +233,27 @@ mod tests {
         pending.end(TaskId(1), 1, ok(1));
         assert_eq!(taken(pending.take()), Some(2));
         assert_eq!(taken(pending.take()), Some(1));
+    }
+
+    #[test]
+    fn cancellation_terminalizes_only_unfinished_attempts() {
+        let mut pending = Pending::new(Order::Finished);
+        pending.start(task(1), 1);
+        pending.start(task(2), 1);
+        pending.end(TaskId(2), 1, ok(2));
+        pending.cancel_remaining();
+        assert!(!pending.running());
+        let Take::Ended(first) = pending.take_any() else {
+            panic!("terminal attempt")
+        };
+        assert!(matches!(
+            first.end.unwrap().result,
+            Err(ExecuteError::Cancelled)
+        ));
+        let Take::Ended(second) = pending.take_any() else {
+            panic!("terminal attempt")
+        };
+        assert!(second.end.unwrap().result.is_ok());
+        assert!(matches!(pending.take_any(), Take::Empty));
     }
 }

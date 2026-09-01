@@ -48,7 +48,12 @@ impl Attempts {
         }
         let sender = self.sender.clone();
         self.runtime.spawn(async move {
-            let result = running.await;
+            let result = tokio::spawn(running).await.unwrap_or_else(|error| {
+                Err(ExecuteError::Executor {
+                    task: id.to_string(),
+                    message: format!("attempt {attempt} failed to join: {error}"),
+                })
+            });
             // The receiver is gone only when the run has ended, and then nobody waits.
             let _ = sender.send(Ended {
                 id,

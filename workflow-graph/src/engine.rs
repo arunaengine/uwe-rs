@@ -66,6 +66,7 @@ impl ExecuteError {
 pub struct Execution {
     pub graph: ExecutionGraph,
     pub error: Option<ExecuteError>,
+    pub failure_hook_error: Option<DriverError>,
 }
 
 impl Execution {
@@ -162,23 +163,33 @@ impl<'a> Engine<'a> {
             let mut pending = Pending::new(self.options.order);
             let result = self.drive(driver, &mut recorder, &mut pending, &mut attempts);
             if result.is_err() {
-                self.stop(&mut pending, &mut attempts);
+                self.stop(&mut recorder, &mut pending, &mut attempts);
             }
             result
         });
         let error = result.err();
+        let failure_hook_error = error.as_ref().and_then(|error| driver.failed(error).err());
         self.report(Event::Ended {
             error: error.as_ref(),
         });
         Execution {
             graph: recorder.graph,
             error,
+            failure_hook_error,
         }
     }
 
     fn report(&mut self, event: Event<'_>) {
         if let Some(observer) = self.observer.as_deref_mut() {
             observer.event(event);
+        }
+    }
+
+    fn check_cancel(&self) -> Result<(), ExecuteError> {
+        if self.cancel.is_cancelled() {
+            Err(ExecuteError::Cancelled)
+        } else {
+            Ok(())
         }
     }
 
@@ -227,6 +238,7 @@ impl<'a> Engine<'a> {
         pending: &mut Pending,
         attempts: &mut Attempts,
     ) -> Result<(), ExecuteError> {
+        self.check_cancel()?;
         let mut queue = Queue::default();
         let files = self.executor.files();
         if let Some(files) = &files {
@@ -238,6 +250,7 @@ impl<'a> Engine<'a> {
         self.deliver(driver, files.as_deref())?;
         let mut draining = false;
         loop {
+            self.check_cancel()?;
             // After a failure that ends the run once the running tasks have ended, no task
             // starts: neither one of the queue nor one that waits in the executor.
             if !draining && driver.draining() {
@@ -249,8 +262,9 @@ impl<'a> Engine<'a> {
                 && pending.len() < self.options.max_pending.max(1)
                 && let Some(task) = queue.next()
             {
-                self.start(Arc::new(task), pending, attempts);
+                self.start(Arc::new(task), pending, attempts)?;
             }
+            self.check_cancel()?;
             let slot = match pending.take() {
                 Take::Empty => break,
                 Take::Wait => {
@@ -271,28 +285,24 @@ impl<'a> Engine<'a> {
             };
             let mut outcome = match result {
                 Ok(outcome) => outcome,
-                // An attempt that waited for its turn when the run began to end never ran; the
-                // observer hears so, the driver does not.
-                Err(error @ ExecuteError::Cancelled) if draining => {
+                Err(error) => {
                     let outcome = failed(&task, &error, attempt, started, time);
+                    let retried = !draining && error.retryable() && attempt <= self.retries;
+                    recorder.finished(&outcome);
                     self.report(Event::Finished {
                         outcome: &outcome,
                         attempt,
-                        retried: false,
+                        retried,
                     });
-                    continue;
+                    if retried {
+                        self.start(task, pending, attempts)?;
+                        continue;
+                    }
+                    if draining && (error.retryable() || matches!(error, ExecuteError::Cancelled)) {
+                        continue;
+                    }
+                    return Err(error);
                 }
-                Err(error) if error.retryable() && attempt <= self.retries => {
-                    let outcome = failed(&task, &error, attempt, started, time);
-                    self.report(Event::Finished {
-                        outcome: &outcome,
-                        attempt,
-                        retried: true,
-                    });
-                    self.start(task, pending, attempts);
-                    continue;
-                }
-                Err(error) => return Err(error),
             };
             outcome.id = task.id;
             outcome.attempt = attempt;
@@ -325,7 +335,9 @@ impl<'a> Engine<'a> {
         driver: &mut dyn Driver,
         files: Option<&dyn Files>,
     ) -> Result<(), ExecuteError> {
+        self.check_cancel()?;
         for delivery in driver.deliveries() {
+            self.check_cancel()?;
             self.report(Event::Delivered {
                 delivery: &delivery,
             });
@@ -339,11 +351,17 @@ impl<'a> Engine<'a> {
                     })?;
             }
         }
-        Ok(())
+        self.check_cancel()
     }
 
     /// Starts the next attempt of a task.
-    fn start(&mut self, task: Arc<Task>, pending: &mut Pending, attempts: &mut Attempts) {
+    fn start(
+        &mut self,
+        task: Arc<Task>,
+        pending: &mut Pending,
+        attempts: &mut Attempts,
+    ) -> Result<(), ExecuteError> {
+        self.check_cancel()?;
         let number = self.attempts.entry(task.id).or_insert(0);
         *number += 1;
         let number = *number;
@@ -360,11 +378,12 @@ impl<'a> Engine<'a> {
         if let Some(ended) = attempts.start(task.id, number, self.executor.run(attempt)) {
             pending.end(ended.id, ended.attempt, ended.result);
         }
+        Ok(())
     }
 
     /// Stops the attempts in flight and waits a while for them to end. The observer hears how
     /// each one ended; the driver does not.
-    fn stop(&mut self, pending: &mut Pending, attempts: &mut Attempts) {
+    fn stop(&mut self, recorder: &mut Recorder, pending: &mut Pending, attempts: &mut Attempts) {
         attempts.cancel.cancel();
         let deadline = Instant::now() + STOP_GRACE;
         while pending.running()
@@ -372,12 +391,18 @@ impl<'a> Engine<'a> {
         {
             pending.end(ended.id, ended.attempt, ended.result);
         }
+        pending.cancel_remaining();
         while let Take::Ended(slot) = pending.take_any() {
             let Some(end) = &slot.end else { continue };
-            let outcome = match &end.result {
+            let mut outcome = match &end.result {
                 Ok(outcome) => outcome.clone(),
                 Err(error) => failed(&slot.task, error, slot.attempt, slot.started, end.time),
             };
+            outcome.id = slot.task.id;
+            outcome.attempt = slot.attempt;
+            outcome.started.get_or_insert(slot.started);
+            outcome.ended.get_or_insert(end.time);
+            recorder.finished(&outcome);
             self.report(Event::Finished {
                 outcome: &outcome,
                 attempt: slot.attempt,

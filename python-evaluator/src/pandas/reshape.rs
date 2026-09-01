@@ -47,7 +47,7 @@ pub fn set_index(
         .ok_or_else(|| Error::type_error("set_index() missing keys"))?;
     let drop = flag(interpreter, args, "drop", true)?;
     let append = flag(interpreter, args, "append", false)?;
-    args.take_keyword("verify_integrity");
+    let verify = flag(interpreter, args, "verify_integrity", false)?;
     let keys = match keys.plain() {
         Value::List(_) => seq_values(interpreter, &keys)?,
         _ => vec![keys],
@@ -91,7 +91,17 @@ pub fn set_index(
         .filter(|position| !drop || !dropped.contains(position))
         .collect();
     let result = data.take_columns(&keep);
-    *result.index.borrow_mut() = Labels::from_levels(levels, names);
+    let index = Labels::from_levels(levels, names);
+    if verify
+        && index.values.iter().enumerate().any(|(position, label)| {
+            index.values[..position]
+                .iter()
+                .any(|known| super::same_label(known, label))
+        })
+    {
+        return Err(Error::value_error("Index has duplicate keys"));
+    }
+    *result.index.borrow_mut() = index;
     Ok(result)
 }
 

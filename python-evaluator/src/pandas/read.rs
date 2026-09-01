@@ -109,7 +109,12 @@ fn check_arguments(function: &str, args: &Args) -> Result<(), Error> {
 }
 
 /// The text of the source: a path, which may be compressed with gzip, or a file object.
-fn source_text(interpreter: &mut Interpreter, source: &Value) -> Result<String, Error> {
+fn source_text(
+    interpreter: &mut Interpreter,
+    source: &Value,
+    encoding: &str,
+    errors: &str,
+) -> Result<String, Error> {
     let is_path = matches!(source.plain(), Value::Str(_))
         || source.as_native::<crate::modules::PathObject>().is_some();
     if !is_path {
@@ -135,7 +140,14 @@ fn source_text(interpreter: &mut Interpreter, source: &Value) -> Result<String, 
     } else {
         bytes
     };
-    let text = String::from_utf8_lossy(&bytes).into_owned();
+    let text = if matches!(encoding, "latin1" | "iso88591") {
+        bytes.iter().map(|byte| char::from(*byte)).collect()
+    } else if errors == "replace" {
+        String::from_utf8_lossy(&bytes).into_owned()
+    } else {
+        String::from_utf8(bytes)
+            .map_err(|error| Error::new("UnicodeDecodeError", error.to_string()))?
+    };
     Ok(text
         .strip_prefix('\u{feff}')
         .map(str::to_owned)
@@ -157,10 +169,53 @@ pub(super) fn read(
     mut args: Args,
     default_separator: &str,
 ) -> Result<Value, Error> {
+    for name in ["parse_dates", "date_format", "iterator", "chunksize"] {
+        if let Some(value) = args.take_keyword(name) {
+            let requested = if name == "chunksize" || name == "date_format" {
+                !value.is_none()
+            } else {
+                interpreter.truthy(&value)?
+            };
+            if requested {
+                return Err(Error::unsupported(format!("pandas.read_csv {name}")));
+            }
+        }
+    }
+    let encoding = text_option(interpreter, args.take_keyword("encoding"))?
+        .unwrap_or_else(|| "utf8".into())
+        .to_ascii_lowercase()
+        .replace(['-', '_'], "");
+    let errors = text_option(interpreter, args.take_keyword("encoding_errors"))?
+        .unwrap_or_else(|| "strict".into());
+    if !matches!(
+        encoding.as_str(),
+        "utf8" | "utf8sig" | "latin1" | "iso88591"
+    ) {
+        return Err(Error::unsupported(format!(
+            "pandas.read_csv encoding={encoding:?}"
+        )));
+    }
+    if !matches!(errors.as_str(), "strict" | "replace") {
+        return Err(Error::unsupported(format!(
+            "pandas.read_csv encoding_errors={errors:?}"
+        )));
+    }
+    let decimal =
+        text_option(interpreter, args.take_keyword("decimal"))?.unwrap_or_else(|| ".".into());
+    let thousands = text_option(interpreter, args.take_keyword("thousands"))?;
+    if decimal.chars().count() != 1
+        || thousands
+            .as_ref()
+            .is_some_and(|text| text.chars().count() != 1)
+    {
+        return Err(Error::value_error(
+            "decimal and thousands separators must be one character",
+        ));
+    }
     let source = args.take(0, "filepath_or_buffer").ok_or_else(|| {
         Error::type_error("read_csv() missing 1 required positional argument: 'filepath_or_buffer'")
     })?;
-    let text = source_text(interpreter, &source)?;
+    let text = source_text(interpreter, &source, &encoding, &errors)?;
     let separator = match args
         .take_keyword("sep")
         .or_else(|| args.take_keyword("delimiter"))
@@ -325,12 +380,44 @@ pub(super) fn read(
             },
             None => None,
         };
-        let fields: Vec<Option<String>> = raw
+        let mut fields: Vec<Option<String>> = raw
             .into_iter()
             .map(|field| {
                 field.filter(|text| !(filter && missing.iter().any(|missing| missing == text)))
             })
             .collect();
+        if decimal != "." || thousands.is_some() {
+            let normalized: Vec<Option<String>> = fields
+                .iter()
+                .map(|field| {
+                    field.as_ref().map(|text| {
+                        let normalized = match &thousands {
+                            Some(separator) => text.replace(separator, ""),
+                            None => text.clone(),
+                        };
+                        normalized.replace(&decimal, ".")
+                    })
+                })
+                .collect();
+            let numeric = matches!(
+                kind,
+                Some(
+                    super::DtypeKind::Int | super::DtypeKind::NullableInt | super::DtypeKind::Float
+                )
+            ) || kind.is_none()
+                && infer(normalized.clone(), &true_values, &false_values)
+                    .iter()
+                    .all(|value| {
+                        super::is_missing(value)
+                            || matches!(
+                                value.plain(),
+                                Value::Int(_) | Value::Float(_) | Value::BigInt(_)
+                            )
+                    });
+            if numeric {
+                fields = normalized;
+            }
+        }
         values.push(convert(label, fields, kind, &true_values, &false_values)?);
     }
     let rows = values

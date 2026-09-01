@@ -28,7 +28,27 @@ pub fn run_shell(interpreter: &mut Interpreter, text: &str) -> Result<CommandOut
 
 /// The command of `args`: a list of words, or a text that a shell runs when `shell` is true
 /// and that is the program otherwise.
-fn command_of(interpreter: &mut Interpreter, args: &Value, shell: bool) -> Result<Command, Error> {
+fn command_of(
+    interpreter: &mut Interpreter,
+    args: &Value,
+    shell: bool,
+    options: &mut Args,
+) -> Result<Command, Error> {
+    for name in ["env", "input", "timeout"] {
+        if options
+            .take_keyword(name)
+            .is_some_and(|value| !value.is_none())
+        {
+            return Err(Error::unsupported(format!("subprocess {name}")));
+        }
+    }
+    let cwd = match options.take_keyword("cwd") {
+        Some(value) if !value.is_none() => {
+            let path = super::path_text(interpreter, &value)?;
+            interpreter.host.resolve(&path)
+        }
+        _ => interpreter.host.cwd(),
+    };
     let argv = match args.plain() {
         Value::Str(text) if shell => vec!["/bin/sh".into(), "-c".into(), text.to_string()],
         Value::Str(text) => vec![text.to_string()],
@@ -44,10 +64,7 @@ fn command_of(interpreter: &mut Interpreter, args: &Value, shell: bool) -> Resul
             }
         }
     };
-    Ok(Command {
-        argv,
-        cwd: interpreter.host.cwd(),
-    })
+    Ok(Command { argv, cwd })
 }
 
 /// Output as text when the call asks for text, else as bytes.
@@ -165,7 +182,7 @@ fn run(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
     let piped = |value: Option<Value>| value.and_then(|value| value.as_int()) == Some(PIPE);
     let capture_stdout = capture || piped(args.take_keyword("stdout"));
     let capture_stderr = capture || piped(args.take_keyword("stderr"));
-    let command = command_of(interpreter, &command_value, shell)?;
+    let command = command_of(interpreter, &command_value, shell, &mut args)?;
     let outcome = interpreter.host.run_command(&command)?;
     if check && outcome.exit_code != 0 {
         return Err(called_process_error(
@@ -196,7 +213,7 @@ fn check_output(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, 
     let command_value = args.take(0, "args").unwrap_or(Value::None);
     let shell = flag(interpreter, &mut args, "shell")?;
     let text = text_mode(interpreter, &mut args)?;
-    let command = command_of(interpreter, &command_value, shell)?;
+    let command = command_of(interpreter, &command_value, shell, &mut args)?;
     let outcome = interpreter.host.run_command(&command)?;
     if outcome.exit_code != 0 {
         return Err(called_process_error(
@@ -213,7 +230,7 @@ fn check_output(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, 
 fn call(interpreter: &mut Interpreter, mut args: Args, check: bool) -> Result<Value, Error> {
     let command_value = args.take(0, "args").unwrap_or(Value::None);
     let shell = flag(interpreter, &mut args, "shell")?;
-    let command = command_of(interpreter, &command_value, shell)?;
+    let command = command_of(interpreter, &command_value, shell, &mut args)?;
     let outcome = interpreter.host.run_command(&command)?;
     if check && outcome.exit_code != 0 {
         return Err(called_process_error(
@@ -300,7 +317,7 @@ fn popen(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> 
     let shell = flag(interpreter, &mut args, "shell")?;
     let text = text_mode(interpreter, &mut args)?;
     let captured = args.take_keyword("stdout").and_then(|value| value.as_int()) == Some(PIPE);
-    let command = command_of(interpreter, &command_value, shell)?;
+    let command = command_of(interpreter, &command_value, shell, &mut args)?;
     let outcome = interpreter.host.run_command(&command)?;
     Ok(Value::native(Popen {
         args: command_value,

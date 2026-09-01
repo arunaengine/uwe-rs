@@ -546,6 +546,15 @@ impl Interpreter {
 
     /// `bool(value)`.
     pub fn truthy(&mut self, value: &Value) -> Result<bool, Error> {
+        if value.as_native::<crate::pandas::Series>().is_some()
+            || value.as_native::<crate::pandas::DataFrame>().is_some()
+            || value.as_native::<crate::pandas::IndexObject>().is_some()
+        {
+            return Err(Error::value_error(format!(
+                "The truth value of a {} is ambiguous",
+                types::type_name(value)
+            )));
+        }
         Ok(match value.plain() {
             Value::None => false,
             Value::Bool(value) => *value,

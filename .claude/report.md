@@ -4,7 +4,7 @@ Reviewed source: `cd37a1843cc183955577804f63b3f8dbd111bf10` on `main`. Review da
 
 ## Verdict
 
-The project has substantial implemented functionality, but it is not ready to serve as a broadly deployed, unattended universal workflow executor. The strongest blockers concern host filesystem boundaries, correctness of cache and resume identity, incomplete remote lifecycle ownership, and silent semantic differences in accepted workflow constructs. A controlled deployment of a specifically validated workflow/backend combination is a narrower proposition and needs its own evidence.
+The project has substantial implemented functionality, but it is not ready to serve as a broadly deployed, unattended universal workflow executor. The strongest blockers concern path mapping and staging correctness, correctness of cache and resume identity, incomplete remote lifecycle ownership, and silent semantic differences in accepted workflow constructs. A controlled deployment of a specifically validated workflow/backend combination is a narrower proposition and needs its own evidence.
 
 The existing separation into language drivers, a shared task model, execution graph, backends, storage, and provenance is useful. The problem is not the absence of an architecture. Several boundaries accept stronger contracts than their implementations enforce, and current test gates do not reliably expose those gaps.
 
@@ -12,7 +12,9 @@ The existing separation into language drivers, a shared task model, execution gr
 
 ## How to read the findings
 
-P1 means a release blocker for the affected supported use case: wrong results, data loss, a filesystem-boundary violation, or a serious operational failure. P2 means a material correctness, reliability, compatibility, or scaling issue. P3 means a lower-impact diagnostic, documentation, or verification issue. No P0 finding was established. Priorities describe the affected trigger, not every deployment.
+P1 means a release blocker for the affected supported use case: wrong results, data loss, incorrect reads or writes to user data, or a serious operational failure. P2 means a material correctness, reliability, compatibility, or scaling issue. P3 means a lower-impact diagnostic, documentation, or verification issue. No P0 finding was established. Priorities describe the affected trigger, not every deployment.
+
+The user clarified that this project executes trusted local workflows under the calling user's permissions. Path-related findings describe unexpected mapping, staging or result behavior in that model. The remediation status and remaining work at the requested pause are recorded in [handoff.md](handoff.md).
 
 Findings listed in the Checks performed probe table have the stated **reproduced observations**; other findings remain **static**: a concrete trigger and causal source trace. Reproduction establishes only the observations described, without extending that evidence to an end-to-end run. Backend-dependent findings and unmeasured scaling risks are labeled separately. Suggested corrections and regressions are recommendations only; no project code was changed.
 
@@ -22,7 +24,7 @@ Source references are relative to the repository root and refer to the reviewed 
 
 | Gate | Why it blocks broader production use | Required evidence |
 | --- | --- | --- |
-| Filesystem confinement | Staging, output adoption, CWL delivery, Argo writeback, and simulation have concrete escape paths. | Sentinel tests for traversal, aliases, symlinks, overlapping inputs, and host-only output references. |
+| Path mapping and staging | Staging, output adoption, CWL delivery, Argo writeback, and simulation can resolve data outside their configured work paths. | Sentinel tests for traversal, aliases, symlinks, overlapping inputs, and unexpected output references. |
 | Data and cache integrity | Directory completeness, mutable inputs, overlapping destinations, and resume identity can return wrong bytes. | Exact-byte tests, corruption tests, concurrent publication tests, and directory-input resume tests. |
 | Remote lifecycle ownership | Polling and cancellation can abandon active jobs while removing local state. | Transient API failures, ambiguous submit, refused cancellation, coordinator restart, and eventual cleanup on each backend. |
 | Explicit language support | Accepted options can disappear before execution or validation. | Differential examples for each supported option; unsupported behavior must fail clearly. |
@@ -31,7 +33,7 @@ Source references are relative to the repository root and refer to the reviewed 
 
 ## Shared engine and task model
 
-### ENG-01 (P1): Simulator output paths escape their work directory
+### ENG-01 (P1): Simulator output paths can resolve outside their work directory
 
 `workflow-graph/src/simulator/mod.rs:280`, `:292`, `:344` preserves parent components in generated output names and joins them onto the task directory without the input-side containment check. A declared output such as `../../../escaped.txt` can create a file outside the simulator root. Existing files are skipped in this particular writer, so this trace establishes creation rather than arbitrary overwrite.
 
@@ -69,7 +71,7 @@ Suppress replacement attempts once draining starts and preserve the appropriate 
 
 ## Local execution, image identity, and package containers
 
-### LOC-01 (P1): Double-leading-slash paths escape scratch staging and output lookup
+### LOC-01 (P1): Double-leading-slash paths use the wrong staging and output root
 
 `executor/src/stage.rs:31`, `executor/src/job.rs:132` remove only one leading slash. Joining the remainder of `//tmp/victim` discards the scratch prefix because it is still absolute. `task-model/src/spec.rs:255` accepts the spelling. A copied input can overwrite a host file; the corresponding output path can address a host file.
 
@@ -571,7 +573,7 @@ Enforce or reject behavioral flags, provide correct supported truth semantics, a
 
 Accept only confined output locations and explicitly staged input mappings, including symlink resolution. Regression: absolute path, file: URL, and ../ output references must fail before reading a sentinel outside task storage.
 
-### CWL-02 (P1): Output basenames escape the requested output folder
+### CWL-02 (P1): Output basenames can select a different output folder
 
 `cwl-runtime/src/results.rs:43`, `:77` joins an unvalidated basename and immediately writes literals. An ExpressionTool literal File with basename ../victim or an absolute name overwrites outside output_dir; literal Directory listings share the path.
 
@@ -657,7 +659,7 @@ Apply admission limits at workflow/template scope or reject them explicitly. Reg
 
 Resolve and validate the selected host path before type/existence/input construction. Regression: root and selected-subtree sentinels, plus file subPath, must expose only the requested source.
 
-### ARG-06 (P1): hostPath writeback escapes its selected root
+### ARG-06 (P1): hostPath writeback can select a different directory
 
 `argo-runtime/src/volumes.rs:358` joins unchecked subPath into host destinations; :370 copies through existing destination symlinks. ../outside writes into a sibling with native user permissions. Arbitrary explicit hostPath workflows are trusted, but this still violates the selected mount's boundary.
 
@@ -825,7 +827,7 @@ These gaps are separate from the defects above. Implementing them is future work
 | Network-aware shared caching | `docs/design/reproducibility.md:124` explicitly admits network tasks share and online results can answer offline tasks; default policy awaits a decision. | Decide and publish trust/reproducibility policy, then make it effective in identity/reuse rules. This acknowledged policy is not counted as an undisclosed implementation bug. |
 | Exact historical repeat boundary | Local input data, live environment/provider configuration, and all image availability are not fully frozen. Replay intentionally prefers existing current inputs (`docs/design/runs.md:229`). | State which content/configuration is archived and fail or clearly distinguish a best-effort/current-input replay from an exact historical computation. |
 | Distribution and support | No project-level license texts, root README, tracked installation/release packaging, or supported-host policy were found. Cargo licenses are consistent; demo licenses cover upstream examples. | Installable/verifiable binary artifacts, project license texts, supported platforms, upgrade/rollback procedures, and an operator guide. No legal conclusion is made here. |
-| Multi-user trust boundary | Task filesystem escapes and inherited cluster credentials need fixes. The run page is intentionally unauthenticated localhost; explicit nonloopback binding changes exposure. | Describe trusted workflow/config/store assumptions and supported multi-user deployment. Authenticated exposure is needed if the page becomes a shared service. |
+| Local execution and page access | Explicit paths, rootless execution and the intentionally local run page need clear supported behavior. | Preserve the trusted local workflow model and document explicit executor permissions and page binding choices. |
 | Backup, retention, and recovery | SQLite schema upgrades exist, but shared-store GC, DB recording failures, and archived export need fault evidence. | Tested backups/restoration, schema compatibility/rollback rules, retention under active readers, and operator-visible unresolved cleanup. |
 | Dependency and artifact assurance | Lockfile pins dependencies, but no tracked advisory/license/provenance release gate was found. This review did not scan current advisories. | Run and record the chosen dependency/security/license checks for release artifacts; do not infer vulnerability-free status from compilation. |
 

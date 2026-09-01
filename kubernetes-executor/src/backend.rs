@@ -123,11 +123,45 @@ impl KubernetesBackend {
         mounts: &[Mount],
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
-        let image = job.spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
         // The command runs through the entrypoint of the image, as `docker run` and the local
         // executor run it; a task without one runs the image's default command.
-        let config = self.configs.get(&image.reference).await?;
         let mut spec = job.spec.clone();
+        let platforms: Vec<&str> = spec
+            .image
+            .iter()
+            .chain(
+                spec.containers
+                    .iter()
+                    .filter_map(|container| container.image.as_ref()),
+            )
+            .filter_map(|image| image.platform.as_deref())
+            .collect();
+        if let Some(platform) = platforms.first() {
+            if platforms.iter().any(|other| other != platform) {
+                return Err(ExecutorError::Unsupported(
+                    "Kubernetes image groups require the same platform".into(),
+                ));
+            }
+            let platform = platform.to_string();
+            for image in spec.image.iter_mut().chain(
+                spec.containers
+                    .iter_mut()
+                    .filter_map(|container| container.image.as_mut()),
+            ) {
+                image.platform = Some(platform.clone());
+            }
+        }
+        let image = spec.image.as_mut().ok_or(ExecutorError::NoImage)?;
+        let config = if image.platform.is_some() {
+            let resolved = self
+                .configs
+                .resolved_for(&image.reference, image.platform.as_deref())
+                .await?;
+            image.reference = resolved.reference;
+            resolved.config
+        } else {
+            self.configs.get(&image.reference).await?
+        };
         if !spec.replaces_entrypoint || spec.arguments.is_empty() {
             spec.arguments = config.command(&job.spec.arguments);
         }
@@ -135,16 +169,30 @@ impl KubernetesBackend {
             return Err(ExecutorError::NoCommand(image.reference.clone()));
         }
         for container in &mut spec.containers {
-            let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
+            let image = container.image.as_mut().ok_or(ExecutorError::NoImage)?;
+            let selected = if image.platform.is_some() {
+                let resolved = self
+                    .configs
+                    .resolved_for(&image.reference, image.platform.as_deref())
+                    .await?;
+                image.reference = resolved.reference;
+                Some(resolved.config)
+            } else {
+                None
+            };
             if container.replaces_entrypoint && !container.arguments.is_empty() {
                 continue;
             }
-            let config = self.configs.get(&image.reference).await?;
+            let config = match selected {
+                Some(config) => config,
+                None => self.configs.get(&image.reference).await?,
+            };
             container.arguments = config.command(&container.arguments);
             if container.arguments.is_empty() {
                 return Err(ExecutorError::NoCommand(image.reference.clone()));
             }
         }
+        let image = spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
         let owner = tokio::fs::metadata(root).await?;
         // The nodes of a cluster run containers with root, as a rootful engine does.
         let access = Access::of((owner.uid(), owner.gid()), false, spec.run_as, &config.user);
@@ -204,7 +252,23 @@ impl KubernetesBackend {
             gpus: job.placement.accelerators.iter().map(|gpu| gpu.count).sum(),
             seconds: job.placement.time_seconds,
         };
-        let manifest = crate::manifest::job(&name, &self.label, &runs, &limits);
+        if limits.gpus > 0 && runs.len() > 1 {
+            return Err(ExecutorError::Unsupported(
+                "Kubernetes GPU sharing across several image groups is not supported".into(),
+            ));
+        }
+        let mut manifest = crate::manifest::job(&name, &self.label, &runs, &limits);
+        let platforms: Vec<&str> = runs
+            .iter()
+            .filter_map(|run| run.image.platform.as_deref())
+            .collect();
+        if let Some(platform) = platforms.first() {
+            let mut parts = platform.split('/');
+            manifest["spec"]["template"]["spec"]["nodeSelector"] = serde_json::json!({
+                "kubernetes.io/os": parts.next().unwrap_or_default(),
+                "kubernetes.io/arch": parts.next().unwrap_or_default(),
+            });
+        }
         self.create(manifest).await?;
         self.pods.add(&name).await;
         let ended = self.wait(&name, cancel).await;

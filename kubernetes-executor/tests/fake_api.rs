@@ -40,6 +40,7 @@ struct State {
     folder: PathBuf,
     jobs: BTreeMap<String, Running>,
     calls: Vec<String>,
+    submitted: Vec<Value>,
 }
 
 fn request(stream: &mut TcpStream) -> Option<(String, String, Option<String>, String)> {
@@ -208,6 +209,36 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
     let mut state = state.lock().expect("the state");
     let path = target.split('?').next().unwrap_or_default().to_owned();
     state.calls.push(format!("{method} {path}"));
+    if path.starts_with("/v2/") {
+        let value = match path.as_str() {
+            "/v2/tool/manifests/1" => json!({"manifests": [
+                {"digest": "sha256:aa", "platform": {"os": "linux", "architecture": "arm64"}},
+                {"digest": "sha256:bb", "platform": {"os": "linux", "architecture": "amd64"}},
+            ]}),
+            "/v2/tool/manifests/sha256:aa" => json!({"config": {"digest": "sha256:cc"}}),
+            "/v2/tool/blobs/sha256:cc" => json!({"os": "linux", "architecture": "arm64",
+                "config": {"Entrypoint": ["env", "FROM_ENTRYPOINT=arm"], "Cmd": [], "User": "1000"}}),
+            "/v2/secondary/manifests/1" => json!({"manifests": [
+                {"digest": "sha256:dd", "platform": {"os": "linux", "architecture": "arm64"}},
+                {"digest": "sha256:ee", "platform": {"os": "linux", "architecture": "amd64"}},
+            ]}),
+            "/v2/secondary/manifests/sha256:dd" => json!({"config": {"digest": "sha256:ff"}}),
+            "/v2/secondary/manifests/sha256:ee" => json!({"config": {"digest": "sha256:gg"}}),
+            "/v2/secondary/blobs/sha256:ff" => json!({"os": "linux", "architecture": "arm64",
+                "config": {"Entrypoint": ["env", "SECONDARY_PLATFORM=arm"],
+                    "Cmd": ["/bin/bash", "-c", "echo $SECONDARY_PLATFORM-arm-default > secondary.txt"]}}),
+            "/v2/secondary/blobs/sha256:gg" => json!({"os": "linux", "architecture": "amd64",
+                "config": {"Entrypoint": ["env", "SECONDARY_PLATFORM=amd"],
+                    "Cmd": ["/bin/bash", "-c", "echo $SECONDARY_PLATFORM-amd-default > secondary.txt"]}}),
+            _ => return reply(&mut stream, "404 Not Found", "application/json", "{}"),
+        };
+        return reply(
+            &mut stream,
+            "200 OK",
+            "application/json",
+            &value.to_string(),
+        );
+    }
     if authorization.as_deref() != Some(&format!("Bearer {TOKEN}")) {
         let status =
             json!({"kind": "Status", "apiVersion": "v1", "status": "Failure", "code": 401});
@@ -222,6 +253,7 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
     match (method.as_str(), path.as_str()) {
         ("POST", JOBS) => {
             let job: Value = serde_json::from_str(&body).expect("a Job");
+            state.submitted.push(job.clone());
             let name = job["metadata"]["name"]
                 .as_str()
                 .unwrap_or_default()
@@ -302,6 +334,7 @@ fn serve(root: &Path) -> (PathBuf, Arc<Mutex<State>>) {
         folder,
         jobs: BTreeMap::new(),
         calls: Vec::new(),
+        submitted: Vec::new(),
     }));
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
     let address = listener.local_addr().expect("an address");
@@ -475,6 +508,167 @@ async fn commands_run_through_the_entrypoint_of_the_image() {
     assert_eq!(finished.exit_code, Some(0));
     let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
     assert_eq!(output, "yes\n");
+}
+
+#[tokio::test]
+async fn selected_platform_binds_metadata_image_and_node() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, state) = backend(root.path()).await;
+    let config = std::fs::read_to_string(root.path().join("kubeconfig")).unwrap();
+    let address = config
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("server: http://"))
+        .unwrap();
+    let reference = format!("localhost:{}/tool", address.rsplit(':').next().unwrap());
+    let mut spec = spec(&format!("{reference}:1"), "echo $FROM_ENTRYPOINT > out.txt");
+    spec.image.as_mut().unwrap().platform = Some("linux/arm64".into());
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "platform",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = backend.run(job, &CancellationToken::new()).await.unwrap();
+    assert_eq!(
+        std::fs::read_to_string(finished.local_path("out.txt")).unwrap(),
+        "arm\n"
+    );
+    let state = state.lock().unwrap();
+    let pod = &state.submitted[0]["spec"]["template"]["spec"];
+    assert_eq!(
+        pod["containers"][0]["image"],
+        format!("{reference}@sha256:aa")
+    );
+    assert_eq!(pod["nodeSelector"]["kubernetes.io/arch"], "arm64");
+    assert_eq!(pod["nodeSelector"]["kubernetes.io/os"], "linux");
+}
+
+#[tokio::test]
+async fn implicit_image_group_uses_the_explicit_pod_platform() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, state) = backend(root.path()).await;
+    let config = std::fs::read_to_string(root.path().join("kubeconfig")).unwrap();
+    let address = config
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("server: http://"))
+        .unwrap();
+    let registry = format!("localhost:{}", address.rsplit(':').next().unwrap());
+    let mut spec = spec(&format!("{registry}/tool:1"), "true");
+    let main = Image {
+        reference: format!("{registry}/tool:1"),
+        platform: Some("linux/arm64".into()),
+    };
+    spec.containers = vec![
+        ContainerSpec {
+            name: "main".into(),
+            image: Some(main),
+            replaces_entrypoint: false,
+            arguments: vec![
+                "/bin/bash".into(),
+                "-c".into(),
+                "cat secondary.txt > out.txt".into(),
+            ],
+            workdir: None,
+            environment: BTreeMap::new(),
+            after: vec!["secondary".into()],
+            attempts: 1,
+        },
+        ContainerSpec {
+            name: "secondary".into(),
+            image: Some(Image {
+                reference: format!("{registry}/secondary:1"),
+                platform: None,
+            }),
+            replaces_entrypoint: false,
+            arguments: Vec::new(),
+            workdir: None,
+            environment: BTreeMap::new(),
+            after: Vec::new(),
+            attempts: 1,
+        },
+    ];
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "mixed-platform",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = backend.run(job, &CancellationToken::new()).await.unwrap();
+    assert_eq!(
+        std::fs::read_to_string(finished.local_path("out.txt")).unwrap(),
+        "arm-arm-default\n"
+    );
+    {
+        let state = state.lock().unwrap();
+        let pod = &state.submitted[0]["spec"]["template"]["spec"];
+        assert_eq!(
+            pod["containers"][1]["image"],
+            format!("{registry}/secondary@sha256:dd")
+        );
+        assert_eq!(pod["nodeSelector"]["kubernetes.io/arch"], "arm64");
+        assert!(
+            !state
+                .calls
+                .iter()
+                .any(|call| call.contains("sha256:ee") || call.contains("sha256:gg"))
+        );
+    }
+    spec.containers[1].image.as_mut().unwrap().platform = Some("linux/amd64".into());
+    let job = Job {
+        name: "conflicting-platform",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    assert!(matches!(
+        backend.run(job, &CancellationToken::new()).await,
+        Err(ExecutorError::Unsupported(_))
+    ));
+    assert_eq!(state.lock().unwrap().submitted.len(), 1);
+}
+
+#[tokio::test]
+async fn gpu_tasks_reject_multiple_image_groups() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, state) = backend(root.path()).await;
+    let mut spec = spec("debian:stable-slim", "true");
+    spec.containers = ["debian:stable-slim", "with-entrypoint"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, image)| ContainerSpec {
+            replaces_entrypoint: true,
+            name: format!("container-{index}"),
+            image: Some(Image {
+                reference: image.into(),
+                platform: None,
+            }),
+            arguments: vec!["true".into()],
+            workdir: None,
+            environment: BTreeMap::new(),
+            after: Vec::new(),
+            attempts: 1,
+        })
+        .collect();
+    let staging = Staging::default();
+    let mut placement = placement();
+    placement.accelerators.push(task_model::Accelerator {
+        count: 1,
+        kind: None,
+    });
+    let job = Job {
+        name: "gpu-groups",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    assert!(matches!(
+        backend.run(job, &CancellationToken::new()).await,
+        Err(ExecutorError::Unsupported(_))
+    ));
+    assert!(state.lock().unwrap().submitted.is_empty());
+    assert!(!backend.scratch.join("gpu-groups").exists());
 }
 
 #[tokio::test]

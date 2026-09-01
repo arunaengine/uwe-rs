@@ -1484,9 +1484,10 @@ impl File {
         if *self.closed.borrow() || !self.writing() {
             return Ok(());
         }
-        let data = std::mem::take(&mut *self.written.borrow_mut());
+        let data = self.written.borrow().clone();
         if self.console {
             interpreter.host.print(&String::from_utf8_lossy(&data));
+            self.written.borrow_mut().clear();
             return Ok(());
         }
         let append = self.mode.contains('a');
@@ -1495,6 +1496,9 @@ impl File {
             .host
             .write(&path, &data, append)
             .map_err(|error| Error::os_error(&error, &self.path))?;
+        if append {
+            self.written.borrow_mut().clear();
+        }
         Ok(())
     }
 }
@@ -1628,7 +1632,10 @@ pub fn file_method(file_value: &Value, name: &str) -> Option<Value> {
                     Value::None
                 })
             }
-            "flush" => Ok(Value::None),
+            "flush" => {
+                file.flush(interpreter)?;
+                Ok(Value::None)
+            }
             "__enter__" | "__iter__" => Ok(file_value.clone()),
             "seek" => {
                 let offset = args.positional.first().and_then(Value::as_int).unwrap_or(0);

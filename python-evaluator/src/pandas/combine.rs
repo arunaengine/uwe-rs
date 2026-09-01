@@ -298,6 +298,36 @@ pub fn merge(
             .collect()
     };
     let matches = |a: &[Value], b: &[Value]| a.iter().zip(b).all(|(a, b)| same_label(a, b));
+    if let Some(validate) = args
+        .take_keyword("validate")
+        .filter(|value| !value.is_none())
+    {
+        let validate = interpreter.to_str(&validate)?;
+        let (check_left, check_right) = match validate.as_str() {
+            "one_to_one" | "1:1" => (true, true),
+            "one_to_many" | "1:m" => (true, false),
+            "many_to_one" | "m:1" => (false, true),
+            "many_to_many" | "m:m" => (false, false),
+            _ => return Err(Error::value_error("Not a valid argument for validate")),
+        };
+        for (check, frame, columns) in [
+            (check_left, &left, &left_columns),
+            (check_right, &right, &right_columns),
+        ] {
+            if check
+                && (0..frame.rows()).any(|row| {
+                    (0..row).any(|other| {
+                        matches(&key_of(frame, columns, row), &key_of(frame, columns, other))
+                    })
+                })
+            {
+                return Err(Error::new(
+                    "MergeError",
+                    "Merge keys are not unique for requested validation",
+                ));
+            }
+        }
+    }
     // The pairs of rows, `None` for a side without a match.
     let mut pairs: Vec<(Option<usize>, Option<usize>)> = Vec::new();
     let mut matched_right = vec![false; right.rows()];

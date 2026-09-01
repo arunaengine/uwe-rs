@@ -6,6 +6,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,6 +15,7 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::thread::JoinHandle;
 
 use python_evaluator::{Error, Interpreter, Value};
+use sha2::Digest;
 use storage::Storage;
 use workflow_graph::{
     Delivery, DeliveryMode, Driver, DriverError, Files, Inputs, Language, Launch, Marker,
@@ -667,6 +669,15 @@ impl Session {
             );
             return self.failed(message);
         }
+        let mut outcome = outcome;
+        if !self.launch.simulated
+            && let Err(error) = self.check_outputs(job, &mut outcome)
+        {
+            if let Some(task) = self.retry(job, outcome.id)? {
+                return Ok(vec![task]);
+            }
+            return self.failed(error.message);
+        }
         if let Some(message) = self.take_outcome(job, outcome)? {
             return self.failed(message);
         }
@@ -694,6 +705,7 @@ impl Session {
             return self.failed(message);
         }
         let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
+        let mut outcomes = Vec::new();
         for (job, declared) in members {
             let mut own = outcome.clone();
             let trimmed = |path: &str| {
@@ -708,6 +720,14 @@ impl Session {
                     path == output || path.starts_with(&format!("{output}/"))
                 })
             });
+            if !self.launch.simulated
+                && let Err(error) = self.check_outputs(job, &mut own)
+            {
+                return self.failed(error.message);
+            }
+            outcomes.push((job, own));
+        }
+        for (job, own) in outcomes {
             if let Some(message) = self.take_outcome(job, own)? {
                 return self.failed(message);
             }
@@ -723,12 +743,6 @@ impl Session {
         job: usize,
         outcome: Outcome,
     ) -> Result<Option<String>, DriverError> {
-        let mut outcome = outcome;
-        if !self.launch.simulated
-            && let Err(error) = self.check_outputs(job, &mut outcome)
-        {
-            return Ok(Some(error.message));
-        }
         // The outputs go to the working directory, as Snakemake leaves them there, except the
         // temporary ones.
         let mut temporary = (self.planner.as_ref())
@@ -922,6 +936,13 @@ impl Session {
         let entry = &planner.jobs[job];
         let rule = planner.rules[entry.rule].name.clone();
         let touched = entry.touched_files();
+        let ensured: Vec<(String, Value)> = entry
+            .output
+            .values
+            .iter()
+            .filter_map(|value| Some((value.as_str()?.to_owned(), value.tag("ensure")?.clone())))
+            .collect();
+        let wildcards = crate::objects::NamedList::wildcards(&entry.wildcards);
         // A service is no file that stays, as Snakemake's `wait_for_files` ignores it.
         let outputs: Vec<String> = (entry.output.values.iter())
             .filter(|value| value.tag("service").is_none())
@@ -951,6 +972,70 @@ impl Session {
             missing.push(output.clone());
         }
         if missing.is_empty() {
+            for (output, options) in ensured {
+                let Value::Dict(options) = options.plain() else {
+                    continue;
+                };
+                let options = options.borrow().clone();
+                let file = outcome
+                    .files
+                    .iter()
+                    .find(|file| {
+                        file.path.trim_start_matches('/').trim_end_matches('/')
+                            == output.trim_start_matches('/').trim_end_matches('/')
+                    })
+                    .ok_or_else(|| {
+                        DriverError::new(format!("ensure output {output} is missing"))
+                    })?;
+                let path = self
+                    .files
+                    .local_location(Path::new(&file.location))
+                    .map_err(|error| DriverError::new(format!("cannot check {output}: {error}")))?;
+                let non_empty = options.get("non_empty").cloned().unwrap_or(Value::None);
+                if self
+                    .interpreter
+                    .truthy(&non_empty)
+                    .map_err(|error| self.error(&error))?
+                    && std::fs::metadata(&path)
+                        .map_err(|error| DriverError::new(error.to_string()))?
+                        .len()
+                        == 0
+                {
+                    return Err(DriverError::new(format!(
+                        "EnsureException in rule {rule}: {output} is empty"
+                    )));
+                }
+                let mut expected = Vec::new();
+                for algorithm in ["sha256", "md5", "sha1"] {
+                    let value = options.get(algorithm).cloned().unwrap_or(Value::None);
+                    if matches!(value.plain(), Value::None) {
+                        continue;
+                    }
+                    let value =
+                        crate::task::evaluate(&mut self.interpreter, &value, &wildcards, &[])
+                            .map_err(|error| self.error(&error))?;
+                    let checksum = value.as_str().ok_or_else(|| DriverError::new(format!(
+                        "EnsureException in rule {rule}: {algorithm} for {output} must be a string"
+                    )))?;
+                    expected.push((algorithm, checksum.to_owned()));
+                }
+                if !expected.is_empty() {
+                    let checksums = output_checksums(&path).map_err(|error| {
+                        DriverError::new(format!("cannot checksum {output}: {error}"))
+                    })?;
+                    for (algorithm, expected) in expected {
+                        if checksums
+                            .iter()
+                            .find(|(name, _)| *name == algorithm)
+                            .is_none_or(|(_, checksum)| checksum != &expected)
+                        {
+                            return Err(DriverError::new(format!(
+                                "EnsureException in rule {rule}: {algorithm} checksum mismatch for {output}"
+                            )));
+                        }
+                    }
+                }
+            }
             return Ok(());
         }
         Err(DriverError::new(format!(
@@ -1117,6 +1202,30 @@ impl Session {
         }
         Ok(())
     }
+}
+
+fn output_checksums(path: &Path) -> std::io::Result<[(&'static str, String); 3]> {
+    let mut input = BufReader::new(std::fs::File::open(path)?);
+    let mut sha256 = sha2::Sha256::new();
+    let mut md5 = md5::Md5::new();
+    let mut sha1 = sha1::Sha1::new();
+    loop {
+        let bytes = input.fill_buf()?;
+        if bytes.is_empty() {
+            break;
+        }
+        sha256.update(bytes);
+        md5.update(bytes);
+        sha1.update(bytes);
+        let length = bytes.len();
+        input.consume(length);
+    }
+    let hex = |bytes: &[u8]| bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    Ok([
+        ("sha256", hex(&sha256.finalize())),
+        ("md5", hex(&md5.finalize())),
+        ("sha1", hex(&sha1.finalize())),
+    ])
 }
 
 /// The driver the engine talks to. The session lives on a thread of its own with a large

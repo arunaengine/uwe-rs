@@ -168,17 +168,38 @@ impl Store {
         Ok(())
     }
 
-    /// Hashes a local file, then stores it unless the store already has its content: a local
-    /// store copies it, other stores get it uploaded in parts.
+    /// Copies a local file, then hashes and stores those same bytes.
     pub async fn put_file(&self, file: &std::path::Path) -> Result<(Digest, u64), StoreError> {
-        let (digest, size) = hash_file(file).await?;
-        self.put_file_as(file, &digest).await?;
+        let snapshot = tempfile::NamedTempFile::new()?;
+        tokio::fs::copy(file, snapshot.path())
+            .await
+            .map_err(at(file))?;
+        let (digest, size) = hash_file(snapshot.path()).await?;
+        self.publish_file_as(snapshot.path(), &digest).await?;
         Ok((digest, size))
     }
 
-    /// Stores a local file whose digest is known, unless the store already has its content, as
-    /// [`Store::put_file`] does without reading the file to hash it.
+    /// Stores a copied local file after verifying its expected digest.
     pub async fn put_file_as(
+        &self,
+        file: &std::path::Path,
+        digest: &Digest,
+    ) -> Result<(), StoreError> {
+        let snapshot = tempfile::NamedTempFile::new()?;
+        tokio::fs::copy(file, snapshot.path())
+            .await
+            .map_err(at(file))?;
+        let (actual, _) = hash_file(snapshot.path()).await?;
+        if &actual != digest {
+            return Err(StoreError::Corrupt {
+                expected: digest.clone(),
+                actual,
+            });
+        }
+        self.publish_file_as(snapshot.path(), digest).await
+    }
+
+    async fn publish_file_as(
         &self,
         file: &std::path::Path,
         digest: &Digest,
@@ -194,7 +215,7 @@ impl Store {
             None => {}
         }
         if let Some(shared) = &self.shared {
-            Box::pin(shared.put_file_as(file, digest)).await?;
+            Box::pin(shared.publish_file_as(file, digest)).await?;
         }
         Ok(())
     }

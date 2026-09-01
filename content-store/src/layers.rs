@@ -149,6 +149,17 @@ async fn copy_folder(source: &Path, target: &Path) -> Result<(), StoreError> {
         let mut entries = tokio::fs::read_dir(&from).await.map_err(at(&from))?;
         while let Some(entry) = entries.next_entry().await.map_err(at(&from))? {
             let inside = to.join(entry.file_name());
+            if entry.file_type().await?.is_symlink()
+                && !tokio::fs::metadata(entry.path())
+                    .await
+                    .is_ok_and(|metadata| metadata.is_file())
+            {
+                let target = tokio::fs::read_link(entry.path()).await?;
+                tokio::fs::symlink(target, &inside)
+                    .await
+                    .map_err(at(&inside))?;
+                continue;
+            }
             match entry.file_type().await.map_err(at(&inside))?.is_dir() {
                 true => pending.push((entry.path(), inside)),
                 false => local::copy_absent(&entry.path(), &inside)

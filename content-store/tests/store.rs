@@ -131,6 +131,29 @@ async fn uploads_large_files() {
     assert_eq!(std::fs::read(stored).expect("read"), content);
 }
 
+#[tokio::test]
+async fn refuses_changed_bytes_under_an_earlier_digest() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("input");
+    std::fs::write(&file, b"before").unwrap();
+    let expected = content_store::hash_file(&file).await.unwrap().0;
+    std::fs::write(&file, b"after").unwrap();
+    for store in [
+        Store::local(&root.path().join("store")).unwrap(),
+        Store::memory().unwrap(),
+    ] {
+        let error = store.put_file_as(&file, &expected).await.unwrap_err();
+        assert!(matches!(error, StoreError::Corrupt { .. }));
+        assert!(!store.has_content(&expected).await.unwrap());
+        let (actual, size) = store.put_file(&file).await.unwrap();
+        assert_eq!((actual.clone(), size), (Digest::sha256(b"after"), 5));
+        assert_eq!(
+            store.get_content(&actual).await.unwrap(),
+            b"after".as_slice()
+        );
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn stores_the_same_content_at_the_same_time() {
     let root = tempfile::tempdir().expect("temporary directory");

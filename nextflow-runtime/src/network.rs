@@ -21,6 +21,57 @@ enum Step {
     Complete(TaskOutcome),
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nextflow_evaluator::interpreter::Host;
+
+    struct Silent;
+    impl Host for Silent {
+        fn print(&mut self, _: &str) {}
+    }
+
+    struct Drain;
+    impl Behaviour for Drain {
+        fn run(&mut self, context: &mut Context) -> Result<State, Error> {
+            while context.read(0).is_some() {}
+            Ok(State::Running)
+        }
+    }
+
+    #[test]
+    fn stopped_nodes_release_their_queue_subscriptions() {
+        let mut network = Network::default();
+        let channel = network.channel(false);
+        let output = network.channel(false);
+        network.add(
+            "take",
+            &[channel],
+            Box::new(crate::operator::Single {
+                kind: crate::operator::Each::Take(1),
+                output,
+            }),
+        );
+        network.add("drain", &[channel], Box::new(Drain));
+        let mut host = Silent;
+        let mut interpreter = Interpreter::new(&mut host);
+        network.ignite(&mut interpreter).unwrap();
+        for _ in 0..100 {
+            for _ in 0..100 {
+                network.channels[channel.0 as usize].write(Message::Value(Value::Null));
+            }
+            network.enqueue(0);
+            network.enqueue(1);
+            network.run(&mut interpreter).unwrap();
+            let Channel::Queue { messages, .. } = &network.channels[channel.0 as usize] else {
+                panic!("queue")
+            };
+            assert!(messages.is_empty());
+        }
+        assert_eq!(network.readers[channel.0 as usize], [1]);
+    }
+}
+
 /// What a node does with the messages of its inputs.
 pub(crate) trait Behaviour {
     /// Starts the node when the network is ignited; factories emit here.
@@ -405,6 +456,12 @@ impl Network {
         self.deliveries.append(&mut context.deliveries);
         node.behaviour = Some(behaviour);
         node.state = result?;
+        if node.state == State::Stopped {
+            for input in &node.inputs {
+                self.channels[input.channel.0 as usize].unsubscribe(input.cursor);
+                self.readers[input.channel.0 as usize].retain(|reader| *reader != index);
+            }
+        }
         for channel in written {
             for reader in self.readers[channel.0 as usize].clone() {
                 self.enqueue(reader);

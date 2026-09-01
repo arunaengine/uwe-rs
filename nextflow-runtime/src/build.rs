@@ -827,11 +827,23 @@ impl Builder<'_> {
                 else {
                     return Err(thrown(format!("Invalid `join` operand: {right}")));
                 };
+                let remainder = option(&options, "remainder").is_some_and(|value| value.truth());
+                let fail_on_mismatch =
+                    option(&options, "failOnMismatch").is_some_and(|value| value.truth());
+                if remainder && fail_on_mismatch {
+                    return Err(thrown(
+                        "`join` cannot combine remainder with failOnMismatch".into(),
+                    ));
+                }
                 let output = queue(self);
                 let node = Join {
                     output,
                     by: indexes(&options, "by").unwrap_or(vec![0]),
-                    remainder: option(&options, "remainder").is_some_and(|value| value.truth()),
+                    remainder,
+                    fail_on_duplicate: option(&options, "failOnDuplicate")
+                        .is_some_and(|value| value.truth()),
+                    fail_on_mismatch,
+                    matched: Default::default(),
                     pending: Default::default(),
                     keys: Default::default(),
                     done: [false; 2],

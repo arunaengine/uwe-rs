@@ -28,7 +28,7 @@ pub enum Channel {
         stopped: bool,
         /// The position of the first message each reader has not read yet, counted from the
         /// first message of the channel.
-        cursors: Vec<usize>,
+        cursors: Vec<Option<usize>>,
     },
     Value(Option<Message>),
 }
@@ -64,7 +64,7 @@ impl Channel {
                 cursors,
                 ..
             } => {
-                cursors.push(*dropped + messages.len());
+                cursors.push(Some(*dropped + messages.len()));
                 Cursor(cursors.len() - 1)
             }
             Channel::Value(_) => Cursor(0),
@@ -86,7 +86,7 @@ impl Channel {
                     return;
                 }
                 *stopped = matches!(message, Message::Stop);
-                if cursors.is_empty() {
+                if cursors.iter().all(Option::is_none) {
                     *dropped += 1;
                 } else {
                     messages.push_back(message);
@@ -115,11 +115,15 @@ impl Channel {
                 cursors,
                 ..
             } => {
-                let position = cursors[cursor.0];
+                let position = cursors.get(cursor.0).copied().flatten()?;
                 let message = messages.get(position - *dropped).cloned()?;
-                cursors[cursor.0] += 1;
+                cursors[cursor.0] = Some(position + 1);
                 // Drop the messages that every reader has read.
-                let first = cursors.iter().copied().min().unwrap_or(position + 1);
+                let first = cursors
+                    .iter()
+                    .filter_map(|cursor| *cursor)
+                    .min()
+                    .unwrap_or(position + 1);
                 while *dropped < first && messages.pop_front().is_some() {
                     *dropped += 1;
                 }
@@ -137,7 +141,7 @@ impl Channel {
                 dropped,
                 cursors,
                 ..
-            } => messages.get(cursors[cursor.0] - dropped),
+            } => messages.get(cursors.get(cursor.0).copied().flatten()? - dropped),
             Channel::Value(bound) => bound.as_ref(),
         }
     }
@@ -150,8 +154,66 @@ impl Channel {
                 dropped,
                 cursors,
                 ..
-            } => cursors[cursor.0] < dropped + messages.len(),
+            } => cursors
+                .get(cursor.0)
+                .copied()
+                .flatten()
+                .is_some_and(|position| position < dropped + messages.len()),
             Channel::Value(bound) => bound.is_some(),
         }
+    }
+
+    /// Releases a reader and the messages that no remaining reader needs.
+    pub fn unsubscribe(&mut self, cursor: Cursor) {
+        if let Channel::Queue {
+            messages,
+            dropped,
+            cursors,
+            ..
+        } = self
+        {
+            if let Some(position) = cursors.get_mut(cursor.0) {
+                *position = None;
+            }
+            let first = cursors
+                .iter()
+                .filter_map(|cursor| *cursor)
+                .min()
+                .unwrap_or(*dropped + messages.len());
+            while *dropped < first && messages.pop_front().is_some() {
+                *dropped += 1;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stopped_reader_does_not_retain_messages() {
+        let mut channel = Channel::queue();
+        let stopped = channel.subscribe();
+        let active = channel.subscribe();
+        channel.write(Message::Value(Value::Null));
+        channel.read(active).unwrap();
+        channel.unsubscribe(stopped);
+        for _ in 0..1000 {
+            channel.write(Message::Value(Value::Null));
+            channel.read(active).unwrap();
+        }
+        let Channel::Queue { messages, .. } = &channel else {
+            panic!("queue")
+        };
+        assert!(messages.is_empty());
+        assert!(channel.read(stopped).is_none());
+        assert!(!channel.ready(stopped));
+        channel.unsubscribe(active);
+        channel.write(Message::Stop);
+        let Channel::Queue { messages, .. } = channel else {
+            panic!("queue")
+        };
+        assert!(messages.is_empty());
     }
 }

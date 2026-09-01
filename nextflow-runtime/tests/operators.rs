@@ -359,6 +359,45 @@ fn join_combine_and_cross() {
 }
 
 #[test]
+fn join_integrity_checks_matched_and_pending_keys() {
+    for body in [
+        "channel.of(['a', 1], ['a', 2]).join(channel.of(['a', 3]), failOnDuplicate: true).view()",
+        "channel.of(['a', 1]).join(channel.of(['a', 2], ['a', 3]), failOnDuplicate: true).view()",
+        "channel.of(['a', 1], ['a', 2]).join(channel.of(['a', 3], ['a', 4]), failOnDuplicate: true).view()",
+    ] {
+        let error = run(body).unwrap_err();
+        assert!(error.contains("duplicate key"), "{error}");
+    }
+    let error = run("channel.of(['a', 1]).join(channel.of(['b', 2]), failOnMismatch: true).view()")
+        .unwrap_err();
+    assert!(error.contains("Join mismatch"), "{error}");
+    let error =
+        run("channel.empty().join(channel.empty(), remainder: true, failOnMismatch: true).view()")
+            .unwrap_err();
+    assert!(error.contains("cannot combine remainder"), "{error}");
+    assert_eq!(
+        lines("channel.of(['a', 1], ['a', 2]).join(channel.of(['a', 3], ['a', 4])).view()"),
+        ["[a, 1, 3]", "[a, 2, 4]"]
+    );
+    assert_eq!(
+        lines(
+            "channel.of(['a', 1]).join(channel.of(['a', 2]), failOnDuplicate: true, failOnMismatch: true).view()"
+        ),
+        ["[a, 1, 2]"]
+    );
+}
+
+#[test]
+fn merge_stops_with_closed_and_unbound_inputs_in_both_orders() {
+    for body in [
+        "channel.empty().merge(channel.value()).ifEmpty('empty').view()",
+        "channel.value().merge(channel.empty()).ifEmpty('empty').view()",
+    ] {
+        assert_eq!(lines(body), ["empty"]);
+    }
+}
+
+#[test]
 fn branch_multi_map_concat_and_merge() {
     assert_eq!(
         lines(

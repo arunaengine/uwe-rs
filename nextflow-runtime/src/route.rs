@@ -88,6 +88,12 @@ pub(crate) struct Merge {
 impl Behaviour for Merge {
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         loop {
+            if (0..context.input_count())
+                .any(|input| matches!(context.peek(input), Some(Message::Stop)))
+            {
+                context.close(self.output);
+                return Ok(State::Stopped);
+            }
             let mut values = Vec::new();
             for input in 0..context.input_count() {
                 match context.peek(input) {

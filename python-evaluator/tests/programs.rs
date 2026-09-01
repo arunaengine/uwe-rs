@@ -246,3 +246,11 @@ fn appending_preserves_disk_content_without_writing_it() {
     assert_eq!(*host.output.borrow(), "oldnewagain\n");
     assert_eq!(std::fs::read_to_string(path).expect("disk content"), "old");
 }
+
+#[test]
+fn truth_consumers_release_the_iterator_before_item_truthiness() {
+    let output = evaluate(
+        "class Item:\n    def __bool__(self):\n        next(it, None)\n        return True\nit = iter([Item(), 0])\nprint(any(it))\nit = iter([Item(), 0])\nprint(all(it))\n",
+    ).expect("reentrant item truthiness");
+    assert_eq!(output, "True\nTrue\n");
+}

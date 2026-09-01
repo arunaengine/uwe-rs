@@ -198,7 +198,7 @@ pub fn itertools() -> Vec<(&'static str, Value)> {
                         let limit = stop.unwrap_or(i64::MAX);
                         let mut index = 0i64;
                         while index < limit {
-                            match state.borrow_mut().next_value() {
+                            match state.borrow_mut().next_value(interpreter)? {
                                 Some(item) => taken.push(item),
                                 None => break,
                             }

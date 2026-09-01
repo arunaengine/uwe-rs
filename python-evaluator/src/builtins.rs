@@ -427,7 +427,13 @@ fn abs(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
 
 fn all(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
     let value = one(&args, "all")?;
-    for item in interpreter.iterate(&value)? {
+    let iterator = interpreter.make_iterator(&value)?;
+    let Value::Iterator(state) = iterator else {
+        unreachable!()
+    };
+    loop {
+        let item = { state.borrow_mut().next_value(interpreter)? };
+        let Some(item) = item else { break };
         if !interpreter.truthy(&item)? {
             return Ok(Value::Bool(false));
         }
@@ -437,7 +443,13 @@ fn all(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
 
 fn any(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
     let value = one(&args, "any")?;
-    for item in interpreter.iterate(&value)? {
+    let iterator = interpreter.make_iterator(&value)?;
+    let Value::Iterator(state) = iterator else {
+        unreachable!()
+    };
+    loop {
+        let item = { state.borrow_mut().next_value(interpreter)? };
+        let Some(item) = item else { break };
         if interpreter.truthy(&item)? {
             return Ok(Value::Bool(true));
         }
@@ -768,7 +780,7 @@ fn next(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
     args.expect("next", 1, 2)?;
     let iterator = &args.positional[0];
     let found = match iterator.plain() {
-        Value::Iterator(state) => state.borrow_mut().next_value(),
+        Value::Iterator(state) => state.borrow_mut().next_value(interpreter)?,
         Value::Instance(_) => match interpreter.lookup_special(iterator, "__next__") {
             Some(method) => match interpreter.call(&method, Args::default()) {
                 Ok(value) => Some(value),

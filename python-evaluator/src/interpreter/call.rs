@@ -745,7 +745,7 @@ impl Interpreter {
             Value::Iterator(iterator) => {
                 let mut items = Vec::new();
                 loop {
-                    let next = iterator.borrow_mut().next_value();
+                    let next = iterator.borrow_mut().next_value(self)?;
                     match next {
                         Some(item) => items.push(item),
                         None => break,

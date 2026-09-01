@@ -58,6 +58,9 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
              what runs that go on need",
         ));
     };
+    if arguments.remove {
+        remote_attempts_finished(&cache_directory().join("scratch"))?;
+    }
     let broken = |error: &dyn std::fmt::Display| failure(format!("iunctus: {error}"));
     let setup = Setup::load(arguments)?;
     let location = setup.store_location(arguments);
@@ -131,6 +134,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         }
         return Ok(());
     }
+    remote_attempts_finished(&cache_directory().join("scratch"))?;
     let removed = runtime
         .block_on(remove(&store, &planned))
         .map_err(|error| broken(&error))?;
@@ -151,6 +155,42 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
 /// The folders in the scratch folder where the TES, Kubernetes and SLURM executors keep the
 /// folders of their attempts.
 const EXECUTOR_FOLDERS: [&str; 3] = ["tes", "kubernetes", "slurm"];
+
+fn remote_attempts_finished(scratch: &Path) -> Result<(), Failure> {
+    let folders = EXECUTOR_FOLDERS.iter().map(|name| scratch.join(name));
+    for folder in std::iter::once(scratch.to_owned()).chain(folders) {
+        let entries = match std::fs::read_dir(&folder) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(failure(format!("iunctus: {}: {error}", folder.display())));
+            }
+        };
+        for entry in entries {
+            let entry = entry
+                .map_err(|error| failure(format!("iunctus: {}: {error}", folder.display())))?;
+            if !entry
+                .file_type()
+                .map_err(|error| failure(format!("iunctus: {}: {error}", entry.path().display())))?
+                .is_dir()
+            {
+                continue;
+            }
+            let record = entry.path().join("remote.json");
+            if record
+                .try_exists()
+                .map_err(|error| failure(format!("iunctus: {}: {error}", record.display())))?
+            {
+                return Err(failure(format!(
+                    "iunctus: the remote attempt recorded in {} may still use its inputs; \
+                     reconcile it with its original executor settings before removing data",
+                    record.display()
+                )));
+            }
+        }
+    }
+    Ok(())
+}
 
 /// A folder of the scratch directory that clean-up removes.
 struct Scratch {
@@ -388,6 +428,35 @@ fn time(milliseconds: i64) -> SystemTime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unresolved_remote_attempts_keep_their_inputs_and_scratch() {
+        let folder = tempfile::tempdir().expect("scratch");
+        std::fs::write(folder.path().join("scratch.note"), "note").expect("ordinary file");
+        assert!(
+            remote_attempts_finished(folder.path()).is_ok(),
+            "no attempts"
+        );
+        for backend in EXECUTOR_FOLDERS {
+            let attempt = folder.path().join(backend).join("run-task-1");
+            std::fs::create_dir_all(attempt.join("work")).expect("attempt");
+            std::fs::write(attempt.join("work/remote.json"), "output").expect("output");
+            assert!(
+                remote_attempts_finished(folder.path()).is_ok(),
+                "ordinary output"
+            );
+            let record = attempt.join("remote.json");
+            std::fs::write(&record, "{}").expect("attempt record");
+            let error = remote_attempts_finished(folder.path()).expect_err("unresolved attempt");
+            assert!(error.message.contains(&record.display().to_string()));
+            assert!(attempt.join("work/remote.json").is_file());
+            std::fs::remove_file(record).expect("confirmed completion");
+            assert!(
+                remote_attempts_finished(folder.path()).is_ok(),
+                "completed attempt"
+            );
+        }
+    }
 
     #[test]
     fn sizes_and_times_read_well() {

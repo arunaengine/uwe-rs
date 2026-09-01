@@ -167,6 +167,13 @@ impl Backend for SlurmBackend {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
+        if job.placement.accelerators.iter().any(|gpu| gpu.count > 0)
+            && matches!(&self.container, Container::Engine(_))
+        {
+            return Err(ExecutorError::Unsupported(
+                "SLURM GPU placement requires Apptainer or Singularity".into(),
+            ));
+        }
         if job.placement.offline
             && matches!(&self.container, Container::Apptainer(program) if !program.ends_with("apptainer"))
         {
@@ -204,15 +211,34 @@ impl SlurmBackend {
     /// Apptainer's `exec` does.
     async fn task_command(
         &self,
-        image: &task_model::Image,
+        image: &mut task_model::Image,
         replaces_entrypoint: bool,
         arguments: &[String],
     ) -> Result<Vec<String>, ExecutorError> {
+        let file = image.reference.starts_with('/') || image.reference.ends_with(".sif");
+        let registry = !file && !image.reference.contains("://");
+        let selected = if let Some(platform) = image.platform.as_deref() {
+            if !registry {
+                return Err(ExecutorError::Unsupported(
+                    "SLURM cannot select a platform for a SIF file or image address".into(),
+                ));
+            }
+            let resolved = self
+                .configs
+                .resolved_for(&image.reference, Some(platform))
+                .await?;
+            image.reference = resolved.reference;
+            Some(resolved.config)
+        } else {
+            None
+        };
         let reference = image.reference.as_str();
-        let file = reference.starts_with('/') || reference.ends_with(".sif");
-        let registry = !file && !reference.contains("://");
         let command = match registry && !(replaces_entrypoint && !arguments.is_empty()) {
-            true => self.image_config(reference).await?.command(arguments),
+            true => match selected {
+                Some(config) => config,
+                None => self.image_config(reference).await?,
+            }
+            .command(arguments),
             false => arguments.to_vec(),
         };
         if command.is_empty() {
@@ -264,18 +290,19 @@ impl SlurmBackend {
         mounts: &[executor::process::Mount],
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
-        let image = job.spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
         let mut spec = job.spec.clone();
+        let image = spec.image.as_mut().ok_or(ExecutorError::NoImage)?;
         let replaces = spec.replaces_entrypoint;
         spec.arguments = self.task_command(image, replaces, &spec.arguments).await?;
         for container in &mut spec.containers {
-            let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
+            let image = container.image.as_mut().ok_or(ExecutorError::NoImage)?;
             let replaces = container.replaces_entrypoint;
             container.arguments = self
                 .task_command(image, replaces, &container.arguments)
                 .await?;
         }
         let spec = &spec;
+        let image = spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
         let image = &self.runnable(image, cancel).await?;
         let control = root.join(CONTROL);
         let owner = tokio::fs::metadata(root).await?;
@@ -787,6 +814,106 @@ fn machine(message: String) -> ExecutorError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn selected_platform_pins_even_a_replaced_entrypoint() {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            for _ in 0..3 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(&mut stream);
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                let path = line.split_whitespace().nth(1).unwrap().to_owned();
+                loop {
+                    line.clear();
+                    reader.read_line(&mut line).unwrap();
+                    if line.trim().is_empty() {
+                        break;
+                    }
+                }
+                let body = match path.as_str() {
+                    "/v2/tool/manifests/1" => {
+                        r#"{"manifests":[{"digest":"sha256:aa","platform":{"os":"linux","architecture":"arm64"}},{"digest":"sha256:bb","platform":{"os":"linux","architecture":"amd64"}}]}"#
+                    }
+                    "/v2/tool/manifests/sha256:aa" => r#"{"config":{"digest":"sha256:cc"}}"#,
+                    "/v2/tool/blobs/sha256:cc" => {
+                        r#"{"os":"linux","architecture":"arm64","config":{"Entrypoint":["arm-entry"],"Cmd":["arm-command"]}}"#
+                    }
+                    _ => panic!("unexpected request {path}"),
+                };
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .unwrap();
+            }
+        });
+        let backend = SlurmBackend::new(PathBuf::new(), Container::Apptainer("apptainer".into()));
+        let mut image = task_model::Image {
+            reference: format!("localhost:{port}/tool:1"),
+            platform: Some("linux/arm64".into()),
+        };
+        let command = backend
+            .task_command(&mut image, true, &["custom".into()])
+            .await
+            .unwrap();
+        assert_eq!(command, ["custom"]);
+        assert_eq!(image.reference, format!("localhost:{port}/tool@sha256:aa"));
+        let mut image = task_model::Image {
+            reference: format!("localhost:{port}/tool:1"),
+            platform: Some("linux/arm64".into()),
+        };
+        assert_eq!(
+            backend.task_command(&mut image, false, &[]).await.unwrap(),
+            ["arm-entry", "arm-command"]
+        );
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn engine_gpu_requests_fail_before_staging() {
+        let folder = tempfile::tempdir().unwrap();
+        let scratch = folder.path().join("scratch");
+        let backend = SlurmBackend::new(
+            scratch.clone(),
+            Container::Engine(executor::EngineCommand::docker("docker")),
+        );
+        let spec = task_model::TaskSpec {
+            format: task_model::FORMAT,
+            namespace: String::new(),
+            image: None,
+            arguments: Vec::new(),
+            workdir: None,
+            environment: Default::default(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            stdin: None,
+            containers: Vec::new(),
+            replaces_entrypoint: false,
+            run_as: None,
+        };
+        let staging = executor::Staging::default();
+        let mut placement = task_model::Placement::default();
+        placement.accelerators.push(task_model::Accelerator {
+            count: 1,
+            kind: None,
+        });
+        let job = Job {
+            name: "gpu",
+            spec: &spec,
+            staging: &staging,
+            placement: &placement,
+        };
+        assert!(matches!(
+            backend.run(job, &CancellationToken::new()).await,
+            Err(ExecutorError::Unsupported(_))
+        ));
+        assert!(!scratch.exists());
+    }
 
     #[test]
     fn jobs_end_tasks_or_fail_the_machine() {

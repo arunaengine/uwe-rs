@@ -145,7 +145,7 @@ pub struct Settings {
     /// Where remote inputs, and inputs of a remote store, are downloaded before a task.
     pub downloads: PathBuf,
     /// Whether local input files are copied into the store, as tasks on another machine
-    /// need. A backend on this machine reads them where they are, so their digests are enough.
+    /// need. A backend on this machine reads persistent input snapshots.
     pub import_inputs: bool,
     /// The storage providers that remote inputs come from.
     pub storage: Storage,
@@ -157,7 +157,7 @@ pub struct Settings {
 /// Where the content of an input comes from, for staging.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Source {
-    /// A local file or directory, which a backend on this machine shows as it is.
+    /// A persistent snapshot of a local file or directory.
     Local(PathBuf),
     /// Literal content of the workflow, which the task gets a copy of.
     Content,

@@ -201,6 +201,10 @@ fn within(tree: &Tree, base: &str, path: &str) -> Option<Vec<TreeEntry>> {
         TreeEntry::EmptyDirectory { path } => Some(TreeEntry::EmptyDirectory {
             path: path.strip_prefix(&prefix)?.to_owned(),
         }),
+        TreeEntry::Symlink { path, target } => Some(TreeEntry::Symlink {
+            path: path.strip_prefix(&prefix)?.to_owned(),
+            target: target.clone(),
+        }),
     });
     Some(entries.collect())
 }
@@ -379,6 +383,19 @@ async fn store_directory(
                 }
                 entries.push(TreeEntry::EmptyDirectory { path: relative });
             }
+            Found::Symlink { relative, target } => {
+                let location = layout::output(run, task, attempt, &inside)?;
+                if let Some(path) = store.local_path(&location) {
+                    tokio::fs::create_dir_all(path.parent().expect("a parent")).await?;
+                    tokio::fs::symlink(&target, &path)
+                        .await
+                        .map_err(at(&path))?;
+                }
+                entries.push(TreeEntry::Symlink {
+                    path: relative,
+                    target,
+                });
+            }
         }
     }
     Ok(Tree { entries })
@@ -394,20 +411,25 @@ pub(crate) enum Found {
     EmptyDirectory {
         relative: String,
     },
+    Symlink {
+        relative: String,
+        target: String,
+    },
 }
 
 impl Found {
     /// The path relative to the directory.
     fn relative(&self) -> &str {
         match self {
-            Found::File { relative, .. } | Found::EmptyDirectory { relative } => relative,
+            Found::File { relative, .. }
+            | Found::EmptyDirectory { relative }
+            | Found::Symlink { relative, .. } => relative,
         }
     }
 }
 
 /// The files and empty directories below a directory, by their paths relative to it, found on
-/// a thread that may block. A symbolic link to a file counts as the file; links to
-/// directories are not followed.
+/// a thread that may block. Internal relative links are kept without following them.
 pub(crate) async fn walk(root: &Path) -> Result<Vec<Found>, RunnerError> {
     let root = root.to_owned();
     tokio::task::spawn_blocking(move || walk_now(&root))
@@ -432,11 +454,50 @@ fn walk_now(root: &Path) -> Result<Vec<Found>, RunnerError> {
             } else {
                 format!("{prefix}/{name}")
             };
-            if entry.file_type()?.is_dir() {
-                pending.push((entry.path(), relative));
-            } else if let Ok(metadata) = std::fs::metadata(entry.path())
-                && metadata.is_file()
+            if entry.file_type()?.is_symlink()
+                && !std::fs::metadata(entry.path()).is_ok_and(|metadata| metadata.is_file())
             {
+                let target = std::fs::read_link(entry.path())?;
+                let mut depth = Path::new(&relative)
+                    .parent()
+                    .map_or(0, |parent| parent.components().count());
+                let internal = target.components().all(|part| match part {
+                    std::path::Component::Normal(_) => {
+                        depth += 1;
+                        true
+                    }
+                    std::path::Component::ParentDir if depth > 0 => {
+                        depth -= 1;
+                        true
+                    }
+                    std::path::Component::CurDir => true,
+                    _ => false,
+                });
+                if internal {
+                    let target = target
+                        .into_os_string()
+                        .into_string()
+                        .map_err(|_| RunnerError::Name(entry.path()))?;
+                    found.push(Found::Symlink { relative, target });
+                    continue;
+                }
+                if !std::fs::metadata(entry.path())
+                    .map_err(at(&entry.path()))?
+                    .is_file()
+                {
+                    return Err(RunnerError::File {
+                        path: entry.path(),
+                        error: std::io::Error::new(
+                            std::io::ErrorKind::Unsupported,
+                            "directory link target is absolute or outside the selected directory",
+                        ),
+                    });
+                }
+            }
+            let metadata = std::fs::metadata(entry.path()).map_err(at(&entry.path()))?;
+            if metadata.is_dir() {
+                pending.push((entry.path(), relative));
+            } else if metadata.is_file() {
                 found.push(Found::File {
                     relative,
                     path: entry.path(),

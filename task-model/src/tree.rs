@@ -25,12 +25,18 @@ pub enum TreeEntry {
     EmptyDirectory {
         path: String,
     },
+    Symlink {
+        path: String,
+        target: String,
+    },
 }
 
 impl TreeEntry {
     pub fn path(&self) -> &str {
         match self {
-            Self::File { path, .. } | Self::EmptyDirectory { path } => path,
+            Self::File { path, .. }
+            | Self::EmptyDirectory { path }
+            | Self::Symlink { path, .. } => path,
         }
     }
 }
@@ -59,7 +65,7 @@ impl Tree {
             .iter()
             .map(|entry| match entry {
                 TreeEntry::File { size, .. } => *size,
-                TreeEntry::EmptyDirectory { .. } => 0,
+                TreeEntry::EmptyDirectory { .. } | TreeEntry::Symlink { .. } => 0,
             })
             .sum()
     }

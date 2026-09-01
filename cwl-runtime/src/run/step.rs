@@ -296,7 +296,7 @@ impl Run {
             };
             let name = short_name(&input.id);
             let mut this = before.get(name).cloned().unwrap_or(Value::Null);
-            access.load_listings(&mut this, true);
+            access.load_listings(&mut this, true)?;
             let value = evaluator
                 .evaluate(
                     expression,

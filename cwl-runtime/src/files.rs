@@ -386,40 +386,74 @@ impl Access {
 
     /// Fills the listings of the directories in a value, as cwltool's `get_listing`: those
     /// the value holds, not the ones a new listing brings, unless `deep`.
-    pub fn load_listings(&self, value: &mut Value, deep: bool) {
+    pub fn load_listings(&self, value: &mut Value, deep: bool) -> Result<(), String> {
         match value {
             Value::List(items) => {
                 for item in items {
-                    self.load_listings(item, deep);
+                    self.load_listings(item, deep)?;
                 }
             }
             Value::Map(map) if map.get("class").and_then(Value::as_str) == Some("Directory") => {
                 let listed = map.contains_key("listing");
-                self.load_listing(map, deep);
+                self.load_listing(map, deep)?;
                 if listed && let Some(listing) = map.get_mut("listing") {
-                    self.load_listings(listing, deep);
+                    self.load_listings(listing, deep)?;
                 }
             }
             Value::Map(map) => {
                 for (_, item) in map.iter_mut() {
-                    self.load_listings(item, deep);
+                    self.load_listings(item, deep)?;
                 }
             }
             _ => {}
         }
+        Ok(())
     }
 
-    /// Fills the `listing` of a directory from disk, one level or all levels deep. A listing
-    /// that is already there stays; a directory that is not on disk gets an empty one.
-    pub fn load_listing(&self, directory: &mut Map, deep: bool) {
+    /// Fills a directory listing from disk or its provider. Existing listings stay.
+    pub fn load_listing(&self, directory: &mut Map, deep: bool) -> Result<(), String> {
         if !directory.contains_key("listing") {
             let location = directory
                 .get("location")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            let listing = match local_path(location) {
-                Some(path) => list_directory(&path),
-                None => Vec::new(),
+            let listing = if self.assume_present || location.starts_with("_:") {
+                match local_path(location).filter(|path| path.is_dir()) {
+                    Some(path) => list_directory(&path)?,
+                    None => Vec::new(),
+                }
+            } else if let Some(path) = local_path(location) {
+                list_directory(&path)?
+            } else {
+                let mut entries = self
+                    .remote
+                    .storage
+                    .blocking()
+                    .list(location)
+                    .map_err(|error| format!("cannot list {location}: {error}"))?;
+                entries.sort_by(|a, b| a.name.cmp(&b.name));
+                entries
+                    .into_iter()
+                    .map(|entry| {
+                        let mut child = Map::new();
+                        child.insert(
+                            "class".into(),
+                            Value::string(if entry.directory { "Directory" } else { "File" }),
+                        );
+                        let name = iri::file_url(Path::new(&entry.name));
+                        child.insert(
+                            "location".into(),
+                            Value::String(iri::join(
+                                &format!("{}/", location.trim_end_matches('/')),
+                                name.trim_start_matches("file://"),
+                            )),
+                        );
+                        child.insert("basename".into(), Value::String(entry.name));
+                        let mut value = Value::Map(child);
+                        normalize(&mut value)?;
+                        Ok(value)
+                    })
+                    .collect::<Result<Vec<_>, String>>()?
             };
             directory.insert("listing".into(), Value::List(listing));
         }
@@ -428,10 +462,11 @@ impl Access {
                 if let Value::Map(child) = item
                     && child.get("class").and_then(Value::as_str) == Some("Directory")
                 {
-                    self.load_listing(child, true);
+                    self.load_listing(child, true)?;
                 }
             }
         }
+        Ok(())
     }
 }
 
@@ -441,16 +476,23 @@ fn too_large(name: &str, limit: u64) -> String {
 }
 
 /// The entries of a directory on disk, sorted by name.
-fn list_directory(path: &Path) -> Vec<Value> {
-    let Ok(entries) = std::fs::read_dir(path) else {
-        return Vec::new();
-    };
-    let mut paths: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
+fn list_directory(path: &Path) -> Result<Vec<Value>, String> {
+    let failed = |error| format!("cannot list {}: {error}", path.display());
+    let entries = std::fs::read_dir(path).map_err(failed)?;
+    let mut paths: Vec<PathBuf> = entries
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<Result<_, _>>()
+        .map_err(failed)?;
     paths.sort();
     paths
         .into_iter()
         .map(|path| {
-            let class = if path.is_dir() { "Directory" } else { "File" };
+            let metadata = std::fs::metadata(&path).map_err(failed)?;
+            let class = if metadata.is_dir() {
+                "Directory"
+            } else {
+                "File"
+            };
             let mut entry = Map::new();
             entry.insert("class".into(), Value::string(class));
             entry.insert("location".into(), Value::String(iri::file_url(&path)));
@@ -464,7 +506,7 @@ fn list_directory(path: &Path) -> Vec<Value> {
                 entry.insert("nameext".into(), Value::string(extension));
             }
             entry.insert("basename".into(), Value::String(name));
-            Value::Map(entry)
+            Ok(Value::Map(entry))
         })
         .collect()
 }

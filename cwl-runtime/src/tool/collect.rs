@@ -15,7 +15,7 @@ use workflow_graph::simulator::glob_matches;
 use workflow_graph::{Files, Outcome, OutputFile};
 
 use super::outputs::{classes, globs};
-use super::{OUTPUT_JSON, Pending, STAGING, TMPDIR};
+use super::{OUTPUT_JSON, Pending};
 use crate::expression::Variables;
 use crate::files::{self, Access};
 use crate::inputs::has_code;
@@ -46,8 +46,10 @@ impl Pending {
         };
         let from_json = match outcome.files.iter().find(|file| file.path == OUTPUT_JSON) {
             Some(file) => {
-                let bytes = workflow_graph::files::read(files, &file.location);
-                let text = String::from_utf8(bytes.unwrap_or_default()).unwrap_or_default();
+                let bytes = workflow_graph::files::read(files, &file.location)
+                    .map_err(|error| format!("cannot read {OUTPUT_JSON}: {error}"))?;
+                let text = String::from_utf8(bytes)
+                    .map_err(|error| format!("{OUTPUT_JSON} is not UTF-8: {error}"))?;
                 match Value::parse(&text) {
                     Ok(Value::Map(map)) => Some(map),
                     // The simulator makes an empty file, which gives no outputs.
@@ -71,6 +73,13 @@ impl Pending {
             };
             outputs = map;
             for (_, value) in outputs.iter_mut() {
+                if let Some(listing) = self.load_listing
+                    && listing != LoadListing::NoListing
+                {
+                    collector
+                        .access
+                        .load_listings(value, listing == LoadListing::DeepListing)?;
+                }
                 collector.checksums(value)?;
             }
         } else {
@@ -159,7 +168,7 @@ impl Pending {
             if file.get("class").and_then(Value::as_str) == Some("File") {
                 let _ = access.add_checksum(file);
             } else {
-                access.load_listing(file, false);
+                let _ = access.load_listing(file, false);
             }
         });
         // The secondary files the output declares come with it, as with a real run.
@@ -239,65 +248,134 @@ impl Collector<'_> {
         let Value::Map(map) = value else {
             return Ok(());
         };
-        let location = map
-            .get("location")
-            .and_then(Value::as_str)
-            .map(str::to_owned);
-        let mut path = map.get("path").and_then(Value::as_str).map(str::to_owned);
-        // A `file:` location inside the output directory of the container, as
-        // `cwl.output.json` may give one, names a path there.
-        let outdir = &self.pending.outdir;
-        if path.is_none()
-            && let Some(file_path) = location.as_deref().and_then(iri::file_path)
-            && file_path.starts_with(outdir)
-        {
-            path = Some(file_path.to_string_lossy().into_owned());
+        let path = map.get("path").and_then(Value::as_str);
+        let location = map.get("location").and_then(Value::as_str);
+        let Some(reference) = path.or(location).map(str::to_owned) else {
+            return Ok(());
+        };
+        if path.is_none() && reference.starts_with("_:") {
+            return Ok(());
         }
-        match (location, path) {
-            (Some(location), None) => {
-                if !iri::has_scheme(&location) && !location.starts_with("_:") {
-                    let base = self.workdir.clone().unwrap_or_default();
-                    let joined = iri::file_url(&Path::new(&base).join(&location));
-                    map.insert("location".into(), Value::String(joined));
-                }
-                Ok(())
-            }
-            (_, Some(path)) => {
-                map.shift_remove("dirname");
-                let outdir = &self.pending.outdir;
-                let absolute = if path.starts_with('/') {
-                    path.clone()
-                } else {
-                    format!("{outdir}/{path}")
-                };
-                map.shift_remove("path");
-                if !map.contains_key("basename") {
-                    map.insert(
-                        "basename".into(),
-                        Value::String(files::basename_of(&absolute)),
-                    );
-                }
-                let location = if let Some(original) = self.pending.staged.get(&absolute) {
-                    original.clone()
-                } else if absolute == *outdir || absolute.starts_with(&format!("{outdir}/")) {
-                    let relative = absolute[outdir.len()..].trim_start_matches('/');
-                    let base = self.workdir.clone().unwrap_or_default();
-                    iri::file_url(&Path::new(&base).join(relative))
-                } else if absolute.starts_with(TMPDIR) || absolute.starts_with(STAGING) {
-                    return Err(format!(
-                        "the output `{path}` is outside the output directory"
+        let uri = if path.is_none() {
+            iri::join(
+                &format!("{}/", iri::file_url(Path::new(&self.pending.outdir))),
+                &reference,
+            )
+        } else {
+            reference.clone()
+        };
+        let local = iri::file_path(&uri);
+        let container = if let Some(local) = &local {
+            local.to_string_lossy().into_owned()
+        } else {
+            uri
+        };
+        let absolute = if !iri::has_scheme(&container) && !container.starts_with('/') {
+            format!("{}/{container}", self.pending.outdir)
+        } else {
+            container
+        };
+        // Decode file URI escapes before normalizing, so encoded parent segments count.
+        let absolute = if iri::has_scheme(&absolute) {
+            iri::join("", &absolute)
+        } else {
+            iri::file_path(&iri::join("", &iri::file_url(Path::new(&absolute))))
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned()
+        };
+        let mut mapped = None;
+        let mut longest = 0;
+        for (staged, (original, directory)) in &self.pending.staged {
+            if absolute == *staged || (*directory && absolute.starts_with(&format!("{staged}/"))) {
+                if staged.len() >= longest {
+                    longest = staged.len();
+                    mapped = Some(join_location(
+                        original,
+                        absolute[staged.len()..].trim_start_matches('/'),
                     ));
-                } else {
-                    // A path from the host, such as a file in a work folder of the simulator.
-                    iri::file_url(Path::new(&absolute))
-                };
-                map.insert("location".into(), Value::String(location));
-                // Keep the container path for expressions that come after, like secondaryFiles.
-                map.insert("path".into(), Value::String(absolute));
-                Ok(())
+                }
             }
-            (None, None) => Ok(()),
         }
+        if mapped.is_none() {
+            let outdir = &self.pending.outdir;
+            if absolute == *outdir || absolute.starts_with(&format!("{outdir}/")) {
+                let relative = absolute[outdir.len()..].trim_start_matches('/');
+                mapped = self
+                    .outcome
+                    .files
+                    .iter()
+                    .find(|file| file.path.trim_end_matches('/') == relative)
+                    .map(|file| location_of(&file.location));
+                if mapped.is_none() {
+                    mapped = self
+                        .workdir
+                        .as_ref()
+                        .map(|base| join_location(base, relative));
+                }
+            } else {
+                let candidate = location_of(&absolute);
+                if self.known_location(&candidate) {
+                    mapped = Some(candidate);
+                }
+            }
+        }
+        let location = mapped.ok_or_else(|| {
+            format!("the output `{reference}` is outside the task's work and staged inputs")
+        })?;
+        self.check_location(&location)?;
+        map.shift_remove("dirname");
+        if !map.contains_key("basename") {
+            map.insert(
+                "basename".into(),
+                Value::String(files::basename_of(&reference)),
+            );
+        }
+        map.insert("location".into(), Value::String(location));
+        map.insert("path".into(), Value::String(absolute));
+        Ok(())
+    }
+
+    fn known_location(&self, location: &str) -> bool {
+        self.workdir
+            .as_ref()
+            .is_some_and(|base| within(location, base))
+            || self.outcome.files.iter().any(|file| {
+                location == location_of(&file.location)
+                    || (file.directory && within(location, &file.location))
+            })
+            || self.pending.staged.values().any(|(original, directory)| {
+                location == location_of(original) || (*directory && within(location, original))
+            })
+    }
+
+    fn check_location(&self, location: &str) -> Result<(), String> {
+        if let Some(path) = iri::file_path(location)
+            && let Ok(resolved) = path.canonicalize()
+        {
+            let canonical = iri::file_url(&resolved);
+            let allowed = self.workdir.as_ref().is_some_and(|base| {
+                iri::file_path(&location_of(base))
+                    .and_then(|path| path.canonicalize().ok())
+                    .is_some_and(|base| resolved.starts_with(base))
+            }) || self.pending.staged.values().any(|(original, directory)| {
+                iri::file_path(original)
+                    .and_then(|path| path.canonicalize().ok())
+                    .is_some_and(|source| {
+                        resolved == source || (*directory && resolved.starts_with(source))
+                    })
+            }) || self
+                .outcome
+                .files
+                .iter()
+                .any(|file| location_of(&file.location) == canonical);
+            if !allowed {
+                return Err(format!(
+                    "the output `{location}` resolves outside the task's data view"
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Adds size and checksum to the files of a value that lack them.
@@ -305,6 +383,12 @@ impl Collector<'_> {
         let access = &self.access;
         let mut error = None;
         files::visit_files(value, &mut |file| {
+            if let Some(location) = file.get("location").and_then(Value::as_str)
+                && let Err(message) = self.check_location(location)
+            {
+                error.get_or_insert(message);
+                return;
+            }
             let is_file = file.get("class").and_then(Value::as_str) == Some("File");
             if is_file
                 && !file.contains_key("checksum")
@@ -325,7 +409,7 @@ impl Collector<'_> {
     fn operation(&self, output: &OutputParameter) -> Result<Value, String> {
         let name = short_name(&output.id);
         let types = &self.pending.types;
-        let found = self.matches(name);
+        let found = self.matches(name)?;
         let binding = OutputBinding {
             glob: Vec::new(),
             load_contents: None,
@@ -438,7 +522,7 @@ impl Collector<'_> {
         let checked = binding.output_eval.is_none() && files != directories;
         let mut found: Vec<Value> = Vec::new();
         for pattern in &patterns {
-            for file in self.matches(pattern) {
+            for file in self.matches(pattern)? {
                 if checked && file.directory != directories {
                     let (class, taken) = if file.directory {
                         ("directory", "files")
@@ -531,9 +615,9 @@ impl Collector<'_> {
     }
 
     /// The outcome files a glob pattern matches, sorted, with `.` for the work folder.
-    fn matches(&self, pattern: &str) -> Vec<OutputFile> {
+    fn matches(&self, pattern: &str) -> Result<Vec<OutputFile>, String> {
         if pattern == "." {
-            return match &self.workdir {
+            return Ok(match &self.workdir {
                 Some(folder) => vec![OutputFile {
                     path: ".".into(),
                     location: folder.clone(),
@@ -541,7 +625,7 @@ impl Collector<'_> {
                     ..OutputFile::default()
                 }],
                 None => Vec::new(),
-            };
+            });
         }
         let mut found: Vec<OutputFile> = Vec::new();
         for file in &self.outcome.files {
@@ -555,11 +639,43 @@ impl Collector<'_> {
                 });
             } else if file.directory || local.is_dir() {
                 // A folder the executor gave back may hold what the pattern names.
-                for (relative, location, directory) in walk(local, path) {
+                let entries = if iri::has_scheme(&file.location) {
+                    let mut directory = Map::new();
+                    directory.insert("location".into(), Value::String(file.location.clone()));
+                    self.access.load_listing(&mut directory, true)?;
+                    let mut listing = directory.shift_remove("listing").unwrap_or(Value::Null);
+                    let base = format!("{}/", file.location.trim_end_matches('/'));
+                    let mut entries = Vec::new();
+                    files::visit_files(&mut listing, &mut |entry| {
+                        if let Some(location) = entry.get("location").and_then(Value::as_str)
+                            && let Some(relative) = location.strip_prefix(&base)
+                        {
+                            let relative = iri::file_path(&format!("file:///{relative}"))
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .trim_start_matches('/')
+                                .to_owned();
+                            let relative = if path == "." {
+                                relative
+                            } else {
+                                format!("{path}/{relative}")
+                            };
+                            entries.push((
+                                relative,
+                                location.to_owned(),
+                                entry.get("class").and_then(Value::as_str) == Some("Directory"),
+                            ));
+                        }
+                    });
+                    entries
+                } else {
+                    walk(local, path)?
+                };
+                for (relative, location, directory) in entries {
                     if glob_matches(pattern, &relative) {
                         found.push(OutputFile {
                             path: relative,
-                            location: location.to_string_lossy().into_owned(),
+                            location,
                             directory,
                             ..OutputFile::default()
                         });
@@ -569,7 +685,7 @@ impl Collector<'_> {
         }
         found.sort_by(|a, b| a.path.cmp(&b.path));
         found.dedup_by(|a, b| a.path == b.path);
-        found
+        Ok(found)
     }
 
     /// In a simulated run, the file that the simulator names after a bare wildcard, like
@@ -649,7 +765,7 @@ impl Collector<'_> {
         map.insert("class".into(), Value::string(class));
         map.insert(
             "location".into(),
-            Value::String(iri::file_url(Path::new(&file.location))),
+            Value::String(location_of(&file.location)),
         );
         let path = if file.path == "." {
             self.pending.outdir.clone()
@@ -664,7 +780,7 @@ impl Collector<'_> {
                 && listing != LoadListing::NoListing
             {
                 self.access
-                    .load_listing(&mut map, listing == LoadListing::DeepListing);
+                    .load_listing(&mut map, listing == LoadListing::DeepListing)?;
                 let mut listing_value = map
                     .shift_remove("listing")
                     .unwrap_or(Value::List(Vec::new()));
@@ -762,7 +878,7 @@ impl Collector<'_> {
                         let class = if is_directory { "Directory" } else { "File" };
                         item_map.insert("class".into(), Value::string(class));
                         if !is_directory {
-                            let _ = self.access.add_checksum(item_map);
+                            self.access.add_checksum(item_map)?;
                         }
                     }
                     files::normalize(&mut item)?;
@@ -776,6 +892,30 @@ impl Collector<'_> {
     }
 }
 
+fn location_of(location: &str) -> String {
+    if iri::has_scheme(location) {
+        iri::join("", location)
+    } else {
+        iri::join("", &iri::file_url(Path::new(location)))
+    }
+}
+
+fn join_location(base: &str, relative: &str) -> String {
+    if relative.is_empty() {
+        return location_of(base);
+    }
+    let encoded = iri::file_url(Path::new(relative));
+    iri::join(
+        &format!("{}/", location_of(base).trim_end_matches('/')),
+        encoded.trim_start_matches("file://"),
+    )
+}
+
+fn within(location: &str, base: &str) -> bool {
+    let base = location_of(base);
+    location == base || location.starts_with(&format!("{}/", base.trim_end_matches('/')))
+}
+
 /// Whether an expression reads `self`, the files an output binding found.
 fn reads_self(expression: &Expression) -> bool {
     expression.parts.iter().any(|part| match part {
@@ -787,12 +927,14 @@ fn reads_self(expression: &Expression) -> bool {
 }
 
 /// The files and folders below a folder, relative to `prefix`.
-fn walk(folder: &Path, prefix: &str) -> Vec<(String, std::path::PathBuf, bool)> {
+fn walk(folder: &Path, prefix: &str) -> Result<Vec<(String, String, bool)>, String> {
     let mut found = Vec::new();
-    let Ok(entries) = std::fs::read_dir(folder) else {
-        return found;
-    };
-    let mut paths: Vec<_> = entries.flatten().map(|entry| entry.path()).collect();
+    let failed = |error| format!("cannot list {}: {error}", folder.display());
+    let entries = std::fs::read_dir(folder).map_err(failed)?;
+    let mut paths: Vec<_> = entries
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<Result<_, _>>()
+        .map_err(failed)?;
     paths.sort();
     for path in paths {
         let name = path
@@ -804,11 +946,11 @@ fn walk(folder: &Path, prefix: &str) -> Vec<(String, std::path::PathBuf, bool)> 
         } else {
             format!("{prefix}/{name}")
         };
-        let directory = path.is_dir();
+        let directory = std::fs::metadata(&path).map_err(failed)?.is_dir();
         if directory {
-            found.extend(walk(&path, &relative));
+            found.extend(walk(&path, &relative)?);
         }
-        found.push((relative, path, directory));
+        found.push((relative, path.to_string_lossy().into_owned(), directory));
     }
-    found
+    Ok(found)
 }

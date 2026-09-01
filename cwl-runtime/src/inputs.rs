@@ -126,7 +126,7 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
     let shallow = setting.load_listing == Some(LoadListing::ShallowListing);
     if deep || shallow {
         for (_, value) in job.iter_mut() {
-            setting.access.load_listings(value, deep);
+            setting.access.load_listings(value, deep)?;
         }
     }
     let snapshot = Value::Map(job.clone());
@@ -283,7 +283,7 @@ impl Walk<'_, '_> {
                 {
                     self.setting
                         .access
-                        .load_listing(directory, listing == LoadListing::DeepListing);
+                        .load_listing(directory, listing == LoadListing::DeepListing)?;
                 }
             }
             _ => {}

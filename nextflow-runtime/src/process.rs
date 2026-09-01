@@ -117,20 +117,19 @@ impl Behaviour for ProcessNode {
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while !self.poisoned && !(self.one_round && self.rounds == 1) {
             // A round starts when every input has a message.
-            let mut messages = Vec::new();
-            for input in 0..context.input_count() {
-                match context.peek(input) {
-                    Some(message) => messages.push(message),
-                    None => return Ok(State::Running),
-                }
-            }
+            let messages: Vec<_> = (0..context.input_count())
+                .map(|input| context.peek(input))
+                .collect();
             if messages
                 .iter()
-                .any(|message| matches!(message, Message::Stop))
+                .any(|message| matches!(message, Some(Message::Stop)))
             {
                 self.poisoned = true;
                 break;
             }
+            let Some(messages) = messages.into_iter().collect::<Option<Vec<_>>>() else {
+                return Ok(State::Running);
+            };
             for input in 0..context.input_count() {
                 if !context.is_value(input) {
                     context.consume(input);

@@ -80,6 +80,21 @@ fn run(source: &str, options: &Options) -> Result<(Vec<TaskRequest>, String), St
 const DOUBLE: &str = "process DOUBLE {\n    input:\n    val x\n    output:\n    val y\n    script:\n    y = x * 2\n    \"echo ${x}\"\n}\n";
 
 #[test]
+fn closed_input_stops_a_process_with_an_unbound_input_in_both_orders() {
+    for inputs in [
+        "channel.empty(), channel.value()",
+        "channel.value(), channel.empty()",
+    ] {
+        let source = format!(
+            "process P {{\n input:\n val x\n val y\n output:\n val x\n script:\n 'true'\n}}\nworkflow {{\n P({inputs}).ifEmpty('empty').view()\n}}\n"
+        );
+        let (tasks, printed) = run(&source, &Options::default()).expect("closes without waiting");
+        assert!(tasks.is_empty());
+        assert_eq!(printed, "empty\n");
+    }
+}
+
+#[test]
 fn a_task_per_value() {
     let source = format!("{DOUBLE}workflow {{\n    channel.of(1, 2, 3) | DOUBLE | view\n}}");
     let (tasks, printed) = run(&source, &Options::default()).expect("runs");

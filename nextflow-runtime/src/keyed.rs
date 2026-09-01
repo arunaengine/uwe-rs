@@ -170,6 +170,9 @@ pub(crate) struct Join {
     pub output: ChannelId,
     pub by: Vec<usize>,
     pub remainder: bool,
+    pub fail_on_duplicate: bool,
+    pub fail_on_mismatch: bool,
+    pub matched: IndexSet<Vec<Key>>,
     /// Values waiting for a partner, by key, for the left and right side.
     pub pending: [IndexMap<Vec<Key>, Vec<Value>>; 2],
     /// The keys of both sides in first-seen order, which is the order of the remainder.
@@ -194,6 +197,28 @@ impl Behaviour for Join {
         if !(self.done[0] && self.done[1]) {
             return Ok(State::Running);
         }
+        for (side, pending) in self.pending.iter().enumerate() {
+            let unmatched: Vec<_> = pending
+                .iter()
+                .filter(|(_, values)| !values.is_empty())
+                .map(|(key, _)| key)
+                .collect();
+            if self.fail_on_duplicate && unmatched.iter().any(|key| self.matched.contains(*key)) {
+                context.close(self.output);
+                return Err(thrown(format!(
+                    "Detected join duplicate key on side {}",
+                    side + 1
+                )));
+            }
+            if self.fail_on_mismatch && !unmatched.is_empty() {
+                context.close(self.output);
+                return Err(thrown(format!(
+                    "Join mismatch on side {}: {:?}",
+                    side + 1,
+                    unmatched.into_iter().take(10).collect::<Vec<_>>()
+                )));
+            }
+        }
         if self.remainder {
             for key in std::mem::take(&mut self.keys) {
                 self.emit_remainder(context, &key);
@@ -207,6 +232,10 @@ impl Behaviour for Join {
 impl Join {
     fn take(&mut self, context: &mut Context, side: usize, value: Value) -> Result<(), Error> {
         let key = key(&value, &self.by)?;
+        if self.fail_on_duplicate && self.matched.contains(&key) {
+            context.close(self.output);
+            return Err(thrown(format!("Detected join duplicate key: {key:?}")));
+        }
         let alone = items(&value).len() <= self.by.len();
         self.singleton[side] = Some(self.singleton[side].unwrap_or(false) || alone);
         self.keys.insert(key.clone());
@@ -216,6 +245,9 @@ impl Join {
             .and_then(|values| (!values.is_empty()).then(|| values.remove(0)));
         match partner {
             Some(partner) => {
+                if self.fail_on_duplicate {
+                    self.matched.insert(key);
+                }
                 let (left, right) = if side == 0 {
                     (&value, &partner)
                 } else {

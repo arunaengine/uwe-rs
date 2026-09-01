@@ -166,7 +166,7 @@ impl Interpreter {
         };
         loop {
             let item = match &mut lazy {
-                Some(Value::Iterator(iterator)) => iterator.borrow_mut().next_value(),
+                Some(Value::Iterator(iterator)) => iterator.borrow_mut().next_value(self)?,
                 _ => items.next(),
             };
             let Some(item) = item else {

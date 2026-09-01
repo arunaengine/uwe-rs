@@ -1271,7 +1271,7 @@ impl Hook {
         // that the rule never gets them.
         if let Value::Iterator(iterator) = value.plain() {
             loop {
-                let next = iterator.borrow_mut().next_value();
+                let next = iterator.borrow_mut().next_value(interpreter)?;
                 match next {
                     Some(item) if item.tag("multiext").is_some() => {}
                     Some(_) => return Ok(None),

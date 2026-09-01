@@ -562,8 +562,8 @@ pub enum Iter {
 }
 
 impl Iter {
-    pub fn next_value(&mut self) -> Option<Value> {
-        match self {
+    pub fn next_value(&mut self, _: &mut Interpreter) -> Result<Option<Value>, Error> {
+        Ok(match self {
             Iter::Items(items) => items.pop_front(),
             Iter::Range { next, stop, step } => {
                 if (*step > 0 && *next < *stop) || (*step < 0 && *next > *stop) {
@@ -587,7 +587,7 @@ impl Iter {
                     Value::Float(value)
                 })
             }
-        }
+        })
     }
 }
 

@@ -296,7 +296,7 @@ pub fn call(
         Value::Iterator(iterator) => match name {
             "__next__" => iterator
                 .borrow_mut()
-                .next_value()
+                .next_value(interpreter)?
                 .ok_or_else(Error::stop_iteration),
             _ => Ok(receiver.plain().clone()),
         },

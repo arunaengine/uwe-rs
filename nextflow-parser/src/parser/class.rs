@@ -64,15 +64,12 @@ impl Parser<'_> {
         }
         self.bump();
         let name = self.name()?;
-        // The classes a class extends or implements do not matter to the static members here.
-        while matches!(self.word(0), "extends" | "implements") {
-            self.bump();
-            self.qualified_class_name()?;
-            while self.eat(TokenKind::Comma) {
-                self.qualified_class_name()?;
-            }
-        }
         self.skip_newlines();
+        if matches!(self.word(0), "extends" | "implements") {
+            return Err(self.error_here(
+                "Groovy class inheritance (`extends` or `implements`) is not supported",
+            ));
+        }
         self.expect(TokenKind::LeftBrace, "'{'")?;
         let outer = std::mem::replace(&mut self.brackets, 0);
         let groovy = std::mem::replace(&mut self.groovy, true);

@@ -24,6 +24,24 @@ fn parse(source: &str) -> (Vec<Item>, Vec<String>) {
     (parsed.tree.items, legacy)
 }
 
+#[test]
+fn unsupported_inheritance_reports_a_load_error() {
+    for declaration in [
+        "class Child extends Parent {}",
+        "class Child implements Runnable {}",
+        "class Child\nextends Parent {}",
+        "class Outer { class Child extends Parent {} }",
+    ] {
+        let parsed = parse_script(declaration);
+        assert!(
+            parsed.errors.iter().any(|error| error.message
+                == "Groovy class inheritance (`extends` or `implements`) is not supported"),
+            "{declaration}: {:?}",
+            parsed.errors
+        );
+    }
+}
+
 /// The expression of a script that is one expression statement.
 fn expression(source: &str) -> (ExpressionKind, Vec<String>) {
     let (items, legacy) = parse(source);

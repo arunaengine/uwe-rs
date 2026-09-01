@@ -14,8 +14,6 @@ use serde_json::Value as Json;
 
 use crate::Context;
 
-const PATH_FORMATS: &[&str] = &["file-path", "directory-path", "path", "file-path-pattern"];
-
 /// What a text names on the file system.
 enum Named {
     /// A glob pattern: the matching files, each with whether it is a directory.
@@ -37,14 +35,8 @@ pub(crate) fn validator(
     context: &mut Context,
     path_exists: bool,
 ) -> Result<jsonschema::Validator, String> {
-    let mut names = HashSet::new();
-    path_properties(schema, &mut names);
-    // A list of plain values, like the rows of a samplesheet without header.
-    let all = schema
-        .get("items")
-        .is_some_and(|items| items.get("properties").is_none() && checks_paths(items));
     let mut texts = HashSet::new();
-    path_texts(instance, &names, all, &mut texts);
+    path_texts(instance, &mut texts);
     let launch = context.host.launch_dir();
     let lookup: Lookup = Arc::new(
         texts
@@ -108,51 +100,14 @@ fn look_up(text: &str, launch: &str, context: &mut Context) -> Named {
     }
 }
 
-/// The names of the properties whose schema checks paths, at any depth.
-fn path_properties(schema: &Json, names: &mut HashSet<String>) {
-    match schema {
-        Json::Object(map) => {
-            if let Some(Json::Object(properties)) = map.get("properties") {
-                for (name, definition) in properties {
-                    if checks_paths(definition) {
-                        names.insert(name.clone());
-                    }
-                }
-            }
-            map.values().for_each(|value| path_properties(value, names));
-        }
-        Json::Array(items) => items.iter().for_each(|item| path_properties(item, names)),
-        _ => {}
-    }
-}
-
-fn checks_paths(schema: &Json) -> bool {
-    match schema {
-        Json::Object(map) => {
-            let format = map.get("format").and_then(Json::as_str);
-            format.is_some_and(|format| PATH_FORMATS.contains(&format))
-                || map.get("exists").is_some_and(Json::is_boolean)
-                || map.values().any(checks_paths)
-        }
-        Json::Array(items) => items.iter().any(checks_paths),
-        _ => false,
-    }
-}
-
-/// The texts under the properties in `names`, or all texts when `all`.
-fn path_texts(instance: &Json, names: &HashSet<String>, all: bool, texts: &mut HashSet<String>) {
+/// All string leaves, so schema references and branches remain the validator's concern.
+fn path_texts(instance: &Json, texts: &mut HashSet<String>) {
     match instance {
-        Json::String(text) if all => {
+        Json::String(text) => {
             texts.insert(text.clone());
         }
-        Json::Array(items) => items
-            .iter()
-            .for_each(|item| path_texts(item, names, all, texts)),
-        Json::Object(map) => {
-            for (key, value) in map {
-                path_texts(value, names, all || names.contains(key), texts);
-            }
-        }
+        Json::Array(items) => items.iter().for_each(|item| path_texts(item, texts)),
+        Json::Object(map) => map.values().for_each(|value| path_texts(value, texts)),
         _ => {}
     }
 }
@@ -166,13 +121,17 @@ impl PathFormat {
     /// The problem nf-schema reports for a text, if any.
     fn problem(&self, instance: &Json) -> Option<String> {
         let text = instance.as_str()?;
-        let named = self.lookup.get(text)?;
         let kind = match self.format.as_str() {
             "file-path" => "file",
             "directory-path" => "directory",
             "path" => "path",
             "file-path-pattern" => "",
             _ => return None,
+        };
+        let Some(named) = self.lookup.get(text) else {
+            return Some(format!(
+                "could not validate file format of '{text}': missing path lookup"
+            ));
         };
         match (kind, named) {
             (_, Named::Failed(message)) => Some(format!(
@@ -229,12 +188,17 @@ impl Exists {
     fn problem(&self, instance: &Json) -> Option<String> {
         let wanted = self.wanted?;
         let text = instance.as_str()?;
-        let exists = match self.lookup.get(text)? {
-            Named::Failed(message) => {
+        let exists = match self.lookup.get(text) {
+            Some(Named::Failed(message)) => {
                 return Some(format!("could not check existence of '{text}': {message}"));
             }
-            Named::Pattern(files) => !files.is_empty(),
-            Named::Path(_, found) => found.is_some(),
+            Some(Named::Pattern(files)) => !files.is_empty(),
+            Some(Named::Path(_, found)) => found.is_some(),
+            None => {
+                return Some(format!(
+                    "could not check existence of '{text}': missing path lookup"
+                ));
+            }
         };
         match (exists, wanted) {
             (false, true) => Some(format!("the file or directory '{text}' does not exist")),
@@ -254,5 +218,76 @@ impl<'i> Keyword<'i> for Exists {
 
     fn is_valid(&self, instance: &'i Json) -> bool {
         self.problem(instance).is_none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nextflow_config::Config;
+    use nextflow_evaluator::interpreter::Host;
+    use nextflow_evaluator::value::Value;
+    use serde_json::json;
+
+    struct Local(String);
+
+    impl Host for Local {
+        fn print(&mut self, _: &str) {}
+
+        fn launch_dir(&self) -> String {
+            self.0.clone()
+        }
+    }
+
+    #[test]
+    fn paths_are_checked_at_roots_references_and_array_items() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("file.txt"), b"data").unwrap();
+        std::fs::create_dir(directory.path().join("folder")).unwrap();
+        let launch = directory.path().to_string_lossy().into_owned();
+        let mut host = Local(launch.clone());
+        let config = Config::default();
+        let mut context = Context {
+            host: &mut host,
+            config: &config,
+            params: Value::map([]),
+            project_dir: &launch,
+        };
+        let path = json!({"type": "string", "format": "file-path", "exists": true});
+        let reference = json!({"$defs": {"file": path}, "$ref": "#/$defs/file"});
+        for value in ["missing.txt", "folder", "file.txt"] {
+            let valid = value == "file.txt";
+            for (schema, instance) in [
+                (path.clone(), json!(value)),
+                (reference.clone(), json!(value)),
+                (
+                    json!({"$defs": {"file": path}, "properties": {"input": {"$ref": "#/$defs/file"}}}),
+                    json!({"input": value}),
+                ),
+                (
+                    json!({"type": "array", "$defs": {"file": path}, "items": {"$ref": "#/$defs/file"}}),
+                    json!([value]),
+                ),
+                (
+                    json!({"properties": {"input": path}}),
+                    json!({"input": value}),
+                ),
+            ] {
+                assert_eq!(
+                    validator(&schema, &instance, &mut context, false)
+                        .unwrap()
+                        .is_valid(&instance),
+                    valid,
+                    "{schema}: {instance}"
+                );
+            }
+        }
+        let schema = json!({"anyOf": [path, {"const": "missing.txt"}]});
+        let instance = json!("missing.txt");
+        assert!(
+            validator(&schema, &instance, &mut context, false)
+                .unwrap()
+                .is_valid(&instance)
+        );
     }
 }

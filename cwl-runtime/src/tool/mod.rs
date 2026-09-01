@@ -91,7 +91,7 @@ pub struct Pending {
     runtime: Map,
     outdir: String,
     /// The locations of staged files by their container path.
-    staged: HashMap<String, String>,
+    staged: HashMap<String, (String, bool)>,
     load_listing: Option<LoadListing>,
     stdout: Option<String>,
     stderr: Option<String>,
@@ -540,7 +540,12 @@ pub fn task(
         .filter(|(location, _)| {
             stager.from_job.contains(*location) && !stager.writable.contains(*location)
         })
-        .map(|(location, path)| (path.clone(), location.clone()))
+        .map(|(location, path)| {
+            (
+                path.clone(),
+                (location.clone(), stager.directories.contains(location)),
+            )
+        })
         .collect();
     let pending = Pending {
         process: Arc::clone(process),

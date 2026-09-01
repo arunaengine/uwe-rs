@@ -167,7 +167,9 @@ fn relocate(outputs: cwl_runtime::Map) -> Value {
                     .to_owned();
                 let access = cwl_runtime::files::Access::default();
                 if map.get("class").and_then(Value::as_str) == Some("Directory") {
-                    access.load_listing(map, true);
+                    access
+                        .load_listing(map, true)
+                        .expect("fixture directory listing");
                 } else if !map.contains_key("checksum") && original.starts_with("file://") {
                     let _ = access.add_checksum(map);
                 }

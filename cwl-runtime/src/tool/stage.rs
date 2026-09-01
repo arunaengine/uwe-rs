@@ -18,6 +18,7 @@ pub(super) struct Stager {
     pub(super) inputs: Vec<Input>,
     /// Container paths by location.
     pub(super) paths: HashMap<String, String>,
+    pub(super) directories: HashSet<String>,
     pub(super) folders: usize,
     /// The output directory, where relative task input paths are.
     pub(super) outdir: String,
@@ -94,6 +95,9 @@ impl Stager {
             self.paths.insert(location.clone(), inside);
         }
         let directory = file.get("class").and_then(Value::as_str) == Some("Directory");
+        if directory {
+            self.directories.insert(location.clone());
+        }
         let literal = location.starts_with("_:");
         if directory {
             if literal {
@@ -178,6 +182,9 @@ impl Stager {
             .get("location")
             .and_then(Value::as_str)
             .unwrap_or_default();
+        if entry.get("class").and_then(Value::as_str) == Some("Directory") {
+            self.directories.insert(location.to_owned());
+        }
         if replace || !self.paths.contains_key(location) {
             let inside = self.container_path(target);
             self.paths.insert(location.to_owned(), inside);

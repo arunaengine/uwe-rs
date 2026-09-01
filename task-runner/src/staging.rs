@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 use content_store::layout;
@@ -39,8 +40,7 @@ impl<B: Backend> Runner<B> {
                 }),
                 Source::Content | Source::Stored if !directory => {
                     let content = self.local_content(&input.digest).await?;
-                    let copy = *source == Source::Content;
-                    staging.inputs.push(staged(content, copy));
+                    staging.inputs.push(staged(content, true));
                 }
                 Source::Content | Source::Stored => {
                     self.stage_tree(&input.path, &input.digest, input.writable, &mut staging)
@@ -64,15 +64,69 @@ impl<B: Backend> Runner<B> {
         staging: &mut Staging,
     ) -> Result<(), RunnerError> {
         let base = path.trim_end_matches('/');
-        staging.directories.push(base.to_owned());
         let tree = self.store.get_tree(digest).await?;
+        let linked = tree
+            .entries
+            .iter()
+            .any(|entry| matches!(entry, TreeEntry::Symlink { .. }));
+        let snapshot = if linked {
+            let root = self.settings.downloads.join("input-snapshots");
+            tokio::fs::create_dir_all(&root).await?;
+            let snapshot = tempfile::tempdir_in(&root)?;
+            tokio::fs::set_permissions(snapshot.path(), std::fs::Permissions::from_mode(0o755))
+                .await?;
+            Some(snapshot)
+        } else {
+            staging.directories.push(base.to_owned());
+            None
+        };
         for entry in tree.entries {
-            let relative = entry.path();
+            let relative = entry.path().to_owned();
             let escapes = relative.starts_with('/') || relative.split('/').any(|part| part == "..");
             if relative.is_empty() || escapes {
                 return Err(RunnerError::Tree(path.to_owned()));
             }
             let inside = format!("{base}/{relative}");
+            if let Some(snapshot) = &snapshot {
+                let target = snapshot.path().join(&relative);
+                tokio::fs::create_dir_all(target.parent().expect("a parent")).await?;
+                match entry {
+                    TreeEntry::File {
+                        digest, executable, ..
+                    } => {
+                        tokio::fs::copy(self.local_content(&digest).await?, &target).await?;
+                        let mode = if executable { 0o755 } else { 0o644 };
+                        tokio::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode))
+                            .await?;
+                    }
+                    TreeEntry::EmptyDirectory { .. } => tokio::fs::create_dir_all(target).await?,
+                    TreeEntry::Symlink { target: link, .. } => {
+                        let mut depth = std::path::Path::new(&relative)
+                            .parent()
+                            .map_or(0, |parent| parent.components().count());
+                        let internal =
+                            std::path::Path::new(&link)
+                                .components()
+                                .all(|part| match part {
+                                    std::path::Component::Normal(_) => {
+                                        depth += 1;
+                                        true
+                                    }
+                                    std::path::Component::ParentDir if depth > 0 => {
+                                        depth -= 1;
+                                        true
+                                    }
+                                    std::path::Component::CurDir => true,
+                                    _ => false,
+                                });
+                        if !internal {
+                            return Err(RunnerError::Tree(path.to_owned()));
+                        }
+                        tokio::fs::symlink(link, target).await?;
+                    }
+                }
+                continue;
+            }
             match entry {
                 TreeEntry::File {
                     digest, executable, ..
@@ -80,12 +134,23 @@ impl<B: Backend> Runner<B> {
                     path: inside,
                     source: self.local_content(&digest).await?,
                     directory: false,
-                    copy: executable || writable,
+                    copy: true,
                     executable,
                     ..Default::default()
                 }),
                 TreeEntry::EmptyDirectory { .. } => staging.directories.push(inside),
+                TreeEntry::Symlink { .. } => unreachable!("linked trees have a snapshot"),
             }
+        }
+        if let Some(snapshot) = snapshot {
+            staging.inputs.push(Staged {
+                path: base.to_owned(),
+                source: std::fs::canonicalize(snapshot.path())?,
+                directory: true,
+                copy: writable,
+                ..Staged::default()
+            });
+            let _ = snapshot.keep();
         }
         Ok(())
     }

@@ -222,7 +222,7 @@ async fn tree_contents(store: &Store, digest: &Digest) -> Result<Vec<Digest>, Ru
         .into_iter()
         .filter_map(|entry| match entry {
             TreeEntry::File { digest, .. } => Some(digest),
-            TreeEntry::EmptyDirectory { .. } => None,
+            TreeEntry::EmptyDirectory { .. } | TreeEntry::Symlink { .. } => None,
         })
         .collect())
 }

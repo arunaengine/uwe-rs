@@ -195,13 +195,11 @@ fn reuses_shared_results() {
     let third = execute(&runner, &request(&runner, &task(root.path(), "b")));
     assert!(!third.reused);
     assert_eq!(runner.backend().runs.lock().unwrap().len(), 2);
-    // The input was linked where it is, not copied into the store.
+    // The input was linked from its persistent snapshot.
     let staged = runner.backend().staged.lock().unwrap();
     let source = &staged[0].inputs[0].source;
-    assert_eq!(
-        source,
-        &root.path().canonicalize().unwrap().join("input.txt")
-    );
+    assert!(source.starts_with(root.path().join("downloads/input-snapshots")));
+    assert_eq!(std::fs::read(source).unwrap(), b"data\n");
     assert!(!staged[0].inputs[0].copy);
     drop(staged);
     // Images are pinned once per run.
@@ -209,6 +207,175 @@ fn reuses_shared_results() {
     assert_eq!(pinned, "debian@sha256:00");
     // Each run removes its scratch directory.
     assert!(!root.path().join("scratch/run1-P-1-1").exists());
+}
+
+#[test]
+fn preparation_executes_the_copied_bytes_and_retains_them() {
+    let root = tempfile::tempdir().unwrap();
+    let runner = runner(root.path(), 0);
+    let task = task(root.path(), "a");
+    let prepared = request(&runner, &task);
+    let key = prepared.request.spec.cache_key().unwrap();
+    std::fs::write(root.path().join("input.txt"), "changed\n").unwrap();
+    let result = execute(&runner, &prepared);
+    let output = runner.local_path(&result.files[0].location).unwrap();
+    assert_eq!(std::fs::read(output).unwrap(), b"data\n");
+    let snapshot = runner.backend().staged.lock().unwrap()[0].inputs[0]
+        .source
+        .clone();
+    drop(prepared);
+    assert_eq!(std::fs::read(&snapshot).unwrap(), b"data\n");
+    std::fs::write(root.path().join("input.txt"), "data\n").unwrap();
+    let restored = request(&runner, &task);
+    assert_eq!(restored.request.spec.cache_key().unwrap(), key);
+    assert!(execute(&runner, &restored).reused);
+    drop(runner);
+    assert_eq!(std::fs::read(snapshot).unwrap(), b"data\n");
+}
+
+#[test]
+fn file_identity_tracks_effective_executable_mode() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let runner = runner(root.path(), 0);
+    let mut task = task(root.path(), "a");
+    let source = root.path().join("input.txt");
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let plain = request(&runner, &task);
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let executable = request(&runner, &task);
+    assert_eq!(
+        plain.request.spec.inputs[0].digest,
+        executable.request.spec.inputs[0].digest
+    );
+    assert_ne!(
+        plain.request.spec.cache_key().unwrap(),
+        executable.request.spec.cache_key().unwrap()
+    );
+    assert!(!plain.request.spec.inputs[0].executable);
+    assert!(executable.request.spec.inputs[0].executable);
+    execute(&runner, &plain);
+    execute(&runner, &executable);
+    let staged = runner.backend().staged.lock().unwrap();
+    assert_eq!(
+        std::fs::metadata(&staged[0].inputs[0].source)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o111,
+        0
+    );
+    assert!(staged[1].inputs[0].executable && staged[1].inputs[0].copy);
+    drop(staged);
+    task.inputs[0].writable = workflow_graph::Writable::Copy;
+    assert!(!request(&runner, &task).request.spec.inputs[0].executable);
+}
+
+#[test]
+fn directory_snapshots_preserve_relative_links_and_cycles() {
+    let root = tempfile::tempdir().unwrap();
+    let runner = runner(root.path(), 0);
+    let directory = root.path().join("directory");
+    for name in ["a", "b", "empty"] {
+        std::fs::create_dir_all(directory.join(name)).unwrap();
+    }
+    std::fs::write(directory.join("a/data"), "first").unwrap();
+    std::fs::write(directory.join("b/data"), "second").unwrap();
+    std::os::unix::fs::symlink("a", directory.join("selected")).unwrap();
+    let mut task = task(root.path(), "a");
+    task.inputs.push(Input {
+        path: "directory".into(),
+        source: directory.to_string_lossy().into_owned(),
+        directory: true,
+        ..Input::default()
+    });
+    let first = request(&runner, &task);
+    std::fs::remove_file(directory.join("selected")).unwrap();
+    std::os::unix::fs::symlink("b", directory.join("selected")).unwrap();
+    let second = request(&runner, &task);
+    assert_ne!(
+        first.request.spec.inputs[1].digest,
+        second.request.spec.inputs[1].digest
+    );
+    execute(&runner, &first);
+    let staged = runner.backend().staged.lock().unwrap();
+    let snapshot = &staged[0].inputs[1].source;
+    assert_eq!(
+        std::fs::read_link(snapshot.join("selected")).unwrap(),
+        Path::new("a")
+    );
+    assert_eq!(
+        std::fs::read(snapshot.join("selected/data")).unwrap(),
+        b"first"
+    );
+    assert!(snapshot.join("empty").is_dir());
+    drop(staged);
+    std::os::unix::fs::symlink("..", directory.join("a/cycle")).unwrap();
+    let cyclic = request(&runner, &task);
+    assert_ne!(
+        second.request.spec.inputs[1].digest,
+        cyclic.request.spec.inputs[1].digest
+    );
+    execute(&runner, &cyclic);
+    let staged = runner.backend().staged.lock().unwrap();
+    assert_eq!(
+        std::fs::read_link(staged[1].inputs[1].source.join("a/cycle")).unwrap(),
+        Path::new("..")
+    );
+    drop(staged);
+    std::os::unix::fs::symlink(root.path(), directory.join("outside")).unwrap();
+    let error = block_on(runner.request(&task, Some("debian@sha256:00".into()))).unwrap_err();
+    assert!(error.to_string().contains("absolute or outside"), "{error}");
+}
+
+#[test]
+fn stored_directory_links_materialize_with_their_original_spelling() {
+    use task_model::{Tree, TreeEntry};
+    let root = tempfile::tempdir().unwrap();
+    let runner = runner(root.path(), 0);
+    let digest = block_on(runner.import_bytes(b"stored")).unwrap();
+    let tree = Tree {
+        entries: vec![
+            TreeEntry::File {
+                path: "a/data".into(),
+                digest,
+                size: 6,
+                executable: false,
+            },
+            TreeEntry::Symlink {
+                path: "selected".into(),
+                target: "a".into(),
+            },
+            TreeEntry::Symlink {
+                path: "a/cycle".into(),
+                target: "..".into(),
+            },
+        ],
+    };
+    let tree_digest = block_on(runner.import_tree(&tree)).unwrap();
+    let mut task = task(root.path(), "a");
+    task.inputs.push(Input {
+        path: "stored".into(),
+        directory: true,
+        ..Input::default()
+    });
+    let mut prepared = request(&runner, &task);
+    prepared.request.spec.inputs[1].digest = tree_digest;
+    execute(&runner, &prepared);
+    let staged = runner.backend().staged.lock().unwrap();
+    let directory = &staged[0].inputs[1].source;
+    assert_eq!(
+        std::fs::read_link(directory.join("selected")).unwrap(),
+        Path::new("a")
+    );
+    assert_eq!(
+        std::fs::read_link(directory.join("a/cycle")).unwrap(),
+        Path::new("..")
+    );
+    assert_eq!(
+        std::fs::read(directory.join("selected/data")).unwrap(),
+        b"stored"
+    );
 }
 
 #[test]

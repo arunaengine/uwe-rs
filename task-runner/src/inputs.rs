@@ -4,6 +4,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use bytes::Bytes;
@@ -19,7 +20,7 @@ use crate::{RunnerError, Settings};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Mode {
     /// A run: literal content and directory manifests go into the store, remote inputs are
-    /// downloaded, and local inputs are stored too when the runner imports inputs.
+    /// downloaded, and local inputs are copied before hashing or importing.
     Run,
     /// A lookup of the cache: digests only. A remote input that is not downloaded yet cannot
     /// be known.
@@ -53,11 +54,10 @@ impl Inputs<'_> {
     /// The digest and size of a local file, which goes into the store too when the runner
     /// imports inputs.
     async fn file(&self, file: &Path) -> Result<(Digest, u64), RunnerError> {
-        let (digest, size) = self.hash(file).await?;
         if self.imported() {
-            self.store.put_file_as(file, &digest).await?;
+            return Ok(self.store.put_file(file).await?);
         }
-        Ok((digest, size))
+        self.hash(file).await
     }
 
     /// The digest and size of a local file: from the cache of digests when the file did not
@@ -67,6 +67,47 @@ impl Inputs<'_> {
             Some(digests) => Ok(digests.hash(file).await?),
             None => Ok(content_store::hash_file(file).await?),
         }
+    }
+
+    /// A persistent private copy: remote jobs may still use it after preparation is dropped.
+    async fn snapshot(&self, source: &Path, directory: bool) -> Result<PathBuf, RunnerError> {
+        if self.mode == Mode::Look {
+            return Ok(std::fs::canonicalize(source)?);
+        }
+        let root = self.settings.downloads.join("input-snapshots");
+        tokio::fs::create_dir_all(&root).await?;
+        let snapshot = tempfile::tempdir_in(&root)?;
+        tokio::fs::set_permissions(snapshot.path(), std::fs::Permissions::from_mode(0o755)).await?;
+        let path = snapshot.path().join("input");
+        if directory {
+            tokio::fs::create_dir(&path).await?;
+            for found in outputs::walk(source).await? {
+                match found {
+                    Found::File {
+                        relative,
+                        path: source,
+                        ..
+                    } => {
+                        let target = path.join(relative);
+                        tokio::fs::create_dir_all(target.parent().expect("a parent")).await?;
+                        tokio::fs::copy(&source, &target).await?;
+                    }
+                    Found::EmptyDirectory { relative } => {
+                        tokio::fs::create_dir_all(path.join(relative)).await?;
+                    }
+                    Found::Symlink { relative, target } => {
+                        let link = path.join(relative);
+                        tokio::fs::create_dir_all(link.parent().expect("a parent")).await?;
+                        tokio::fs::symlink(target, link).await?;
+                    }
+                }
+            }
+        } else {
+            tokio::fs::copy(source, &path).await?;
+        }
+        let path = tokio::fs::canonicalize(path).await?;
+        let _ = snapshot.keep();
+        Ok(path)
     }
 
     /// The digest of a directory manifest, like the one of an empty directory.
@@ -96,6 +137,10 @@ impl Inputs<'_> {
                     }
                 }
                 Found::EmptyDirectory { relative } => TreeEntry::EmptyDirectory { path: relative },
+                Found::Symlink { relative, target } => TreeEntry::Symlink {
+                    path: relative,
+                    target,
+                },
             });
         }
         let tree = Tree { entries };
@@ -141,8 +186,8 @@ impl Inputs<'_> {
     }
 
     /// An input by its digest, and where its content comes from: literal content, a local
-    /// directory or a local file. A local path is taken with its links resolved, so that a
-    /// container that sees the folder of the path sees the content. When the runner imports
+    /// directory or a local file. Local bytes are copied with links resolved, so that the
+    /// backend executes the same bytes that were hashed. When the runner imports
     /// inputs, the backend takes them from the store instead.
     ///
     /// An input that the task changes where it is is named by its path, not its content,
@@ -174,13 +219,13 @@ impl Inputs<'_> {
             return Ok((file, Source::InPlace(place)));
         }
         let imported = self.imported();
-        let local = || -> Result<Source, RunnerError> {
+        let mut executable = input.executable;
+        let local = |path| {
             if imported {
-                return Ok(Source::Stored);
+                Source::Stored
+            } else {
+                Source::Local(path)
             }
-            Ok(Source::Local(std::fs::canonicalize(source).map_err(
-                |error| std::io::Error::new(error.kind(), format!("{}: {error}", source.display())),
-            )?))
         };
         let (kind, digest, from) = match &input.content {
             Some(content) => (
@@ -193,13 +238,14 @@ impl Inputs<'_> {
                     return Err(RunnerError::Remote(input.source.clone()));
                 }
                 let copy = self.remote(&input.source).await?;
-                match imported {
-                    true => (FileKind::File, self.file(&copy).await?.0, Source::Stored),
-                    false => {
-                        let (digest, _) = self.hash(&copy).await?;
-                        (FileKind::File, digest, Source::Local(copy))
-                    }
-                }
+                let snapshot = self.snapshot(&copy, false).await?;
+                executable |= input.writable != Writable::Copy
+                    && tokio::fs::metadata(&snapshot).await?.permissions().mode() & 0o111 != 0;
+                (
+                    FileKind::File,
+                    self.file(&snapshot).await?.0,
+                    local(snapshot),
+                )
             }
             // A directory that the workflow makes itself, like an empty CWL `Directory` literal.
             None if input.directory && input.source.is_empty() => (
@@ -208,18 +254,30 @@ impl Inputs<'_> {
                 Source::Stored,
             ),
             None if !source.exists() => return Err(RunnerError::Missing(source.to_owned())),
-            None if input.directory || source.is_dir() => (
-                FileKind::Directory,
-                self.directory(source).await?.0,
-                local()?,
-            ),
-            None => (FileKind::File, self.file(source).await?.0, local()?),
+            None if input.directory || source.is_dir() => {
+                let snapshot = self.snapshot(source, true).await?;
+                (
+                    FileKind::Directory,
+                    self.directory(&snapshot).await?.0,
+                    local(snapshot),
+                )
+            }
+            None => {
+                let snapshot = self.snapshot(source, false).await?;
+                executable |= input.writable != Writable::Copy
+                    && tokio::fs::metadata(&snapshot).await?.permissions().mode() & 0o111 != 0;
+                (
+                    FileKind::File,
+                    self.file(&snapshot).await?.0,
+                    local(snapshot),
+                )
+            }
         };
         let file = InputFile {
             path: input.path.clone(),
             kind,
             digest,
-            executable: input.executable,
+            executable,
             writable: input.writable == Writable::Copy,
         };
         Ok((file, from))

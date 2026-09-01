@@ -68,6 +68,109 @@ impl Executor for Flaky {
 struct Targets(Vec<String>, std::path::PathBuf);
 
 #[test]
+fn ensured_outputs_are_checked_before_delivery_and_retried() {
+    for ensure in [
+        "non_empty=True",
+        "sha256=lambda wildcards: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'",
+        "md5='900150983cd24fb0d6963f7d28e17f72'",
+        "sha1='a9993e364706816aba3e25717850c26c9cd0d89d'",
+    ] {
+        let folder = tempfile::tempdir().unwrap();
+        let snakefile = format!(
+            r#"
+rule make:
+    output: "good.txt", ensure("checked.txt", {ensure})
+    retries: 1
+    resources: mem_mb=lambda wildcards, attempt: attempt * 100
+    shell: "true"
+"#
+        );
+        std::fs::write(folder.path().join("Snakefile"), snakefile).unwrap();
+        let launch = Launch {
+            target: folder.path().to_path_buf(),
+            scratch: folder.path().join("scratch"),
+            ..Launch::default()
+        };
+        let mut driver = snakemake_runtime::driver(&launch).unwrap();
+        let first = driver.start().unwrap().remove(0);
+        assert_eq!(first.resources.memory_bytes, Some(96 * 1024 * 1024));
+        let good = folder.path().join("good");
+        let checked = folder.path().join("checked");
+        std::fs::write(&good, "good").unwrap();
+        std::fs::write(&checked, "").unwrap();
+        let outcome = || Outcome {
+            id: first.id,
+            files: vec![
+                OutputFile {
+                    path: "good.txt".into(),
+                    location: good.to_string_lossy().into_owned(),
+                    ..OutputFile::default()
+                },
+                OutputFile {
+                    path: "checked.txt".into(),
+                    location: checked.to_string_lossy().into_owned(),
+                    ..OutputFile::default()
+                },
+            ],
+            ..Outcome::default()
+        };
+        let retry = driver.complete(outcome()).unwrap().remove(0);
+        assert_eq!(retry.id, first.id);
+        assert_eq!(retry.resources.memory_bytes, Some(191 * 1024 * 1024));
+        assert!(driver.deliveries().is_empty(), "{ensure}");
+        std::fs::write(&checked, "abc").unwrap();
+        assert!(driver.complete(outcome()).unwrap().is_empty());
+        assert_eq!(driver.deliveries().len(), 2);
+        driver.finish().unwrap();
+    }
+}
+
+#[test]
+fn missing_outputs_retry_and_exhausted_integrity_failures_deliver_nothing() {
+    for output in ["\"out.txt\"", "ensure(\"out.txt\", non_empty=True)"] {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::write(
+            folder.path().join("Snakefile"),
+            format!(
+                r#"
+rule make:
+    output: {output}
+    retries: 1
+    shell: "true"
+"#
+            ),
+        )
+        .unwrap();
+        let launch = Launch {
+            target: folder.path().to_path_buf(),
+            scratch: folder.path().join("scratch"),
+            ..Launch::default()
+        };
+        let mut driver = snakemake_runtime::driver(&launch).unwrap();
+        let first = driver.start().unwrap().remove(0);
+        let made = folder.path().join("empty");
+        std::fs::write(&made, "").unwrap();
+        let outcome = || Outcome {
+            id: first.id,
+            files: if output.starts_with("ensure") {
+                vec![OutputFile {
+                    path: "out.txt".into(),
+                    location: made.to_string_lossy().into_owned(),
+                    ..OutputFile::default()
+                }]
+            } else {
+                Vec::new()
+            },
+            ..Outcome::default()
+        };
+        assert_eq!(driver.complete(outcome()).unwrap().len(), 1);
+        assert!(driver.complete(outcome()).unwrap().is_empty());
+        assert!(driver.deliveries().is_empty());
+        assert!(driver.finish().is_err());
+    }
+}
+
+#[test]
 fn storage_outputs_deliver_to_their_address_and_consumers_use_the_new_bytes() {
     use std::path::PathBuf;
     use workflow_graph::{Delivery, Files, LocalFiles};

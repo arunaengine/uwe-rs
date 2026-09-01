@@ -218,3 +218,86 @@ fn contents_and_sizes_of_files_at_addresses_come_through_the_storage_providers()
     assert_eq!(map.get("size"), Some(&Value::Integer(0)));
     assert_eq!(requests.load(Ordering::SeqCst), before);
 }
+
+#[test]
+fn remote_directory_listings_match_local_shallow_and_deep_listings() {
+    let root = tempfile::tempdir().expect("provider folder");
+    let directory = root.path().join("data");
+    std::fs::create_dir_all(directory.join("sub")).expect("subdirectory");
+    std::fs::write(directory.join("a b.txt"), "top").expect("top file");
+    std::fs::write(directory.join("sub/leaf.txt"), "nested").expect("nested file");
+    let text = format!(
+        "[storage.mirror]\ntype = \"folder\"\nprefixes = [\"s3://mirror/\"]\npath = \"{}\"\n",
+        root.path().display()
+    );
+    let config = config_file::ConfigFile::parse(&text, Path::new("config.toml")).expect("config");
+    let storage = storage::Storage::from_config(&config).expect("provider");
+    let downloads = tempfile::tempdir().expect("downloads");
+    let access = Access {
+        remote: Remote::new(&storage, downloads.path().to_owned()),
+        ..Access::default()
+    };
+    let local_base = iri::file_url(&directory);
+    for deep in [false, true] {
+        let mut local = Value::parse(&format!("{{class: Directory, location: '{local_base}'}}"))
+            .expect("local directory");
+        let mut remote = Value::parse("{class: Directory, location: 's3://mirror/data'}")
+            .expect("remote directory");
+        Access::default()
+            .load_listings(&mut local, deep)
+            .expect("local listing");
+        access
+            .load_listings(&mut remote, deep)
+            .expect("remote listing");
+        visit_files(&mut local, &mut |file| {
+            if let Some(Value::String(location)) = file.get("location") {
+                let relative = location.strip_prefix(&local_base).expect("local entry");
+                file.insert(
+                    "location".into(),
+                    Value::String(format!("s3://mirror/data{relative}")),
+                );
+            }
+        });
+        assert_eq!(remote, local, "deep={deep}");
+        let sub = remote
+            .get("listing")
+            .and_then(Value::as_list)
+            .expect("listing")
+            .iter()
+            .find(|entry| entry.text("basename") == Some("sub"))
+            .expect("subdirectory");
+        assert_eq!(sub.get("listing").is_some(), deep);
+    }
+    let mut missing =
+        Value::parse("{class: Directory, location: 's3://mirror/missing'}").expect("directory");
+    let error = access
+        .load_listings(&mut missing, true)
+        .expect_err("provider list failure");
+    assert!(error.contains("cannot list s3://mirror/missing"), "{error}");
+    assert!(
+        missing.get("listing").is_none(),
+        "failed listing must not become empty"
+    );
+    let missing_file =
+        Value::parse("{class: File, location: 's3://mirror/missing.txt'}").expect("file");
+    let error = access
+        .read(missing_file.as_map().expect("map"), None)
+        .expect_err("provider read failure");
+    assert!(
+        error.contains("cannot read s3://mirror/missing.txt"),
+        "{error}"
+    );
+}
+
+#[test]
+fn requested_local_listings_report_missing_directories() {
+    let root = tempfile::tempdir().expect("folder");
+    let location = iri::file_url(&root.path().join("missing"));
+    let mut directory =
+        Value::parse(&format!("{{class: Directory, location: '{location}'}}")).expect("directory");
+    let error = Access::default()
+        .load_listings(&mut directory, false)
+        .expect_err("missing directory");
+    assert!(error.contains("cannot list"), "{error}");
+    assert!(directory.get("listing").is_none());
+}

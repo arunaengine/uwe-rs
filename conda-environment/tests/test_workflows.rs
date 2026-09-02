@@ -1,5 +1,5 @@
 //! Reads every conda environment file of the Snakemake test workflows, the files in their
-//! `envs` folders, and counts what reads. Run it with
+//! `envs` folders, and checks their accepted and rejected outcomes. Run it with
 //! `cargo test -p conda-environment --test test_workflows -- --ignored --nocapture`; the
 //! folder is `SNAKEMAKE_TEST_WORKFLOWS`, else `~/.cache/iunctus/test-workflows/snakemake`.
 // Copyright (c) 2026 The iunctus Contributors
@@ -11,14 +11,12 @@ use std::path::{Path, PathBuf};
 use conda_environment::Environment;
 
 /// The environment files below a folder.
-fn environment_files(folder: &Path, found: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(folder) else {
-        return;
-    };
-    for entry in entries.flatten() {
+fn environment_files(folder: &Path, found: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(folder)? {
+        let entry = entry?;
         let path = entry.path();
-        if path.is_dir() {
-            environment_files(&path, found);
+        if entry.file_type()?.is_dir() {
+            environment_files(&path, found)?;
             continue;
         }
         let in_envs = path.parent().is_some_and(|parent| parent.ends_with("envs"));
@@ -30,6 +28,7 @@ fn environment_files(folder: &Path, found: &mut Vec<PathBuf>) {
             found.push(path);
         }
     }
+    Ok(())
 }
 
 #[test]
@@ -43,14 +42,32 @@ fn the_environments_of_the_snakemake_test_workflows_read() {
         })
         .expect("a folder of test workflows");
     let mut files = Vec::new();
-    environment_files(&folder, &mut files);
+    environment_files(&folder, &mut files).expect("read the complete environment inventory");
     files.sort();
+    let baseline: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/workflow_rejections.json"))
+            .expect("valid corpus baseline");
+    assert_eq!(
+        files.len() as u64,
+        baseline["total"].as_u64().unwrap(),
+        "complete corpus inventory"
+    );
+    let expected: BTreeMap<String, String> = baseline["rejected"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|failure| {
+            (
+                failure["path"].as_str().unwrap().to_owned(),
+                failure["message"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
     let (mut read, mut specs, mut pip) = (0, 0, 0);
-    let mut failures: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut failures: BTreeMap<String, String> = BTreeMap::new();
     for file in &files {
-        let Ok(text) = std::fs::read_to_string(file) else {
-            continue;
-        };
+        let text = std::fs::read_to_string(file)
+            .unwrap_or_else(|error| panic!("read {}: {error}", file.display()));
         match Environment::parse(&text) {
             Ok(environment) => {
                 read += 1;
@@ -59,10 +76,8 @@ fn the_environments_of_the_snakemake_test_workflows_read() {
             }
             Err(error) => {
                 let message = error.to_string();
-                let kind = message.split(": ").nth(1).unwrap_or(&message).to_owned();
-                let relative = file.strip_prefix(&folder).unwrap_or(file);
-                let entry = failures.entry(kind).or_default();
-                entry.push(format!("{}: {message}", relative.display()));
+                let relative = file.strip_prefix(&folder).expect("corpus-relative path");
+                failures.insert(relative.to_string_lossy().replace('\\', "/"), message);
             }
         }
     }
@@ -70,12 +85,13 @@ fn the_environments_of_the_snakemake_test_workflows_read() {
         "{} environment files: {read} read, with {specs} match specs and {pip} pip packages",
         files.len()
     );
-    for (kind, found) in &failures {
-        println!("{} fail with {kind}; like {}", found.len(), found[0]);
-    }
-    assert!(
-        !files.is_empty(),
-        "no environment files in {}",
-        folder.display()
+    assert_eq!(
+        failures, expected,
+        "exact rejected paths and parser outcomes"
+    );
+    assert_eq!(
+        read,
+        baseline["accepted"].as_u64().unwrap(),
+        "accepted environments"
     );
 }

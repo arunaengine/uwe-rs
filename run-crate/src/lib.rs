@@ -64,7 +64,7 @@ pub struct Options {
     pub workflow: PathBuf,
     /// The license of the crate, as a URL like `https://spdx.org/licenses/CC-BY-4.0`.
     pub license: Option<String>,
-    /// Copies of the files of the workflow and of the command line as the run had them, by
+    /// Copies of the workflow, command-line and task files as the run had them, by
     /// their digests, like the files of the store that keeps them. The crate takes them over
     /// the files as they are now, which may have changed since the run.
     pub sources: HashMap<String, PathBuf>,
@@ -80,19 +80,19 @@ pub fn export(
     let Some(record) = database.run(run)? else {
         return Err(CrateError::UnknownRun(run.to_owned()));
     };
-    let Some(name) = options
-        .workflow
-        .file_name()
-        .filter(|_| options.workflow.is_file())
-    else {
+    let Some(name) = options.workflow.file_name() else {
         return Err(CrateError::Workflow(options.workflow.clone()));
     };
     std::fs::create_dir_all(directory)?;
     let workflow = name.to_string_lossy().into_owned();
-    std::fs::copy(
-        main_file(database, &record, options)?,
-        directory.join(&workflow),
-    )?;
+    let main = main_file(database, &record, options)?;
+    if let Some(expected) = &main.1 {
+        if !pinned::copy_checked(&main.0, &directory.join(&workflow), expected)? {
+            return Err(CrateError::Workflow(options.workflow.clone()));
+        }
+    } else {
+        std::fs::copy(&main.0, directory.join(&workflow))?;
+    }
     let mut tasks: Vec<TaskDetail> = Vec::new();
     for row in database.tasks(run)? {
         // A task that never started did not run, so the crate leaves it out.
@@ -107,7 +107,21 @@ pub fn export(
     for task in &tasks {
         for file in task.inputs.iter().chain(&task.outputs) {
             if !file.location.is_empty() {
-                placed.insert(file.location.clone(), data.place(&file.location)?);
+                let mut copy = data::Placed::Absent;
+                if let Some(kept) = file
+                    .digest
+                    .as_ref()
+                    .and_then(|digest| options.sources.get(digest))
+                {
+                    copy = data.place_checked(&kept.to_string_lossy(), file.digest.as_deref())?;
+                }
+                if copy == data::Placed::Absent {
+                    copy = match file.digest.as_deref() {
+                        Some(digest) => data.place_checked(&file.location, Some(digest))?,
+                        None => data.place(&file.location)?,
+                    };
+                }
+                placed.insert(files::file_key(file), copy);
                 continue;
             }
             // A literal input: its content is in the task description.
@@ -130,7 +144,7 @@ pub fn export(
     let published = ids::time(run_database::now());
     let version = match &record.revision {
         Some(revision) => Some(revision.clone()),
-        None => std::fs::read(&options.workflow)
+        None => std::fs::read(directory.join(&workflow))
             .ok()
             .map(|bytes| task_model::Digest::sha256(&bytes).to_string()),
     };
@@ -169,14 +183,24 @@ pub fn export(
 
 /// The main file of the workflow as the run had it: the copy that the options give for its
 /// recorded digest, else the file as it is now.
-fn main_file(database: &Database, run: &Run, options: &Options) -> Result<PathBuf, CrateError> {
+fn main_file(
+    database: &Database,
+    run: &Run,
+    options: &Options,
+) -> Result<(PathBuf, Option<String>), CrateError> {
     let folder = run.workflow_folder.as_deref().map(Path::new);
     let recorded = (database.sources(&run.id)?.into_iter()).find(|source| {
         source.kind == run_database::SourceKind::Workflow
-            && folder.is_some_and(|folder| folder.join(&source.path) == options.workflow)
+            && folder.is_some_and(|folder| {
+                let path = folder.join(&source.path);
+                path == options.workflow || path == Path::new(&run.workflow)
+            })
     });
-    let kept = recorded.and_then(|source| options.sources.get(&source.digest).cloned());
-    Ok(kept.unwrap_or_else(|| options.workflow.clone()))
+    let digest = recorded.as_ref().map(|source| source.digest.clone());
+    let kept = digest
+        .as_ref()
+        .and_then(|digest| options.sources.get(digest).cloned());
+    Ok((kept.unwrap_or_else(|| options.workflow.clone()), digest))
 }
 
 /// A short text for people who open the crate folder.

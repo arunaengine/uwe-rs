@@ -75,7 +75,7 @@ pub(crate) fn gather(
             }
             SourceKind::Named => {
                 let from = kept.unwrap_or_else(|| PathBuf::from(&source.path));
-                match data.place(&from.to_string_lossy())? {
+                match data.place_checked(&from.to_string_lossy(), Some(&source.digest))? {
                     Placed::Copied { digest, .. } if digest.to_string() != source.digest => {}
                     placed @ Placed::Copied { .. } => pinned.named.push((placed, source)),
                     _ => {}
@@ -88,7 +88,7 @@ pub(crate) fn gather(
 
 /// Copies a file to `target` when its content has the digest `expected`; false, and no copy,
 /// when it has other content now or is gone.
-fn copy_checked(from: &Path, target: &Path, expected: &str) -> Result<bool, CrateError> {
+pub(crate) fn copy_checked(from: &Path, target: &Path, expected: &str) -> Result<bool, CrateError> {
     let Ok(mut source) = File::open(from) else {
         return Ok(false);
     };

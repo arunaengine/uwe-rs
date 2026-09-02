@@ -151,7 +151,12 @@ fn record(directory: &Path) -> Database {
     );
     recorder.requested(&first, &[]);
     recorder.started(TaskId(1), 1);
-    recorder.finished(&finished(1, "upper.txt", upper.clone()), 1, false);
+    let mut first_outcome = finished(1, "upper.txt", upper.clone());
+    first_outcome.inputs = std::collections::BTreeMap::from([(
+        "in.txt".into(),
+        task_model::Digest::sha256(b"hello\n").to_string(),
+    )]);
+    recorder.finished(&first_outcome, 1, false);
     let second = task(2, "COUNT", vec![input("in.txt", &upper)], "count.txt");
     let edge = Edge {
         from: TaskId(1),
@@ -162,7 +167,12 @@ fn record(directory: &Path) -> Database {
     };
     recorder.requested(&second, &[edge]);
     recorder.started(TaskId(2), 1);
-    recorder.finished(&finished(2, "count.txt", count), 1, false);
+    let mut second_outcome = finished(2, "count.txt", count);
+    second_outcome.inputs = std::collections::BTreeMap::from([(
+        "in.txt".into(),
+        task_model::Digest::sha256(b"HELLO\n").to_string(),
+    )]);
+    recorder.finished(&second_outcome, 1, false);
     recorder.ended(None);
     recorder.close().expect("closes");
     Database::open(&path).expect("opens again")
@@ -322,5 +332,82 @@ fn a_simulated_run_becomes_a_provenance_run_crate() {
         normalized(&recorded),
         "the crate differs from the fixture; run run-crate/tests/fixtures/validate.sh to write \
          and check it again"
+    );
+}
+
+#[test]
+fn historical_workflow_exports_after_checkout_deletion_and_rejects_wrong_kept_bytes() {
+    let root = tempfile::tempdir().expect("a directory");
+    let database = record(root.path());
+    let kept = root.path().join("kept.nf");
+    std::fs::write(&kept, WORKFLOW).expect("writes kept workflow");
+    let mut options = Options {
+        workflow: PathBuf::from("/work/main.nf"),
+        sources: [(sources()[0].digest.clone(), kept.clone())].into(),
+        ..Options::default()
+    };
+    let output = root.path().join("crate");
+    export(&database, "fixture-run", &output, &options).expect("exports deleted workflow");
+    assert_eq!(
+        std::fs::read_to_string(output.join("main.nf")).expect("reads"),
+        WORKFLOW
+    );
+    std::fs::write(&kept, "replacement workflow").expect("replaces kept bytes");
+    assert!(export(&database, "fixture-run", &root.path().join("bad"), &options).is_err());
+    options.sources.clear();
+    assert!(
+        export(
+            &database,
+            "fixture-run",
+            &root.path().join("missing"),
+            &options
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn changed_inputs_export_only_kept_historical_bytes_or_record_unavailability() {
+    let root = tempfile::tempdir().expect("a directory");
+    let database = record(root.path());
+    let workflow = root.path().join("main.nf");
+    std::fs::write(&workflow, WORKFLOW).expect("writes workflow");
+    std::fs::write(root.path().join("greeting.txt"), "replacement input").expect("replaces input");
+    let digest = task_model::Digest::sha256(b"hello\n");
+    let mut options = Options {
+        workflow,
+        ..Options::default()
+    };
+    let output = root.path().join("absent-crate");
+    export(&database, "fixture-run", &output, &options).expect("exports unavailable input");
+    let metadata: Value =
+        serde_json::from_slice(&std::fs::read(output.join(METADATA)).expect("reads metadata"))
+            .expect("parses metadata");
+    let absent = format!(
+        "#absent/{}/{}",
+        root.path().join("greeting.txt").to_string_lossy(),
+        digest
+    );
+    assert_eq!(entity(&metadata, &absent)["sha256"], digest.hex());
+    assert!(
+        entity(&metadata, &absent)["description"]
+            .as_str()
+            .expect("description")
+            .contains("unavailable")
+    );
+    assert!(
+        !output
+            .join("data")
+            .join(task_model::Digest::sha256(b"replacement input").hex())
+            .exists()
+    );
+    let kept = root.path().join("kept-input");
+    std::fs::write(&kept, "hello\n").expect("writes kept input");
+    options.sources.insert(digest.to_string(), kept);
+    let output = root.path().join("kept-crate");
+    export(&database, "fixture-run", &output, &options).expect("exports historical input");
+    assert_eq!(
+        std::fs::read(output.join("data").join(digest.hex())).expect("reads original"),
+        b"hello\n"
     );
 }

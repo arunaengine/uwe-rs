@@ -13,6 +13,14 @@ use crate::repodata::Record;
 /// The version of the format of locks; a change of the format raises it.
 pub const FORMAT: u32 = 1;
 
+/// A capability of the target container, supplied without probing the driver host.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VirtualPackage {
+    pub name: String,
+    pub version: String,
+    pub build: String,
+}
+
 /// The packages of an environment for a platform.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Lock {
@@ -26,6 +34,10 @@ pub struct Lock {
     pub pip: Vec<String>,
     /// The packages, sorted by name.
     pub packages: Vec<Package>,
+    /// Target capabilities, or `None` when compatibility is unknown in a legacy lock.
+    /// An empty list explicitly means that no virtual packages are present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub virtual_packages: Option<Vec<VirtualPackage>>,
 }
 
 /// A locked package.

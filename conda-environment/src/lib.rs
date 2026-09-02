@@ -17,7 +17,7 @@ mod version;
 use std::path::{Path, PathBuf};
 
 pub use environment::{Environment, EnvironmentError};
-pub use lock::{FORMAT, Lock, Package, base};
+pub use lock::{FORMAT, Lock, Package, VirtualPackage, base};
 pub use repodata::{Index, Record, channels, repodata_path};
 pub use spec::{MatchSpec, SpecError};
 pub use version::{Version, VersionSpec};
@@ -92,10 +92,68 @@ pub fn platform() -> String {
 }
 
 /// Locks an environment for a platform with the repodata in `folder`.
+/// This bounded legacy search assumes common Linux virtual package names are present,
+/// without checking their versions or builds. Target compatibility remains unknown.
+/// Use [`lock_with_virtual`] to check authoritative target capabilities instead.
 pub fn lock(environment: &Environment, folder: &Path, platform: &str) -> Result<Lock, LockError> {
+    lock_inner(environment, folder, platform, None)
+}
+
+/// Locks with authoritative capabilities of the target container, including version and
+/// build requirements. Omitted virtual packages are absent. No host capabilities are inferred.
+pub fn lock_with_virtual(
+    environment: &Environment,
+    folder: &Path,
+    platform: &str,
+    capabilities: &[VirtualPackage],
+) -> Result<Lock, LockError> {
+    lock_inner(environment, folder, platform, Some(capabilities))
+}
+
+fn lock_inner(
+    environment: &Environment,
+    folder: &Path,
+    platform: &str,
+    capabilities: Option<&[VirtualPackage]>,
+) -> Result<Lock, LockError> {
+    let mut virtual_packages = capabilities.map(<[VirtualPackage]>::to_vec);
+    if let Some(packages) = &mut virtual_packages {
+        packages.sort_by(|a, b| a.name.cmp(&b.name));
+        for (at, package) in packages.iter().enumerate() {
+            let valid_name = package.name.starts_with("__")
+                && MatchSpec::parse(&package.name).is_ok_and(|spec| spec.name == package.name);
+            if !valid_name || Version::parse(&package.version).is_none() {
+                return Err(LockError::Spec(SpecError {
+                    text: format!("{} {} {}", package.name, package.version, package.build),
+                    reason: "invalid virtual package name or version",
+                }));
+            }
+            if at > 0 && packages[at - 1].name == package.name {
+                return Err(LockError::Spec(SpecError {
+                    text: package.name.clone(),
+                    reason: "duplicate virtual package name",
+                }));
+            }
+        }
+    }
+    let virtual_records: Option<Vec<Record>> = virtual_packages.as_ref().map(|packages| {
+        packages
+            .iter()
+            .map(|package| Record {
+                name: package.name.clone(),
+                version: package.version.clone(),
+                build: package.build.clone(),
+                ..Record::default()
+            })
+            .collect()
+    });
     let channels = channels(&environment.channels);
     let index = Index::load(folder, &channels, platform)?;
-    let records = solve::solve(&index, &environment.dependencies)?;
+    let records = solve::solve(
+        &index,
+        &environment.dependencies,
+        virtual_records.as_deref(),
+    )?;
     Ok(Lock {
         format: FORMAT,
         platform: platform.to_owned(),
@@ -107,5 +165,6 @@ pub fn lock(environment: &Environment, folder: &Path, platform: &str) -> Result<
             .collect(),
         pip: environment.pip.clone(),
         packages: records.into_iter().map(Package::of).collect(),
+        virtual_packages,
     })
 }

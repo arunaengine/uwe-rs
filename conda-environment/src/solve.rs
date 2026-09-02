@@ -37,23 +37,39 @@ struct Search<'a> {
     /// Each point of the queue: a choice, or a spec that a chosen package fit already.
     trail: Vec<Option<Choice<'a>>>,
     tries: usize,
+    /// `None` retains the legacy name-only assumptions.
+    virtual_records: Option<&'a [Record]>,
 }
 
 /// The packages that fit every spec and everything that they depend on, sorted by name.
 pub(crate) fn solve<'a>(
     index: &'a Index,
     specs: &[MatchSpec],
+    virtual_records: Option<&'a [Record]>,
 ) -> Result<Vec<&'a Record>, LockError> {
     let mut search = Search {
         index,
         queue: specs.to_vec(),
-        chosen: HashMap::new(),
+        chosen: virtual_records
+            .unwrap_or_default()
+            .iter()
+            .map(|record| (record.name.clone(), record))
+            .collect(),
         trail: Vec::new(),
         tries: 0,
+        virtual_records,
     };
     // The first spec that no package can fit at all names the cause better than a search.
     for spec in specs {
-        if !present(&spec.name) && candidates(index, spec).is_empty() {
+        let available = if spec.name.starts_with("__") {
+            match virtual_records {
+                Some(records) => records.iter().any(|record| spec.matches(record)),
+                None => present(&spec.name) || !candidates(index, spec).is_empty(),
+            }
+        } else {
+            !candidates(index, spec).is_empty()
+        };
+        if !available {
             return Err(LockError::NoPackage {
                 spec: spec.to_string(),
                 channels: index.channels.clone(),
@@ -61,7 +77,11 @@ pub(crate) fn solve<'a>(
         }
     }
     search.run(specs)?;
-    let mut records: Vec<&Record> = search.chosen.into_values().collect();
+    let mut records: Vec<&Record> = search
+        .chosen
+        .into_values()
+        .filter(|record| !record.name.starts_with("__"))
+        .collect();
     records.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(records)
 }
@@ -86,8 +106,11 @@ impl<'a> Search<'a> {
         while next < self.queue.len() {
             let spec = self.queue[next].clone();
             let step = match self.chosen.get(&spec.name) {
-                _ if spec.name.starts_with("__") => present(&spec.name).then_some(None),
+                _ if spec.name.starts_with("__") && self.virtual_records.is_none() => {
+                    present(&spec.name).then_some(None)
+                }
                 Some(record) => spec.matches(record).then_some(None),
+                None if spec.name.starts_with("__") => None,
                 None => self.choose(next, &spec)?,
             };
             match step {

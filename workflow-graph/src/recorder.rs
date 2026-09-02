@@ -44,13 +44,20 @@ impl Recorder {
     /// been asked for before, so that no task waits for one that never comes. The result is
     /// the edges into the task.
     ///
-    /// A task whose attempt failed may be asked for again, to retry it: its node takes the new
-    /// task, and it gets no new edges.
-    pub(crate) fn add(&mut self, task: &Task) -> Result<&[Edge], ExecuteError> {
+    /// A failed task or the task just completed may be asked for again, to retry it: its node
+    /// takes the new task, and it gets no new edges.
+    pub(crate) fn add(
+        &mut self,
+        task: &Task,
+        completed: Option<TaskId>,
+    ) -> Result<&[Edge], ExecuteError> {
         if self.seen.contains(&task.id) {
             let node = (self.positions.get(&task.id))
                 .and_then(|position| self.graph.nodes.get_mut(*position))
-                .filter(|node| node.exit_code.is_some_and(|code| code != 0))
+                .filter(|node| {
+                    node.exit_code
+                        .is_some_and(|code| code != 0 || completed == Some(task.id))
+                })
                 .ok_or(ExecuteError::DuplicateTask(task.id))?;
             node.task = task.clone();
             node.exit_code = None;

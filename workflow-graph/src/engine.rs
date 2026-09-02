@@ -199,8 +199,9 @@ impl<'a> Engine<'a> {
         task: Task,
         recorder: &mut Recorder,
         queue: &mut Queue,
+        completed: Option<TaskId>,
     ) -> Result<(), ExecuteError> {
-        let edges = recorder.add(&task)?;
+        let edges = recorder.add(&task, completed)?;
         self.report(Event::Requested { task: &task, edges });
         queue.push(task);
         Ok(())
@@ -215,10 +216,11 @@ impl<'a> Engine<'a> {
         notes: Vec<Note>,
         recorder: &mut Recorder,
         queue: &mut Queue,
+        completed: Option<TaskId>,
     ) -> Result<(), ExecuteError> {
         let first = recorder.graph.nodes.len();
         let result = asked.map_err(ExecuteError::from).and_then(|tasks| {
-            (tasks.into_iter()).try_for_each(|task| self.request(task, recorder, queue))
+            (tasks.into_iter()).try_for_each(|task| self.request(task, recorder, queue, completed))
         });
         for (task, marker) in recorder.note(notes, first) {
             self.report(Event::Marked {
@@ -246,7 +248,7 @@ impl<'a> Engine<'a> {
         }
         let first = driver.start();
         let notes = driver.notes();
-        self.asked(first, notes, recorder, &mut queue)?;
+        self.asked(first, notes, recorder, &mut queue, None)?;
         self.deliver(driver, files.as_deref())?;
         let mut draining = false;
         loop {
@@ -319,7 +321,7 @@ impl<'a> Engine<'a> {
             let notes = driver.notes();
             // A driver that asks for the task again retries it; the tasks after it wait.
             let again = (next.as_ref()).is_ok_and(|next| next.iter().any(|task| task.id == id));
-            self.asked(next, notes, recorder, &mut queue)?;
+            self.asked(next, notes, recorder, &mut queue, Some(id))?;
             if !again {
                 queue.finished(id);
             }

@@ -621,14 +621,10 @@ impl LocalContainer {
             name: Some(run.name.to_owned()),
             platform: run.image.platform.clone().unwrap_or_default(),
         };
-        let image = image::available_for(
-            &self.engine,
-            &run.image.reference,
-            run.image.platform.as_deref(),
-        )
-        .await?;
         let mut body = run.create_with_cpus(nano_cpus);
-        if run.image.platform.is_some() {
+        if let Some(platform) = run.image.platform.as_deref() {
+            let image =
+                image::available_for(&self.engine, &run.image.reference, Some(platform)).await?;
             body.image = Some(image.id.ok_or_else(|| {
                 ExecutorError::Unsupported(format!(
                     "the engine's image {} has no ID for its requested platform",

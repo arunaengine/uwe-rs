@@ -119,10 +119,11 @@ impl Commands {
         reference: &str,
         platform: Option<&str>,
     ) -> Result<Commands, ExecutorError> {
-        let config = available_for(engine, reference, platform)
-            .await?
-            .config
-            .unwrap_or_default();
+        let image = match platform {
+            None => inspect(engine, reference).await?,
+            Some(_) => available_for(engine, reference, platform).await?,
+        };
+        let config = image.config.unwrap_or_default();
         Ok(Commands {
             entrypoint: config.entrypoint.unwrap_or_default(),
             command: config.cmd.unwrap_or_default(),
@@ -217,7 +218,7 @@ mod tests {
         let server = std::thread::spawn(move || {
             let mut requests = Vec::new();
             let mut pulled = false;
-            for stream in listener.incoming().take(7) {
+            for stream in listener.incoming().take(8) {
                 let mut stream = stream.unwrap();
                 let mut reader = BufReader::new(stream.try_clone().unwrap());
                 let mut line = String::new();
@@ -257,6 +258,7 @@ mod tests {
             .await
             .unwrap();
         let reference = "example/tool@sha256:ab";
+        assert!(Commands::of(&engine, reference, None).await.is_err());
         assert_eq!(
             pin(&engine, reference).await.unwrap().as_deref(),
             Some(reference)
@@ -276,11 +278,11 @@ mod tests {
             2
         );
         assert!(
-            requests[3].contains("example%2Ftool%40sha256%3Aab"),
+            requests[4].contains("example%2Ftool%40sha256%3Aab"),
             "{requests:?}"
         );
         assert!(
-            requests[6].contains("platform=linux%2Farm64"),
+            requests[7].contains("platform=linux%2Farm64"),
             "{requests:?}"
         );
     }

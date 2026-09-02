@@ -70,14 +70,15 @@ impl Inputs<'_> {
     }
 
     /// A persistent private copy: remote jobs may still use it after preparation is dropped.
+    /// Downloads must belong to the caller; only its dedicated snapshot outer folder is private.
     async fn snapshot(&self, source: &Path, directory: bool) -> Result<PathBuf, RunnerError> {
         if self.mode == Mode::Look {
             return Ok(std::fs::canonicalize(source)?);
         }
         let root = self.settings.downloads.join("input-snapshots");
         tokio::fs::create_dir_all(&root).await?;
+        tokio::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).await?;
         let snapshot = tempfile::tempdir_in(&root)?;
-        tokio::fs::set_permissions(snapshot.path(), std::fs::Permissions::from_mode(0o755)).await?;
         let path = snapshot.path().join("input");
         if directory {
             tokio::fs::create_dir(&path).await?;
@@ -105,6 +106,7 @@ impl Inputs<'_> {
         } else {
             tokio::fs::copy(source, &path).await?;
         }
+        readable_snapshot(snapshot.path()).await?;
         let path = tokio::fs::canonicalize(path).await?;
         let _ = snapshot.keep();
         Ok(path)
@@ -282,4 +284,25 @@ impl Inputs<'_> {
         };
         Ok((file, from))
     }
+}
+
+/// Makes only private copies readable through container mounts, without following links.
+pub(crate) async fn readable_snapshot(root: &Path) -> Result<(), RunnerError> {
+    let mut pending = vec![root.to_owned()];
+    while let Some(directory) = pending.pop() {
+        tokio::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755)).await?;
+        let mut entries = tokio::fs::read_dir(&directory).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let kind = entry.file_type().await?;
+            if kind.is_dir() {
+                pending.push(entry.path());
+            } else if kind.is_file() {
+                let executable = entry.metadata().await?.permissions().mode() & 0o111 != 0;
+                let mode = if executable { 0o755 } else { 0o644 };
+                tokio::fs::set_permissions(entry.path(), std::fs::Permissions::from_mode(mode))
+                    .await?;
+            }
+        }
+    }
+    Ok(())
 }

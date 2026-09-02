@@ -108,7 +108,7 @@ pub fn export(arguments: &Arguments) -> Result<(), Failure> {
             "iunctus: the run database has no run `{id}`; `iunctus runs` lists the runs"
         )));
     };
-    let workflow = main_file(&run)?;
+    let workflow = main_file(&run, &database)?;
     let output = (arguments.output.clone()).unwrap_or_else(|| PathBuf::from(format!("{id}-crate")));
     let options = run_crate::Options {
         workflow,
@@ -148,11 +148,24 @@ fn kept_sources(
     let folder = cache_directory().join("exports").join(&run.id);
     let runtime = crate::changes::runtime()?;
     let mut kept = std::collections::HashMap::new();
-    for source in sources {
-        if let Some(copy) =
-            runtime.block_on(crate::repeat::kept_copy(&store, &source.digest, &folder))
+    let mut digests: std::collections::BTreeSet<String> =
+        sources.into_iter().map(|source| source.digest).collect();
+    for task in database.tasks(&run.id).map_err(crate::changes::broken)? {
+        if let Some(task) = database
+            .task(&run.id, task.id)
+            .map_err(crate::changes::broken)?
         {
-            kept.insert(source.digest, copy);
+            digests.extend(
+                task.inputs
+                    .into_iter()
+                    .chain(task.outputs)
+                    .filter_map(|file| file.digest),
+            );
+        }
+    }
+    for digest in digests {
+        if let Some(copy) = runtime.block_on(crate::repeat::kept_copy(&store, &digest, &folder)) {
+            kept.insert(digest, copy);
         }
     }
     Ok(kept)
@@ -250,7 +263,7 @@ pub fn origin(arguments: &Arguments) -> Result<(), Failure> {
 }
 
 /// The main file of the workflow of a run, which the crate holds a copy of.
-fn main_file(run: &Run) -> Result<PathBuf, Failure> {
+fn main_file(run: &Run, database: &Database) -> Result<PathBuf, Failure> {
     let target = Path::new(&run.workflow);
     let language = match run.language.as_str() {
         "nextflow" => Language::Nextflow,
@@ -258,12 +271,43 @@ fn main_file(run: &Run) -> Result<PathBuf, Failure> {
         "cwl" => Language::Cwl,
         _ => Language::Argo,
     };
-    detect::main_file(target, language).ok_or_else(|| {
-        failure(format!(
-            "iunctus: the workflow {} of the run is gone, so the crate cannot hold it",
-            target.display()
-        ))
-    })
+    let paths: std::collections::BTreeSet<PathBuf> = match run.workflow_folder.as_deref() {
+        Some(folder) => database
+            .sources(&run.id)
+            .map_err(crate::changes::broken)?
+            .into_iter()
+            .filter(|source| source.kind == run_database::SourceKind::Workflow)
+            .map(|source| Path::new(folder).join(source.path))
+            .collect(),
+        None => Default::default(),
+    };
+    if paths.contains(target) || target.is_file() {
+        return Ok(target.to_owned());
+    }
+    let names: &[&str] = match language {
+        Language::Nextflow => &["main.nf"],
+        Language::Snakemake => &[
+            "Snakefile",
+            "snakefile",
+            "workflow/Snakefile",
+            "workflow/snakefile",
+        ],
+        _ => &[],
+    };
+    if let Some(main) = names
+        .iter()
+        .map(|name| target.join(name))
+        .find(|path| paths.contains(path) || path.is_file())
+    {
+        return Ok(main);
+    }
+    if let Some(live) = detect::main_file(target, language) {
+        return Ok(live);
+    }
+    Err(failure(format!(
+        "iunctus: the workflow {} of the run is gone and no recorded main file is identifiable, so the crate cannot hold it",
+        target.display()
+    )))
 }
 
 #[cfg(test)]
@@ -271,6 +315,124 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
+
+    #[test]
+    fn untracked_preferred_main_is_not_replaced_by_a_recorded_module() {
+        let root = tempfile::tempdir().expect("a directory");
+        let project = root.path().join("workflow");
+        std::fs::create_dir_all(&project).expect("creates workflow");
+        for args in [["init", "-q"].as_slice(), ["add", "a.nf"].as_slice()] {
+            if args[0] == "add" {
+                std::fs::write(project.join("a.nf"), "process MODULE {}\n")
+                    .expect("writes tracked module");
+                std::fs::write(project.join("main.nf"), "workflow {}\n")
+                    .expect("writes untracked main");
+            }
+            assert!(
+                std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(&project)
+                    .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                    .env("GIT_CONFIG_NOSYSTEM", "1")
+                    .status()
+                    .expect("prepares test index")
+                    .success()
+            );
+        }
+        assert_eq!(
+            crate::tracked::tracked(&project.join(".git")).expect("reads index"),
+            ["a.nf"]
+        );
+        let sources = [run_database::Source {
+            kind: run_database::SourceKind::Workflow,
+            path: "a.nf".into(),
+            digest: task_model::Digest::sha256(b"process MODULE {}\n").to_string(),
+            size: b"process MODULE {}\n".len() as u64,
+        }];
+        let path = root.path().join("runs.sqlite");
+        let start = run_database::RunStart {
+            id: "entrypoint".into(),
+            resumes: None,
+            workflow: project.to_string_lossy().into_owned(),
+            language: Language::Nextflow,
+            revision: None,
+            arguments: Vec::new(),
+            parameters: Vec::new(),
+            executor: "simulator".into(),
+            simulated: true,
+            store: None,
+            program: None,
+            launch: None,
+            workflow_folder: Some(project.to_string_lossy().into_owned()),
+            repeats: None,
+        };
+        let mut recorder = Database::open(&path)
+            .expect("opens")
+            .record(&start)
+            .expect("records");
+        recorder.sources(&sources);
+        recorder.ended(None);
+        recorder.close().expect("closes");
+        let database = Database::open(&path).expect("opens again");
+        let run = database.run("entrypoint").expect("reads").expect("a run");
+        assert_eq!(
+            main_file(&run, &database)
+                .map_err(|error| error.message)
+                .expect("finds live preferred main"),
+            project.join("main.nf")
+        );
+        let recorded_main = run_database::Source {
+            kind: run_database::SourceKind::Workflow,
+            path: "main.nf".into(),
+            digest: task_model::Digest::sha256(b"workflow {}\n").to_string(),
+            size: b"workflow {}\n".len() as u64,
+        };
+        let mut historical = start.clone();
+        historical.id = "retained-main".into();
+        let mut recorder = Database::open(&path)
+            .expect("opens")
+            .record(&historical)
+            .expect("records retained main");
+        recorder.sources(&[sources[0].clone(), recorded_main.clone()]);
+        recorder.ended(None);
+        recorder.close().expect("closes retained main");
+        std::fs::remove_file(project.join("main.nf")).expect("deletes main, retains helper");
+        let retained = root.path().join("retained-main.nf");
+        std::fs::write(&retained, "workflow {}\n").expect("retains main bytes");
+        let historical = database
+            .run("retained-main")
+            .expect("reads retained main")
+            .expect("a run");
+        let selected = main_file(&historical, &database)
+            .map_err(|error| error.message)
+            .expect("selects missing recorded main");
+        assert_eq!(selected, project.join("main.nf"));
+        let options = run_crate::Options {
+            workflow: selected,
+            sources: [(recorded_main.digest, retained)].into(),
+            ..run_crate::Options::default()
+        };
+        let output = root.path().join("crate");
+        run_crate::export(&database, "retained-main", &output, &options)
+            .expect("exports retained main instead of live helper");
+        assert_eq!(
+            std::fs::read_to_string(output.join("main.nf")).expect("reads archive main"),
+            "workflow {}\n"
+        );
+        std::fs::remove_dir_all(&project).expect("deletes checkout");
+        assert!(
+            main_file(&run, &database).is_err(),
+            "a recorded module does not identify the deleted main"
+        );
+        let mut explicit = run.clone();
+        explicit.workflow = project.join("a.nf").to_string_lossy().into_owned();
+        assert_eq!(
+            main_file(&explicit, &database)
+                .map_err(|error| error.message)
+                .expect("identifies recorded explicit file"),
+            project.join("a.nf")
+        );
+    }
 
     #[test]
     fn runs_are_listed_one_per_line() {

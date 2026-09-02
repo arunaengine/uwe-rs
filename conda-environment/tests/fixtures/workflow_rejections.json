@@ -1,0 +1,90 @@
+{
+  "accepted": 2032,
+  "rejected": [
+    {
+      "message": "line 8: `numpy >= 1.19.*` is no match spec of a conda package: its version",
+      "path": "catalog/CSB-IG__GSE167150_HiC_matrices/workflow/envs/hicexplorer.yaml"
+    },
+    {
+      "message": "line 7: `salilab:dssp` is no match spec of a conda package: its name",
+      "path": "catalog/GArcho44__snvs-annotation-pipeline/workflow/envs/dssp_env.yaml"
+    },
+    {
+      "message": "line 1: the file holds no mapping of `channels` and `dependencies`",
+      "path": "catalog/IMS-Bio2Core-Facility__single_snake_sequencing/workflow/envs/qc.yaml"
+    },
+    {
+      "message": "line 8: simple key expect ':'",
+      "path": "catalog/JoyceS13__BEP_pipeline/workflow/envs/bwa_map_env.yaml"
+    },
+    {
+      "message": "line 4: while scanning a plain scalar, found a tab",
+      "path": "catalog/JoyceS13__BEP_pipeline/workflow/envs/mutate_env.yaml"
+    },
+    {
+      "message": "line 2: tabs disallowed within this context (block indentation)",
+      "path": "catalog/JoyceS13__BEP_pipeline/workflow/envs/octopus.yaml"
+    },
+    {
+      "message": "line 2: tabs disallowed within this context (block indentation)",
+      "path": "catalog/JoyceS13__BEP_pipeline/workflow/envs/validate_env.yaml"
+    },
+    {
+      "message": "line 2: tabs disallowed within this context (block indentation)",
+      "path": "catalog/JoyceS13__BEP_pipeline/workflow/envs/vcftools.yaml"
+    },
+    {
+      "message": "line 11: `snpeff=5.4.0c-0` is no match spec of a conda package: its version",
+      "path": "catalog/MPUSP__snakemake-assembly-postprocessing/workflow/envs/vcfutils.yml"
+    },
+    {
+      "message": "line 8: `?\"numpy =\" + config[wildcards[\"simulation\"]]` is no match spec of a conda package: the form with brackets is not supported yet",
+      "path": "catalog/guyer__slurm_conda_glitch/workflow/envs/template.yaml"
+    },
+    {
+      "message": "line 8: `altair[all]` is no match spec of a conda package: the form with brackets is not supported yet",
+      "path": "catalog/jsquaredosquared__novocraft-sv-benchmarking/workflow/envs/data_analysis.yaml"
+    },
+    {
+      "message": "line 5: `dedup ==0.12.8-0` is no match spec of a conda package: its version",
+      "path": "catalog/martykardos__asacphus_fire_frogs/workflow/envs/dedup.yaml"
+    },
+    {
+      "message": "line 1: the file holds no mapping of `channels` and `dependencies`",
+      "path": "catalog/mdondrup__divergence_time/workflow/envs/example.yaml"
+    },
+    {
+      "message": "line 1: the file holds no mapping of `channels` and `dependencies`",
+      "path": "catalog/mdondrup__divergence_time/workflow/envs/sample.yaml"
+    },
+    {
+      "message": "line 1: the file holds no mapping of `channels` and `dependencies`",
+      "path": "catalog/mdondrup__ras_meta_transcriptomics/workflow/envs/example.yaml"
+    },
+    {
+      "message": "line 1: the file holds no mapping of `channels` and `dependencies`",
+      "path": "catalog/mdondrup__ras_meta_transcriptomics/workflow/envs/sample.yaml"
+    },
+    {
+      "message": "line 1: the file holds no mapping of `channels` and `dependencies`",
+      "path": "catalog/mdondrup__yeast_variantcalling/workflow/envs/example.yaml"
+    },
+    {
+      "message": "line 1: the file holds no mapping of `channels` and `dependencies`",
+      "path": "catalog/mdondrup__yeast_variantcalling/workflow/envs/sample.yaml"
+    },
+    {
+      "message": "line 5: `dedup ==0.12.8-0` is no match spec of a conda package: its version",
+      "path": "catalog/moiexpositoalonsolab__grenepipe/workflow/envs/dedup.yaml"
+    },
+    {
+      "message": "line 15: `bioconda:bismark=3.1.0` is no match spec of a conda package: its name",
+      "path": "catalog/niekwit__methyl-seq/workflow/envs/bismark.yaml"
+    },
+    {
+      "message": "line 11: `r-KernSmooth =2.23-24` is no match spec of a conda package: its version",
+      "path": "catalog/petroskilp__clustromics/workflow/envs/deseq2.yaml"
+    }
+  ],
+  "total": 2053
+}

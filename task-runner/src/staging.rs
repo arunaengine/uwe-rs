@@ -72,9 +72,8 @@ impl<B: Backend> Runner<B> {
         let snapshot = if linked {
             let root = self.settings.downloads.join("input-snapshots");
             tokio::fs::create_dir_all(&root).await?;
+            tokio::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).await?;
             let snapshot = tempfile::tempdir_in(&root)?;
-            tokio::fs::set_permissions(snapshot.path(), std::fs::Permissions::from_mode(0o755))
-                .await?;
             Some(snapshot)
         } else {
             staging.directories.push(base.to_owned());
@@ -143,6 +142,7 @@ impl<B: Backend> Runner<B> {
             }
         }
         if let Some(snapshot) = snapshot {
+            crate::inputs::readable_snapshot(snapshot.path()).await?;
             staging.inputs.push(Staged {
                 path: base.to_owned(),
                 source: std::fs::canonicalize(snapshot.path())?,

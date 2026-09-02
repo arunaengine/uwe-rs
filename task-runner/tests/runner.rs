@@ -378,8 +378,8 @@ fn stored_directory_links_materialize_with_their_original_spelling() {
     );
 }
 
-#[test]
-fn a_result_of_another_machine_comes_through_the_shared_store() {
+#[tokio::test]
+async fn a_result_of_another_machine_comes_through_the_shared_store() {
     let operator = opendal::Operator::new(opendal::services::Memory::default()).expect("memory");
     let shared = Store::remote(operator, "s3://shared/cache").expect("a store");
     let machine = |root: &Path, run: &str| {
@@ -389,11 +389,25 @@ fn a_result_of_another_machine_comes_through_the_shared_store() {
     };
     let first = tempfile::tempdir().expect("a temporary directory");
     let runner = machine(first.path(), "run1");
-    let made = execute(&runner, &request(&runner, &task(first.path(), "a")));
+    let prepared = runner
+        .request(&task(first.path(), "a"), Some("debian@sha256:00".into()))
+        .await
+        .unwrap();
+    let made = runner
+        .execute(&prepared, &CancellationToken::new())
+        .await
+        .unwrap();
     assert!(!made.reused);
     let second = tempfile::tempdir().expect("a temporary directory");
     let runner = machine(second.path(), "run2");
-    let taken = execute(&runner, &request(&runner, &task(second.path(), "a")));
+    let prepared = runner
+        .request(&task(second.path(), "a"), Some("debian@sha256:00".into()))
+        .await
+        .unwrap();
+    let taken = runner
+        .execute(&prepared, &CancellationToken::new())
+        .await
+        .unwrap();
     assert!(taken.reused);
     assert!(runner.backend().runs.lock().unwrap().is_empty());
     // The output is in the shared store only, until this machine reads it.
@@ -410,8 +424,14 @@ fn a_result_of_another_machine_comes_through_the_shared_store() {
     // A task of this machine that reads it takes it into the folder first.
     let mut next = task(second.path(), "b");
     next.inputs[0].source = address;
-    let prepared = request(&runner, &next);
-    execute(&runner, &prepared);
+    let prepared = runner
+        .request(&next, Some("debian@sha256:00".into()))
+        .await
+        .unwrap();
+    runner
+        .execute(&prepared, &CancellationToken::new())
+        .await
+        .unwrap();
     let kept = second.path().join("store").join(&output.location);
     assert_eq!(std::fs::read_to_string(kept).expect("reads"), "data\n");
 }
@@ -892,7 +912,15 @@ fn waiting_stops_when_the_run_is_cancelled() {
         tokio::select! {
             _ = slow.execute(&prepared, &cancel) => None,
             waited = async {
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                    loop {
+                        let started = { !slow.backend().runs.lock().unwrap().is_empty() };
+                        if started {
+                            break;
+                        }
+                        tokio::task::yield_now().await;
+                    }
+                }).await.expect("the slow backend starts while holding the task lease");
                 let stopper = stop.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -978,6 +1006,8 @@ fn clean_up_keeps_what_the_named_runs_need() {
     // The kept run took the third result from the cache: it refers to files of the old run.
     let reused = execute(&kept, &request(&kept, &third));
     assert!(reused.reused);
+    drop(old);
+    drop(kept);
     let store = Store::local(&root.path().join("store")).expect("a store");
     let keep = Keep {
         runs: ["kept".to_owned()].into(),
@@ -1003,6 +1033,7 @@ fn clean_up_keeps_what_the_named_runs_need() {
     assert_eq!((planned.stored_results, planned.stored_objects), (3, 7));
     let removed = block_on(remove(&store, &planned)).expect("removes");
     assert_eq!((removed.results, removed.objects), (1, 2));
+    let kept = runner_of(root.path(), "kept", std::time::Duration::ZERO, 0);
     // What the kept run needs is still answered from the cache; the first task runs again.
     assert!(execute(&kept, &request(&kept, &third)).reused);
     assert!(execute(&kept, &request(&kept, &second)).reused);
@@ -1030,6 +1061,8 @@ fn clean_up_keeps_what_was_used_lately_and_what_took_long() {
     let lately = std::time::SystemTime::now();
     // A later run uses the second result.
     assert!(execute(&quick, &request(&quick, &second)).reused);
+    drop(quick);
+    drop(slow);
     let store = Store::local(&root.path().join("store")).expect("a store");
     let tasks = |keep: &Keep| -> Vec<String> {
         let planned = block_on(plan(&store, keep)).expect("plans");
@@ -1056,6 +1089,149 @@ fn clean_up_keeps_what_was_used_lately_and_what_took_long() {
     };
     let planned = block_on(plan(&store, &active)).expect("plans");
     assert!(planned.is_empty());
+}
+
+#[test]
+fn a_stale_cleanup_plan_cannot_remove_a_new_cache_consumers_files() {
+    use task_runner::clean::{Keep, plan, remove};
+    let root = tempfile::tempdir().unwrap();
+    let task = task(root.path(), "a");
+    let old = runner_of(root.path(), "old", std::time::Duration::ZERO, 0);
+    let result = execute(&old, &request(&old, &task));
+    drop(old);
+    let store = Store::local(&root.path().join("store")).unwrap();
+    let stale = block_on(plan(&store, &Keep::default())).unwrap();
+    assert!(!stale.objects.is_empty());
+    let consumer = runner_of(root.path(), "consumer", std::time::Duration::ZERO, 0);
+    assert!(execute(&consumer, &request(&consumer, &task)).reused);
+    let removed = block_on(remove(&store, &stale)).unwrap();
+    assert_eq!((removed.results, removed.objects), (0, 0));
+    assert_eq!(
+        block_on(store.get_object(&result.files[0].location)).unwrap(),
+        b"data\n".as_slice()
+    );
+    drop(consumer);
+    assert!(block_on(remove(&store, &stale)).unwrap().objects > 0);
+}
+
+#[tokio::test]
+async fn maintenance_blocks_preparation_until_fresh_deletion_finishes() {
+    use task_runner::clean::{Keep, maintenance, plan, remove_guarded};
+    let root = tempfile::tempdir().unwrap();
+    let task = task(root.path(), "a");
+    let old = runner_of(root.path(), "old", std::time::Duration::ZERO, 0);
+    let prepared = old
+        .request(&task, Some("debian@sha256:00".into()))
+        .await
+        .unwrap();
+    let result = old
+        .execute(&prepared, &CancellationToken::new())
+        .await
+        .unwrap();
+    drop(old);
+    let store = Store::local(&root.path().join("store")).unwrap();
+    let guard = maintenance(&store).await.unwrap();
+    let planned = plan(&store, &Keep::default()).await.unwrap();
+    let consumer = std::sync::Arc::new(runner_of(
+        root.path(),
+        "consumer",
+        std::time::Duration::ZERO,
+        0,
+    ));
+    let pending = consumer.clone();
+    let mut preparing = tokio::spawn(async move {
+        pending
+            .request(&task, Some("debian@sha256:00".into()))
+            .await
+    });
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(30), &mut preparing)
+            .await
+            .is_err()
+    );
+    assert!(store.held_leases("runs/").await.unwrap().is_empty());
+    remove_guarded(&store, &planned, &guard).await.unwrap();
+    assert!(!store.exists(&result.files[0].location).await.unwrap());
+    drop(guard);
+    let prepared = preparing.await.unwrap().unwrap();
+    assert!(
+        !consumer
+            .execute(&prepared, &CancellationToken::new())
+            .await
+            .unwrap()
+            .reused
+    );
+}
+
+#[test]
+fn a_first_run_lease_failure_is_reported_and_retried_before_snapshotting() {
+    let root = tempfile::tempdir().unwrap();
+    let runner = runner(root.path(), 0);
+    let task = task(root.path(), "a");
+    let blocker = root.path().join("store/locks/runs");
+    std::fs::create_dir_all(blocker.parent().unwrap()).unwrap();
+    std::fs::write(&blocker, "blocked").unwrap();
+    assert!(block_on(runner.request(&task, Some("debian@sha256:00".into()))).is_err());
+    assert!(!root.path().join("downloads/input-snapshots").exists());
+    assert!(runner.backend().runs.lock().unwrap().is_empty());
+    std::fs::remove_file(blocker).unwrap();
+    let prepared = request(&runner, &task);
+    assert!(!execute(&runner, &prepared).reused);
+}
+
+#[tokio::test]
+async fn execution_of_an_external_preparation_waits_for_maintenance_cancellably() {
+    let root = tempfile::tempdir().unwrap();
+    let task = task(root.path(), "a");
+    let original = runner_of(root.path(), "original", std::time::Duration::ZERO, 0);
+    let prepared = original
+        .request(&task, Some("debian@sha256:00".into()))
+        .await
+        .unwrap();
+    drop(original);
+    let store = Store::local(&root.path().join("store")).unwrap();
+    let _guard = task_runner::clean::maintenance(&store).await.unwrap();
+    let consumer = runner_of(root.path(), "consumer", std::time::Duration::ZERO, 0);
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let error = consumer.execute(&prepared, &cancel).await.unwrap_err();
+    assert!(matches!(
+        error,
+        task_runner::RunnerError::Executor(ExecutorError::Cancelled)
+    ));
+    assert!(store.held_leases("runs/").await.unwrap().is_empty());
+    assert!(consumer.backend().runs.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn ordinary_executor_cancels_blocked_preparation_without_resuming_it() {
+    use workflow_graph::{Attempt, ExecuteError, Executor};
+    let root = tempfile::tempdir().unwrap();
+    let task = std::sync::Arc::new(task(root.path(), "a"));
+    let mut executor = task_runner::RunnerExecutor::new(runner(root.path(), 0), None);
+    let store = Store::local(&root.path().join("store")).unwrap();
+    let guard = task_runner::clean::maintenance(&store).await.unwrap();
+    let cancel = CancellationToken::new();
+    let mut running = Box::pin(executor.run(Attempt {
+        task,
+        number: 1,
+        cancel: cancel.clone(),
+    }));
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(30), &mut running)
+            .await
+            .is_err()
+    );
+    cancel.cancel();
+    let result = tokio::time::timeout(std::time::Duration::from_millis(200), &mut running)
+        .await
+        .unwrap();
+    assert!(matches!(result, Err(ExecuteError::Cancelled)));
+    drop(guard);
+    tokio::task::yield_now().await;
+    assert!(!root.path().join("downloads/input-snapshots").exists());
+    assert!(store.held_leases("runs/").await.unwrap().is_empty());
+    assert!(executor.runner().backend().runs.lock().unwrap().is_empty());
 }
 
 #[test]

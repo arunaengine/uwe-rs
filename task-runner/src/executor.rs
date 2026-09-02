@@ -224,6 +224,9 @@ async fn outcome<B: Backend>(
     options: &AttemptOptions<'_>,
     cancel: &CancellationToken,
 ) -> Result<Outcome, ExecuteError> {
+    if cancel.is_cancelled() {
+        return Err(ExecuteError::Cancelled);
+    }
     let failed = |error: RunnerError| failure(task, error);
     let image = match &task.image {
         Some(image) => Some(runner.pin(image).await.map_err(failed)?),
@@ -237,10 +240,11 @@ async fn outcome<B: Backend>(
             container.image = Some(runner.pin(image).await.map_err(failed)?);
         }
     }
-    let mut prepared = runner
-        .request(&pinned, image.clone())
-        .await
-        .map_err(failed)?;
+    let mut prepared = tokio::select! {
+        biased;
+        () = cancel.cancelled() => return Err(ExecuteError::Cancelled),
+        prepared = runner.request(&pinned, image.clone()) => prepared.map_err(failed)?,
+    };
     prepared.request.attempt = attempt;
     if options.right_sizing {
         let placement = &prepared.request.placement;

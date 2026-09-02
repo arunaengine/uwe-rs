@@ -195,7 +195,7 @@ pub struct Runner<B> {
     pinned: Arc<Mutex<HashMap<String, Arc<Pinned>>>>,
     /// The lease of the run in the store, which it holds from its first task on, so that
     /// clean-up knows that the run goes on.
-    lease: Arc<OnceCell<Option<Lease>>>,
+    lease: Arc<OnceCell<Lease>>,
     /// The share of results from the cache that run again for the reproducibility check, from
     /// 0 (none) to 1 (all).
     check: f64,
@@ -282,22 +282,26 @@ impl<B: Backend> Runner<B> {
 
     /// Stores a local file by its content, for tasks that take it as input.
     pub async fn import(&self, file: &Path) -> Result<(Digest, u64), RunnerError> {
+        let _admission = self.admit().await?;
         Ok(self.store.put_file(file).await?)
     }
 
     /// Stores bytes by their content, like a task script.
     pub async fn import_bytes(&self, bytes: &[u8]) -> Result<Digest, RunnerError> {
+        let _admission = self.admit().await?;
         self.inputs().bytes(bytes).await
     }
 
     /// The manifest of a local directory, which is stored, and the size of its files. The
     /// files are stored by their content too when the runner imports inputs.
     pub async fn import_directory(&self, directory: &Path) -> Result<(Digest, u64), RunnerError> {
+        let _admission = self.admit().await?;
         self.inputs().directory(directory).await
     }
 
     /// Stores a directory manifest, like the one of an empty directory.
     pub async fn import_tree(&self, tree: &Tree) -> Result<Digest, RunnerError> {
+        let _admission = self.admit().await?;
         self.inputs().tree(tree).await
     }
 
@@ -339,7 +343,10 @@ impl<B: Backend> Runner<B> {
         prepared: &Prepared,
         cancel: &CancellationToken,
     ) -> Result<TaskResult, RunnerError> {
-        self.hold_run_lease().await;
+        let mut admission = Some(tokio::select! {
+            result = self.admit() => result?,
+            () = cancel.cancelled() => return Err(ExecutorError::Cancelled.into()),
+        });
         let request = &prepared.request;
         let key = request.spec.cache_key()?;
         let namespace = request.spec.namespace.as_str();
@@ -356,11 +363,14 @@ impl<B: Backend> Runner<B> {
         };
         let (earlier, _turn) = match shared && prepared.reuse {
             true => {
-                let found = match self.reuse(namespace, &key).await? {
+                let found = match self.reuse_guarded(namespace, &key).await? {
                     Some(entry) => Turn::Reused(entry),
                     None => {
-                        self.turn(namespace, &key, &request.identity, cancel)
-                            .await?
+                        drop(admission.take());
+                        tokio::select! {
+                            result = self.turn(namespace, &key, &request.identity, cancel) => result?,
+                            () = cancel.cancelled() => return Err(ExecutorError::Cancelled.into()),
+                        }
                     }
                 };
                 match found {
@@ -373,8 +383,15 @@ impl<B: Backend> Runner<B> {
             }
             false => (None, None),
         };
+        drop(admission);
+        // Task-lease waiting releases the admission gate; staging acquires it again.
+        let admission = tokio::select! {
+            result = self.admit() => result?,
+            () = cancel.cancelled() => return Err(ExecutorError::Cancelled.into()),
+        };
         let task = segment(&request.identity);
         let staging = self.stage(prepared).await?;
+        drop(admission);
         let name = format!("{}-{task}-{}", self.run, request.attempt);
         let job = Job {
             name: &name,
@@ -477,11 +494,19 @@ impl<B: Backend> Runner<B> {
         namespace: &str,
         key: &Digest,
     ) -> Result<Option<CacheEntry>, RunnerError> {
+        let _admission = crate::clean::admission(&self.store).await?;
+        self.reuse_guarded(namespace, key).await
+    }
+
+    async fn reuse_guarded(
+        &self,
+        namespace: &str,
+        key: &Digest,
+    ) -> Result<Option<CacheEntry>, RunnerError> {
         let Some(found) = entry::stored(&self.store, namespace, key, Stale::Remove).await? else {
             return Ok(None);
         };
-        // A mark that cannot be written only makes the entry look older to clean-up.
-        let _ = self.store.mark_used(namespace, key, &self.run).await;
+        self.store.mark_used(namespace, key, &self.run).await?;
         Ok(Some(found))
     }
 
@@ -521,13 +546,21 @@ impl<B: Backend> Runner<B> {
         }
     }
 
-    /// Takes the lease of the run in the store once, before its first task. A store that gives
-    /// no lease costs only the protection from a clean-up that runs at the same time.
-    async fn hold_run_lease(&self) {
+    /// Takes run protection under the maintenance gate before reading or storing inputs.
+    pub(crate) async fn admit(&self) -> Result<crate::clean::Maintenance, RunnerError> {
+        let guard = crate::clean::admission(&self.store).await?;
         let name = format!("runs/{}", self.run);
         let holder = Holder::new(&self.run, "run");
-        let take = async || self.store.try_lease(&name, &holder).await.ok().flatten();
-        self.lease.get_or_init(take).await;
+        let take = async || {
+            self.store.try_lease(&name, &holder).await?.ok_or_else(|| {
+                RunnerError::Io(std::io::Error::new(
+                    std::io::ErrorKind::WouldBlock,
+                    "the run lease is already held",
+                ))
+            })
+        };
+        self.lease.get_or_try_init(take).await?;
+        Ok(guard)
     }
 }
 

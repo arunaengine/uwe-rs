@@ -28,6 +28,7 @@ impl<B: Backend> Runner<B> {
         task: &Task,
         image: Option<String>,
     ) -> Result<Prepared, RunnerError> {
+        let _admission = self.admit().await?;
         let inputs = Inputs {
             store: &self.store,
             settings: &self.settings,

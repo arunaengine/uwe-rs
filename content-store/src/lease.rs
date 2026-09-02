@@ -134,6 +134,9 @@ impl Store {
         }
         let mut removed = 0;
         for object in self.objects(&format!("{}/", layout::LEASES)).await? {
+            if object.folder {
+                continue;
+            }
             let free = match self.local_path(&object.location) {
                 Some(path) => blocking(move || remove_free_file(&path)).await?,
                 None => {
@@ -409,6 +412,7 @@ mod tests {
         drop(third);
         assert_eq!(store.remove_free_leases().await.expect("removes"), 1);
         assert!(!lease_path(&store, "tasks/default/ab").exists());
+        assert_eq!(store.remove_free_leases().await.expect("removes again"), 0);
     }
 
     #[tokio::test]

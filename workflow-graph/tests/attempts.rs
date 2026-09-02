@@ -21,6 +21,7 @@ struct Tasks {
     retries: u32,
     heard: Vec<(TaskId, u32, i32)>,
     cancel_on_finish: Option<CancellationToken>,
+    retry_success: Option<TaskId>,
 }
 
 impl Driver for Tasks {
@@ -35,7 +36,9 @@ impl Driver for Tasks {
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
         self.heard
             .push((outcome.id, outcome.attempt, outcome.exit_code));
-        if outcome.exit_code != 0 && outcome.attempt <= self.retries {
+        if (outcome.exit_code != 0 || self.retry_success == Some(outcome.id))
+            && outcome.attempt <= self.retries
+        {
             return Ok(vec![task(outcome.id.0, &[])]);
         }
         Ok(Vec::new())
@@ -227,6 +230,148 @@ fn a_driver_retries_a_failed_task_and_the_tasks_after_it_wait() {
     );
     assert_eq!(graph.nodes.len(), 2);
     assert_eq!(graph.nodes[0].exit_code, Some(0));
+}
+
+#[test]
+fn a_driver_retries_output_collection_after_exit_zero_and_dependents_wait() {
+    let mut driver = Tasks {
+        first: vec![task(1, &[]), task(2, &[1])],
+        retries: 1,
+        retry_success: Some(TaskId(1)),
+        ..Tasks::default()
+    };
+    let mut finished = Retries::default();
+    let mut executor = Sleeper::default();
+    let execution = Engine::new(&mut executor)
+        .options(options(4, Order::Finished))
+        .observer(&mut finished)
+        .run("output-retry", &mut driver);
+    let graph = execution
+        .into_result()
+        .expect("output collection retry succeeds");
+    assert_eq!(
+        driver.heard,
+        [(TaskId(1), 1, 0), (TaskId(1), 2, 0), (TaskId(2), 1, 0)]
+    );
+    assert_eq!(
+        finished.0,
+        [
+            (TaskId(1), 1, false),
+            (TaskId(1), 2, false),
+            (TaskId(2), 1, false)
+        ]
+    );
+    assert_eq!(graph.nodes.len(), 2);
+    assert!(graph.nodes.iter().all(|node| node.exit_code == Some(0)));
+}
+
+struct Requests {
+    first: Vec<Task>,
+    next: HashMap<TaskId, Vec<Task>>,
+}
+
+impl Driver for Requests {
+    fn language(&self) -> Language {
+        Language::Snakemake
+    }
+
+    fn start(&mut self) -> Result<Vec<Task>, DriverError> {
+        Ok(std::mem::take(&mut self.first))
+    }
+
+    fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+        Ok(self.next.remove(&outcome.id).unwrap_or_default())
+    }
+
+    fn finish(&mut self) -> Result<(), DriverError> {
+        Ok(())
+    }
+}
+
+#[test]
+fn completion_retries_preserve_duplicate_gates() {
+    let cases = [
+        (
+            "initial duplicate",
+            vec![task(1, &[]), task(1, &[])],
+            TaskId(99),
+            Vec::new(),
+            TaskId(1),
+            0,
+        ),
+        (
+            "unrelated success",
+            vec![task(1, &[]), task(2, &[])],
+            TaskId(2),
+            vec![task(1, &[])],
+            TaskId(1),
+            2,
+        ),
+        (
+            "pending attempt",
+            vec![task(1, &[]), task(2, &[])],
+            TaskId(1),
+            vec![task(2, &[])],
+            TaskId(2),
+            2,
+        ),
+        (
+            "second completion retry",
+            vec![task(1, &[])],
+            TaskId(1),
+            vec![task(1, &[]), task(1, &[])],
+            TaskId(1),
+            1,
+        ),
+    ];
+    for (label, first, completed, next, duplicate, calls) in cases {
+        let mut driver = Requests {
+            first,
+            next: HashMap::from([(completed, next)]),
+        };
+        let mut executor = Synchronous {
+            calls: 0,
+            cancel: None,
+        };
+        let execution = Engine::new(&mut executor)
+            .options(options(2, Order::AsAsked))
+            .run(label, &mut driver);
+        assert!(
+            matches!(execution.error, Some(ExecuteError::DuplicateTask(id)) if id == duplicate),
+            "{label}: {:?}",
+            execution.error
+        );
+        assert_eq!(executor.calls, calls, "{label}");
+    }
+}
+
+#[test]
+fn an_unrelated_completion_can_still_retry_a_previously_failed_task() {
+    let mut driver = Requests {
+        first: vec![task(1, &[]), task(2, &[])],
+        next: HashMap::from([(TaskId(2), vec![task(1, &[])])]),
+    };
+    let mut executor = Sleeper {
+        exit_codes: HashMap::from([((1, 1), 1)]),
+        ..Sleeper::default()
+    };
+    let mut finished = Retries::default();
+    let execution = Engine::new(&mut executor)
+        .observer(&mut finished)
+        .run("deferred failed retry", &mut driver);
+    let graph = execution
+        .into_result()
+        .expect("existing failed retry remains permitted");
+    assert_eq!(
+        finished.0,
+        [
+            (TaskId(1), 1, false),
+            (TaskId(2), 1, false),
+            (TaskId(1), 2, false)
+        ]
+    );
+    assert_eq!(graph.nodes.len(), 2);
+    assert!(graph.nodes.iter().all(|node| node.exit_code == Some(0)));
 }
 
 #[test]

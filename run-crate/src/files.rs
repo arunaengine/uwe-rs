@@ -48,10 +48,20 @@ impl Record<'_> {
                 }
                 Some(Placed::Remote { url }) => self.pinned.describe_remote(&mut entity, url),
                 Some(Placed::Absent) => {
-                    entity["description"] = json!(format!(
-                        "Not in this crate: {} was not there when the crate was made.",
-                        file.location
-                    ));
+                    if let Some(digest) = &file.digest {
+                        entity["sha256"] = json!(digest.strip_prefix("sha256:").unwrap_or(digest));
+                    }
+                    entity["description"] = json!(if file.digest.is_some() {
+                        format!(
+                            "Not in this crate: the recorded content of {} is unavailable.",
+                            file.location
+                        )
+                    } else {
+                        format!(
+                            "Not in this crate: {} was not there when the crate was made.",
+                            file.location
+                        )
+                    });
                 }
                 _ => {}
             }
@@ -65,7 +75,7 @@ impl Record<'_> {
             let digest = file.digest.as_deref()?;
             return self.placed.get(&format!("content:{digest}"));
         }
-        self.placed.get(&file.location)
+        self.placed.get(&file_key(file))
     }
 
     /// The reference to the entity of a file.
@@ -73,7 +83,10 @@ impl Record<'_> {
         let id = match self.placed_file(file)? {
             Placed::Copied { id, .. } => id.clone(),
             Placed::Remote { url } => url.clone(),
-            Placed::Absent => format!("#absent/{}", encode(&file.location)),
+            Placed::Absent => match &file.digest {
+                Some(digest) => format!("#absent/{}/{}", encode(&file.location), encode(digest)),
+                None => format!("#absent/{}", encode(&file.location)),
+            },
         };
         Some(json!({"@id": id}))
     }
@@ -114,4 +127,12 @@ impl Record<'_> {
     pub(crate) fn outputs(&self) -> impl Iterator<Item = &FileRow> {
         self.tasks.iter().flat_map(|task| &task.outputs)
     }
+}
+
+pub(crate) fn file_key(file: &FileRow) -> String {
+    format!(
+        "{}:{}",
+        file.digest.as_deref().unwrap_or_default(),
+        file.location
+    )
 }

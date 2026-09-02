@@ -27,13 +27,12 @@ pub(crate) fn loops(node: &Node) -> bool {
 
 /// The items of a loop.
 ///
-/// A loop over values that are not known, as a run with empty outputs or placeholder
-/// parameters leaves them, has no items, and `warn` hears about it: an empty `withParam`, one
-/// that still holds a tag or is a placeholder, and a `withSequence` bound that is empty or
-/// still holds a tag. Argo fails on such values; they only occur when data is missing.
+/// Simulated loops over unknown values have no items and produce a warning. Real loops
+/// reject unknown values, as Argo does.
 pub(crate) fn items(
     node: &Node,
     sequence: Option<&Sequence>,
+    assume_inputs: bool,
     warn: &mut dyn FnMut(String),
 ) -> Result<Vec<Value>, String> {
     if let Some(Node {
@@ -58,6 +57,9 @@ pub(crate) fn items(
             None
         };
         if let Some(reason) = unknown {
+            if !assume_inputs {
+                return Err(format!("withParam {} {reason}", text.trim()));
+            }
             warn(format!(
                 "withParam of {} {reason}; the loop has no items",
                 node.get("name").and_then(Node::as_str).unwrap_or("")
@@ -84,6 +86,9 @@ pub(crate) fn items(
                 || bound.0.trim().starts_with(crate::run::PLACEHOLDER)
         });
         if unknown {
+            if !assume_inputs {
+                return Err("withSequence has a bound that is not known".into());
+            }
             warn(format!(
                 "withSequence of {} has a bound that is not known; the loop has no items",
                 node.get("name").and_then(Node::as_str).unwrap_or("")

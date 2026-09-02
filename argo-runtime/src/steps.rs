@@ -276,9 +276,12 @@ impl Run {
                 continue;
             }
             let mut warnings = Vec::new();
-            let list = items(&node, typed.with_sequence.as_ref(), &mut |warning| {
-                warnings.push(warning)
-            });
+            let list = items(
+                &node,
+                typed.with_sequence.as_ref(),
+                self.options.assume_inputs,
+                &mut |warning| warnings.push(warning),
+            );
             for warning in warnings {
                 self.warn(warning);
             }
@@ -323,7 +326,7 @@ impl Run {
                         break;
                     }
                 };
-                let strict = if crate::items::unknown_item(item) {
+                let strict = if self.options.assume_inputs && crate::items::unknown_item(item) {
                     self.warn(format!(
                         "an item of the loop {item_name} is empty; tags that read its fields stay"
                     ));

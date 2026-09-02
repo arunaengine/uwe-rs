@@ -13,7 +13,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::time::{Duration, SystemTime};
 
-use content_store::{FileIdentity, Object, Store, layout};
+use content_store::{FileIdentity, Holder, Lease, Object, Store, layout};
 use task_model::{Digest, TreeEntry};
 
 use crate::{CacheEntry, RunnerError};
@@ -60,6 +60,49 @@ pub struct Plan {
     pub stored_objects: usize,
     /// The space that the objects of the store take, each file once.
     pub stored_bytes: u64,
+    keep: Option<Keep>,
+}
+
+/// Excludes new input preparation and cache acquisition while cleanup takes fresh snapshots.
+#[derive(Debug)]
+pub struct Maintenance {
+    _lease: Lease,
+    store: String,
+}
+
+fn store_name(store: &Store) -> String {
+    store
+        .local_path("")
+        .map_or_else(|| store.url(""), |path| path.to_string_lossy().into_owned())
+}
+
+/// Holds the store's maintenance gate until dropped; a concurrent operation reports busy.
+pub async fn maintenance(store: &Store) -> Result<Maintenance, RunnerError> {
+    let holder = Holder::new("maintenance", "cleanup");
+    let lease = store
+        .try_lease("maintenance", &holder)
+        .await?
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                "cache maintenance is in progress",
+            )
+        })?;
+    Ok(Maintenance {
+        _lease: lease,
+        store: store_name(store),
+    })
+}
+
+pub(crate) async fn admission(store: &Store) -> Result<Maintenance, RunnerError> {
+    loop {
+        match maintenance(store).await {
+            Err(RunnerError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            result => return result,
+        }
+    }
 }
 
 /// What clean-up removed.
@@ -119,11 +162,27 @@ struct Found {
 
 /// What clean-up would remove from a store by the rules of `keep`.
 pub async fn plan(store: &Store, keep: &Keep) -> Result<Plan, RunnerError> {
+    let original = keep.clone();
+    let mut protection = keep.clone();
+    let leases = store.held_leases("runs/").await?;
+    for holder in &leases {
+        protection.runs.insert(holder.run.clone());
+        let since = SystemTime::UNIX_EPOCH + Duration::from_millis(holder.since.max(0) as u64);
+        protection.active_since = Some(
+            protection
+                .active_since
+                .map_or(since, |earlier| earlier.min(since)),
+        );
+    }
+    let keep = &protection;
     let recent = |time: Option<SystemTime>| {
         let after = |since: Option<SystemTime>| since.is_some_and(|since| time >= Some(since));
         after(keep.used_since) || after(keep.active_since)
     };
-    let mut plan = Plan::default();
+    let mut plan = Plan {
+        keep: Some(original),
+        ..Plan::default()
+    };
     // The entries, by the time of their last use: the entry itself, or the mark of its use.
     let mut found: HashMap<(String, Digest), Found> = HashMap::new();
     for object in store.objects("ac/").await? {
@@ -198,7 +257,12 @@ pub async fn plan(store: &Store, keep: &Keep) -> Result<Plan, RunnerError> {
         for object in store.objects(kind).await? {
             let kept = match kind {
                 "runs/" => kept_file(&object.location),
-                _ => digest_of(&object.location).is_none_or(|digest| digests.contains(&digest)),
+                // Prepared inputs have no durable per-run digest records yet.
+                _ => {
+                    !leases.is_empty()
+                        || digest_of(&object.location)
+                            .is_none_or(|digest| digests.contains(&digest))
+                }
             };
             if !kept && !recent(object.modified) {
                 plan.objects.push(object.clone());
@@ -236,9 +300,32 @@ fn digest_of(location: &str) -> Option<Digest> {
     format!("{algorithm}:{hex}").parse().ok()
 }
 
-/// Removes what the plan lists: the entries first, so that no request gets a result whose
-/// files are going, then the files, then the leases that nobody holds.
-pub async fn remove(store: &Store, plan: &Plan) -> Result<Removed, RunnerError> {
+/// Replans the captured keeping rules under maintenance before removing entries and files.
+pub async fn remove(store: &Store, planned: &Plan) -> Result<Removed, RunnerError> {
+    let guard = maintenance(store).await?;
+    remove_guarded(store, planned, &guard).await
+}
+
+/// Replans with current run protection under the gate before deleting any listed object.
+pub async fn remove_guarded(
+    store: &Store,
+    planned: &Plan,
+    guard: &Maintenance,
+) -> Result<Removed, RunnerError> {
+    if guard.store != store_name(store) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "maintenance guard belongs to another store",
+        )
+        .into());
+    }
+    let keep = planned.keep.as_ref().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "cleanup requires a plan made by clean::plan",
+        )
+    })?;
+    let plan = plan(store, keep).await?;
     let mut removed = Removed::default();
     for result in &plan.results {
         store.remove_entry(&result.namespace, &result.key).await?;

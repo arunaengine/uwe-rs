@@ -269,7 +269,14 @@ impl Run {
             ("startedAt".to_owned(), text(&rfc3339(child.run.created))),
         ]);
         if phase != Phase::Running {
-            status.insert("finishedAt".to_owned(), text(&rfc3339(child.run.created)));
+            let finished = child
+                .run
+                .nodes
+                .iter()
+                .filter_map(|node| node.finished)
+                .max()
+                .unwrap_or(child.run.created);
+            status.insert("finishedAt".to_owned(), text(&rfc3339(finished)));
         }
         if !message.is_empty() {
             status.insert("message".to_owned(), text(&message));

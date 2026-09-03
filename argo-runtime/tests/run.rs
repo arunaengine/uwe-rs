@@ -905,7 +905,9 @@ fn leaf_kinds_become_tasks() {
     assert_eq!(environment["TOKEN"], "placeholder_secret_s_k");
     let http = &ran.task("[0].http").command;
     assert_eq!(http[..2], ["sh", "-c"]);
-    assert!(http[2].starts_with("curl --silent"), "{}", http[2]);
+    let script = &http[2];
+    assert!(script.starts_with("printf '%s' data | curl --silent"));
+    assert!(script.contains("--data-binary @-"));
     assert!(
         http[2].contains(" https://example.org/test-"),
         "{}",

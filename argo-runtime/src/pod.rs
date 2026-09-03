@@ -21,7 +21,8 @@ use workflow_graph::{
 };
 
 use crate::http::{
-    CURL_IMAGE, RESPONSE_BODY, RESPONSE_STATUS, Verdict, http_script, http_verdict, secret_headers,
+    CURL_IMAGE, RESPONSE_BODY, RESPONSE_HEADERS, RESPONSE_STATUS, Verdict, http_script,
+    http_verdict, secret_headers,
 };
 use crate::node::{ArtifactValue, Location, Phase};
 use crate::resources::{duration_seconds, resources_of};
@@ -189,10 +190,14 @@ impl Run {
                 let what = format!("header {header} of HTTP template {}", template.name);
                 secrets.insert(header, self.secret(&what, &reference)?);
             }
-            let script = http_script(http, &secrets);
+            let script = http_script(http, &secrets).map_err(Failure::error)?;
             task.command = vec!["sh".into(), "-c".into(), script.clone()];
             task.script = Some(script);
-            task.outputs = vec![RESPONSE_BODY.to_owned(), RESPONSE_STATUS.to_owned()];
+            task.outputs = vec![
+                RESPONSE_BODY.to_owned(),
+                RESPONSE_STATUS.to_owned(),
+                RESPONSE_HEADERS.to_owned(),
+            ];
             tasks.push(task);
         }
         if dependencies.len() < tasks.len() {
@@ -408,9 +413,13 @@ impl Run {
                     .map(|found| crate::run::output_text(files.as_deref(), &found.location))
                     .unwrap_or_else(|| Ok(String::new()))
             };
-            let (body, status) = match (read(RESPONSE_BODY), read(RESPONSE_STATUS)) {
-                (Ok(body), Ok(status)) => (body, status),
-                (Err(error), _) | (_, Err(error)) => {
+            let (body, status, headers) = match (
+                read(RESPONSE_BODY),
+                read(RESPONSE_STATUS),
+                read(RESPONSE_HEADERS),
+            ) {
+                (Ok(body), Ok(status), Ok(headers)) => (body, status, headers),
+                (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => {
                     self.fail(
                         index,
                         Phase::Error,
@@ -420,7 +429,11 @@ impl Run {
                 }
             };
             self.nodes[index].outputs.result = Some(body.clone());
-            match http_verdict(http, &body, &status) {
+            match http_verdict(http, &body, &status, &headers) {
+                Verdict::Unknown if !self.options.assume_inputs => {
+                    self.fail(index, Phase::Error, "HTTP response status is not known".to_owned());
+                    return Ok(());
+                }
                 Verdict::Unknown => self.warn(format!(
                     "HTTP template {}: the response status is not known, as in a simulated run; its success condition is not checked",
                     template.name

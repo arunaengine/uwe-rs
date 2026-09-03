@@ -129,13 +129,18 @@ impl Data {
             std::fs::remove_file(&part)?;
             return Ok(None);
         }
-        let target = self.directory.join(digest.hex());
+        let name = if self.directory.join(digest.hex()).is_dir() {
+            format!("{}-file", digest.hex())
+        } else {
+            digest.hex().to_owned()
+        };
+        let target = self.directory.join(&name);
         if target.exists() {
             std::fs::remove_file(&part)?;
         } else {
             std::fs::rename(&part, &target)?;
         }
-        Ok(Some((format!("data/{}", digest.hex()), digest, size)))
+        Ok(Some((format!("data/{name}"), digest, size)))
     }
 
     /// Copies a directory into `data/<hex>/`, where the digest is that of its manifest, as the
@@ -229,14 +234,19 @@ impl Data {
             std::fs::remove_dir_all(&part)?;
             return Ok(Placed::Absent);
         }
-        let target = self.directory.join(digest.hex());
+        let name = if self.directory.join(digest.hex()).is_file() {
+            format!("{}-directory", digest.hex())
+        } else {
+            digest.hex().to_owned()
+        };
+        let target = self.directory.join(&name);
         if target.exists() {
             std::fs::remove_dir_all(&part)?;
         } else {
             std::fs::rename(&part, &target)?;
         }
         Ok(Placed::Copied {
-            id: format!("data/{}/", digest.hex()),
+            id: format!("data/{name}/"),
             digest,
             size,
             directory: true,

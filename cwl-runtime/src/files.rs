@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::io::Read;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use cwl_parser::iri;
@@ -412,6 +413,31 @@ impl Access {
 
     /// Fills a directory listing from disk or its provider. Existing listings stay.
     pub fn load_listing(&self, directory: &mut Map, deep: bool) -> Result<(), String> {
+        self.listing(directory, deep, &mut Vec::new())
+    }
+
+    fn listing(
+        &self,
+        directory: &mut Map,
+        deep: bool,
+        ancestors: &mut Vec<(u64, u64)>,
+    ) -> Result<(), String> {
+        let identity = deep
+            .then(|| {
+                directory
+                    .get("location")
+                    .and_then(Value::as_str)
+                    .and_then(local_path)
+                    .and_then(|path| std::fs::metadata(path).ok())
+                    .map(|metadata| (metadata.dev(), metadata.ino()))
+            })
+            .flatten();
+        if let Some(identity) = &identity {
+            if ancestors.contains(identity) && !directory.contains_key("listing") {
+                return Err("directory cycle while loading a directory listing".into());
+            }
+            ancestors.push(*identity);
+        }
         if !directory.contains_key("listing") {
             let location = directory
                 .get("location")
@@ -462,9 +488,12 @@ impl Access {
                 if let Value::Map(child) = item
                     && child.get("class").and_then(Value::as_str) == Some("Directory")
                 {
-                    self.load_listing(child, true)?;
+                    self.listing(child, true, ancestors)?;
                 }
             }
+        }
+        if identity.is_some() {
+            ancestors.pop();
         }
         Ok(())
     }

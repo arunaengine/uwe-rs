@@ -4,6 +4,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
 use cwl_parser::iri;
@@ -627,59 +628,33 @@ impl Collector<'_> {
                 None => Vec::new(),
             });
         }
-        let mut found: Vec<OutputFile> = Vec::new();
-        for file in &self.outcome.files {
-            let path = file.path.trim_end_matches('/');
-            let local = Path::new(&file.location);
-            if glob_matches(pattern, path) {
-                found.push(OutputFile {
+        let mut found: Vec<OutputFile> = self
+            .outcome
+            .files
+            .iter()
+            .filter_map(|file| {
+                let path = file.path.trim_end_matches('/');
+                glob_matches(pattern, path).then(|| OutputFile {
                     path: path.to_owned(),
-                    directory: file.directory || local.is_dir(),
+                    directory: file.directory || Path::new(&file.location).is_dir(),
                     ..file.clone()
-                });
-            } else if file.directory || local.is_dir() {
-                // A folder the executor gave back may hold what the pattern names.
-                let entries = if iri::has_scheme(&file.location) {
-                    let mut directory = Map::new();
-                    directory.insert("location".into(), Value::String(file.location.clone()));
-                    self.access.load_listing(&mut directory, true)?;
-                    let mut listing = directory.shift_remove("listing").unwrap_or(Value::Null);
-                    let base = format!("{}/", file.location.trim_end_matches('/'));
-                    let mut entries = Vec::new();
-                    files::visit_files(&mut listing, &mut |entry| {
-                        if let Some(location) = entry.get("location").and_then(Value::as_str)
-                            && let Some(relative) = location.strip_prefix(&base)
-                        {
-                            let relative = iri::file_path(&format!("file:///{relative}"))
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                                .trim_start_matches('/')
-                                .to_owned();
-                            let relative = if path == "." {
-                                relative
-                            } else {
-                                format!("{path}/{relative}")
-                            };
-                            entries.push((
-                                relative,
-                                location.to_owned(),
-                                entry.get("class").and_then(Value::as_str) == Some("Directory"),
-                            ));
-                        }
-                    });
-                    entries
-                } else {
-                    walk(local, path)?
-                };
-                for (relative, location, directory) in entries {
-                    if glob_matches(pattern, &relative) {
-                        found.push(OutputFile {
-                            path: relative,
-                            location,
-                            directory,
-                            ..OutputFile::default()
-                        });
-                    }
+                })
+            })
+            .collect();
+        if found.is_empty() || pattern.contains(['*', '?', '[', '{']) {
+            for file in &self.outcome.files {
+                let path = file.path.trim_end_matches('/');
+                if !glob_matches(pattern, path)
+                    && descends(pattern, path)
+                    && (file.directory || Path::new(&file.location).is_dir())
+                {
+                    found.extend(walk(
+                        &self.access,
+                        &file.location,
+                        path,
+                        pattern,
+                        &mut Vec::new(),
+                    )?);
                 }
             }
         }
@@ -926,31 +901,121 @@ fn reads_self(expression: &Expression) -> bool {
     })
 }
 
-/// The files and folders below a folder, relative to `prefix`.
-fn walk(folder: &Path, prefix: &str) -> Result<Vec<(String, String, bool)>, String> {
+/// Whether the glob can match a descendant of this path.
+fn descends(pattern: &str, prefix: &str) -> bool {
+    if let Some(open) = pattern.find('{')
+        && let Some(close) = pattern[open..].find('}')
+    {
+        let close = open + close;
+        return pattern[open + 1..close].split(',').any(|choice| {
+            descends(
+                &format!("{}{}{}", &pattern[..open], choice, &pattern[close + 1..]),
+                prefix,
+            )
+        });
+    }
+    if prefix.is_empty() || prefix == "." {
+        return true;
+    }
+    let prefix = format!("{prefix}/");
+    pattern
+        .match_indices('/')
+        .any(|(index, _)| glob_matches(&pattern[..=index], &prefix))
+        || recursive_descent(pattern, &prefix)
+}
+
+fn recursive_descent(pattern: &str, prefix: &str) -> bool {
+    if let Some(open) = pattern.find('{')
+        && let Some(close) = pattern[open..].find('}')
+    {
+        let close = open + close;
+        return pattern[open + 1..close].split(',').any(|choice| {
+            recursive_descent(
+                &format!("{}{}{}", &pattern[..open], choice, &pattern[close + 1..]),
+                prefix,
+            )
+        });
+    }
+    pattern
+        .match_indices("**")
+        .any(|(index, _)| glob_matches(&format!("{}**", &pattern[..index]), prefix))
+}
+
+/// Only the entries and subdirectories the glob can use are inspected.
+fn walk(
+    access: &Access,
+    location: &str,
+    prefix: &str,
+    pattern: &str,
+    ancestors: &mut Vec<String>,
+) -> Result<Vec<OutputFile>, String> {
+    let local = iri::file_path(&location_of(location));
+    let identity = match &local {
+        Some(path) => {
+            let metadata = std::fs::metadata(path)
+                .map_err(|error| format!("cannot list {location}: {error}"))?;
+            format!("{}:{}", metadata.dev(), metadata.ino())
+        }
+        None => location_of(location),
+    };
+    if ancestors.contains(&identity) && recursive_descent(pattern, &format!("{prefix}/")) {
+        return Err(format!(
+            "directory cycle while matching `{pattern}` at `{location}`"
+        ));
+    }
+    ancestors.push(identity);
+    let entries = match &local {
+        Some(path) => {
+            let entries = std::fs::read_dir(path)
+                .map_err(|error| format!("cannot list {location}: {error}"))?;
+            entries
+                .map(|entry| {
+                    entry.map(|entry| (entry.file_name().to_string_lossy().into_owned(), None))
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| format!("cannot list {location}: {error}"))?
+        }
+        None => access
+            .remote
+            .storage
+            .blocking()
+            .list(location)
+            .map_err(|error| format!("cannot list {location}: {error}"))?
+            .into_iter()
+            .map(|entry| (entry.name, Some(entry.directory)))
+            .collect(),
+    };
     let mut found = Vec::new();
-    let failed = |error| format!("cannot list {}: {error}", folder.display());
-    let entries = std::fs::read_dir(folder).map_err(failed)?;
-    let mut paths: Vec<_> = entries
-        .map(|entry| entry.map(|entry| entry.path()))
-        .collect::<Result<_, _>>()
-        .map_err(failed)?;
-    paths.sort();
-    for path in paths {
-        let name = path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
+    for (name, directory) in entries {
         let relative = if prefix.is_empty() || prefix == "." {
-            name
+            name.clone()
         } else {
             format!("{prefix}/{name}")
         };
-        let directory = std::fs::metadata(&path).map_err(failed)?.is_dir();
-        if directory {
-            found.extend(walk(&path, &relative)?);
+        let matched = glob_matches(pattern, &relative);
+        let descend = descends(pattern, &relative);
+        if !matched && !descend {
+            continue;
         }
-        found.push((relative, path.to_string_lossy().into_owned(), directory));
+        let child = join_location(location, &name);
+        let directory = match directory {
+            Some(directory) => directory,
+            None => std::fs::metadata(iri::file_path(&child).unwrap_or_default())
+                .map_err(|error| format!("cannot inspect {child}: {error}"))?
+                .is_dir(),
+        };
+        if matched {
+            found.push(OutputFile {
+                path: relative.clone(),
+                location: child.clone(),
+                directory,
+                ..OutputFile::default()
+            });
+        }
+        if directory && descend {
+            found.extend(walk(access, &child, &relative, pattern, ancestors)?);
+        }
     }
+    ancestors.pop();
     Ok(found)
 }

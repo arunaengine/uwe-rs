@@ -110,10 +110,11 @@ pub fn export(arguments: &Arguments) -> Result<(), Failure> {
     };
     let workflow = main_file(&run, &database)?;
     let output = (arguments.output.clone()).unwrap_or_else(|| PathBuf::from(format!("{id}-crate")));
+    let mut kept = kept_sources(arguments, &database, &run)?;
     let options = run_crate::Options {
         workflow,
         license: arguments.license.clone(),
-        sources: kept_sources(arguments, &database, &run)?,
+        sources: std::mem::take(&mut kept.sources),
     };
     let summary = run_crate::export(&database, &id, &output, &options)
         .map_err(|error| failure(error.to_string()))?;
@@ -132,6 +133,20 @@ pub fn export(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
+#[derive(Default)]
+struct KeptSources {
+    sources: std::collections::HashMap<String, PathBuf>,
+    folder: Option<PathBuf>,
+}
+
+impl Drop for KeptSources {
+    fn drop(&mut self) {
+        if let Some(folder) = &self.folder {
+            let _ = std::fs::remove_dir_all(folder);
+        }
+    }
+}
+
 /// Copies of the files of the workflow and of the command line of a run, by digest, as the
 /// store of a real run keeps them; none for a simulated run, whose crate takes the files as they
 /// are now when they did not change.
@@ -139,15 +154,19 @@ fn kept_sources(
     arguments: &Arguments,
     database: &Database,
     run: &Run,
-) -> Result<std::collections::HashMap<String, PathBuf>, Failure> {
+) -> Result<KeptSources, Failure> {
     let setup = crate::setup::Setup::load(arguments)?;
     let Some(store) = crate::repeat::kept_by(&setup, run)? else {
         return Ok(Default::default());
     };
     let sources = database.sources(&run.id).map_err(crate::changes::broken)?;
-    let folder = cache_directory().join("exports").join(&run.id);
+    let folder = crate::repeat::restoration_folder(&cache_directory().join("exports"), &run.id)?;
+    let mut kept = KeptSources {
+        folder: Some(folder.clone()),
+        sources: std::collections::HashMap::new(),
+    };
     let runtime = crate::changes::runtime()?;
-    let mut kept = std::collections::HashMap::new();
+    let mut trees = std::collections::BTreeSet::new();
     let mut digests: std::collections::BTreeSet<String> =
         sources.into_iter().map(|source| source.digest).collect();
     for task in database.tasks(&run.id).map_err(crate::changes::broken)? {
@@ -155,20 +174,134 @@ fn kept_sources(
             .task(&run.id, task.id)
             .map_err(crate::changes::broken)?
         {
-            digests.extend(
-                task.inputs
-                    .into_iter()
-                    .chain(task.outputs)
-                    .filter_map(|file| file.digest),
-            );
+            for file in task.inputs.into_iter().chain(task.outputs) {
+                if let Some(digest) = file.digest {
+                    if file.directory {
+                        trees.insert(digest);
+                    } else {
+                        digests.insert(digest);
+                    }
+                }
+            }
         }
     }
     for digest in digests {
         if let Some(copy) = runtime.block_on(crate::repeat::kept_copy(&store, &digest, &folder)) {
-            kept.insert(digest, copy);
+            kept.sources.insert(digest, copy);
+        }
+    }
+    for digest in trees {
+        if let Some(copy) = runtime.block_on(kept_tree(&store, &digest, &folder)) {
+            kept.sources.insert(format!("tree:{digest}"), copy);
         }
     }
     Ok(kept)
+}
+
+async fn kept_tree(store: &content_store::Store, digest: &str, folder: &Path) -> Option<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    use task_model::TreeEntry;
+    let digest: task_model::Digest = digest.parse().ok()?;
+    let tree = store.get_tree(&digest).await.ok()?;
+    if tree.digest().ok()? != digest {
+        return None;
+    }
+    for entry in &tree.entries {
+        let path = Path::new(entry.path());
+        if path.as_os_str().is_empty()
+            || !path
+                .components()
+                .all(|part| matches!(part, std::path::Component::Normal(_)))
+            || path.components().collect::<PathBuf>().as_os_str() != path.as_os_str()
+        {
+            return None;
+        }
+        if let TreeEntry::Symlink { target, .. } = entry {
+            let mut depth = path.parent()?.components().count();
+            if Path::new(target).is_absolute()
+                || Path::new(target).components().any(|part| match part {
+                    std::path::Component::ParentDir => match depth.checked_sub(1) {
+                        Some(next) => {
+                            depth = next;
+                            false
+                        }
+                        None => true,
+                    },
+                    std::path::Component::Normal(_) => {
+                        depth += 1;
+                        false
+                    }
+                    _ => false,
+                })
+            {
+                return None;
+            }
+        }
+    }
+    let part = folder.join(format!(".tree-{}", digest.hex()));
+    tokio::fs::create_dir(&part).await.ok()?;
+    let result = async {
+        for entry in &tree.entries {
+            let target = part.join(entry.path());
+            match entry {
+                TreeEntry::File {
+                    digest,
+                    size,
+                    executable,
+                    ..
+                } => {
+                    tokio::fs::create_dir_all(target.parent()?).await.ok()?;
+                    store.materialize_content(digest, &target).await.ok()?;
+                    if tokio::fs::metadata(&target).await.ok()?.len() != *size {
+                        return None;
+                    }
+                    tokio::fs::set_permissions(
+                        &target,
+                        std::fs::Permissions::from_mode(if *executable { 0o755 } else { 0o644 }),
+                    )
+                    .await
+                    .ok()?;
+                }
+                TreeEntry::EmptyDirectory { .. } => {
+                    tokio::fs::create_dir_all(&target).await.ok()?;
+                }
+                TreeEntry::Symlink { .. } => {}
+            }
+        }
+        for entry in &tree.entries {
+            if let TreeEntry::Symlink { path, target } = entry {
+                let link = part.join(path);
+                tokio::fs::create_dir_all(link.parent()?).await.ok()?;
+                std::os::unix::fs::symlink(target, &link).ok()?;
+            }
+        }
+        for entry in &tree.entries {
+            let target = part.join(entry.path());
+            match entry {
+                TreeEntry::EmptyDirectory { .. }
+                    if tokio::fs::read_dir(&target)
+                        .await
+                        .ok()?
+                        .next_entry()
+                        .await
+                        .ok()?
+                        .is_some() =>
+                {
+                    return None;
+                }
+                TreeEntry::Symlink { .. } if target.is_file() => return None,
+                _ => {}
+            }
+        }
+        let published = folder.join(format!("tree-{}", digest.hex()));
+        tokio::fs::rename(&part, &published).await.ok()?;
+        Some(published)
+    }
+    .await;
+    if result.is_none() {
+        let _ = tokio::fs::remove_dir_all(&part).await;
+    }
+    result
 }
 
 /// `iunctus why <run> <task>`: what changed since the same task ran before.
@@ -315,6 +448,272 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
+
+    #[test]
+    fn historical_tree_exports_preserve_legacy_manifests_links_and_file_namespaces() {
+        use std::os::unix::fs::PermissionsExt;
+        use task_model::{Tree, TreeEntry};
+        use workflow_graph::{Input, Outcome, Task, TaskId};
+        let root = tempfile::tempdir().expect("a directory");
+        let store = content_store::Store::local(&root.path().join("store")).expect("a store");
+        let runtime = crate::changes::runtime().unwrap_or_else(|error| panic!("{}", error.message));
+        let content = root.path().join("original.sh");
+        std::fs::write(&content, "echo historical\n").expect("writes input");
+        let (file, size) = runtime
+            .block_on(store.put_file(&content))
+            .expect("keeps input");
+        std::fs::remove_file(&content).expect("deletes original input");
+        let workflow = root.path().join("main.nf");
+        std::fs::write(&workflow, "workflow {}\n").expect("writes workflow");
+        for linked in [false, true] {
+            let mut tree = Tree {
+                entries: vec![
+                    TreeEntry::File {
+                        path: "bin/job.sh".into(),
+                        digest: file.clone(),
+                        size,
+                        executable: true,
+                    },
+                    TreeEntry::EmptyDirectory {
+                        path: "empty".into(),
+                    },
+                ],
+            };
+            if linked {
+                tree.entries.push(TreeEntry::Symlink {
+                    path: "bin/root".into(),
+                    target: "..".into(),
+                });
+            }
+            let digest = runtime
+                .block_on(store.put_tree(&tree))
+                .expect("keeps manifest");
+            let folder = crate::repeat::restoration_folder(root.path(), "export")
+                .unwrap_or_else(|error| panic!("{}", error.message));
+            let copy = runtime
+                .block_on(kept_tree(&store, &digest.to_string(), &folder))
+                .expect("restores historical tree");
+            assert!(copy.join("empty").is_dir());
+            if linked {
+                assert_eq!(
+                    std::fs::read_link(copy.join("bin/root")).expect("link"),
+                    Path::new("..")
+                );
+            }
+            let manifest = folder.join("manifest.json");
+            std::fs::write(
+                &manifest,
+                tree.canonical().expect("canonical legacy manifest"),
+            )
+            .expect("writes same-digest ordinary file");
+            let path = folder.join("runs.sqlite");
+            let start = run_database::RunStart {
+                id: "historical".into(),
+                resumes: None,
+                workflow: workflow.to_string_lossy().into_owned(),
+                language: Language::Nextflow,
+                revision: None,
+                arguments: Vec::new(),
+                parameters: Vec::new(),
+                executor: "local".into(),
+                simulated: false,
+                store: None,
+                program: None,
+                launch: None,
+                workflow_folder: None,
+                repeats: None,
+            };
+            let mut recorder = Database::open(&path)
+                .expect("opens")
+                .record(&start)
+                .expect("records legacy run");
+            let mut task = Task {
+                id: TaskId(1),
+                name: "TREE".into(),
+                step: "TREE".into(),
+                inputs: vec![
+                    Input {
+                        path: "data".into(),
+                        source: "/deleted-input".into(),
+                        directory: true,
+                        ..Input::default()
+                    },
+                    Input {
+                        path: "manifest.json".into(),
+                        source: "/deleted-input".into(),
+                        ..Input::default()
+                    },
+                ],
+                ..Task::default()
+            };
+            if linked {
+                task.inputs.reverse();
+            }
+            recorder.requested(&task, &[]);
+            recorder.started(task.id, 1);
+            recorder.finished(
+                &Outcome {
+                    id: task.id,
+                    inputs: [
+                        ("data".into(), digest.to_string()),
+                        ("manifest.json".into(), digest.to_string()),
+                    ]
+                    .into(),
+                    ..Outcome::default()
+                },
+                1,
+                false,
+            );
+            recorder.ended(None);
+            recorder.close().expect("closes");
+            let database = Database::open(&path).expect("opens again");
+            let output = folder.join("crate");
+            let options = run_crate::Options {
+                workflow: workflow.clone(),
+                sources: [
+                    (format!("tree:{digest}"), copy.clone()),
+                    (digest.to_string(), manifest),
+                ]
+                .into(),
+                ..run_crate::Options::default()
+            };
+            run_crate::export(&database, "historical", &output, &options)
+                .expect("exports historical tree");
+            let unavailable = folder.join("unavailable-crate");
+            let absent_options = run_crate::Options {
+                sources: Default::default(),
+                ..options
+            };
+            run_crate::export(&database, "historical", &unavailable, &absent_options)
+                .expect("exports unavailable typed artifacts");
+            let absent: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(unavailable.join(run_crate::METADATA))
+                    .expect("reads absent metadata"),
+            )
+            .expect("parses absent metadata");
+            let absent = absent["@graph"].as_array().expect("absent graph");
+            assert!(absent.iter().any(|entity| {
+                entity["name"] == "data"
+                    && entity["@type"] == "Dataset"
+                    && entity["@id"]
+                        .as_str()
+                        .expect("id")
+                        .starts_with("#absent-directory/")
+            }));
+            assert!(absent.iter().any(|entity| entity["name"] == "manifest.json"
+                && entity["@type"] == "File"
+                && entity["@id"].as_str().expect("id").starts_with("#absent/")));
+            let metadata: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(output.join(run_crate::METADATA)).expect("reads metadata"),
+            )
+            .expect("parses metadata");
+            let graph = metadata["@graph"].as_array().expect("graph");
+            assert!(
+                graph
+                    .iter()
+                    .any(|entity| entity["name"] == "data" && entity["@type"] == "Dataset")
+            );
+            assert!(
+                graph
+                    .iter()
+                    .any(|entity| entity["name"] == "manifest.json" && entity["@type"] == "File")
+            );
+
+            let archived = output.join("data").join(if linked {
+                format!("{}-directory", digest.hex())
+            } else {
+                digest.hex().to_owned()
+            });
+            let file = output.join("data").join(if linked {
+                digest.hex().to_owned()
+            } else {
+                format!("{}-file", digest.hex())
+            });
+            assert_eq!(
+                std::fs::read(&file).expect("reads preserved manifest file"),
+                tree.canonical().expect("manifest bytes")
+            );
+            assert_ne!(
+                std::fs::metadata(archived.join("bin/job.sh"))
+                    .expect("archived mode")
+                    .permissions()
+                    .mode()
+                    & 0o111,
+                0
+            );
+            assert!(archived.join("empty").is_dir());
+            assert_eq!(
+                std::fs::read(archived.join("bin/job.sh")).expect("reads archive"),
+                b"echo historical\n"
+            );
+            if linked {
+                assert_eq!(
+                    std::fs::read_link(archived.join("bin/root")).expect("archive link"),
+                    Path::new("..")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn corrupt_tree_descendants_are_unavailable_and_private_copies_are_cleaned() {
+        use task_model::{Tree, TreeEntry};
+        let root = tempfile::tempdir().expect("a directory");
+        let store = content_store::Store::local(&root.path().join("store")).expect("a store");
+        let runtime = crate::changes::runtime().unwrap_or_else(|error| panic!("{}", error.message));
+        let source = root.path().join("original");
+        std::fs::write(&source, "original").expect("writes input");
+        let (file, size) = runtime
+            .block_on(store.put_file(&source))
+            .expect("keeps bytes");
+        let tree = Tree {
+            entries: vec![TreeEntry::File {
+                path: "file".into(),
+                digest: file.clone(),
+                size,
+                executable: false,
+            }],
+        };
+        let digest = runtime.block_on(store.put_tree(&tree)).expect("keeps tree");
+        let folder = crate::repeat::restoration_folder(root.path(), "export")
+            .unwrap_or_else(|error| panic!("{}", error.message));
+        std::fs::write(
+            store
+                .local_path(&content_store::layout::content(&file))
+                .expect("local CAS"),
+            "replaced",
+        )
+        .expect("corrupts same-length descendant");
+        assert!(
+            runtime
+                .block_on(kept_tree(&store, &digest.to_string(), &folder))
+                .is_none()
+        );
+        assert_eq!(
+            std::fs::read_dir(&folder)
+                .expect("lists private folder")
+                .count(),
+            0
+        );
+        std::fs::write(
+            store
+                .local_path(&content_store::layout::tree(&digest))
+                .expect("local manifest"),
+            "{}",
+        )
+        .expect("corrupts manifest");
+        assert!(
+            runtime
+                .block_on(kept_tree(&store, &digest.to_string(), &folder))
+                .is_none()
+        );
+        let kept = KeptSources {
+            folder: Some(folder.clone()),
+            sources: std::collections::HashMap::new(),
+        };
+        drop(kept);
+        assert!(!folder.exists());
+    }
 
     #[test]
     fn untracked_preferred_main_is_not_replaced_by_a_recorded_module() {

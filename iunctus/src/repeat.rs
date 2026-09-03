@@ -102,7 +102,7 @@ pub(crate) fn chosen_here(repeated: &mut Arguments, given: &Arguments) {
     repeated.resume = None;
 }
 
-fn restoration_folder(root: &Path, run: &str) -> Result<PathBuf, Failure> {
+pub(crate) fn restoration_folder(root: &Path, run: &str) -> Result<PathBuf, Failure> {
     let parent = root.join(run);
     std::fs::create_dir_all(&parent).map_err(|error| Failure::setup(error.to_string()))?;
     let now = std::time::SystemTime::now()
@@ -262,9 +262,8 @@ pub async fn kept_copy(store: &Store, digest: &str, folder: &Path) -> Option<Pat
         return Some(path);
     }
     let copy = folder.join("remote").join(digest.hex());
-    let bytes = store.get_content(&digest).await.ok()?;
     std::fs::create_dir_all(copy.parent()?).ok()?;
-    std::fs::write(&copy, &bytes).ok()?;
+    store.materialize_content(&digest, &copy).await.ok()?;
     Some(copy)
 }
 

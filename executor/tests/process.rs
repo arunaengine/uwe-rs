@@ -57,3 +57,38 @@ fn containers_run_to_their_end() {
     let error = run_to_end(&spec("fails", "echo broken >&2; exit 2")).expect_err("fails");
     assert!(error.to_string().contains("broken"), "{error}");
 }
+
+#[test]
+#[ignore = "needs Docker or Podman and the debian:stable-slim image"]
+fn a_cancelled_hanging_exchange_removes_its_helper() {
+    let settings = spec("hanging-cancel", "read line; sleep 300");
+    let cancel = executor::CancellationToken::new();
+    let mut process = ContainerProcess::start_cancellable(&settings, &cancel).expect("starts");
+    let trigger = cancel.clone();
+    let canceller = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        trigger.cancel();
+    });
+    let started = std::time::Instant::now();
+    assert!(matches!(
+        process.exchange("hang"),
+        Err(ProcessError::Cancelled)
+    ));
+    assert!(started.elapsed() < std::time::Duration::from_secs(12));
+    canceller.join().unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let engine = runtime.block_on(executor::ContainerEngine::find()).unwrap();
+    let error = runtime
+        .block_on(engine.client().inspect_container(&settings.name, None))
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        bollard::errors::Error::DockerResponseServerError {
+            status_code: 404,
+            ..
+        }
+    ));
+}

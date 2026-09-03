@@ -48,6 +48,12 @@ pub trait PythonProcess {
 
     /// Ends the process and removes what it used.
     fn stop(&mut self);
+
+    /// Requests a graceful stop, then removes the process independently of its reply.
+    fn shutdown(&mut self) {
+        let _ = self.exchange(r#"{"op":"stop"}"#);
+        self.stop();
+    }
 }
 
 /// Starts the Python process of a run, as the embedder can, for example in a container.
@@ -94,8 +100,7 @@ impl Packages {
     pub fn stop(&self) {
         let process = self.process.borrow_mut().take();
         if let Some(mut process) = process {
-            let _ = process.exchange(r#"{"op":"stop"}"#);
-            process.stop();
+            process.shutdown();
             self.generation.set(self.generation.get() + 1);
             self.released.borrow_mut().clear();
         }

@@ -83,10 +83,19 @@ impl Record<'_> {
         let id = match self.placed_file(file)? {
             Placed::Copied { id, .. } => id.clone(),
             Placed::Remote { url } => url.clone(),
-            Placed::Absent => match &file.digest {
-                Some(digest) => format!("#absent/{}/{}", encode(&file.location), encode(digest)),
-                None => format!("#absent/{}", encode(&file.location)),
-            },
+            Placed::Absent => {
+                let prefix = if file.directory {
+                    "#absent-directory"
+                } else {
+                    "#absent"
+                };
+                match &file.digest {
+                    Some(digest) => {
+                        format!("{prefix}/{}/{}", encode(&file.location), encode(digest))
+                    }
+                    None => format!("{prefix}/{}", encode(&file.location)),
+                }
+            }
         };
         Some(json!({"@id": id}))
     }
@@ -131,7 +140,8 @@ impl Record<'_> {
 
 pub(crate) fn file_key(file: &FileRow) -> String {
     format!(
-        "{}:{}",
+        "{}:{}:{}",
+        file.directory,
         file.digest.as_deref().unwrap_or_default(),
         file.location
     )

@@ -65,7 +65,8 @@ pub struct Options {
     /// The license of the crate, as a URL like `https://spdx.org/licenses/CC-BY-4.0`.
     pub license: Option<String>,
     /// Copies of the workflow, command-line and task files as the run had them, by
-    /// their digests, like the files of the store that keeps them. The crate takes them over
+    /// their digests; directories use `tree:<digest>` (plain digest keys remain accepted).
+    /// The crate takes them over
     /// the files as they are now, which may have changed since the run.
     pub sources: HashMap<String, PathBuf>,
 }
@@ -108,18 +109,31 @@ pub fn export(
         for file in task.inputs.iter().chain(&task.outputs) {
             if !file.location.is_empty() {
                 let mut copy = data::Placed::Absent;
-                if let Some(kept) = file
-                    .digest
-                    .as_ref()
-                    .and_then(|digest| options.sources.get(digest))
-                {
+                if let Some(kept) = file.digest.as_ref().and_then(|digest| {
+                    if file.directory {
+                        options
+                            .sources
+                            .get(&format!("tree:{digest}"))
+                            .or_else(|| options.sources.get(digest))
+                    } else {
+                        options.sources.get(digest)
+                    }
+                }) {
                     copy = data.place_checked(&kept.to_string_lossy(), file.digest.as_deref())?;
+                }
+                if matches!(&copy, data::Placed::Copied { directory, .. } if *directory != file.directory)
+                {
+                    copy = data::Placed::Absent;
                 }
                 if copy == data::Placed::Absent {
                     copy = match file.digest.as_deref() {
                         Some(digest) => data.place_checked(&file.location, Some(digest))?,
                         None => data.place(&file.location)?,
                     };
+                }
+                if matches!(&copy, data::Placed::Copied { directory, .. } if *directory != file.directory)
+                {
+                    copy = data::Placed::Absent;
                 }
                 placed.insert(files::file_key(file), copy);
                 continue;

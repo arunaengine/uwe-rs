@@ -551,6 +551,14 @@ impl Session {
     /// Runs the Python packages without a stand-in in a container of the local engine
     /// (decision 19), which sees the folders of the workflow.
     pub fn use_python_containers(&mut self, settings: PythonContainers) {
+        self.use_python_containers_with_cancel(settings, executor::CancellationToken::new());
+    }
+
+    pub fn use_python_containers_with_cancel(
+        &mut self,
+        settings: PythonContainers,
+        cancel: executor::CancellationToken,
+    ) {
         self.embedded.python_image = settings.image.clone();
         let mut folders = vec![self.workdir.clone()];
         if let Some(folder) = self.snakefile.parent() {
@@ -568,7 +576,9 @@ impl Session {
             .set_pins(crate::python::workflow_pins(&folders));
         self.interpreter
             .packages
-            .set_starter(Rc::new(ContainerStarter::new(settings, folders)));
+            .set_starter(Rc::new(ContainerStarter::with_cancel(
+                settings, folders, cancel,
+            )));
     }
 
     /// Stops the Python container once no more Python code runs: every job that must run has
@@ -1335,6 +1345,7 @@ pub struct Settings {
     /// The storage providers that files of the workflow on the web come from, like modules
     /// from a private server; the built-in ones without it.
     pub storage: Storage,
+    pub cancel: executor::CancellationToken,
 }
 
 /// The driver of a Snakemake workflow: `launch.target` is a Snakefile, or a folder with a
@@ -1368,7 +1379,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
                 session.deliveries = shared.clone();
                 session.files.read_outputs_through(task_files.clone());
                 if let Some(python) = settings.python.clone() {
-                    session.use_python_containers(python);
+                    session.use_python_containers_with_cancel(python, settings.cancel.clone());
                 }
                 session.files.set_commands(Rc::new(CommandRunner {
                     channel: channel.clone(),

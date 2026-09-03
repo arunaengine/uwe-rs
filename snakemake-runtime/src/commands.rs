@@ -104,7 +104,7 @@ impl CommandRunner {
         };
         let shown = script.clone().unwrap_or_else(|| command.argv.join(" "));
         let shown: String = shown.chars().take(60).collect();
-        let workdir: PathBuf = self.state.borrow().workdir.clone();
+        let workdir: PathBuf = command.cwd.clone();
         Task {
             run_as: None,
             id,
@@ -113,7 +113,7 @@ impl CommandRunner {
             image: Some(self.image()),
             command: command.argv.clone(),
             script,
-            workdir: None,
+            workdir: Some(workdir.to_string_lossy().into_owned()),
             environment: Default::default(),
             inputs: vec![Input {
                 executable: false,

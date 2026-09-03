@@ -5,11 +5,14 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::cell::Cell;
+use std::fs::TryLockError;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use executor::process::{ContainerProcess, ContainerSpec, Mount, run_to_end};
+use executor::CancellationToken;
+use executor::process::{ContainerProcess, ContainerSpec, Mount, run_to_end_cancellable};
 use python_evaluator::packages::{PythonProcess, PythonStart, PythonStarter};
 
 /// The image of the Python container when the user gives none: a slim Python with uv.
@@ -36,17 +39,38 @@ pub struct ContainerStarter {
     pub settings: PythonContainers,
     /// The folders of the workflow, which the container mounts read-only at the same paths.
     pub folders: Vec<PathBuf>,
-    started: Cell<u32>,
+    cancel: CancellationToken,
 }
 
 impl ContainerStarter {
     pub fn new(settings: PythonContainers, folders: Vec<PathBuf>) -> ContainerStarter {
+        Self::with_cancel(settings, folders, CancellationToken::new())
+    }
+
+    pub fn with_cancel(
+        settings: PythonContainers,
+        folders: Vec<PathBuf>,
+        cancel: CancellationToken,
+    ) -> ContainerStarter {
         ContainerStarter {
             settings,
             folders: outermost(folders),
-            started: Cell::new(0),
+            cancel,
         }
     }
+}
+
+fn container_name(kind: &str) -> String {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!(
+        "iunctus-python-{kind}-{}-{nanos}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 /// The files where a workflow names the packages it runs with.
@@ -159,8 +183,23 @@ impl ContainerStarter {
             .create(true)
             .append(true)
             .open(&lock)
-            .and_then(|file| file.lock().map(|()| file))
             .map_err(|error| format!("cannot lock {}: {error}", lock.display()))?;
+        let deadline = Instant::now() + Duration::from_secs(600);
+        loop {
+            if self.cancel.is_cancelled() {
+                return Err("Python environment preparation cancelled".into());
+            }
+            match lock.try_lock() {
+                Ok(()) => break,
+                Err(TryLockError::WouldBlock) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                Err(TryLockError::WouldBlock) => {
+                    return Err("Python environment lock timed out".into());
+                }
+                Err(TryLockError::Error(error)) => return Err(error.to_string()),
+            }
+        }
         if !environment.is_dir() {
             if self.settings.show_output {
                 eprintln!(
@@ -182,7 +221,7 @@ impl ContainerStarter {
             let cache = &self.settings.cache;
             let spec = ContainerSpec {
                 engine: self.settings.engine.clone(),
-                name: format!("iunctus-python-prepare-{}-{key:016x}", std::process::id()),
+                name: container_name("prepare"),
                 image: DEFAULT_IMAGE.to_owned(),
                 user,
                 entrypoint: Some("/bin/bash".to_owned()),
@@ -197,7 +236,7 @@ impl ContainerStarter {
                 memory: None,
                 show_stderr: false,
             };
-            run_to_end(&spec).map_err(|error| error.to_string())?;
+            run_to_end_cancellable(&spec, &self.cancel).map_err(|error| error.to_string())?;
         }
         drop(lock);
         Ok(environment)
@@ -206,8 +245,9 @@ impl ContainerStarter {
 
 impl PythonStarter for ContainerStarter {
     fn start(&self, start: &PythonStart) -> Result<Box<dyn PythonProcess>, String> {
-        let number = self.started.get() + 1;
-        self.started.set(number);
+        if self.cancel.is_cancelled() {
+            return Err("Python helper start cancelled".into());
+        }
         let cache = &self.settings.cache;
         std::fs::create_dir_all(cache.join("environments"))
             .and_then(|()| std::fs::create_dir_all(self.uv_cache()))
@@ -246,7 +286,7 @@ impl PythonStarter for ContainerStarter {
         };
         let spec = ContainerSpec {
             engine: self.settings.engine.clone(),
-            name: format!("iunctus-python-{}-{number}", std::process::id()),
+            name: container_name("helper"),
             image,
             user,
             entrypoint,
@@ -257,7 +297,8 @@ impl PythonStarter for ContainerStarter {
             memory: None,
             show_stderr: self.settings.show_output,
         };
-        let process = ContainerProcess::start(&spec).map_err(|error| error.to_string())?;
+        let process = ContainerProcess::start_cancellable(&spec, &self.cancel)
+            .map_err(|error| error.to_string())?;
         Ok(Box::new(ContainerPython(process)))
     }
 }
@@ -273,13 +314,88 @@ impl PythonProcess for ContainerPython {
     fn stop(&mut self) {
         self.0.stop();
     }
+
+    fn shutdown(&mut self) {
+        let _ = self
+            .0
+            .exchange_with_timeout(r#"{"op":"stop"}"#, Duration::from_secs(10));
+        self.0.stop();
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use super::outermost;
+    use super::*;
+
+    #[test]
+    fn helper_names_are_unique_across_starters_and_preparations() {
+        let names: std::collections::HashSet<_> = (0..1000)
+            .flat_map(|_| [container_name("helper"), container_name("prepare")])
+            .collect();
+        assert_eq!(names.len(), 2000);
+    }
+
+    #[test]
+    fn cancelled_starters_do_not_touch_cache_or_engine() {
+        let folder = tempfile::tempdir().unwrap();
+        let cache = folder.path().join("cache");
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let starter = ContainerStarter::with_cancel(
+            PythonContainers {
+                engine: "unreachable".into(),
+                image: None,
+                cache: cache.clone(),
+                show_output: false,
+            },
+            Vec::new(),
+            cancel,
+        );
+        let start = PythonStart {
+            script: "",
+            packages: Vec::new(),
+            cwd: folder.path().to_path_buf(),
+        };
+        assert!(starter.start(&start).err().unwrap().contains("cancelled"));
+        assert!(!cache.exists());
+    }
+
+    #[test]
+    fn cancellation_interrupts_environment_lock_wait() {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::create_dir(folder.path().join("environments")).unwrap();
+        let key = fingerprint(&[DEFAULT_IMAGE, PREPARE, ""]);
+        let lock =
+            std::fs::File::create(folder.path().join(format!("environments/{key:016x}.lock")))
+                .unwrap();
+        lock.lock().unwrap();
+        let cancel = CancellationToken::new();
+        let starter = ContainerStarter::with_cancel(
+            PythonContainers {
+                engine: "unreachable".into(),
+                image: None,
+                cache: folder.path().to_path_buf(),
+                show_output: false,
+            },
+            Vec::new(),
+            cancel.clone(),
+        );
+        let canceller = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            cancel.cancel();
+        });
+        let began = Instant::now();
+        assert!(
+            starter
+                .prepared_environment(&[], None)
+                .unwrap_err()
+                .contains("cancelled")
+        );
+        assert!(began.elapsed() < Duration::from_secs(2));
+        canceller.join().unwrap();
+    }
 
     #[test]
     fn folders_inside_others_are_not_mounted_again() {

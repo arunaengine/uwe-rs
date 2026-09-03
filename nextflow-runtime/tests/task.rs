@@ -172,14 +172,27 @@ fn outcomes_carry_env_and_eval_values() {
     assert_eq!(result.eval, ["1.0"]);
     assert_eq!(result.env["FOO"], "a b");
     assert_eq!(result.stdout, "said\n");
-    // The simulator writes no values; they are empty.
+    // An absent real capture is a collection failure, not a captured empty value.
     let outcome = Outcome {
         id: workflow_graph::TaskId(1),
         ..Outcome::default()
     };
     let result = task_outcome(&request, outcome, None).expect("an outcome");
-    assert_eq!(result.eval, [""]);
+    assert!(result.failure.is_some());
+    assert!(result.eval.is_empty());
     assert_eq!(result.env["FOO"], "");
+    let empty = file(".command.env", "nxf_out_eval_1=\n/nxf_out_eval_1/=exit:0\n");
+    let result = task_outcome(
+        &request,
+        Outcome {
+            files: vec![empty],
+            ..Outcome::default()
+        },
+        None,
+    )
+    .unwrap();
+    assert!(result.failure.is_none());
+    assert_eq!(result.eval, [""]);
     let failed = file(
         ".command.env",
         "nxf_out_eval_1=bad\n/nxf_out_eval_1/=exit:2\n",
@@ -189,8 +202,9 @@ fn outcomes_carry_env_and_eval_values() {
         files: vec![failed],
         ..Outcome::default()
     };
-    let error = task_outcome(&request, outcome, None).expect_err("the eval command failed");
-    assert!(error.message.contains("exit status 2: bad"), "{error}");
+    let result = task_outcome(&request, outcome, None).expect("an outcome for the process policy");
+    let error = result.failure.expect("the eval command failed");
+    assert!(error.to_string().contains("exit status 2: bad"), "{error}");
 }
 
 #[test]

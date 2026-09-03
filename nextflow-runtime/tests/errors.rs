@@ -6,7 +6,8 @@
 use std::collections::HashMap;
 
 use workflow_graph::{
-    Attempt, Engine, ExecuteError, Executor, Launch, Order, Outcome, RunOptions, Running,
+    Attempt, Engine, ExecuteError, Executor, Launch, Order, Outcome, OutputFile, RunOptions,
+    Running,
 };
 
 /// The step, the attempt and the memory in GiB of an attempt.
@@ -199,4 +200,183 @@ fn failures_stop_new_tasks_unless_the_run_keeps_going() {
     let error = error.expect("an error");
     assert!(error.contains("`FAIL` terminated"), "{error}");
     assert_eq!(steps(&ran), ["FAIL", "SLOW", "LATER"]);
+}
+
+#[test]
+fn collection_failures_follow_process_error_policy() {
+    use nextflow_evaluator::interpreter::Host;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    struct Printed(Rc<RefCell<String>>);
+    impl Host for Printed {
+        fn print(&mut self, text: &str) {
+            self.0.borrow_mut().push_str(text);
+        }
+    }
+    struct Collecting {
+        directory: std::path::PathBuf,
+        eval: bool,
+        unreadable: bool,
+        metadata: usize,
+        recover: bool,
+        ran: Vec<(String, u32)>,
+    }
+    impl Executor for Collecting {
+        fn run(&mut self, attempt: Attempt) -> Running {
+            let task = attempt.task;
+            self.ran.push((task.step.clone(), attempt.number));
+            let mut files = Vec::new();
+            if task.step == "FAIL" {
+                let fail = !self.recover || attempt.number == 1;
+                if self.eval {
+                    let location = self.directory.join(format!("eval-{}", attempt.number));
+                    let status = if fail { 2 } else { 0 };
+                    if !(self.unreadable && fail) {
+                        let record = if fail && self.metadata == 4 {
+                            "nxf_out_eval_1=answer\n".into()
+                        } else if fail && self.metadata == 5 {
+                            "nxf_out_eval_1=answer\n/nxf_out_eval_1/\n".into()
+                        } else {
+                            format!("nxf_out_eval_1=answer\n/nxf_out_eval_1/=exit:{status}\n")
+                        };
+                        std::fs::write(&location, record).unwrap();
+                    }
+                    if !(fail && self.metadata == 3) {
+                        files.push(OutputFile {
+                            path: ".command.env".into(),
+                            location: location.to_string_lossy().into_owned(),
+                            ..OutputFile::default()
+                        });
+                    }
+                } else if !fail {
+                    let path = self.directory.join("out.txt");
+                    let location = path.to_string_lossy().into_owned();
+                    files.push(OutputFile {
+                        path: "out.txt".into(),
+                        location,
+                        ..OutputFile::default()
+                    });
+                }
+            }
+            Running::ended(Ok(Outcome {
+                id: task.id,
+                exit_code: if task.step == "FAIL"
+                    && self.metadata == 7
+                    && (!self.recover || attempt.number == 1)
+                {
+                    3
+                } else {
+                    0
+                },
+                files,
+                ..Outcome::default()
+            }))
+        }
+    }
+    for mode in 0..8 {
+        let eval = mode != 0 && mode != 6;
+        let unreadable = mode == 2;
+        for (strategy, keep_going, recover, expected) in [
+            ("retry", false, true, vec!["FAIL", "SLOW", "FAIL", "LATER"]),
+            ("retry", false, false, vec!["FAIL", "SLOW", "FAIL"]),
+            ("ignore", false, false, vec!["FAIL", "SLOW", "LATER"]),
+            ("finish", false, false, vec!["FAIL", "SLOW"]),
+            ("terminate", true, false, vec!["FAIL", "SLOW", "LATER"]),
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            let output = if eval {
+                "eval 'false'"
+            } else if mode == 6 {
+                "path 'out.txt', arity: '1', optional: true"
+            } else {
+                "path 'out.txt'"
+            };
+            let pipeline = BRANCHES.replace(
+                "    script:\n    \"exit 3\"",
+                &format!("    output:\n    val 99, emit: early\n    {output}, emit: checked\n    script:\n    'true'"),
+            ).replace("    FAIL()", "    FAIL()\n    FAIL.out.early.view { \"accepted=${it}\" }\n    workflow.onComplete { println(\"successes=${workflow.stats.succeededCount}\") }");
+            std::fs::write(directory.path().join("main.nf"), pipeline).unwrap();
+            std::fs::write(
+                directory.path().join("nextflow.config"),
+                format!("process.errorStrategy = '{strategy}'\n"),
+            )
+            .unwrap();
+            let launch = Launch {
+                target: directory.path().to_owned(),
+                keep_going,
+                ..Launch::default()
+            };
+            let printed = Rc::new(RefCell::new(String::new()));
+            let mut driver = nextflow_runtime::driver::Nextflow::new(
+                &launch,
+                nextflow_runtime::driver::Settings {
+                    host: Box::new(Printed(printed.clone())),
+                    ..nextflow_runtime::driver::Settings::default()
+                },
+            )
+            .unwrap();
+            let mut executor = Collecting {
+                directory: directory.path().to_owned(),
+                eval,
+                unreadable,
+                metadata: mode,
+                recover,
+                ran: Vec::new(),
+            };
+            let execution = Engine::new(&mut executor)
+                .options(RunOptions {
+                    max_pending: 4,
+                    order: Order::AsAsked,
+                })
+                .run("main.nf", &mut driver);
+            let error = execution.error.map(|error| error.to_string());
+            assert_eq!(
+                error.is_none(),
+                recover || strategy == "ignore",
+                "{strategy}, eval={eval}: {error:?}"
+            );
+            if let Some(error) = error {
+                assert!(
+                    error.contains(if mode == 7 {
+                        "exit status (3)"
+                    } else if unreadable {
+                        "cannot read"
+                    } else if mode == 6 {
+                        "Output arity"
+                    } else if mode >= 3 {
+                        "missing capture"
+                    } else if eval {
+                        "eval` output command failed"
+                    } else {
+                        "Missing output file"
+                    }),
+                    "{error}"
+                );
+            }
+            let steps: Vec<_> = executor.ran.iter().map(|(step, _)| step.as_str()).collect();
+            assert_eq!(steps, expected, "{strategy}, eval={eval}");
+            assert_eq!(
+                printed.borrow().matches("accepted=99\n").count(),
+                usize::from(recover)
+            );
+            if recover || strategy == "ignore" {
+                let count = if recover { 3 } else { 2 };
+                assert!(
+                    printed.borrow().contains(&format!("successes={count}\n")),
+                    "{}",
+                    printed.borrow()
+                );
+            }
+            if strategy == "retry" {
+                let attempts: Vec<_> = executor
+                    .ran
+                    .iter()
+                    .filter(|(step, _)| step == "FAIL")
+                    .map(|(_, attempt)| *attempt)
+                    .collect();
+                assert_eq!(attempts, [1, 2]);
+            }
+        }
+    }
 }

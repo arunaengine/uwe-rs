@@ -80,8 +80,6 @@ pub struct Run {
     options: Options,
     /// The `workflow` object of the run.
     workflow: Value,
-    /// The number of tasks that succeeded.
-    succeeded: i64,
 }
 
 impl Run {
@@ -128,7 +126,6 @@ impl Run {
             network,
             options: options.clone(),
             workflow,
-            succeeded: 0,
         };
         Ok((run, requests))
     }
@@ -144,9 +141,6 @@ impl Run {
             options: &self.options,
             network: None,
         };
-        if outcome.exit_status == 0 {
-            self.succeeded += 1;
-        }
         let mut interpreter = Interpreter::new(&mut session);
         set_globals(&mut interpreter, &self.options, &self.workflow);
         self.network
@@ -174,7 +168,7 @@ impl Run {
         }
         let waiting = self.network.running();
         if waiting.is_empty() && !self.network.has_tasks() {
-            workflow::finish(&self.workflow, true, self.succeeded);
+            workflow::finish(&self.workflow, true, self.network.succeeded);
             let mut session = Session {
                 base: host,
                 options: &self.options,

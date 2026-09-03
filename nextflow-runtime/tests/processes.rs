@@ -375,6 +375,70 @@ fn one_file_is_a_path_unless_the_arity_allows_more() {
 }
 
 #[test]
+fn output_arity_enforces_bounds_and_singleton_shape() {
+    let collect = |arity: &str, count: usize| -> Result<String, String> {
+        let source = format!(
+            "process P {{\n output:\n path '*.txt', arity: '{arity}'\n script:\n 'true'\n}}\nworkflow {{\n P().map {{ it instanceof Path ? 'path' : \"list:${{it.size()}}\" }}.view()\n}}\n"
+        );
+        let parsed = parse_script(&source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let module = Rc::new(lower_module(&parsed.tree, &source).expect("lowers"));
+        let mut host = Output::default();
+        let (mut run, requests) = Run::start(&module, &Options::default(), &mut host)
+            .map_err(|error| error.to_string())?;
+        let request = &requests[0];
+        run.complete(
+            TaskOutcome {
+                id: request.id,
+                files: (0..count)
+                    .map(|index| {
+                        let name = format!("{index}.txt");
+                        (
+                            name.clone(),
+                            PathValue::parse(&format!("/work/{name}"), "/"),
+                        )
+                    })
+                    .collect(),
+                ..TaskOutcome::default()
+            },
+            &mut host,
+        )
+        .map_err(|error| error.to_string())?;
+        run.finish(&mut host).map_err(|error| error.to_string())?;
+        Ok(host.0)
+    };
+    for (arity, count, expected) in [
+        ("1", 1, "path\n"),
+        ("2", 2, "list:2\n"),
+        ("0..2", 0, "list:0\n"),
+        ("0..2", 1, "list:1\n"),
+        ("0..*", 0, "list:0\n"),
+        ("1..*", 1, "list:1\n"),
+        ("1..*", 3, "list:3\n"),
+    ] {
+        assert_eq!(collect(arity, count).expect("within bounds"), expected);
+    }
+    for (arity, count) in [
+        ("1", 0),
+        ("1", 2),
+        ("2", 1),
+        ("2", 3),
+        ("0..2", 3),
+        ("1..*", 0),
+    ] {
+        let error = collect(arity, count).unwrap_err();
+        assert!(
+            error.contains("Output arity") || error.contains("Missing output file"),
+            "{arity}, {count}: {error}"
+        );
+    }
+    for arity in ["bad", "2..1", "-1", "1..bad", "0", "0..0", "0..1"] {
+        let error = collect(arity, 1).unwrap_err();
+        assert!(error.contains("Invalid output arity"), "{error}");
+    }
+}
+
+#[test]
 fn tuples_of_another_size_are_errors() {
     let process = "process P {\n    input:\n    tuple val(a), val(b)\n    script:\n    'true'\n}\n";
     let source = format!(

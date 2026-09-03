@@ -55,6 +55,8 @@ pub struct TaskRequest {
 pub struct TaskOutcome {
     pub id: TaskId,
     pub exit_status: i32,
+    /// An output collection failure, handled by the process like an execution failure.
+    pub failure: Option<Error>,
     /// The output files: their name relative to the task directory, and where they are now.
     pub files: Vec<(String, PathValue)>,
     pub stdout: String,
@@ -148,12 +150,21 @@ impl Behaviour for ProcessNode {
         self.finish_if_done(context)
     }
 
-    fn complete(&mut self, context: &mut Context, outcome: TaskOutcome) -> Result<State, Error> {
+    fn complete(
+        &mut self,
+        context: &mut Context,
+        mut outcome: TaskOutcome,
+    ) -> Result<State, Error> {
         let Some(flight) = self.pending.remove(&outcome.id) else {
             return Ok(State::Running);
         };
-        if outcome.exit_status != 0 {
-            return self.failed(context, flight, &outcome);
+        if outcome.exit_status != 0 || outcome.failure.is_some() {
+            let failure = if outcome.exit_status == 0 {
+                outcome.failure.take()
+            } else {
+                None
+            };
+            return self.failed(context, flight, &outcome, failure);
         }
         context.remember_task_files(&outcome.files);
         let (task, outputs) = (&flight.name, &flight.outputs);
@@ -170,7 +181,10 @@ impl Behaviour for ProcessNode {
             simulated: context.interpreter.host().simulated(),
         };
         for output in outputs {
-            values.push(self.output_value(output, &outcome, task, &mut eval_index, &mut bound)?);
+            match self.output_value(output, &outcome, task, &mut eval_index, &mut bound) {
+                Ok(value) => values.push(value),
+                Err(error) => return self.failed(context, flight, &outcome, Some(error)),
+            }
         }
         let interpreter = &mut *context.interpreter;
         let deliveries = publish::deliveries(
@@ -181,6 +195,7 @@ impl Behaviour for ProcessNode {
             &bound.files,
         )?;
         context.deliver(deliveries);
+        *context.succeeded += 1;
         for (channel, value) in self.outputs.clone().into_iter().zip(values) {
             if let Some(value) = value {
                 context.emit(channel, value);
@@ -370,6 +385,7 @@ impl ProcessNode {
         context: &mut Context,
         flight: InFlight,
         outcome: &TaskOutcome,
+        failure: Option<Error>,
     ) -> Result<State, Error> {
         let InFlight {
             name,
@@ -385,11 +401,14 @@ impl ProcessNode {
         let base = task_object(&self.name, index, attempt, status, &[], &ext);
         let directives = self.directives(interpreter, &mut frame, &base)?;
         let (strategy, retries) = strategy::of(&directives);
-        let failure = format!(
+        let message = format!(
             "Process `{name}` terminated with an error exit status ({})",
             outcome.exit_status
         );
-        let error = || thrown(Exception::new("ProcessFailedException", failure.clone()));
+        let message = failure.as_ref().map_or(message, Error::to_string);
+        let error = failure
+            .unwrap_or_else(|| thrown(Exception::new("ProcessFailedException", message.clone())));
+        let failure = message;
         match strategy {
             Strategy::Retry if attempt <= retries => {
                 interpreter.print(&format!(
@@ -403,15 +422,15 @@ impl ProcessNode {
                 self.finish_if_done(context)
             }
             Strategy::Finish => {
-                context.fail(error());
+                context.fail(error);
                 self.finish_if_done(context)
             }
             // A run that keeps going goes on as if the task was ignored, and fails at its end.
             Strategy::Terminate | Strategy::Retry if context.keep_going => {
-                context.fail(error());
+                context.fail(error);
                 self.finish_if_done(context)
             }
-            Strategy::Terminate | Strategy::Retry => Err(error()),
+            Strategy::Terminate | Strategy::Retry => Err(error),
         }
     }
 
@@ -443,6 +462,7 @@ impl ProcessNode {
                 }
                 RenderedPart::Path { patterns, options } => {
                     let mut files: Vec<Value> = Vec::new();
+                    let arity = output_arity(options)?;
                     // As Nextflow, a glob does not match the staged inputs, unless the output
                     // includes them; a name without wildcards may name one.
                     let inputs = option(options, "includeInputs").is_some_and(|v| v.truth());
@@ -461,7 +481,10 @@ impl ProcessNode {
                         if found.is_empty() && bound.simulated {
                             found = matching().collect();
                         }
-                        if found.is_empty() && !output.optional {
+                        if found.is_empty()
+                            && !output.optional
+                            && arity.is_none_or(|(minimum, _)| minimum > 0)
+                        {
                             let excluded = glob
                                 && !inputs
                                 && (outcome.files.iter())
@@ -486,9 +509,21 @@ impl ProcessNode {
                             }
                         }
                     }
-                    let arity = option(options, "arity");
+                    if let Some((minimum, maximum)) = arity
+                        && (files.len() < minimum
+                            || maximum.is_some_and(|maximum| files.len() > maximum))
+                    {
+                        return Err(thrown(Exception::new(
+                            "IllegalArityException",
+                            format!(
+                                "Output arity `{}` expected by process `{task}`, but found {} file(s)",
+                                option(options, "arity").unwrap(),
+                                files.len()
+                            ),
+                        )));
+                    }
                     match (files.as_slice(), arity) {
-                        ([single], None) => single.clone(),
+                        ([single], None | Some((_, Some(1)))) => single.clone(),
                         _ => Value::list(files),
                     }
                 }
@@ -515,6 +550,35 @@ impl ProcessNode {
             return Ok(State::Stopped);
         }
         Ok(State::Running)
+    }
+}
+
+fn output_arity(options: &Value) -> Result<Option<(usize, Option<usize>)>, Error> {
+    let Some(arity) = option(options, "arity") else {
+        return Ok(None);
+    };
+    let text = arity.to_string();
+    let parsed = match text.split_once("..") {
+        Some((minimum, "*")) => minimum.parse().ok().map(|minimum| (minimum, None)),
+        Some((minimum, maximum)) => minimum
+            .parse()
+            .ok()
+            .zip(maximum.parse().ok())
+            .map(|(minimum, maximum)| (minimum, Some(maximum))),
+        None => text.parse().ok().map(|count| (count, Some(count))),
+    };
+    match parsed {
+        Some((minimum, maximum))
+            if maximum.is_none_or(|maximum| {
+                maximum >= 1 && minimum <= maximum && !(minimum == 0 && maximum == 1)
+            }) =>
+        {
+            Ok(parsed)
+        }
+        _ => Err(thrown(Exception::new(
+            "IllegalArgumentException",
+            format!("Invalid output arity: {arity}"),
+        ))),
     }
 }
 

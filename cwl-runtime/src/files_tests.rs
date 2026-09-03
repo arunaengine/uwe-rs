@@ -301,3 +301,41 @@ fn requested_local_listings_report_missing_directories() {
     assert!(error.contains("cannot list"), "{error}");
     assert!(directory.get("listing").is_none());
 }
+
+#[test]
+fn deep_directory_listings_detect_ancestor_cycles_and_keep_sibling_aliases() {
+    let root = tempfile::tempdir().expect("folder");
+    std::fs::create_dir(root.path().join("real")).expect("directory");
+    std::fs::write(root.path().join("real/file.txt"), "bytes").expect("file");
+    std::os::unix::fs::symlink("real", root.path().join("alias")).expect("alias");
+    let directory = || {
+        Value::parse(&format!(
+            "{{class: Directory, location: '{}'}}",
+            iri::file_url(root.path())
+        ))
+        .expect("directory")
+    };
+    let mut value = directory();
+    Access::default()
+        .load_listings(&mut value, true)
+        .expect("aliases are finite");
+    let listing = value
+        .get("listing")
+        .and_then(Value::as_list)
+        .expect("listing");
+    assert_eq!(listing.len(), 2);
+    assert!(listing.iter().all(|entry| {
+        entry
+            .get("listing")
+            .and_then(Value::as_list)
+            .is_some_and(|items| items.len() == 1)
+    }));
+    std::os::unix::fs::symlink("..", root.path().join("real/parent")).expect("cycle");
+    Access::default()
+        .load_listings(&mut directory(), false)
+        .expect("shallow listing does not enter cycle");
+    let error = Access::default()
+        .load_listings(&mut directory(), true)
+        .expect_err("deep cycle");
+    assert!(error.contains("directory cycle"), "{error}");
+}

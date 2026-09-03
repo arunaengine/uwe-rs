@@ -8,7 +8,7 @@ use opendal::services::{Fs, Memory, S3};
 use opendal::{ErrorKind, Operator};
 use sha2::{Digest as _, Sha256};
 use task_model::{Digest, SpecError, Tree};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{layout, local};
 
@@ -309,6 +309,72 @@ impl Store {
             return Err(StoreError::Corrupt { expected, actual });
         }
         Ok(bytes)
+    }
+
+    /// Streams verified content to a file, replacing its target only after a complete read.
+    pub async fn materialize_content(
+        &self,
+        digest: &Digest,
+        target: &std::path::Path,
+    ) -> Result<(), StoreError> {
+        let location = layout::content(digest);
+        let (source, metadata) = match self.operator.stat(&location).await {
+            Ok(metadata) => (self, metadata),
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                let Some(shared) = &self.shared else {
+                    return Err(error.into());
+                };
+                (shared.as_ref(), shared.operator.stat(&location).await?)
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let parent = target
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| std::path::Path::new("."));
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(at(parent))?;
+        let temporary = tempfile::NamedTempFile::new_in(parent).map_err(at(target))?;
+        let mut file = tokio::fs::File::from_std(temporary.reopen().map_err(at(target))?);
+        let reader = source.operator.reader(&location).await?;
+        let mut hasher = Sha256::new();
+        let size = metadata.content_length();
+        let mut offset = 0;
+        while offset < size {
+            let end = (offset + PART_SIZE as u64).min(size);
+            let bytes = reader.read(offset..end).await?.to_bytes();
+            if bytes.len() as u64 != end - offset {
+                return Err(opendal::Error::new(
+                    ErrorKind::Unexpected,
+                    "stored content changed size while being read",
+                )
+                .into());
+            }
+            hasher.update(&bytes);
+            file.write_all(&bytes).await.map_err(at(target))?;
+            offset = end;
+        }
+        let actual = Digest::from_sha256(&hasher.finalize());
+        if &actual != digest {
+            return Err(StoreError::Corrupt {
+                expected: digest.clone(),
+                actual,
+            });
+        }
+        file.flush().await.map_err(at(target))?;
+        drop(file);
+        if !std::ptr::eq(source, self)
+            && let Some(cached) = self.local_path(&location)
+        {
+            local::copy_absent(temporary.path(), &cached)
+                .await
+                .map_err(at(&cached))?;
+        }
+        temporary
+            .persist(target)
+            .map_err(|error| at(target)(error.error))?;
+        Ok(())
     }
 
     pub async fn has_content(&self, digest: &Digest) -> Result<bool, StoreError> {

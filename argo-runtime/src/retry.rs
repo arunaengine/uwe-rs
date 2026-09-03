@@ -55,7 +55,13 @@ impl Run {
                         .unwrap_or_else(|| "-1".into()),
                 );
                 values.insert("lastRetry.message".into(), last_node.message.clone());
-                values.insert("lastRetry.duration".into(), "0".into());
+                let duration = (last_node
+                    .finished
+                    .unwrap_or(last_node.started)
+                    .as_nanosecond()
+                    - last_node.started.as_nanosecond())
+                    / 1_000_000_000;
+                values.insert("lastRetry.duration".into(), duration.max(0).to_string());
                 let variables = Variables::new(values);
                 retry =
                     crate::expr::evaluate_bool(&call.strategy.expression, variables.environment())

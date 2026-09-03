@@ -34,13 +34,12 @@ impl Run {
                 }
                 continue;
             }
-            let mut globals = self.globals.clone();
             let status = match (done, self.root) {
                 (true, Some(root)) => self.nodes[root].phase.name(),
                 _ => "Running",
             };
-            globals.insert("workflow.status".into(), status.into());
-            let variables = Variables::new(globals);
+            self.globals.insert("workflow.status".into(), status.into());
+            let variables = Variables::new(self.globals.clone());
             let holds = if hook.expression.is_empty() {
                 false
             } else {

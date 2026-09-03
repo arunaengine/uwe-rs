@@ -784,7 +784,7 @@ impl Run {
             hooks: Vec::new(),
             depth: call.depth,
             retry: None,
-            started: self.created,
+            started: self.options.now.unwrap_or_else(Timestamp::now),
             finished: None,
             written: Vec::new(),
         });
@@ -819,7 +819,15 @@ impl Run {
             node.phase = phase;
             node.message = message;
             if phase.fulfilled() {
-                node.finished = Some(self.created);
+                node.finished = Some(
+                    node.outcomes
+                        .iter()
+                        .flatten()
+                        .filter_map(|outcome| outcome.ended)
+                        .filter_map(|ended| Timestamp::try_from(ended).ok())
+                        .max()
+                        .unwrap_or_else(|| self.options.now.unwrap_or_else(Timestamp::now)),
+                );
             }
             self.changed = true;
         }
@@ -927,6 +935,16 @@ impl Run {
         let node = &mut self.nodes[index];
         if let Some(entry) = node.outcomes.get_mut(slot) {
             *entry = Some(outcome);
+        }
+        if let Some(started) = node
+            .outcomes
+            .iter()
+            .flatten()
+            .filter_map(|outcome| outcome.started)
+            .filter_map(|started| Timestamp::try_from(started).ok())
+            .min()
+        {
+            node.started = started;
         }
         if node.outcomes.iter().all(Option::is_some) {
             if node.kind == NodeKind::Plugin {
@@ -1126,5 +1144,60 @@ mod files_tests {
             "42\n"
         );
         assert!(output_text(None, "s3://store/result").is_err());
+    }
+
+    #[test]
+    fn retry_duration_uses_all_outcomes_in_either_completion_order() {
+        use super::*;
+        let node = argo_parser::parse_yaml(
+            r#"apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata: {name: timing}
+spec:
+  entrypoint: retry
+  templates:
+  - name: retry
+    retryStrategy: {limit: 1, expression: 'asInt(lastRetry.duration) >= 5'}
+    container: {image: alpine, command: ['false']}
+"#,
+        )
+        .unwrap()
+        .unwrap();
+        let document = Rc::new(Document {
+            path: PathBuf::from("timing.yaml"),
+            index: 0,
+            kind: DocumentKind::Workflow,
+            name: "timing".into(),
+            node,
+        });
+        for order in [[0, 1], [1, 0]] {
+            let library = Rc::new(Library::new());
+            let mut run = Run::new(document.clone(), library, Options::default()).unwrap();
+            let tasks = run.operate().unwrap();
+            let index = run.tasks[&tasks[0].id].0;
+            let second = run.next_task_id().unwrap();
+            let mut task = tasks[0].clone();
+            task.id = second;
+            run.ask(index, task);
+            run.emitted.clear();
+            let ids = [tasks[0].id, second];
+            let epoch = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000);
+            for slot in order {
+                let outcome = Outcome {
+                    id: ids[slot],
+                    exit_code: 1,
+                    started: Some(epoch + std::time::Duration::from_secs([3, 0][slot])),
+                    ended: Some(epoch + std::time::Duration::from_secs([6, 5][slot])),
+                    ..Outcome::default()
+                };
+                let next = run.complete(outcome).unwrap();
+                assert_eq!(
+                    next.len(),
+                    usize::from(run.nodes[index].outcomes.iter().all(Option::is_some))
+                );
+            }
+            assert_eq!(run.nodes[index].started.as_second(), 1_000);
+            assert_eq!(run.nodes[index].finished.unwrap().as_second(), 1_006);
+        }
     }
 }

@@ -20,7 +20,7 @@ pub mod wrapper;
 
 use std::future::Future;
 
-use tokio_util::sync::CancellationToken;
+pub use tokio_util::sync::CancellationToken;
 
 pub use access::Access;
 pub use engine::{ContainerEngine, EngineCommand, EngineKind, NoEngine};

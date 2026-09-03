@@ -53,7 +53,7 @@ impl Record {
 
 /// The repodata file of a channel and platform.
 #[derive(Deserialize)]
-struct Repodata {
+pub(crate) struct Repodata {
     #[serde(default)]
     packages: BTreeMap<String, Record>,
     #[serde(default, rename = "packages.conda")]

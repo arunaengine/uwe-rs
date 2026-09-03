@@ -29,6 +29,7 @@ pub struct TaskId(pub u64);
 #[derive(Debug)]
 pub struct TaskRequest {
     pub id: TaskId,
+    pub attempt: u32,
     /// The fully qualified process name, as `task.process` shows it.
     pub process: Rc<str>,
     /// The display name, like `GUNZIP (sample.fastq.gz)`.
@@ -306,6 +307,7 @@ impl ProcessNode {
         let id = id.unwrap_or_else(|| context.task_id());
         let mut request = TaskRequest {
             id,
+            attempt,
             process: self.name.clone(),
             name: display_name(&self.name, &directives, index, self.singleton),
             script: rendered.script,

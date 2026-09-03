@@ -645,6 +645,17 @@ fn environment(config: &Config) -> BTreeMap<String, String> {
 /// The container task of a Nextflow task: `.command.sh`, with the code that captures `env` and
 /// `eval` outputs, runs in the shell of the `shell` directive; the staged files are its inputs.
 pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Task {
+    let reuse = match request
+        .directives
+        .iter()
+        .rev()
+        .find(|directive| matches!(&*directive.name, "cache" | "cacheable"))
+        .and_then(|directive| directive.arguments.first())
+    {
+        Some(Value::Boolean(false)) => workflow_graph::Reuse::Disabled,
+        _ if request.attempt > 1 => workflow_graph::Reuse::Denied,
+        _ => workflow_graph::Reuse::Allowed,
+    };
     let mut environment = environment.clone();
     environment.extend(
         request
@@ -653,7 +664,7 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
             .map(|(name, value)| (name.to_string(), value.to_string())),
     );
     if request.made.is_some() {
-        return exec_task(request, environment);
+        return exec_task(request, environment, reuse);
     }
     let mut inputs = vec![Input {
         path: SCRIPT.into(),
@@ -702,16 +713,7 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
         after: Vec::new(),
         containers: Vec::new(),
         replaces_entrypoint: false,
-        reuse: match request
-            .directives
-            .iter()
-            .rev()
-            .find(|directive| matches!(&*directive.name, "cache" | "cacheable"))
-            .and_then(|directive| directive.arguments.first())
-        {
-            Some(Value::Boolean(false)) => workflow_graph::Reuse::Disabled,
-            _ => workflow_graph::Reuse::Allowed,
-        },
+        reuse,
     }
 }
 
@@ -722,7 +724,11 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
 /// The task of an `exec:` section, which ran in the interpreter when it was asked for (decision
 /// 17): it has no image and no command, so the engine finishes it at once (decision 11 asks
 /// no container of it), and it stands in the graph with the files it read.
-fn exec_task(request: &TaskRequest, environment: BTreeMap<String, String>) -> Task {
+fn exec_task(
+    request: &TaskRequest,
+    environment: BTreeMap<String, String>,
+    reuse: workflow_graph::Reuse,
+) -> Task {
     let inputs = (request.staged.iter())
         .map(|(source, name)| Input {
             path: name.clone(),
@@ -753,7 +759,7 @@ fn exec_task(request: &TaskRequest, environment: BTreeMap<String, String>) -> Ta
         after: Vec::new(),
         containers: Vec::new(),
         replaces_entrypoint: false,
-        reuse: workflow_graph::Reuse::Allowed,
+        reuse,
     }
 }
 

@@ -203,6 +203,63 @@ fn failures_stop_new_tasks_unless_the_run_keeps_going() {
 }
 
 #[test]
+fn rejected_cached_outputs_retry_through_fresh_execution() {
+    struct Cached {
+        fresh: usize,
+        policies: Vec<workflow_graph::Reuse>,
+    }
+    impl Executor for Cached {
+        fn run(&mut self, attempt: Attempt) -> Running {
+            let task = attempt.task;
+            self.policies.push(task.reuse);
+            if task.reuse == workflow_graph::Reuse::Allowed {
+                return Running::ended(Ok(Outcome {
+                    id: task.id,
+                    cached: true,
+                    ..Outcome::default()
+                }));
+            }
+            self.fresh += 1;
+            Running::ended(Ok(Outcome {
+                id: task.id,
+                files: vec![OutputFile {
+                    path: "out.txt".into(),
+                    location: "/work/out.txt".into(),
+                    ..OutputFile::default()
+                }],
+                ..Outcome::default()
+            }))
+        }
+    }
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(directory.path().join("main.nf"), "process P {\n output:\n path 'out.txt'\n script:\n 'touch out.txt'\n}\nworkflow {\n P()\n}\n").unwrap();
+    std::fs::write(
+        directory.path().join("nextflow.config"),
+        "process.errorStrategy = 'retry'\n",
+    )
+    .unwrap();
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        ..Launch::default()
+    };
+    let mut driver = nextflow_runtime::driver(&launch).unwrap();
+    let mut executor = Cached {
+        fresh: 0,
+        policies: Vec::new(),
+    };
+    let execution = Engine::new(&mut executor).run("main.nf", driver.as_mut());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    assert_eq!(executor.fresh, 1);
+    assert_eq!(
+        executor.policies,
+        [
+            workflow_graph::Reuse::Allowed,
+            workflow_graph::Reuse::Denied
+        ]
+    );
+}
+
+#[test]
 fn collection_failures_follow_process_error_policy() {
     use nextflow_evaluator::interpreter::Host;
     use std::cell::RefCell;
@@ -279,7 +336,7 @@ fn collection_failures_follow_process_error_policy() {
         let unreadable = mode == 2;
         for (strategy, keep_going, recover, expected) in [
             ("retry", false, true, vec!["FAIL", "SLOW", "FAIL", "LATER"]),
-            ("retry", false, false, vec!["FAIL", "SLOW", "FAIL"]),
+            ("retry", false, false, vec!["FAIL", "SLOW", "FAIL", "LATER"]),
             ("ignore", false, false, vec!["FAIL", "SLOW", "LATER"]),
             ("finish", false, false, vec!["FAIL", "SLOW"]),
             ("terminate", true, false, vec!["FAIL", "SLOW", "LATER"]),

@@ -27,6 +27,7 @@ fn request(eval: &[&str], env: &[&str], container: Option<&str>) -> TaskRequest 
     }
     TaskRequest {
         id: TaskId(1),
+        attempt: 1,
         process: "P".into(),
         name: "P (1)".into(),
         script: "#!/bin/bash -ue\nFOO='a b'\necho hi\n".into(),
@@ -82,6 +83,28 @@ fn cache_false_disables_task_reuse() {
             arguments: vec![value],
         });
         assert_eq!(task(&request, &BTreeMap::new()).reuse, expected);
+    }
+}
+
+#[test]
+fn retries_force_fresh_results_without_enabling_disabled_cache() {
+    let mut request = request(&[], &[], None);
+    request.attempt = 2;
+    for made in [None, Some(Vec::new())] {
+        request.made = made;
+        assert_eq!(
+            task(&request, &BTreeMap::new()).reuse,
+            workflow_graph::Reuse::Denied
+        );
+        request.directives.push(TaskDirective {
+            name: "cache".into(),
+            arguments: vec![Value::Boolean(false)],
+        });
+        assert_eq!(
+            task(&request, &BTreeMap::new()).reuse,
+            workflow_graph::Reuse::Disabled
+        );
+        request.directives.pop();
     }
 }
 

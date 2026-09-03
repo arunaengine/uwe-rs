@@ -183,6 +183,7 @@ impl Lowering<'_> {
         Code {
             name: field.text.as_str().into(),
             parameters,
+            returns: None,
             implicit_parameter: false,
             slot_count: layout.slot_count,
             captures: layout.captures,
@@ -209,6 +210,7 @@ impl Lowering<'_> {
             let slot = self.declare(&parameter.name);
             parameters.push(Parameter {
                 name: parameter.name.text.as_str().into(),
+                class: parameter.annotation.as_ref().and_then(simple_type),
                 slot,
                 default,
                 varargs: super::is_array(parameter),
@@ -219,6 +221,7 @@ impl Lowering<'_> {
         let code = Code {
             name: function.name.text.as_str().into(),
             parameters,
+            returns: None,
             implicit_parameter: false,
             slot_count: layout.slot_count,
             captures: layout.captures,
@@ -246,6 +249,7 @@ impl Lowering<'_> {
         };
         Parameter {
             name: "this".into(),
+            class: None,
             slot: self.declare(&name),
             default: None,
             varargs: false,
@@ -323,7 +327,7 @@ impl Lowering<'_> {
 
 /// The simple name of a type, without package and type arguments; `None` for `Object`,
 /// which takes any value.
-fn simple_type(annotation: &ast::Type) -> Option<Rc<str>> {
+pub(super) fn simple_type(annotation: &ast::Type) -> Option<Rc<str>> {
     let name = annotation.name.parts.last()?;
     let dimensions = "[]".repeat(annotation.dimensions as usize);
     (name.text != "Object" || !dimensions.is_empty())

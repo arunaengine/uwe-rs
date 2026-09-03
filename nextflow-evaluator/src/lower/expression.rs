@@ -353,6 +353,10 @@ impl Lowering<'_> {
                         .map(|value| self.expression(value));
                     Parameter {
                         name: parameter.name.text.as_str().into(),
+                        class: parameter
+                            .annotation
+                            .as_ref()
+                            .and_then(super::class::simple_type),
                         slot,
                         default,
                         varargs: super::is_array(parameter),
@@ -369,6 +373,7 @@ impl Lowering<'_> {
         Kind::Closure(Rc::new(Code {
             name: "closure".into(),
             parameters,
+            returns: None,
             implicit_parameter: explicit.is_none(),
             slot_count: layout.slot_count,
             captures: layout.captures,

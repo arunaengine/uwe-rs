@@ -41,6 +41,9 @@ pub fn executor(
         .block_on(Cluster::connect(&kubeconfig, namespace))
         .map_err(|error| error.lines().next().unwrap_or_default().to_owned())?;
     let backend = KubernetesBackend::new(cluster, scratch.join("kubernetes"));
+    runtime
+        .block_on(backend.reconcile())
+        .map_err(|error| error.to_string())?;
     // The nodes read the inputs from the store, so they are copied there.
     let runner = Runner::new(store, backend, run, crate::runner_settings(storage, true));
     Ok(RunnerExecutor::new(runner, default_image))

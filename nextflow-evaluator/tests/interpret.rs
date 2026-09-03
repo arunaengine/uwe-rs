@@ -58,6 +58,57 @@ fn last_statement_is_the_result() {
 }
 
 #[test]
+fn typed_parameters_and_returns_keep_supported_conversions() {
+    assert_eq!(
+        run("def wide(x: Long) { x.getClass().getSimpleName() }\n\
+             def text() -> String { return 5 }\n\
+             def defaulted(x: Integer = 5L) -> Long { x }\n\
+             def f() { [wide(5), text() + 1, defaulted().getClass().getSimpleName(), \
+             { x: Long -> x.getClass().getSimpleName() }.call(5)] }"),
+        "[Long, 51, Long, Long]"
+    );
+    for argument in ["5L", "'a'"] {
+        assert!(
+            fails(&format!(
+                "def typed(x: Integer) {{ x }}\ndef f() {{ typed({argument}) }}"
+            ))
+            .starts_with("MissingMethodException:"),
+            "{argument}"
+        );
+    }
+    assert!(
+        fails("def f() { { x: Integer -> x }.call(5L) }").starts_with("MissingMethodException:")
+    );
+}
+
+#[test]
+fn script_numeric_overloads_use_specificity_in_both_orders() {
+    for methods in [
+        "def pick(x: Long) { 'long' }\ndef pick(x: Integer) { 'integer' }",
+        "def pick(x: Integer) { 'integer' }\ndef pick(x: Long) { 'long' }",
+    ] {
+        assert_eq!(
+            run(&format!("{methods}\ndef f() {{ [pick(1), pick(1L)] }}")),
+            "[integer, long]"
+        );
+    }
+    assert_eq!(
+        run(
+            "def pick(x: Double) { 'double' }\ndef pick(x: Long) { 'long' }\n\
+             def f() { pick(1) }"
+        ),
+        "long"
+    );
+    assert!(
+        fails(
+            "def pick(a: Integer, b: Long) { 1 }\ndef pick(a: Long, b: Integer) { 2 }\n\
+               def f() { pick(1, 1) }"
+        )
+        .starts_with("GroovyRuntimeException: Ambiguous method overloading")
+    );
+}
+
+#[test]
 fn closures_share_captured_variables() {
     let source = "def f() {\n def n = 10\n def c = { v -> v + n }\n n = 20\n c.call(1)\n}";
     assert_eq!(run(source), "21");

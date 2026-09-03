@@ -104,7 +104,8 @@ impl Interpreter<'_> {
             }
             return Ok(Some(instance));
         }
-        let Some((method, arguments)) = choose(&constructors, arguments.clone(), true) else {
+        let Some((method, arguments)) = choose(&constructors, arguments.clone(), true, span)?
+        else {
             return Err(no_method(&class, "<init>", &arguments, span));
         };
         let mut all = vec![instance.clone()];
@@ -233,7 +234,8 @@ impl Interpreter<'_> {
                     .iter()
                     .filter(|method| method.is_static && *method.name == *name)
                     .collect();
-                if let Some((method, arguments)) = choose(&methods, arguments.clone(), false) {
+                if let Some((method, arguments)) = choose(&methods, arguments.clone(), false, span)?
+                {
                     let result = self.run(&method.code, &class.module, Vec::new(), arguments)?;
                     return self.convert(result, method.returns.as_deref(), span);
                 }
@@ -263,7 +265,8 @@ impl Interpreter<'_> {
                     .collect();
                 let instance: Vec<&MethodDef> =
                     methods.iter().copied().filter(|m| !m.is_static).collect();
-                if let Some((method, arguments)) = choose(&instance, arguments.clone(), true) {
+                if let Some((method, arguments)) = choose(&instance, arguments.clone(), true, span)?
+                {
                     let mut all = vec![this.clone()];
                     all.extend(arguments);
                     let result = self.run(&method.code, &class.module, Vec::new(), all)?;
@@ -271,7 +274,8 @@ impl Interpreter<'_> {
                 }
                 let statics: Vec<&MethodDef> =
                     methods.iter().copied().filter(|m| m.is_static).collect();
-                if let Some((method, arguments)) = choose(&statics, arguments.clone(), false) {
+                if let Some((method, arguments)) = choose(&statics, arguments.clone(), false, span)?
+                {
                     let result = self.run(&method.code, &class.module, Vec::new(), arguments)?;
                     return self.convert(result, method.returns.as_deref(), span);
                 }
@@ -347,12 +351,17 @@ impl Interpreter<'_> {
 
     /// A value converted to a declared type, as Groovy converts what a typed field is given or
     /// a typed method returns; other types keep the value.
-    fn convert(&mut self, value: Value, class: Option<&str>, span: Span) -> Result<Value, Error> {
+    pub(super) fn convert(
+        &mut self,
+        value: Value,
+        class: Option<&str>,
+        span: Span,
+    ) -> Result<Value, Error> {
         match class {
             Some("void") => Ok(Value::Null),
             Some(
                 class @ ("String" | "Integer" | "int" | "Long" | "long" | "Double" | "double"
-                | "Boolean" | "boolean" | "BigDecimal" | "Float" | "float"),
+                | "Boolean" | "boolean" | "BigDecimal" | "BigInteger" | "Float" | "float"),
             ) if !matches!(value, Value::Null) => self.cast(value, class, span),
             _ => Ok(value),
         }
@@ -436,14 +445,16 @@ fn static_field(class: &Rc<LibraryClass>, name: &str) -> Option<Value> {
 
 /// The method that Groovy chooses for the arguments, with the arguments it takes: the right
 /// number, remaining arguments collected for a method with variable arguments, and of the
-/// methods whose parameter types fit, the one with the most typed parameters. A method of the
+/// methods whose parameter types fit, the one with the closest types. A method of the
 /// objects has `this` as its first parameter, which the arguments leave out.
 fn choose<'m>(
     methods: &[&'m MethodDef],
     arguments: Vec<Value>,
     instance: bool,
-) -> Option<(&'m MethodDef, Vec<Value>)> {
+    span: Span,
+) -> Result<Option<(&'m MethodDef, Vec<Value>)>, Error> {
     let mut best: Option<(&MethodDef, Vec<Value>, usize)> = None;
+    let mut ambiguous = false;
     for method in methods {
         let skip = usize::from(instance && !method.is_static);
         let parameters = &method.code.parameters[skip..];
@@ -467,45 +478,79 @@ fn choose<'m>(
             }
             arguments.clone()
         };
-        let checked = method.types.iter().zip(&adapted);
-        let mut score = 0;
-        let mut fits = true;
-        for (class, value) in checked {
-            if let Some(class) = class {
-                if !fits_type(class, value) {
-                    fits = false;
-                    break;
-                }
-                score += 1;
-            }
-        }
-        if fits && best.as_ref().is_none_or(|(_, _, best)| score > *best) {
+        let score: Option<usize> = method
+            .types
+            .iter()
+            .zip(&adapted)
+            .map(|(class, value)| {
+                class
+                    .as_deref()
+                    .map_or(Some(128), |class| type_rank(class, value))
+            })
+            .sum();
+        let Some(score) = score else { continue };
+        if best.as_ref().is_none_or(|(_, _, best)| score < *best) {
             best = Some((method, adapted, score));
+            ambiguous = false;
+        } else if best.as_ref().is_some_and(|(_, _, best)| score == *best) {
+            ambiguous = true;
         }
     }
-    best.map(|(method, arguments, _)| (method, arguments))
+    if ambiguous {
+        return Err(super::call::ambiguous_overload(&methods[0].name, span));
+    }
+    Ok(best.map(|(method, arguments, _)| (method, arguments)))
 }
 
-/// Whether a value fits a declared parameter type; a type iunctus does not know fits all.
-fn fits_type(class: &str, value: &Value) -> bool {
+/// Exact numeric types precede widening conversions; unknown types retain legacy matching.
+pub(super) fn type_rank(class: &str, value: &Value) -> Option<usize> {
     if matches!(value, Value::Null) {
-        return !matches!(
+        return (!matches!(
             class,
             "int" | "long" | "boolean" | "double" | "float" | "short" | "byte" | "char"
-        );
+        ))
+        .then_some(8);
     }
-    match class {
+    let numeric = match class {
+        "Integer" | "int" => Some("Integer"),
+        "Long" | "long" => Some("Long"),
+        "BigInteger" => Some("BigInteger"),
+        "BigDecimal" => Some("BigDecimal"),
+        "Float" | "float" => Some("Float"),
+        "Double" | "double" => Some("Double"),
+        "Number" => return matches!(value, Value::Number(_)).then_some(32),
+        _ => None,
+    };
+    if let Some(class) = numeric {
+        let targets: &[&str] = match value.class_name() {
+            "Integer" => &[
+                "Integer",
+                "Long",
+                "BigInteger",
+                "BigDecimal",
+                "Float",
+                "Double",
+            ],
+            "Long" => &["Long", "BigInteger", "BigDecimal", "Float", "Double"],
+            "BigInteger" => &["BigInteger", "BigDecimal", "Float", "Double"],
+            "BigDecimal" => &["BigDecimal", "Float", "Double"],
+            "Float" => &["Float", "Double"],
+            "Double" => &["Double"],
+            _ => &[],
+        };
+        return targets.iter().position(|target| *target == class);
+    }
+    let fits = match class {
         "Map" | "LinkedHashMap" | "HashMap" => matches!(value, Value::Map(_)),
         "List" | "ArrayList" | "Collection" => matches!(value, Value::List(_)),
         "Set" => matches!(value, Value::Set(_)),
         "String" | "CharSequence" => matches!(value, Value::String(_) | Value::GString(_)),
-        "Integer" | "int" | "Long" | "long" | "Number" | "Double" | "double" | "BigDecimal"
-        | "Float" | "float" => matches!(value, Value::Number(_)),
         "Boolean" | "boolean" => matches!(value, Value::Boolean(_)),
         "Path" | "File" => matches!(value, Value::Path(_)),
         "Closure" => matches!(value, Value::Closure(_)),
-        _ => true,
-    }
+        _ => return Some(64),
+    };
+    fits.then_some(0)
 }
 
 fn capitalized(name: &str) -> String {

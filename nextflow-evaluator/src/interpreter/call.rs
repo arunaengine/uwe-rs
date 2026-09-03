@@ -60,6 +60,14 @@ impl Interpreter<'_> {
                 span,
             ));
         };
+        if argument_rank(&closure.code, &arguments).is_none() {
+            return Err(no_signature(
+                "groovy.lang.Closure",
+                "doCall",
+                &arguments,
+                span,
+            ));
+        }
         self.run(
             &closure.code,
             &closure.module,
@@ -82,11 +90,11 @@ impl Interpreter<'_> {
             .iter()
             .map(|index| module.functions[*index].clone())
             .collect();
-        if let Some(code) = functions.iter().find(|code| accepts(code, arguments.len())) {
+        if let Some(code) = choose_function(&functions, &arguments, name, span)? {
             return self.run(code, module, Vec::new(), arguments);
         }
         if let Some(items) = spread(&arguments)
-            && let Some(code) = functions.iter().find(|code| accepts(code, items.len()))
+            && let Some(code) = choose_function(&functions, &items, name, span)?
         {
             return self.run(code, module, Vec::new(), items);
         }
@@ -119,9 +127,11 @@ impl Interpreter<'_> {
                 (None, Some(default)) => self.expression(&mut frame, default)?,
                 (None, None) => Value::Null,
             };
+            let value = self.convert(value, parameter.class.as_deref(), code.span)?;
             frame.set(Place::Local(parameter.slot), value);
         }
-        Ok(self.block(&mut frame, &code.body)?.value())
+        let value = self.block(&mut frame, &code.body)?.value();
+        self.convert(value, code.returns.as_deref(), code.span)
     }
 
     /// Built-in functions of every script.
@@ -324,6 +334,57 @@ fn accepts(code: &Code, count: usize) -> bool {
         .filter(|p| p.default.is_none())
         .count();
     (required..=code.parameters.len()).contains(&count)
+}
+
+fn argument_rank(code: &Code, arguments: &[Value]) -> Option<usize> {
+    code.parameters
+        .iter()
+        .zip(arguments)
+        .map(|(parameter, value)| match parameter.class.as_deref() {
+            Some(class) => super::classes::type_rank(class, value),
+            None => Some(128),
+        })
+        .sum()
+}
+
+fn choose_function<'a>(
+    functions: &'a [Rc<Code>],
+    arguments: &[Value],
+    name: &str,
+    span: Span,
+) -> Result<Option<&'a Rc<Code>>, Error> {
+    let mut best = None;
+    let mut ambiguous = false;
+    for code in functions {
+        if !accepts(code, arguments.len()) {
+            continue;
+        }
+        let Some(rank) = argument_rank(code, arguments) else {
+            continue;
+        };
+        match best {
+            Some((_, previous)) if rank > previous => {}
+            Some((_, previous)) if rank == previous => ambiguous = true,
+            _ => {
+                best = Some((code, rank));
+                ambiguous = false;
+            }
+        }
+    }
+    if ambiguous {
+        return Err(ambiguous_overload(name, span));
+    }
+    Ok(best.map(|(code, _)| code))
+}
+
+pub(super) fn ambiguous_overload(name: &str, span: Span) -> Error {
+    thrown(
+        Exception::new(
+            "GroovyRuntimeException",
+            format!("Ambiguous method overloading for method {name}"),
+        ),
+        span,
+    )
 }
 
 /// Groovy's argument adaptation: the arguments as given, else the elements of one list. A last

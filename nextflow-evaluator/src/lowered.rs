@@ -302,6 +302,7 @@ pub struct Body {
 pub struct Code {
     pub name: Rc<str>,
     pub parameters: Vec<Parameter>,
+    pub returns: Option<Rc<str>>,
     /// A closure without parameters has one optional parameter `it`, in slot 0.
     pub implicit_parameter: bool,
     pub slot_count: usize,
@@ -314,6 +315,7 @@ pub struct Code {
 #[derive(Debug)]
 pub struct Parameter {
     pub name: Rc<str>,
+    pub class: Option<Rc<str>>,
     pub slot: Slot,
     pub default: Option<Expression>,
     /// Whether the parameter takes the remaining arguments as a list, as Groovy does for a last

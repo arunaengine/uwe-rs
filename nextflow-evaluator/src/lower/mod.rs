@@ -111,6 +111,7 @@ pub fn lower_config_statement(
     let code = Code {
         name: "config".into(),
         parameters: Vec::new(),
+        returns: None,
         implicit_parameter: false,
         slot_count: layout.slot_count,
         captures: layout.captures,
@@ -439,6 +440,7 @@ impl<'a> Lowering<'a> {
                 let slot = self.declare(&parameter.name);
                 Parameter {
                     name: parameter.name.text.as_str().into(),
+                    class: parameter.annotation.as_ref().and_then(class::simple_type),
                     slot,
                     default,
                     varargs: is_array(parameter),
@@ -452,6 +454,7 @@ impl<'a> Lowering<'a> {
         Code {
             name: function.name.text.as_str().into(),
             parameters,
+            returns: function.return_type.as_ref().and_then(class::simple_type),
             implicit_parameter: false,
             slot_count: layout.slot_count,
             captures: layout.captures,
@@ -552,6 +555,7 @@ impl<'a> Lowering<'a> {
         Code {
             name: name.into(),
             parameters: Vec::new(),
+            returns: None,
             implicit_parameter: false,
             slot_count: layout.slot_count,
             captures: layout.captures,
@@ -633,6 +637,7 @@ impl<'a> Lowering<'a> {
         Code {
             name: "script".into(),
             parameters: Vec::new(),
+            returns: None,
             implicit_parameter: false,
             slot_count: layout.slot_count,
             captures: layout.captures,

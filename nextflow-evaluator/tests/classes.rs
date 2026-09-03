@@ -179,6 +179,39 @@ fn missing_members_fail_as_in_groovy() {
 }
 
 #[test]
+fn class_numeric_overloads_use_specificity_in_both_orders() {
+    for methods in [
+        "static pick(Long x) { 'long' }; static pick(Integer x) { 'integer' }",
+        "static pick(Integer x) { 'integer' }; static pick(Long x) { 'long' }",
+    ] {
+        assert_eq!(
+            run(&format!(
+                "class Numeric {{ {methods} }}\n\
+                          def f() {{ [Numeric.pick(1), Numeric.pick(1L)] }}"
+            ))
+            .unwrap(),
+            "[integer, long]"
+        );
+    }
+    assert_eq!(
+        run(
+            "class Numeric { static wide(Long x) { x.getClass().getSimpleName() } }\n\
+             def f() { Numeric.wide(1) }"
+        )
+        .unwrap(),
+        "Long"
+    );
+    let error = run("class Numeric { static pick(Integer a, Long b) { 1 }; \
+                     static pick(Long a, Integer b) { 2 } }\n\
+                     def f() { Numeric.pick(1, 1) }")
+    .unwrap_err();
+    assert!(
+        error.starts_with("GroovyRuntimeException: Ambiguous method overloading"),
+        "{error}"
+    );
+}
+
+#[test]
 fn static_import_aliases_keep_the_original_member() {
     let source = "import static java.lang.Math.max as min\n\
                   import static java.lang.Math.min as smallest\n\

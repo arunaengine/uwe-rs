@@ -222,39 +222,17 @@ impl Interpreter {
                     "can't use starred expression here",
                 ));
             }
-            Expr::Yield(expression) => {
-                let value = match &expression.value {
-                    Some(value) => self.eval(frame, value)?,
-                    None => Value::None,
-                };
-                self.push_yield(frame, value)?;
-                Value::None
-            }
-            Expr::YieldFrom(expression) => {
-                let value = self.eval(frame, &expression.value)?;
-                for item in self.iterate(&value)? {
-                    self.push_yield(frame, item)?;
-                }
-                Value::None
+            Expr::Yield(_) | Expr::YieldFrom(_) => {
+                return Err(if frame.kind == FrameKind::Function {
+                    Error::unsupported("yield in a nested expression")
+                } else {
+                    Error::new("SyntaxError", "'yield' outside function")
+                });
             }
             Expr::Await(_) => return Err(Error::unsupported("await")),
             Expr::TString(_) => return Err(Error::unsupported("template strings")),
             Expr::IpyEscapeCommand(_) => return Err(Error::unsupported("IPython commands")),
         })
-    }
-
-    fn push_yield(&mut self, frame: &Frame, value: Value) -> Result<(), Error> {
-        match &frame.yields {
-            Some(yields) => {
-                let mut yields = yields.borrow_mut();
-                if yields.len() > 10_000_000 {
-                    return Err(Error::unsupported("a generator that does not end"));
-                }
-                yields.push(value);
-                Ok(())
-            }
-            None => Err(Error::new("SyntaxError", "'yield' outside function")),
-        }
     }
 
     /// The result of one comparison: what the operator gives for `==` and the orderings,

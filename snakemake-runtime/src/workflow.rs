@@ -1269,9 +1269,9 @@ impl Hook {
         // Snakemake's `is_multiext_items` checks the items with `all()`, which takes the items
         // of an iterator, like a generator expression, up to the first without the flag, so
         // that the rule never gets them.
-        if let Value::Iterator(iterator) = value.plain() {
+        if matches!(value.plain(), Value::Iterator(_)) {
             loop {
-                let next = iterator.borrow_mut().next_value(interpreter)?;
+                let next = interpreter.next_item(value)?;
                 match next {
                     Some(item) if item.tag("multiext").is_some() => {}
                     Some(_) => return Ok(None),

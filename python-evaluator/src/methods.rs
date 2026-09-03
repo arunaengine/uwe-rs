@@ -217,6 +217,12 @@ pub fn python_has(value: &Value, name: &str) -> bool {
         Value::Str(_) | Value::List(_) | Value::Dict(_) | Value::Set(_) | Value::Tuple(_) => {
             name.starts_with("__") || MORE.contains(&name)
         }
+        Value::Iterator(iterator) => {
+            matches!(name, "send" | "throw" | "close")
+                && iterator
+                    .try_borrow()
+                    .is_ok_and(|state| matches!(&*state, crate::value::Iter::Generator(_)))
+        }
         _ => false,
     }
 }
@@ -293,10 +299,9 @@ pub fn call(
                 .collect();
             sequence_method(interpreter, &items, name, args, "range")
         }
-        Value::Iterator(iterator) => match name {
-            "__next__" => iterator
-                .borrow_mut()
-                .next_value(interpreter)?
+        Value::Iterator(_) => match name {
+            "__next__" => interpreter
+                .next_item(receiver)?
                 .ok_or_else(Error::stop_iteration),
             _ => Ok(receiver.plain().clone()),
         },

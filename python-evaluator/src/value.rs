@@ -387,7 +387,7 @@ pub struct Function {
     /// The scope of the enclosing function, for closures.
     pub closure: Option<Rc<Scope>>,
     pub source: Rc<Source>,
-    /// Whether the body holds `yield`; calls then collect what it yields.
+    /// Whether the body holds `yield`; calls then return suspended execution.
     pub generator: bool,
     /// Names declared `global` or `nonlocal` in the body.
     pub declared: Rc<Declared>,
@@ -547,6 +547,7 @@ impl Scope {
 
 /// The state of an iterator; items are computed ahead except for counting ones.
 pub enum Iter {
+    Generator(Box<crate::interpreter::generator::Generator>),
     Items(VecDeque<Value>),
     Range {
         next: i64,
@@ -562,8 +563,9 @@ pub enum Iter {
 }
 
 impl Iter {
-    pub fn next_value(&mut self, _: &mut Interpreter) -> Result<Option<Value>, Error> {
+    pub fn next_value(&mut self, interpreter: &mut Interpreter) -> Result<Option<Value>, Error> {
         Ok(match self {
+            Iter::Generator(generator) => return generator.next(interpreter),
             Iter::Items(items) => items.pop_front(),
             Iter::Range { next, stop, step } => {
                 if (*step > 0 && *next < *stop) || (*step < 0 && *next > *stop) {

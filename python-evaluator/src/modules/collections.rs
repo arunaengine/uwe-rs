@@ -193,12 +193,12 @@ pub fn itertools() -> Vec<(&'static str, Value)> {
                 };
                 let iterable = &args.positional[0];
                 let items: Vec<Value> = match iterable.plain() {
-                    Value::Iterator(state) => {
+                    Value::Iterator(_) => {
                         let mut taken = Vec::new();
                         let limit = stop.unwrap_or(i64::MAX);
                         let mut index = 0i64;
                         while index < limit {
-                            match state.borrow_mut().next_value(interpreter)? {
+                            match interpreter.next_item(iterable)? {
                                 Some(item) => taken.push(item),
                                 None => break,
                             }

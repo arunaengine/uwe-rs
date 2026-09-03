@@ -17,7 +17,9 @@ use executor::wrapper::{Folders, MANIFEST, STDERR};
 use executor::{
     Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, containers, place,
 };
-use kube::api::{DeleteParams, ListParams, LogParams, PostParams, PropagationPolicy};
+use kube::api::{
+    DeleteParams, ListParams, LogParams, PostParams, Preconditions, PropagationPolicy,
+};
 use task_model::TaskSpec;
 use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
@@ -34,6 +36,7 @@ const GRACE: Duration = Duration::from_secs(120);
 
 /// How long a cancelled Job may take to remove its pod before the backend stops waiting.
 const CANCEL_GRACE: Duration = Duration::from_secs(60);
+const REQUEST_GRACE: Duration = Duration::from_secs(5);
 
 /// The Kubernetes executor's backend.
 #[derive(Debug)]
@@ -107,7 +110,7 @@ impl Backend for KubernetesBackend {
             Err(error) => Err(error.into()),
             Ok(mounts) => self.attempt(job, &root, &mounts, cancel).await,
         };
-        if result.is_err() {
+        if result.is_err() && !root.join("remote.json").try_exists().unwrap_or(true) {
             let _ = tokio::fs::remove_dir_all(&root).await;
         }
         result
@@ -269,18 +272,38 @@ impl KubernetesBackend {
                 "kubernetes.io/arch": parts.next().unwrap_or_default(),
             });
         }
-        self.create(manifest).await?;
+        if cancel.is_cancelled() {
+            return Err(ExecutorError::Cancelled);
+        }
+        let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
+        let started = owner_start(std::process::id()).ok_or_else(|| {
+            std::io::Error::other("cannot identify the Kubernetes coordinator process")
+        })?;
+        let mut journal = serde_json::json!({"backend": "Kubernetes", "server": self.cluster.server(),
+            "namespace": self.cluster.namespace(), "name": name, "label": self.label, "uid": null,
+            "owner": std::process::id(), "host": host, "started": started});
+        journal_at(root, &journal)?;
+        let uid = tokio::select! {
+            result = self.create(manifest) => result.map_err(|error| unresolved(root, error))?,
+            () = cancel.cancelled() => return Err(unresolved(root, "cancelled during submission; the response was not recorded")),
+        };
+        journal["uid"] = serde_json::json!(uid);
+        journal_at(root, &journal)?;
         self.pods.add(&name).await;
         let ended = self.wait(&name, cancel).await;
-        self.pods.remove(&name).await;
         // The log of a container that failed tells why, as when it could not run the wrapper.
         let log = match &ended {
-            Ok(Ended::Exited(status, _)) if *status != 0 => self.log(&name).await,
+            Ok(Ended::Exited(status, _)) if *status != 0 => {
+                tokio::time::timeout(REQUEST_GRACE, self.log(&name))
+                    .await
+                    .ok()
+                    .flatten()
+            }
             _ => None,
         };
-        if !matches!(ended, Err(ExecutorError::Cancelled)) {
-            self.delete(&name, PropagationPolicy::Background).await;
-        }
+        let stopped = self.stop(root, &journal, CANCEL_GRACE).await;
+        self.pods.remove(&name).await;
+        stopped?;
         let finished = finish(ended?, root.to_owned(), limits.seconds, &spec).await;
         match (finished, log) {
             (Err(ExecutorError::Engine { engine, message }), Some(log)) => {
@@ -294,22 +317,59 @@ impl KubernetesBackend {
     }
 
     /// Creates a Job from its manifest.
-    async fn create(&self, manifest: serde_json::Value) -> Result<(), ExecutorError> {
+    async fn create(&self, manifest: serde_json::Value) -> Result<String, ExecutorError> {
         let job = serde_json::from_value(manifest)
             .map_err(|error| machine(format!("the Job is not valid: {error}")))?;
         let jobs = self.cluster.jobs();
-        (jobs.create(&PostParams::default(), &job).await)
-            .map_err(|error| machine(format!("the cluster did not take the Job: {error}")))?;
-        Ok(())
+        let accepted =
+            tokio::time::timeout(REQUEST_GRACE, jobs.create(&PostParams::default(), &job))
+                .await
+                .map_err(|_| machine("the Job submission response timed out".into()))?
+                .map_err(|error| machine(format!("the cluster did not take the Job: {error}")))?;
+        accepted
+            .metadata
+            .uid
+            .filter(|uid| !uid.is_empty())
+            .ok_or_else(|| machine("the Job submission response has no UID".into()))
     }
 
-    /// Deletes a Job and its pod, without waiting; a Job that is gone already is fine.
-    async fn delete(&self, name: &str, policy: PropagationPolicy) {
-        let parameters = DeleteParams {
-            propagation_policy: Some(policy),
-            ..DeleteParams::default()
+    /// Resolves accepted work whose original coordinator is no longer running.
+    pub async fn reconcile(&self) -> Result<(), ExecutorError> {
+        let entries = match std::fs::read_dir(&self.scratch) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error.into()),
         };
-        let _ = self.cluster.jobs().delete(name, &parameters).await;
+        let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
+        for entry in entries {
+            let root = entry?.path();
+            let path = root.join("remote.json");
+            if !path.exists() {
+                continue;
+            }
+            let journal: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)
+                .map_err(|error| unresolved(&root, error))?;
+            if journal["backend"] != "Kubernetes"
+                || journal["host"].as_str() != Some(host.as_str())
+                || journal["server"].as_str() != Some(self.cluster.server())
+                || journal["namespace"].as_str() != Some(self.cluster.namespace())
+            {
+                return Err(unresolved(
+                    &root,
+                    "the original coordinator host or cluster settings changed",
+                ));
+            }
+            if let Some(owner) = journal["owner"]
+                .as_u64()
+                .and_then(|pid| u32::try_from(pid).ok())
+                && journal["started"].is_string()
+                && owner_start(owner).as_deref() == journal["started"].as_str()
+            {
+                continue;
+            }
+            self.stop(&root, &journal, CANCEL_GRACE).await?;
+        }
+        Ok(())
     }
 
     /// The last lines of the log of the pod of a Job, when there is one.
@@ -327,21 +387,21 @@ impl KubernetesBackend {
         (!lines.is_empty()).then(|| lines.join("; "))
     }
 
-    /// Waits for the container of a Job to end, and deletes the Job when `cancel` fires.
+    /// Waits for a container outcome or cancellation before confirming termination.
     async fn wait(&self, name: &str, cancel: &CancellationToken) -> Result<Ended, ExecutorError> {
         let mut pause = Duration::from_millis(250);
         let mut trouble: Option<Instant> = None;
         loop {
-            tokio::select! {
-                () = tokio::time::sleep(pause) => {}
-                () = cancel.cancelled() => {
-                    self.cancel(name).await;
-                    return Err(ExecutorError::Cancelled);
-                }
-            }
+            let look = tokio::select! {
+                look = async {
+                    tokio::time::sleep(pause).await;
+                    tokio::time::timeout(REQUEST_GRACE, self.pods.look(name, self.poll, &self.cluster, &self.label))
+                        .await.unwrap_or_else(|_| Look::Unavailable("pod query timed out".into()))
+                } => look,
+                () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
+            };
             pause = (pause * 2).min(self.poll);
-            let problem = match (self.pods.look(name, self.poll, &self.cluster, &self.label)).await
-            {
+            let problem = match look {
                 Look::Active | Look::Unknown => None,
                 Look::Ended { exit_code, reason } => return Ok(Ended::Exited(exit_code, reason)),
                 Look::Stopped(reason) => return Ok(Ended::Stopped(reason)),
@@ -354,7 +414,6 @@ impl KubernetesBackend {
                 (None, _) => trouble = None,
                 (Some(_), None) => trouble = Some(Instant::now()),
                 (Some(problem), Some(since)) if since.elapsed() >= GRACE => {
-                    self.delete(name, PropagationPolicy::Background).await;
                     return Err(machine(problem));
                 }
                 (Some(_), Some(_)) => {}
@@ -362,21 +421,102 @@ impl KubernetesBackend {
         }
     }
 
-    /// Deletes a Job and waits until its pod is gone, so that its container stopped.
-    async fn cancel(&self, name: &str) {
-        self.delete(name, PropagationPolicy::Foreground).await;
-        let deadline = Instant::now() + CANCEL_GRACE;
-        while Instant::now() < deadline {
-            tokio::time::sleep(self.poll.min(Duration::from_secs(1))).await;
-            let look = self
-                .pods
-                .look(name, self.poll, &self.cluster, &self.label)
-                .await;
-            if look == Look::Missing {
-                break;
+    /// Releases ownership only after the accepted Job and all its pods disappear.
+    async fn stop(
+        &self,
+        root: &Path,
+        journal: &serde_json::Value,
+        grace: Duration,
+    ) -> Result<(), ExecutorError> {
+        let name = journal["name"]
+            .as_str()
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| unresolved(root, "the Job name was not recorded"))?;
+        let uid = journal["uid"]
+            .as_str()
+            .filter(|uid| !uid.is_empty())
+            .ok_or_else(|| {
+                unresolved(
+                    root,
+                    "the accepted UID was not recorded; resolve the submission on the cluster",
+                )
+            })?;
+        let stopped = async {
+            let jobs = self.cluster.jobs();
+            let pods = self.cluster.pods();
+            let selector = ListParams::default().labels(&format!("job-name={name}"));
+            loop {
+                match tokio::time::timeout(REQUEST_GRACE, jobs.get_opt(name)).await {
+                    Ok(Ok(Some(job))) => {
+                        if job.metadata.uid.as_deref() != Some(uid)
+                            || job
+                                .metadata
+                                .labels
+                                .as_ref()
+                                .and_then(|labels| labels.get(crate::manifest::LABEL))
+                                .map(String::as_str)
+                                != journal["label"].as_str()
+                        {
+                            return Err(unresolved(root, "the Job identity changed"));
+                        }
+                        let parameters = DeleteParams {
+                            propagation_policy: Some(PropagationPolicy::Foreground),
+                            preconditions: Some(Preconditions {
+                                uid: Some(uid.to_owned()),
+                                ..Preconditions::default()
+                            }),
+                            ..DeleteParams::default()
+                        };
+                        let _ = tokio::time::timeout(REQUEST_GRACE, jobs.delete(name, &parameters))
+                            .await;
+                    }
+                    Ok(Ok(None)) => {
+                        if let Ok(Ok(list)) =
+                            tokio::time::timeout(REQUEST_GRACE, pods.list(&selector)).await
+                            && list.items.is_empty()
+                        {
+                            return Ok(());
+                        }
+                    }
+                    _ => {}
+                }
+                tokio::time::sleep(self.poll.min(Duration::from_secs(1))).await;
             }
-        }
+        };
+        tokio::time::timeout(grace, stopped)
+            .await
+            .map_err(|_| unresolved(root, format!("Job {name} termination was not confirmed")))??;
+        std::fs::remove_file(root.join("remote.json"))?;
+        Ok(())
     }
+}
+
+fn owner_start(pid: u32) -> Option<String> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let (_, fields) = stat.rsplit_once(')')?;
+    if matches!(fields.split_whitespace().next()?, "Z" | "X") {
+        return None;
+    }
+    fields.split_whitespace().nth(19).map(str::to_owned)
+}
+
+fn unresolved(root: &Path, error: impl std::fmt::Display) -> ExecutorError {
+    std::io::Error::other(format!(
+        "Kubernetes ownership is unresolved: {error}; retained {}",
+        root.join("remote.json").display()
+    ))
+    .into()
+}
+
+fn journal_at(root: &Path, journal: &serde_json::Value) -> Result<(), ExecutorError> {
+    use std::io::Write;
+    let path = root.join("remote.json.next");
+    let mut file = std::fs::File::create(&path)?;
+    file.write_all(journal.to_string().as_bytes())?;
+    file.sync_all()?;
+    std::fs::rename(path, root.join("remote.json"))?;
+    std::fs::File::open(root)?.sync_all()?;
+    Ok(())
 }
 
 /// What an attempt left behind, by how its container ended.
@@ -469,6 +609,24 @@ fn machine(message: String) -> ExecutorError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn termination_deadline_keeps_the_journal() {
+        let folder = tempfile::tempdir().unwrap();
+        let config = folder.path().join("kubeconfig");
+        std::fs::write(&config, "apiVersion: v1\nkind: Config\ncurrent-context: test\nclusters:\n- name: test\n  cluster:\n    server: http://127.0.0.1:9\ncontexts:\n- name: test\n  context:\n    cluster: test\n    user: test\nusers:\n- name: test\n  user: {}\n").unwrap();
+        let cluster = Cluster::connect(&config, None).await.unwrap();
+        let backend = KubernetesBackend::new(cluster, folder.path().to_owned());
+        let journal = serde_json::json!({"name": "accepted", "uid": "original", "label": "test"});
+        journal_at(folder.path(), &journal).unwrap();
+        let error = backend
+            .stop(folder.path(), &journal, Duration::from_millis(10))
+            .await
+            .unwrap_err();
+        assert!(!error.retryable());
+        assert!(error.to_string().contains("termination was not confirmed"));
+        assert!(folder.path().join("remote.json").is_file());
+    }
 
     #[test]
     fn containers_end_tasks_or_fail_the_machine() {

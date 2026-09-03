@@ -252,7 +252,8 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
     let folder = state.folder.clone();
     match (method.as_str(), path.as_str()) {
         ("POST", JOBS) => {
-            let job: Value = serde_json::from_str(&body).expect("a Job");
+            let mut job: Value = serde_json::from_str(&body).expect("a Job");
+            job["metadata"]["uid"] = json!(format!("accepted-{}", state.submitted.len()));
             state.submitted.push(job.clone());
             let name = job["metadata"]["name"]
                 .as_str()
@@ -260,7 +261,34 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
                 .to_owned();
             let running = start(&folder, &job);
             state.jobs.insert(name, running);
-            reply(&mut stream, "201 Created", "application/json", &body);
+            if folder.join("lose-submit").exists() {
+                return;
+            }
+            reply(
+                &mut stream,
+                "201 Created",
+                "application/json",
+                &job.to_string(),
+            );
+        }
+        ("GET", job) if job.starts_with(&format!("{JOBS}/")) => {
+            let name = job.rsplit('/').next().unwrap_or_default();
+            if state.jobs.get(name).is_some_and(|running| !running.deleted) {
+                let job = state
+                    .submitted
+                    .iter()
+                    .find(|job| job["metadata"]["name"] == name)
+                    .unwrap();
+                return reply(&mut stream, "200 OK", "application/json", &job.to_string());
+            }
+            let status = json!({"kind":"Status","apiVersion":"v1","status":"Failure","code":404,
+                "reason":"NotFound","message":format!("Job {name} was not found")});
+            reply(
+                &mut stream,
+                "404 Not Found",
+                "application/json",
+                &status.to_string(),
+            );
         }
         ("GET", PODS) => {
             let selector = parameter(&target, "labelSelector").unwrap_or_default();
@@ -298,7 +326,7 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
         ("DELETE", job) if job.starts_with(JOBS) => {
             let name = job.rsplit('/').next().unwrap_or_default().to_owned();
             if let Some(running) = state.jobs.get_mut(&name) {
-                running.deleted = true;
+                running.deleted = !folder.join("delay-delete").exists();
                 let _ = std::process::Command::new("kill")
                     .args(["-TERM", "--", &format!("-{}", running.process)])
                     .stderr(std::process::Stdio::null())
@@ -428,6 +456,18 @@ async fn failed_pod_lists_preserve_the_api_error() {
 }
 
 #[tokio::test]
+async fn missing_job_reads_as_absent() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, _) = backend(root.path()).await;
+    let result = tokio::time::timeout(
+        Duration::from_secs(5),
+        backend.cluster.jobs().get_opt("missing"),
+    )
+    .await;
+    assert!(matches!(result, Ok(Ok(None))), "{result:?}");
+}
+
+#[tokio::test]
 async fn offline_tasks_are_rejected_before_submission() {
     let root = tempfile::tempdir().expect("a folder");
     let (backend, state) = backend(root.path()).await;
@@ -489,7 +529,13 @@ async fn jobs_run_tasks_and_give_their_outputs() {
         Some(&*format!("POST {JOBS}"))
     );
     let deleted = format!("DELETE {JOBS}/iunctus-run-p-1-1");
-    assert_eq!(calls.last(), Some(&deleted), "{calls:?}");
+    assert!(calls.contains(&deleted), "{calls:?}");
+    assert!(
+        calls
+            .last()
+            .is_some_and(|call| call == &format!("GET {PODS}")),
+        "{calls:?}"
+    );
 }
 
 #[tokio::test]
@@ -734,6 +780,127 @@ async fn cancelled_jobs_stop() {
     let state = state.lock().expect("the state");
     assert!(state.jobs["iunctus-run-p-4-1"].deleted);
     assert!(!root.path().join("scratch/run-P-4-1").exists());
+}
+
+#[tokio::test]
+async fn lost_submission_response_keeps_scratch_and_requires_disposition() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, state) = backend(root.path()).await;
+    std::fs::write(root.path().join("server/lose-submit"), "").unwrap();
+    let spec = spec("debian:stable-slim", "true");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "ambiguous",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = backend
+        .run(job, &CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert!(!error.retryable());
+    let journal = backend.scratch.join("ambiguous/remote.json");
+    let mut record: Value = serde_json::from_slice(&std::fs::read(&journal).unwrap()).unwrap();
+    assert!(record["uid"].is_null());
+    assert_eq!(state.lock().unwrap().submitted.len(), 1);
+    record["owner"] = json!(0);
+    std::fs::write(&journal, record.to_string()).unwrap();
+    let error = backend.reconcile().await.unwrap_err();
+    assert!(error.to_string().contains("UID was not recorded"));
+    assert!(journal.is_file());
+}
+
+#[tokio::test]
+async fn recovery_preserves_changed_identity_and_waits_for_pod_removal() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, state) = backend(root.path()).await;
+    let spec = spec("debian:stable-slim", "sleep 30");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "recover",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(600),
+            backend.run(job, &CancellationToken::new())
+        )
+        .await
+        .is_err()
+    );
+    let journal = backend.scratch.join("recover/remote.json");
+    let mut record: Value = serde_json::from_slice(&std::fs::read(&journal).unwrap()).unwrap();
+    let uid = record["uid"].clone();
+    record["owner"] = json!(0);
+    std::fs::write(&journal, record.to_string()).unwrap();
+    state.lock().unwrap().submitted[0]["metadata"]["uid"] = json!("replacement");
+    let recovered = KubernetesBackend::new(backend.cluster.clone(), backend.scratch.clone());
+    let error = recovered.reconcile().await.unwrap_err();
+    assert!(error.to_string().contains("identity changed"));
+    assert!(journal.is_file());
+    assert!(!state.lock().unwrap().jobs["iunctus-recover"].deleted);
+    state.lock().unwrap().submitted[0]["metadata"]["uid"] = uid;
+    std::fs::write(root.path().join("server/delay-delete"), "").unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), recovered.reconcile())
+            .await
+            .is_err()
+    );
+    assert!(journal.is_file());
+    assert!(!state.lock().unwrap().jobs["iunctus-recover"].deleted);
+    std::fs::remove_file(root.path().join("server/delay-delete")).unwrap();
+    recovered.reconcile().await.unwrap();
+    assert!(!journal.exists());
+    assert!(state.lock().unwrap().jobs["iunctus-recover"].deleted);
+}
+
+#[tokio::test]
+async fn failed_container_keeps_sibling_scratch_until_termination() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, state) = backend(root.path()).await;
+    let delay = root.path().join("server/delay-delete");
+    std::fs::write(&delay, "").unwrap();
+    let mut spec = spec("debian:stable-slim", "true");
+    spec.containers = ["without-shell", "debian:stable-slim"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, image)| ContainerSpec {
+            name: format!("container-{index}"),
+            image: Some(Image {
+                reference: image.into(),
+                platform: None,
+            }),
+            replaces_entrypoint: true,
+            arguments: vec!["/bin/bash".into(), "-c".into(), "sleep 30".into()],
+            workdir: None,
+            environment: BTreeMap::new(),
+            after: Vec::new(),
+            attempts: 1,
+        })
+        .collect();
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "siblings",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let run = backend.run(job, &cancel);
+    let confirm = async {
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        assert!(backend.scratch.join("siblings/remote.json").is_file());
+        assert!(backend.scratch.join("siblings/control").is_dir());
+        assert!(!state.lock().unwrap().jobs["iunctus-siblings"].deleted);
+        std::fs::remove_file(&delay).unwrap();
+    };
+    let (result, ()) = tokio::join!(run, confirm);
+    assert!(result.is_err());
+    assert!(!backend.scratch.join("siblings").exists());
+    assert!(state.lock().unwrap().jobs["iunctus-siblings"].deleted);
 }
 
 #[tokio::test]

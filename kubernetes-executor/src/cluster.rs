@@ -17,6 +17,7 @@ use kube::{Api, Client, Config};
 pub struct Cluster {
     client: Client,
     namespace: String,
+    server: String,
 }
 
 impl fmt::Debug for Cluster {
@@ -39,12 +40,21 @@ impl Cluster {
             .await
             .map_err(|error| failed(&error))?;
         let namespace = namespace.unwrap_or_else(|| config.default_namespace.clone());
+        let server = config.cluster_url.to_string();
         let client = Client::try_from(config).map_err(|error| failed(&error))?;
-        Ok(Cluster { client, namespace })
+        Ok(Cluster {
+            client,
+            namespace,
+            server,
+        })
     }
 
     pub fn namespace(&self) -> &str {
         &self.namespace
+    }
+
+    pub fn server(&self) -> &str {
+        &self.server
     }
 
     pub fn jobs(&self) -> Api<Job> {

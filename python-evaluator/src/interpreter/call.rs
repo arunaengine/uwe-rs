@@ -93,9 +93,17 @@ impl Interpreter {
             source: function.source.clone(),
             kind: FrameKind::Function,
             declared: function.declared.clone(),
-            yields: function.generator.then(|| RefCell::new(Vec::new())),
+            yields: None,
             method,
         };
+        if function.generator {
+            let Code::Def(def) = &function.code else {
+                return Err(Error::unsupported("yield in lambda"));
+            };
+            return Ok(Value::Iterator(Rc::new(RefCell::new(Iter::Generator(
+                Box::new(super::generator::Generator::new(frame, &def.body)),
+            )))));
+        }
         self.enter_call()?;
         let result = match &function.code {
             Code::Lambda(lambda) => self.eval(&frame, &lambda.body),
@@ -106,11 +114,7 @@ impl Interpreter {
             },
         };
         self.leave_call();
-        let result = result?;
-        match frame.yields {
-            Some(yields) => Ok(Value::iterator(yields.into_inner())),
-            None => Ok(result),
-        }
+        result
     }
 
     fn bind_arguments(
@@ -742,10 +746,10 @@ impl Interpreter {
                     .map(|index| Value::Int(range.get(index)))
                     .collect())
             }
-            Value::Iterator(iterator) => {
+            Value::Iterator(_) => {
                 let mut items = Vec::new();
                 loop {
-                    let next = iterator.borrow_mut().next_value(self)?;
+                    let next = self.next_item(value)?;
                     match next {
                         Some(item) => items.push(item),
                         None => break,
@@ -809,6 +813,17 @@ impl Interpreter {
                 types::type_name(other)
             ))),
         }
+    }
+
+    /// Advances an iterator without retaining its borrow across item consumption.
+    pub fn next_item(&mut self, value: &Value) -> Result<Option<Value>, Error> {
+        let Value::Iterator(iterator) = value.plain() else {
+            return Err(Error::type_error("expected an iterator"));
+        };
+        let mut state = iterator
+            .try_borrow_mut()
+            .map_err(|_| Error::value_error("generator already executing"))?;
+        state.next_value(self)
     }
 
     /// `iter(value)`: an iterator that yields items one by one.

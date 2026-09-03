@@ -254,3 +254,71 @@ fn truth_consumers_release_the_iterator_before_item_truthiness() {
     ).expect("reentrant item truthiness");
     assert_eq!(output, "True\nTrue\n");
 }
+
+#[test]
+fn generator_functions_suspend_effects_and_exceptions() {
+    let output = evaluate(
+        "events = []\ndef source():\n    events.append('first')\n    x = yield 1\n    events.append(x)\n    yield 2\n    raise ValueError('tail')\ng = source()\nprint(events)\nprint(next(g), events)\nprint(next(g), events)\ntry:\n    next(g)\nexcept ValueError as error:\n    print(error)\nprint(next(g, 'done'))\n",
+    ).expect("suspended generator");
+    assert_eq!(output, "[]\n1 ['first']\n2 ['first', None]\ntail\ndone\n");
+}
+
+#[test]
+fn generators_resume_nested_loop_flow_and_yield_from() {
+    let output = evaluate(
+        "def source():\n    for i in range(3):\n        for j in range(3):\n            if j == 0:\n                continue\n            if j == 2:\n                break\n            yield (i, j)\n        else:\n            yield 'wrong'\n    else:\n        yield 'outer'\n    k = 0\n    while k < 2:\n        k += 1\n        yield k\n    else:\n        yield from ['end', 'tail']\nprint(list(source()))\ndef forever():\n    while True:\n        yield True\ng = forever()\nprint(any(g), next(g))\nfor item in forever():\n    print(item)\n    break\ndef false_first():\n    yield False\n    raise ValueError('unconsumed')\nprint(all(false_first()))\n",
+    ).expect("resumed loops");
+    assert_eq!(
+        output,
+        "[(0, 1), (1, 1), (2, 1), 'outer', 1, 2, 'end', 'tail']\nTrue True\nTrue\nFalse\n"
+    );
+}
+
+#[test]
+fn generator_delegation_preserves_effect_timing() {
+    let output = evaluate(
+        "events = []\ndef inner():\n    events.append('first')\n    yield 1\n    events.append('second')\n    yield 2\ndef outer():\n    yield from inner()\n    events.append('end')\ng = outer()\nprint(events)\nprint(next(g), events)\nprint(next(g), events)\nprint(next(g, None), events)\n",
+    ).expect("incremental delegation");
+    assert_eq!(
+        output,
+        "[]\n1 ['first']\n2 ['first', 'second']\nNone ['first', 'second', 'end']\n"
+    );
+}
+
+#[test]
+fn unsupported_generator_suspension_shapes_are_explicit() {
+    for code in [
+        "def source():\n    yield 1\n    x = 1 + (yield 2)\ng = source()\nnext(g)\nnext(g)\n",
+        "def source():\n    try:\n        yield 1\n    finally:\n        pass\nnext(source())\n",
+        "def source():\n    yield 1\nsource().send(None)\n",
+    ] {
+        let error = evaluate(code).expect_err("unsupported suspension");
+        assert!(error.is_unsupported(), "{error}");
+        assert!(
+            error.to_string().contains("suspension") || error.to_string().contains("send"),
+            "{error}"
+        );
+    }
+    let output = evaluate("def source():\n    next(g)\n    yield 1\ng = source()\ntry:\n    next(g)\nexcept ValueError as error:\n    print(error)\n").expect("reentrant advancement is an exception");
+    assert_eq!(output, "generator already executing\n");
+}
+
+#[test]
+fn every_generator_consumer_refuses_reentrant_advancement() {
+    for body in [
+        "next(g)",
+        "any(g)",
+        "all(g)",
+        "list(g)",
+        "for item in g:\n        pass",
+        "consume()",
+        "list(itertools.islice(g, 1))",
+    ] {
+        let code = format!(
+            "import itertools\ndef consume():\n    for item in g:\n        pass\ndef source():\n    {body}\n    yield 1\ng = source()\nnext(g)\n"
+        );
+        let error = evaluate(&code).expect_err("reentrant advancement");
+        assert!(error.is("ValueError"), "{body}: {error}");
+        assert!(error.to_string().contains("generator already executing"));
+    }
+}

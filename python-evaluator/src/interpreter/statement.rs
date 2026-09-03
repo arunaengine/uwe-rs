@@ -166,7 +166,7 @@ impl Interpreter {
         };
         loop {
             let item = match &mut lazy {
-                Some(Value::Iterator(iterator)) => iterator.borrow_mut().next_value(self)?,
+                Some(iterator) => self.next_item(iterator)?,
                 _ => items.next(),
             };
             let Some(item) = item else {
@@ -850,7 +850,7 @@ fn declarations(suite: &[Stmt], declared: &mut Declared) {
 }
 
 /// Whether a function body yields, without looking into nested functions and classes.
-fn contains_yield(suite: &[Stmt]) -> bool {
+pub(super) fn contains_yield(suite: &[Stmt]) -> bool {
     use ruff_python_ast::visitor::{Visitor, walk_expr, walk_stmt};
     struct Finder(bool);
     impl<'a> Visitor<'a> for Finder {

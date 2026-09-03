@@ -140,11 +140,12 @@ pub fn read_environment(text: &str) -> HashMap<String, (String, i32)> {
         if let Some((name, value)) = &mut current {
             let end = format!("/{name}/");
             if let Some(rest) = line.strip_prefix(&end) {
-                let status = rest
-                    .strip_prefix("=exit:")
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0);
-                variables.insert(name.clone(), (std::mem::take(value), status));
+                let status = rest.strip_prefix("=exit:").and_then(|s| s.parse().ok());
+                if status.is_none() && name.starts_with("nxf_out_eval_") {
+                    current = None;
+                    continue;
+                }
+                variables.insert(name.clone(), (std::mem::take(value), status.unwrap_or(0)));
                 current = None;
             } else {
                 value.push('\n');

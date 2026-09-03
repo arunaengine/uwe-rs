@@ -10,6 +10,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use nextflow_config::{Config, tree};
+use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, Host, parse_json, parse_yaml};
 use nextflow_evaluator::lowered::Module;
 use nextflow_evaluator::value::{PathValue, Value};
@@ -348,7 +349,12 @@ impl Driver for Nextflow {
                 if self.launch.simulated {
                     drop_made_up_outputs(&request, &mut outcome);
                 }
-                task_outcome(&request, outcome, self.files.as_deref())?
+                task_outcome_as(
+                    &request,
+                    outcome,
+                    self.files.as_deref(),
+                    self.launch.simulated,
+                )?
             }
         };
         let run = self.run.as_mut().ok_or_else(not_started)?;
@@ -756,6 +762,15 @@ pub fn task_outcome(
     outcome: Outcome,
     files: Option<&dyn Files>,
 ) -> Result<TaskOutcome, DriverError> {
+    task_outcome_as(request, outcome, files, false)
+}
+
+fn task_outcome_as(
+    request: &TaskRequest,
+    outcome: Outcome,
+    files: Option<&dyn Files>,
+    simulated: bool,
+) -> Result<TaskOutcome, DriverError> {
     let mut result = TaskOutcome {
         id: request.id,
         exit_status: outcome.exit_code,
@@ -765,12 +780,19 @@ pub fn task_outcome(
     let mut variables = HashMap::new();
     for file in outcome.files {
         if file.path == ENVIRONMENT {
-            let bytes = workflow_graph::files::read(files, &file.location).map_err(|error| {
-                DriverError::new(format!(
-                    "{}: cannot read {}: {error}",
-                    request.name, file.location
-                ))
-            })?;
+            let bytes = match workflow_graph::files::read(files, &file.location) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    result.failure = Some(Error::Thrown {
+                        exception: Rc::new(Exception::new(
+                            "IOException",
+                            format!("{}: cannot read {}: {error}", request.name, file.location),
+                        )),
+                        span: Default::default(),
+                    });
+                    return Ok(result);
+                }
+            };
             variables = read_environment(&String::from_utf8_lossy(&bytes));
             // The file is iunctus's own, unless an output asks for it.
             if !request.output_patterns.contains(&file.path) {
@@ -781,15 +803,38 @@ pub fn task_outcome(
         result.files.push((file.path, path));
     }
     for index in 0..request.eval.len() {
-        let (value, status) = variables
+        let (value, status) = match variables
             .get(&format!("nxf_out_eval_{}", index + 1))
             .cloned()
-            .unwrap_or_default();
+        {
+            Some(record) => record,
+            None if simulated => (String::new(), 0),
+            None => {
+                result.failure.get_or_insert_with(|| Error::Thrown {
+                    exception: Rc::new(Exception::new(
+                        "ProcessFailedException",
+                        format!(
+                            "{}: missing capture for `eval` output command {}",
+                            request.name,
+                            index + 1
+                        ),
+                    )),
+                    span: Default::default(),
+                });
+                continue;
+            }
+        };
         if status != 0 {
-            return Err(DriverError::new(format!(
-                "{}: an `eval` output command failed with exit status {status}: {value}",
-                request.name
-            )));
+            result.failure.get_or_insert_with(|| Error::Thrown {
+                exception: Rc::new(Exception::new(
+                    "ProcessFailedException",
+                    format!(
+                        "{}: an `eval` output command failed with exit status {status}: {value}",
+                        request.name
+                    ),
+                )),
+                span: Default::default(),
+            });
         }
         result.eval.push(value);
     }

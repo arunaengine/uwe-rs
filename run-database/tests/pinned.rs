@@ -171,6 +171,8 @@ fn a_database_of_version_3_gets_what_pins_runs() {
              ALTER TABLE runs DROP COLUMN workflow_folder; ALTER TABLE runs DROP COLUMN repeats;
              ALTER TABLE runs DROP COLUMN output_schema; ALTER TABLE runs DROP COLUMN replays;
              ALTER TABLE runs DROP COLUMN replays_task; DROP TABLE deliveries;
+             ALTER TABLE runs DROP COLUMN process_host; ALTER TABLE runs DROP COLUMN process_boot;
+             ALTER TABLE runs DROP COLUMN process_start;
              PRAGMA user_version = 3;",
         )
         .expect("goes back to version 3");

@@ -210,18 +210,86 @@ impl Database {
         run.tasks = statement
             .query_map([&run.id], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<_, _>>()?;
-        if run.state == "running" && !alive(run.process) {
-            run.state = "stopped".into();
+        if run.state == "running" {
+            let identity = self.connection.query_row(
+                "SELECT process_host, process_boot, process_start FROM runs WHERE id = ?1",
+                [&run.id],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                },
+            )?;
+            if let (Some(host), Some(boot), Some(start)) = identity {
+                if !alive(run.process, &host, &boot, &start) {
+                    run.state = "stopped".into();
+                }
+            }
         }
         Ok(run)
     }
 }
 
-/// Whether a process of this machine still runs. Only Linux can tell without a system call;
-/// elsewhere every process counts as alive.
-fn alive(process: u32) -> bool {
-    let proc = std::path::Path::new("/proc");
-    !proc.is_dir() || proc.join(process.to_string()).exists()
+pub(crate) fn process_identity(process: u32) -> Option<(String, String, String)> {
+    let (host, boot) = machine_identity()?;
+    Some((host, boot, process_start(process).ok()??))
+}
+
+fn machine_identity() -> Option<(String, String)> {
+    let host = std::fs::read_to_string("/etc/machine-id")
+        .or_else(|_| std::fs::read_to_string("/var/lib/dbus/machine-id"))
+        .ok()?;
+    let boot = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+    let namespace = std::fs::read_link("/proc/self/ns/pid").ok()?;
+    if host.trim().is_empty() || boot.trim().is_empty() {
+        return None;
+    }
+    Some((
+        format!("{}:{}", host.trim(), namespace.to_str()?),
+        boot.trim().to_owned(),
+    ))
+}
+
+fn process_start(process: u32) -> std::io::Result<Option<String>> {
+    let stat = match std::fs::read_to_string(format!("/proc/{process}/stat")) {
+        Ok(stat) => stat,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    let start = stat_start(&stat).ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid process stat")
+    })?;
+    Ok(start.map(str::to_owned))
+}
+
+fn stat_start(stat: &str) -> Option<Option<&str>> {
+    let (_, fields) = stat.rsplit_once(')')?;
+    let mut fields = fields.split_whitespace();
+    if matches!(fields.next()?, "Z" | "X") {
+        return Some(None);
+    }
+    let start = fields.nth(18)?;
+    start.parse::<u64>().ok()?;
+    Some(Some(start))
+}
+
+fn alive(process: u32, host: &str, boot: &str, start: &str) -> bool {
+    let Some((here, current_boot)) = machine_identity() else {
+        return true;
+    };
+    if host != here || boot.is_empty() || start.parse::<u64>().is_err() {
+        return true;
+    }
+    if boot != current_boot {
+        return false;
+    }
+    match process_start(process) {
+        Ok(Some(current)) => current == start,
+        Ok(None) => false,
+        Err(_) => true,
+    }
 }
 
 /// A run from a row of [`RUN_COLUMNS`], with its command line and parameters still as JSON.
@@ -259,4 +327,22 @@ fn parsed((mut run, arguments, parameters): (Run, String, String)) -> Result<Run
     run.arguments = serde_json::from_str(&arguments)?;
     run.parameters = serde_json::from_str(&parameters)?;
     Ok(run)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn process_stat_handles_parentheses_and_zombies() {
+        let fields = std::iter::once("S")
+            .chain(std::iter::repeat_n("0", 18))
+            .chain(std::iter::once("1234"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let stat = format!("42 (name with ) parentheses) {fields}");
+        assert_eq!(stat_start(&stat), Some(Some("1234")));
+        assert_eq!(stat_start(&stat.replace(") S ", ") Z ")), Some(None));
+        assert_eq!(stat_start("malformed"), None);
+    }
 }

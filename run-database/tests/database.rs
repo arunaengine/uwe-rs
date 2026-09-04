@@ -429,7 +429,8 @@ fn a_database_of_version_1_gets_the_inputs_of_runs() {
              ALTER TABLE runs DROP COLUMN launch; ALTER TABLE runs DROP COLUMN workflow_folder;
              ALTER TABLE runs DROP COLUMN repeats; ALTER TABLE runs DROP COLUMN output_schema;
              ALTER TABLE runs DROP COLUMN replays; ALTER TABLE runs DROP COLUMN replays_task;
-             DROP TABLE deliveries;
+             DROP TABLE deliveries; ALTER TABLE runs DROP COLUMN process_host;
+             ALTER TABLE runs DROP COLUMN process_boot; ALTER TABLE runs DROP COLUMN process_start;
              PRAGMA user_version = 1;",
         )
         .expect("goes back to version 1");
@@ -448,6 +449,129 @@ fn a_database_of_version_1_gets_the_inputs_of_runs() {
         .expect("reads")
         .expect("inputs");
     assert_eq!(inputs.schema, input_schema());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn private_process_identity_distinguishes_pid_reuse_and_protects_foreign_runs() {
+    let root = tempfile::tempdir().expect("a directory");
+    let path = root.path().join("runs.sqlite");
+    Database::open(&path)
+        .expect("opens")
+        .record(&start("run-identity", None))
+        .expect("records")
+        .close()
+        .expect("closes");
+    let connection = rusqlite::Connection::open(&path).expect("opens raw");
+    let (host, boot, began): (String, String, String) = connection
+        .query_row(
+            "SELECT process_host, process_boot, process_start FROM runs WHERE id = 'run-identity'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("records identity on Linux");
+    let reused = (began.parse::<u64>().expect("start ticks") + 1).to_string();
+    let database = Database::open(&path).expect("opens reader");
+    for (case, host, boot, began, process, expected) in [
+        (
+            "live",
+            Some(host.as_str()),
+            Some(boot.as_str()),
+            Some(began.as_str()),
+            std::process::id(),
+            "running",
+        ),
+        (
+            "reused PID",
+            Some(host.as_str()),
+            Some(boot.as_str()),
+            Some(reused.as_str()),
+            std::process::id(),
+            "stopped",
+        ),
+        (
+            "prior boot",
+            Some(host.as_str()),
+            Some("previous-boot"),
+            Some(began.as_str()),
+            std::process::id(),
+            "stopped",
+        ),
+        (
+            "missing PID",
+            Some(host.as_str()),
+            Some(boot.as_str()),
+            Some(began.as_str()),
+            u32::MAX,
+            "stopped",
+        ),
+        (
+            "foreign host",
+            Some("foreign-host"),
+            Some(boot.as_str()),
+            Some(began.as_str()),
+            u32::MAX,
+            "running",
+        ),
+        ("legacy", None, None, None, u32::MAX, "running"),
+        (
+            "invalid identity",
+            Some(host.as_str()),
+            Some(boot.as_str()),
+            Some("unknown"),
+            u32::MAX,
+            "running",
+        ),
+    ] {
+        connection.execute("UPDATE runs SET process_host=?1, process_boot=?2, process_start=?3, process=?4 WHERE id='run-identity'",
+            rusqlite::params![host, boot, began, process]).expect("injects recorded identity");
+        let run = database.run("run-identity").expect("reads").expect("a run");
+        assert_eq!(run.state, expected, "{case}");
+        assert_eq!(
+            database.runs(1).expect("lists")[0].state,
+            expected,
+            "{case}"
+        );
+        assert_eq!(
+            !database.running_runs().expect("protected runs").is_empty(),
+            expected == "running",
+            "{case}"
+        );
+        let public = serde_json::to_value(run).expect("serializes public run");
+        assert!(public.get("process_host").is_none());
+        assert!(public.get("process_boot").is_none());
+        assert!(public.get("process_start").is_none());
+    }
+}
+
+#[test]
+fn version_six_legacy_rows_migrate_without_guessing_local_pid_ownership() {
+    let root = tempfile::tempdir().expect("a directory");
+    let path = root.path().join("runs.sqlite");
+    Database::open(&path)
+        .expect("opens")
+        .record(&start("legacy", None))
+        .expect("records")
+        .close()
+        .expect("closes");
+    let connection = rusqlite::Connection::open(&path).expect("opens raw");
+    connection
+        .execute_batch(
+            "ALTER TABLE runs DROP COLUMN process_host;
+        ALTER TABLE runs DROP COLUMN process_boot; ALTER TABLE runs DROP COLUMN process_start;
+        UPDATE runs SET process = 4294967295; PRAGMA user_version = 6;",
+        )
+        .expect("old recorded row");
+    drop(connection);
+    let database = Database::open(&path).expect("migrates version six");
+    assert_eq!(database.version().expect("version"), VERSION);
+    let run = database.run("legacy").expect("reads").expect("a run");
+    assert_eq!(run.state, "running");
+    assert_eq!(run.arguments, start("legacy", None).arguments);
+    assert_eq!(
+        database.running_runs().expect("protects legacy row").len(),
+        1
+    );
 }
 
 #[test]

@@ -55,15 +55,28 @@ impl Journal {
 }
 
 /// The journal for an SQLite file: [`Journal::SHARED`] when its folder is on a file system
-/// that machines share, else [`Journal::LOCAL`]. A folder that cannot be asked counts as local.
+/// that machines share, else [`Journal::LOCAL`], using the closest observable ancestor when
+/// the file's parent does not exist yet.
 pub fn journal(file: &Path) -> Journal {
     let folder = match file.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
         _ => Path::new("."),
     };
-    match rustix::fs::statfs(folder) {
-        // Every magic number fits in 32 bits, whatever type the platform gives it.
-        Ok(found) if shared(found.f_type as u32) => Journal::SHARED,
+    journal_at(folder, |folder| {
+        rustix::fs::statfs(folder)
+            .ok()
+            .map(|found| found.f_type as u32)
+    })
+}
+
+fn journal_at(folder: &Path, kind: impl Fn(&Path) -> Option<u32>) -> Journal {
+    let found = folder
+        .ancestors()
+        .filter(|folder| !folder.as_os_str().is_empty())
+        .chain(std::iter::once(Path::new(".")))
+        .find_map(kind);
+    match found {
+        Some(kind) if shared(kind) => Journal::SHARED,
         _ => Journal::LOCAL,
     }
 }
@@ -84,6 +97,33 @@ mod tests {
         assert!(!shared(0x0102_1994), "tmpfs");
         let folder = tempfile::tempdir().expect("a folder");
         assert_eq!(journal(&folder.path().join("runs.sqlite")), Journal::LOCAL);
+    }
+
+    #[test]
+    fn missing_parents_use_the_closest_observable_file_system() {
+        let folder = Path::new("/shared/new/deep");
+        assert_eq!(
+            journal_at(folder, |path| (path == Path::new("/shared"))
+                .then_some(0x6969)),
+            Journal::SHARED
+        );
+        assert_eq!(
+            journal_at(folder, |path| {
+                if path == Path::new("/shared/new") {
+                    Some(0xef53)
+                } else if path == Path::new("/shared") {
+                    Some(0x6969)
+                } else {
+                    None
+                }
+            }),
+            Journal::LOCAL
+        );
+        assert_eq!(
+            journal_at(Path::new("new/deep"), |path| (path == Path::new("."))
+                .then_some(0x00c3_6400)),
+            Journal::SHARED
+        );
     }
 
     /// Runs of several processes record into one database with the rollback journal, as on a

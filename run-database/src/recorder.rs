@@ -86,12 +86,13 @@ impl Recorder {
                 .ok_or_else(|| DatabaseError::UnknownRun(resumed.clone()))?,
             None => run.id.clone(),
         };
+        let identity = crate::runs::process_identity(std::process::id());
         connection.execute(
             "INSERT INTO runs (id, lineage, resumes, workflow, language, revision, arguments,
                 parameters, executor, simulated, store, process, started, state, program, launch,
-                workflow_folder, repeats)
+                workflow_folder, repeats, process_host, process_boot, process_start)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 'running', ?14, ?15,
-                ?16, ?17)",
+                ?16, ?17, ?18, ?19, ?20)",
             params![
                 run.id,
                 lineage,
@@ -110,6 +111,9 @@ impl Recorder {
                 run.launch,
                 run.workflow_folder,
                 run.repeats,
+                identity.as_ref().map(|identity| &identity.0),
+                identity.as_ref().map(|identity| &identity.1),
+                identity.as_ref().map(|identity| &identity.2),
             ],
         )?;
         let writer = Arc::new(Mutex::new(Writer {

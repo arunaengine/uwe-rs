@@ -19,7 +19,7 @@ pub struct References {
 }
 
 impl Database {
-    /// The runs that go on now: their state is `running` and their process still runs.
+    /// Runs whose recorded process still runs, or whose foreign/legacy liveness is unknown.
     pub fn running_runs(&self) -> Result<Vec<Run>, DatabaseError> {
         let mut statement = self
             .connection

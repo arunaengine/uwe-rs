@@ -12,7 +12,8 @@
 use std::fs::{File, TryLockError};
 use std::io::{ErrorKind as IoErrorKind, Read, Seek, Write};
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use opendal::{ErrorKind, Operator};
@@ -29,6 +30,10 @@ const RENEWAL: Duration = Duration::from_secs(20);
 
 /// Numbers the leases of this process, so that each has a token of its own.
 static NEXT: AtomicU64 = AtomicU64::new(0);
+
+// Memory cannot share leases across hosts and has no conditional update/delete. Serialize
+// only that service's lease operations here; remote services must provide conditional I/O.
+static MEMORY_LEASES: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// Who holds a lease.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,9 +71,57 @@ pub struct Lease {
 #[derive(Debug)]
 enum Hold {
     /// The locked file; closing it frees the lock.
-    File { _locked: File },
+    File {
+        locked: File,
+        path: std::path::PathBuf,
+    },
     /// Dropping it stops the renewal, which then removes the object.
-    Object { _renewal: oneshot::Sender<()> },
+    Object {
+        _renewal: oneshot::Sender<()>,
+        operator: Operator,
+        location: String,
+        token: String,
+        lost: Arc<AtomicBool>,
+    },
+}
+
+impl Lease {
+    /// Whether this lease is held by a non-expiring local file lock.
+    pub fn is_local(&self) -> bool {
+        matches!(&self._hold, Hold::File { .. })
+    }
+
+    /// Verifies current ownership; callers must check around operations protected by a lease.
+    pub async fn check(&self) -> Result<(), StoreError> {
+        let owned = match &self._hold {
+            Hold::File { locked, path } => same_file(locked, path)?,
+            Hold::Object {
+                operator,
+                location,
+                token,
+                lost,
+                ..
+            } => {
+                let _serial = memory_serial(operator).await;
+                let owned = !lost.load(Ordering::Acquire)
+                    && read_record(operator, location)
+                        .await?
+                        .is_some_and(|(record, _)| {
+                            record.token == *token && record.expires > milliseconds_now()
+                        });
+                if !owned {
+                    lost.store(true, Ordering::Release);
+                }
+                owned
+            }
+        };
+        if !owned {
+            return Err(StoreError::Location(
+                "lease ownership was lost or expired".into(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// A lease in an object store.
@@ -84,6 +137,8 @@ struct Record {
 
 impl Store {
     /// Takes the lease `name`, like `tasks/<namespace>/<key>`, unless another holds it now.
+    /// Memory leases coordinate this process only; other object stores require conditional
+    /// operations so that renewal and deletion cannot replace a successor's lease.
     pub async fn try_lease(
         &self,
         name: &str,
@@ -97,9 +152,13 @@ impl Store {
         match self.local_path(&location) {
             Some(path) => {
                 let holder = holder.clone();
+                let named = path.clone();
                 let file = blocking(move || lock_file(&path, &holder)).await?;
                 Ok(file.map(|file| Lease {
-                    _hold: Hold::File { _locked: file },
+                    _hold: Hold::File {
+                        locked: file,
+                        path: named,
+                    },
                 }))
             }
             None => take_object(&self.operator, &location, holder).await,
@@ -140,13 +199,16 @@ impl Store {
             let free = match self.local_path(&object.location) {
                 Some(path) => blocking(move || remove_free_file(&path)).await?,
                 None => {
+                    lease_backend(&self.operator)?;
+                    let _serial = memory_serial(&self.operator).await;
                     let record = read_record(&self.operator, &object.location).await?;
-                    let ended =
-                        record.is_none_or(|(record, _)| record.expires <= milliseconds_now());
-                    if ended {
-                        self.operator.delete(&object.location).await?;
+                    if let Some((record, tag)) = record
+                        && record.expires <= milliseconds_now()
+                    {
+                        delete_record(&self.operator, &object.location, tag.as_deref()).await?
+                    } else {
+                        false
                     }
-                    ended
                 }
             };
             removed += usize::from(free);
@@ -234,6 +296,9 @@ fn remove_free_file(path: &Path) -> std::io::Result<bool> {
     }
     // Removed while locked: whoever opened it meanwhile finds that it is gone once it has the
     // lock, and takes a new file (see `lock_file`).
+    if !same_file(&file, path)? {
+        return Ok(false);
+    }
     match std::fs::remove_file(path) {
         Ok(()) => Ok(true),
         Err(error) if error.kind() == IoErrorKind::NotFound => Ok(false),
@@ -247,6 +312,8 @@ async fn take_object(
     location: &str,
     holder: &Holder,
 ) -> Result<Option<Lease>, StoreError> {
+    lease_backend(operator)?;
+    let _serial = memory_serial(operator).await;
     let record = Record {
         holder: holder.clone(),
         token: token(),
@@ -269,20 +336,11 @@ async fn take_object(
     if found.expires > milliseconds_now() {
         return Ok(None);
     }
-    let conditional = operator.info().capability().write_with_if_match;
     let taken = match tag {
         // Replaced only if it is still the lease that ended, so of two runs that take it over
         // at once, one wins.
-        Some(tag) if conditional => operator.write_with(location, bytes).if_match(&tag).await,
-        // Without conditional writes, two runs that remove it at the same moment may both take
-        // it. The task then runs twice, which costs time but is safe: the first result that
-        // is stored wins.
-        _ => {
-            operator.delete(location).await?;
-            (operator.write_with(location, bytes))
-                .if_not_exists(true)
-                .await
-        }
+        Some(tag) => operator.write_with(location, bytes).if_match(&tag).await,
+        None => operator.write(location, bytes).await,
     };
     match taken {
         Ok(_) => Ok(Some(renewed(operator.clone(), location, record))),
@@ -295,6 +353,16 @@ async fn take_object(
 fn renewed(operator: Operator, location: &str, mut record: Record) -> Lease {
     let (stop, mut stopped) = oneshot::channel::<()>();
     let location = location.to_owned();
+    let lost = Arc::new(AtomicBool::new(false));
+    let lease = Lease {
+        _hold: Hold::Object {
+            _renewal: stop,
+            operator: operator.clone(),
+            location: location.clone(),
+            token: record.token.clone(),
+            lost: lost.clone(),
+        },
+    };
     tokio::spawn(async move {
         loop {
             tokio::select! {
@@ -303,24 +371,87 @@ fn renewed(operator: Operator, location: &str, mut record: Record) -> Lease {
             }
             // A holder that was held up for longer than the lease lost it; it must not take it
             // back from the run that took it over.
-            match read_record(&operator, &location).await {
-                Ok(Some((found, _))) if found.token == record.token => {}
-                _ => return,
+            let _serial = memory_serial(&operator).await;
+            if lost.load(Ordering::Acquire) {
+                return;
             }
+            let tag = match read_record(&operator, &location).await {
+                Ok(Some((found, tag)))
+                    if found.token == record.token && found.expires > milliseconds_now() =>
+                {
+                    tag
+                }
+                _ => {
+                    lost.store(true, Ordering::Release);
+                    return;
+                }
+            };
             record.expires = milliseconds_now() + LEASE_TIME.as_millis() as i64;
-            if let Ok(bytes) = serde_json::to_vec(&record) {
-                // A failed renewal is tried again at the next turn; the lease lasts until then.
-                let _ = operator.write(&location, bytes).await;
+            let bytes = serde_json::to_vec(&record).expect("lease record serializes");
+            let renewed = match tag {
+                Some(tag) => operator.write_with(&location, bytes).if_match(&tag).await,
+                None => operator.write(&location, bytes).await,
+            };
+            if renewed.is_err() {
+                lost.store(true, Ordering::Release);
+                return;
             }
         }
-        if let Ok(Some((found, _))) = read_record(&operator, &location).await
+        let _serial = memory_serial(&operator).await;
+        if let Ok(Some((found, tag))) = read_record(&operator, &location).await
             && found.token == record.token
         {
-            let _ = operator.delete(&location).await;
+            let _ = delete_record(&operator, &location, tag.as_deref()).await;
         }
     });
-    Lease {
-        _hold: Hold::Object { _renewal: stop },
+    lease
+}
+
+fn lease_backend(operator: &Operator) -> Result<(), StoreError> {
+    let capability = operator.info().capability();
+    if operator.info().scheme() != "memory"
+        && !(capability.read_with_if_match
+            && capability.write_with_if_match
+            && capability.write_with_if_not_exists
+            && capability.delete_with_if_match)
+    {
+        return Err(opendal::Error::new(
+            ErrorKind::Unsupported,
+            "remote leases require conditional read, creation, renewal and deletion",
+        )
+        .into());
+    }
+    Ok(())
+}
+
+async fn memory_serial(operator: &Operator) -> Option<tokio::sync::MutexGuard<'static, ()>> {
+    if operator.info().scheme() == "memory" {
+        Some(MEMORY_LEASES.lock().await)
+    } else {
+        None
+    }
+}
+
+async fn delete_record(
+    operator: &Operator,
+    location: &str,
+    tag: Option<&str>,
+) -> Result<bool, StoreError> {
+    let deleted = match tag {
+        Some(tag) => operator.delete_with(location).if_match(tag).await,
+        None => operator.delete(location).await,
+    };
+    match deleted {
+        Ok(()) => Ok(true),
+        Err(error)
+            if matches!(
+                error.kind(),
+                ErrorKind::ConditionNotMatch | ErrorKind::NotFound
+            ) =>
+        {
+            Ok(false)
+        }
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -330,12 +461,24 @@ async fn read_record(
     operator: &Operator,
     location: &str,
 ) -> Result<Option<(Record, Option<String>)>, StoreError> {
+    lease_backend(operator)?;
     let tag = match operator.stat(location).await {
         Ok(metadata) => metadata.etag().map(str::to_owned),
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),
     };
-    let bytes = match operator.read(location).await {
+    let read = match tag.as_deref() {
+        Some(tag) => operator.read_with(location).if_match(tag).await,
+        None if operator.info().scheme() == "memory" => operator.read(location).await,
+        None => {
+            return Err(opendal::Error::new(
+                ErrorKind::Unsupported,
+                "remote lease metadata has no entity tag",
+            )
+            .into());
+        }
+    };
+    let bytes = match read {
         Ok(buffer) => buffer.to_bytes(),
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),

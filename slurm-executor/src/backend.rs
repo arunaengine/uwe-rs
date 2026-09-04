@@ -613,6 +613,7 @@ impl SlurmBackend {
         cancel: &CancellationToken,
     ) -> Result<Ended, ExecutorError> {
         let squeue = self.command("squeue");
+        let sacct = self.command("sacct");
         let mut pause = Duration::from_millis(250);
         let mut ended: Option<(Instant, Option<String>)> = None;
         loop {
@@ -633,10 +634,23 @@ impl SlurmBackend {
                 }
                 continue;
             }
-            let state = match self.queue.look(id, self.poll, &squeue).await {
+            let look = tokio::select! {
+                look = self.queue.look(id, self.poll, &squeue) => look,
+                () = cancel.cancelled() => {
+                    self.cancel(id).await;
+                    return Err(ExecutorError::Cancelled);
+                }
+            };
+            let state = match look {
                 Look::Active | Look::Unknown => continue,
                 Look::Ended(state) => Some(state),
-                Look::Gone => self.queue.accounted(&self.command("sacct"), id).await,
+                Look::Gone => tokio::select! {
+                    state = self.queue.accounted(&sacct, id) => state,
+                    () = cancel.cancelled() => {
+                        self.cancel(id).await;
+                        return Err(ExecutorError::Cancelled);
+                    }
+                },
             };
             // A job that ended well has recorded its container; the shared file system may
             // show the record late. Other ends need no wait.

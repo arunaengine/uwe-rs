@@ -76,3 +76,76 @@ fn drops_console_output() {
     let value = run(&[], "console.log('debug'); return inputs.n;").expect("runs");
     assert_eq!(value, Value::Integer(3));
 }
+
+#[test]
+fn total_vm_budget_stops_many_individually_short_loops() {
+    let mut context = Context::default();
+    context.runtime_limits_mut().set_loop_iteration_limit(100);
+    let error = bounded_eval(
+        "function part() { for (var inner = 0; inner < 90; inner++) {} } \
+         for (var outer = 0; outer < 90; outer++) part();",
+        &mut context,
+        20,
+        Instant::now() + Duration::from_secs(60),
+    )
+    .expect_err("the whole evaluation exceeds its budget");
+    assert!(error.contains("total VM work budget"), "{error}");
+}
+
+#[test]
+fn vm_budget_stops_infinite_work_and_later_evaluations_still_succeed() {
+    let mut context = Context::default();
+    let error = bounded_eval(
+        "while (true) {}",
+        &mut context,
+        4,
+        Instant::now() + Duration::from_secs(60),
+    )
+    .expect_err("infinite work ends");
+    assert!(error.contains("total VM work budget"), "{error}");
+    drop(context);
+    assert_eq!(
+        run(&[], "return inputs.n + 1;").expect("fresh evaluation"),
+        Value::Integer(4)
+    );
+}
+
+#[test]
+fn vm_slices_preserve_bounded_ordinary_loop_results() {
+    let mut context = Context::default();
+    let result = bounded_eval(
+        "var total = 0; for (var i = 0; i < 1000; i++) total += i; total",
+        &mut context,
+        10_000,
+        Instant::now() + Duration::from_secs(60),
+    )
+    .expect("bounded loop");
+    assert_eq!(result.as_number(), Some(499_500.0));
+}
+
+#[test]
+fn cooperative_deadline_stops_execution_between_vm_slices() {
+    let mut context = Context::default();
+    let error = bounded_eval(
+        "while (true) {}",
+        &mut context,
+        u64::MAX,
+        Instant::now() + Duration::from_millis(1),
+    )
+    .expect_err("deadline ends execution");
+    assert!(error.contains("time deadline"), "{error}");
+}
+
+#[test]
+fn expired_deadlines_do_not_start_the_vm() {
+    let mut context = Context::default();
+    let error = bounded_eval(
+        "throw new Error('VM started')",
+        &mut context,
+        100,
+        Instant::now() - Duration::from_secs(1),
+    )
+    .expect_err("expired deadline");
+    assert!(error.contains("time deadline"), "{error}");
+    assert!(!error.contains("VM started"), "{error}");
+}

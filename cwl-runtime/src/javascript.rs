@@ -3,12 +3,19 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use boa_engine::{Context, JsError, Source};
+use std::future::Future;
+use std::pin::pin;
+use std::task::{Poll, Waker};
+use std::time::{Duration, Instant};
+
+use boa_engine::{Context, JsError, JsValue, Script, Source};
 
 use crate::value::Value;
 
-/// Loops longer than this end the evaluation, as cwltool's time limit does.
 const LOOP_LIMIT: u64 = 100_000_000;
+const VM_SLICE: u32 = 256;
+const VM_SLICES: u64 = 400_000;
+const TIME_LIMIT: Duration = Duration::from_secs(20);
 
 /// A console object whose methods do nothing.
 const CONSOLE: &str = "var console = {log: function() {}, info: function() {}, \
@@ -26,6 +33,7 @@ pub fn evaluate(
     variables: &[(&str, &Value)],
     body: &str,
 ) -> Result<Value, String> {
+    let deadline = Instant::now() + TIME_LIMIT;
     // Expressions that log for debugging find a console that drops what they write, as
     // cwltool's does unless `--js-console` shows it.
     let mut code = String::from(CONSOLE);
@@ -44,9 +52,7 @@ pub fn evaluate(
     context
         .runtime_limits_mut()
         .set_loop_iteration_limit(LOOP_LIMIT);
-    let result = context
-        .eval(Source::from_bytes(code.as_bytes()))
-        .map_err(|error| message(&error, &mut context))?;
+    let result = bounded_eval(&code, &mut context, VM_SLICES, deadline)?;
     let Some(text) = result.as_string() else {
         // JSON.stringify gives undefined for functions and symbols.
         return Ok(Value::Null);
@@ -56,6 +62,41 @@ pub fn evaluate(
         return Ok(Value::Null);
     }
     Value::parse(&text).map_err(|error| format!("the result is not JSON: {error}"))
+}
+
+/// Limits VM work and checks elapsed time between slices. Parsing, compilation and
+/// native builtins run synchronously, and allocations have no heap ceiling here.
+fn bounded_eval(
+    code: &str,
+    context: &mut Context,
+    slices: u64,
+    deadline: Instant,
+) -> Result<JsValue, String> {
+    let script = Script::parse(Source::from_bytes(code.as_bytes()), None, context)
+        .map_err(|error| message(&error, context))?;
+    let result = {
+        let mut evaluation = pin!(script.evaluate_async_with_budget(context, VM_SLICE));
+        let mut task = std::task::Context::from_waker(Waker::noop());
+        let mut spent = 0;
+        loop {
+            if Instant::now() >= deadline {
+                return Err("JavaScript evaluation exceeded its time deadline".into());
+            }
+            if spent >= slices {
+                return Err("JavaScript evaluation exceeded its total VM work budget".into());
+            }
+            match evaluation.as_mut().poll(&mut task) {
+                Poll::Ready(result) => {
+                    if Instant::now() >= deadline {
+                        return Err("JavaScript evaluation exceeded its time deadline".into());
+                    }
+                    break result;
+                }
+                Poll::Pending => spent += 1,
+            }
+        }
+    };
+    result.map_err(|error| message(&error, context))
 }
 
 /// An error as `TypeError: message`, without Boa's place in the code that wraps the

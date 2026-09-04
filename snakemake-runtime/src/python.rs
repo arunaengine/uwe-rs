@@ -111,13 +111,16 @@ fn outermost(mut folders: Vec<PathBuf>) -> Vec<PathBuf> {
 /// error of each package that uv cannot install. The finished environment appears at once.
 const PREPARE: &str = r#"set -u
 environment="$1"
-shift
+constraints="$2"
+shift 2
 rm -rf "$environment.part"
 uv venv --quiet --relocatable --python /usr/local/bin/python3 "$environment.part" || exit 1
 mkdir -p "$environment.part/iunctus-failed"
+printf '%s\n' "$constraints" > "$environment.part/iunctus-constraints.txt"
 install() {
-  uv pip install --quiet --python "$environment.part/bin/python" "$@"
+  uv pip install --quiet --python "$environment.part/bin/python" --constraint "$environment.part/iunctus-constraints.txt" "$@"
 }
+install packaging || exit 1
 if [ "$#" -gt 0 ] && ! install "$@" 2> /dev/null; then
   for package in "$@"; do
     install "$package" 2> "$environment.part/iunctus-failed/$package" && rm "$environment.part/iunctus-failed/$package"
@@ -152,12 +155,16 @@ impl ContainerStarter {
     }
 
     /// The environment of what every container runs with: uv's cache.
-    fn environment(&self) -> Vec<(String, String)> {
+    fn environment(&self, constraints: &[String]) -> Vec<(String, String)> {
         vec![
             ("HOME".to_owned(), "/tmp".to_owned()),
             (
                 "UV_CACHE_DIR".to_owned(),
                 self.uv_cache().to_string_lossy().into_owned(),
+            ),
+            (
+                "IUNCTUS_PYTHON_CONSTRAINTS".to_owned(),
+                serde_json::to_string(constraints).expect("string constraints serialize"),
             ),
         ]
     }
@@ -167,12 +174,21 @@ impl ContainerStarter {
     fn prepared_environment(
         &self,
         packages: &[String],
+        constraints: &[String],
         user: Option<String>,
     ) -> Result<PathBuf, String> {
         let mut packages = packages.to_vec();
         packages.sort();
         packages.dedup();
-        let key = fingerprint(&[DEFAULT_IMAGE, PREPARE, &packages.join(" ")]);
+        let mut constraints = constraints.to_vec();
+        constraints.sort();
+        constraints.dedup();
+        let key = fingerprint(&[
+            DEFAULT_IMAGE,
+            PREPARE,
+            &packages.join("\n"),
+            &constraints.join("\n"),
+        ]);
         let folder = self.settings.cache.join("environments");
         let environment = folder.join(format!("{key:016x}"));
         if environment.is_dir() {
@@ -216,6 +232,7 @@ impl ContainerStarter {
                 PREPARE.to_owned(),
                 "iunctus".to_owned(),
                 environment.to_string_lossy().into_owned(),
+                constraints.join("\n"),
             ];
             command.extend(packages.iter().cloned());
             let cache = &self.settings.cache;
@@ -232,7 +249,7 @@ impl ContainerStarter {
                     read_only: false,
                 }],
                 workdir: None,
-                environment: self.environment(),
+                environment: self.environment(&constraints),
                 memory: None,
                 show_stderr: false,
             };
@@ -276,7 +293,8 @@ impl PythonStarter for ContainerStarter {
                 (image.clone(), None, command)
             }
             None => {
-                let environment = self.prepared_environment(&start.packages, user.clone())?;
+                let environment =
+                    self.prepared_environment(&start.packages, &start.constraints, user.clone())?;
                 let python = environment
                     .join("bin/python")
                     .to_string_lossy()
@@ -293,7 +311,7 @@ impl PythonStarter for ContainerStarter {
             command,
             mounts,
             workdir: Some(start.cwd.to_string_lossy().into_owned()),
-            environment: self.environment(),
+            environment: self.environment(&start.constraints),
             memory: None,
             show_stderr: self.settings.show_output,
         };
@@ -356,6 +374,7 @@ mod tests {
         let start = PythonStart {
             script: "",
             packages: Vec::new(),
+            constraints: Vec::new(),
             cwd: folder.path().to_path_buf(),
         };
         assert!(starter.start(&start).err().unwrap().contains("cancelled"));
@@ -366,7 +385,7 @@ mod tests {
     fn cancellation_interrupts_environment_lock_wait() {
         let folder = tempfile::tempdir().unwrap();
         std::fs::create_dir(folder.path().join("environments")).unwrap();
-        let key = fingerprint(&[DEFAULT_IMAGE, PREPARE, ""]);
+        let key = fingerprint(&[DEFAULT_IMAGE, PREPARE, "", ""]);
         let lock =
             std::fs::File::create(folder.path().join(format!("environments/{key:016x}.lock")))
                 .unwrap();
@@ -389,12 +408,55 @@ mod tests {
         let began = Instant::now();
         assert!(
             starter
-                .prepared_environment(&[], None)
+                .prepared_environment(&[], &[], None)
                 .unwrap_err()
                 .contains("cancelled")
         );
         assert!(began.elapsed() < Duration::from_secs(2));
         canceller.join().unwrap();
+    }
+
+    #[test]
+    fn transitive_constraints_select_distinct_cached_environments_and_reach_helpers() {
+        let folder = tempfile::tempdir().unwrap();
+        let starter = ContainerStarter::new(
+            PythonContainers {
+                engine: "unreachable".into(),
+                image: None,
+                cache: folder.path().to_path_buf(),
+                show_output: false,
+            },
+            Vec::new(),
+        );
+        let packages = vec!["first==1".to_owned()];
+        let mut paths = Vec::new();
+        for transitive in ["second==1", "second==2"] {
+            let constraints = vec!["first==1".to_owned(), transitive.to_owned()];
+            let key = fingerprint(&[DEFAULT_IMAGE, PREPARE, "first==1", &constraints.join("\n")]);
+            let expected = folder.path().join(format!("environments/{key:016x}"));
+            std::fs::create_dir_all(&expected).unwrap();
+            let unordered = vec![
+                constraints[1].clone(),
+                constraints[0].clone(),
+                constraints[1].clone(),
+            ];
+            let actual = starter
+                .prepared_environment(&packages, &unordered, None)
+                .unwrap();
+            assert_eq!(actual, expected);
+            paths.push(actual);
+            let environment = starter.environment(&constraints);
+            let json = &environment
+                .iter()
+                .find(|(name, _)| name == "IUNCTUS_PYTHON_CONSTRAINTS")
+                .unwrap()
+                .1;
+            assert_eq!(
+                serde_json::from_str::<Vec<String>>(json).unwrap(),
+                constraints
+            );
+        }
+        assert_ne!(paths[0], paths[1]);
     }
 
     #[test]

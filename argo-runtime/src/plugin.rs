@@ -162,6 +162,9 @@ impl Run {
 
     /// Asks for the call of the next plugin, or ends the node when no plugin is left.
     pub(crate) fn start_plugin(&mut self, index: usize) -> Result<()> {
+        if !self.admit(index) {
+            return Ok(());
+        }
         let Some(processed) = self.nodes[index].processed.clone() else {
             return Ok(());
         };

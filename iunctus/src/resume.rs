@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use run_database::{Recorder, Reusable, fingerprint, input_states};
-use workflow_graph::{Attempt, Event, Executor, Files, Observer, Outcome, Running, TaskId};
+use workflow_graph::{Attempt, Event, Executor, Files, Observer, Outcome, Reuse, Running, TaskId};
 
 /// The tasks whose results came from an earlier run, and that run, until the recorder hears of
 /// them.
@@ -59,6 +59,9 @@ impl Resumed {
 impl Executor for Resumed {
     fn run(&mut self, attempt: Attempt) -> Running {
         let task = &attempt.task;
+        if task.reuse != Reuse::Allowed {
+            return self.executor.run(attempt);
+        }
         let key = fingerprint(task, &input_states(task));
         // A result whose files are gone cannot be taken.
         let found = self.reusable.get(&key).filter(|found| {
@@ -117,6 +120,62 @@ impl Observer for Noting<'_> {
         self.recorder.event(event);
         if let Some((task, attempt, run)) = reused {
             self.recorder.reused(task, attempt, &run);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+    use workflow_graph::{CancellationToken, Task};
+
+    struct Fresh(Arc<AtomicUsize>);
+
+    impl Executor for Fresh {
+        fn run(&mut self, attempt: Attempt) -> Running {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Running::ended(Ok(Outcome {
+                id: attempt.task.id,
+                ..Outcome::default()
+            }))
+        }
+    }
+
+    #[test]
+    fn denied_and_disabled_tasks_bypass_matching_lineage_results() {
+        let runtime = workflow_graph::runtime().unwrap();
+        for policy in [Reuse::Allowed, Reuse::Denied, Reuse::Disabled] {
+            let task = Arc::new(Task {
+                id: TaskId(1),
+                reuse: policy,
+                ..Task::default()
+            });
+            let prior = Reusable {
+                run: "prior".into(),
+                outcome: Outcome::default(),
+            };
+            let history = [(fingerprint(&task, &input_states(&task)), prior)].into();
+            let calls = Arc::new(AtomicUsize::new(0));
+            let taken = Taken::default();
+            let mut resumed = Resumed::new(
+                Box::new(Fresh(calls.clone())),
+                history,
+                taken.clone(),
+                false,
+            );
+            let outcome = runtime
+                .block_on(resumed.run(Attempt {
+                    task,
+                    number: 2,
+                    cancel: CancellationToken::new(),
+                }))
+                .unwrap();
+            let reused = policy == Reuse::Allowed;
+            assert_eq!(outcome.cached, reused);
+            assert_eq!(calls.load(Ordering::SeqCst), usize::from(!reused));
+            assert_eq!(taken.take(TaskId(1)).is_some(), reused);
         }
     }
 }

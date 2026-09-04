@@ -12,7 +12,7 @@ use run_database::{Source, SourceKind};
 use task_model::{Tree, TreeEntry};
 
 use crate::arguments::Arguments;
-use crate::{revision, tracked};
+use crate::{detect, revision, tracked};
 
 /// The most files, and bytes in all, that a run records of the folder of its workflow. A larger
 /// folder likely holds data, which the inputs of tasks record by digest anyway.
@@ -130,13 +130,26 @@ fn workflow_files(target: &Path, arguments: &Arguments) -> (PathBuf, Vec<Found>,
     if let Some((root, git)) = revision::repository(target)
         && let Some(paths) = tracked::tracked(&git)
     {
-        let files: Vec<Found> = (paths.into_iter())
+        let mut files: Vec<Found> = (paths.into_iter())
             .map(|relative| Found {
                 path: root.join(&relative),
                 relative,
             })
             .filter(|file| file.path.is_file())
             .collect();
+        if let Some(main) = arguments
+            .language
+            .or_else(|| detect::language(target).ok())
+            .and_then(|language| detect::main_file(target, language))
+            && !files.iter().any(|file| file.path == main)
+            && let Ok(relative) = main.strip_prefix(&root)
+        {
+            files.push(Found {
+                relative: relative.to_string_lossy().into_owned(),
+                path: main,
+            });
+            files.sort_by(|left, right| left.relative.cmp(&right.relative));
+        }
         // A large repository, like one of many workflows, gives the files of the folder of
         // the workflow.
         return match limited(&files) {
@@ -243,6 +256,55 @@ mod tests {
     fn write(path: &Path, text: &str) {
         std::fs::create_dir_all(path.parent().expect("a parent")).expect("makes folders");
         std::fs::write(path, text).expect("writes");
+    }
+
+    #[test]
+    fn git_sources_keep_the_selected_untracked_main_only() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let project = root.path().join("workflow");
+        write(&project.join("a.nf"), "process MODULE {}");
+        write(&project.join("main.nf"), "workflow {}");
+        write(&project.join("unused.nf"), "process UNUSED {}");
+        for args in [["init", "-q"].as_slice(), ["add", "a.nf"].as_slice()] {
+            assert!(
+                std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(&project)
+                    .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                    .env("GIT_CONFIG_NOSYSTEM", "1")
+                    .status()
+                    .expect("prepares test index")
+                    .success()
+            );
+        }
+        let runtime = workflow_graph::runtime().expect("a runtime");
+        for target in [&project, &project.join("main.nf")] {
+            let sources = runtime.block_on(collect(target, &Arguments::default()));
+            assert_eq!(sources.folder, project);
+            assert_eq!(
+                sources
+                    .files
+                    .iter()
+                    .map(|file| file.path.as_str())
+                    .collect::<Vec<_>>(),
+                ["a.nf", "main.nf"]
+            );
+            let store = Store::local(&root.path().join("store")).expect("a store");
+            runtime
+                .block_on(keep(&store, &sources))
+                .expect("keeps entrypoint");
+            let main = sources
+                .files
+                .iter()
+                .find(|file| file.path == "main.nf")
+                .unwrap();
+            assert_eq!(
+                runtime
+                    .block_on(store.get_content(&main.digest.parse().unwrap()))
+                    .unwrap(),
+                b"workflow {}".as_slice()
+            );
+        }
     }
 
     #[test]

@@ -4,9 +4,9 @@
 
 # What is missing for a universal workflow engine
 
-As of 2026-09-30.
+Capability statements reconciled on 2026-10-03. Counts below are historical evidence recorded by 2026-09-30, not qualification of the current revision.
 
-iunctus reads and plans the workflows of four languages in one Rust binary, but it does not run a single task for real yet. Every test workflow either runs through the simulator (decision 21) or has a record of why it cannot, backed by the output of the reference tool. What stands between iunctus and a real engine is the execution layer (section 3), a few language features that only real runs need (section 2), and the features that should make iunctus better than the native engines, not just equal to them: deeper insight into runs, higher reproducibility, better efficiency and storage across several providers (section 4).
+iunctus reads and plans four workflow languages in one Rust binary. Real execution and result delivery are implemented, including parallel local container execution and TES, SLURM and Kubernetes backends. The simulator remains the default and produces synthetic outputs (decision 21). Language parity, failure/restart behavior and real backend qualification still need work. See the [support matrix](support.md) for the implemented subsets and qualification limits; completion marks below mean implementation, not production acceptance.
 
 | Language | Test workflows | Run in the simulator | Work natively, not in iunctus |
 | --- | --- | --- | --- |
@@ -15,7 +15,7 @@ iunctus reads and plans the workflows of four languages in one Rust binary, but 
 | CWL | 5974 graphs, 1517 with example jobs, 828 conformance tests | 5888 graphs, 1408 jobs, all 828 conformance tests (620 with checked outputs) | 0 |
 | Argo | 1573 documents | 1390 | 104: features that need Kubernetes |
 
-The rest fail in the native tool too: the workflow is broken (`invalid`) or needs something that is not public (`missing`).
+In that historical inventory, the remaining workflows failed in the reference tool or needed unavailable inputs (`invalid` or `missing`). These classifications and counts have not been refreshed for this revision.
 
 ## 1. What iunctus already does that native engines cannot
 
@@ -29,20 +29,20 @@ The rest fail in the native tool too: the workflow is broken (`invalid`) or need
 | Dry runs that go further | The simulator reads each task's shell script and makes files that look right, so a dry run goes past Snakemake checkpoints | Snakemake's dry run stops at the first checkpoint; Nextflow's stub run still runs the real script of every process without a stub |
 | Simulated graphs that say where they can change | A simulated run says that it is one, and marks each task whose outputs decide how many tasks follow: a file that the workflow reads while it plans, files that a wildcard matched and that each start tasks, a Snakemake checkpoint, a CWL scatter or an Argo `withParam` or `when` over task outputs. A fan-out over a real sample sheet is not marked, as it is exact | No native dry run tells where real data can add or remove tasks |
 | Graphs of tasks and of steps, drawn by the binary | The graph with one node per task or one node per step, as a summary, JSON, DOT or an SVG that iunctus lays out itself | Nextflow and Snakemake write DAG files that need Graphviz or a browser to draw; Nextflow draws processes, not tasks |
-| Checked against the reference tools | About 8,800 test workflows and 828 CWL conformance tests each run, or have a record with the reference tool's own error. Tests also run tasks in a shuffled order to catch order bugs | No engine checks itself against another |
+| Checked against the reference tools | Historical corpus evidence covers about 8,800 test workflows and 828 CWL conformance tests, with reference-tool outcomes. Separate order checks shuffle task completion. This is not a current real-execution qualification result | Reference-tool comparisons require explicit corpus and tool versions |
 
 ## 2. Gaps to parity with the native engines
 
-The largest gaps are the same in every language: results are not delivered, and steps without a container image cannot run. Per language, the simulated runs hide a few features that only real runs reach. "Decided" marks a limit set on purpose in [decisions](decisions.md); "not built" marks work still to do.
+Result delivery is implemented for all four languages, but exact output parity needs qualification for each workflow/backend combination. All task and package execution requires containers; a step without an image needs `-default-image`, and Conda-to-image preparation is not complete. Simulated outcomes alone cannot establish real execution semantics. "Decided" marks a limit set on purpose in [decisions](decisions.md); "not built" marks work still to do. The language-gap tables retain historical corpus observations where counts are shown.
 
 ### All languages
 
 | Gap | What it blocks | Kind |
 | --- | --- | --- |
-| Delivering results: Nextflow `publishDir` and the `output` block, Snakemake target files in the workflow folder, the CWL output object, Argo output artifacts | Every real run: outputs stay in the store ("Files are not copied yet" in the Nextflow driver) | Not built |
+| Qualifying result delivery: Nextflow `publishDir` and the `output` block, Snakemake target files, the CWL output object, Argo artifacts | Real outputs must match the reference tool, including failures and repeated delivery | Implemented; exact-result qualification remains |
 | An image for every step: steps without a container need `-default-image` | Workflows that rely on tools installed on the host, CWL tools without `DockerRequirement` | Decided (decision 11) |
 | Images built from Conda environments | Snakemake rules with only `conda:`, Nextflow processes with only `conda` | Locked without network from local repodata (`iunctus lock-environment`, see [Conda environments](design/conda.md)); images not built yet (decision 12) |
-| Run reports: Nextflow trace, timeline and report files, Snakemake `benchmark:` files and `--report` | Users who read timings, memory use and costs | Not built |
+| Native run-report compatibility: Nextflow trace/timeline/report and Snakemake `--report` | Users who need native-engine report formats | Snakemake `benchmark:` files and the iunctus run report are implemented; native report-format parity remains |
 | Language coverage: Groovy, Python and JavaScript cover what the test workflows use | Workflows outside the test set may stop with a clear error (exit code 33), never with a wrong result | Grows with each new test workflow |
 
 ### Nextflow
@@ -60,7 +60,7 @@ The largest gaps are the same in every language: results are not delivered, and 
 
 | Gap | What it blocks | Kind |
 | --- | --- | --- |
-| `pipe()` and `service()` outputs: both jobs must run at the same time on one machine | Workflows that stream between jobs | Not built |
+| FIFO `pipe()` outputs and complete `service()` group semantics | Workflows that stream or depend on ordering/retries inside a group | Bounded same-image service groups implemented; FIFO pipes, internal dependency ordering and group retries remain |
 | Workflow code that hands its own classes to a package in the Python container | 5 test workflows | Decided (decision 19) |
 | PEP tables in Excel, `gitfile()` Snakefiles, meta-wrappers at other addresses, `listfiles`, `report` and `R` of `snakemake.utils` | No test workflow yet | Not built |
 
@@ -82,9 +82,9 @@ The largest gaps are the same in every language: results are not delivered, and 
 
 ## 3. The execution layer
 
-No task runs for real yet, except one at a time through the simple local executor. Ten steps are planned in [the engine](design/engine.md), section 8; seven more are missing from that plan.
+The async engine, shared runner, parallel local executor and remote backends are implemented. The following list records the original execution workstreams and their remaining qualification work, with details in [the engine](design/engine.md) and [executors](design/executors.md). Real remote deployment requires the documented shared paths; implementing a backend does not qualify it on a live cluster.
 
-**Planned, in the order they build on each other:**
+**Implemented execution foundations, in their original dependency order:**
 
 1. **An async executor interface.** Executors run tasks on Tokio; the driver loop stays on one thread, and the engine keeps up to `max_pending` tasks running.
 2. **Output locations as strings, with size and digest,** so an output can live in S3 and not only on the local disk.
@@ -97,9 +97,9 @@ No task runs for real yet, except one at a time through the simple local executo
 9. **Remote inputs:** `s3://`, `gs://` and `https://` files, downloaded in parts or passed to TES as URLs.
 10. **Argo container sets** as one task.
 
-**Missing from the plan:**
+**Additional workstreams, with implementation and remaining work distinguished:**
 
-11. **Delivering results** to the place each language expects (section 2), from the store, as copies or links.
+11. **Delivering results** to the place each language expects (section 2), from the store, as copies or links. Implemented; qualify exact results and delivery failures.
 12. **The run database** (decision 10): the task graph, the event log, attempts and log locations in one SQLite file next to the store. Done: see [runs](design/runs.md); resume, the web page, the RO-Crate export and the first insight features read it.
 13. **Preparing images:** tags pinned to digests (done for the local executor), images built from Conda environments (decision 12), and one image for a whole workflow (decision 13).
 14. **The context of embedded code:** the `snakemake` object for scripts, wrappers and notebooks, the Snakefile's functions for `run:` blocks, and Nextflow `exec:` sections in the native interpreter. Done: see [embedded code](design/snakemake/embedded-code.md).
@@ -192,7 +192,7 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 - [x] The parallel local executor on Docker or Podman, found without any config (decision 22).
 - [x] The `snakemake` object for Snakemake scripts, wrappers and notebooks, as Snakemake 9.27 writes it in each language: see [embedded code](design/snakemake/embedded-code.md).
 - [x] Snakemake `run:` blocks in the task's container, with the Snakefile's globals that they use: see [embedded code](design/snakemake/embedded-code.md), section 5.
-- [x] Nextflow `exec:` sections in the native interpreter, as tasks without a container: see [embedded code](design/snakemake/embedded-code.md), section 6.
+- [x] Nextflow `exec:` sections evaluated by the native interpreter: see [embedded code](design/snakemake/embedded-code.md), section 6. External task and package execution remains in containers.
 - [ ] Images built from Conda environments (decision 12).
 - [ ] The TES executor (done, tested with a fake server and Funnel), tested with TESK too (decision 22).
 - [ ] The SLURM executor with Apptainer or Podman (done, tested with a simulated SLURM, and with Apptainer on a real SLURM cluster: nf-core, CWL, Snakemake and Argo test workflows, see [executors](design/executors.md), section 4), tested with Podman on a SLURM cluster (decision 22).
@@ -200,7 +200,7 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 - [x] The network and writable-input fields, remote inputs, Argo container sets (section 3, steps 6, 9 and 10): see [engine](design/engine.md), section 4, and [Argo runtime](design/argo/runtime.md), section 8.2.
 - [x] Several storage providers from a config file, secrets from environment variables (decision 20): see [storage](design/storage.md).
 - Done when: the `test` profiles of nf-core/demo and 20 more nf-core pipelines, and a sample of Snakemake, CWL and Argo test workflows, run for real on each executor, and their outputs match those of the native tool. This needs a real-run version of the evidence scripts. The 208 CWL conformance tests that only run through today pass for real.
-  - So far on the local executor, without network (see [engine](design/engine.md), section 7): nf-core/demo gives all files of Nextflow; 284 of 287 CWL conformance tests give cwltool's output; 315 of 422 tests of Snakemake give the same result as Snakemake 9.27 (the other differences have known reasons); 277 Argo test workflows end as Argo's tests expect. Real-run evidence scripts exist for Nextflow, CWL, Snakemake and Argo.
+  - Historical local-executor evidence recorded by 2026-09-30, without network (see [engine](design/engine.md), section 7), not rerun qualification of the current revision: nf-core/demo gives all files of Nextflow; 284 of 287 CWL conformance tests give cwltool's output; 315 of 422 tests of Snakemake give the same result as Snakemake 9.27 (the other differences have known reasons); 277 Argo test workflows end as Argo's tests expect. Real-run evidence scripts exist for Nextflow, CWL, Snakemake and Argo.
 
 ### Run database, web page and provenance
 

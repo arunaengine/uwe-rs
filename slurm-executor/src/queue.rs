@@ -13,6 +13,22 @@ use serde_json::Value;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
+pub(crate) const REQUEST_GRACE: Duration = Duration::from_secs(5);
+
+pub(crate) async fn output(
+    command: &mut Command,
+    grace: Duration,
+) -> std::io::Result<std::process::Output> {
+    tokio::time::timeout(grace, command.kill_on_drop(true).output())
+        .await
+        .map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "SLURM tool did not finish before its deadline",
+            )
+        })?
+}
+
 /// The states in which a job has ended.
 const ENDED: [&str; 10] = [
     "BOOT_FAIL",
@@ -44,6 +60,7 @@ pub enum Look {
 #[derive(Debug, Default)]
 pub struct Queue {
     inner: Mutex<Snapshot>,
+    refresh: Mutex<()>,
     json: Json,
 }
 
@@ -88,10 +105,16 @@ impl Queue {
     /// What the queue says about a job, asking `squeue` when its last answer is older than
     /// `poll`.
     pub async fn look(&self, id: &str, poll: Duration, squeue: &Path) -> Look {
+        let Ok(_refresh) = tokio::time::timeout(REQUEST_GRACE, self.refresh.lock()).await else {
+            return Look::Unknown;
+        };
         let mut snapshot = self.inner.lock().await;
         if snapshot.taken.is_none_or(|taken| taken.elapsed() >= poll) {
             let jobs = snapshot.jobs.clone();
-            snapshot.states = ask(squeue, &jobs, &self.json).await;
+            drop(snapshot);
+            let states = ask(squeue, &jobs, &self.json).await;
+            snapshot = self.inner.lock().await;
+            snapshot.states = states;
             snapshot.taken = Some(Instant::now());
             snapshot.asked = jobs;
         }
@@ -121,12 +144,14 @@ async fn ask(
     }
     let list: Vec<&str> = jobs.iter().map(String::as_str).collect();
     if json.maybe() {
-        let output = Command::new(squeue)
-            .args(["--json", "--states=all"])
-            .arg(format!("--jobs={}", list.join(",")))
-            .output()
-            .await
-            .ok()?;
+        let output = output(
+            Command::new(squeue)
+                .args(["--json", "--states=all"])
+                .arg(format!("--jobs={}", list.join(","))),
+            REQUEST_GRACE,
+        )
+        .await
+        .ok()?;
         let error = String::from_utf8_lossy(&output.stderr);
         if error.contains("Invalid job id") {
             return Some(HashMap::new());
@@ -141,12 +166,14 @@ async fn ask(
             return Some(states);
         }
     }
-    let output = Command::new(squeue)
-        .args(["--noheader", "--states=all", "--format=%i %T"])
-        .arg(format!("--jobs={}", list.join(",")))
-        .output()
-        .await
-        .ok()?;
+    let output = output(
+        Command::new(squeue)
+            .args(["--noheader", "--states=all", "--format=%i %T"])
+            .arg(format!("--jobs={}", list.join(","))),
+        REQUEST_GRACE,
+    )
+    .await
+    .ok()?;
     if !output.status.success() {
         let error = String::from_utf8_lossy(&output.stderr);
         return error.contains("Invalid job id").then(HashMap::new);
@@ -197,12 +224,14 @@ impl Queue {
     /// `None` when the cluster keeps no accounting or does not know the job.
     pub async fn accounted(&self, sacct: &Path, id: &str) -> Option<String> {
         if self.json.maybe() {
-            let output = Command::new(sacct)
-                .arg("--json")
-                .arg(format!("--jobs={id}"))
-                .output()
-                .await
-                .ok()?;
+            let output = output(
+                Command::new(sacct)
+                    .arg("--json")
+                    .arg(format!("--jobs={id}")),
+                REQUEST_GRACE,
+            )
+            .await
+            .ok()?;
             let read: Option<Value> = serde_json::from_slice(&output.stdout).ok();
             if output.status.success()
                 && let Some(answer) = read
@@ -235,11 +264,13 @@ impl Queue {
             ),
         ];
         for (program, arguments) in asked {
-            let output = Command::new(program)
-                .args(arguments)
-                .arg(format!("--jobs={id}"))
-                .output()
-                .await;
+            let output = output(
+                Command::new(program)
+                    .args(arguments)
+                    .arg(format!("--jobs={id}")),
+                REQUEST_GRACE,
+            )
+            .await;
             let Ok(output) = output else { continue };
             let text = String::from_utf8_lossy(&output.stdout);
             let node = text.lines().next().map(str::trim).unwrap_or_default();
@@ -258,18 +289,20 @@ fn node_name(text: &str) -> bool {
 
 /// The state in which a job ended, from the text of the accounting of SLURM.
 async fn accounted(sacct: &Path, id: &str) -> Option<String> {
-    let output = Command::new(sacct)
-        .args([
-            "--allocations",
-            "--noheader",
-            "--parsable2",
-            "--format=State",
-        ])
-        .arg(format!("--jobs={id}"))
-        .output()
-        .await
-        .ok()
-        .filter(|output| output.status.success())?;
+    let output = output(
+        Command::new(sacct)
+            .args([
+                "--allocations",
+                "--noheader",
+                "--parsable2",
+                "--format=State",
+            ])
+            .arg(format!("--jobs={id}")),
+        REQUEST_GRACE,
+    )
+    .await
+    .ok()
+    .filter(|output| output.status.success())?;
     let text = String::from_utf8_lossy(&output.stdout);
     // A cancelled job reads like `CANCELLED by 1000`.
     let state = text.lines().next()?.split_whitespace().next()?;
@@ -279,6 +312,69 @@ async fn accounted(sacct: &Path, id: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn tool_deadlines_and_cancelled_reads_kill_the_process() {
+        let folder = tempfile::tempdir().unwrap();
+        for grace in [Duration::from_millis(100), Duration::from_secs(5)] {
+            let pid_file = folder.path().join(format!("{}.pid", grace.as_millis()));
+            let mut command = Command::new("bash");
+            command
+                .args(["-c", "echo $$ > \"$1\"; exec sleep 30", "tool"])
+                .arg(&pid_file);
+            let result =
+                tokio::time::timeout(Duration::from_millis(300), output(&mut command, grace)).await;
+            match result {
+                Ok(result) => assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::TimedOut),
+                Err(_) => assert_eq!(grace, Duration::from_secs(5)),
+            }
+            let pid = std::fs::read_to_string(pid_file).unwrap();
+            let process = Path::new("/proc").join(pid.trim());
+            for _ in 0..100 {
+                if !process.exists() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert!(
+                !process.exists(),
+                "cancelled scheduler process still exists"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn hung_poll_does_not_hold_admission_or_removal_lock() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().unwrap();
+        let tool = folder.path().join("squeue");
+        std::fs::write(&tool, "#!/bin/bash\necho $$ > \"$0.pid\"\nexec sleep 30\n").unwrap();
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let queue = Queue::default();
+        queue.add("1").await;
+        let poll = tokio::time::timeout(
+            Duration::from_secs(2),
+            queue.look("1", Duration::ZERO, &tool),
+        );
+        let admission = async {
+            for _ in 0..100 {
+                if tool.with_extension("pid").exists() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert!(tool.with_extension("pid").is_file());
+            tokio::time::timeout(Duration::from_millis(100), async {
+                queue.add("2").await;
+                queue.remove("2").await;
+            })
+            .await
+            .expect("a scheduler query must not block the snapshot lock");
+        };
+        let (result, ()) = tokio::join!(poll, admission);
+        assert!(result.is_err());
+        assert!(queue.refresh.try_lock().is_ok());
+    }
 
     #[test]
     fn squeue_lines_give_the_states_of_jobs() {

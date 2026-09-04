@@ -131,6 +131,7 @@ pub struct Network {
     owners: HashMap<TaskId, usize>,
     next_task: u64,
     pub(crate) succeeded: i64,
+    pub(crate) failed_task: Option<Value>,
     /// The name of each file that a finished task made, relative to its work directory, by
     /// its location, for the workflow outputs.
     task_files: HashMap<String, String>,
@@ -152,6 +153,7 @@ pub(crate) struct Context<'n, 'i, 'h> {
     pub keep_going: bool,
     next_task: &'n mut u64,
     pub succeeded: &'n mut i64,
+    pub failed_task: &'n mut Option<Value>,
     task_files: &'n mut HashMap<String, String>,
     pub interpreter: &'i mut Interpreter<'h>,
     /// Whether the node has more to do without new input, and runs again after the nodes
@@ -432,6 +434,7 @@ impl Network {
             keep_going: self.keep_going,
             next_task: &mut self.next_task,
             succeeded: &mut self.succeeded,
+            failed_task: &mut self.failed_task,
             task_files: &mut self.task_files,
             interpreter,
             again: false,

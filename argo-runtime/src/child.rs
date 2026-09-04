@@ -215,8 +215,10 @@ impl Run {
     }
 
     /// Whether tasks of this run or of its children are still out.
-    fn busy(&self) -> bool {
-        !self.tasks.is_empty() || self.children.iter().any(|child| child.run.busy())
+    pub(crate) fn busy(&self) -> bool {
+        !self.tasks.is_empty()
+            || self.nodes.iter().any(|node| node.phase == Phase::Pending)
+            || self.children.iter().any(|child| child.run.busy())
     }
 
     /// The tasks that end the run: those of its exit handler, or of its root.
@@ -234,7 +236,7 @@ impl Run {
             |node: Option<usize>| node.is_some_and(|node| self.nodes[node].phase.fulfilled());
         let ended = fulfilled(self.root)
             && (self.exit_node.is_none() || fulfilled(self.exit_node))
-            && self.tasks.is_empty();
+            && !self.busy();
         if !ended && self.busy() {
             return (Phase::Running, String::new());
         }

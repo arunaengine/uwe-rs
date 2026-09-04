@@ -35,6 +35,9 @@ pub const SCRIPT_PATH: &str = "/argo/staging/script";
 impl Run {
     /// Asks for the tasks of a leaf template.
     pub fn start_pod(&mut self, index: usize) -> Result<()> {
+        if !self.admit(index) {
+            return Ok(());
+        }
         let Some(processed) = self.nodes[index].processed.clone() else {
             return Ok(());
         };

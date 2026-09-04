@@ -4,7 +4,8 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::cell::Cell;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -169,6 +170,11 @@ pub(crate) struct Run {
     pub nodes: Vec<NodeStatus>,
     pub names: HashMap<String, usize>,
     pub tasks: HashMap<TaskId, (usize, usize)>,
+    workflow_active: Rc<Cell<usize>>,
+    template_invocations: HashSet<usize>,
+    template_active: HashMap<usize, usize>,
+    resource_admissions: HashMap<usize, Vec<(i64, Rc<Cell<usize>>)>>,
+    admissions: HashMap<TaskId, Vec<(i64, Rc<Cell<usize>>)>>,
     pub next_task: u64,
     pub emitted: Vec<Task>,
     pub changed: bool,
@@ -309,6 +315,11 @@ impl Run {
             nodes: Vec::new(),
             names: HashMap::new(),
             tasks: HashMap::new(),
+            workflow_active: Rc::new(Cell::new(0)),
+            template_invocations: HashSet::new(),
+            template_active: HashMap::new(),
+            resource_admissions: HashMap::new(),
+            admissions: HashMap::new(),
             next_task: 1,
             emitted: Vec::new(),
             changed: false,
@@ -519,7 +530,25 @@ impl Run {
         };
         self.nodes[index].kind = kind;
         self.nodes[index].processed = Some(Rc::clone(&processed));
+        if !self.admit_template(index) {
+            return Ok(());
+        }
+        if self.nodes[index].phase == Phase::Pending
+            && matches!(kind, NodeKind::Steps | NodeKind::Dag)
+        {
+            self.set_phase(index, Phase::Running, String::new());
+        }
         self.nodes[index].daemoned = template.daemon == Some(true);
+        if template.resource.is_some() && !self.resource_admissions.contains_key(&index) {
+            if !self.admit(index) {
+                return Ok(());
+            }
+            let limits = self.admission_limits();
+            for (_, active) in &limits {
+                active.set(active.get() + 1);
+            }
+            self.resource_admissions.insert(index, limits);
+        }
         match kind {
             NodeKind::Steps => self.execute_steps(index),
             NodeKind::Dag => self.execute_dag(index),
@@ -538,6 +567,12 @@ impl Run {
 
     /// Goes on with a node that runs.
     pub fn reenter(&mut self, index: usize) -> Result<()> {
+        if self.nodes[index].phase == Phase::Pending {
+            if let Some(processed) = self.nodes[index].processed.clone() {
+                return self.start_node(index, processed);
+            }
+            return Ok(());
+        }
         match self.nodes[index].kind {
             NodeKind::Steps => self.execute_steps(index),
             NodeKind::Dag => self.execute_dag(index),
@@ -754,12 +789,71 @@ impl Run {
 
     /// Asks for a task of a node; its outcome comes back to the node.
     pub fn ask(&mut self, index: usize, task: Task) {
+        let limits = self.admission_limits();
+        for (_, active) in &limits {
+            active.set(active.get() + 1);
+        }
+        self.admissions.insert(task.id, limits);
         let slot = self.nodes[index].outcomes.len();
         self.tasks.insert(task.id, (index, slot));
         self.nodes[index].tasks.push(task.id);
         self.nodes[index].outcomes.push(None);
         self.emitted.push(task);
         self.changed = true;
+    }
+
+    pub(crate) fn admission_limits(&self) -> Vec<(i64, Rc<Cell<usize>>)> {
+        let mut limits = Vec::new();
+        if let Some(limit) = self.spec.parallelism {
+            limits.push((limit, Rc::clone(&self.workflow_active)));
+        }
+        limits
+    }
+
+    fn admit_template(&mut self, index: usize) -> bool {
+        if self.template_invocations.contains(&index) {
+            return true;
+        }
+        if let Some(boundary) = self.nodes[index].boundary
+            && let Some(limit) = self.nodes[boundary]
+                .processed
+                .as_ref()
+                .and_then(|processed| processed.template.parallelism)
+                .filter(|limit| *limit > 0)
+        {
+            let active = self.template_active.entry(boundary).or_default();
+            if *active as i128 >= limit as i128 {
+                self.set_phase(
+                    index,
+                    Phase::Pending,
+                    "waiting for template parallelism admission".into(),
+                );
+                return false;
+            }
+            *active += 1;
+            self.template_invocations.insert(index);
+        }
+        true
+    }
+
+    pub(crate) fn admit(&mut self, index: usize) -> bool {
+        if self
+            .admission_limits()
+            .iter()
+            .any(|(limit, active)| active.get() as i128 >= *limit as i128)
+        {
+            self.set_phase(
+                index,
+                Phase::Pending,
+                "waiting for parallelism admission".into(),
+            );
+            return false;
+        }
+        if self.nodes[index].phase == Phase::Pending {
+            self.set_phase(index, Phase::Running, String::new());
+            self.nodes[index].started = self.options.now.unwrap_or_else(Timestamp::now);
+        }
+        true
     }
 
     pub fn new_node(&mut self, name: &str, kind: NodeKind, template: &str, call: &Call) -> usize {
@@ -814,6 +908,15 @@ impl Run {
     }
 
     pub fn set_phase(&mut self, index: usize, phase: Phase, message: String) {
+        if phase.fulfilled() {
+            for (_, active) in self.resource_admissions.remove(&index).unwrap_or_default() {
+                active.set(active.get() - 1);
+            }
+            if self.template_invocations.remove(&index) {
+                let boundary = self.nodes[index].boundary.unwrap();
+                *self.template_active.get_mut(&boundary).unwrap() -= 1;
+            }
+        }
         let node = &mut self.nodes[index];
         if node.phase != phase {
             node.phase = phase;
@@ -932,6 +1035,9 @@ impl Run {
                 outcome.id
             )));
         };
+        for (_, active) in self.admissions.remove(&outcome.id).unwrap_or_default() {
+            active.set(active.get() - 1);
+        }
         let node = &mut self.nodes[index];
         if let Some(entry) = node.outcomes.get_mut(slot) {
             *entry = Some(outcome);
@@ -971,6 +1077,9 @@ impl Run {
                 root.name,
                 root.phase.name()
             ));
+        }
+        if self.busy() {
+            return Err("the workflow has tasks or deferred leaves outstanding".into());
         }
         let exit = self.exit_node.map(|exit| &self.nodes[exit]);
         let failed = match root.phase {

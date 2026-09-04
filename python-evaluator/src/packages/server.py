@@ -5,15 +5,18 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 import importlib
+import importlib.metadata
 import json
 import math
 import numbers
 import operator
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 # The working directory is not on the module path, as it is not when Snakemake runs; the
 # workflow's own modules are run by iunctus.
@@ -117,6 +120,7 @@ def decode(value):
 
 # Where packages that later imports need are installed, in the running container.
 EXTRA = "/tmp/iunctus-packages"
+CONSTRAINTS = json.loads(os.environ.get("IUNCTUS_PYTHON_CONSTRAINTS", "[]"))
 
 
 def failures():
@@ -144,11 +148,15 @@ def install(packages):
     wanted = [package for package in packages if package not in failed]
     if uv is not None and wanted:
         command = [uv, "pip", "install", "--quiet", "--python", sys.executable, "--target", EXTRA]
-        if subprocess.run([*command, *wanted], capture_output=True, text=True).returncode != 0:
-            for package in wanted:
-                done = subprocess.run([*command, package], capture_output=True, text=True)
-                if done.returncode != 0:
-                    failed[package] = done.stderr
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt") as constraints:
+            constraints.write("\n".join(CONSTRAINTS) + "\n")
+            constraints.flush()
+            command.extend(["--constraint", constraints.name])
+            if subprocess.run([*command, *wanted], capture_output=True, text=True).returncode != 0:
+                for package in wanted:
+                    done = subprocess.run([*command, package], capture_output=True, text=True)
+                    if done.returncode != 0:
+                        failed[package] = done.stderr
         if EXTRA not in sys.path:
             sys.path.append(EXTRA)
         sys.path_importer_cache.pop(EXTRA, None)
@@ -156,9 +164,39 @@ def install(packages):
     return [package for package in packages if package in failed]
 
 
-def import_module(name, packages):
+def validate_versions(packages, imported=False):
+    requirements = [text for text in [*CONSTRAINTS, *packages] if any(char in text for char in "<>=!~")]
+    if not requirements:
+        return
     try:
-        return importlib.import_module(name)
+        from packaging.requirements import Requirement
+    except ModuleNotFoundError:
+        try:
+            from pip._vendor.packaging.requirements import Requirement
+        except ModuleNotFoundError:
+            raise ImportError("validating pinned Python packages requires packaging in the helper image") from None
+    normalized = lambda name: re.sub(r"[-_.]+", "-", name).lower()
+    requested = {normalized(Requirement(text).name) for text in packages}
+    for text in requirements:
+        requirement = Requirement(text)
+        if requirement.marker is not None and not requirement.marker.evaluate():
+            continue
+        if not requirement.specifier:
+            continue
+        try:
+            version = importlib.metadata.version(requirement.name)
+        except importlib.metadata.PackageNotFoundError:
+            if imported and normalized(requirement.name) in requested:
+                raise ImportError(f"cannot validate {text}: installed distribution metadata is missing") from None
+            continue
+        if not requirement.specifier.contains(version):
+            raise ImportError(f"installed {requirement.name}=={version} does not satisfy workflow requirement {text}")
+
+
+def import_module(name, packages):
+    validate_versions(packages)
+    try:
+        module = importlib.import_module(name)
     except ModuleNotFoundError as error:
         top = name.split(".")[0]
         if (error.name or "").split(".")[0] != top:
@@ -168,7 +206,9 @@ def import_module(name, packages):
             reason = first_lines(failed[absent[0]])
             message = f"No module named '{name}' (the package {absent[0]} could not be installed from PyPI: {reason})"
             raise ModuleNotFoundError(message, name=name) from None
-    return importlib.import_module(name)
+        module = importlib.import_module(name)
+    validate_versions(packages, imported=True)
+    return module
 
 
 def answer(request):

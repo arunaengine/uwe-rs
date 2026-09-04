@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use run_database::Database;
-use task_runner::clean::{Keep, Plan, plan, remove};
+use task_runner::clean::{Keep, Plan, maintenance, plan, remove_guarded};
 
 use crate::arguments::Arguments;
 use crate::setup::Setup;
@@ -58,9 +58,6 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
              what runs that go on need",
         ));
     };
-    if arguments.remove {
-        remote_attempts_finished(&cache_directory().join("scratch"))?;
-    }
     let broken = |error: &dyn std::fmt::Display| failure(format!("iunctus: {error}"));
     let setup = Setup::load(arguments)?;
     let location = setup.store_location(arguments);
@@ -75,6 +72,17 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         }
     }
     let runtime = workflow_graph::runtime().map_err(|error| broken(&error))?;
+    let maintenance = match arguments.remove {
+        true => Some(
+            runtime
+                .block_on(maintenance(&store))
+                .map_err(|error| broken(&error))?,
+        ),
+        false => None,
+    };
+    if arguments.remove {
+        remote_attempts_finished(&cache_directory().join("scratch"))?;
+    }
     let leases = runtime
         .block_on(store.held_leases("runs/"))
         .map_err(|error| broken(&error))?;
@@ -136,7 +144,11 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     }
     remote_attempts_finished(&cache_directory().join("scratch"))?;
     let removed = runtime
-        .block_on(remove(&store, &planned))
+        .block_on(remove_guarded(
+            &store,
+            &planned,
+            maintenance.as_ref().expect("removal holds maintenance"),
+        ))
         .map_err(|error| broken(&error))?;
     for folder in &scratch {
         std::fs::remove_dir_all(&folder.path)

@@ -330,8 +330,17 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     launch.simulated = true;
     let run = crate::run_id();
     let mut report = Report::default();
-    let graph = match crate::driver(language, &launch, &run, true, arguments, &setup) {
-        Ok(mut driver) => plan(driver.as_mut(), &target, &run, arguments, &mut report),
+    let cancel = crate::stop_on_interrupt();
+    let _stop = cancel.clone().drop_guard();
+    let graph = match crate::driver(language, &launch, &run, true, arguments, &setup, &cancel) {
+        Ok(mut driver) => plan(
+            driver.as_mut(),
+            &target,
+            &run,
+            arguments,
+            &mut report,
+            &cancel,
+        ),
         Err(error) => {
             report.driver_error(&error);
             None
@@ -353,6 +362,7 @@ fn plan(
     run: &str,
     arguments: &Arguments,
     report: &mut Report,
+    cancel: &workflow_graph::CancellationToken,
 ) -> Option<ExecutionGraph> {
     match driver.inputs() {
         Ok(Some(inputs)) => report.inputs(&inputs),
@@ -367,7 +377,9 @@ fn plan(
     let mut simulator = Simulator::new(simulated.clone());
     simulator.verbose = false;
     let workflow = target.to_string_lossy();
-    let mut execution = Engine::new(&mut simulator).run(&workflow, driver);
+    let mut execution = Engine::new(&mut simulator)
+        .cancel(cancel.clone())
+        .run(&workflow, driver);
     execution.graph.simulate();
     // The simulator made up its files in the scratch folder, which the check leaves out.
     report.tasks(

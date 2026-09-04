@@ -240,6 +240,8 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
     let verbose = !quiet && !(shown && terminal::possible());
     let runtime =
         workflow_graph::runtime().map_err(|error| failure(format!("iunctus: {error}")))?;
+    let interrupt = stop_on_interrupt();
+    let _stop = interrupt.clone().drop_guard();
     let sources = runtime.block_on(sources::collect(target, arguments));
     let started = record::Started {
         id: &run,
@@ -272,7 +274,9 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
         &measured,
     )
     .and_then(|executor| {
-        let mut driver = driver(language, &launch, &run, quiet, arguments, &setup)?;
+        let mut driver = driver(
+            language, &launch, &run, quiet, arguments, &setup, &interrupt,
+        )?;
         if let Some(inputs) = inputs::check(driver.as_mut(), started.simulated, quiet)? {
             recorder.inputs(&inputs.schema, &inputs.values);
         }
@@ -315,7 +319,7 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
     // A real executor runs every task that can run, and the pool of its machine or cluster
     // sets how many run at once. The simulator runs one at a time, in the order asked.
     let options = RunOptions {
-        max_pending: (arguments.max_pending).unwrap_or(if real { usize::MAX } else { 1 }),
+        max_pending: (arguments.max_pending).unwrap_or(if real { 1_024 } else { 1 }),
         order: (arguments.order).unwrap_or(if real {
             Order::Finished
         } else {
@@ -340,7 +344,6 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
         }
         None => &mut noting,
     };
-    let interrupt = stop_on_interrupt();
     let mut execution = Engine::new(executor.as_mut())
         .options(options)
         .observer(observer)
@@ -466,10 +469,13 @@ fn driver(
     quiet: bool,
     arguments: &Arguments,
     setup: &Setup,
+    cancel: &CancellationToken,
 ) -> Result<Box<dyn Driver>, DriverError> {
     match language {
         Language::Nextflow => nextflow::driver(launch, run, quiet, arguments, setup),
-        Language::Snakemake => snakemake_runtime::driver_with(launch, snakemake(arguments, setup)),
+        Language::Snakemake => {
+            snakemake_runtime::driver_with(launch, snakemake(arguments, setup, cancel))
+        }
         Language::Cwl => {
             let downloads = cache_directory().join("downloads");
             cwl_runtime::driver_with(launch, &setup.storage, downloads)
@@ -481,7 +487,11 @@ fn driver(
 /// The settings of Snakemake runs: the Python container of decision 19, with the engine of
 /// the local executor, which keeps what uv downloads and installs in the cache, and the
 /// storage providers.
-fn snakemake(arguments: &Arguments, setup: &Setup) -> snakemake_runtime::Settings {
+fn snakemake(
+    arguments: &Arguments,
+    setup: &Setup,
+    cancel: &CancellationToken,
+) -> snakemake_runtime::Settings {
     snakemake_runtime::Settings {
         python: Some(snakemake_runtime::PythonContainers {
             engine: setup.engine(),
@@ -490,6 +500,7 @@ fn snakemake(arguments: &Arguments, setup: &Setup) -> snakemake_runtime::Setting
             show_output: true,
         }),
         storage: setup.storage.clone(),
+        cancel: cancel.clone(),
     }
 }
 
@@ -800,7 +811,7 @@ options:
                                       iunctus never takes the default one
   -kubernetes-namespace <name>        the namespace of the Jobs; the kubeconfig's by default
   -max-pending <n>                    lets up to n tasks be pending at once (default 1 for
-                                      the simulator, no limit for real executors)
+                                      the simulator, 1024 for real executors)
   -order asked|reversed|finished|shuffled[:<seed>]
                                       the order in which pending tasks finish (default
                                       asked for the simulator, finished for real executors)
@@ -911,6 +922,70 @@ fn run_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "needs Docker and the cached debian:stable-slim image"]
+    fn restricted_argo_host_inputs_are_readable_as_the_image_user() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("private.txt");
+        std::fs::write(&source, "private input\n").unwrap();
+        std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o600)).unwrap();
+        for uid in [0, 65534] {
+            let target = root.path().join("workflow.yaml");
+            std::fs::write(&target, format!(
+                "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {{name: read}}\nspec:\n\
+                 \x20 entrypoint: read\n  volumes:\n  - name: source\n    hostPath: {{path: '{}', type: File}}\n\
+                 \x20 templates:\n  - name: read\n    container:\n      image: debian:stable-slim\n\
+                 \x20     command: [sh, -c]\n      args: ['cat /data/private.txt > /tmp/read.txt']\n\
+                 \x20     securityContext: {{runAsUser: {uid}, runAsGroup: {uid}}}\n\
+                 \x20     volumeMounts: [{{name: source, mountPath: /data/private.txt, readOnly: true}}]\n\
+                 \x20   outputs:\n      parameters: [{{name: value, valueFrom: {{path: /tmp/read.txt}}}}]\n",
+                source.display(),
+            )).unwrap();
+            let run = format!("permissions-{uid}");
+            let store = content_store::Store::local(&root.path().join("store")).unwrap();
+            let runtime = workflow_graph::runtime().unwrap();
+            let engine = runtime
+                .block_on(executor::ContainerEngine::named(Some("docker")))
+                .unwrap();
+            let backend = executor::LocalContainer::new(
+                engine,
+                root.path().join("scratch"),
+                executor::Pool::new(2, 1 << 30),
+            );
+            let settings = task_runner::Settings {
+                downloads: root.path().join("downloads"),
+                import_inputs: false,
+                storage: storage::Storage::default(),
+                digests: None,
+            };
+            let mut executor = task_runner::RunnerExecutor::new(
+                task_runner::Runner::new(store, backend, &run, settings),
+                None,
+            );
+            let launch = Launch {
+                target,
+                scratch: root.path().join("planning"),
+                ..Launch::default()
+            };
+            let mut driver = argo_runtime::driver(&launch).unwrap();
+            let execution = Engine::new(&mut executor).run("permissions", driver.as_mut());
+            assert!(
+                execution.error.is_none(),
+                "uid {uid}: {:?}",
+                execution.error
+            );
+            assert_eq!(execution.graph.nodes.len(), 1);
+            assert_eq!(execution.graph.nodes[0].exit_code, Some(0));
+            assert_eq!(std::fs::read_to_string(&source).unwrap(), "private input\n");
+            assert_eq!(
+                std::fs::metadata(&source).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+    }
 
     #[test]
     fn failure_hook_diagnostic_preserves_the_original_exit_code() {

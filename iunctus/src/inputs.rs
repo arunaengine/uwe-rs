@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use input_schema::{Problem, Severity};
-use workflow_graph::{Driver, Inputs, Language};
+use workflow_graph::{CancellationToken, Driver, Inputs, Language};
 
 use crate::arguments::Arguments;
 use crate::{Failure, failure};
@@ -60,7 +60,9 @@ fn warnings(inputs: &Inputs, problems: &[Problem]) -> Vec<String> {
 /// one. The workflow runs no task.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let text = text_format(arguments, "inputs")?;
-    let (mut driver, language, simulated) = describing(arguments)?;
+    let cancel = crate::stop_on_interrupt();
+    let _stop = cancel.clone().drop_guard();
+    let (mut driver, language, simulated) = describing(arguments, &cancel)?;
     let inputs = match arguments.check {
         true => check(driver.as_mut(), simulated, true)?,
         false => {
@@ -85,7 +87,9 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
 /// or with `-format text` the outputs as text. The workflow runs no task.
 pub fn outputs(arguments: &Arguments) -> Result<(), Failure> {
     let text = text_format(arguments, "outputs")?;
-    let (mut driver, language, _) = describing(arguments)?;
+    let cancel = crate::stop_on_interrupt();
+    let _stop = cancel.clone().drop_guard();
+    let (mut driver, language, _) = describing(arguments, &cancel)?;
     let Some(schema) = driver.outputs()? else {
         return Err(failure(format!(
             "iunctus: the {language} driver does not describe the outputs of its workflows yet"
@@ -108,12 +112,15 @@ fn text_format(arguments: &Arguments, command: &str) -> Result<bool, Failure> {
 
 /// The driver of the workflow that a command describes, its language, and whether a run with
 /// the same options would be simulated.
-fn describing(arguments: &Arguments) -> Result<(Box<dyn Driver>, Language, bool), Failure> {
+fn describing(
+    arguments: &Arguments,
+    cancel: &CancellationToken,
+) -> Result<(Box<dyn Driver>, Language, bool), Failure> {
     let (target, language) = crate::target_and_language(arguments)?;
     let launch = crate::launch(arguments, target);
     let setup = crate::setup::Setup::load(arguments)?;
     let run = crate::run_id();
-    let driver = crate::driver(language, &launch, &run, true, arguments, &setup)?;
+    let driver = crate::driver(language, &launch, &run, true, arguments, &setup, cancel)?;
     Ok((driver, language, launch.simulated))
 }
 

@@ -80,6 +80,8 @@ pub struct Run {
     options: Options,
     /// The `workflow` object of the run.
     workflow: Value,
+    on_complete_called: bool,
+    on_error_called: bool,
 }
 
 impl Run {
@@ -90,6 +92,15 @@ impl Run {
         options: &Options,
         host: &mut dyn Host,
     ) -> Result<(Run, Vec<TaskRequest>), Error> {
+        let (run, requests) = Self::start_retained(module, options, host);
+        Ok((run, requests?))
+    }
+
+    pub(crate) fn start_retained(
+        module: &Rc<Module>,
+        options: &Options,
+        host: &mut dyn Host,
+    ) -> (Run, Result<Vec<TaskRequest>, Error>) {
         let mut network = Network::default();
         network.keep_going(options.keep_going);
         let workflow = workflow::metadata(options, &host.launch_dir());
@@ -98,36 +109,41 @@ impl Run {
             options,
             network: None,
         };
-        {
-            let mut builder = build::Builder {
-                network: &mut network,
-                base: &mut session,
-                stub: options.stub,
-                config: &options.config,
-                output_dir: options.output_dir.clone(),
-                exec_folder: options.exec_folder.clone().map(Rc::from),
-            };
-            let mut interpreter = Interpreter::new(&mut builder);
+        let started = (|| {
+            {
+                let mut builder = build::Builder {
+                    network: &mut network,
+                    base: &mut session,
+                    stub: options.stub,
+                    config: &options.config,
+                    output_dir: options.output_dir.clone(),
+                    exec_folder: options.exec_folder.clone().map(Rc::from),
+                };
+                let mut interpreter = Interpreter::new(&mut builder);
+                set_globals(&mut interpreter, options, &workflow);
+                let params = options.config.params();
+                script_params(&mut interpreter, module, &params, &mut Vec::new())
+                    .and_then(|()| typed_params(&mut interpreter, module, &params))
+                    .and_then(|()| interpreter.start_statements(module))
+                    .and_then(|()| interpreter.run_entry(module))
+                    .map_err(|error| interpreter.locate(error))?;
+            }
+            let mut interpreter = Interpreter::new(&mut session);
             set_globals(&mut interpreter, options, &workflow);
-            let params = options.config.params();
-            script_params(&mut interpreter, module, &params, &mut Vec::new())
-                .and_then(|()| typed_params(&mut interpreter, module, &params))
-                .and_then(|()| interpreter.start_statements(module))
-                .and_then(|()| interpreter.run_entry(module))
+            network
+                .ignite(&mut interpreter)
                 .map_err(|error| interpreter.locate(error))?;
-        }
-        let mut interpreter = Interpreter::new(&mut session);
-        set_globals(&mut interpreter, options, &workflow);
-        network
-            .ignite(&mut interpreter)
-            .map_err(|error| interpreter.locate(error))?;
-        let requests = network.take_requests();
+            let requests = network.take_requests();
+            Ok(requests)
+        })();
         let run = Run {
             network,
             options: options.clone(),
             workflow,
+            on_complete_called: false,
+            on_error_called: false,
         };
-        Ok((run, requests))
+        (run, started)
     }
 
     /// Takes the outcome of a task; the result has the tasks that can run now.
@@ -163,36 +179,16 @@ impl Run {
     /// run and no step may wait for input: a run that would wait forever in Nextflow is an
     /// error here.
     pub fn finish(&mut self, host: &mut dyn Host) -> Result<(), Error> {
+        if self.on_complete_called {
+            return Ok(());
+        }
         if let Some(failure) = self.network.take_failure() {
             return Err(failure);
         }
         let waiting = self.network.running();
         if waiting.is_empty() && !self.network.has_tasks() {
             workflow::finish(&self.workflow, true, self.network.succeeded);
-            let mut session = Session {
-                base: host,
-                options: &self.options,
-                network: Some(&self.network),
-            };
-            let mut interpreter = Interpreter::new(&mut session);
-            set_globals(&mut interpreter, &self.options, &self.workflow);
-            for handler in workflow::handlers(&self.workflow, false) {
-                // As Nextflow, an error of a handler is logged and the run still succeeds,
-                // unless the handler calls `error`.
-                if let Err(error) = interpreter.call_closure(&handler, Vec::new()) {
-                    let error = interpreter.locate(error);
-                    match error.exception() {
-                        Some(exception) if exception.class != "AbortOperationException" => {
-                            interpreter.print(&format!(
-                                "ERROR ~ Failed to invoke `workflow.onComplete` event handler: \
-                                 {error}\n"
-                            ));
-                        }
-                        _ => return Err(error),
-                    }
-                }
-            }
-            return Ok(());
+            return self.handlers(host, false, Value::Null, false);
         }
         let names: Vec<&str> = waiting.iter().map(|name| &**name).collect();
         let message = format!(
@@ -203,6 +199,85 @@ impl Run {
             exception: Rc::new(Exception::new("IllegalStateException", message)),
             span: Default::default(),
         })
+    }
+
+    pub(crate) fn failed(
+        &mut self,
+        message: &str,
+        status: i32,
+        task_failure: bool,
+        host: &mut dyn Host,
+    ) -> Result<(), Error> {
+        if self.on_error_called {
+            return Ok(());
+        }
+        let trace = if task_failure {
+            self.network.failed_task.clone().unwrap_or(Value::Null)
+        } else {
+            Value::Null
+        };
+        let status = tree::get(&trace, &["exit"]).unwrap_or(Value::integer(status));
+        workflow::finish(&self.workflow, false, self.network.succeeded);
+        workflow::failure(&self.workflow, message, status);
+        let error = self.handlers(host, true, trace, true).err();
+        let completion_error = self.handlers(host, false, Value::Null, true).err();
+        match error.or(completion_error) {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+
+    fn handlers(
+        &mut self,
+        host: &mut dyn Host,
+        on_error: bool,
+        trace: Value,
+        failing: bool,
+    ) -> Result<(), Error> {
+        let called = if on_error {
+            &mut self.on_error_called
+        } else {
+            &mut self.on_complete_called
+        };
+        if std::mem::replace(called, true) {
+            return Ok(());
+        }
+        let mut session = Session {
+            base: host,
+            options: &self.options,
+            network: Some(&self.network),
+        };
+        let mut interpreter = Interpreter::new(&mut session);
+        set_globals(&mut interpreter, &self.options, &self.workflow);
+        let mut failure = None;
+        for handler in workflow::handlers(&self.workflow, on_error) {
+            let arguments = if on_error {
+                vec![trace.clone()]
+            } else {
+                Vec::new()
+            };
+            if let Err(error) = interpreter.call_closure(&handler, arguments) {
+                let error = interpreter.locate(error);
+                if !failing
+                    && error
+                        .exception()
+                        .is_none_or(|exception| exception.class == "AbortOperationException")
+                {
+                    return Err(error);
+                }
+                let name = if on_error { "onError" } else { "onComplete" };
+                interpreter.print(&format!(
+                    "ERROR ~ Failed to invoke `workflow.{name}` event handler: {error}\n"
+                ));
+                if failing {
+                    failure.get_or_insert(error);
+                }
+            }
+        }
+        match failure {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
 }
 

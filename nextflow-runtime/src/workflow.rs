@@ -169,6 +169,23 @@ pub(crate) fn finish(workflow: &Value, success: bool, succeeded: i64) {
     tree::assign(&workflow.properties, &path, count).expect("a map");
 }
 
+pub(crate) fn failure(workflow: &Value, message: &str, status: Value) {
+    let Value::Object(object) = workflow else {
+        return;
+    };
+    let object = object.borrow();
+    let State::Workflow(workflow) = &object.state else {
+        return;
+    };
+    for (name, value) in [
+        ("exitStatus", status),
+        ("errorMessage", Value::string(message)),
+        ("errorReport", Value::string(message)),
+    ] {
+        tree::assign(&workflow.properties, &[name.into()], value).expect("a map");
+    }
+}
+
 /// A property of the `workflow` object.
 pub(crate) fn property(workflow: &Value, name: &str) -> Value {
     let Value::Object(object) = workflow else {

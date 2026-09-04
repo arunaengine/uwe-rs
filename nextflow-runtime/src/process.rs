@@ -411,6 +411,24 @@ impl ProcessNode {
         let error = failure
             .unwrap_or_else(|| thrown(Exception::new("ProcessFailedException", message.clone())));
         let failure = message;
+        if strategy != Strategy::Ignore && !(strategy == Strategy::Retry && attempt <= retries) {
+            context.failed_task.get_or_insert_with(|| {
+                Value::map([
+                    (
+                        Value::string("task_id"),
+                        Value::string(outcome.id.0.to_string()),
+                    ),
+                    (Value::string("name"), Value::string(name.as_str())),
+                    (Value::string("process"), Value::string(&*self.name)),
+                    (Value::string("exit"), Value::integer(outcome.exit_status)),
+                    (
+                        Value::string("attempt"),
+                        Value::Number(nextflow_evaluator::number::Number::Long(attempt as i64)),
+                    ),
+                    (Value::string("status"), Value::string("FAILED")),
+                ])
+            });
+        }
         match strategy {
             Strategy::Retry if attempt <= retries => {
                 interpreter.print(&format!(

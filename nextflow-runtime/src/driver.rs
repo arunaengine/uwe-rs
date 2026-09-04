@@ -324,9 +324,9 @@ impl Driver for Nextflow {
             host: self.settings.host.as_mut(),
             notes: &mut self.notes,
         };
-        let (run, requests) = Run::start(&loaded.module, &options, &mut host).map_err(error)?;
+        let (run, requests) = Run::start_retained(&loaded.module, &options, &mut host);
         self.run = Some(run);
-        Ok(self.tasks(requests))
+        Ok(self.tasks(requests.map_err(error)?))
     }
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
@@ -382,6 +382,20 @@ impl Driver for Nextflow {
             })?;
         }
         Ok(())
+    }
+
+    fn failed(&mut self, failure: &workflow_graph::ExecuteError) -> Result<(), DriverError> {
+        let Some(run) = &mut self.run else {
+            return Ok(());
+        };
+        let cancelled = matches!(failure, workflow_graph::ExecuteError::Cancelled);
+        run.failed(
+            &failure.to_string(),
+            if cancelled { 130 } else { 1 },
+            matches!(failure, workflow_graph::ExecuteError::Driver(_)),
+            self.settings.host.as_mut(),
+        )
+        .map_err(error)
     }
 
     fn notes(&mut self) -> Vec<Note> {

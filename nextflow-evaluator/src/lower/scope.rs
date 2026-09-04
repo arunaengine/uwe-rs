@@ -10,6 +10,7 @@ use crate::lowered::{Place, Slot};
 struct Declared {
     name: Rc<str>,
     slot: Slot,
+    class: Option<Rc<str>>,
     /// Whether the legacy parser keeps the name in a binding rather than as a Groovy local:
     /// a process input, a take, or a name that a process or workflow assigns without `def`.
     binding: bool,
@@ -30,7 +31,7 @@ struct Frame {
 pub(super) struct Scopes {
     frames: Vec<Frame>,
     /// The variables of the script, in the order of `Place::Module`.
-    module: Vec<Rc<str>>,
+    module: Vec<(Rc<str>, Option<Rc<str>>)>,
 }
 
 /// What a finished frame needs at run time.
@@ -103,6 +104,7 @@ impl Scopes {
         block.push(Declared {
             name: name.into(),
             slot,
+            class: None,
             binding,
         });
         (slot, earlier)
@@ -117,6 +119,7 @@ impl Scopes {
         frame.blocks[0].push(Declared {
             name: name.into(),
             slot,
+            class: None,
             binding: true,
         });
         slot
@@ -140,16 +143,56 @@ impl Scopes {
             let index = self
                 .module
                 .iter()
-                .position(|declared| &**declared == name)?;
+                .position(|(declared, _)| &**declared == name)?;
             Some(Place::Module(index))
         })
     }
 
     /// Declares a variable of the script, once per name.
-    pub fn declare_module(&mut self, name: &str) {
-        if !self.module.iter().any(|declared| &**declared == name) {
-            self.module.push(name.into());
+    pub fn declare_module(&mut self, name: &str, class: Option<Rc<str>>) {
+        if let Some((_, previous)) = self
+            .module
+            .iter_mut()
+            .find(|(declared, _)| &**declared == name)
+        {
+            if class.is_some() {
+                *previous = class;
+            }
+        } else {
+            self.module.push((name.into(), class));
         }
+    }
+
+    pub fn annotate(&mut self, slot: Slot, class: Option<Rc<str>>) {
+        let declared = self
+            .frame()
+            .blocks
+            .iter_mut()
+            .flatten()
+            .find(|declared| declared.slot == slot)
+            .expect("declared slot");
+        declared.class = class;
+    }
+
+    pub fn class(&self, name: &str) -> Option<Rc<str>> {
+        for frame in self.frames.iter().rev() {
+            if let Some(declared) = frame
+                .blocks
+                .iter()
+                .rev()
+                .flat_map(|block| block.iter().rev())
+                .find(|declared| &*declared.name == name)
+            {
+                return declared.class.clone();
+            }
+            if !frame.closure {
+                break;
+            }
+        }
+        self.module
+            .iter()
+            .find(|(declared, _)| &**declared == name)
+            .and_then(|(_, class)| class.clone())
     }
 
     /// The number of variables of the script.

@@ -324,6 +324,7 @@ pub enum StatementKind {
     /// `for (x in items) body`, which only the legacy parser accepts.
     ForIn {
         variable: Name,
+        annotation: Option<Type>,
         items: Expression,
         body: Block,
     },

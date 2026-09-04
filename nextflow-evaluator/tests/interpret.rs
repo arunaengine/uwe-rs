@@ -109,6 +109,78 @@ fn script_numeric_overloads_use_specificity_in_both_orders() {
 }
 
 #[test]
+fn typed_locals_convert_initialization_assignments_and_captured_writes() {
+    for declaration in ["def text: String", "String text"] {
+        assert_eq!(
+            run(&format!("def f() {{ {declaration} = 5\n text + 1 }}")),
+            "51"
+        );
+        assert_eq!(
+            run(&format!(
+                "def f() {{ {declaration}\n text = 7\n\
+                          def change = {{ {{ text = 8 }}.call() }}\n\
+                          change.call()\n [text + 1, text.getClass().getSimpleName()] }}"
+            )),
+            "[81, String]"
+        );
+    }
+    assert_eq!(
+        run("def f() { def count: Integer = 5L\n count += 2L\n\
+             def changed = (count = 9L)\n count++\n\
+             [count, count.getClass().getSimpleName(), changed.getClass().getSimpleName()] }"),
+        "[10, Integer, Integer]"
+    );
+    assert_eq!(
+        run("def f() { def (text: String, count: Integer) = [5, 6L]\n\
+             (text, count) = [7, 8L]\n [text + 1, count.getClass().getSimpleName()] }"),
+        "[71, Integer]"
+    );
+    assert_eq!(
+        run("def f() { def String first = 1, second = 2\n [first + 3, second + 4] }"),
+        "[13, 24]"
+    );
+}
+
+#[test]
+fn typed_reassignments_preserve_numeric_overload_identity() {
+    assert_eq!(
+        run(
+            "def pick(x: Long) { 'long' }\ndef pick(x: Integer) { 'integer' }\n\
+             def typed(x: Integer) { x = 7L;\n { x += 2L }.call()\n pick(x) }\n\
+             def f() { def count: Integer = 5L;\n { count = 8L }.call()\n\
+             [pick(count), typed(1), { value: Integer -> value = 2L\n pick(value) }.call(1)] }"
+        ),
+        "[integer, integer, integer]"
+    );
+}
+
+#[test]
+fn typed_loop_and_module_variables_preserve_scalar_types() {
+    assert_eq!(
+        run(
+            "def f() { def result = []\n for (String item in [5, 6]) { result << item + 1 }\n\
+             for (Integer item in [7L]) { result << item.getClass().getSimpleName() }\n result }"
+        ),
+        "[51, 61, Integer]"
+    );
+    let source = "String label = 5\ndef f() { def initial = label + 1;\n\
+                  { label = 7 }.call()\n [initial, label + 1] }";
+    let parsed = parse_script(source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let module = Rc::new(lower_module(&parsed.tree, source).expect("lowers"));
+    let mut output = Output::default();
+    let mut interpreter = Interpreter::new(&mut output);
+    interpreter.start_statements(&module).unwrap();
+    assert_eq!(
+        interpreter
+            .call_function(&module, "f", Vec::new())
+            .unwrap()
+            .to_string(),
+        "[51, 71]"
+    );
+}
+
+#[test]
 fn closures_share_captured_variables() {
     let source = "def f() {\n def n = 10\n def c = { v -> v + n }\n n = 20\n c.call(1)\n}";
     assert_eq!(run(source), "21");

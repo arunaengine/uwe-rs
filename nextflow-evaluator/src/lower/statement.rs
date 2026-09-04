@@ -37,6 +37,7 @@ impl Lowering<'_> {
             Kind::Expression(expression) => StatementKind::Expression(self.expression(expression)),
             Kind::Declaration {
                 names,
+                legacy_type,
                 initializer,
                 destructure,
                 ..
@@ -44,10 +45,19 @@ impl Lowering<'_> {
                 let value = initializer.as_ref().map(|value| self.expression(value));
                 let slots = names
                     .iter()
-                    .map(|typed| self.declare(&typed.name))
+                    .map(|typed| {
+                        self.declare_typed(
+                            &typed.name,
+                            typed.annotation.as_ref().or(legacy_type.as_ref()),
+                        )
+                    })
                     .collect();
                 StatementKind::Declare {
                     slots,
+                    classes: names
+                        .iter()
+                        .map(|typed| self.scopes.class(&typed.name.text))
+                        .collect(),
                     value,
                     destructure: *destructure,
                 }
@@ -90,7 +100,14 @@ impl Lowering<'_> {
                     .iter()
                     .map(|name| self.assigned_variable(&name.text, name.span))
                     .collect::<Option<Vec<Place>>>()?;
-                StatementKind::Destructure { places, value }
+                StatementKind::Destructure {
+                    places,
+                    classes: names
+                        .iter()
+                        .map(|name| self.scopes.class(&name.text))
+                        .collect(),
+                    value,
+                }
             }
             Kind::If {
                 condition,
@@ -121,15 +138,22 @@ impl Lowering<'_> {
             Kind::Labeled { statement, .. } => return self.statement(statement),
             Kind::ForIn {
                 variable,
+                annotation,
                 items,
                 body,
             } => {
                 let items = self.expression(items);
                 self.scopes.push_block();
-                let slot = self.declare(variable);
+                let slot = self.declare_typed(variable, annotation.as_ref());
+                let class = self.scopes.class(&variable.text);
                 let body = self.block(body);
                 self.scopes.pop_block();
-                StatementKind::ForIn { slot, items, body }
+                StatementKind::ForIn {
+                    slot,
+                    class,
+                    items,
+                    body,
+                }
             }
             // The variables of the first part belong to the loop.
             Kind::For {
@@ -258,7 +282,7 @@ impl Lowering<'_> {
             }
             Syntax::Variable(name) => self
                 .assigned_variable(name, target.span)
-                .map(Target::Variable),
+                .map(|place| self.variable_target(name, place)),
             Syntax::Property {
                 target: object,
                 name,
@@ -278,6 +302,13 @@ impl Lowering<'_> {
                 self.error("Invalid assignment target", target.span);
                 None
             }
+        }
+    }
+
+    pub(super) fn variable_target(&self, name: &str, place: Place) -> Target {
+        match self.scopes.class(name) {
+            Some(class) => Target::TypedVariable { place, class },
+            None => Target::Variable(place),
         }
     }
 

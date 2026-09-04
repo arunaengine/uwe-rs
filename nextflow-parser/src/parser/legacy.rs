@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use super::{Failed, Parse, Parser};
-use crate::ast::{Expression, ExpressionKind, Name, StatementKind, SwitchCase};
+use crate::ast::{Expression, ExpressionKind, Name, StatementKind, SwitchCase, Type};
 use crate::token::TokenKind;
 
 impl Parser<'_> {
@@ -143,7 +143,7 @@ impl Parser<'_> {
     fn for_statement(&mut self) -> Parse<StatementKind> {
         self.expect(TokenKind::LeftParen, "'(' after 'for'")?;
         self.skip_newlines();
-        if let Some(variable) = self.speculate(Self::for_variable) {
+        if let Some((variable, annotation)) = self.speculate(Self::for_variable) {
             let items = self.in_brackets(Self::expression)?;
             self.skip_newlines();
             self.expect(TokenKind::RightParen, "')'")?;
@@ -151,6 +151,7 @@ impl Parser<'_> {
             let body = self.statement_or_block()?;
             return Ok(StatementKind::ForIn {
                 variable,
+                annotation,
                 items,
                 body,
             });
@@ -187,17 +188,20 @@ impl Parser<'_> {
 
     /// The variable of `for (x in items)`, `for (def x in items)`, `for (Type x in items)` or
     /// `for (Type x : items)`, up to and with `in` or `:`.
-    fn for_variable(&mut self) -> Parse<Name> {
+    fn for_variable(&mut self) -> Parse<(Name, Option<Type>)> {
         self.eat(TokenKind::Def);
-        if !(self.at_name() && matches!(self.nth(1), TokenKind::In | TokenKind::Colon)) {
-            self.legacy_type()?;
-        }
+        let annotation =
+            if self.at_name() && matches!(self.nth(1), TokenKind::In | TokenKind::Colon) {
+                None
+            } else {
+                Some(self.legacy_type()?)
+            };
         let name = self.variable_name()?;
         if !(self.eat(TokenKind::In) || self.eat(TokenKind::Colon)) {
             return Err(Failed);
         }
         self.skip_newlines();
-        Ok(name)
+        Ok((name, annotation))
     }
 
     /// `x++` or `x--` after the operand `expression`: two touching `+` or `-` that no operand

@@ -129,7 +129,7 @@ impl Lowering<'_> {
         let place = self.assigned_variable(variable, span)?;
         Some(Statement {
             kind: StatementKind::Assign {
-                target: Target::Variable(place),
+                target: self.variable_target(variable, place),
                 value,
             },
             span: statement.span,

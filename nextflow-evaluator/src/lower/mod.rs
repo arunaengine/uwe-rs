@@ -204,8 +204,8 @@ pub fn lower_script(
         for statement in &statements {
             script_variables(statement, true, &mut names);
         }
-        for name in names {
-            lowering.scopes.declare_module(&name);
+        for (name, class) in names {
+            lowering.scopes.declare_module(&name, class);
         }
     }
     for item in &script.items {
@@ -437,7 +437,7 @@ impl<'a> Lowering<'a> {
                     .default
                     .as_ref()
                     .map(|value| self.expression(value));
-                let slot = self.declare(&parameter.name);
+                let slot = self.declare_typed(&parameter.name, parameter.annotation.as_ref());
                 Parameter {
                     name: parameter.name.text.as_str().into(),
                     class: parameter.annotation.as_ref().and_then(class::simple_type),
@@ -720,6 +720,13 @@ impl<'a> Lowering<'a> {
         self.declare_as(name, false)
     }
 
+    fn declare_typed(&mut self, name: &ast::Name, annotation: Option<&ast::Type>) -> usize {
+        let slot = self.declare(name);
+        self.scopes
+            .annotate(slot, annotation.and_then(class::simple_type));
+        slot
+    }
+
     /// Declares a variable; `binding` marks a name that the legacy parser keeps in a binding,
     /// like a process input or a take, which legacy code may hide with a local of the same name.
     fn declare_as(&mut self, name: &ast::Name, binding: bool) -> usize {
@@ -739,33 +746,46 @@ impl<'a> Lowering<'a> {
 /// The variables of the script that a top-level statement declares with `def`, or assigns
 /// outside closures, as Groovy's script binding keeps them. A `ch.set { x }` outside closures
 /// also assigns `x`, as Nextflow's `set` sets the variable in the binding.
-fn script_variables(statement: &ast::Statement, top: bool, names: &mut Vec<String>) {
+fn script_variables(
+    statement: &ast::Statement,
+    top: bool,
+    names: &mut Vec<(String, Option<Rc<str>>)>,
+) {
     use ast::StatementKind as Kind;
-    let mut add = |name: &str| {
+    let mut add = |name: &str, class: Option<Rc<str>>| {
         let constant =
             names::SCRIPT_CONSTANTS.contains(&name) || names::ENTRY_CONSTANTS.contains(&name);
         if !constant {
-            names.push(name.to_owned());
+            names.push((name.to_owned(), class));
         }
     };
     match &statement.kind {
         Kind::Declaration {
-            names: declared, ..
+            names: declared,
+            legacy_type,
+            ..
         } if top => {
             for typed in declared {
-                add(&typed.name.text);
+                add(
+                    &typed.name.text,
+                    typed
+                        .annotation
+                        .as_ref()
+                        .or(legacy_type.as_ref())
+                        .and_then(class::simple_type),
+                );
             }
         }
         Kind::Assign { target, .. } => {
             if let ast::ExpressionKind::Variable(name) = &target.kind {
-                add(name);
+                add(name, None);
             }
         }
         Kind::MultipleAssign {
             names: assigned, ..
         } => {
             for name in assigned {
-                add(&name.text);
+                add(&name.text, None);
             }
         }
         Kind::If {
@@ -790,7 +810,7 @@ fn script_variables(statement: &ast::Statement, top: bool, names: &mut Vec<Strin
         Kind::Labeled { statement, .. } => script_variables(statement, top, names),
         Kind::Expression(_) => {
             if let Some((_, name, _)) = workflow::set_parts(statement) {
-                add(name);
+                add(name, None);
             }
         }
         _ => {}

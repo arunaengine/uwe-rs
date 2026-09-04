@@ -346,7 +346,7 @@ impl Lowering<'_> {
             Some(list) => list
                 .iter()
                 .map(|parameter| {
-                    let slot = self.declare(&parameter.name);
+                    let slot = self.declare_typed(&parameter.name, parameter.annotation.as_ref());
                     let default = parameter
                         .default
                         .as_ref()

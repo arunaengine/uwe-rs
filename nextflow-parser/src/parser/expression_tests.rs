@@ -284,6 +284,7 @@ pub(in crate::parser) fn render_statement(statement: &Statement) -> String {
             variable,
             items,
             body,
+            ..
         } => format!(
             "(for {} {} {})",
             variable.text,

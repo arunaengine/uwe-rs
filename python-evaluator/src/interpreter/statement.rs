@@ -155,20 +155,9 @@ impl Interpreter {
 
     fn exec_for(&mut self, frame: &Frame, each: &ast::StmtFor) -> Result<Flow, Error> {
         let iterable = self.eval(frame, &each.iter)?;
-        // Ranges and iterators are walked lazily; everything else is read at once.
-        let mut lazy = match iterable.plain() {
-            Value::Range(_) | Value::Iterator(_) => Some(self.make_iterator(&iterable)?),
-            _ => None,
-        };
-        let mut items = match &lazy {
-            Some(_) => Vec::new().into_iter(),
-            None => self.iterate(&iterable)?.into_iter(),
-        };
+        let iterator = self.make_iterator(&iterable)?;
         loop {
-            let item = match &mut lazy {
-                Some(iterator) => self.next_item(iterator)?,
-                _ => items.next(),
-            };
+            let item = self.next_item(&iterator)?;
             let Some(item) = item else {
                 return self.exec_suite(frame, &each.orelse);
             };
@@ -180,10 +169,6 @@ impl Interpreter {
                 Flow::Next | Flow::Continue => {}
             }
         }
-        if lazy.is_some() {
-            lazy = None;
-        }
-        let _ = lazy;
         Ok(Flow::Next)
     }
 

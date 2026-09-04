@@ -826,10 +826,56 @@ impl Interpreter {
         state.next_value(self)
     }
 
+    fn protocol_iterator(&mut self, value: &Value) -> Result<Value, Error> {
+        let next = match value.plain() {
+            Value::Iterator(_) => return Ok(value.plain().clone()),
+            Value::Instance(_) => self.lookup_special(value, "__next__"),
+            Value::Native(object) => object.clone().get_attribute(self, value, "__next__")?,
+            _ => None,
+        };
+        match next {
+            Some(next) => Ok(Value::Iterator(Rc::new(RefCell::new(Iter::Protocol(next))))),
+            None => Err(Error::type_error("iter() returned non-iterator")),
+        }
+    }
+
     /// `iter(value)`: an iterator that yields items one by one.
     pub fn make_iterator(&mut self, value: &Value) -> Result<Value, Error> {
         match value.plain() {
             Value::Iterator(_) => Ok(value.plain().clone()),
+            Value::List(items) => Ok(Value::Iterator(Rc::new(RefCell::new(Iter::List {
+                items: items.clone(),
+                index: 0,
+                exhausted: false,
+            })))),
+            Value::Instance(_) => {
+                if let Some(method) = self.lookup_special(value, "__iter__") {
+                    let iterator = self.call(&method, Args::default())?;
+                    return self.protocol_iterator(&iterator);
+                }
+                if let Some(get) = self.lookup_special(value, "__getitem__") {
+                    return Ok(Value::Iterator(Rc::new(RefCell::new(Iter::Sequence {
+                        get,
+                        index: 0,
+                        exhausted: false,
+                    }))));
+                }
+                Err(Error::type_error(format!(
+                    "'{}' object is not iterable",
+                    types::type_name(value)
+                )))
+            }
+            Value::Native(object) => {
+                let object = object.clone();
+                if let Some(method) = object.get_attribute(self, value, "__iter__")? {
+                    let iterator = self.call(&method, Args::default())?;
+                    return self.protocol_iterator(&iterator);
+                }
+                if let Some(next) = object.get_attribute(self, value, "__next__")? {
+                    return Ok(Value::Iterator(Rc::new(RefCell::new(Iter::Protocol(next)))));
+                }
+                Ok(Value::iterator(self.iterate(value)?))
+            }
             Value::Range(range) => Ok(Value::Iterator(Rc::new(RefCell::new(Iter::Range {
                 next: range.start,
                 stop: range.stop,

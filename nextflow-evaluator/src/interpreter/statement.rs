@@ -76,6 +76,7 @@ impl Interpreter<'_> {
             StatementKind::Expression(expression) => self.expression(frame, expression)?,
             StatementKind::Declare {
                 slots,
+                classes,
                 value,
                 destructure,
             } => {
@@ -86,18 +87,20 @@ impl Interpreter<'_> {
                 if *destructure {
                     for (index, slot) in slots.iter().enumerate() {
                         let item = self.element(&value, index, span)?;
+                        let item = self.convert(item, classes[index].as_deref(), span)?;
                         frame.set(Place::Local(*slot), item);
                     }
                 } else if let Some(slot) = slots.first() {
+                    let value = self.convert(value, classes[0].as_deref(), span)?;
                     frame.set(Place::Local(*slot), value.clone());
+                    return Ok(Completion::Normal(value));
                 }
                 value
             }
             StatementKind::Assign { target, value } => {
                 let value = self.expression(frame, value)?;
                 let target = self.target(frame, target)?;
-                self.store(frame, &target, value.clone(), span)?;
-                value
+                self.store(frame, &target, value, span)?
             }
             StatementKind::Update {
                 target,
@@ -114,13 +117,17 @@ impl Interpreter<'_> {
                         current.apply(*operator, &right).at(span)?
                     }
                 };
-                self.store(frame, &target, value.clone(), span)?;
-                value
+                self.store(frame, &target, value, span)?
             }
-            StatementKind::Destructure { places, value } => {
+            StatementKind::Destructure {
+                places,
+                classes,
+                value,
+            } => {
                 let value = self.expression(frame, value)?;
                 for (index, place) in places.iter().enumerate() {
                     let item = self.element(&value, index, span)?;
+                    let item = self.convert(item, classes[index].as_deref(), span)?;
                     frame.set(*place, item);
                 }
                 value
@@ -186,9 +193,15 @@ impl Interpreter<'_> {
                     ),
                 });
             }
-            StatementKind::ForIn { slot, items, body } => {
+            StatementKind::ForIn {
+                slot,
+                class,
+                items,
+                body,
+            } => {
                 let items = self.expression(frame, items)?;
                 for item in self.loop_items(&items, span)? {
+                    let item = self.convert(item, class.as_deref(), span)?;
                     frame.set(Place::Local(*slot), item);
                     match self.block(frame, body)? {
                         Completion::Break => break,
@@ -400,8 +413,7 @@ impl Interpreter<'_> {
                 }
             }
         };
-        self.store(frame, &target, result.clone(), span)?;
-        Ok(result)
+        self.store(frame, &target, result, span)
     }
 
     /// `x++` or `x--` of legacy code: adds or subtracts one, and gives the value before.
@@ -427,7 +439,10 @@ impl Interpreter<'_> {
     /// Evaluates the parts of an assignment target that must only run once.
     fn target(&mut self, frame: &mut Frame, target: &Target) -> Result<Resolved, Error> {
         Ok(match target {
-            Target::Variable(place) => Resolved::Variable(*place),
+            Target::Variable(place) => Resolved::Variable(*place, None),
+            Target::TypedVariable { place, class } => {
+                Resolved::Variable(*place, Some(class.clone()))
+            }
             Target::Property { target, name } => {
                 Resolved::Property(self.expression(frame, target)?, name.clone())
             }
@@ -440,7 +455,7 @@ impl Interpreter<'_> {
 
     fn load(&mut self, frame: &Frame, target: &Resolved, span: Span) -> Result<Value, Error> {
         match target {
-            Resolved::Variable(place) => frame.read(*place, span),
+            Resolved::Variable(place, _) => frame.read(*place, span),
             Resolved::Property(object, name) => self.property(object, name, span),
             Resolved::Index(object, index) => self.index(object, std::slice::from_ref(index), span),
         }
@@ -452,14 +467,21 @@ impl Interpreter<'_> {
         target: &Resolved,
         value: Value,
         span: Span,
-    ) -> Result<(), Error> {
+    ) -> Result<Value, Error> {
         match target {
-            Resolved::Variable(place) => {
-                frame.set(*place, value);
-                Ok(())
+            Resolved::Variable(place, class) => {
+                let value = self.convert(value, class.as_deref(), span)?;
+                frame.set(*place, value.clone());
+                Ok(value)
             }
-            Resolved::Property(object, name) => self.set_property(object, name, value, span),
-            Resolved::Index(object, index) => self.set_index(object, index, value, span),
+            Resolved::Property(object, name) => {
+                self.set_property(object, name, value.clone(), span)?;
+                Ok(value)
+            }
+            Resolved::Index(object, index) => {
+                self.set_index(object, index, value.clone(), span)?;
+                Ok(value)
+            }
         }
     }
 
@@ -472,7 +494,7 @@ impl Interpreter<'_> {
 
 /// An assignment target whose object and index are evaluated.
 enum Resolved {
-    Variable(Place),
+    Variable(Place, Option<Rc<str>>),
     Property(Value, Rc<str>),
     Index(Value, Value),
 }

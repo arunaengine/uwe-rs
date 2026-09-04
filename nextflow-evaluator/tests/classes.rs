@@ -212,6 +212,17 @@ fn class_numeric_overloads_use_specificity_in_both_orders() {
 }
 
 #[test]
+fn class_parameter_writes_and_captures_keep_declared_scalar_types() {
+    assert_eq!(
+        run("class Typed { static value(Integer count) { count = 5L;\n\
+             { count += 2L }.call()\n count.getClass().getSimpleName() } }\n\
+             def f() { Typed.value(1) }")
+        .unwrap(),
+        "Integer"
+    );
+}
+
+#[test]
 fn static_import_aliases_keep_the_original_member() {
     let source = "import static java.lang.Math.max as min\n\
                   import static java.lang.Math.min as smallest\n\

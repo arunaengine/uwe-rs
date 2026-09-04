@@ -335,6 +335,7 @@ pub enum StatementKind {
     /// `def x = value` or `def (a, b) = value`; without a value the variables are `null`.
     Declare {
         slots: Vec<Slot>,
+        classes: Vec<Option<Rc<str>>>,
         value: Option<Expression>,
         destructure: bool,
     },
@@ -351,6 +352,7 @@ pub enum StatementKind {
     /// `(a, b) = value`
     Destructure {
         places: Vec<Place>,
+        classes: Vec<Option<Rc<str>>>,
         value: Expression,
     },
     If {
@@ -373,6 +375,7 @@ pub enum StatementKind {
     /// `for (x in items)` of legacy code: each element goes to the slot in turn.
     ForIn {
         slot: Slot,
+        class: Option<Rc<str>>,
         items: Expression,
         body: Vec<Statement>,
     },
@@ -430,6 +433,10 @@ pub enum Update {
 #[derive(Debug)]
 pub enum Target {
     Variable(Place),
+    TypedVariable {
+        place: Place,
+        class: Rc<str>,
+    },
     Property {
         target: Expression,
         name: Rc<str>,

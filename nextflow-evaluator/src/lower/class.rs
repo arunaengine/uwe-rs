@@ -207,7 +207,7 @@ impl Lowering<'_> {
                 .default
                 .as_ref()
                 .map(|value| self.expression(value));
-            let slot = self.declare(&parameter.name);
+            let slot = self.declare_typed(&parameter.name, parameter.annotation.as_ref());
             parameters.push(Parameter {
                 name: parameter.name.text.as_str().into(),
                 class: parameter.annotation.as_ref().and_then(simple_type),

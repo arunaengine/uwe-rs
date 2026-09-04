@@ -36,6 +36,8 @@ pub struct PythonStart {
     /// The PyPI packages of the first import, to install before the script runs, with the
     /// versions that the workflow pins, like `yatiml==0.7`.
     pub packages: Vec<String>,
+    /// All workflow requirements, including constraints on transitive dependencies.
+    pub constraints: Vec<String>,
     /// The working directory of the interpreter, where the process runs.
     pub cwd: PathBuf,
 }
@@ -77,6 +79,7 @@ pub struct Packages {
     /// The requirements of the workflow's own environment file by package name, like
     /// `yatiml==0.7`, which are installed instead of the newest version.
     pins: RefCell<HashMap<String, String>>,
+    constraints: RefCell<Vec<String>>,
 }
 
 impl Packages {
@@ -87,9 +90,13 @@ impl Packages {
     /// Takes the requirements of the workflow's own environment file, like `yatiml==0.7`.
     pub fn set_pins(&self, requirements: Vec<String>) {
         let mut pins = self.pins.borrow_mut();
+        let mut constraints = self.constraints.borrow_mut();
         for requirement in requirements {
+            constraints.push(requirement.clone());
             pins.insert(pins::normalized(pins::name_of(&requirement)), requirement);
         }
+        constraints.sort();
+        constraints.dedup();
     }
 
     pub fn is_running(&self) -> bool {
@@ -160,6 +167,7 @@ impl Packages {
             let start = PythonStart {
                 script: SERVER,
                 packages: packages.clone(),
+                constraints: self.constraints.borrow().clone(),
                 cwd: interpreter.host.cwd(),
             };
             let process = starter.start(&start).map_err(|reason| {
@@ -268,5 +276,37 @@ impl Interpreter {
         let module = packages.import(self, name)?;
         self.modules.insert(name.to_owned(), module.clone());
         Ok(module)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_import_receives_all_workflow_constraints() {
+        struct Starter(Rc<RefCell<Option<PythonStart>>>);
+        impl PythonStarter for Starter {
+            fn start(&self, start: &PythonStart) -> Result<Box<dyn PythonProcess>, String> {
+                *self.0.borrow_mut() = Some(start.clone());
+                Err("captured settings".into())
+            }
+        }
+        let mut interpreter =
+            Interpreter::new(Rc::new(crate::LocalHost::new(std::env::temp_dir())));
+        let captured = Rc::new(RefCell::new(None));
+        let packages = interpreter.packages.clone();
+        packages.set_starter(Rc::new(Starter(captured.clone())));
+        packages.set_pins(vec![
+            "Toy>=1".into(),
+            "transitive==2".into(),
+            "Toy<3".into(),
+            "Toy<3".into(),
+        ]);
+        assert!(packages.import(&mut interpreter, "toy").is_err());
+        let captured = captured.borrow();
+        let start = captured.as_ref().unwrap();
+        assert_eq!(start.packages, ["Toy<3"]);
+        assert_eq!(start.constraints, ["Toy<3", "Toy>=1", "transitive==2"]);
     }
 }

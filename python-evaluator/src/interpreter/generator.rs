@@ -20,6 +20,7 @@ enum Task {
     While(Rc<ast::StmtWhile>),
     Delegate(Value),
     Assign(Vec<Expr>),
+    Comprehension(Rc<ast::ExprGenerator>, usize, Value),
 }
 
 pub struct Generator {
@@ -32,6 +33,21 @@ impl Generator {
         Self {
             frame,
             tasks: vec![Task::Suite(Rc::new(body.to_vec()), 0)],
+        }
+    }
+
+    pub(super) fn expression(
+        frame: Frame,
+        expression: &ast::ExprGenerator,
+        iterator: Value,
+    ) -> Self {
+        Self {
+            frame,
+            tasks: vec![Task::Comprehension(
+                Rc::new(expression.clone()),
+                0,
+                iterator,
+            )],
         }
     }
 
@@ -105,6 +121,39 @@ impl Generator {
                     if let Some(item) = interpreter.next_item(&iterator)? {
                         self.tasks.push(Task::Delegate(iterator));
                         return Ok(Some(item));
+                    }
+                }
+                Task::Comprehension(expression, level, iterator) => {
+                    let clause = &expression.generators[level];
+                    let Some(item) = interpreter.next_item(&iterator)? else {
+                        continue;
+                    };
+                    interpreter.count_step()?;
+                    interpreter.assign(&self.frame, &clause.target, item)?;
+                    self.tasks
+                        .push(Task::Comprehension(expression.clone(), level, iterator));
+                    let mut accepted = true;
+                    for condition in &clause.ifs {
+                        let value = interpreter.eval(&self.frame, condition)?;
+                        if !interpreter.truthy(&value)? {
+                            accepted = false;
+                            break;
+                        }
+                    }
+                    if !accepted {
+                        continue;
+                    }
+                    match expression.generators.get(level + 1) {
+                        Some(inner) => {
+                            let value = interpreter.eval(&self.frame, &inner.iter)?;
+                            let iterator = interpreter.make_iterator(&value)?;
+                            self.tasks.push(Task::Comprehension(
+                                expression.clone(),
+                                level + 1,
+                                iterator,
+                            ));
+                        }
+                        None => return interpreter.eval(&self.frame, &expression.elt).map(Some),
                     }
                 }
                 Task::Assign(targets) => {

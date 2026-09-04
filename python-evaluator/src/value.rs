@@ -545,10 +545,21 @@ impl Scope {
     }
 }
 
-/// The state of an iterator; items are computed ahead except for counting ones.
+/// The state of an iterator, including suspended and protocol-driven sources.
 pub enum Iter {
     Generator(Box<crate::interpreter::generator::Generator>),
     Items(VecDeque<Value>),
+    List {
+        items: Rc<RefCell<Vec<Value>>>,
+        index: usize,
+        exhausted: bool,
+    },
+    Protocol(Value),
+    Sequence {
+        get: Value,
+        index: i64,
+        exhausted: bool,
+    },
     Range {
         next: i64,
         stop: i64,
@@ -567,6 +578,47 @@ impl Iter {
         Ok(match self {
             Iter::Generator(generator) => return generator.next(interpreter),
             Iter::Items(items) => items.pop_front(),
+            Iter::List {
+                items,
+                index,
+                exhausted,
+            } => {
+                if *exhausted {
+                    return Ok(None);
+                }
+                let item = items.borrow().get(*index).cloned();
+                if item.is_some() {
+                    *index += 1;
+                } else {
+                    *exhausted = true;
+                }
+                item
+            }
+            Iter::Protocol(next) => match interpreter.call(next, Args::default()) {
+                Ok(value) => Some(value),
+                Err(error) if error.is("StopIteration") => None,
+                Err(error) => return Err(error),
+            },
+            Iter::Sequence {
+                get,
+                index,
+                exhausted,
+            } => {
+                if *exhausted {
+                    return Ok(None);
+                }
+                match interpreter.call(get, Args::new(vec![Value::Int(*index)])) {
+                    Ok(value) => {
+                        *index += 1;
+                        Some(value)
+                    }
+                    Err(error) if error.is("IndexError") || error.is("StopIteration") => {
+                        *exhausted = true;
+                        None
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
             Iter::Range { next, stop, step } => {
                 if (*step > 0 && *next < *stop) || (*step < 0 && *next > *stop) {
                     let value = *next;

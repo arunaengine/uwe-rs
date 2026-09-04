@@ -322,3 +322,52 @@ fn every_generator_consumer_refuses_reentrant_advancement() {
         assert!(error.to_string().contains("generator already executing"));
     }
 }
+
+#[test]
+fn generator_expressions_suspend_filters_inner_iterables_and_errors() {
+    let output = evaluate(
+        "events = []\nclass Source:\n    def __init__(self):\n        self.position = 0\n    def __iter__(self):\n        events.append('iter')\n        return self\n    def __next__(self):\n        events.append('next')\n        if self.position == 2:\n            raise ValueError('tail')\n        value = self.position\n        self.position += 1\n        return value\ndef accept(x):\n    events.append(('filter', x))\n    return x == 0\ndef inner(x):\n    events.append(('inner', x))\n    return [x, x + 10]\ndef record(x):\n    events.append(('value', x))\n    return x\ng = (record(y) for x in Source() if accept(x) for y in inner(x) if y < 11)\nprint(events)\nprint(next(g), events)\nprint(next(g), events)\ntry:\n    next(g)\nexcept ValueError as error:\n    print(error, events)\nprint(next(g, 'end'))\n",
+    ).expect("lazy generator expression");
+    assert_eq!(
+        output,
+        "['iter']\n0 ['iter', 'next', ('filter', 0), ('inner', 0), ('value', 0)]\n10 ['iter', 'next', ('filter', 0), ('inner', 0), ('value', 0), ('value', 10)]\ntail ['iter', 'next', ('filter', 0), ('inner', 0), ('value', 0), ('value', 10), 'next', ('filter', 1), 'next']\nend\n"
+    );
+}
+
+#[test]
+fn generator_expressions_capture_outer_iterators_and_live_bindings() {
+    let output = evaluate(
+        "items = [1]\ncaptured = items\nfactor = 2\ng = (factor * x for x in items)\nitems = [99]\ncaptured.append(2)\nfactor = 3\nprint(next(g), next(g))\nfactor = 4\ncaptured.append(3)\nprint(next(g))\nprint(next(g, 'end'))\ncaptured.append(4)\nprint(next(g, 'end'))\ndef make():\n    scale = 2\n    g = (scale * x for x in [3])\n    scale = 4\n    return g\nprint(next(make()))\n",
+    ).expect("outer capture and closures");
+    assert_eq!(output, "3 6\n12\nend\nend\n12\n");
+}
+
+#[test]
+fn custom_iterators_stop_after_short_circuit_and_loop_break() {
+    let output = evaluate(
+        "events = []\nclass Source:\n    def __init__(self, first):\n        self.first = first\n        self.used = False\n    def __iter__(self):\n        events.append('iter')\n        return self\n    def __next__(self):\n        events.append('next')\n        if self.used:\n            raise ValueError('unconsumed')\n        self.used = True\n        return self.first\nprint(any(Source(1)), all(Source(0)))\nfor value in Source(7):\n    print(value)\n    break\nprint(events)\nprint(any(x for x in Source(1)), all(x for x in Source(0)))\n",
+    ).expect("lazy custom iteration");
+    assert_eq!(
+        output,
+        "True False\n7\n['iter', 'next', 'iter', 'next', 'iter', 'next']\nTrue False\n"
+    );
+}
+
+#[test]
+fn sequence_iteration_and_list_mutation_remain_lazy() {
+    let output = evaluate(
+        "events = []\nclass Sequence:\n    def __getitem__(self, index):\n        events.append(index)\n        if index == 2:\n            raise IndexError('end')\n        return index + 1\ng = (x for x in Sequence())\nprint(events)\nprint(next(g), events)\nprint(next(g), events)\nprint(next(g, None), events)\nitems = [1]\nfor item in items:\n    print(item)\n    if item == 1:\n        items.append(2)\nit = iter(items)\nprint(list(it))\nitems.append(3)\nprint(next(it, 'end'))\n",
+    ).expect("lazy sequence and live list");
+    assert_eq!(
+        output,
+        "[]\n1 [0]\n2 [0, 1]\nNone [0, 1, 2]\n1\n2\n[1, 2]\nend\n"
+    );
+}
+
+#[test]
+fn generator_expression_outer_protocol_errors_happen_at_creation() {
+    let output = evaluate(
+        "class Broken:\n    def __iter__(self):\n        raise ValueError('create')\ntry:\n    g = (x for x in Broken())\nexcept ValueError as error:\n    print(error)\nclass Invalid:\n    def __iter__(self):\n        return [1]\ntry:\n    g = (x for x in Invalid())\nexcept TypeError as error:\n    print(error)\n",
+    ).expect("outer protocol checks");
+    assert_eq!(output, "create\niter() returned non-iterator\n");
+}

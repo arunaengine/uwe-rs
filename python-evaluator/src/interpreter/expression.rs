@@ -160,12 +160,28 @@ impl Interpreter {
                 Value::list(items)
             }
             Expr::Generator(generator) => {
-                let mut items = Vec::new();
-                self.comprehension(frame, &generator.generators, &mut |this, inner| {
-                    items.push(this.eval(inner, &generator.elt)?);
-                    Ok(())
-                })?;
-                Value::iterator(items)
+                if generator.generators.iter().any(|clause| clause.is_async) {
+                    return Err(Error::unsupported("asynchronous generator expressions"));
+                }
+                let Some(first) = generator.generators.first() else {
+                    return Err(Error::unsupported("generator expressions without clauses"));
+                };
+                let value = self.eval(frame, &first.iter)?;
+                let iterator = self.make_iterator(&value)?;
+                let inner = Frame {
+                    locals: Scope::new(frame.closure()),
+                    globals: frame.globals.clone(),
+                    source: frame.source.clone(),
+                    kind: FrameKind::Comprehension,
+                    declared: Rc::new(Declared::default()),
+                    yields: None,
+                    method: frame.method.clone(),
+                };
+                Value::Iterator(Rc::new(RefCell::new(crate::value::Iter::Generator(
+                    Box::new(super::generator::Generator::expression(
+                        inner, generator, iterator,
+                    )),
+                ))))
             }
             Expr::SetComp(comprehension) => {
                 let mut items = IndexSet::new();

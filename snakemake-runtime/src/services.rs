@@ -38,12 +38,20 @@ pub(crate) fn combine(members: &[Task], services: &[String], id: TaskId) -> Resu
         ));
     }
     let is_service = |path: &str| services.iter().any(|file| file == path);
+    let internal = |path: &str| {
+        members.iter().any(|member| {
+            member
+                .outputs
+                .iter()
+                .any(|output| output.trim_end_matches('/') == path.trim_end_matches('/'))
+        })
+    };
     let mut inputs: Vec<Input> = Vec::new();
     let mut outputs: Vec<String> = Vec::new();
     let mut after: Vec<TaskId> = Vec::new();
     for task in members {
         for input in &task.inputs {
-            if !is_service(&input.path) && !inputs.iter().any(|known| known.path == input.path) {
+            if !internal(&input.path) && !inputs.iter().any(|known| known.path == input.path) {
                 inputs.push(input.clone());
             }
         }
@@ -82,7 +90,10 @@ pub(crate) fn combine(members: &[Task], services: &[String], id: TaskId) -> Resu
 /// service made its outputs, or ended. It ends with the first failure of these jobs, after it
 /// sent SIGTERM to the service.
 fn script(service: &Task, users: &[Task], services: &[String]) -> String {
-    let mut script = format!("{} &\nservice=$!\n", subshell(service, ""));
+    let mut script = format!(
+        "status_dir=$(mktemp -d) || exit 1\ntrap 'rm -rf \"$status_dir\"' EXIT\n{} &\nservice=$!\n",
+        subshell(service, "")
+    );
     let made: Vec<String> = (services.iter())
         .map(|file| {
             let file = quote(file);
@@ -90,11 +101,17 @@ fn script(service: &Task, users: &[Task], services: &[String]) -> String {
         })
         .collect();
     let wait = format!(
-        "while ! {{ {}; }} && kill -0 \"$service\" 2> /dev/null; do sleep 0.1; done; ",
-        made.join(" && ")
+        "while ! {{ {ready}; }} && kill -0 \"$service\" 2> /dev/null; do sleep 0.1; done; {{ {ready}; }} || exit 1; ",
+        ready = made.join(" && ")
     );
     for (number, task) in users.iter().enumerate() {
-        script.push_str(&format!("{} &\nuser{number}=$!\n", subshell(task, &wait)));
+        let mut before = wait.clone();
+        for (producer, other) in users.iter().enumerate() {
+            if producer != number && depends_on(task, other) {
+                before.push_str(&format!("while [ ! -f \"$status_dir/{producer}\" ]; do sleep 0.1; done; [ \"$(cat \"$status_dir/{producer}\")\" -eq 0 ] || exit 1; "));
+            }
+        }
+        script.push_str(&format!("( {}; code=$?; printf '%s\\n' \"$code\" > \"$status_dir/{number}.part\"; mv \"$status_dir/{number}.part\" \"$status_dir/{number}\"; exit \"$code\" ) &\nuser{number}=$!\n", subshell(task, &before)));
     }
     script.push_str("status=0\n");
     for number in 0..users.len() {
@@ -108,6 +125,15 @@ fn script(service: &Task, users: &[Task], services: &[String]) -> String {
     script
 }
 
+fn depends_on(task: &Task, producer: &Task) -> bool {
+    task.inputs.iter().any(|input| {
+        producer
+            .outputs
+            .iter()
+            .any(|output| output.trim_end_matches('/') == input.path.trim_end_matches('/'))
+    })
+}
+
 /// A subshell that runs the command of a task with its environment, after `before`.
 fn subshell(task: &Task, before: &str) -> String {
     let exports: String = (task.environment.iter())
@@ -118,7 +144,7 @@ fn subshell(task: &Task, before: &str) -> String {
 }
 
 /// What a group asks for: the CPUs and memory of all its jobs, which run at once, and the
-/// longest time of one.
+/// consumer critical path or service budget, whichever is longer.
 fn resources(members: &[Task]) -> Resources {
     let mut sum = Resources::default();
     for task in members {
@@ -131,6 +157,22 @@ fn resources(members: &[Task]) -> Resources {
         sum.disk_bytes = sum.disk_bytes.max(own.disk_bytes);
         sum.time_seconds = sum.time_seconds.max(own.time_seconds);
         sum.gpus = sum.gpus.max(own.gpus);
+    }
+    let mut finishes: Vec<(usize, u64)> = Vec::new();
+    for (index, task) in members.iter().enumerate().skip(1) {
+        let Some(own) = task.resources.time_seconds else {
+            sum.time_seconds = None;
+            return sum;
+        };
+        let previous = finishes
+            .iter()
+            .filter(|(producer, _)| depends_on(task, &members[*producer]))
+            .map(|(_, time)| *time)
+            .max()
+            .unwrap_or(0);
+        let finish = previous.saturating_add(own);
+        finishes.push((index, finish));
+        sum.time_seconds = sum.time_seconds.max(Some(finish));
     }
     sum
 }
@@ -183,7 +225,7 @@ mod tests {
         assert_eq!(group.resources.cpus, Some(3.0));
         let script = &group.command[2];
         assert!(
-            script.starts_with(
+            script.contains(
                 "( exec bash -c 'ln -s /dev/random foo.socket; sleep 10000' ) &\nservice=$!\n"
             ),
             "{script}"
@@ -202,5 +244,32 @@ mod tests {
         user.image = Some("other".into());
         let error = combine(&[service, user], &["s".to_owned()], TaskId(1)).unwrap_err();
         assert!(error.contains("same container image"), "{error}");
+    }
+
+    #[test]
+    fn group_deadlines_cover_consumer_paths_and_the_service_budget() {
+        let mut server = task("server", "true", &[], &["socket"]);
+        server.resources.time_seconds = Some(15);
+        let mut first = task("first", "true", &["socket"], &["first"]);
+        first.resources.time_seconds = Some(10);
+        let mut independent = task("independent", "true", &["socket"], &["second"]);
+        independent.resources.time_seconds = Some(10);
+        let mut dependent = task("dependent", "true", &["socket", "first"], &["last"]);
+        dependent.resources.time_seconds = Some(10);
+        assert_eq!(
+            resources(&[server.clone(), first.clone(), independent]).time_seconds,
+            Some(15)
+        );
+        assert_eq!(
+            resources(&[server.clone(), first.clone(), dependent.clone()]).time_seconds,
+            Some(20)
+        );
+        server.resources.time_seconds = Some(25);
+        assert_eq!(
+            resources(&[server.clone(), first.clone(), dependent.clone()]).time_seconds,
+            Some(25)
+        );
+        dependent.resources.time_seconds = None;
+        assert_eq!(resources(&[server, first, dependent]).time_seconds, None);
     }
 }

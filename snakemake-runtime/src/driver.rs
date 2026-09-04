@@ -498,7 +498,7 @@ impl Session {
             }
             let services = crate::services::service_files(entry);
             if !services.is_empty() {
-                tasks.extend(self.service_group(job, &services)?);
+                tasks.extend(self.service_group(job, &services, None)?);
                 continue;
             }
             let id = TaskId(self.next_task.get());
@@ -704,6 +704,9 @@ impl Session {
         self.outstanding = self.outstanding.saturating_sub(1);
         *self.files.last_output_read.borrow_mut() = None;
         if outcome.exit_code != 0 {
+            if let Some(task) = self.retry_group(&members, outcome.id)? {
+                return Ok(vec![task]);
+            }
             let rules: Vec<String> = (members.iter())
                 .map(|(job, _)| self.rule_name(*job))
                 .collect();
@@ -716,7 +719,7 @@ impl Session {
         }
         let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
         let mut outcomes = Vec::new();
-        for (job, declared) in members {
+        for (job, declared) in &members {
             let mut own = outcome.clone();
             let trimmed = |path: &str| {
                 path.trim_start_matches('/')
@@ -731,11 +734,14 @@ impl Session {
                 })
             });
             if !self.launch.simulated
-                && let Err(error) = self.check_outputs(job, &mut own)
+                && let Err(error) = self.check_outputs(*job, &mut own)
             {
+                if let Some(task) = self.retry_group(&members, outcome.id)? {
+                    return Ok(vec![task]);
+                }
                 return self.failed(error.message);
             }
-            outcomes.push((job, own));
+            outcomes.push((*job, own));
         }
         for (job, own) in outcomes {
             if let Some(message) = self.take_outcome(job, own)? {
@@ -857,26 +863,76 @@ impl Session {
         &mut self,
         job: usize,
         services: &[String],
+        retry: Option<TaskId>,
     ) -> Result<Option<Task>, DriverError> {
         let planner = self.planner.as_ref().expect("a planner");
-        let mut users: Vec<usize> = (self.order.iter().copied())
+        let users: Vec<usize> = (self.order.iter().copied())
             .filter(|user| {
                 (planner.jobs[*user].dependencies.iter())
                     .any(|(file, producer)| *producer == job && services.contains(file))
             })
             .filter(|user| self.needrun.get(user).copied().unwrap_or(false))
             .collect();
-        users.dedup();
+        let mut connected = HashSet::from([job]);
+        for member in &self.order {
+            if planner.jobs[*member]
+                .dependencies
+                .iter()
+                .any(|(_, producer)| connected.contains(producer))
+            {
+                connected.insert(*member);
+            }
+        }
+        let mut required = HashSet::new();
+        let mut pending = users;
+        while let Some(member) = pending.pop() {
+            if required.insert(member) {
+                pending.extend(
+                    planner.jobs[member]
+                        .dependencies
+                        .iter()
+                        .map(|(_, producer)| *producer),
+                );
+            }
+        }
+        let users: Vec<usize> = self
+            .order
+            .iter()
+            .copied()
+            .filter(|member| {
+                *member != job
+                    && connected.contains(member)
+                    && required.contains(member)
+                    && self.needrun.get(member).copied().unwrap_or(false)
+                    && !self.done.contains(member)
+            })
+            .collect();
         let waiting = |user: &usize| {
             planner.jobs[*user].incomplete
-                || self.remaining.get(user).copied().unwrap_or(0) != 1
+                || planner.jobs[*user]
+                    .dependencies
+                    .iter()
+                    .any(|(_, producer)| {
+                        *producer != job
+                            && !users.contains(producer)
+                            && self.needrun.get(producer).copied().unwrap_or(false)
+                            && !self.done.contains(producer)
+                    })
                 || self.tasks.contains_key(user)
         };
-        if users.iter().any(waiting) {
+        if retry.is_none() && users.iter().any(waiting) {
             return Ok(None);
         }
-        let id = TaskId(self.next_task.get());
-        self.next_task.set(id.0 + 1);
+        let id = retry.unwrap_or_else(|| {
+            let id = TaskId(self.next_task.get());
+            self.next_task.set(id.0 + 1);
+            id
+        });
+        let attempt = if retry.is_some() {
+            self.attempts.get(&job).copied().unwrap_or(1) + 1
+        } else {
+            1
+        };
         let mut members = Vec::new();
         let mut declared = Vec::new();
         for member in std::iter::once(job).chain(users) {
@@ -892,13 +948,17 @@ impl Session {
                     embedded: &self.embedded,
                     sources: &self.sources,
                 };
-                crate::task::build(&mut self.interpreter, &setting, &rule, &entry, id, 1)
+                crate::task::build(&mut self.interpreter, &setting, &rule, &entry, id, attempt)
             }
             .map_err(|error| self.error(&error))?;
             declared.push((member, task.outputs.clone()));
             members.push(task);
         }
-        let task = crate::services::combine(&members, services, id).map_err(DriverError::new)?;
+        let mut task =
+            crate::services::combine(&members, services, id).map_err(DriverError::new)?;
+        if retry.is_some() {
+            task.reuse = workflow_graph::Reuse::Denied;
+        }
         for (member, _) in &declared {
             self.planner
                 .as_mut()
@@ -906,12 +966,39 @@ impl Session {
                 .fixed
                 .insert(*member);
             self.tasks.insert(*member, id);
-            self.attempts.insert(*member, 1);
+            self.attempts.insert(*member, attempt);
         }
         self.jobs_of_tasks.insert(id, job);
         self.groups.insert(id, declared);
         self.outstanding += 1;
         Ok(Some(task))
+    }
+
+    fn retry_group(
+        &mut self,
+        members: &[(usize, Vec<String>)],
+        id: TaskId,
+    ) -> Result<Option<Task>, DriverError> {
+        let Some((job, _)) = members.first() else {
+            return Ok(None);
+        };
+        let planner = self.planner.as_ref().expect("a planner");
+        let retries = members
+            .iter()
+            .filter_map(|(member, _)| {
+                planner.rules[planner.jobs[*member].rule]
+                    .retries
+                    .as_ref()
+                    .and_then(Value::as_int)
+            })
+            .max()
+            .unwrap_or(0)
+            .max(0) as u32;
+        if self.attempts.get(job).copied().unwrap_or(1) > retries {
+            return Ok(None);
+        }
+        let services = crate::services::service_files(&planner.jobs[*job]);
+        self.service_group(*job, &services, Some(id))
     }
 
     /// Whether the run ends after a failed job: the running jobs end, and no other job starts.
@@ -1180,6 +1267,8 @@ impl Session {
             )
         }
         .map_err(|error| self.error(&error))?;
+        let mut task = task;
+        task.reuse = workflow_graph::Reuse::Denied;
         self.attempts.insert(job, attempt + 1);
         self.outstanding += 1;
         Ok(Some(task))

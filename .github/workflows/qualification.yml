@@ -1,0 +1,74 @@
+name: Explicit qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      corpus_url:
+        description: URL of the versioned corpus/oracle tar.gz bundle
+        required: true
+        type: string
+      corpus_sha256:
+        description: Exact SHA-256 of that bundle
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      corpus_url:
+        required: true
+        type: string
+      corpus_sha256:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    uses: ./.github/workflows/source.yml
+  corpus:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CORPUS_URL: ${{ inputs.corpus_url }}
+      CORPUS_SHA256: ${{ inputs.corpus_sha256 }}
+      NF_CORE_TEST_WORKFLOWS: ${{ github.workspace }}/corpus/nf-core-text
+      IUNCTUS_CONFIG_ORACLE: ${{ github.workspace }}/corpus/config-oracle
+      SNAKEMAKE_TEST_WORKFLOWS: ${{ github.workspace }}/corpus/snakemake
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Fetch and verify exact corpus bundle
+        run: |
+          [[ "$CORPUS_SHA256" =~ ^[a-fA-F0-9]{64}$ ]]
+          curl --fail --location --retry 3 --max-time 900 "$CORPUS_URL" -o corpus.tar.gz
+          printf '%s  corpus.tar.gz\n' "$CORPUS_SHA256" | sha256sum --check --strict
+          mkdir corpus
+          tar -xzf corpus.tar.gz -C corpus
+          python3 .github/scripts/verify-corpus.py corpus
+      - name: Prepare pinned Rust dependencies
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal
+          cargo +1.97.1 fetch --locked
+      - name: Exact Conda corpus outcomes
+        run: cargo +1.97.1 test --offline --locked -p conda-environment --test test_workflows -j 2 -- --ignored --exact the_environments_of_the_snakemake_test_workflows_read
+      - name: Exact config inventory and oracle parity
+        run: cargo +1.97.1 test --offline --locked -p iunctus --test config_test_workflows -j 2 -- --ignored --exact configs_equal_the_oracle
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      IUNCTUS_CONTAINER_TESTS: '1'
+      IUNCTUS_ENGINE: docker
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Require real Docker and pinned dependencies
+        run: |
+          docker info
+          rustup toolchain install 1.97.1 --profile minimal
+          cargo +1.97.1 fetch --locked
+      - name: Real Python package bridge
+        run: cargo +1.97.1 test --offline --locked -p snakemake-runtime --test python_container -j 2 -- --ignored --exact packages_run_in_a_container

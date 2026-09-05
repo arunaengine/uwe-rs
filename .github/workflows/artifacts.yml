@@ -1,0 +1,56 @@
+name: Build candidate artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      corpus_url:
+        description: URL of the versioned corpus/oracle tar.gz bundle
+        required: true
+        type: string
+      corpus_sha256:
+        description: Exact SHA-256 of that bundle
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  qualification:
+    uses: ./.github/workflows/qualification.yml
+    with:
+      corpus_url: ${{ inputs.corpus_url }}
+      corpus_sha256: ${{ inputs.corpus_sha256 }}
+  build:
+    needs: qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Build locked candidate
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal
+          cargo +1.97.1 fetch --locked
+          cargo +1.97.1 build --release --offline --locked -p iunctus -j 2
+          target/release/iunctus help
+      - name: Package binary and build identities
+        run: |
+          package="iunctus-${GITHUB_SHA}-x86_64-unknown-linux-gnu"
+          mkdir -p "dist/$package"
+          cp target/release/iunctus README.md LICENSE-MIT LICENSE-APACHE Cargo.lock rust-toolchain.toml "dist/$package/"
+          cp -r docs "dist/$package/"
+          printf '%s\n' "$GITHUB_SHA" > "dist/$package/SOURCE_REVISION"
+          rustc +1.97.1 -vV > "dist/$package/TOOLCHAIN"
+          sha256sum Cargo.lock > "dist/$package/DEPENDENCIES.sha256"
+          (cd "dist/$package" && sha256sum iunctus > BINARY.sha256)
+          tar -czf "dist/$package.tar.gz" -C dist "$package"
+          (cd dist && sha256sum "$package.tar.gz" > SHA256SUMS)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: iunctus-${{ github.sha }}-x86_64-unknown-linux-gnu
+          path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error

@@ -1,0 +1,42 @@
+name: Source checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [format, clippy, tests, doctests]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchains
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal
+          rustup toolchain install nightly-2026-09-14 --profile minimal --component rustfmt,clippy
+      - name: Fetch locked dependencies
+        if: matrix.check != 'format'
+        run: cargo +1.97.1 fetch --locked
+      - name: Formatting
+        if: matrix.check == 'format'
+        run: cargo +nightly-2026-09-14 fmt --all -- --check
+      - name: Clippy
+        if: matrix.check == 'clippy'
+        run: cargo +nightly-2026-09-14 clippy --offline --locked --workspace --all-targets --all-features -j 2 -- -D warnings
+      - name: Workspace tests
+        if: matrix.check == 'tests'
+        run: cargo +1.97.1 test --offline --locked --workspace --all-targets --all-features -j 2
+      - name: Doctests
+        if: matrix.check == 'doctests'
+        run: cargo +1.97.1 test --offline --locked --workspace --all-features --doc -j 2

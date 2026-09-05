@@ -18,8 +18,8 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 tempfile.workspace = true
-tokio = { workspace = true, features = ["rt"] }
 workflow-graph.workspace = true

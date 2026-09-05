@@ -13,6 +13,7 @@ mod files;
 mod live;
 mod report;
 
+use std::future::IntoFuture;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -21,6 +22,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use run_database::{Database, DatabaseError};
 use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 
 pub use report::{LOG_TAIL, report};
 
@@ -85,6 +87,7 @@ impl Server {
         let handle = runtime.handle().clone();
         let state = Arc::new(State {
             database: Mutex::new(database),
+            stop: CancellationToken::new(),
         });
         let (stop, stopped) = oneshot::channel();
         let thread = std::thread::Builder::new()
@@ -94,14 +97,25 @@ impl Server {
                     let Ok(listener) = tokio::net::TcpListener::from_std(listener) else {
                         return;
                     };
+                    let stop = state.stop.clone();
+                    let ending = stop.clone();
                     let router = api::router(state);
-                    let shutdown = async {
+                    let shutdown = async move {
                         let _ = stopped.await;
+                        ending.cancel();
                     };
-                    let _ = axum::serve(listener, router)
+                    let served = axum::serve(listener, router)
                         .with_graceful_shutdown(shutdown)
-                        .await;
+                        .into_future();
+                    tokio::pin!(served);
+                    tokio::select! {
+                        _ = &mut served => {}
+                        () = stop.cancelled() => {
+                            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), &mut served).await;
+                        }
+                    }
                 });
+                runtime.shutdown_timeout(std::time::Duration::from_secs(2));
             })
             .map_err(PageError::Start)?;
         let host = match bound.ip() {
@@ -138,6 +152,7 @@ impl Server {
 /// What every request shares: one connection to the database.
 pub(crate) struct State {
     database: Mutex<Database>,
+    stop: CancellationToken,
 }
 
 pub(crate) type Shared = Arc<State>;

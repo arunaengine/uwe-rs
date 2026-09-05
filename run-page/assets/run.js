@@ -616,7 +616,7 @@ function listen() {
     if (view.chosenStep && update.tasks.some((task) => task.step === view.chosenStep)) {
       drawStepDetail();
     }
-    if (update.run.state !== "running") {
+    if (update.complete) {
       events.close();
       clearInterval(view.ticker);
       liveMark.hidden = true;

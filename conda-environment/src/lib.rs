@@ -9,6 +9,7 @@
 
 mod environment;
 mod fetch;
+mod image;
 mod lock;
 mod repodata;
 mod solve;
@@ -19,6 +20,7 @@ use std::path::{Path, PathBuf};
 
 pub use environment::{Environment, EnvironmentError};
 pub use fetch::{fetch_packages, fetch_repodata};
+pub use image::ImagePreparation;
 pub use lock::{FORMAT, Lock, Package, VirtualPackage, base};
 pub use repodata::{Index, Record, channels, repodata_path};
 pub use spec::{MatchSpec, SpecError};

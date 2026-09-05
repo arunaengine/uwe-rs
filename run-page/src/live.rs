@@ -44,6 +44,8 @@ pub(crate) struct Update {
     /// Whether the shape of the graph changed: a task was asked for, or a marker came. The
     /// page changes the states of the tasks in place, and draws the graph again only then.
     graph: bool,
+    /// True only when all recorded updates of the terminal run have been sent.
+    complete: bool,
 }
 
 pub(crate) async fn events(
@@ -81,15 +83,21 @@ struct Cursor {
 
 /// The next update of the stream, waiting until there is one; `None` ends the stream.
 async fn next(mut cursor: Cursor) -> Option<(Result<Event, Infallible>, Cursor)> {
-    if cursor.ended {
+    if cursor.ended || cursor.state.stop.is_cancelled() {
         return None;
     }
     loop {
         if cursor.wait {
-            tokio::time::sleep(POLL).await;
+            tokio::select! {
+                () = tokio::time::sleep(POLL) => {}
+                () = cursor.state.stop.cancelled() => return None,
+            }
         }
         let (run, after) = (cursor.run.clone(), cursor.after);
-        let found = query(&cursor.state, move |database| update(database, &run, after)).await;
+        let found = tokio::select! {
+            found = query(&cursor.state, move |database| update(database, &run, after)) => found,
+            () = cursor.state.stop.cancelled() => return None,
+        };
         let (update, full) = match found {
             Ok(Some(found)) => found,
             // The run is gone, or the database cannot be read: end the stream.
@@ -101,7 +109,7 @@ async fn next(mut cursor: Cursor) -> Option<(Result<Event, Infallible>, Cursor)>
             continue;
         }
         cursor.after = update.sequence;
-        cursor.ended = !running;
+        cursor.ended = update.complete;
         let event = Event::default()
             .event("update")
             .id(update.sequence.to_string())
@@ -113,10 +121,11 @@ async fn next(mut cursor: Cursor) -> Option<(Result<Event, Infallible>, Cursor)>
 
 /// The update after an event, and whether it covers a full batch; `None` for an unknown run.
 fn update(database: &Database, run: &str, after: i64) -> Result<Option<(Update, bool)>, Failure> {
-    let events = database.events(run, after, BATCH)?;
+    // A terminal state must be observed before reading its final event backlog.
     let Some(state) = database.run(run)? else {
         return Ok(None);
     };
+    let events = database.events(run, after, BATCH)?;
     let touched: BTreeSet<u64> = events.iter().filter_map(|event| event.task).collect();
     let mut tasks = Vec::with_capacity(touched.len());
     for task in &touched {
@@ -132,6 +141,7 @@ fn update(database: &Database, run: &str, after: i64) -> Result<Option<(Update, 
         .iter()
         .any(|event| matches!(event.kind.as_str(), "requested" | "marked"));
     let full = events.len() as u32 == BATCH;
+    let complete = state.state != "running" && !full;
     let update = Update {
         sequence: events.last().map_or(after, |event| event.sequence),
         run: state,
@@ -142,6 +152,7 @@ fn update(database: &Database, run: &str, after: i64) -> Result<Option<(Update, 
             None
         },
         graph,
+        complete,
     };
     Ok(Some((update, full)))
 }

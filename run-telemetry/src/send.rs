@@ -10,6 +10,8 @@ use crate::otlp::Request;
 
 /// The path of traces below the base address of an OTLP HTTP endpoint.
 const TRACES: &str = "/v1/traces";
+const SEND_LIMIT: std::time::Duration = std::time::Duration::from_secs(30);
+const RESPONSE_LIMIT: usize = 64 << 10;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TelemetryError {
@@ -58,6 +60,33 @@ pub async fn send(
     headers: &[(String, String)],
     requests: &[Request],
 ) -> Result<Sent, TelemetryError> {
+    send_with_limit(client, endpoint, headers, requests, SEND_LIMIT).await
+}
+
+async fn send_with_limit(
+    client: &reqwest::Client,
+    endpoint: &str,
+    headers: &[(String, String)],
+    requests: &[Request],
+    limit: std::time::Duration,
+) -> Result<Sent, TelemetryError> {
+    tokio::time::timeout(limit, send_requests(client, endpoint, headers, requests))
+        .await
+        .map_err(|_| TelemetryError::Send {
+            address: traces_address(endpoint),
+            message: format!(
+                "the total send deadline of {} seconds elapsed",
+                limit.as_secs_f64()
+            ),
+        })?
+}
+
+async fn send_requests(
+    client: &reqwest::Client,
+    endpoint: &str,
+    headers: &[(String, String)],
+    requests: &[Request],
+) -> Result<Sent, TelemetryError> {
     let address = traces_address(endpoint);
     let mut map = HeaderMap::new();
     for (name, value) in headers {
@@ -76,7 +105,7 @@ pub async fn send(
     let mut sent = Sent::default();
     for request in requests {
         let body = serde_json::to_vec(request)?;
-        let response = client
+        let mut response = client
             .post(&address)
             .headers(map.clone())
             .body(body)
@@ -84,7 +113,25 @@ pub async fn send(
             .await
             .map_err(failed)?;
         let status = response.status();
-        let text = response.text().await.map_err(failed)?;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(failed)? {
+            if bytes.len().saturating_add(chunk.len()) > RESPONSE_LIMIT {
+                if !status.is_success() {
+                    let needed = 1200usize.saturating_sub(bytes.len()).min(chunk.len());
+                    bytes.extend_from_slice(&chunk[..needed]);
+                    break;
+                }
+                return Err(TelemetryError::Send {
+                    address,
+                    message: format!("the response exceeds {RESPONSE_LIMIT} bytes"),
+                });
+            }
+            bytes.extend_from_slice(&chunk);
+            if !status.is_success() && bytes.len() >= 1200 {
+                break;
+            }
+        }
+        let text = String::from_utf8_lossy(&bytes);
         if !status.is_success() {
             return Err(TelemetryError::Refused {
                 address,
@@ -114,7 +161,104 @@ fn rejected(answer: &str) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::TcpListener;
+    use std::time::Duration;
+
     use super::*;
+
+    fn collector(trickle: bool, status: &str, advertised: usize, initial: usize) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let status = status.to_owned();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut length = 0;
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+                if let Some((name, value)) = line.split_once(':') {
+                    if name.eq_ignore_ascii_case("content-length") {
+                        length = value.trim().parse().unwrap();
+                    }
+                }
+            }
+            reader.read_exact(&mut vec![0; length]).unwrap();
+            let framing = if trickle {
+                "Transfer-Encoding: chunked".to_owned()
+            } else {
+                format!("Content-Length: {advertised}")
+            };
+            write!(
+                stream,
+                "HTTP/1.1 {status}\r\n{framing}\r\nConnection: close\r\n\r\n"
+            )
+            .unwrap();
+            if trickle {
+                for _ in 0..200 {
+                    if stream.write_all(b"1\r\nx\r\n").is_err() {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            } else {
+                let _ = stream.write_all(&vec![b'x'; initial]);
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        });
+        endpoint
+    }
+
+    #[tokio::test]
+    async fn a_trickling_collector_cannot_extend_the_total_deadline() {
+        let endpoint = collector(true, "200 OK", 0, 0);
+        let requests = [Request {
+            resource_spans: Vec::new(),
+        }];
+        let started = std::time::Instant::now();
+        let error = send_with_limit(
+            &reqwest::Client::new(),
+            &endpoint,
+            &[],
+            &requests,
+            Duration::from_millis(50),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(error, TelemetryError::Send { message, .. } if message.contains("total send deadline"))
+        );
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[tokio::test]
+    async fn oversized_responses_are_bounded_without_waiting_for_their_end() {
+        let requests = [Request {
+            resource_spans: Vec::new(),
+        }];
+        for (status, initial) in [("500 Failed", 2048), ("200 OK", 128 << 10)] {
+            let endpoint = collector(false, status, 100_000_000, initial);
+            let result = tokio::time::timeout(
+                Duration::from_millis(500),
+                send(&reqwest::Client::new(), &endpoint, &[], &requests),
+            )
+            .await
+            .expect("bounded reply");
+            if status.starts_with("500") {
+                assert!(
+                    matches!(result, Err(TelemetryError::Refused { body, status: 500, .. }) if body.len() == 300)
+                );
+            } else {
+                assert!(
+                    matches!(result, Err(TelemetryError::Send { message, .. }) if message.contains("exceeds"))
+                );
+            }
+        }
+    }
 
     #[test]
     fn traces_go_below_the_base_address() {

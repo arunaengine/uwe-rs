@@ -406,6 +406,30 @@ impl Session {
         if let Some(message) = pipe_problem(planner, &self.order, &self.needrun) {
             return Err(self.error(&crate::workflow::workflow_error(message)));
         }
+        if !self.launch.simulated {
+            for job in &self.order {
+                for value in &planner.jobs[*job].output.values {
+                    if value.tag("pipe").is_none() {
+                        continue;
+                    }
+                    let Some(file) = value.as_str() else { continue };
+                    let needed = self.needrun.get(job).copied().unwrap_or(false)
+                        || self.order.iter().any(|consumer| {
+                            self.needrun.get(consumer).copied().unwrap_or(false)
+                                && planner.jobs[*consumer]
+                                    .dependencies
+                                    .iter()
+                                    .any(|(input, producer)| *producer == *job && input == file)
+                        });
+                    if needed {
+                        return Err(DriverError::unsupported(format!(
+                            "pipe output {file} of rule {} requires FIFO creation and concurrent producer/consumer execution, which this Snakemake runtime does not support",
+                            planner.rules[planner.jobs[*job].rule].name
+                        )));
+                    }
+                }
+            }
+        }
         outputs.sort();
         outputs.dedup();
         for pair in outputs.windows(2) {

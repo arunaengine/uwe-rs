@@ -346,6 +346,7 @@ fn default_output_flags_make_outputs_temporary() {
     let launch = Launch {
         target: workdir.clone(),
         scratch: folder.path().join("scratch"),
+        simulated: true,
         ..Launch::default()
     };
     let mut driver = snakemake_runtime::driver(&launch).expect("a driver");

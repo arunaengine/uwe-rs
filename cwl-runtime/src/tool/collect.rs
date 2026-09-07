@@ -288,14 +288,14 @@ impl Collector<'_> {
         let mut mapped = None;
         let mut longest = 0;
         for (staged, (original, directory)) in &self.pending.staged {
-            if absolute == *staged || (*directory && absolute.starts_with(&format!("{staged}/"))) {
-                if staged.len() >= longest {
-                    longest = staged.len();
-                    mapped = Some(join_location(
-                        original,
-                        absolute[staged.len()..].trim_start_matches('/'),
-                    ));
-                }
+            if (absolute == *staged || (*directory && absolute.starts_with(&format!("{staged}/"))))
+                && staged.len() >= longest
+            {
+                longest = staged.len();
+                mapped = Some(join_location(
+                    original,
+                    absolute[staged.len()..].trim_start_matches('/'),
+                ));
             }
         }
         if mapped.is_none() {

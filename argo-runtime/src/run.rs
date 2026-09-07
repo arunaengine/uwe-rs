@@ -154,6 +154,8 @@ pub(crate) struct Call {
     pub depth: usize,
 }
 
+type Admissions = Vec<(i64, Rc<Cell<usize>>)>;
+
 pub(crate) struct Run {
     pub workflow_name: String,
     pub options: Options,
@@ -173,8 +175,8 @@ pub(crate) struct Run {
     workflow_active: Rc<Cell<usize>>,
     template_invocations: HashSet<usize>,
     template_active: HashMap<usize, usize>,
-    resource_admissions: HashMap<usize, Vec<(i64, Rc<Cell<usize>>)>>,
-    admissions: HashMap<TaskId, Vec<(i64, Rc<Cell<usize>>)>>,
+    resource_admissions: HashMap<usize, Admissions>,
+    admissions: HashMap<TaskId, Admissions>,
     pub next_task: u64,
     pub emitted: Vec<Task>,
     pub changed: bool,

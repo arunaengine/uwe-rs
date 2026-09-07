@@ -997,7 +997,7 @@ mod tests {
             }),
             failure_hook_error: Some(DriverError::unsupported("failure hook problem")),
         };
-        let failure = finish(execution).err().expect("failed execution");
+        let failure = finish(execution).expect_err("failed execution");
         assert_eq!(failure.code, failure::SETUP);
         assert!(failure.message.contains("original machine failure"));
         assert!(

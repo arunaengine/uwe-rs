@@ -126,13 +126,18 @@ async fn directory_complete(store: &Store, file: &StoredFile) -> Result<bool, Ru
     }
     if let Some(root) = &root {
         let mut expected = std::collections::BTreeSet::new();
+        let mut parents = std::collections::BTreeSet::new();
         for entry in &tree.entries {
             let mut path: std::path::PathBuf = std::path::Path::new(entry.path())
                 .components()
                 .filter(|part| *part != std::path::Component::CurDir)
                 .collect();
+            let member = path.clone();
             while !path.as_os_str().is_empty() {
                 expected.insert(path.clone());
+                if path != member {
+                    parents.insert(path.clone());
+                }
                 if !path.pop() {
                     break;
                 }
@@ -146,7 +151,11 @@ async fn directory_complete(store: &Store, file: &StoredFile) -> Result<bool, Ru
                 if !expected.contains(&relative) {
                     return Ok(false);
                 }
-                if entry.file_type().await?.is_dir() {
+                let kind = entry.file_type().await?;
+                if parents.contains(&relative) && !kind.is_dir() {
+                    return Ok(false);
+                }
+                if kind.is_dir() {
                     pending.push((entry.path(), relative));
                 }
             }

@@ -523,6 +523,10 @@ fn directories_travel_as_one_entry() {
     assert_eq!(staging.directories, ["made"]);
     let stdin = staging.stdin.as_ref().expect("a standard input");
     assert_eq!(std::fs::read_to_string(stdin).expect("reads"), "text\n");
+    drop(staged);
+    std::fs::remove_file(on_disk.join("a.txt")).expect("removes a descendant");
+    assert!(!execute(&runner, &request(&runner, &first)).reused);
+    assert!(execute(&runner, &request(&runner, &first)).reused);
 }
 
 #[test]

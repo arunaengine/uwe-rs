@@ -37,6 +37,18 @@ pub enum StoreError {
     InvalidTree(#[from] SpecError),
 }
 
+impl StoreError {
+    pub fn missing(&self) -> bool {
+        match self {
+            Self::Backend(error) => error.kind() == ErrorKind::NotFound,
+            Self::Io(error) | Self::File { error, .. } => {
+                error.kind() == std::io::ErrorKind::NotFound
+            }
+            _ => false,
+        }
+    }
+}
+
 /// Connection settings for an S3-compatible bucket; credentials come from the environment.
 #[derive(Clone, Debug, Default)]
 pub struct S3Options {
@@ -317,14 +329,34 @@ impl Store {
         digest: &Digest,
         target: &std::path::Path,
     ) -> Result<(), StoreError> {
-        let location = layout::content(digest);
-        let (source, metadata) = match self.operator.stat(&location).await {
+        self.materialize(&layout::content(digest), digest, target, true)
+            .await
+    }
+
+    /// Streams verified output bytes without publishing a partial directory in the front layer.
+    pub async fn materialize_object(
+        &self,
+        location: &str,
+        digest: &Digest,
+        target: &std::path::Path,
+    ) -> Result<(), StoreError> {
+        self.materialize(location, digest, target, false).await
+    }
+
+    async fn materialize(
+        &self,
+        location: &str,
+        digest: &Digest,
+        target: &std::path::Path,
+        cache: bool,
+    ) -> Result<(), StoreError> {
+        let (source, metadata) = match self.operator.stat(location).await {
             Ok(metadata) => (self, metadata),
             Err(error) if error.kind() == ErrorKind::NotFound => {
                 let Some(shared) = &self.shared else {
                     return Err(error.into());
                 };
-                (shared.as_ref(), shared.operator.stat(&location).await?)
+                (shared.as_ref(), shared.operator.stat(location).await?)
             }
             Err(error) => return Err(error.into()),
         };
@@ -337,7 +369,7 @@ impl Store {
             .map_err(at(parent))?;
         let temporary = tempfile::NamedTempFile::new_in(parent).map_err(at(target))?;
         let mut file = tokio::fs::File::from_std(temporary.reopen().map_err(at(target))?);
-        let reader = source.operator.reader(&location).await?;
+        let reader = source.operator.reader(location).await?;
         let mut hasher = Sha256::new();
         let size = metadata.content_length();
         let mut offset = 0;
@@ -364,8 +396,9 @@ impl Store {
         }
         file.flush().await.map_err(at(target))?;
         drop(file);
-        if !std::ptr::eq(source, self)
-            && let Some(cached) = self.local_path(&location)
+        if cache
+            && !std::ptr::eq(source, self)
+            && let Some(cached) = self.local_path(location)
         {
             local::copy_absent(temporary.path(), &cached)
                 .await

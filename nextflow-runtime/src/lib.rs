@@ -31,7 +31,7 @@ use nextflow_config::{Config, tree};
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, Host, Interpreter};
 use nextflow_evaluator::lowered::Module;
-use nextflow_evaluator::value::Value;
+use nextflow_evaluator::value::{PathValue, Value};
 
 pub use driver::driver;
 pub use loader::{LoadError, Loader};
@@ -82,6 +82,7 @@ pub struct Run {
     workflow: Value,
     on_complete_called: bool,
     on_error_called: bool,
+    operator_directory: Option<PathValue>,
 }
 
 impl Run {
@@ -104,10 +105,12 @@ impl Run {
         let mut network = Network::default();
         network.keep_going(options.keep_going);
         let workflow = workflow::metadata(options, &host.launch_dir());
+        let mut operator_directory = None;
         let mut session = Session {
             base: host,
             options,
             network: None,
+            operator_directory: &mut operator_directory,
         };
         let started = (|| {
             {
@@ -142,6 +145,7 @@ impl Run {
             workflow,
             on_complete_called: false,
             on_error_called: false,
+            operator_directory,
         };
         (run, started)
     }
@@ -156,6 +160,7 @@ impl Run {
             base: host,
             options: &self.options,
             network: None,
+            operator_directory: &mut self.operator_directory,
         };
         let mut interpreter = Interpreter::new(&mut session);
         set_globals(&mut interpreter, &self.options, &self.workflow);
@@ -246,6 +251,7 @@ impl Run {
             base: host,
             options: &self.options,
             network: Some(&self.network),
+            operator_directory: &mut self.operator_directory,
         };
         let mut interpreter = Interpreter::new(&mut session);
         set_globals(&mut interpreter, &self.options, &self.workflow);

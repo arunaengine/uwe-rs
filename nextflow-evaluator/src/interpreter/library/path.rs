@@ -150,7 +150,7 @@ impl Interpreter<'_> {
                 };
                 // As Nextflow's `AbstractTextSplitter`: a folder gets chunks named after the
                 // file, another path is the name of the chunks, and so is a text, in a folder
-                // of the file below `work/tmp`.
+                // of the file below the reserved operator scratch.
                 let source = path.name().strip_suffix(".gz").unwrap_or(path.name());
                 let (directory, named) = match files {
                     Value::Path(target) => {
@@ -163,11 +163,11 @@ impl Interpreter<'_> {
                         }
                     }
                     Value::String(text) | Value::GString(text) => (
-                        chunk_directory(path, &self.host.launch_dir()),
+                        chunk_directory(path, &self.host.operator_directory().map_err(host_error)?),
                         text.to_string(),
                     ),
                     _ => (
-                        chunk_directory(path, &self.host.launch_dir()),
+                        chunk_directory(path, &self.host.operator_directory().map_err(host_error)?),
                         source.to_owned(),
                     ),
                 };
@@ -370,13 +370,12 @@ impl Interpreter<'_> {
     }
 }
 
-/// The folder of the chunk files of a file, unique to it, below the `work/tmp` folder of the
-/// launch folder, as Nextflow's `cacheableFile` makes one below its work folder.
-fn chunk_directory(path: &PathValue, launch: &str) -> PathValue {
+/// The folder of a file's chunks below this run's reserved operator scratch.
+fn chunk_directory(path: &PathValue, directory: &PathValue) -> PathValue {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::hash::DefaultHasher::new();
     path.uri().hash(&mut hasher);
-    PathValue::parse(&format!("work/tmp/{:016x}", hasher.finish()), launch)
+    directory.resolve(&format!("split-path/{:016x}", hasher.finish()))
 }
 
 /// The name of a chunk file, as Nextflow's `TextFileCollector` gives it: `name.1.fa` for the

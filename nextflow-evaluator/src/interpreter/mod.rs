@@ -52,6 +52,23 @@ pub trait Host {
             .unwrap_or_else(|_| "/".into())
     }
 
+    /// Reserves persistent operator scratch. Custom storage hosts may override the local
+    /// system temporary-directory default; the caller retains outputs until it removes them.
+    fn operator_directory(&mut self) -> Result<PathValue, Error> {
+        let directory = tempfile::Builder::new()
+            .prefix("iunctus-nextflow-")
+            .tempdir()
+            .map_err(|error| Error::Thrown {
+                exception: Rc::new(Exception::new(
+                    "IOException",
+                    format!("cannot reserve operator scratch: {error}"),
+                )),
+                span: Span::default(),
+            })?
+            .keep();
+        Ok(PathValue::parse(&directory.to_string_lossy(), "/"))
+    }
+
     /// A local copy of a remote file, like one on `https://`. The default has none.
     fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {
         Err(unsupported(

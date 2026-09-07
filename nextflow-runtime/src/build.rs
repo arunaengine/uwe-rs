@@ -21,7 +21,7 @@ use crate::operator::{
 };
 use crate::process::{ProcessNode, singleton};
 use crate::route::{Concat, Merge, Route};
-use crate::split::{Split, Subscribe};
+use crate::split::{Split, SplitFiles, Subscribe};
 
 /// The channel operators of Nextflow (`OperatorImpl` and `ChannelEx`). Another method of a
 /// value channel is a method of its value.
@@ -105,6 +105,10 @@ impl Host for Builder<'_> {
 
     fn launch_dir(&self) -> String {
         self.base.launch_dir()
+    }
+
+    fn operator_directory(&mut self) -> Result<PathValue, Error> {
+        self.base.operator_directory()
     }
 
     fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {
@@ -934,13 +938,18 @@ impl Builder<'_> {
                     Value::Path(path) => path.uri(),
                     other => other.to_string(),
                 });
+                let explicit_name = name.clone().filter(|text| text.contains('/'));
                 let mut directory = match option(&options, "storeDir") {
                     Some(Value::Path(path)) => (*path).clone(),
                     Some(other) => PathValue::parse(&other.to_string(), &launch),
-                    None => PathValue::parse(&format!("work/collect-file/{}", output.0), &launch),
+                    None if explicit_name.is_some() => PathValue::parse(&launch, "/"),
+                    None => self
+                        .base
+                        .operator_directory()?
+                        .resolve(&format!("collect-file/{}", output.0)),
                 };
                 // A name with a directory also chooses where the file goes.
-                if let Some(text) = name.clone().filter(|text| text.contains('/')) {
+                if let Some(text) = explicit_name {
                     let path = PathValue::parse(&text, &launch);
                     if let Some(parent) = path.parent() {
                         directory = parent;
@@ -982,10 +991,31 @@ impl Builder<'_> {
                 let output = self.network.channel(counting);
                 let mut splitter = Splitter::new(name, options.as_ref());
                 splitter.simulated = self.base.simulated();
-                let launch = self.base.launch_dir();
-                let files = option(&options, "file")
-                    .filter(|value| value.truth())
-                    .map(|_| PathValue::parse(&format!("work/split/{}", output.0), &launch));
+                let files = match option(&options, "file").filter(|value| value.truth()) {
+                    Some(Value::Path(path)) => {
+                        let directory = self
+                            .base
+                            .metadata(&path)?
+                            .is_some_and(|metadata| metadata.directory);
+                        let (directory, name) = match path.parent() {
+                            Some(parent) if !directory => (parent, Some(path.name().to_owned())),
+                            _ => ((*path).clone(), None),
+                        };
+                        Some(SplitFiles::Named(directory, name))
+                    }
+                    Some(Value::String(name) | Value::GString(name)) => Some(SplitFiles::Named(
+                        self.base
+                            .operator_directory()?
+                            .resolve(&format!("split/{}", output.0)),
+                        Some(name.to_string()),
+                    )),
+                    Some(_) => Some(SplitFiles::Implicit(
+                        self.base
+                            .operator_directory()?
+                            .resolve(&format!("split/{}", output.0)),
+                    )),
+                    None => None,
+                };
                 let node = Split {
                     output,
                     splitter,

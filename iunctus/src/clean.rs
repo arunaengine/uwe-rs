@@ -80,6 +80,9 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         ),
         false => None,
     };
+    if let Some(guard) = &maintenance {
+        guard.ensure_cleanup().map_err(|error| broken(&error))?;
+    }
     if arguments.remove {
         remote_attempts_finished(&cache_directory().join("scratch"))?;
     }
@@ -151,8 +154,24 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         ))
         .map_err(|error| broken(&error))?;
     for folder in &scratch {
+        runtime
+            .block_on(
+                maintenance
+                    .as_ref()
+                    .expect("removal holds maintenance")
+                    .check(),
+            )
+            .map_err(|error| broken(&error))?;
         std::fs::remove_dir_all(&folder.path)
             .map_err(|error| failure(format!("iunctus: {}: {error}", folder.path.display())))?;
+        runtime
+            .block_on(
+                maintenance
+                    .as_ref()
+                    .expect("removal holds maintenance")
+                    .check(),
+            )
+            .map_err(|error| broken(&error))?;
     }
     println!(
         "Removed {}, {}{} and {}.",

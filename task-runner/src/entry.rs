@@ -4,9 +4,11 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use content_store::Store;
+use std::os::unix::fs::PermissionsExt;
+
+use content_store::{Store, StoreError};
 use serde::{Deserialize, Serialize};
-use task_model::Digest;
+use task_model::{Digest, TreeEntry};
 
 use crate::{ContainerResult, RunnerError, StoredFile, TaskResult};
 
@@ -79,6 +81,9 @@ impl CacheEntry {
             if !present {
                 return Ok(false);
             }
+            if file.directory && !directory_complete(store, file).await? {
+                return Ok(false);
+            }
         }
         for digest in self.logs() {
             if !store.has_content(digest).await? {
@@ -87,6 +92,177 @@ impl CacheEntry {
         }
         Ok(true)
     }
+}
+
+fn damaged(error: &StoreError) -> bool {
+    match error {
+        StoreError::Corrupt { .. } | StoreError::Tree { .. } | StoreError::InvalidTree(_) => true,
+        _ => error.missing(),
+    }
+}
+
+async fn directory_complete(store: &Store, file: &StoredFile) -> Result<bool, RunnerError> {
+    let tree = match store.get_tree(&file.digest).await {
+        Ok(tree) => tree,
+        Err(error) if damaged(&error) => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    if tree.digest().ok().as_ref() != Some(&file.digest) || tree.size() != file.size {
+        return Ok(false);
+    }
+    let root = store
+        .local_path(&file.location)
+        .filter(|path| path.exists())
+        .or_else(|| {
+            store
+                .shared()
+                .and_then(|shared| shared.local_path(&file.location))
+                .filter(|path| path.exists())
+        });
+    if let Some(root) = &root
+        && !tokio::fs::symlink_metadata(root).await?.is_dir()
+    {
+        return Ok(false);
+    }
+    if let Some(root) = &root {
+        let mut expected = std::collections::BTreeSet::new();
+        for entry in &tree.entries {
+            let mut path: std::path::PathBuf = std::path::Path::new(entry.path())
+                .components()
+                .filter(|part| *part != std::path::Component::CurDir)
+                .collect();
+            while !path.as_os_str().is_empty() {
+                expected.insert(path.clone());
+                if !path.pop() {
+                    break;
+                }
+            }
+        }
+        let mut pending = vec![(root.clone(), std::path::PathBuf::new())];
+        while let Some((directory, relative)) = pending.pop() {
+            let mut entries = tokio::fs::read_dir(directory).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                let relative = relative.join(entry.file_name());
+                if !expected.contains(&relative) {
+                    return Ok(false);
+                }
+                if entry.file_type().await?.is_dir() {
+                    pending.push((entry.path(), relative));
+                }
+            }
+        }
+    }
+    let verified = tempfile::tempdir()?;
+    for entry in tree.entries {
+        let relative = entry.path();
+        if relative.is_empty()
+            || relative.starts_with('/')
+            || relative.split('/').any(|part| part == "..")
+        {
+            return Ok(false);
+        }
+        let member = root.as_ref().map(|root| root.join(relative));
+        match entry {
+            TreeEntry::File {
+                path,
+                digest,
+                size,
+                executable,
+            } => {
+                if let Some(member) = member {
+                    let metadata = match tokio::fs::symlink_metadata(&member).await {
+                        Ok(metadata) => metadata,
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                            return Ok(false);
+                        }
+                        Err(error) => return Err(error.into()),
+                    };
+                    if !metadata.is_file()
+                        || metadata.len() != size
+                        || (metadata.permissions().mode() & 0o111 != 0) != executable
+                    {
+                        return Ok(false);
+                    }
+                }
+                let target = verified.path().join("member");
+                let location = format!("{}/{path}", file.location.trim_end_matches('/'));
+                for content in [false, true] {
+                    let result = if content {
+                        store.materialize_content(&digest, &target).await
+                    } else {
+                        store.materialize_object(&location, &digest, &target).await
+                    };
+                    match result {
+                        Ok(()) => {}
+                        Err(error) if damaged(&error) => return Ok(false),
+                        Err(error) => return Err(error.into()),
+                    }
+                }
+                if tokio::fs::metadata(target).await?.len() != size {
+                    return Ok(false);
+                }
+            }
+            TreeEntry::EmptyDirectory { .. } => {
+                if let Some(member) = member {
+                    match tokio::fs::symlink_metadata(&member).await {
+                        Ok(metadata) if metadata.is_dir() => {
+                            if tokio::fs::read_dir(member)
+                                .await?
+                                .next_entry()
+                                .await?
+                                .is_some()
+                            {
+                                return Ok(false);
+                            }
+                        }
+                        Ok(_) => return Ok(false),
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                            return Ok(false);
+                        }
+                        Err(error) => return Err(error.into()),
+                    }
+                }
+            }
+            TreeEntry::Symlink { path, target } => {
+                let mut depth = std::path::Path::new(&path)
+                    .parent()
+                    .map_or(0, |parent| parent.components().count());
+                if !std::path::Path::new(&target)
+                    .components()
+                    .all(|part| match part {
+                        std::path::Component::Normal(_) => {
+                            depth += 1;
+                            true
+                        }
+                        std::path::Component::ParentDir if depth > 0 => {
+                            depth -= 1;
+                            true
+                        }
+                        std::path::Component::CurDir => true,
+                        _ => false,
+                    })
+                {
+                    return Ok(false);
+                }
+                if let Some(member) = member {
+                    match tokio::fs::read_link(member).await {
+                        Ok(actual) if actual.as_os_str() == std::ffi::OsStr::new(&target) => {}
+                        Ok(_) => return Ok(false),
+                        Err(error)
+                            if matches!(
+                                error.kind(),
+                                std::io::ErrorKind::NotFound | std::io::ErrorKind::InvalidInput
+                            ) =>
+                        {
+                            return Ok(false);
+                        }
+                        Err(error) => return Err(error.into()),
+                    }
+                }
+            }
+        }
+    }
+    Ok(true)
 }
 
 /// What to do with an entry whose files are gone.

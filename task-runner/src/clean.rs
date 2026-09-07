@@ -208,6 +208,7 @@ pub async fn plan(store: &Store, keep: &Keep) -> Result<Plan, RunnerError> {
     // The files that stay: those of kept runs, and those of kept entries.
     let mut locations = keep.locations.clone();
     let mut digests = keep.digests.clone();
+    let mut manifests = keep.digests.clone();
     for item in found.values() {
         let kept = match &item.entry {
             Some(entry) => {
@@ -236,9 +237,7 @@ pub async fn plan(store: &Store, keep: &Keep) -> Result<Plan, RunnerError> {
             locations.insert(file.location.clone());
             digests.insert(file.digest.clone());
             if file.directory {
-                for digest in tree_contents(store, &file.digest).await? {
-                    digests.insert(digest);
-                }
+                manifests.insert(file.digest.clone());
             }
         }
         digests.extend(entry.logs().cloned());
@@ -254,20 +253,33 @@ pub async fn plan(store: &Store, keep: &Keep) -> Result<Plan, RunnerError> {
     };
     let mut all = Vec::new();
     for kind in ["runs/", "cas/", "trees/"] {
-        for object in store.objects(kind).await? {
-            let kept = match kind {
-                "runs/" => kept_file(&object.location),
-                // Prepared inputs have no durable per-run digest records yet.
-                _ => {
-                    !leases.is_empty()
-                        || digest_of(&object.location)
-                            .is_none_or(|digest| digests.contains(&digest))
-                }
-            };
-            if !kept && !recent(object.modified) {
-                plan.objects.push(object.clone());
+        all.extend(store.objects(kind).await?);
+    }
+    if leases.is_empty() {
+        for object in all
+            .iter()
+            .filter(|object| object.location.starts_with("trees/"))
+        {
+            if let Some(digest) = digest_of(&object.location)
+                && (digests.contains(&digest) || recent(object.modified))
+            {
+                manifests.insert(digest);
             }
-            all.push(object);
+        }
+        for manifest in manifests {
+            digests.extend(tree_contents(store, &manifest).await?);
+        }
+    }
+    for object in &all {
+        let kept = if object.location.starts_with("runs/") {
+            kept_file(&object.location)
+        } else {
+            // Prepared inputs have no durable per-run digest records yet.
+            !leases.is_empty()
+                || digest_of(&object.location).is_none_or(|digest| digests.contains(&digest))
+        };
+        if !kept && !recent(object.modified) {
+            plan.objects.push(object.clone());
         }
     }
     plan.stored_objects = all.len();

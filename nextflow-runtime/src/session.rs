@@ -17,6 +17,7 @@ pub(crate) struct Session<'a> {
     pub options: &'a Options,
     /// The network once it has run, whose value channels completion handlers read.
     pub network: Option<&'a Network>,
+    pub operator_directory: &'a mut Option<PathValue>,
 }
 
 impl Host for Session<'_> {
@@ -30,6 +31,13 @@ impl Host for Session<'_> {
 
     fn launch_dir(&self) -> String {
         self.base.launch_dir()
+    }
+
+    fn operator_directory(&mut self) -> Result<PathValue, Error> {
+        if self.operator_directory.is_none() {
+            *self.operator_directory = Some(self.base.operator_directory()?);
+        }
+        Ok(self.operator_directory.as_ref().unwrap().clone())
     }
 
     fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {

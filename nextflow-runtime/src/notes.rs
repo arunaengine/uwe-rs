@@ -45,6 +45,10 @@ impl Host for Noting<'_> {
         self.host.launch_dir()
     }
 
+    fn operator_directory(&mut self) -> Result<PathValue, Error> {
+        self.host.operator_directory()
+    }
+
     fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {
         self.host.download(path)
     }

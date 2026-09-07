@@ -24,7 +24,7 @@ pub(crate) struct Split {
     /// A closure applied to each emitted item.
     pub each: Option<Rc<Closure>>,
     /// Where `file: true` writes the chunks, which are then emitted as files.
-    pub files: Option<PathValue>,
+    pub files: Option<SplitFiles>,
     /// Whether `.gz` files are decompressed first, which `decompress: false` turns off.
     pub decompress: bool,
     pub count: usize,
@@ -33,6 +33,11 @@ pub(crate) struct Split {
     /// The CSV records of a file that are not emitted yet, with the tuple they go into and
     /// their position in it.
     pub pending: Option<(nextflow_evaluator::csv::Records, Option<Vec<Value>>, usize)>,
+}
+
+pub(crate) enum SplitFiles {
+    Implicit(PathValue),
+    Named(PathValue, Option<String>),
 }
 
 /// The most records that a split emits before the nodes that read them run.
@@ -122,10 +127,29 @@ impl Behaviour for Split {
             }
             for (index, chunk) in chunks.into_iter().enumerate() {
                 let chunk = match (&self.files, &chunk) {
-                    (Some(directory), Value::String(text)) => {
+                    (Some(files), Value::String(text)) => {
                         self.count += 1;
-                        let path =
-                            directory.resolve(&format!("{name}.{}.{}", self.count, index + 1));
+                        let path = match files {
+                            SplitFiles::Implicit(directory) => {
+                                directory.resolve(&format!("{name}.{}.{}", self.count, index + 1))
+                            }
+                            SplitFiles::Named(directory, named) => {
+                                let source = match &target {
+                                    Value::Path(path) => {
+                                        path.name().strip_suffix(".gz").unwrap_or(path.name())
+                                    }
+                                    _ => "chunk",
+                                };
+                                let named = named.as_deref().unwrap_or(source);
+                                let name = match named.rsplit_once('.') {
+                                    Some((base, extension)) if !base.is_empty() => {
+                                        format!("{base}.{}.{extension}", self.count)
+                                    }
+                                    _ => format!("{named}.{}", self.count),
+                                };
+                                directory.resolve(&name)
+                            }
+                        };
                         context.interpreter.host().write(&path, text.as_bytes())?;
                         Value::Path(Rc::new(path))
                     }

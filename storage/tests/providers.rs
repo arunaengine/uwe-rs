@@ -5,7 +5,10 @@
 
 mod common;
 
+use std::io::{BufRead, BufReader, Write};
+use std::net::TcpListener;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use common::WebServer;
 use common::ftp::FtpServer;
@@ -338,22 +341,22 @@ async fn tasks_that_read_a_file_at_once_share_one_download() {
 }
 
 #[tokio::test]
-async fn stopped_downloads_continue() {
-    let server = WebServer::start(&[("/big", "0123456789")], None);
+async fn stopped_downloads_restart_without_reusing_unversioned_bytes() {
+    let server = WebServer::start(&[("/big", "BBBBCCCC")], None);
     let address = format!("{}/big", server.address);
     let downloads = tempfile::tempdir().expect("a folder");
-    // A run that was stopped left the first four bytes.
+    // A stopped run left bytes of an older representation without its version.
     let name = storage::download_name(&address);
     std::fs::write(
         downloads.path().join(format!("{name}.4294967295.partial")),
-        "0123",
+        "AAAA",
     )
     .unwrap();
     let copy = Storage::default()
         .fetch(&address, downloads.path())
         .await
         .unwrap();
-    assert_eq!(std::fs::read_to_string(copy).unwrap(), "0123456789");
+    assert_eq!(std::fs::read_to_string(copy).unwrap(), "BBBBCCCC");
     let requests = server.requests.lock().unwrap().clone();
     assert_eq!(requests, ["GET /big"]);
 }
@@ -419,12 +422,12 @@ async fn ftp_servers_serve_inputs() {
     let downloads = tempfile::tempdir().expect("a folder");
     let copy = storage.fetch(&file, downloads.path()).await.unwrap();
     assert_eq!(std::fs::read_to_string(copy).unwrap(), "alpha");
-    // A stopped download continues where it ended.
+    // A stopped download starts anew rather than appending another version's suffix.
     let other = format!("{}/pub/data/sub/b.txt", server.address);
     let name = storage::download_name(&other);
     std::fs::write(
         downloads.path().join(format!("{name}.4294967295.partial")),
-        "be",
+        "old",
     )
     .unwrap();
     let copy = storage.fetch(&other, downloads.path()).await.unwrap();
@@ -519,4 +522,226 @@ async fn remote_files_that_a_process_reads_are_noted_and_can_be_pinned() {
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "id\n2\n");
     assert_eq!(repeat.fetched(), [pinned]);
     assert_eq!(server.served(), served, "no request for a pinned address");
+}
+
+#[tokio::test]
+async fn distinct_storage_instances_can_download_the_same_target_concurrently() {
+    let body = "ACGT".repeat(1 << 18);
+    let server = common::WebServer::start(&[("/data", &body)], None);
+    let target = format!("{}/data", server.address);
+    let root = tempfile::tempdir().unwrap();
+    let first = Storage::default();
+    let second = Storage::default();
+    let (a, b) = tokio::join!(
+        first.fetch(&target, root.path()),
+        second.fetch(&target, root.path())
+    );
+    let (a, b) = (a.unwrap(), b.unwrap());
+    assert_eq!(a, b);
+    assert_eq!(std::fs::read_to_string(a).unwrap(), body);
+}
+
+#[tokio::test]
+async fn concurrent_folder_uploads_publish_one_complete_source() {
+    let root = tempfile::tempdir().unwrap();
+    let destination = root.path().join("mirror");
+    let storage = storage(&format!(
+        "[storage.mirror]\ntype='folder'\nprefixes='s3://bucket/'\npath='{}'",
+        destination.display()
+    ));
+    let mut handles = Vec::new();
+    for number in 0..16 {
+        let source = root.path().join(number.to_string());
+        std::fs::write(&source, vec![number as u8; 1024 * 1024]).unwrap();
+        let storage = storage.clone();
+        handles.push(tokio::spawn(async move {
+            storage.upload(&source, "s3://bucket/out").await
+        }));
+    }
+    for handle in handles {
+        handle.await.unwrap().unwrap();
+    }
+    let bytes = std::fs::read(destination.join("out")).unwrap();
+    assert_eq!(bytes.len(), 1024 * 1024);
+    assert!(bytes[0] < 16 && bytes.iter().all(|byte| *byte == bytes[0]));
+    assert_eq!(std::fs::read_dir(destination).unwrap().count(), 1);
+}
+
+#[tokio::test]
+async fn failed_download_preserves_the_destination_and_cleans_its_temporary_file() {
+    let server = common::WebServer::start(&[], None);
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("old");
+    std::fs::write(&file, "old").unwrap();
+    assert!(
+        Storage::default()
+            .download(&format!("{}/missing", server.address), &file)
+            .await
+            .is_err()
+    );
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "old");
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+}
+
+#[tokio::test]
+async fn a_whole_http_download_rejects_an_unsolicited_partial_response() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!("http://{}/data", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line.trim().is_empty() {
+                break;
+            }
+        }
+        stream.write_all(b"HTTP/1.1 206 Partial Content\r\nContent-Length: 4\r\nContent-Range: bytes 4-7/8\r\nConnection: close\r\n\r\nCCCC").unwrap();
+    });
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("old");
+    std::fs::write(&file, "old").unwrap();
+    let error = Storage::default()
+        .download(&address, &file)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("partial response"));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "old");
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+}
+
+#[tokio::test]
+async fn changing_object_version_between_ranges_cannot_publish_a_hybrid() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let versions = Arc::new(Mutex::new(Vec::new()));
+    let seen = versions.clone();
+    std::thread::spawn(move || {
+        let mut gets = 0;
+        for mut stream in listener.incoming().flatten() {
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut request = String::new();
+            reader.read_line(&mut request).unwrap();
+            let mut headers = Vec::new();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line.trim().is_empty() {
+                    break;
+                }
+                headers.push(line.to_ascii_lowercase());
+            }
+            if request.starts_with("HEAD ") {
+                stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 9437184\r\nETag: \"original\"\r\nConnection: close\r\n\r\n").unwrap();
+            } else {
+                seen.lock().unwrap().push(
+                    headers
+                        .iter()
+                        .find(|line| line.starts_with("if-match:"))
+                        .cloned(),
+                );
+                gets += 1;
+                if gets == 1 {
+                    stream.write_all(b"HTTP/1.1 206 Partial Content\r\nContent-Length: 8388608\r\nContent-Range: bytes 0-8388607/9437184\r\nETag: \"original\"\r\nConnection: close\r\n\r\n").unwrap();
+                    stream.write_all(&vec![b'A'; 8388608]).unwrap();
+                } else {
+                    stream.write_all(b"HTTP/1.1 412 Precondition Failed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                    break;
+                }
+            }
+        }
+    });
+    let storage = storage(&format!(
+        "[storage.objects]\ntype='s3'\nprefixes='s3://bucket/'\nendpoint='{endpoint}'\nregion='us-east-1'\nanonymous=true"
+    ));
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("old");
+    std::fs::write(&file, "old").unwrap();
+    assert!(storage.download("s3://bucket/data", &file).await.is_err());
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "old");
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+    let versions = versions.lock().unwrap();
+    assert_eq!(versions.len(), 2);
+    assert!(
+        versions
+            .iter()
+            .all(|tag| tag.as_deref() == Some("if-match: \"original\"\r\n"))
+    );
+}
+
+#[tokio::test]
+async fn cancelled_download_keeps_old_destination_and_removes_its_private_file() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!("http://{}/data", listener.local_addr().unwrap());
+    let (ready, waiting) = tokio::sync::oneshot::channel();
+    let (stop, stopped) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line.trim().is_empty() {
+                break;
+            }
+        }
+        stream
+            .write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 1048576\r\nConnection: close\r\n\r\nAAAA",
+            )
+            .unwrap();
+        ready.send(()).unwrap();
+        stopped.recv().unwrap();
+    });
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("old");
+    std::fs::write(&file, "old").unwrap();
+    let destination = file.clone();
+    let download =
+        tokio::spawn(async move { Storage::default().download(&address, &destination).await });
+    waiting.await.unwrap();
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "old");
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 2);
+    download.abort();
+    assert!(download.await.unwrap_err().is_cancelled());
+    stop.send(()).unwrap();
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "old");
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+}
+
+#[tokio::test]
+async fn object_download_without_a_strong_version_fails_before_reading_ranges() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut request = String::new();
+        reader.read_line(&mut request).unwrap();
+        assert!(request.starts_with("HEAD "));
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line.trim().is_empty() {
+                break;
+            }
+        }
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 9437184\r\nConnection: close\r\n\r\n")
+            .unwrap();
+    });
+    let storage = storage(&format!(
+        "[storage.objects]\ntype='s3'\nprefixes='s3://bucket/'\nendpoint='{endpoint}'\nregion='us-east-1'\nanonymous=true"
+    ));
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("old");
+    std::fs::write(&file, "old").unwrap();
+    let error = storage
+        .download("s3://bucket/data", &file)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("no strong version"));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "old");
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
 }

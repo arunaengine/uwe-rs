@@ -252,18 +252,26 @@ impl Storage {
         found.map_err(|problem| served.failed("list", target, problem))
     }
 
-    /// Downloads a file into `file`, from `offset` on where the provider can.
+    /// Downloads a whole file privately, then publishes it after a successful transfer.
     pub(crate) async fn download_from(
         &self,
         target: &str,
         file: &Path,
-        offset: u64,
     ) -> Result<Downloaded, StorageError> {
         let served = self.serve(target)?;
+        let parent = file
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        let temporary = tempfile::NamedTempFile::new_in(parent).map_err(error::local(file))?;
         let done = (served.connection)
-            .download(served.prefix, target, file, offset)
+            .download(served.prefix, target, temporary.path(), 0)
             .await;
-        done.map_err(|problem| served.failed("read", target, problem))
+        let downloaded = done.map_err(|problem| served.failed("read", target, problem))?;
+        temporary
+            .persist(file)
+            .map_err(|error| error::local(file)(error.error))?;
+        Ok(downloaded)
     }
 
     /// Uploads a local file to an address.

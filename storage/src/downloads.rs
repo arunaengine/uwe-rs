@@ -47,15 +47,8 @@ impl Storage {
             tokio::fs::create_dir_all(downloads)
                 .await
                 .map_err(local(downloads))?;
-            // The file comes into a part named with the process id, which is renamed once
-            // complete, so that runs that download the same file at once do not mix. A run
-            // that was stopped leaves its part, which the next run takes over and continues.
-            let partial = copy.with_extension(format!("{}.partial", std::process::id()));
-            let present = take_over(downloads, &name, &partial);
-            let downloaded = self.download_from(target, &partial, present).await?;
-            tokio::fs::rename(&partial, &copy)
-                .await
-                .map_err(local(&copy))?;
+            // An old partial has no trustworthy remote version, so every transfer starts anew.
+            let downloaded = self.download_from(target, &copy).await?;
             // Later runs compare the version with the one that the provider gives then. A
             // provider that gives none leaves the size to compare.
             journal::note_version(&copy, downloaded.version.as_deref());
@@ -80,7 +73,7 @@ impl Storage {
     /// Downloads a file into `file`, whole, as a transfer: the process does not note it as a
     /// file that it read, like a result that goes from a store elsewhere to its place.
     pub async fn download(&self, target: &str, file: &Path) -> Result<(), StorageError> {
-        self.download_from(target, file, 0).await.map(|_| ())
+        self.download_from(target, file).await.map(|_| ())
     }
 
     /// A copy of a remote file at `file`, which the process notes as read, like a file of a
@@ -89,14 +82,22 @@ impl Storage {
     pub async fn copy_of(&self, target: &str, file: &Path) -> Result<(), StorageError> {
         let (fetched, version) = match self.inner.journal.pinned(target) {
             Some(pinned) => {
-                tokio::fs::copy(&pinned.copy, file)
+                let parent = file
+                    .parent()
+                    .filter(|path| !path.as_os_str().is_empty())
+                    .unwrap_or_else(|| Path::new("."));
+                let temporary = tempfile::NamedTempFile::new_in(parent).map_err(local(file))?;
+                let temporary = crate::folder::copied(&pinned.copy, temporary)
                     .await
                     .map_err(local(file))?;
+                temporary
+                    .persist(file)
+                    .map_err(|error| local(file)(error.error))?;
                 let version = pinned.version.clone();
                 (pinned, version)
             }
             None => {
-                let downloaded = self.download_from(target, file, 0).await?;
+                let downloaded = self.download_from(target, file).await?;
                 (journal::described(target, file).await?, downloaded.version)
             }
         };
@@ -139,39 +140,6 @@ impl Storage {
         }
         Ok(found)
     }
-}
-
-/// Takes over the largest part of `name` that an earlier run left in `downloads` by renaming
-/// it to `partial`, and gives its size; 0 when there is none. A part of a run that still goes
-/// on, `<name>.<process id>.partial`, is left alone. Of two runs that try at once, only one
-/// can rename a part.
-fn take_over(downloads: &Path, name: &str, partial: &Path) -> u64 {
-    let Ok(entries) = std::fs::read_dir(downloads) else {
-        return 0;
-    };
-    let left = |file: &str| {
-        let Some(middle) = file
-            .strip_prefix(&format!("{name}."))
-            .and_then(|rest| rest.strip_suffix("partial"))
-        else {
-            return false;
-        };
-        // The part of a stopped run, or of the first version of iunctus that had no id.
-        let owner = middle.trim_end_matches('.');
-        owner.is_empty() || !Path::new("/proc").join(owner).exists()
-    };
-    let mut parts: Vec<(u64, PathBuf)> = entries
-        .flatten()
-        .filter(|entry| left(&entry.file_name().to_string_lossy()))
-        .filter_map(|entry| Some((entry.metadata().ok()?.len(), entry.path())))
-        .collect();
-    parts.sort();
-    while let Some((size, part)) = parts.pop() {
-        if std::fs::rename(&part, partial).is_ok() {
-            return size;
-        }
-    }
-    0
 }
 
 /// What `downloads` knows of a remote file: the size of its copy, or what an earlier run noted.
@@ -243,24 +211,6 @@ mod tests {
         };
         note(folder, downloads.path(), &directory);
         assert_eq!(size(known(folder, downloads.path())), Some((true, 0)));
-    }
-
-    #[test]
-    fn stopped_downloads_are_taken_over() {
-        let downloads = tempfile::tempdir().expect("a temporary directory");
-        let part = |name: &str, size: usize| {
-            std::fs::write(downloads.path().join(name), vec![b'x'; size]).expect("writes");
-        };
-        // A part of this process, which runs, and parts of stopped runs.
-        part(&format!("abc.{}.partial", std::process::id()), 9);
-        part("abc.4294967295.partial", 5);
-        part("abc.partial", 3);
-        part("other.4294967295.partial", 7);
-        let own = downloads.path().join("abc.1.partial");
-        assert_eq!(take_over(downloads.path(), "abc", &own), 5);
-        assert!(own.is_file());
-        assert_eq!(take_over(downloads.path(), "abc", &own), 3);
-        assert_eq!(take_over(downloads.path(), "abc", &own), 0);
     }
 
     #[test]

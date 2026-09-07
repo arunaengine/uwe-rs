@@ -72,10 +72,20 @@ impl Folder {
     /// Copies a file to `target`, whole: a copy of a local file is fast, and file systems like
     /// btrfs and XFS share its blocks instead of copying them.
     pub async fn download(&self, path: &Path, target: &Path) -> Result<Downloaded, Problem> {
-        match tokio::fs::copy(path, target).await {
-            Ok(_) => Ok(Downloaded {
-                version: std::fs::metadata(path).ok().as_ref().and_then(modified),
-            }),
+        let parent = target
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        let part = tempfile::NamedTempFile::new_in(parent)
+            .map_err(|error| Problem::local(target, error))?;
+        match copied(path, part).await {
+            Ok(part) => {
+                part.persist(target)
+                    .map_err(|error| Problem::local(target, error.error))?;
+                Ok(Downloaded {
+                    version: std::fs::metadata(path).ok().as_ref().and_then(modified),
+                })
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(Problem::missing()),
             Err(error) => Err(Problem::local(path, error)),
         }
@@ -89,16 +99,33 @@ impl Folder {
                 .await
                 .map_err(|error| Problem::local(parent, error))?;
         }
-        let mut part = path.as_os_str().to_owned();
-        part.push(format!(".{}.part", std::process::id()));
-        let part = PathBuf::from(part);
-        tokio::fs::copy(file, &part)
+        let parent = path
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        let part =
+            tempfile::NamedTempFile::new_in(parent).map_err(|error| Problem::local(path, error))?;
+        let part = copied(file, part)
             .await
             .map_err(|error| Problem::local(file, error))?;
-        tokio::fs::rename(&part, path)
-            .await
-            .map_err(|error| Problem::local(path, error))
+        part.persist(path)
+            .map(|_| ())
+            .map_err(|error| Problem::local(path, error.error))
     }
+}
+
+/// Keeps the private file alive until even a detached blocking copy has finished.
+pub(crate) async fn copied(
+    file: &Path,
+    part: tempfile::NamedTempFile,
+) -> std::io::Result<tempfile::NamedTempFile> {
+    let file = file.to_owned();
+    tokio::task::spawn_blocking(move || {
+        std::fs::copy(file, part.path())?;
+        Ok(part)
+    })
+    .await
+    .map_err(std::io::Error::other)?
 }
 
 /// The time of the last change of a file, in nanoseconds since the Unix epoch, as its version.

@@ -128,6 +128,40 @@ async fn remote_directory_hits_validate_children_without_publishing_partial_fron
 }
 
 #[tokio::test]
+async fn implicit_manifest_parents_cannot_be_replaced_by_directory_links() {
+    let folder = tempfile::tempdir().unwrap();
+    let store = Store::local(folder.path()).unwrap();
+    let content = store
+        .put_content(Bytes::from_static(b"same"))
+        .await
+        .unwrap();
+    let tree = Tree {
+        entries: ["a/file", "b/file"]
+            .map(|path| TreeEntry::File {
+                path: path.into(),
+                digest: content.clone(),
+                size: 4,
+                executable: false,
+            })
+            .into(),
+    };
+    let manifest = store.put_tree(&tree).await.unwrap();
+    let location = "runs/run/task/1/work/directory";
+    let root = folder.path().join(location);
+    for name in ["a", "b"] {
+        std::fs::create_dir_all(root.join(name)).unwrap();
+        std::fs::write(root.join(name).join("file"), b"same").unwrap();
+    }
+    let entry = entry(location, manifest, 8);
+    assert!(entry.complete(&store).await.unwrap());
+    std::fs::remove_file(root.join("a/file")).unwrap();
+    std::fs::remove_dir(root.join("a")).unwrap();
+    std::os::unix::fs::symlink("b", root.join("a")).unwrap();
+    assert_eq!(std::fs::read(root.join("a/file")).unwrap(), b"same");
+    assert!(!entry.complete(&store).await.unwrap());
+}
+
+#[tokio::test]
 async fn retained_import_and_no_cache_manifests_keep_all_content() {
     use task_runner::clean::{Keep, plan, remove};
     let folder = tempfile::tempdir().unwrap();

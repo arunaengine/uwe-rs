@@ -41,6 +41,8 @@ const LEAST_MEMORY: u64 = 6 << 20;
 /// The memory of the container that hands the files of a task back to the user (64 MiB).
 const HAND_BACK_MEMORY: i64 = 64 << 20;
 
+type ImageCommands = HashMap<(String, Option<String>), Arc<OnceCell<Commands>>>;
+
 /// The local container executor.
 #[derive(Debug)]
 pub struct LocalContainer {
@@ -51,7 +53,7 @@ pub struct LocalContainer {
     pub pool: Pool,
     /// What containers of each image run by default, asked once per run, as the runner pins
     /// each image once per run.
-    commands: Mutex<HashMap<(String, Option<String>), Arc<OnceCell<Commands>>>>,
+    commands: Mutex<ImageCommands>,
 }
 
 /// How a container ended.
@@ -871,12 +873,12 @@ fn group_resources(
             "the granted {cpus} CPUs cannot cover {groups} image groups at the engine minimum of 0.01 CPU each"
         )));
     }
-    if let Some(bytes) = memory {
-        if bytes / (groups as u64) < LEAST_MEMORY {
-            return Err(ExecutorError::Unsupported(format!(
-                "the granted {bytes} bytes cannot cover {groups} image groups at the engine minimum of {LEAST_MEMORY} bytes each"
-            )));
-        }
+    if let Some(bytes) = memory
+        && bytes / (groups as u64) < LEAST_MEMORY
+    {
+        return Err(ExecutorError::Unsupported(format!(
+            "the granted {bytes} bytes cannot cover {groups} image groups at the engine minimum of {LEAST_MEMORY} bytes each"
+        )));
     }
     Ok((0..groups)
         .map(|index| {

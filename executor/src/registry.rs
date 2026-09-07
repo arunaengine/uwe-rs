@@ -127,10 +127,12 @@ pub struct ResolvedImage {
     pub config: ImageConfig,
 }
 
+type ResolvedImages = HashMap<(String, String), Arc<OnceCell<ResolvedImage>>>;
+
 /// The configs of images, each asked of its registry once.
 #[derive(Debug, Default)]
 pub struct ImageConfigs {
-    known: Mutex<HashMap<(String, String), Arc<OnceCell<ResolvedImage>>>>,
+    known: Mutex<ResolvedImages>,
 }
 
 impl ImageConfigs {

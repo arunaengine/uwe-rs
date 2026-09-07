@@ -35,10 +35,10 @@ pub(crate) async fn available_for(
     reference: &str,
     platform: Option<&str>,
 ) -> Result<ImageInspect, ExecutorError> {
-    if let Ok(image) = inspect(engine, reference).await {
-        if platform.is_none_or(|platform| matches_platform(&image, platform)) {
-            return Ok(image);
-        }
+    if let Ok(image) = inspect(engine, reference).await
+        && platform.is_none_or(|platform| matches_platform(&image, platform))
+    {
+        return Ok(image);
     }
     let reference = match platform {
         Some(platform) => {
@@ -50,12 +50,12 @@ pub(crate) async fn available_for(
     };
     pull(engine, &reference, platform).await?;
     let image = inspect(engine, &reference).await?;
-    if let Some(platform) = platform {
-        if !matches_platform(&image, platform) {
-            return Err(ExecutorError::Unsupported(format!(
-                "the engine's image {reference} does not match {platform}"
-            )));
-        }
+    if let Some(platform) = platform
+        && !matches_platform(&image, platform)
+    {
+        return Err(ExecutorError::Unsupported(format!(
+            "the engine's image {reference} does not match {platform}"
+        )));
     }
     Ok(image)
 }

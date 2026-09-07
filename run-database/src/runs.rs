@@ -222,10 +222,10 @@ impl Database {
                     ))
                 },
             )?;
-            if let (Some(host), Some(boot), Some(start)) = identity {
-                if !alive(run.process, &host, &boot, &start) {
-                    run.state = "stopped".into();
-                }
+            if let (Some(host), Some(boot), Some(start)) = identity
+                && !alive(run.process, &host, &boot, &start)
+            {
+                run.state = "stopped".into();
             }
         }
         Ok(run)

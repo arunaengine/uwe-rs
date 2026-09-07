@@ -1194,7 +1194,21 @@ async fn execution_of_an_external_preparation_waits_for_maintenance_cancellably(
         .unwrap();
     drop(original);
     let store = Store::local(&root.path().join("store")).unwrap();
-    let _guard = task_runner::clean::maintenance(&store).await.unwrap();
+    let _guard = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            match task_runner::clean::maintenance(&store).await {
+                Ok(guard) => break guard,
+                Err(task_runner::RunnerError::Io(error))
+                    if error.kind() == std::io::ErrorKind::WouldBlock =>
+                {
+                    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                }
+                Err(error) => panic!("{error}"),
+            }
+        }
+    })
+    .await
+    .expect("the preceding preparation must release maintenance");
     let consumer = runner_of(root.path(), "consumer", std::time::Duration::ZERO, 0);
     let cancel = CancellationToken::new();
     cancel.cancel();

@@ -295,13 +295,12 @@ impl ContainerProcess {
 
     fn ended(&mut self) -> ProcessError {
         // The reader has the last lines once the container's output closed.
-        if let (Some(mut reader), Ok(runtime)) = (self.reader.take(), runtime()) {
-            if runtime
+        if let (Some(mut reader), Ok(runtime)) = (self.reader.take(), runtime())
+            && runtime
                 .block_on(bounded(&self.cancel, STOP_GRACE, &mut reader))
                 .is_err()
-            {
-                reader.abort();
-            }
+        {
+            reader.abort();
         }
         let stderr = self
             .stderr
@@ -398,10 +397,10 @@ async fn create_id(
                     reason: error.to_string(),
                 })
         });
-        if let Err(unsent) = sender.send(result) {
-            if let Ok(id) = unsent.0 {
-                remove_async(&client, &id).await;
-            }
+        if let Err(unsent) = sender.send(result)
+            && let Ok(id) = unsent.0
+        {
+            remove_async(&client, &id).await;
         }
     });
     match bounded(cancel, OPERATION_LIMIT, receiver.recv()).await {

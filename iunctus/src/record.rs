@@ -159,47 +159,6 @@ pub(crate) fn run_arguments(arguments: &Arguments) -> Vec<String> {
     words
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn effective_repeat_options_roundtrip() {
-        let arguments = Arguments {
-            target: Some("/restored/workflow/main.nf".into()),
-            language: Some(Language::Nextflow),
-            profiles: Some(vec!["analysis".into(), "local".into()]),
-            configs: vec!["/restored/named/settings,extra.config".into()],
-            inputs: Some("/restored/named/params.json".into()),
-            params: vec![
-                ("reads".into(), "a b.fq".into()),
-                ("flag".into(), "false".into()),
-            ],
-            targets: vec!["CUSTOM".into()],
-            executor: Some("local".into()),
-            store: Some("/cache/store".into()),
-            default_image: Some("busybox:stable".into()),
-            python_image: Some("python:3".into()),
-            stub: true,
-            keep_going: true,
-            no_cache: true,
-            no_network: true,
-            no_right_sizing: true,
-            no_grouping: true,
-            check_reproducibility: Some(0.25),
-            max_pending: Some(3),
-            order: Some(workflow_graph::Order::Shuffled { seed: 42 }),
-            output_dir: Some("/results".into()),
-            ..Arguments::default()
-        };
-        let words = run_arguments(&arguments);
-        assert_eq!(
-            crate::arguments::parse(&words[1..]).expect("parses"),
-            arguments
-        );
-    }
-}
-
 /// The run that `-resume` names, checked: it ran the same workflow, it has ended, and a real
 /// run continues only a real run, since the files of a simulated one are made up. Without an
 /// earlier run of the workflow, the run starts from the beginning.
@@ -248,4 +207,45 @@ fn resumed(
         )));
     }
     Ok(Some(earlier))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn effective_repeat_options_roundtrip() {
+        let arguments = Arguments {
+            target: Some("/restored/workflow/main.nf".into()),
+            language: Some(Language::Nextflow),
+            profiles: Some(vec!["analysis".into(), "local".into()]),
+            configs: vec!["/restored/named/settings,extra.config".into()],
+            inputs: Some("/restored/named/params.json".into()),
+            params: vec![
+                ("reads".into(), "a b.fq".into()),
+                ("flag".into(), "false".into()),
+            ],
+            targets: vec!["CUSTOM".into()],
+            executor: Some("local".into()),
+            store: Some("/cache/store".into()),
+            default_image: Some("busybox:stable".into()),
+            python_image: Some("python:3".into()),
+            stub: true,
+            keep_going: true,
+            no_cache: true,
+            no_network: true,
+            no_right_sizing: true,
+            no_grouping: true,
+            check_reproducibility: Some(0.25),
+            max_pending: Some(3),
+            order: Some(workflow_graph::Order::Shuffled { seed: 42 }),
+            output_dir: Some("/results".into()),
+            ..Arguments::default()
+        };
+        let words = run_arguments(&arguments);
+        assert_eq!(
+            crate::arguments::parse(&words[1..]).expect("parses"),
+            arguments
+        );
+    }
 }

@@ -70,6 +70,24 @@ pub struct Maintenance {
     store: String,
 }
 
+impl Maintenance {
+    /// Expiring leases cannot fence a deletion that is delayed past their expiry.
+    pub fn ensure_cleanup(&self) -> Result<(), RunnerError> {
+        if self._lease.is_local() {
+            return Ok(());
+        }
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "destructive cache cleanup requires a non-expiring local lease",
+        )
+        .into())
+    }
+
+    pub async fn check(&self) -> Result<(), RunnerError> {
+        Ok(self._lease.check().await?)
+    }
+}
+
 fn store_name(store: &Store) -> String {
     store
         .local_path("")
@@ -331,6 +349,8 @@ pub async fn remove_guarded(
         )
         .into());
     }
+    guard.ensure_cleanup()?;
+    guard.check().await?;
     let keep = planned.keep.as_ref().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -340,13 +360,19 @@ pub async fn remove_guarded(
     let plan = plan(store, keep).await?;
     let mut removed = Removed::default();
     for result in &plan.results {
+        guard.check().await?;
         store.remove_entry(&result.namespace, &result.key).await?;
+        guard.check().await?;
         removed.results += 1;
     }
     for object in &plan.objects {
+        guard.check().await?;
         store.remove(&object.location).await?;
+        guard.check().await?;
         removed.objects += 1;
     }
+    guard.check().await?;
     removed.leases = store.remove_free_leases().await?;
+    guard.check().await?;
     Ok(removed)
 }

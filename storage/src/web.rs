@@ -171,6 +171,11 @@ impl Web {
         if !status.is_success() {
             return Err(self.refused(status));
         }
+        if offset == 0 && status == StatusCode::PARTIAL_CONTENT {
+            return Err(Problem::fixed(
+                "the server returned a partial response for a whole file",
+            ));
+        }
         let resumed = status == StatusCode::PARTIAL_CONTENT;
         let header = |name| {
             response
@@ -224,10 +229,10 @@ impl Web {
     }
 }
 
-/// Opens the file that a download writes: to append to, or to write anew.
+/// Opens an existing private download file; a cancelled open must never recreate its name.
 pub(crate) async fn open(target: &Path, append: bool) -> Result<tokio::fs::File, Problem> {
     tokio::fs::OpenOptions::new()
-        .create(true)
+        .create(false)
         .write(true)
         .append(append)
         .truncate(!append)
@@ -259,5 +264,72 @@ mod tests {
         let first = http_client().expect("a client");
         let second = http_client().expect("a client");
         assert!(std::ptr::eq(first, second));
+    }
+
+    #[test]
+    fn queued_cancelled_copies_and_opens_never_recreate_private_paths() {
+        use std::future::Future;
+        for operation in 0..3 {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .max_blocking_threads(1)
+                .enable_all()
+                .build()
+                .unwrap();
+            let root = tempfile::tempdir().unwrap();
+            let inputs = tempfile::tempdir().unwrap();
+            let source = inputs.path().join("source");
+            std::fs::write(&source, b"new").unwrap();
+            let target = root.path().join("old");
+            std::fs::write(&target, b"old").unwrap();
+            let storage = crate::Storage::default();
+            storage.pin(crate::Fetched {
+                address: "https://test/source".into(),
+                copy: source.clone(),
+                digest: "unused".into(),
+                size: 3,
+                time: std::time::UNIX_EPOCH,
+                version: None,
+            });
+            let (ready, started) = std::sync::mpsc::channel();
+            let (release, blocked) = std::sync::mpsc::channel();
+            runtime.spawn_blocking(move || {
+                ready.send(()).unwrap();
+                blocked.recv().unwrap();
+            });
+            started.recv().unwrap();
+            runtime.block_on(async {
+                let mut temporary = Some(tempfile::NamedTempFile::new_in(root.path()).unwrap());
+                let name = temporary.as_ref().unwrap().path().to_owned();
+                let mut pending: std::pin::Pin<Box<dyn Future<Output = ()> + '_>> = match operation
+                {
+                    0 => Box::pin(async {
+                        let _ = open(&name, false).await;
+                    }),
+                    1 => Box::pin(async {
+                        let _ = storage.copy_of("https://test/source", &target).await;
+                    }),
+                    _ => {
+                        let part = temporary.take().unwrap();
+                        Box::pin(async {
+                            let _ = crate::folder::copied(&source, part).await;
+                        })
+                    }
+                };
+                let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+                assert!(pending.as_mut().poll(&mut context).is_pending());
+                assert_eq!(
+                    std::fs::read_dir(root.path()).unwrap().count(),
+                    if operation == 1 { 3 } else { 2 }
+                );
+                drop(pending);
+                drop(temporary);
+            });
+            release.send(()).unwrap();
+            runtime.block_on(async {
+                tokio::task::spawn_blocking(|| ()).await.unwrap();
+            });
+            assert_eq!(std::fs::read(target).unwrap(), b"old");
+            assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+        }
     }
 }

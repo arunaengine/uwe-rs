@@ -232,21 +232,50 @@ impl Objects {
         offset: u64,
     ) -> Result<Downloaded, Problem> {
         let (bucket, key) = bucket_and_key(target)?;
-        let reader = self.operator(bucket)?.reader(key).await.map_err(problem)?;
+        let operator = self.operator(bucket)?;
+        let metadata = operator.stat(key).await.map_err(problem)?;
+        let version = metadata
+            .etag()
+            .filter(|tag| !tag.is_empty() && !tag.starts_with("W/"))
+            .ok_or_else(|| {
+                Problem::fixed(
+                    "the object service provides no strong version for a ranged download",
+                )
+            })?;
+        if !operator.info().capability().read_with_if_match {
+            return Err(Problem::fixed(
+                "the object service cannot bind ranged downloads to a version",
+            ));
+        }
+        let reader = operator
+            .reader_with(key)
+            .if_match(version)
+            .chunk(PART_SIZE)
+            .await
+            .map_err(problem)?;
         let mut stream = reader.into_bytes_stream(offset..).await.map_err(problem)?;
         let mut output = open(file, offset > 0).await?;
+        let mut written = offset;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|error| Problem::passing(error.to_string()))?;
             output
                 .write_all(&chunk)
                 .await
                 .map_err(|error| Problem::local(file, error))?;
+            written += chunk.len() as u64;
         }
         output
             .flush()
             .await
             .map_err(|error| Problem::local(file, error))?;
-        Ok(Downloaded { version: None })
+        if written != metadata.content_length() {
+            return Err(Problem::fixed(
+                "the downloaded object length does not match its version",
+            ));
+        }
+        Ok(Downloaded {
+            version: Some(version.to_owned()),
+        })
     }
 
     /// Uploads a local file in parts.

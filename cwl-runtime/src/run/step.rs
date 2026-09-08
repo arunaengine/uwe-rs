@@ -4,10 +4,11 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use cwl_parser::model::{ScatterMethod, Step, short_name};
 
-use super::links::{assemble, null_outputs};
+use super::links::assemble;
 use super::{Event, Job, JobId, Names, Parent, Run, ScatterRun, State, expression_runtime};
 use crate::expression::{Evaluator, Variables};
 use crate::files;
@@ -27,29 +28,21 @@ impl Run {
     ) -> Result<(), String> {
         let at = |error: String| format!("{}: {error}", names.display);
         let step_scope = scope.with(&step.requirements, &step.hints);
-        let evaluator = step_scope.evaluator();
         let process = &step.run.process;
+        let step = Arc::new(step.clone());
         if step.scatter.is_empty() {
-            match self
-                .step_job(step, gathered, &evaluator, &step_scope)
-                .map_err(at)?
-            {
-                Some(job) => {
-                    let parent = Parent::Step {
-                        workflow,
-                        step: index,
-                    };
-                    self.launch(process, job, &step_scope, parent, names, false)?;
-                }
-                None => {
-                    let outputs = null_outputs(step);
-                    self.events.push_back(Event::Step {
-                        workflow,
-                        step: index,
-                        outputs,
-                    });
-                }
-            }
+            let parent = Parent::Step {
+                workflow,
+                step: index,
+            };
+            self.launch(
+                process,
+                gathered,
+                &step_scope,
+                parent,
+                names,
+                Some(Arc::clone(&step)),
+            )?;
             return Ok(());
         }
         // Scatter: one job per element of the scattered inputs.
@@ -80,7 +73,7 @@ impl Run {
                 }
             }
         }
-        self.note_scatter(workflow, step, &keys, &gathered);
+        self.note_scatter(workflow, &step, &keys, &gathered);
         // In a simulated run over files without real content, a null is what real data would
         // fill.
         let simulated = self.options.simulated
@@ -180,25 +173,18 @@ impl Run {
                 combination.clone()
             };
             let element_names = names.indexed(&shown);
-            let job = self
-                .step_job(step, inputs, &evaluator, &step_scope)
-                .map_err(|error| format!("{}: {error}", element_names.display))?;
-            match job {
-                Some(job) => {
-                    let parent = Parent::Element {
-                        scatter,
-                        index: element,
-                    };
-                    self.launch(process, job, &step_scope, parent, element_names, false)?;
-                }
-                None => {
-                    let State::Scatter(run) = &mut self.jobs[scatter].state else {
-                        unreachable!("the scatter was just made");
-                    };
-                    run.results[element] = Some(Map::new());
-                    run.remaining -= 1;
-                }
-            }
+            let parent = Parent::Element {
+                scatter,
+                index: element,
+            };
+            self.launch(
+                process,
+                inputs,
+                &step_scope,
+                parent,
+                element_names,
+                Some(Arc::clone(&step)),
+            )?;
         }
         if let State::Scatter(run) = &mut self.jobs[scatter].state
             && run.remaining == 0
@@ -211,7 +197,7 @@ impl Run {
 
     /// [`Run::element`], and on placeholder inputs, with placeholders for the null inputs
     /// that a failing `valueFrom` or `when` names, a few rounds at most.
-    fn step_job(
+    pub(super) fn step_job(
         &self,
         step: &Step,
         gathered: Map,

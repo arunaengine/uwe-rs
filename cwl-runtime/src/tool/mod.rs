@@ -111,7 +111,11 @@ impl Pending {
             let made = (outcome.files.iter())
                 .find(|file| file.path.trim_end_matches('/') == entry.path.trim_end_matches('/'));
             if let Some(file) = made {
-                let location = cwl_parser::iri::file_url(std::path::Path::new(&file.location));
+                let location = if cwl_parser::iri::has_scheme(&file.location) {
+                    file.location.clone()
+                } else {
+                    cwl_parser::iri::file_url(std::path::Path::new(&file.location))
+                };
                 updates.push((entry.location.clone(), location));
             }
         }

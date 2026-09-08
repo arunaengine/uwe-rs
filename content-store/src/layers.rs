@@ -6,6 +6,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -125,20 +126,31 @@ async fn download(operator: &Operator, location: &str, target: &Path) -> Result<
     }
     let size = operator.stat(location).await?.content_length();
     let reader = operator.reader(location).await?;
-    let part = PathBuf::from(format!("{}.part-{}", target.display(), std::process::id()));
-    let mut file = tokio::fs::File::create(&part).await.map_err(at(&part))?;
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    let part = tempfile::Builder::new()
+        .permissions(std::fs::Permissions::from_mode(0o666))
+        .tempfile_in(parent)
+        .map_err(at(target))?;
+    let mut file = tokio::fs::File::from_std(part.reopen().map_err(at(target))?);
     let mut offset = 0;
     while offset < size {
         let end = (offset + PART_SIZE as u64).min(size);
-        let buffer = reader.read(offset..end).await?;
-        file.write_all(&buffer.to_bytes())
-            .await
-            .map_err(at(&part))?;
+        let buffer = reader.read(offset..end).await?.to_bytes();
+        if buffer.len() as u64 != end - offset {
+            return Err(opendal::Error::new(
+                ErrorKind::Unexpected,
+                "stored content changed size while being read",
+            )
+            .into());
+        }
+        file.write_all(&buffer).await.map_err(at(target))?;
         offset = end;
     }
-    file.flush().await.map_err(at(&part))?;
+    file.flush().await.map_err(at(target))?;
     drop(file);
-    tokio::fs::rename(&part, target).await.map_err(at(target))
+    part.persist(target)
+        .map(|_| ())
+        .map_err(|error| at(target)(error.error))
 }
 
 /// Copies the files of a folder of this machine into another, where they are not yet.
@@ -176,5 +188,26 @@ fn at(path: &Path) -> impl FnOnce(std::io::Error) -> StoreError + '_ {
     move |error| StoreError::File {
         path: path.to_owned(),
         error,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn failed_download_publication_cleans_its_owned_temporary_file() {
+        let operator = Operator::new(opendal::services::Memory::default()).unwrap();
+        operator
+            .write("content", Bytes::from_static(b"new"))
+            .await
+            .unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let target = folder.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("previous"), b"old").unwrap();
+        assert!(download(&operator, "content", &target).await.is_err());
+        assert_eq!(std::fs::read(target.join("previous")).unwrap(), b"old");
+        assert_eq!(std::fs::read_dir(folder.path()).unwrap().count(), 1);
     }
 }

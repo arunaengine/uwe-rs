@@ -10,9 +10,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::routing::get;
-use run_database::{
-    Comparison, Database, DatabaseError, Log, MarkerRow, Run, TaskDetail, TaskRow, TimeSpent, Why,
-};
+use run_database::{Database, DatabaseError, Log, MarkerRow, Run, TaskDetail, TaskRow};
 use serde::{Deserialize, Serialize};
 use workflow_graph::TaskId;
 use workflow_graph::render::{Direction, FOLD, Format, Options, State as Shown, View, render};
@@ -55,10 +53,14 @@ pub(crate) fn router(state: Shared) -> Router {
         .with_state(state)
 }
 
-async fn runs(State(state): State<Shared>) -> Result<Json<Vec<Run>>, Failure> {
-    Ok(Json(
-        query(&state, |database| Ok(database.runs(RUNS)?)).await?,
-    ))
+async fn runs(State(state): State<Shared>) -> Result<Json<serde_json::Value>, Failure> {
+    public(&query(&state, |database| Ok(database.runs(RUNS)?)).await?)
+}
+
+fn public<T: Serialize>(value: &T) -> Result<Json<serde_json::Value>, Failure> {
+    run_database::public_json(value)
+        .map(Json)
+        .map_err(|error| DatabaseError::Json(error).into())
 }
 
 /// A run with all its tasks, for the first view of the page. Later changes come as events.
@@ -74,12 +76,12 @@ pub(crate) struct RunView {
 async fn run(
     State(state): State<Shared>,
     Path(id): Path<String>,
-) -> Result<Json<RunView>, Failure> {
+) -> Result<Json<serde_json::Value>, Failure> {
     let view = query(&state, move |database| {
         run_view(database, &id)?.ok_or_else(|| Failure::not_found(format!("no run `{id}`")))
     })
     .await?;
-    Ok(Json(view))
+    public(&view)
 }
 
 /// The first view of a run, or `None` when the database has no such run.
@@ -106,6 +108,7 @@ pub(crate) struct TaskView {
     pub(crate) stderr: Option<Log>,
     /// The task that made each input, by the input's location.
     producers: BTreeMap<String, u64>,
+    input_ids: Vec<String>,
     /// The runs that replay the task, the latest first.
     replays: Vec<Run>,
 }
@@ -113,13 +116,13 @@ pub(crate) struct TaskView {
 async fn task(
     State(state): State<Shared>,
     Path((id, task)): Path<(String, u64)>,
-) -> Result<Json<TaskView>, Failure> {
+) -> Result<Json<serde_json::Value>, Failure> {
     let view = query(&state, move |database| {
         task_view(database, &id, task)?
             .ok_or_else(|| Failure::not_found(format!("no task {task} in run `{id}`")))
     })
     .await?;
-    Ok(Json(view))
+    public(&view)
 }
 
 /// A task with its logs, or `None` when the run has no such task.
@@ -146,6 +149,11 @@ pub(crate) fn task_view(
     }
     Ok(Some(TaskView {
         replays: database.replays_of(id, task)?,
+        input_ids: detail
+            .inputs
+            .iter()
+            .map(|file| run_database::public_resource_id(&file.location))
+            .collect(),
         detail,
         stdout,
         stderr,
@@ -157,29 +165,29 @@ pub(crate) fn task_view(
 async fn why(
     State(state): State<Shared>,
     Path((id, task)): Path<(String, u64)>,
-) -> Result<Json<Option<Why>>, Failure> {
+) -> Result<Json<serde_json::Value>, Failure> {
     let why = query(&state, move |database| Ok(database.why(&id, task)?)).await?;
-    Ok(Json(why))
+    public(&why)
 }
 
 /// Where the time of a run went: the critical path, waiting and running, and the steps.
 async fn time(
     State(state): State<Shared>,
     Path(id): Path<String>,
-) -> Result<Json<TimeSpent>, Failure> {
+) -> Result<Json<serde_json::Value>, Failure> {
     let spent = query(&state, move |database| match database.time_spent(&id)? {
         Some(spent) => Ok(spent),
         None => Err(Failure::not_found(format!("no run `{id}`"))),
     })
     .await?;
-    Ok(Json(spent))
+    public(&spent)
 }
 
 /// What differs between two runs, task by task.
 async fn compare(
     State(state): State<Shared>,
     Path((first, second)): Path<(String, String)>,
-) -> Result<Json<Comparison>, Failure> {
+) -> Result<Json<serde_json::Value>, Failure> {
     let comparison = query(&state, move |database| {
         match database.compare(&first, &second)? {
             Some(comparison) => Ok(comparison),
@@ -189,7 +197,7 @@ async fn compare(
         }
     })
     .await?;
-    Ok(Json(comparison))
+    public(&comparison)
 }
 
 #[derive(Deserialize)]
@@ -251,7 +259,11 @@ pub(crate) fn picture(
     options.states = (database.tasks(id)?.iter())
         .map(|row| (TaskId(row.id), shown(row, simulated)))
         .collect();
-    Ok(Some(render(&graph, &options, Format::Svg)))
+    Ok(Some(run_database::redact_public_text(&render(
+        &graph,
+        &options,
+        Format::Svg,
+    ))))
 }
 
 /// The state that the graph shows for a task: waiting and running come from the database,

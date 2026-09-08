@@ -366,7 +366,7 @@ async function drawDetail(task) {
   if (!view.run.simulated && row.attempts > 0) parts.push(replayPart(id, task, data.replays));
   parts.push(logPart("Standard output", data.stdout, id, task, last, "stdout"));
   parts.push(logPart("Standard error", data.stderr, id, task, last, "stderr"));
-  parts.push(el("h3", {}, "Inputs"), filesTable(data.inputs, "inputs", id, task, data.producers));
+  parts.push(el("h3", {}, "Inputs"), filesTable(data.inputs, "inputs", id, task, data.producers, data.input_ids));
   parts.push(el("h3", {}, "Outputs"), filesTable(data.outputs, "outputs", id, task, {}));
   const environment = Object.entries(description.environment || {});
   if (environment.length) {
@@ -461,11 +461,11 @@ function logPart(title, log, id, task, attempt, stream) {
     log.whole ? null : whole), el("pre", {}, log.text));
 }
 
-function filesTable(files, role, id, task, producers) {
+function filesTable(files, role, id, task, producers, identities) {
   if (!files.length) return el("p", { class: "quiet" }, "none");
   const rows = files.map((file, index) => {
     const url = `/api/runs/${encodeURIComponent(id)}/tasks/${task}/${role}/${index}`;
-    const producer = producers[file.location];
+    const producer = producers[identities?.[index] || file.location];
     let from = "";
     if (producer !== undefined) from = link(taskPath(producer), `task ${producer}`);
     else if (!file.location) from = "written by the workflow";

@@ -113,7 +113,7 @@ async fn next(mut cursor: Cursor) -> Option<(Result<Event, Infallible>, Cursor)>
         let event = Event::default()
             .event("update")
             .id(update.sequence.to_string())
-            .json_data(&update)
+            .json_data(run_database::public_json(&update).unwrap_or_default())
             .unwrap_or_default();
         return Some((Ok(event), cursor));
     }

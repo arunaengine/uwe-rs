@@ -351,6 +351,7 @@ impl<'a> Engine<'a> {
                         target: delivery.target.clone(),
                         message: error.to_string(),
                     })?;
+                driver.delivered(&delivery)?;
             }
         }
         self.check_cancel()

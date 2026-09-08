@@ -15,6 +15,8 @@ struct Chain {
     fail_at_finish: bool,
     delivered: Option<std::path::PathBuf>,
     asked: Vec<Delivery>,
+    acknowledged: Vec<Delivery>,
+    fail_at_delivery: bool,
     /// Whether the engine gave the files of the tasks.
     files: bool,
 }
@@ -49,6 +51,18 @@ impl Driver for Chain {
 
     fn deliveries(&mut self) -> Vec<Delivery> {
         std::mem::take(&mut self.asked)
+    }
+
+    fn delivered(&mut self, delivery: &Delivery) -> Result<(), DriverError> {
+        assert_eq!(
+            std::fs::read(&delivery.target).unwrap(),
+            std::fs::read(&delivery.location).unwrap()
+        );
+        if self.fail_at_delivery {
+            return Err(DriverError::new("cannot record delivered output"));
+        }
+        self.acknowledged.push(delivery.clone());
+        Ok(())
     }
 
     fn use_files(&mut self, files: std::sync::Arc<dyn Files>) {
@@ -184,9 +198,31 @@ fn real_executors_deliver_what_drivers_ask_for() {
     // The simulator delivers nothing; a real executor does.
     let target = made.with_extension("delivered");
     assert!(!target.exists());
+    assert!(simulated.acknowledged.is_empty());
     let mut real = chain();
     let execution = Engine::new(&mut Real).run("chain", &mut real);
     assert!(execution.error.is_none());
     assert!(real.files, "the driver gets the files of a real executor");
     assert_eq!(std::fs::read_to_string(target).expect("reads"), "made\n");
+    assert_eq!(real.acknowledged.len(), 1);
+}
+
+#[test]
+fn failed_copies_are_not_acknowledged_and_acknowledgement_errors_propagate() {
+    let folder = tempfile::tempdir().unwrap();
+    let made = folder.path().join("out.txt");
+    let mut driver = Chain {
+        delivered: Some(made.clone()),
+        ..Chain::default()
+    };
+    let failed = Engine::new(&mut Real).run("chain", &mut driver);
+    assert!(matches!(failed.error, Some(ExecuteError::Delivery { .. })));
+    assert!(driver.acknowledged.is_empty());
+    std::fs::write(&made, "made\n").unwrap();
+    driver.fail_at_delivery = true;
+    let failed = Engine::new(&mut Real).run("chain", &mut driver);
+    assert!(
+        matches!(failed.error, Some(ExecuteError::Driver(error)) if error.message == "cannot record delivered output")
+    );
+    assert!(driver.acknowledged.is_empty());
 }

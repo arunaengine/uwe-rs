@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use content_store::layout;
 use executor::{Backend, Staged, Staging};
 use task_model::{Digest, FileKind, TreeEntry};
+use tokio::io::AsyncWriteExt;
 
 use crate::runner::{Prepared, Source, at};
 use crate::{Runner, RunnerError};
@@ -166,11 +167,16 @@ impl<B: Backend> Runner<B> {
         if !tokio::fs::try_exists(&path).await.map_err(at(&path))? {
             (tokio::fs::create_dir_all(downloads).await).map_err(at(downloads))?;
             let bytes = self.store.get_content(digest).await?;
-            // A name of this process first, then a rename, so that another run that downloads
-            // the same content never reads half a file.
-            let part = downloads.join(format!("{}.{}", digest.hex(), std::process::id()));
-            (tokio::fs::write(&part, bytes).await).map_err(at(&part))?;
-            (tokio::fs::rename(&part, &path).await).map_err(at(&path))?;
+            let part = tempfile::Builder::new()
+                .permissions(std::fs::Permissions::from_mode(0o666))
+                .tempfile_in(downloads)
+                .map_err(at(downloads))?;
+            let mut file = tokio::fs::File::from_std(part.reopen().map_err(at(part.path()))?);
+            file.write_all(&bytes).await.map_err(at(part.path()))?;
+            file.flush().await.map_err(at(part.path()))?;
+            drop(file);
+            part.persist(&path)
+                .map_err(|error| at(&path)(error.error))?;
         }
         Ok(path)
     }

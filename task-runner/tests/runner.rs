@@ -567,6 +567,71 @@ fn remote_inputs_are_downloaded_once() {
     assert!(error.unsupported(), "{error}");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn concurrent_remote_content_staging_publishes_complete_unique_copies() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
+    let store = Store::remote(operator, "memory://staging").unwrap();
+    let runner = runner_with(
+        store.clone(),
+        root.path(),
+        "parallel",
+        std::time::Duration::ZERO,
+        0,
+        false,
+    );
+    let content = "shared staged bytes\n".repeat(65_536);
+    let digest = task_model::Digest::sha256(content.as_bytes());
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(8));
+    let mut runs = Vec::new();
+    for index in 0..8 {
+        let task = Task {
+            id: TaskId(index),
+            command: vec![format!("command-{index}")],
+            inputs: vec![Input {
+                path: "input".into(),
+                content: Some(content.clone()),
+                ..Input::default()
+            }],
+            outputs: vec!["output".into()],
+            ..Task::default()
+        };
+        let prepared = runner
+            .request(&task, Some("image@sha256:00".into()))
+            .await
+            .unwrap();
+        let (runner, barrier) = (runner.clone(), barrier.clone());
+        runs.push(tokio::spawn(async move {
+            barrier.wait().await;
+            runner.execute(&prepared, &CancellationToken::new()).await
+        }));
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(15), async {
+        for run in runs {
+            let result = run.await.unwrap().unwrap();
+            assert!(!result.reused);
+            assert_eq!(result.files[0].digest, digest);
+        }
+    })
+    .await
+    .unwrap();
+    let downloaded = root.path().join("downloads").join(digest.hex());
+    assert_eq!(std::fs::read_to_string(&downloaded).unwrap(), content);
+    let reference = root.path().join("ordinary-mode");
+    std::fs::write(&reference, "mode").unwrap();
+    assert_eq!(
+        std::fs::metadata(downloaded).unwrap().permissions().mode() & 0o777,
+        std::fs::metadata(reference).unwrap().permissions().mode() & 0o777
+    );
+    assert_eq!(
+        std::fs::read_dir(root.path().join("downloads"))
+            .unwrap()
+            .count(),
+        1
+    );
+}
+
 #[test]
 fn outcomes_give_the_stored_files_with_size_and_digest() {
     use task_runner::RunnerExecutor;

@@ -22,6 +22,14 @@ pub fn tree(digest: &Digest) -> String {
     sharded("trees", digest)
 }
 
+/// Manifest association for a logical directory location, outside user output paths.
+pub fn directory(location: &str) -> String {
+    format!(
+        "directories/v1/{}.json",
+        Digest::sha256(location.as_bytes()).hex()
+    )
+}
+
 /// The mark of a tool that gave other bytes from the same inputs when a task of it ran again:
 /// `tools/<digest hex>.json`, where the digest names the tool (its image and step).
 pub fn unreproducible(tool: &Digest) -> String {

@@ -6,6 +6,7 @@ use bytes::Bytes;
 use opendal::layers::RetryLayer;
 use opendal::services::{Fs, Memory, S3};
 use opendal::{ErrorKind, Operator};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use task_model::{Digest, SpecError, Tree};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -65,6 +66,13 @@ pub struct StoredOutput {
     pub location: String,
     pub digest: Digest,
     pub size: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoredDirectory {
+    pub location: String,
+    pub digest: Digest,
 }
 
 #[derive(Clone, Debug)]
@@ -298,6 +306,59 @@ impl Store {
         Ok(digest)
     }
 
+    /// Publishes a manifest association after every directory member has been stored.
+    pub async fn put_directory(&self, location: &str, digest: &Digest) -> Result<(), StoreError> {
+        self.get_tree(digest).await?;
+        let directory = StoredDirectory {
+            location: location.to_owned(),
+            digest: digest.clone(),
+        };
+        let bytes = serde_json::to_vec(&directory).map_err(std::io::Error::other)?;
+        let key = layout::directory(location);
+        if let Some(shared) = &self.shared {
+            shared.operator.write(&key, bytes.clone()).await?;
+        }
+        self.operator.write(&key, bytes).await?;
+        Ok(())
+    }
+
+    /// The current manifest of a registered directory; legacy locations have no descriptor.
+    pub async fn directory(&self, location: &str) -> Result<Option<Digest>, StoreError> {
+        let source = self.shared.as_deref().unwrap_or(self);
+        let key = layout::directory(location);
+        let bytes = match source.operator.read(&key).await {
+            Ok(bytes) => bytes.to_bytes(),
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        let directory = directory_record(&key, &bytes)?;
+        if directory.location != location {
+            return Err(StoreError::Location(format!(
+                "directory descriptor {key} names another location"
+            )));
+        }
+        if self.shared.is_some() {
+            self.operator.write(&key, bytes).await?;
+        }
+        Ok(Some(directory.digest))
+    }
+
+    /// Directory descriptors with their local inventory metadata, for cleanup retention.
+    pub async fn directory_records(
+        &self,
+    ) -> Result<Vec<(crate::Object, StoredDirectory)>, StoreError> {
+        let mut directories = Vec::new();
+        for object in self.objects("directories/v1/").await? {
+            if object.folder {
+                continue;
+            }
+            let bytes = self.operator.read(&object.location).await?.to_bytes();
+            let directory = directory_record(&object.location, &bytes)?;
+            directories.push((object, directory));
+        }
+        Ok(directories)
+    }
+
     /// Reads a directory manifest by digest and checks that it still matches the digest.
     pub async fn get_tree(&self, digest: &Digest) -> Result<Tree, StoreError> {
         let bytes = self.read_found(&layout::tree(digest)).await?;
@@ -497,6 +558,18 @@ impl Store {
             None => Err(opendal::Error::new(ErrorKind::NotFound, location.to_owned()).into()),
         }
     }
+}
+
+fn directory_record(key: &str, bytes: &[u8]) -> Result<StoredDirectory, StoreError> {
+    let directory: StoredDirectory = serde_json::from_slice(bytes).map_err(|error| {
+        StoreError::Location(format!("invalid directory descriptor {key}: {error}"))
+    })?;
+    if layout::directory(&directory.location) != key {
+        return Err(StoreError::Location(format!(
+            "directory descriptor {key} names another location"
+        )));
+    }
+    Ok(directory)
 }
 
 /// An error of the store's service in plain words: what went wrong and its causes, without the

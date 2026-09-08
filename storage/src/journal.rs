@@ -116,6 +116,7 @@ pub(crate) async fn described(address: &str, copy: &Path) -> Result<Fetched, Sto
 }
 
 /// Notes the version of the content of a copy next to it, for later runs that read the copy.
+#[cfg(test)]
 pub(crate) fn note_version(copy: &Path, version: Option<&str>) {
     if let Some(version) = version {
         let _ = std::fs::write(with_suffix(copy, "version"), version);

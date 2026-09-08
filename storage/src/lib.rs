@@ -258,6 +258,18 @@ impl Storage {
         target: &str,
         file: &Path,
     ) -> Result<Downloaded, StorageError> {
+        let (temporary, downloaded) = self.download_private(target, file).await?;
+        temporary
+            .persist(file)
+            .map_err(|error| error::local(file)(error.error))?;
+        Ok(downloaded)
+    }
+
+    pub(crate) async fn download_private(
+        &self,
+        target: &str,
+        file: &Path,
+    ) -> Result<(tempfile::NamedTempFile, Downloaded), StorageError> {
         let served = self.serve(target)?;
         let parent = file
             .parent()
@@ -268,10 +280,7 @@ impl Storage {
             .download(served.prefix, target, temporary.path(), 0)
             .await;
         let downloaded = done.map_err(|problem| served.failed("read", target, problem))?;
-        temporary
-            .persist(file)
-            .map_err(|error| error::local(file)(error.error))?;
-        Ok(downloaded)
+        Ok((temporary, downloaded))
     }
 
     /// Uploads a local file to an address.

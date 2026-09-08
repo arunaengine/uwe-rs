@@ -1,5 +1,5 @@
 //! Remote files downloaded once: a local copy lives in a folder of downloads under the SHA-256
-//! of the file's public address, so that later requests and later runs take it from there.
+//! of its provider and address. Content and its version are published as one immutable bundle.
 //! What an earlier run found out about a remote file is noted there too.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -12,9 +12,8 @@ use crate::error::local;
 use crate::journal::{self, Fetched};
 use crate::{Metadata, Storage, StorageError, address};
 
-/// The name of the local copy of a file in the folder of downloads: the SHA-256 of its public
-/// web address where it has one, as runs before storage providers named it, else of its
-/// address.
+/// The legacy address-only name, retained for compatibility. New caches use
+/// [`Storage::download_name`] and never trust unverifiable legacy copies.
 pub fn download_name(target: &str) -> String {
     let named = address::public_url(target).unwrap_or_else(|| target.to_owned());
     Sha256::digest(named.as_bytes())
@@ -24,6 +23,50 @@ pub fn download_name(target: &str) -> String {
 }
 
 impl Storage {
+    /// The ready-bundle name for this provider and address, excluding provider credentials.
+    pub fn download_name(&self, target: &str) -> Result<String, StorageError> {
+        let (provider, prefix) = crate::longest(&self.inner.configured, target)
+            .or_else(|| crate::longest(&self.inner.built_in, target))
+            .ok_or_else(|| StorageError::NoProvider {
+                address: address::redacted(target),
+                prefix: crate::suggested_prefix(target),
+            })?;
+        let mut identity = provider.source.cache_identity();
+        identity.push(address::redacted(prefix));
+        let routed = match &provider.source {
+            crate::backend::Source::Web | crate::backend::Source::PublicBuckets => {
+                address::public_url(target).unwrap_or_else(|| target.into())
+            }
+            _ => target.into(),
+        };
+        identity.push(address::redacted(&routed));
+        let mut hasher = Sha256::new();
+        for field in identity {
+            hasher.update((field.len() as u64).to_le_bytes());
+            hasher.update(field.as_bytes());
+        }
+        let hex: String = hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        Ok(format!("v2-{hex}"))
+    }
+
+    /// Where a fetched file lives; calculating it performs no I/O or credential lookup.
+    pub fn download_path(&self, target: &str, downloads: &Path) -> Result<PathBuf, StorageError> {
+        if address::scheme(target).is_none() {
+            return Ok(target.into());
+        }
+        if let Some(path) = target.strip_prefix("file://") {
+            return Ok(address::decode(path).into());
+        }
+        if let Some(pinned) = self.inner.journal.pinned(target) {
+            return Ok(pinned.copy);
+        }
+        Ok(downloads.join(self.download_name(target)?).join("content"))
+    }
+
     /// A local copy of a file, downloaded into `downloads` unless an earlier call did. A local
     /// path, or a `file://` address, is its own copy.
     pub async fn fetch(&self, target: &str, downloads: &Path) -> Result<PathBuf, StorageError> {
@@ -38,8 +81,8 @@ impl Storage {
             self.inner.journal.note(pinned);
             return Ok(copy);
         }
-        let name = download_name(target);
-        let copy = downloads.join(&name);
+        let bundle = downloads.join(self.download_name(target)?);
+        let copy = bundle.join("content");
         // Tasks of a run that read the same file at once would write the same part.
         let turn = self.turn(&copy);
         let _turn = turn.lock().await;
@@ -47,11 +90,26 @@ impl Storage {
             tokio::fs::create_dir_all(downloads)
                 .await
                 .map_err(local(downloads))?;
-            // An old partial has no trustworthy remote version, so every transfer starts anew.
-            let downloaded = self.download_from(target, &copy).await?;
-            // Later runs compare the version with the one that the provider gives then. A
-            // provider that gives none leaves the size to compare.
-            journal::note_version(&copy, downloaded.version.as_deref());
+            let (temporary, downloaded) = self.download_private(target, &bundle).await?;
+            // Create the bundle only after transfer I/O, so queued work cannot outlive it.
+            let ready = tempfile::tempdir_in(downloads).map_err(local(downloads))?;
+            let content = ready.path().join("content");
+            temporary
+                .persist(&content)
+                .map_err(|error| local(&content)(error.error))?;
+            if let Some(version) = downloaded.version {
+                std::fs::write(content.with_extension("version"), version)
+                    .map_err(local(&content))?;
+            }
+            // A complete winner is nonempty, so another directory rename cannot replace it.
+            if let Err(error) = std::fs::rename(ready.path(), &bundle)
+                && (!matches!(
+                    error.kind(),
+                    std::io::ErrorKind::AlreadyExists | std::io::ErrorKind::DirectoryNotEmpty
+                ) || !copy.is_file())
+            {
+                return Err(local(&bundle)(error));
+            }
         }
         self.inner
             .journal
@@ -131,20 +189,21 @@ impl Storage {
                 version: pinned.version,
             }));
         }
-        if let Some(known) = known(target, downloads) {
+        let bundle = downloads.join(self.download_name(target)?);
+        if let Some(known) = known(&bundle) {
             return Ok(Some(known));
         }
         let found = self.stat(target).await?;
         if let Some(found) = &found {
-            note(target, downloads, found);
+            note(&bundle, found);
         }
         Ok(found)
     }
 }
 
 /// What `downloads` knows of a remote file: the size of its copy, or what an earlier run noted.
-fn known(target: &str, downloads: &Path) -> Option<Metadata> {
-    let copy = downloads.join(download_name(target));
+fn known(bundle: &Path) -> Option<Metadata> {
+    let copy = bundle.join("content");
     if let Some(found) = std::fs::metadata(&copy)
         .ok()
         .filter(|found| found.is_file())
@@ -152,10 +211,12 @@ fn known(target: &str, downloads: &Path) -> Option<Metadata> {
         return Some(Metadata {
             directory: false,
             size: found.len(),
-            version: None,
+            version: std::fs::read_to_string(copy.with_extension("version"))
+                .ok()
+                .filter(|version| !version.is_empty()),
         });
     }
-    let noted = std::fs::read_to_string(copy.with_extension("metadata")).ok()?;
+    let noted = std::fs::read_to_string(bundle.with_extension("metadata")).ok()?;
     match noted.trim().split_once(' ') {
         Some(("file", size)) => Some(Metadata {
             directory: false,
@@ -173,15 +234,14 @@ fn known(target: &str, downloads: &Path) -> Option<Metadata> {
 
 /// Notes in `downloads` that a remote file exists, for later runs. The note is only a
 /// shortcut, so a note that cannot be written is left out.
-fn note(target: &str, downloads: &Path, found: &Metadata) {
+fn note(bundle: &Path, found: &Metadata) {
     let text = match found.directory {
         true => "directory\n".to_owned(),
         false => format!("file {}\n", found.size),
     };
-    let noted = downloads
-        .join(download_name(target))
-        .with_extension("metadata");
-    let _ = std::fs::create_dir_all(downloads).and_then(|()| std::fs::write(noted, text));
+    let noted = bundle.with_extension("metadata");
+    let _ = std::fs::create_dir_all(bundle.parent().unwrap_or_else(|| Path::new(".")))
+        .and_then(|()| std::fs::write(noted, text));
 }
 
 #[cfg(test)]
@@ -192,25 +252,32 @@ mod tests {
     fn known_files_need_no_request() {
         let downloads = tempfile::tempdir().expect("a temporary directory");
         let (copied, found, folder) = ("https://a/copied", "https://a/found", "s3://b/folder");
-        assert!(known(copied, downloads.path()).is_none());
-        let copy = downloads.path().join(download_name(copied));
+        let storage = Storage::default();
+        let bundle = |target| {
+            downloads
+                .path()
+                .join(storage.download_name(target).unwrap())
+        };
+        assert!(known(&bundle(copied)).is_none());
+        let copy = bundle(copied).join("content");
+        std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
         std::fs::write(copy, "12345").expect("writes");
         let size = |found: Option<Metadata>| found.map(|found| (found.directory, found.size));
-        assert_eq!(size(known(copied, downloads.path())), Some((false, 5)));
+        assert_eq!(size(known(&bundle(copied))), Some((false, 5)));
         let file = Metadata {
             directory: false,
             size: 42,
             version: None,
         };
-        note(found, downloads.path(), &file);
-        assert_eq!(size(known(found, downloads.path())), Some((false, 42)));
+        note(&bundle(found), &file);
+        assert_eq!(size(known(&bundle(found))), Some((false, 42)));
         let directory = Metadata {
             directory: true,
             size: 0,
             version: None,
         };
-        note(folder, downloads.path(), &directory);
-        assert_eq!(size(known(folder, downloads.path())), Some((true, 0)));
+        note(&bundle(folder), &directory);
+        assert_eq!(size(known(&bundle(folder))), Some((true, 0)));
     }
 
     #[test]

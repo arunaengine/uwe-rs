@@ -745,3 +745,206 @@ async fn object_download_without_a_strong_version_fails_before_reading_ranges() 
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "old");
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
 }
+
+#[tokio::test]
+async fn completed_downloads_are_isolated_by_provider_and_ignore_legacy_copies() {
+    let roots = [tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap()];
+    let downloads = tempfile::tempdir().unwrap();
+    let address = "s3://bucket/data";
+    let legacy = downloads.path().join(storage::download_name(address));
+    std::fs::write(&legacy, "unverifiable hybrid").unwrap();
+    std::fs::write(legacy.with_extension("metadata"), "file 19").unwrap();
+    let mut copies = Vec::new();
+    for (root, body) in roots.iter().zip(["AAAA", "BBBBCCCC"]) {
+        std::fs::write(root.path().join("data"), body).unwrap();
+        let text = format!(
+            "[storage.mirror]\ntype='folder'\nprefixes='s3://bucket/'\npath='{}'",
+            root.path().display()
+        );
+        let configured = storage(&text);
+        let found = configured
+            .metadata(address, downloads.path())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.size, body.len() as u64);
+        let copy = configured.fetch(address, downloads.path()).await.unwrap();
+        assert_eq!(
+            copy,
+            configured.download_path(address, downloads.path()).unwrap()
+        );
+        assert_eq!(std::fs::read_to_string(&copy).unwrap(), body);
+        let later = storage(&text);
+        assert_eq!(later.fetch(address, downloads.path()).await.unwrap(), copy);
+        assert_eq!(
+            configured
+                .blocking()
+                .download_path(address, downloads.path())
+                .unwrap(),
+            copy
+        );
+        copies.push(copy);
+    }
+    assert_ne!(copies[0], copies[1]);
+    assert_eq!(
+        std::fs::read_to_string(legacy).unwrap(),
+        "unverifiable hybrid"
+    );
+}
+
+#[tokio::test]
+async fn builtin_downloads_ignore_unverifiable_legacy_completed_caches() {
+    let server = WebServer::start(&[("/data", "fresh")], None);
+    let address = format!("{}/data", server.address);
+    let downloads = tempfile::tempdir().unwrap();
+    let legacy = downloads.path().join(storage::download_name(&address));
+    std::fs::write(&legacy, "hybrid").unwrap();
+    std::fs::write(legacy.with_extension("version"), "\"unproven\"").unwrap();
+    let configured = Storage::default();
+    let copy = configured.fetch(&address, downloads.path()).await.unwrap();
+    assert_eq!(std::fs::read_to_string(copy).unwrap(), "fresh");
+    assert_eq!(std::fs::read_to_string(legacy).unwrap(), "hybrid");
+    assert_ne!(
+        configured.fetched()[0].version.as_deref(),
+        Some("\"unproven\"")
+    );
+}
+
+#[test]
+fn namespace_identity_tracks_routing_but_excludes_secrets_without_reading_them() {
+    let configured = |endpoint, secret| {
+        storage(&format!(
+            "[storage.remote]\ntype='s3'\nprefixes='s3://bucket/'\nendpoint='{endpoint}'\nregion='us-east-1'\naccess_key_id='key'\nsecret_access_key={secret}"
+        ))
+    };
+    let key = |provider: Storage| provider.download_name("s3://bucket/data").unwrap();
+    assert_eq!(
+        key(configured("https://one", "'old'")),
+        key(configured("https://one", "'new'"))
+    );
+    assert_eq!(
+        key(configured("https://one", "'old'")),
+        key(configured(
+            "https://one",
+            "{ environment = 'IUNCTUS_CAS16_MISSING_SECRET' }"
+        ))
+    );
+    assert_ne!(
+        key(configured("https://one", "'old'")),
+        key(configured("https://two", "'old'"))
+    );
+    let public = Storage::default();
+    assert_ne!(
+        public
+            .download_name("https://host?x=same:one@tail")
+            .unwrap(),
+        public
+            .download_name("https://host?x=same:two@tail")
+            .unwrap()
+    );
+    assert_ne!(
+        public.download_name("https://host#same:one@tail").unwrap(),
+        public.download_name("https://host#same:two@tail").unwrap()
+    );
+}
+
+#[tokio::test]
+async fn concurrent_versions_publish_one_immutable_content_and_version_bundle() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!("http://{}/data", listener.local_addr().unwrap());
+    let barrier = Arc::new(std::sync::Barrier::new(2));
+    let (ready, first_request) = tokio::sync::oneshot::channel();
+    let (release, second_response) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut ready = Some(ready);
+        let mut second_response = Some(second_response);
+        for version in ["A", "B"] {
+            let (mut stream, _) = listener.accept().unwrap();
+            if version == "A" {
+                ready.take().unwrap().send(()).unwrap();
+            }
+            let delayed = if version == "B" {
+                second_response.take()
+            } else {
+                None
+            };
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    if line.trim().is_empty() {
+                        break;
+                    }
+                }
+                // Both callers already observed no completed cache before either can publish.
+                barrier.wait();
+                if let Some(delayed) = delayed {
+                    delayed.recv().unwrap();
+                }
+                stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: 4\r\nETag: \"{version}\"\r\nConnection: close\r\n\r\n{version}{version}{version}{version}").as_bytes()).unwrap();
+            });
+        }
+    });
+    let downloads = tempfile::tempdir().unwrap();
+    let first = Storage::default();
+    let second = Storage::default();
+    let fetch = |storage: Storage| {
+        let address = address.clone();
+        let downloads = downloads.path().to_owned();
+        tokio::spawn(async move { storage.fetch(&address, &downloads).await })
+    };
+    let a = fetch(first.clone());
+    first_request.await.unwrap();
+    let b = fetch(second.clone());
+    let a = a.await.unwrap().unwrap();
+    assert_eq!(std::fs::read_to_string(&a).unwrap(), "AAAA");
+    release.send(()).unwrap();
+    let b = b.await.unwrap().unwrap();
+    assert_eq!(a, b);
+    let bytes = std::fs::read_to_string(&a).unwrap();
+    assert_eq!(bytes, "AAAA");
+    let expected = "\"A\"";
+    assert_eq!(first.fetched(), second.fetched());
+    assert_eq!(first.fetched()[0].version.as_deref(), Some(expected));
+    assert_eq!(
+        first
+            .metadata(&address, downloads.path())
+            .await
+            .unwrap()
+            .unwrap()
+            .version
+            .as_deref(),
+        Some(expected)
+    );
+    let repeat = Storage::default();
+    assert_eq!(repeat.fetch(&address, downloads.path()).await.unwrap(), a);
+    assert_eq!(std::fs::read_to_string(b).unwrap(), bytes);
+    assert_eq!(repeat.fetched(), first.fetched());
+    assert_eq!(std::fs::read_dir(downloads.path()).unwrap().count(), 1);
+}
+
+#[tokio::test]
+async fn a_folder_provider_keeps_distinct_addresses_that_public_web_would_alias() {
+    let root = tempfile::tempdir().unwrap();
+    let downloads = tempfile::tempdir().unwrap();
+    let configured = storage(&format!(
+        "[storage.mirror]\ntype='folder'\nprefixes='https://'\npath='{}'",
+        root.path().display()
+    ));
+    let mut copies = Vec::new();
+    for (address, body) in [
+        ("https://github.com/o/r/raw/main/data", "first"),
+        ("https://raw.githubusercontent.com/o/r/main/data", "second"),
+    ] {
+        let source = root.path().join(address.strip_prefix("https://").unwrap());
+        std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+        std::fs::write(source, body).unwrap();
+        let copy = configured.fetch(address, downloads.path()).await.unwrap();
+        assert_eq!(std::fs::read_to_string(&copy).unwrap(), body);
+        copies.push(copy);
+    }
+    assert_ne!(copies[0], copies[1]);
+    assert_eq!(std::fs::read_to_string(&copies[0]).unwrap(), "first");
+}

@@ -104,6 +104,11 @@ pub trait Driver {
         Vec::new()
     }
 
+    /// Acknowledges a successful delivery by an executor's files provider.
+    fn delivered(&mut self, _delivery: &Delivery) -> Result<(), DriverError> {
+        Ok(())
+    }
+
     /// What the driver noticed since the last call while it planned tasks, like reads of task
     /// outputs, for the markers of the graph. The engine asks after `start` and after each
     /// `complete`. The default notices nothing.

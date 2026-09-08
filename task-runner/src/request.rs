@@ -28,13 +28,14 @@ impl<B: Backend> Runner<B> {
         task: &Task,
         image: Option<String>,
     ) -> Result<Prepared, RunnerError> {
-        let _admission = self.admit().await?;
+        let admission = self.admit().await?;
         let inputs = Inputs {
             store: &self.store,
             settings: &self.settings,
             mode: Mode::Run,
         };
-        prepare(&inputs, task, image).await
+        self.phase(None, Some(&admission), None, prepare(&inputs, task, image))
+            .await
     }
 }
 

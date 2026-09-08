@@ -462,33 +462,38 @@ async fn read_record(
     location: &str,
 ) -> Result<Option<(Record, Option<String>)>, StoreError> {
     lease_backend(operator)?;
-    let tag = match operator.stat(location).await {
-        Ok(metadata) => metadata.etag().map(str::to_owned),
-        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error.into()),
-    };
-    let read = match tag.as_deref() {
-        Some(tag) => operator.read_with(location).if_match(tag).await,
-        None if operator.info().scheme() == "memory" => operator.read(location).await,
-        None => {
-            return Err(opendal::Error::new(
-                ErrorKind::Unsupported,
-                "remote lease metadata has no entity tag",
-            )
-            .into());
-        }
-    };
-    let bytes = match read {
-        Ok(buffer) => buffer.to_bytes(),
-        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error.into()),
-    };
-    let record = serde_json::from_slice(&bytes).unwrap_or_else(|_| Record {
-        holder: Holder::default(),
-        token: String::new(),
-        expires: 0,
-    });
-    Ok(Some((record, tag)))
+    let mut attempts = 0;
+    loop {
+        attempts += 1;
+        let tag = match operator.stat(location).await {
+            Ok(metadata) => metadata.etag().map(str::to_owned),
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        let read = match tag.as_deref() {
+            Some(tag) => operator.read_with(location).if_match(tag).await,
+            None if operator.info().scheme() == "memory" => operator.read(location).await,
+            None => {
+                return Err(opendal::Error::new(
+                    ErrorKind::Unsupported,
+                    "remote lease metadata has no entity tag",
+                )
+                .into());
+            }
+        };
+        let bytes = match read {
+            Ok(buffer) => buffer.to_bytes(),
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(error) if error.kind() == ErrorKind::ConditionNotMatch && attempts < 4 => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let record = serde_json::from_slice(&bytes).unwrap_or_else(|_| Record {
+            holder: Holder::default(),
+            token: String::new(),
+            expires: 0,
+        });
+        return Ok(Some((record, tag)));
+    }
 }
 
 /// Runs file operations that may block on a thread for them.
@@ -527,6 +532,217 @@ pub(crate) fn milliseconds_now() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use opendal::OperationContext;
+    use opendal::raw::*;
+    use std::sync::atomic::AtomicUsize;
+
+    #[derive(Debug)]
+    struct ConditionalRead {
+        inner: Servicer,
+        reads: AtomicUsize,
+        stats: AtomicUsize,
+        version: AtomicUsize,
+        failures: usize,
+        error: ErrorKind,
+    }
+
+    impl Service for ConditionalRead {
+        type Reader = oio::Reader;
+        type Writer = oio::Writer;
+        type Lister = oio::Lister;
+        type Deleter = oio::Deleter;
+        type Copier = oio::Copier;
+        type Composer = oio::Composer;
+
+        fn info(&self) -> ServiceInfo {
+            self.inner.info()
+        }
+        fn capability(&self) -> opendal::Capability {
+            let mut capability = self.inner.capability();
+            capability.read_with_if_match = true;
+            capability
+        }
+        async fn create_dir(
+            &self,
+            ctx: &OperationContext,
+            path: &str,
+            args: OpCreateDir,
+        ) -> opendal::Result<RpCreateDir> {
+            self.inner.create_dir(ctx, path, args).await
+        }
+        async fn stat(
+            &self,
+            ctx: &OperationContext,
+            path: &str,
+            args: OpStat,
+        ) -> opendal::Result<RpStat> {
+            self.stats.fetch_add(1, Ordering::Relaxed);
+            let tag = format!("v{}", self.version.load(Ordering::Relaxed));
+            Ok(self
+                .inner
+                .stat(ctx, path, args)
+                .await?
+                .map_metadata(|metadata| {
+                    let mut metadata = metadata.into_builder();
+                    metadata.etag(tag);
+                    metadata.build()
+                }))
+        }
+        fn read(
+            &self,
+            ctx: &OperationContext,
+            path: &str,
+            args: OpRead,
+        ) -> opendal::Result<Self::Reader> {
+            let read = self.reads.fetch_add(1, Ordering::Relaxed);
+            if read < self.failures {
+                self.version.fetch_add(1, Ordering::Relaxed);
+                return Err(opendal::Error::new(self.error, "injected version change"));
+            }
+            let tag = format!("v{}", self.version.load(Ordering::Relaxed));
+            if args.if_match() != Some(tag.as_str()) {
+                return Err(opendal::Error::new(
+                    ErrorKind::ConditionNotMatch,
+                    "stale conditional read",
+                ));
+            }
+            self.inner.read(ctx, path, OpRead::new())
+        }
+        fn write(
+            &self,
+            ctx: &OperationContext,
+            path: &str,
+            args: OpWrite,
+        ) -> opendal::Result<Self::Writer> {
+            self.inner.write(ctx, path, args)
+        }
+        fn delete(&self, ctx: &OperationContext) -> opendal::Result<Self::Deleter> {
+            self.inner.delete(ctx)
+        }
+        fn list(
+            &self,
+            ctx: &OperationContext,
+            path: &str,
+            args: OpList,
+        ) -> opendal::Result<Self::Lister> {
+            self.inner.list(ctx, path, args)
+        }
+        fn copy(
+            &self,
+            ctx: &OperationContext,
+            from: &str,
+            to: &str,
+            args: OpCopy,
+        ) -> opendal::Result<Self::Copier> {
+            self.inner.copy(ctx, from, to, args)
+        }
+        fn compose(
+            &self,
+            ctx: &OperationContext,
+            to: &str,
+            args: OpCompose,
+        ) -> opendal::Result<Self::Composer> {
+            self.inner.compose(ctx, to, args)
+        }
+        async fn rename(
+            &self,
+            ctx: &OperationContext,
+            from: &str,
+            to: &str,
+            args: OpRename,
+        ) -> opendal::Result<RpRename> {
+            self.inner.rename(ctx, from, to, args).await
+        }
+        async fn presign(
+            &self,
+            ctx: &OperationContext,
+            path: &str,
+            args: OpPresign,
+        ) -> opendal::Result<RpPresign> {
+            self.inner.presign(ctx, path, args).await
+        }
+    }
+
+    async fn conditional_lease(
+        token: &str,
+        expires: i64,
+        failures: usize,
+        error: ErrorKind,
+    ) -> (Lease, Arc<ConditionalRead>, oneshot::Receiver<()>) {
+        let inner = Operator::new(opendal::services::Memory::default()).unwrap();
+        let location = "locks/test";
+        let record = Record {
+            holder: Holder::new("run", "task"),
+            token: token.into(),
+            expires,
+        };
+        inner
+            .write(location, serde_json::to_vec(&record).unwrap())
+            .await
+            .unwrap();
+        let service = Arc::new(ConditionalRead {
+            inner: inner.service().clone(),
+            reads: AtomicUsize::new(0),
+            stats: AtomicUsize::new(0),
+            version: AtomicUsize::new(0),
+            failures,
+            error,
+        });
+        let operator = Operator::from_parts(inner.context().clone(), service.clone());
+        let (stop, stopped) = oneshot::channel();
+        let lease = Lease {
+            _hold: Hold::Object {
+                _renewal: stop,
+                operator,
+                location: location.into(),
+                token: "owner".into(),
+                lost: Arc::new(AtomicBool::new(false)),
+            },
+        };
+        (lease, service, stopped)
+    }
+
+    #[tokio::test]
+    async fn conditional_lease_reads_refresh_versions_without_ignoring_real_loss() {
+        for failures in [0, 1, 3] {
+            let (lease, service, _stopped) = conditional_lease(
+                "owner",
+                milliseconds_now() + 60_000,
+                failures,
+                ErrorKind::ConditionNotMatch,
+            )
+            .await;
+            tokio::time::timeout(Duration::from_secs(1), lease.check())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(service.reads.load(Ordering::Relaxed), failures + 1);
+            assert_eq!(service.stats.load(Ordering::Relaxed), failures + 1);
+            lease.check().await.unwrap();
+        }
+        for (token, expires) in [("successor", milliseconds_now() + 60_000), ("owner", 0)] {
+            let (lease, service, _stopped) =
+                conditional_lease(token, expires, 1, ErrorKind::ConditionNotMatch).await;
+            assert!(lease.check().await.is_err());
+            assert_eq!(service.reads.load(Ordering::Relaxed), 2);
+            assert!(lease.check().await.is_err());
+            assert_eq!(service.reads.load(Ordering::Relaxed), 2);
+        }
+        for (error, expected_reads) in [
+            (ErrorKind::ConditionNotMatch, 4),
+            (ErrorKind::PermissionDenied, 1),
+        ] {
+            let (lease, service, _stopped) =
+                conditional_lease("owner", milliseconds_now() + 60_000, 100, error).await;
+            let failure = tokio::time::timeout(Duration::from_secs(1), lease.check())
+                .await
+                .unwrap()
+                .unwrap_err();
+            assert!(matches!(failure, StoreError::Backend(found) if found.kind() == error));
+            assert_eq!(service.reads.load(Ordering::Relaxed), expected_reads);
+            assert_eq!(service.stats.load(Ordering::Relaxed), expected_reads);
+        }
+    }
 
     /// The file of a lease in a local store.
     fn lease_path(store: &Store, name: &str) -> std::path::PathBuf {

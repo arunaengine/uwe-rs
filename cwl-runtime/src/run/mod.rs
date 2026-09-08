@@ -5,10 +5,11 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::os::unix::fs::MetadataExt;
 use std::sync::Arc;
 
 use cwl_parser::iri;
-use cwl_parser::model::{Class, Process, Requirement, short_name};
+use cwl_parser::model::{Class, Process, Requirement, RequirementClass, Step, short_name};
 use workflow_graph::{Files, Note, Outcome, Task, TaskId};
 
 use crate::expression::Variables;
@@ -37,10 +38,21 @@ enum Parent {
 
 #[derive(Debug)]
 enum State {
+    Deferred(Box<Deferred>),
     Task(Box<Pending>),
     Workflow(Box<WorkflowRun>),
     Scatter(ScatterRun),
     Finished,
+}
+
+#[derive(Debug)]
+struct Deferred {
+    process: Arc<Process>,
+    job: Map,
+    outer: Scope,
+    names: Names,
+    toplevel: bool,
+    step: Option<Arc<Step>>,
 }
 
 #[derive(Debug)]
@@ -103,20 +115,19 @@ struct ScatterRun {
 
 enum Event {
     Finished(JobId, Map),
-    Step {
-        workflow: JobId,
-        step: usize,
-        outputs: Map,
-    },
 }
 
 /// A run of one document.
 pub struct Run {
     options: Options,
+    keep_going: bool,
+    stopped: bool,
     jobs: Vec<Job>,
     tasks: HashMap<TaskId, JobId>,
     next_task: u64,
     ready: Vec<Task>,
+    deferred: VecDeque<JobId>,
+    writer: Option<JobId>,
     events: VecDeque<Event>,
     result: Option<Map>,
     /// The folder URL of placeholder files, in a run on placeholder inputs.
@@ -140,13 +151,17 @@ pub struct Run {
 }
 
 impl Run {
-    pub fn new(options: Options) -> Self {
+    pub fn new(options: Options, keep_going: bool) -> Self {
         Run {
             options,
+            keep_going,
+            stopped: false,
             jobs: Vec::new(),
             tasks: HashMap::new(),
             next_task: 1,
             ready: Vec::new(),
+            deferred: VecDeque::new(),
+            writer: None,
             events: VecDeque::new(),
             result: None,
             placeholders: None,
@@ -204,7 +219,7 @@ impl Run {
             self.placeholder_strings = placeholder::strings(process, &types, base);
         }
         let scope = Scope::overriding(requirements);
-        self.launch(process, job, &scope, Parent::Root, names, true)?;
+        self.launch(process, job, &scope, Parent::Root, names, None)?;
         self.settle()?;
         Ok(std::mem::take(&mut self.ready))
     }
@@ -218,6 +233,9 @@ impl Run {
         let State::Task(pending) = state else {
             return Err(format!("task {} belongs to no command", outcome.id));
         };
+        if self.writer == Some(job) {
+            self.writer = None;
+        }
         if self.options.simulated
             && let Some(folder) = tool::workdir(outcome)
         {
@@ -230,7 +248,22 @@ impl Run {
             }
         }
         let updates = pending.updated(outcome);
-        let outputs = pending.collect(outcome, self.files.as_deref())?;
+        let outputs = match pending.collect(outcome, self.files.as_deref()) {
+            Ok(outputs) => outputs,
+            Err(error) => {
+                if !self.keep_going {
+                    self.stopped = true;
+                }
+                if self.keep_going
+                    && let Err(later) = self.settle()
+                {
+                    return Err(format!(
+                        "{error}; while preparing independent work: {later}"
+                    ));
+                }
+                return Err(error);
+            }
+        };
         self.events.push_back(Event::Finished(job, outputs));
         for (old, new) in &updates {
             self.update_in_place(old, new);
@@ -245,6 +278,9 @@ impl Run {
     /// size and checksum.
     fn update_in_place(&mut self, old: &str, new: &str) {
         let inside = format!("{old}/");
+        let path = files::local_path(old);
+        let identity = path.as_ref().and_then(|path| path.metadata().ok());
+        let canonical = path.and_then(|path| path.canonicalize().ok());
         let mut update = |value: &mut Value| {
             files::visit_files(value, &mut |file| {
                 let location = file.get("location").and_then(Value::as_str);
@@ -253,7 +289,32 @@ impl Run {
                     Some(location) if location.starts_with(&inside) => {
                         format!("{new}/{}", &location[inside.len()..])
                     }
-                    _ => return,
+                    Some(location) => {
+                        let Some(path) = files::local_path(location) else {
+                            return;
+                        };
+                        let Some(identity) = &identity else {
+                            return;
+                        };
+                        if path.metadata().is_ok_and(|found| {
+                            found.dev() == identity.dev() && found.ino() == identity.ino()
+                        }) {
+                            new.to_owned()
+                        } else if identity.is_dir() {
+                            let (Some(original), Ok(path)) = (&canonical, path.canonicalize())
+                            else {
+                                return;
+                            };
+                            let Ok(relative) = path.strip_prefix(original) else {
+                                return;
+                            };
+                            let suffix = iri::file_url(relative);
+                            format!("{new}/{}", suffix.trim_start_matches("file://"))
+                        } else {
+                            return;
+                        }
+                    }
+                    None => return,
                 };
                 file.insert("location".into(), Value::String(moved));
                 for stale in ["listing", "size", "checksum", "contents"] {
@@ -263,6 +324,7 @@ impl Run {
         };
         for job in &mut self.jobs {
             match &mut job.state {
+                State::Deferred(raw) => raw.job.values_mut().for_each(&mut update),
                 State::Workflow(run) => run.values.values_mut().for_each(&mut update),
                 State::Scatter(scatter) => {
                     for result in scatter.results.iter_mut().flatten() {
@@ -273,11 +335,8 @@ impl Run {
             }
         }
         for event in &mut self.events {
-            match event {
-                Event::Finished(_, outputs) | Event::Step { outputs, .. } => {
-                    outputs.values_mut().for_each(&mut update);
-                }
-            }
+            let Event::Finished(_, outputs) = event;
+            outputs.values_mut().for_each(&mut update);
         }
     }
 
@@ -317,13 +376,52 @@ impl Run {
         outer: &Scope,
         parent: Parent,
         names: Names,
-        toplevel: bool,
+        step: Option<Arc<Step>>,
     ) -> Result<(), String> {
         let id = self.jobs.len();
         self.jobs.push(Job {
             parent,
-            state: State::Finished,
+            state: State::Deferred(Box::new(Deferred {
+                process: Arc::clone(process),
+                job,
+                outer: outer.clone(),
+                names,
+                toplevel: matches!(parent, Parent::Root),
+                step,
+            })),
         });
+        self.deferred.push_back(id);
+        Ok(())
+    }
+
+    fn start_deferred(&mut self, id: JobId) -> Result<(), String> {
+        let state = std::mem::replace(&mut self.jobs[id].state, State::Finished);
+        let State::Deferred(raw) = state else {
+            return Err("a deferred job lost its inputs".into());
+        };
+        let Deferred {
+            process,
+            mut job,
+            outer,
+            names,
+            toplevel,
+            step,
+        } = *raw;
+        if let Some(step) = step {
+            job = match self
+                .step_job(&step, job, &outer.evaluator(), &outer)
+                .map_err(|error| format!("{}: {error}", names.display))?
+            {
+                Some(job) => job,
+                None => {
+                    self.events
+                        .push_back(Event::Finished(id, links::null_outputs(&step)));
+                    return Ok(());
+                }
+            };
+        }
+        let process = &process;
+        let outer = &outer;
         let first = self.start_process(id, process, job.clone(), outer, &names, toplevel);
         let leaf = !matches!(process.class, Class::Workflow(_));
         match (first, &self.placeholders) {
@@ -513,17 +611,62 @@ impl Run {
 
     /// Handles finished jobs until none is left; this may start more jobs.
     fn settle(&mut self) -> Result<(), String> {
-        while let Some(event) = self.events.pop_front() {
-            match event {
-                Event::Finished(job, outputs) => self.deliver(job, outputs)?,
-                Event::Step {
-                    workflow,
-                    step,
-                    outputs,
-                } => self.step_done(workflow, step, outputs)?,
+        let mut failure = None;
+        let mut failures = 0;
+        'admission: loop {
+            while let Some(Event::Finished(job, outputs)) = self.events.pop_front() {
+                if let Err(error) = self.deliver(job, outputs) {
+                    failure.get_or_insert(error);
+                    failures += 1;
+                    if !self.keep_going {
+                        self.stopped = true;
+                        break 'admission;
+                    }
+                }
+            }
+            if self.stopped || self.writer.is_some() {
+                break;
+            }
+            let Some(&id) = self.deferred.front() else {
+                break;
+            };
+            let State::Deferred(raw) = &self.jobs[id].state else {
+                return Err("a deferred job lost its inputs".into());
+            };
+            let writer = matches!(raw.process.class, Class::CommandLineTool(_))
+                && raw
+                    .outer
+                    .enter(&raw.process)
+                    .find(|class| match class {
+                        RequirementClass::InplaceUpdate { inplace_update } => Some(*inplace_update),
+                        _ => None,
+                    })
+                    .is_some_and(|(enabled, _)| enabled);
+            if writer && !self.tasks.is_empty() {
+                break;
+            }
+            self.deferred.pop_front();
+            if let Err(error) = self.start_deferred(id) {
+                failure.get_or_insert(error);
+                failures += 1;
+                if !self.keep_going {
+                    self.stopped = true;
+                    break;
+                }
+                continue;
+            }
+            if writer && matches!(self.jobs[id].state, State::Task(_)) {
+                self.writer = Some(id);
             }
         }
-        Ok(())
+        match failure {
+            Some(error) if failures > 1 => Err(format!(
+                "{error}; and {} more deferred jobs failed",
+                failures - 1
+            )),
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
 
     fn deliver(&mut self, job: JobId, outputs: Map) -> Result<(), String> {

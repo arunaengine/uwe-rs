@@ -124,7 +124,7 @@ fn explicit_destinations_bypass_operator_reservation() {
     let input = directory.path().join("source.txt");
     std::fs::write(&input, "path\n").unwrap();
     let source = format!(
-        "workflow {{\n channel.of('store').collectFile(name: 'store.txt', storeDir: '{}').view()\n channel.of('name').collectFile(name: '{}').view()\n channel.of('channel\\n').splitText(file: file('{}')).view()\n channel.of('directory\\n').splitText(file: file('{}')).view()\n println(file('{}').splitText(file: file('{}')))\n}}\n",
+        "workflow {{\n channel.of('store').collectFile(name: 'store.txt', storeDir: '{}', sort: false).view()\n channel.of('name').collectFile(name: '{}', sort: false).view()\n channel.of('channel\\n').splitText(file: file('{}')).view()\n channel.of('directory\\n').splitText(file: file('{}')).view()\n println(file('{}').splitText(file: file('{}')))\n}}\n",
         output.display(),
         output.join("named.txt").display(),
         output.join("chunk.txt").display(),
@@ -162,7 +162,7 @@ fn reservation_errors_propagate_without_fallback() {
     let not_a_directory = directory.path().join("file");
     std::fs::write(&not_a_directory, "preserved").unwrap();
     for body in [
-        "channel.of('x').collectFile()".to_owned(),
+        "channel.of('x').collectFile(sort: false)".to_owned(),
         "channel.of('x').splitText(file: true)".to_owned(),
         format!(
             "file('{}').splitText(file: true)",

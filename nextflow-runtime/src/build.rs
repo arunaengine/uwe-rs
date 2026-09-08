@@ -17,7 +17,7 @@ use crate::files::CollectFile;
 use crate::keyed::{Combine, Cross, GroupTuple, Join};
 use crate::network::Network;
 use crate::operator::{
-    Buffer, Closing, Collate, Each, Factory, Gather, Gathering, Invoke, Mix, Opening, Single,
+    Buffer, Closing, Collate, Each, Factory, Gather, Gathering, Invoke, Mix, Opening, Single, Sort,
 };
 use crate::process::{ProcessNode, singleton};
 use crate::route::{Concat, Merge, Route};
@@ -818,7 +818,7 @@ impl Builder<'_> {
                     by: indexes(&options, "by").unwrap_or(vec![0]),
                     size,
                     remainder: option(&options, "remainder").is_some_and(|value| value.truth()),
-                    sort: option(&options, "sort").is_some_and(|value| value.truth()),
+                    sort: Sort::new(option(&options, "sort"), "groupTuple")?,
                     groups: Default::default(),
                 };
                 (vec![source], Box::new(node), Value::Channel(output))
@@ -928,6 +928,7 @@ impl Builder<'_> {
                 )
             }
             ("collectFile", rest) => {
+                let sort = Sort::new(option(&options, "sort"), "collectFile")?;
                 let output = queue(self);
                 let closure = match rest {
                     [Value::Closure(closure)] => Some(closure.clone()),
@@ -956,12 +957,6 @@ impl Builder<'_> {
                     }
                     name = Some(path.name().to_owned());
                 }
-                let sort = !matches!(
-                    option(&options, "sort")
-                        .map(|sort| sort.to_string())
-                        .as_deref(),
-                    Some("false" | "none" | "index")
-                );
                 let keep_header = option(&options, "keepHeader").is_some_and(|value| value.truth());
                 let skip = match option(&options, "skip") {
                     Some(Value::Number(skip)) => skip.to_i64() as usize,

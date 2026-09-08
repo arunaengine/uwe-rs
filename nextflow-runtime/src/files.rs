@@ -3,15 +3,17 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::VecDeque;
 use std::rc::Rc;
 
 use indexmap::IndexMap;
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::Error;
-use nextflow_evaluator::value::{ChannelId, Closure, PathValue, Value};
+use nextflow_evaluator::value::{ChannelId, Closure, Key, PathValue, Value};
 
 use crate::channel::Message;
 use crate::network::{Behaviour, Context, State};
+use crate::operator::Sort;
 
 pub(crate) struct CollectFile {
     pub output: ChannelId,
@@ -21,17 +23,14 @@ pub(crate) struct CollectFile {
     /// Where the files go: `storeDir`, else a directory of this operator below `workDir`.
     pub directory: PathValue,
     pub new_line: bool,
-    /// Whether the entries of a file are sorted by their text; else they keep arrival order.
-    /// Nextflow's default sorts by a hash of each entry, which is also independent of the
-    /// arrival order, but gives another order.
-    pub sort: bool,
+    pub sort: Sort,
     /// Lines to leave out at the start of each entry, and whether the first entry keeps them.
     pub skip: usize,
     pub keep_header: bool,
     /// The initial content of every file.
     pub seed: Option<String>,
     /// The entries of each file, by file name in first-seen order.
-    pub files: IndexMap<String, Vec<String>>,
+    pub files: IndexMap<String, Vec<(Value, String)>>,
 }
 
 impl Behaviour for CollectFile {
@@ -80,7 +79,10 @@ impl Behaviour for CollectFile {
                         });
                     }
                 };
-                self.files.entry(name.clone()).or_default().push(text);
+                self.files
+                    .entry(name.clone())
+                    .or_default()
+                    .push((item, text));
             }
         }
         Ok(State::Running)
@@ -90,13 +92,23 @@ impl Behaviour for CollectFile {
 impl CollectFile {
     /// Writes the files, then emits them in file name order.
     fn finish(&mut self, context: &mut Context) -> Result<State, Error> {
-        let mut files: Vec<(String, Vec<String>)> =
-            std::mem::take(&mut self.files).into_iter().collect();
+        let mut files: Vec<_> = std::mem::take(&mut self.files).into_iter().collect();
         files.sort_by(|a, b| a.0.cmp(&b.0));
-        for (name, mut entries) in files {
-            if self.sort {
-                entries.sort();
-            }
+        for (name, entries) in files {
+            let mut texts: IndexMap<Key, VecDeque<String>> = IndexMap::new();
+            let values = entries
+                .into_iter()
+                .map(|(value, text)| {
+                    texts.entry(Key(value.clone())).or_default().push_back(text);
+                    value
+                })
+                .collect();
+            let entries: Vec<_> = self
+                .sort
+                .apply(context, values)?
+                .into_iter()
+                .map(|value| texts.get_mut(&Key(value)).unwrap().pop_front().unwrap())
+                .collect();
             // Like Nextflow, `newLine` ends the seed and every entry with a new line, even
             // when they end with one already.
             let mut content = self.seed.clone().unwrap_or_default();

@@ -86,6 +86,7 @@ pub(crate) async fn store_outputs(
             };
             let size = tree.size();
             let digest = store.put_tree(&tree).await?;
+            store.put_directory(&location, &digest).await?;
             trees.push((path, tree));
             (digest, size)
         } else if let Some(file) = trees

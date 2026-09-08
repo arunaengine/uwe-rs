@@ -30,7 +30,10 @@ impl StorageFiles {
     fn copy_here(&self, location: &str) -> io::Result<PathBuf> {
         match self.storage.stat(location).map_err(other)? {
             Some(found) if found.directory => {
-                let folder = self.downloads.join(storage::download_name(location));
+                let folder = self
+                    .downloads
+                    .join(self.storage.download_name(location).map_err(other)?)
+                    .join("content");
                 self.download_directory(location, &folder)?;
                 Ok(folder)
             }
@@ -69,6 +72,9 @@ impl StorageFiles {
 
 impl Files for StorageFiles {
     fn local(&self, location: &str) -> io::Result<PathBuf> {
+        if let Some(path) = location.strip_prefix("file://") {
+            return Ok(PathBuf::from(address::decode(path)));
+        }
         match address::scheme(location) {
             None => Ok(PathBuf::from(location)),
             Some(_) => self.copy_here(location),
@@ -100,6 +106,27 @@ fn other(error: StorageError) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_directory_reads_leave_source_members_untouched() {
+        use std::os::unix::fs::MetadataExt;
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("tree");
+        std::fs::create_dir(&directory).unwrap();
+        let member = directory.join("data");
+        std::fs::write(&member, "original").unwrap();
+        let before = std::fs::metadata(&member).unwrap();
+        let files = StorageFiles::new(&Storage::default(), root.path().join("downloads"));
+        let found = files
+            .local(&format!("file://{}", directory.display()))
+            .unwrap();
+        let after = std::fs::metadata(&member).unwrap();
+        assert_eq!(found, directory);
+        assert_eq!(before.ino(), after.ino());
+        assert_eq!(before.modified().unwrap(), after.modified().unwrap());
+        assert_eq!(std::fs::read_to_string(member).unwrap(), "original");
+        assert!(!root.path().join("downloads").exists());
+    }
 
     /// Storage whose `s3://results/` and `s3://store/` are folders below `root`.
     fn folders(root: &Path) -> Storage {

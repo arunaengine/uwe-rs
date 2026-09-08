@@ -260,6 +260,31 @@ pub async fn plan(store: &Store, keep: &Keep) -> Result<Plan, RunnerError> {
         }
         digests.extend(entry.logs().cloned());
     }
+    let mut descriptors = BTreeSet::new();
+    let mut all = Vec::new();
+    for (object, directory) in store.directory_records().await? {
+        let run = directory
+            .location
+            .strip_prefix("runs/")
+            .and_then(|path| path.split('/').next());
+        let referenced = locations.iter().any(|location| {
+            directory.location == *location
+                || directory.location.starts_with(&format!("{location}/"))
+                || location.starts_with(&format!("{}/", directory.location))
+        });
+        if !leases.is_empty()
+            || recent(object.modified)
+            || digests.contains(&directory.digest)
+            || run.is_some_and(|run| keep.runs.contains(run))
+            || referenced
+        {
+            descriptors.insert(object.location.clone());
+            digests.insert(directory.digest.clone());
+            manifests.insert(directory.digest);
+            locations.insert(directory.location);
+        }
+        all.push(object);
+    }
     // A file stays when it, or a folder around it, is kept: a directory output or the folder
     // of a kept run.
     let kept_file = |location: &str| {
@@ -269,7 +294,6 @@ pub async fn plan(store: &Store, keep: &Keep) -> Result<Plan, RunnerError> {
             || locations.contains(location)
             || folders.into_iter().any(|folder| locations.contains(folder))
     };
-    let mut all = Vec::new();
     for kind in ["runs/", "cas/", "trees/"] {
         all.extend(store.objects(kind).await?);
     }
@@ -289,7 +313,9 @@ pub async fn plan(store: &Store, keep: &Keep) -> Result<Plan, RunnerError> {
         }
     }
     for object in &all {
-        let kept = if object.location.starts_with("runs/") {
+        let kept = if object.location.starts_with("directories/v1/") {
+            descriptors.contains(&object.location)
+        } else if object.location.starts_with("runs/") {
             kept_file(&object.location)
         } else {
             // Prepared inputs have no durable per-run digest records yet.

@@ -157,7 +157,7 @@ impl Inputs<'_> {
         match self.mode {
             Mode::Run => Ok(self.settings.storage.fetch(source, downloads).await?),
             Mode::Look => {
-                let copy = downloads.join(storage::download_name(source));
+                let copy = self.settings.storage.download_path(source, downloads)?;
                 match tokio::fs::try_exists(&copy).await {
                     Ok(true) => Ok(copy),
                     _ => Err(RunnerError::NotDownloaded(source.to_owned())),

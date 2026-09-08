@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use executor::manifest::parse;
 use executor::registry::{ImageConfig, ImageConfigs};
@@ -196,7 +196,7 @@ impl Backend for SlurmBackend {
             Err(error) => Err(error.into()),
             Ok(mounts) => self.attempt(job, &root, &mounts, cancel).await,
         };
-        if result.is_err() {
+        if result.is_err() && !root.join("remote.json").try_exists().unwrap_or(true) {
             let _ = tokio::fs::remove_dir_all(&root).await;
         }
         result
@@ -405,10 +405,14 @@ impl SlurmBackend {
         let options = self
             .with_excluded(sbatch_options(job, root, &self.options))
             .await;
-        let id = self.submit(options, &control.join(SCRIPT)).await?;
+        let id = self
+            .submit(options, &control.join(SCRIPT), root, cancel)
+            .await?;
         self.queue.add(&id).await;
         let ended = self.wait(&id, &control, cancel).await;
+        let stopped = self.stop(&id, root, CANCEL_GRACE, ended.is_err()).await;
         self.queue.remove(&id).await;
+        stopped?;
         let ended = ended?;
         // A job that left no log at all ran on a node that does not see the scratch folder.
         let lost = !tokio::fs::try_exists(control.join(LOG))
@@ -510,6 +514,13 @@ impl SlurmBackend {
                     Ok(path) => return Ok(Ok(path)),
                     // A cancelled task leaves the pull to the next task of the image.
                     Err(ExecutorError::Cancelled) => return Err(ExecutorError::Cancelled),
+                    Err(ExecutorError::Io(error))
+                        if error
+                            .to_string()
+                            .starts_with("SLURM ownership is unresolved:") =>
+                    {
+                        return Ok(Err(error.to_string()));
+                    }
                     Err(ExecutorError::Engine { message, .. }) => message,
                     Err(error) => error.to_string(),
                 };
@@ -541,23 +552,32 @@ impl SlurmBackend {
     ) -> Result<PathBuf, ExecutorError> {
         let stem = path.file_stem().unwrap_or_default().to_string_lossy();
         let name = format!(
-            "image-{}-{}",
+            "image-{}-{}-{}",
             &stem[..stem.len().min(19)],
-            std::process::id()
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |time| time.as_nanos())
         );
-        let root = self.images.join(&name);
+        let root = self.scratch.join(&name);
         let control = root.join(CONTROL);
-        let _ = tokio::fs::remove_dir_all(&root).await;
+        tokio::fs::create_dir_all(&self.images).await?;
+        tokio::fs::create_dir_all(&self.scratch).await?;
+        tokio::fs::create_dir(&root).await?;
         tokio::fs::create_dir_all(&control).await?;
         let script = pull_script(program, reference, path, &control.join(CONTAINER_EXIT));
         tokio::fs::write(control.join(SCRIPT), script).await?;
         let options = self
             .with_excluded(pull_options(&name, &root, &self.pull, &self.options))
             .await;
-        let id = self.submit(options, &control.join(SCRIPT)).await?;
+        let id = self
+            .submit(options, &control.join(SCRIPT), &root, cancel)
+            .await?;
         self.queue.add(&id).await;
         let ended = self.wait(&id, &control, cancel).await;
+        let stopped = self.stop(&id, &root, CANCEL_GRACE, ended.is_err()).await;
         self.queue.remove(&id).await;
+        stopped?;
         let pulled = match ended? {
             Ended::Done(0) if tokio::fs::try_exists(path).await.unwrap_or(false) => {
                 Ok(path.to_owned())
@@ -579,33 +599,83 @@ impl SlurmBackend {
     }
 
     /// Submits a job with its options and script, and gives its id.
-    async fn submit(&self, options: Vec<String>, script: &Path) -> Result<String, ExecutorError> {
+    async fn submit(
+        &self,
+        options: Vec<String>,
+        script: &Path,
+        root: &Path,
+        cancel: &CancellationToken,
+    ) -> Result<String, ExecutorError> {
+        if cancel.is_cancelled() {
+            return Err(ExecutorError::Cancelled);
+        }
+        let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
+        let started = owner_start(std::process::id()).ok_or_else(|| {
+            std::io::Error::other("cannot identify the SLURM coordinator process")
+        })?;
+        let mut journal = serde_json::json!({"backend":"SLURM", "commands":self.commands,
+            "options":options, "working_directory":std::path::absolute(root)?, "id":null, "cluster":null,
+            "owner":std::process::id(), "host":host, "started":started});
+        journal_at(root, &journal)?;
         let mut sbatch = Command::new(self.command("sbatch"));
         if let Some(proxy) = &self.proxy {
             for name in ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"] {
                 sbatch.env(name, proxy);
             }
         }
-        let output = sbatch
-            .args(options)
-            .arg(script)
-            .output()
-            .await
-            .map_err(|error| machine(format!("cannot run sbatch: {error}")))?;
+        sbatch.args(options).arg(script);
+        let output = tokio::select! {
+            output = crate::queue::output(&mut sbatch, crate::queue::REQUEST_GRACE) => output.map_err(|error| unresolved(root, error))?,
+            () = cancel.cancelled() => return Err(unresolved(root, "cancelled during submission; the response was not recorded")),
+        };
         let text = String::from_utf8_lossy(&output.stdout);
         // `--parsable` gives `<id>` or `<id>;<cluster>`.
         let id = text.trim().split(';').next().unwrap_or_default();
-        if !output.status.success() || id.is_empty() {
+        if !output.status.success()
+            || id.is_empty()
+            || !id.bytes().all(|byte| byte.is_ascii_digit())
+        {
             let error = String::from_utf8_lossy(&output.stderr);
-            return Err(machine(format!(
-                "sbatch did not take the job: {}",
-                error.trim()
-            )));
+            return Err(unresolved(
+                root,
+                format!("sbatch did not take the job: {}", error.trim()),
+            ));
         }
+        journal["id"] = serde_json::json!(id);
+        journal["cluster"] = serde_json::json!(
+            text.trim()
+                .split(';')
+                .nth(1)
+                .filter(|cluster| !cluster.is_empty())
+        );
+        journal_at(root, &journal).map_err(|error| unresolved(root, error))?;
         Ok(id.to_owned())
     }
 
-    /// Waits for a job to end, and cancels it when `cancel` fires.
+    /// Keeps unresolved ownership visible until automatic recovery is available.
+    pub async fn reconcile(&self) -> Result<(), ExecutorError> {
+        let entries = match std::fs::read_dir(&self.scratch) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error.into()),
+        };
+        for entry in entries {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let root = entry.path();
+            if root.join("remote.json").try_exists()? {
+                return Err(unresolved(
+                    &root,
+                    "resolve the recorded SLURM submission before starting another run",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Waits for a job outcome or cancellation before confirming termination.
     async fn wait(
         &self,
         id: &str,
@@ -620,7 +690,6 @@ impl SlurmBackend {
             tokio::select! {
                 () = tokio::time::sleep(pause) => {}
                 () = cancel.cancelled() => {
-                    self.cancel(id).await;
                     return Err(ExecutorError::Cancelled);
                 }
             }
@@ -637,7 +706,6 @@ impl SlurmBackend {
             let look = tokio::select! {
                 look = self.queue.look(id, self.poll, &squeue) => look,
                 () = cancel.cancelled() => {
-                    self.cancel(id).await;
                     return Err(ExecutorError::Cancelled);
                 }
             };
@@ -647,7 +715,6 @@ impl SlurmBackend {
                 Look::Gone => tokio::select! {
                     state = self.queue.accounted(&sacct, id) => state,
                     () = cancel.cancelled() => {
-                        self.cancel(id).await;
                         return Err(ExecutorError::Cancelled);
                     }
                 },
@@ -661,21 +728,72 @@ impl SlurmBackend {
         }
     }
 
-    /// Cancels a job and waits for it to leave the queue, so that its container is gone.
-    async fn cancel(&self, id: &str) {
-        let _ = Command::new(self.command("scancel")).arg(id).output().await;
-        let squeue = self.command("squeue");
-        let deadline = Instant::now() + CANCEL_GRACE;
-        while Instant::now() < deadline {
-            tokio::time::sleep(self.poll.min(Duration::from_secs(1))).await;
-            if matches!(
-                self.queue.look(id, self.poll, &squeue).await,
-                Look::Ended(_) | Look::Gone
-            ) {
-                break;
+    /// Releases a journal only after an independent single-job query confirms termination.
+    async fn stop(
+        &self,
+        id: &str,
+        root: &Path,
+        grace: Duration,
+        cancel: bool,
+    ) -> Result<(), ExecutorError> {
+        let journal: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(root.join("remote.json")).map_err(|error| unresolved(root, error))?,
+        )
+        .map_err(|error| unresolved(root, error))?;
+        let cluster = journal["cluster"].as_str();
+        let stopped = async {
+            loop {
+                if cancel {
+                    let mut command = Command::new(self.command("scancel"));
+                    command.arg(id);
+                    if let Some(cluster) = cluster {
+                        command.arg(format!("--clusters={cluster}"));
+                    }
+                    let _ = crate::queue::output(&mut command, crate::queue::REQUEST_GRACE).await;
+                }
+                if matches!(
+                    crate::queue::look_one(&self.command("squeue"), id, cluster).await,
+                    Look::Ended(_) | Look::Gone
+                ) {
+                    return;
+                }
+                tokio::time::sleep(self.poll.min(Duration::from_secs(1))).await;
             }
-        }
+        };
+        tokio::time::timeout(grace, stopped)
+            .await
+            .map_err(|_| unresolved(root, format!("job {id} termination was not confirmed")))?;
+        std::fs::remove_file(root.join("remote.json"))?;
+        Ok(())
     }
+}
+
+fn owner_start(pid: u32) -> Option<String> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let (_, fields) = stat.rsplit_once(')')?;
+    if matches!(fields.split_whitespace().next()?, "Z" | "X") {
+        return None;
+    }
+    fields.split_whitespace().nth(19).map(str::to_owned)
+}
+
+fn unresolved(root: &Path, error: impl std::fmt::Display) -> ExecutorError {
+    std::io::Error::other(format!(
+        "SLURM ownership is unresolved: {error}; retained {}",
+        root.join("remote.json").display()
+    ))
+    .into()
+}
+
+fn journal_at(root: &Path, journal: &serde_json::Value) -> Result<(), ExecutorError> {
+    use std::io::Write;
+    let path = root.join("remote.json.next");
+    let mut file = std::fs::File::create(&path)?;
+    file.write_all(journal.to_string().as_bytes())?;
+    file.sync_all()?;
+    std::fs::rename(path, root.join("remote.json"))?;
+    std::fs::File::open(root)?.sync_all()?;
+    Ok(())
 }
 
 /// What an attempt left behind, by how its job ended.
@@ -828,6 +946,40 @@ fn machine(message: String) -> ExecutorError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn refused_or_hung_cancellation_keeps_ownership() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().unwrap();
+        let mut backend = SlurmBackend::new(
+            folder.path().to_owned(),
+            Container::Apptainer("apptainer".into()),
+        );
+        backend.commands = Some(folder.path().to_owned());
+        for script in ["exit 1", "exec sleep 30"] {
+            for (name, script) in [("scancel", script), ("squeue", "echo '101 RUNNING'")] {
+                let path = folder.path().join(name);
+                std::fs::write(&path, format!("#!/bin/bash\n{script}\n")).unwrap();
+                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            journal_at(
+                folder.path(),
+                &serde_json::json!({"id":"101", "cluster":null}),
+            )
+            .unwrap();
+            let error = backend
+                .stop("101", folder.path(), Duration::from_millis(100), true)
+                .await
+                .unwrap_err();
+            assert!(!error.retryable());
+            assert!(folder.path().join("remote.json").is_file());
+        }
+        let foreign = folder.path().join("foreign");
+        std::fs::create_dir(&foreign).unwrap();
+        std::fs::write(foreign.join("remote.json"), "{\"backend\":\"other\"}").unwrap();
+        assert!(backend.reconcile().await.is_err());
+        assert!(foreign.join("remote.json").is_file());
+    }
 
     #[tokio::test]
     async fn selected_platform_pins_even_a_replaced_entrypoint() {

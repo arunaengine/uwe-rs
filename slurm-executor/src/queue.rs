@@ -29,6 +29,55 @@ pub(crate) async fn output(
         })?
 }
 
+pub(crate) async fn look_one(squeue: &Path, id: &str, cluster: Option<&str>) -> Look {
+    let mut command = Command::new(squeue);
+    command
+        .args(["--noheader", "--states=all", "--format=%i %T"])
+        .arg(format!("--jobs={id}"));
+    if let Some(cluster) = cluster {
+        command.arg(format!("--clusters={cluster}"));
+    }
+    let Ok(output) = output(&mut command, REQUEST_GRACE).await else {
+        return Look::Unknown;
+    };
+    if !output.status.success() {
+        return if String::from_utf8_lossy(&output.stderr).contains("Invalid job id") {
+            Look::Gone
+        } else {
+            Look::Unknown
+        };
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut ended = None;
+    let mut active = false;
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        let mut words = line.split_whitespace();
+        let (Some(job), Some(state)) = (words.next(), words.next()) else {
+            return Look::Unknown;
+        };
+        if words.next().is_some()
+            || !(job == id
+                || job
+                    .strip_prefix(id)
+                    .is_some_and(|suffix| suffix.starts_with('_') || suffix.starts_with('+')))
+        {
+            return Look::Unknown;
+        }
+        if ENDED.contains(&state) {
+            ended = Some(state.to_owned());
+        } else {
+            active = true;
+        }
+    }
+    if active {
+        return Look::Active;
+    }
+    match ended {
+        Some(state) => Look::Ended(state),
+        None => Look::Gone,
+    }
+}
+
 /// The states in which a job has ended.
 const ENDED: [&str; 10] = [
     "BOOT_FAIL",
@@ -312,6 +361,27 @@ async fn accounted(sacct: &Path, id: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn single_job_confirmation_keeps_completing_and_active_array_members() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().unwrap();
+        let tool = folder.path().join("squeue");
+        for (answer, expected) in [
+            ("101 CANCELLED\n101_1 COMPLETING", Look::Active),
+            ("101 CANCELLED", Look::Ended("CANCELLED".into())),
+            ("101 CANCELLED\nmalformed", Look::Unknown),
+            ("101 CANCELLED\n101 FAILED extra", Look::Unknown),
+            ("101 CANCELLED\n102 COMPLETED", Look::Unknown),
+            ("101 CANCELLED\n101+1 COMPLETING", Look::Active),
+            ("unexpected", Look::Unknown),
+            ("", Look::Gone),
+        ] {
+            std::fs::write(&tool, format!("#!/bin/bash\nprintf '%b' '{answer}'\n")).unwrap();
+            std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+            assert_eq!(look_one(&tool, "101", None).await, expected);
+        }
+    }
 
     #[tokio::test]
     async fn tool_deadlines_and_cancelled_reads_kill_the_process() {

@@ -68,6 +68,10 @@ pub fn executor(
              iunctus on a node of the SLURM cluster, like its login node"
         ));
     }
+    let runtime = workflow_graph::runtime().map_err(|error| error.to_string())?;
+    runtime
+        .block_on(backend.reconcile())
+        .map_err(|error| error.to_string())?;
     // The nodes read the inputs from the store, so they are copied there.
     let runner = Runner::new(store, backend, run, crate::runner_settings(storage, true));
     Ok(RunnerExecutor::new(runner, default_image))

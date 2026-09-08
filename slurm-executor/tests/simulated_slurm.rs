@@ -54,6 +54,7 @@ fi
     echo $? > "$state/$id.exit"
 ) > /dev/null 2>&1 &
 echo "$id"
+[ ! -e "$(dirname "$0")/missing-response" ] || exec sleep 30
 "#;
 
 /// Writes JSON with `--json` when the folder has a file `json`, as SLURM 23.02 does; else it
@@ -80,6 +81,7 @@ for id in ${jobs//,/ }; do
     elif [ -e "$state/$id.cancelled" ]; then job_state=CANCELLED
     elif [ "$(cat "$state/$id.exit")" = 0 ]; then job_state=COMPLETED
     else job_state=FAILED; fi
+    [ ! -e "$(dirname "$0")/completing" ] || job_state=COMPLETING
     if [ -n "$json" ]; then
         printf '%s{"job_id": %s, "job_state": ["%s"]}' "$separator" "$id" "$job_state"
         separator=,
@@ -497,7 +499,12 @@ async fn clusters_that_write_json_are_read_as_json() {
     let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
     assert_eq!(finished.exit_code, Some(0));
     let asked = std::fs::read_to_string(bin.join("state/squeue")).expect("squeue was asked");
-    assert!(asked.lines().all(|line| line == "yes"), "{asked}");
+    assert!(asked.lines().any(|line| line == "yes"), "{asked}");
+    assert!(
+        asked.lines().all(|line| line == "yes" || line == "text"),
+        "{asked}"
+    );
+    assert_eq!(asked.lines().last(), Some("text"), "{asked}");
 }
 
 #[tokio::test]
@@ -694,6 +701,145 @@ async fn cancelled_jobs_stop() {
     );
     let exit = std::fs::read_to_string(bin.join("state/101.exit")).expect("the job ended");
     assert_ne!(exit.trim(), "0");
+}
+
+#[tokio::test]
+async fn ambiguous_submission_retains_scratch_and_blocks_resubmission() {
+    let root = tempfile::tempdir().unwrap();
+    let bin = cluster(root.path(), APPTAINER);
+    std::fs::write(bin.join("missing-response"), "").unwrap();
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    let mut spec = spec("sleep 30");
+    spec.image.as_mut().unwrap().reference = "/images/tool.sif".into();
+    let (staging, placement) = (Staging::default(), placement());
+    let job = || Job {
+        name: "ambiguous",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = backend
+        .run(job(), &CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert!(!error.retryable());
+    let path = backend.scratch.join("ambiguous/remote.json");
+    let record: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert!(record["id"].is_null());
+    assert!(backend.scratch.join("ambiguous/control/job.sh").is_file());
+    assert!(backend.run(job(), &CancellationToken::new()).await.is_err());
+    assert_eq!(
+        std::fs::read_to_string(bin.join("state/last"))
+            .unwrap()
+            .trim(),
+        "101"
+    );
+    assert!(backend.reconcile().await.is_err());
+    assert!(path.is_file());
+    tokio::process::Command::new(bin.join("scancel"))
+        .arg("101")
+        .status()
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn completing_job_keeps_ownership_after_the_exit_marker() {
+    let root = tempfile::tempdir().unwrap();
+    let bin = cluster(root.path(), APPTAINER);
+    let completing = bin.join("completing");
+    std::fs::write(&completing, "").unwrap();
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    let mut spec = spec("echo complete > out.txt");
+    spec.image.as_mut().unwrap().reference = "/images/tool.sif".into();
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "completing",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let verify = async {
+        let marker = backend
+            .scratch
+            .join("completing/control")
+            .join(slurm_executor::CONTAINER_EXIT);
+        for _ in 0..100 {
+            if marker.exists() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(marker.is_file());
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let journal = backend.scratch.join("completing/remote.json");
+        let record: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(journal).unwrap()).unwrap();
+        assert_eq!(record["id"], "101");
+        std::fs::remove_file(&completing).unwrap();
+    };
+    let (result, ()) = tokio::join!(backend.run(job, &cancel), verify);
+    let finished = result.unwrap();
+    assert_eq!(finished.exit_code, Some(0));
+    assert!(!finished.root.join("remote.json").exists());
+}
+
+#[tokio::test]
+async fn unresolved_image_pull_is_kept_and_shared_without_another_submit() {
+    let root = tempfile::tempdir().unwrap();
+    let bin = cluster(root.path(), APPTAINER);
+    std::fs::write(bin.join("missing-response"), "").unwrap();
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    let spec = spec("true");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = |name| Job {
+        name,
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let (first, second) = tokio::join!(
+        backend.run(job("first"), &cancel),
+        backend.run(job("second"), &cancel)
+    );
+    assert!(matches!(first, Err(ExecutorError::MissingImage { .. })));
+    assert!(matches!(second, Err(ExecutorError::MissingImage { .. })));
+    assert_eq!(
+        std::fs::read_to_string(bin.join("state/last"))
+            .unwrap()
+            .trim(),
+        "101"
+    );
+    let attempts: Vec<_> = std::fs::read_dir(&backend.scratch)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.join("remote.json").is_file())
+        .collect();
+    assert_eq!(attempts.len(), 1);
+    assert!(
+        attempts[0]
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("image-")
+    );
+    assert!(attempts[0].join("control/job.sh").is_file());
+    assert!(backend.reconcile().await.is_err());
 }
 
 #[tokio::test]

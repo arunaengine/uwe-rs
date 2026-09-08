@@ -19,7 +19,7 @@ pub fn redacted(address: &str) -> String {
     let Some((scheme, rest)) = address.split_once("://") else {
         return address.to_owned();
     };
-    let end = rest.find('/').unwrap_or(rest.len());
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let (server, path) = rest.split_at(end);
     match server.rsplit_once('@') {
         Some((credentials, host)) => match credentials.split_once(':') {

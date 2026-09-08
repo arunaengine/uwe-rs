@@ -78,13 +78,16 @@ impl Folder {
             .unwrap_or_else(|| Path::new("."));
         let part = tempfile::NamedTempFile::new_in(parent)
             .map_err(|error| Problem::local(target, error))?;
-        match copied(path, part).await {
-            Ok(part) => {
+        let source = path.to_owned();
+        let downloaded =
+            tokio::task::spawn_blocking(move || download_copy(std::fs::File::open(source)?, part))
+                .await
+                .map_err(|error| Problem::local(path, std::io::Error::other(error)))?;
+        match downloaded {
+            Ok((part, version)) => {
                 part.persist(target)
                     .map_err(|error| Problem::local(target, error.error))?;
-                Ok(Downloaded {
-                    version: std::fs::metadata(path).ok().as_ref().and_then(modified),
-                })
+                Ok(Downloaded { version })
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(Problem::missing()),
             Err(error) => Err(Problem::local(path, error)),
@@ -114,6 +117,23 @@ impl Folder {
     }
 }
 
+fn download_copy(
+    mut source: std::fs::File,
+    mut part: tempfile::NamedTempFile,
+) -> std::io::Result<(tempfile::NamedTempFile, Option<String>)> {
+    let before = source.metadata()?;
+    let version = modified(&before);
+    part.as_file().set_permissions(before.permissions())?;
+    let size = std::io::copy(&mut source, part.as_file_mut())?;
+    let after = source.metadata()?;
+    if size != before.len() || after.len() != before.len() || modified(&after) != version {
+        return Err(std::io::Error::other(
+            "the source file changed while being downloaded",
+        ));
+    }
+    Ok((part, version))
+}
+
 /// Keeps the private file alive until even a detached blocking copy has finished.
 pub(crate) async fn copied(
     file: &Path,
@@ -133,4 +153,32 @@ fn modified(found: &std::fs::Metadata) -> Option<String> {
     let modified = found.modified().ok()?;
     let since = modified.duration_since(std::time::UNIX_EPOCH).ok()?;
     Some(format!("modified {}", since.as_nanos()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renamed_source_keeps_the_copied_handles_version() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("source");
+        std::fs::write(&path, b"old").unwrap();
+        let source = std::fs::File::open(&path).unwrap();
+        source
+            .set_times(
+                std::fs::FileTimes::new()
+                    .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1)),
+            )
+            .unwrap();
+        let expected = modified(&source.metadata().unwrap());
+        let replacement = folder.path().join("replacement");
+        std::fs::write(&replacement, b"new").unwrap();
+        std::fs::rename(replacement, &path).unwrap();
+        let part = tempfile::NamedTempFile::new_in(folder.path()).unwrap();
+        let (part, version) = download_copy(source, part).unwrap();
+        assert_eq!(std::fs::read(part.path()).unwrap(), b"old");
+        assert_eq!(version, expected);
+        assert_ne!(version, modified(&std::fs::metadata(path).unwrap()));
+    }
 }

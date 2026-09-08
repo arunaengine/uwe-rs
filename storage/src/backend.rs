@@ -36,6 +36,63 @@ pub(crate) enum Source {
 }
 
 impl Source {
+    /// Stable routing identity without credentials or secret header values.
+    pub fn cache_identity(&self) -> Vec<String> {
+        let Source::Configured(settings) = self else {
+            return vec![
+                match self {
+                    Source::Web => "web",
+                    Source::PublicBuckets => "public-buckets",
+                    Source::Files => "files",
+                    Source::Ftp => "ftp",
+                    Source::Configured(_) => unreachable!(),
+                }
+                .into(),
+            ];
+        };
+        let mut identity = vec!["configured".into(), settings.name.clone()];
+        identity.extend(match &settings.kind {
+            Kind::S3(value) => vec![
+                "s3".into(),
+                value
+                    .endpoint
+                    .as_deref()
+                    .map(crate::address::redacted)
+                    .unwrap_or_default(),
+                value.region.clone().unwrap_or_default(),
+                format!("{:?}", value.path_style),
+                value.anonymous.to_string(),
+            ],
+            Kind::GoogleCloudStorage(value) => vec![
+                "gcs".into(),
+                value
+                    .endpoint
+                    .as_deref()
+                    .map(crate::address::redacted)
+                    .unwrap_or_default(),
+                value
+                    .credential_file
+                    .as_ref()
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                value.anonymous.to_string(),
+            ],
+            Kind::AzureBlobStorage(value) => vec![
+                "azure".into(),
+                value
+                    .endpoint
+                    .as_deref()
+                    .map(crate::address::redacted)
+                    .unwrap_or_default(),
+                value.account.clone().unwrap_or_default(),
+            ],
+            Kind::Https(value) => vec!["https".into(), value.user.clone().unwrap_or_default()],
+            Kind::Ftp(value) => vec!["ftp".into(), value.user.clone().unwrap_or_default()],
+            Kind::Folder(value) => vec!["folder".into(), value.path.to_string_lossy().into_owned()],
+        });
+        identity
+    }
+
     /// The provider in words, for messages.
     pub fn describe(&self) -> String {
         match self {

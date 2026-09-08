@@ -21,6 +21,16 @@ impl Blocking {
         Blocking { storage }
     }
 
+    /// Where a fetched file lives; see [`Storage::download_path`].
+    pub fn download_path(&self, target: &str, downloads: &Path) -> Result<PathBuf, StorageError> {
+        self.storage.download_path(target, downloads)
+    }
+
+    /// The provider-aware bundle name; see [`Storage::download_name`].
+    pub fn download_name(&self, target: &str) -> Result<String, StorageError> {
+        self.storage.download_name(target)
+    }
+
     /// A local copy of a file; see [`Storage::fetch`].
     pub fn fetch(&self, target: &str, downloads: &Path) -> Result<PathBuf, StorageError> {
         let (storage, target, downloads) = self.owned(target, downloads);

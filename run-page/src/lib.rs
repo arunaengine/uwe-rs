@@ -218,6 +218,6 @@ impl From<std::io::Error> for Failure {
 
 impl IntoResponse for Failure {
     fn into_response(self) -> Response {
-        (self.status, self.message).into_response()
+        (self.status, run_database::redact_public_text(&self.message)).into_response()
     }
 }

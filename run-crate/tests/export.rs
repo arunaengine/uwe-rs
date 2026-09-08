@@ -76,6 +76,10 @@ fn finished(id: u64, path: &str, location: PathBuf) -> Outcome {
 /// Records a simulated run of two tasks in `directory`: UPPER reads `greeting.txt` and an
 /// assumed input that does not exist, COUNT reads the output of UPPER.
 fn record(directory: &Path) -> Database {
+    record_with_address(directory, None)
+}
+
+fn record_with_address(directory: &Path, address: Option<&str>) -> Database {
     let greeting = directory.join("greeting.txt");
     std::fs::write(&greeting, "hello\n").expect("writes the input");
     let work = directory.join("work");
@@ -142,13 +146,19 @@ fn record(directory: &Path) -> Database {
         fetched: 1_790_000_000_000,
         version: Some("\"1\"".into()),
     }]);
-    let assumed = input("reference.fa", Path::new("/data/reference.fa"));
-    let first = task(
+    let mut assumed = input("reference.fa", Path::new("/data/reference.fa"));
+    if let Some(address) = address {
+        assumed.source = address.to_owned();
+    }
+    let mut first = task(
         1,
         "UPPER",
         vec![input("in.txt", &greeting), assumed],
         "upper.txt",
     );
+    if let Some(address) = address {
+        first.script = Some(format!("curl '{address}'"));
+    }
     recorder.requested(&first, &[]);
     recorder.started(TaskId(1), 1);
     let mut first_outcome = finished(1, "upper.txt", upper.clone());
@@ -409,5 +419,43 @@ fn changed_inputs_export_only_kept_historical_bytes_or_record_unavailability() {
     assert_eq!(
         std::fs::read(output.join("data").join(digest.hex())).expect("reads original"),
         b"hello\n"
+    );
+}
+
+#[test]
+fn crate_metadata_hides_url_passwords_while_private_replay_keeps_them() {
+    let root = tempfile::tempdir().expect("a directory");
+    let address = "ftp://user:sentinel-private-password@host?email=a:b@c#fragment@x";
+    let database = record_with_address(root.path(), Some(address));
+    let workflow = root.path().join("main.nf");
+    std::fs::write(&workflow, WORKFLOW).expect("writes workflow");
+    let output = root.path().join("crate");
+    export(
+        &database,
+        "fixture-run",
+        &output,
+        &Options {
+            workflow,
+            ..Options::default()
+        },
+    )
+    .expect("exports");
+    let metadata = std::fs::read_to_string(output.join(METADATA)).expect("reads metadata");
+    assert!(!metadata.contains("sentinel-private-password"));
+    assert!(metadata.contains("ftp://user:[secret]@host?email=a:b@c#fragment@x"));
+    let task = database
+        .task("fixture-run", 1)
+        .expect("reads task")
+        .expect("a task");
+    assert_eq!(task.description.inputs[1].source, address);
+    assert!(
+        task.description
+            .script
+            .expect("private command")
+            .contains("sentinel-private-password")
+    );
+    assert_eq!(
+        std::fs::read_to_string(output.join("main.nf")).expect("reads copied bytes"),
+        WORKFLOW
     );
 }

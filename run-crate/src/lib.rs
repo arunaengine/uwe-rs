@@ -152,7 +152,7 @@ pub fn export(
     let pinned = pinned::gather(database, &record, directory, options, &mut data)?;
     let inputs = database.run_inputs(run)?;
     if let Some(inputs) = &inputs {
-        let text = serde_json::to_string_pretty(&inputs.schema)?;
+        let text = serde_json::to_string_pretty(&run_database::public_json(&inputs.schema)?)?;
         std::fs::write(directory.join(formal::INPUT_SCHEMA), text + "\n")?;
     }
     let published = ids::time(run_database::now());
@@ -181,11 +181,17 @@ pub fn export(
         ],
         "@graph": graph
     });
-    let text = serde_json::to_string_pretty(&metadata)?;
+    let text = serde_json::to_string_pretty(&run_database::public_json(&metadata)?)?;
     std::fs::write(directory.join(METADATA), text + "\n")?;
     std::fs::write(
         directory.join(metadata::README),
-        readme(&record, &workflow, tasks.len(), inputs.is_some(), &pinned),
+        run_database::redact_public_text(&readme(
+            &record,
+            &workflow,
+            tasks.len(),
+            inputs.is_some(),
+            &pinned,
+        )),
     )?;
     let (files, bytes) = data.totals();
     Ok(Summary {

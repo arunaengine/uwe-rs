@@ -14,6 +14,10 @@ use workflow_graph::{Input, Language, Outcome, OutputFile, Task, TaskId};
 /// Records a finished run of one task that read `in.txt` and wrote `out.txt`, and a second run
 /// that is still going on.
 fn record(directory: &Path) -> std::path::PathBuf {
+    record_with_address(directory, None)
+}
+
+fn record_with_address(directory: &Path, address: Option<&str>) -> std::path::PathBuf {
     let input = directory.join("in.txt");
     std::fs::write(&input, "raw\n").expect("writes the input");
     let output = directory.join("out.txt");
@@ -25,7 +29,10 @@ fn record(directory: &Path) -> std::path::PathBuf {
         workflow: "/work/Snakefile".into(),
         language: Language::Snakemake,
         revision: None,
-        arguments: vec!["run".into(), "Snakefile".into()],
+        arguments: ["run".to_owned(), "Snakefile".to_owned()]
+            .into_iter()
+            .chain(address.map(str::to_owned))
+            .collect(),
         parameters: Vec::new(),
         executor: "simulator".into(),
         simulated: true,
@@ -35,7 +42,7 @@ fn record(directory: &Path) -> std::path::PathBuf {
         workflow_folder: None,
         repeats: None,
     };
-    let task = Task {
+    let mut task = Task {
         id: TaskId(4),
         name: "upper (a)".into(),
         step: "upper".into(),
@@ -54,7 +61,11 @@ fn record(directory: &Path) -> std::path::PathBuf {
         outputs: vec!["out.txt".into()],
         ..Task::default()
     };
-    let outcome = Outcome {
+    if let Some(address) = address {
+        task.inputs[0].source = address.to_owned();
+        task.script = Some(format!("curl '{address}'"));
+    }
+    let mut outcome = Outcome {
         id: TaskId(4),
         exit_code: 0,
         files: vec![OutputFile {
@@ -71,6 +82,9 @@ fn record(directory: &Path) -> std::path::PathBuf {
         }),
         ..Outcome::default()
     };
+    if let Some(address) = address {
+        outcome.stdout = format!("read {address}");
+    }
     let mut recorder = Database::open(&path)
         .expect("opens")
         .record(&start("finished-run"))
@@ -340,5 +354,63 @@ fn a_running_run_updates_the_page_live() {
     let stopped = last["tasks"].as_array().into_iter().flatten();
     let stopped: Vec<&Value> = stopped.map(|task| &task["state"]).collect();
     assert_eq!(stopped, [&Value::from("stopped")], "{stream}");
+    server.stop();
+}
+
+#[test]
+fn public_details_reports_events_and_errors_hide_url_passwords_without_changing_replay() {
+    let root = tempfile::tempdir().expect("a directory");
+    let address = "ftp://user:sentinel-private-password@[::1]:21?email=a:b@c#fragment@x";
+    let path = record_with_address(root.path(), Some(address));
+    let database = Database::open(&path).expect("reads private database");
+    let private = database
+        .task("finished-run", 4)
+        .expect("reads task")
+        .expect("a task");
+    assert_eq!(private.description.inputs[0].source, address);
+    assert!(
+        private
+            .description
+            .script
+            .expect("private command")
+            .contains("sentinel-private-password")
+    );
+    assert_eq!(
+        database
+            .run("finished-run")
+            .expect("reads run")
+            .expect("a run")
+            .arguments[2],
+        address
+    );
+    let html = run_page::report(&database, "finished-run")
+        .expect("report")
+        .expect("a report");
+    assert!(!html.contains("sentinel-private-password"));
+    let server = Server::start(&Settings::new(path)).expect("starts page");
+    for route in [
+        "/api/runs",
+        "/api/runs/finished-run",
+        "/api/runs/finished-run/tasks/4",
+        "/api/runs/finished-run/events",
+        "/api/runs/finished-run/graph.svg",
+        "/api/runs/finished-run/tasks/4/inputs/0",
+    ] {
+        let (_, body) = get(&format!("{}{route}", server.url()));
+        assert!(!body.contains("sentinel-private-password"), "{route}");
+    }
+    let detail = get_json(&format!("{}/api/runs/finished-run/tasks/4", server.url()));
+    assert_eq!(
+        detail["description"]["inputs"][0]["source"],
+        "ftp://user:[secret]@[::1]:21?email=a:b@c#fragment@x"
+    );
+    assert_eq!(
+        detail["inputs"][0]["location"],
+        detail["description"]["inputs"][0]["source"]
+    );
+    assert_eq!(
+        detail["input_ids"][0],
+        run_database::public_resource_id(address)
+    );
     server.stop();
 }

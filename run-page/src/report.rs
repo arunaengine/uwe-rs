@@ -120,7 +120,7 @@ fn tail(log: &mut Option<Log>) {
 fn page(data: &Data) -> Result<String, serde_json::Error> {
     // JSON has `<` only inside strings, where `<` means the same. So no text of the data
     // can end the element that holds it.
-    let json = serde_json::to_string(data)?.replace('<', "\\u003c");
+    let json = serde_json::to_string(&run_database::public_json(data)?)?.replace('<', "\\u003c");
     let scripts = [
         assets::SCRIPT,
         assets::GRAPH_SCRIPT,

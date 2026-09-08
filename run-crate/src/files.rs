@@ -46,7 +46,12 @@ impl Record<'_> {
                     entity["sha256"] = json!(digest.hex());
                     entity["contentSize"] = json!(size.to_string());
                 }
-                Some(Placed::Remote { url }) => self.pinned.describe_remote(&mut entity, url),
+                Some(Placed::Remote { url }) => {
+                    if run_database::public_resource_id(url) != *url {
+                        entity["url"] = json!(url);
+                    }
+                    self.pinned.describe_remote(&mut entity, url);
+                }
                 Some(Placed::Absent) => {
                     if let Some(digest) = &file.digest {
                         entity["sha256"] = json!(digest.strip_prefix("sha256:").unwrap_or(digest));

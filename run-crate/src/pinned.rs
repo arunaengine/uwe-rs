@@ -57,7 +57,7 @@ pub(crate) fn gather(
         ..Pinned::default()
     };
     if let Some(schema) = &pinned.output_schema {
-        let text = serde_json::to_string_pretty(schema)?;
+        let text = serde_json::to_string_pretty(&run_database::public_json(schema)?)?;
         std::fs::write(directory.join(OUTPUT_SCHEMA), text + "\n")?;
     }
     let folder = run.workflow_folder.as_deref().map(PathBuf::from);
@@ -168,6 +168,9 @@ impl Pinned {
                 "name": file.address.rsplit('/').next().unwrap_or(&file.address),
                 "description": "A remote file that the workflow read while it planned its tasks."
             });
+            if run_database::public_resource_id(&file.address) != file.address {
+                entity["url"] = json!(file.address);
+            }
             self.describe_remote(&mut entity, &file.address);
             entities.push(entity);
         }

@@ -78,6 +78,84 @@ pub(crate) async fn look_one(squeue: &Path, id: &str, cluster: Option<&str>) -> 
     }
 }
 
+pub(crate) async fn identified(
+    squeue: &Path,
+    id: &str,
+    cluster: Option<&str>,
+) -> (Look, Option<Value>) {
+    let mut command = Command::new(squeue);
+    command
+        .args(["--noheader", "--states=all", "--format=%i|%T|%j|%V|%o"])
+        .arg(format!("--jobs={id}"))
+        .env("TZ", "UTC")
+        .env("SLURM_TIME_FORMAT", "%Y-%m-%dT%H:%M:%S");
+    if let Some(cluster) = cluster {
+        command.arg(format!("--clusters={cluster}"));
+    }
+    let Ok(output) = output(&mut command, REQUEST_GRACE).await else {
+        return (Look::Unknown, None);
+    };
+    if !output.status.success() {
+        return (
+            if String::from_utf8_lossy(&output.stderr).contains("Invalid job id") {
+                Look::Gone
+            } else {
+                Look::Unknown
+            },
+            None,
+        );
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let (mut identity, mut ended, mut active) = (None, None, false);
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        let columns: Vec<&str> = line.splitn(5, '|').collect();
+        if columns.len() != 5
+            || columns.iter().any(|column| column.is_empty())
+            || !(columns[0] == id
+                || columns[0]
+                    .strip_prefix(id)
+                    .is_some_and(|suffix| suffix.starts_with('_') || suffix.starts_with('+')))
+        {
+            return (Look::Unknown, None);
+        }
+        let selected =
+            serde_json::json!({"name":columns[2], "submitted":columns[3], "script":columns[4]});
+        if columns[3].len() != 19
+            || !columns[3]
+                .bytes()
+                .enumerate()
+                .all(|(position, byte)| match position {
+                    4 | 7 => byte == b'-',
+                    10 => byte == b'T',
+                    13 | 16 => byte == b':',
+                    _ => byte.is_ascii_digit(),
+                })
+        {
+            return (Look::Unknown, None);
+        }
+        if identity
+            .as_ref()
+            .is_some_and(|previous| previous != &selected)
+        {
+            return (Look::Unknown, None);
+        }
+        identity = Some(selected);
+        if ENDED.contains(&columns[1]) {
+            ended = Some(columns[1].to_owned());
+        } else {
+            active = true;
+        }
+    }
+    (
+        if active {
+            Look::Active
+        } else {
+            ended.map(Look::Ended).unwrap_or(Look::Gone)
+        },
+        identity,
+    )
+}
+
 /// The states in which a job has ended.
 const ENDED: [&str; 10] = [
     "BOOT_FAIL",

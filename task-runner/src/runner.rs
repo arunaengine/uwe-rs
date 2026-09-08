@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
@@ -196,6 +197,7 @@ pub struct Runner<B> {
     /// The lease of the run in the store, which it holds from its first task on, so that
     /// clean-up knows that the run goes on.
     lease: Arc<OnceCell<Lease>>,
+    lost: CancellationToken,
     /// The share of results from the cache that run again for the reproducibility check, from
     /// 0 (none) to 1 (all).
     check: f64,
@@ -223,6 +225,7 @@ impl<B> Clone for Runner<B> {
             settings: self.settings.clone(),
             pinned: self.pinned.clone(),
             lease: self.lease.clone(),
+            lost: self.lost.clone(),
             check: self.check,
             gathering: self.gathering.clone(),
             slots: self.slots,
@@ -241,6 +244,7 @@ impl<B: Backend> Runner<B> {
             settings,
             pinned: Arc::default(),
             lease: Arc::default(),
+            lost: CancellationToken::new(),
             check: 0.0,
             gathering: Arc::default(),
             slots: std::thread::available_parallelism().map_or(1, usize::from),
@@ -282,27 +286,36 @@ impl<B: Backend> Runner<B> {
 
     /// Stores a local file by its content, for tasks that take it as input.
     pub async fn import(&self, file: &Path) -> Result<(Digest, u64), RunnerError> {
-        let _admission = self.admit().await?;
-        Ok(self.store.put_file(file).await?)
+        let admission = self.admit().await?;
+        self.phase(None, Some(&admission), None, self.store.put_file(file))
+            .await
     }
 
     /// Stores bytes by their content, like a task script.
     pub async fn import_bytes(&self, bytes: &[u8]) -> Result<Digest, RunnerError> {
-        let _admission = self.admit().await?;
-        self.inputs().bytes(bytes).await
+        let admission = self.admit().await?;
+        self.phase(None, Some(&admission), None, self.inputs().bytes(bytes))
+            .await
     }
 
     /// The manifest of a local directory, which is stored, and the size of its files. The
     /// files are stored by their content too when the runner imports inputs.
     pub async fn import_directory(&self, directory: &Path) -> Result<(Digest, u64), RunnerError> {
-        let _admission = self.admit().await?;
-        self.inputs().directory(directory).await
+        let admission = self.admit().await?;
+        self.phase(
+            None,
+            Some(&admission),
+            None,
+            self.inputs().directory(directory),
+        )
+        .await
     }
 
     /// Stores a directory manifest, like the one of an empty directory.
     pub async fn import_tree(&self, tree: &Tree) -> Result<Digest, RunnerError> {
-        let _admission = self.admit().await?;
-        self.inputs().tree(tree).await
+        let admission = self.admit().await?;
+        self.phase(None, Some(&admission), None, self.inputs().tree(tree))
+            .await
     }
 
     /// How a run makes the digests of inputs.
@@ -358,17 +371,33 @@ impl<B: Backend> Runner<B> {
             _ => None,
         };
         let shared = match &tool {
-            Some(tool) => self.store.unreproducible(tool).await?.is_none(),
+            Some(tool) => self
+                .phase(
+                    None,
+                    admission.as_ref(),
+                    Some(cancel),
+                    self.store.unreproducible(tool),
+                )
+                .await?
+                .is_none(),
             None => request.scope == ReuseScope::Shared,
         };
         let (earlier, _turn) = match shared && prepared.reuse {
             true => {
-                let found = match self.reuse_guarded(namespace, &key).await? {
+                let found = match self
+                    .phase(
+                        None,
+                        admission.as_ref(),
+                        Some(cancel),
+                        self.reuse_guarded(namespace, &key),
+                    )
+                    .await?
+                {
                     Some(entry) => Turn::Reused(entry),
                     None => {
                         drop(admission.take());
                         tokio::select! {
-                            result = self.turn(namespace, &key, &request.identity, cancel) => result?,
+                            result = self.phase(None, None, Some(cancel), self.turn(namespace, &key, &request.identity, cancel)) => result?,
                             () = cancel.cancelled() => return Err(ExecutorError::Cancelled.into()),
                         }
                     }
@@ -390,7 +419,14 @@ impl<B: Backend> Runner<B> {
             () = cancel.cancelled() => return Err(ExecutorError::Cancelled.into()),
         };
         let task = segment(&request.identity);
-        let staging = self.stage(prepared).await?;
+        let staging = self
+            .phase(
+                _turn.as_ref(),
+                Some(&admission),
+                Some(cancel),
+                self.stage(prepared),
+            )
+            .await?;
         drop(admission);
         let name = format!("{}-{task}-{}", self.run, request.attempt);
         let job = Job {
@@ -400,38 +436,60 @@ impl<B: Backend> Runner<B> {
             placement: &request.placement,
         };
         let begun = Instant::now();
-        let finished = match prepared.per_container > 1 && crate::together::joinable(&job) {
-            true => self.together(job, prepared.per_container, cancel).await?,
-            false => self.backend.run(job, cancel).await?,
+        let stop = cancel.child_token();
+        let work = async {
+            match prepared.per_container > 1 && crate::together::joinable(&job) {
+                true => self.together(job, prepared.per_container, &stop).await,
+                false => self.backend.run(job, &stop).await,
+            }
         };
+        let finished = self.work(_turn.as_ref(), cancel, &stop, work).await?;
         let milliseconds = begun.elapsed().as_millis() as u64;
         let digests = self.settings.digests.as_ref();
-        let stored = outputs::store_outputs(
-            &self.store,
-            &self.run,
-            &finished,
-            &task,
-            request.attempt,
-            digests,
-            &staging,
-        )
-        .await;
+        let stored = self
+            .phase(
+                _turn.as_ref(),
+                None,
+                Some(cancel),
+                outputs::store_outputs(
+                    &self.store,
+                    &self.run,
+                    &finished,
+                    &task,
+                    request.attempt,
+                    digests,
+                    &staging,
+                ),
+            )
+            .await;
         let stored = match stored {
             Ok(mut result) => {
                 let (spec, streams) = (&request.spec, (&result.stdout, &result.stderr));
                 let containers = outputs::store_containers(&self.store, spec, &finished, streams);
-                containers.await.map(|containers| {
-                    result.containers = containers;
-                    result
-                })
+                self.phase(_turn.as_ref(), None, Some(cancel), containers)
+                    .await
+                    .map(|containers| {
+                        result.containers = containers;
+                        result
+                    })
             }
             Err(error) => Err(error),
         };
         let result = stored?;
-        (tokio::fs::remove_dir_all(&finished.root).await).map_err(at(&finished.root))?;
+        self.phase(_turn.as_ref(), None, Some(cancel), async {
+            tokio::fs::remove_dir_all(&finished.root)
+                .await
+                .map_err(at(&finished.root))
+        })
+        .await?;
         if let Some(earlier) = earlier {
             return self
-                .checked(earlier, &result, tool.as_ref(), prepared, &task)
+                .phase(
+                    _turn.as_ref(),
+                    None,
+                    Some(cancel),
+                    self.checked(earlier, &result, tool.as_ref(), prepared, &task),
+                )
                 .await;
         }
         if result.exit_code == Some(0) && request.scope != ReuseScope::None {
@@ -445,7 +503,17 @@ impl<B: Backend> Runner<B> {
                 containers: result.containers.clone(),
             };
             let bytes = entry.to_bytes(&key)?;
-            self.store.put_entry(namespace, &key, bytes.into()).await?;
+            self.phase(
+                _turn.as_ref(),
+                None,
+                Some(cancel),
+                self.store.put_entry(namespace, &key, bytes.into()),
+            )
+            .await?;
+        }
+        self.authority(_turn.as_ref(), None).await?;
+        if cancel.is_cancelled() {
+            return Err(ExecutorError::Cancelled.into());
         }
         Ok(result)
     }
@@ -494,8 +562,14 @@ impl<B: Backend> Runner<B> {
         namespace: &str,
         key: &Digest,
     ) -> Result<Option<CacheEntry>, RunnerError> {
-        let _admission = crate::clean::admission(&self.store).await?;
-        self.reuse_guarded(namespace, key).await
+        let admission = self.admit().await?;
+        self.phase(
+            None,
+            Some(&admission),
+            None,
+            self.reuse_guarded(namespace, key),
+        )
+        .await
     }
 
     async fn reuse_guarded(
@@ -506,6 +580,7 @@ impl<B: Backend> Runner<B> {
         let Some(found) = entry::stored(&self.store, namespace, key, Stale::Remove).await? else {
             return Ok(None);
         };
+        self.authority(None, None).await?;
         self.store.mark_used(namespace, key, &self.run).await?;
         Ok(Some(found))
     }
@@ -528,7 +603,10 @@ impl<B: Backend> Runner<B> {
         loop {
             if let Some(lease) = self.store.try_lease(&name, &holder).await? {
                 // The other run may have stored the result just before it gave the lease back.
-                if let Some(entry) = self.reuse(namespace, key).await? {
+                if let Some(entry) = self
+                    .phase(Some(&lease), None, Some(cancel), self.reuse(namespace, key))
+                    .await?
+                {
                     return Ok(Turn::Reused(entry));
                 }
                 return Ok(Turn::Ours(lease));
@@ -548,7 +626,9 @@ impl<B: Backend> Runner<B> {
 
     /// Takes run protection under the maintenance gate before reading or storing inputs.
     pub(crate) async fn admit(&self) -> Result<crate::clean::Maintenance, RunnerError> {
-        let guard = crate::clean::admission(&self.store).await?;
+        let guard = self
+            .phase(None, None, None, crate::clean::admission(&self.store))
+            .await?;
         let name = format!("runs/{}", self.run);
         let holder = Holder::new(&self.run, "run");
         let take = async || {
@@ -559,8 +639,105 @@ impl<B: Backend> Runner<B> {
                 ))
             })
         };
-        self.lease.get_or_try_init(take).await?;
+        self.phase(None, Some(&guard), None, self.lease.get_or_try_init(take))
+            .await?;
         Ok(guard)
+    }
+
+    async fn authority(
+        &self,
+        task: Option<&Lease>,
+        guard: Option<&crate::clean::Maintenance>,
+    ) -> Result<(), RunnerError> {
+        if self.lost.is_cancelled() {
+            return Err(StoreError::Location("run lease authority was lost".into()).into());
+        }
+        let checked = tokio::time::timeout(Duration::from_secs(5), async {
+            if let Some(lease) = self.lease.get() {
+                lease.check().await?;
+            }
+            if let Some(lease) = task {
+                lease.check().await?;
+            }
+            if let Some(guard) = guard {
+                guard.check().await?;
+            }
+            Ok::<_, RunnerError>(())
+        })
+        .await
+        .unwrap_or_else(|_| {
+            Err(StoreError::Location("lease authority check timed out".into()).into())
+        });
+        if checked.is_err() {
+            self.lost.cancel();
+        }
+        checked
+    }
+
+    async fn watch(
+        &self,
+        task: Option<&Lease>,
+        guard: Option<&crate::clean::Maintenance>,
+    ) -> RunnerError {
+        loop {
+            if let Err(error) = self.authority(task, guard).await {
+                return error;
+            }
+            tokio::select! {
+                () = tokio::time::sleep(Duration::from_millis(100)) => {}
+                () = self.lost.cancelled() => {}
+            }
+        }
+    }
+
+    pub(crate) async fn phase<T, E: Into<RunnerError>>(
+        &self,
+        task: Option<&Lease>,
+        guard: Option<&crate::clean::Maintenance>,
+        cancel: Option<&CancellationToken>,
+        work: impl Future<Output = Result<T, E>>,
+    ) -> Result<T, RunnerError> {
+        let cancel = cancel.unwrap_or(&self.lost);
+        self.authority(task, guard).await?;
+        if cancel.is_cancelled() {
+            return Err(ExecutorError::Cancelled.into());
+        }
+        let result = tokio::select! {
+            biased;
+            error = self.watch(task, guard) => return Err(error),
+            () = cancel.cancelled() => return Err(ExecutorError::Cancelled.into()),
+            result = work => result.map_err(Into::into),
+        };
+        self.authority(task, guard).await?;
+        if cancel.is_cancelled() {
+            return Err(ExecutorError::Cancelled.into());
+        }
+        result
+    }
+
+    /// Checks are diagnostic, not an atomic fence for remote work or writes already submitted.
+    async fn work<T, E: Into<RunnerError>>(
+        &self,
+        task: Option<&Lease>,
+        cancel: &CancellationToken,
+        stop: &CancellationToken,
+        work: impl Future<Output = Result<T, E>>,
+    ) -> Result<T, RunnerError> {
+        self.authority(task, None).await?;
+        tokio::pin!(work);
+        let error = tokio::select! {
+            biased;
+            error = self.watch(task, None) => error,
+            () = cancel.cancelled() => ExecutorError::Cancelled.into(),
+            result = &mut work => {
+                self.authority(task, None).await?;
+                if cancel.is_cancelled() { return Err(ExecutorError::Cancelled.into()); }
+                return result.map_err(Into::into);
+            }
+        };
+        stop.cancel();
+        let _ = tokio::time::timeout(Duration::from_secs(60), &mut work).await;
+        Err(error)
     }
 }
 

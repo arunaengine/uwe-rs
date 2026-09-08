@@ -5,6 +5,7 @@
 use std::rc::Rc;
 
 use nextflow_evaluator::interpreter::{Error, Host};
+use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{ChannelId, Closure, Value};
 
 use crate::channel::Message;
@@ -458,7 +459,7 @@ impl Gathering {
 
 /// Values sorted by natural order, by the key a one-parameter closure gives, or by a
 /// two-parameter comparator closure. The sort is stable.
-fn sorted(
+pub(crate) fn sorted(
     context: &mut Context,
     items: Vec<Value>,
     closure: Option<&Rc<Closure>>,
@@ -477,8 +478,20 @@ fn sorted(
                 let order = context
                     .interpreter
                     .call_closure(closure, vec![result[position - 1].clone(), item.clone()])?;
-                let greater = matches!(order, Value::Number(ref n) if n.to_f64() > 0.0);
-                if !greater {
+                let order = match &order {
+                    Value::Number(number)
+                        if !matches!(number, Number::Double(value) if !value.is_finite())
+                            && !matches!(number, Number::Float(value) if !value.is_finite()) =>
+                    {
+                        number.to_i32()
+                    }
+                    _ => {
+                        return Err(thrown_text(format!(
+                            "Sort comparator must return a finite number, received: {order}"
+                        )));
+                    }
+                };
+                if order <= 0 {
                     break;
                 }
                 position -= 1;
@@ -487,6 +500,14 @@ fn sorted(
         }
         return Ok(result);
     }
+    sorted_keys(context, items, closure)
+}
+
+pub(crate) fn sorted_keys(
+    context: &mut Context,
+    items: Vec<Value>,
+    closure: &Rc<Closure>,
+) -> Result<Vec<Value>, Error> {
     let mut keyed = Vec::new();
     for item in items {
         let key = context
@@ -496,6 +517,88 @@ fn sorted(
     }
     keyed.sort_by(|a, b| a.0.number_aware_compare(&b.0));
     Ok(keyed.into_iter().map(|(_, item)| item).collect())
+}
+
+pub(crate) enum Sort {
+    None,
+    Natural,
+    Key(Rc<Closure>),
+    Compare(Rc<Closure>),
+}
+
+impl Sort {
+    pub fn new(value: Option<Value>, operator: &str) -> Result<Self, Error> {
+        let collecting = operator == "collectFile";
+        match value {
+            None | Some(Value::Null) if !collecting => Ok(Self::None),
+            Some(Value::Boolean(false)) => Ok(Self::None),
+            Some(Value::Boolean(true)) => Ok(Self::Natural),
+            Some(Value::String(text) | Value::GString(text))
+                if matches!(&*text, "true" | "natural") =>
+            {
+                Ok(Self::Natural)
+            }
+            Some(Value::String(text) | Value::GString(text))
+                if collecting && matches!(&*text, "none" | "index") =>
+            {
+                Ok(Self::None)
+            }
+            Some(Value::Closure(closure)) => {
+                let count = closure.code.parameters.len();
+                let implicit = closure.code.implicit_parameter;
+                if !collecting && count == 2 {
+                    return Ok(Self::Compare(closure));
+                }
+                let key = implicit
+                    || if collecting {
+                        count >= 1
+                            && closure
+                                .code
+                                .parameters
+                                .iter()
+                                .skip(1)
+                                .all(|parameter| parameter.default.is_some())
+                    } else {
+                        count == 1
+                    };
+                if key {
+                    Ok(Self::Key(closure))
+                } else {
+                    Err(thrown_text(format!(
+                        "Invalid `{operator}` sort closure arity: {count}"
+                    )))
+                }
+            }
+            None | Some(Value::Null) => Err(Error::Unsupported {
+                message: format!(
+                    "`{operator}` sort mode 'hash' (the default); native CacheHelper hashing is not implemented"
+                ),
+                span: Default::default(),
+            }),
+            Some(Value::String(text) | Value::GString(text))
+                if matches!(&*text, "hash" | "deep") =>
+            {
+                Err(Error::Unsupported {
+                    message: format!(
+                        "`{operator}` sort mode '{text}'; native CacheHelper hashing is not implemented"
+                    ),
+                    span: Default::default(),
+                })
+            }
+            Some(value) => Err(thrown_text(format!(
+                "Invalid `{operator}` sort option: {value}"
+            ))),
+        }
+    }
+
+    pub fn apply(&self, context: &mut Context, items: Vec<Value>) -> Result<Vec<Value>, Error> {
+        match self {
+            Self::None => Ok(items),
+            Self::Natural => sorted(context, items, None),
+            Self::Key(closure) => sorted_keys(context, items, closure),
+            Self::Compare(closure) => sorted(context, items, Some(closure)),
+        }
+    }
 }
 
 /// `collate(size, [step], remainder = true)`: windows of `size` values; a new window starts

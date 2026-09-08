@@ -296,6 +296,89 @@ fn group_tuple() {
 }
 
 #[test]
+fn group_tuple_preserves_sort_keys_comparators_and_named_modes() {
+    let source = "channel.of(['k', 3], ['k', 1], ['k', 2])";
+    for sort in ["true", "'true'", "'natural'"] {
+        assert_eq!(
+            lines(&format!("{source}.groupTuple(sort: {sort}).view()")),
+            ["[k, [1, 2, 3]]"]
+        );
+    }
+    for sort in ["{ v -> -v }", "{ a, b -> b <=> a }"] {
+        for size in ["", ", size: 3"] {
+            assert_eq!(
+                lines(&format!("{source}.groupTuple(sort: {sort}{size}).view()")),
+                ["[k, [3, 2, 1]]"]
+            );
+        }
+    }
+    assert_eq!(
+        lines(
+            "channel.of(['k', 'bb'], ['k', 'a'], ['k', 'cc']).groupTuple(sort: { it.size() }).view()"
+        ),
+        ["[k, [a, bb, cc]]"]
+    );
+    assert_eq!(
+        lines(&format!("{source}.groupTuple().view()")),
+        ["[k, [3, 1, 2]]"]
+    );
+    for sort in ["false", "{ -> 0 }"] {
+        assert_eq!(
+            lines(&format!("{source}.groupTuple(sort: {sort}).view()")),
+            ["[k, [3, 1, 2]]"]
+        );
+    }
+    for sort in ["{ a, b, c -> 0 }", "'index'", "'none'", "'false'"] {
+        let error = run(&format!("{source}.groupTuple(sort: {sort}).view()")).unwrap_err();
+        assert!(error.contains("Invalid `groupTuple` sort"), "{error}");
+    }
+    let error = run(&format!(
+        "{source}.groupTuple(sort: {{ v -> error('sort failure') }}).view()"
+    ))
+    .unwrap_err();
+    assert!(error.contains("sort failure"), "{error}");
+}
+
+#[test]
+fn comparator_results_are_finite_numbers_converted_to_native_int() {
+    for result in [
+        "'not-a-number'",
+        "null",
+        "false",
+        "Double.NaN",
+        "Double.POSITIVE_INFINITY",
+        "Double.NEGATIVE_INFINITY",
+        "Double.NaN as Float",
+    ] {
+        for body in [
+            format!(
+                "channel.of(['k', 3], ['k', 1]).groupTuple(sort: {{ a, b -> {result} }}).view()"
+            ),
+            format!("channel.of(3, 1).collect(sort: {{ a, b -> {result} }}).view()"),
+            format!("channel.of(3, 1).toSortedList {{ a, b -> {result} }}.view()"),
+        ] {
+            let error = run(&body).unwrap_err();
+            assert!(
+                error.contains("Sort comparator must return a finite number"),
+                "{result}: {error}"
+            );
+        }
+    }
+    assert_eq!(
+        lines("channel.of(['k', 3], ['k', 1], ['k', 2]).groupTuple(sort: { a, b -> 0.5 }).view()"),
+        ["[k, [3, 1, 2]]"]
+    );
+    assert_eq!(
+        lines("channel.of(3, 1, 2).collect(sort: { a, b -> 0.5 }).view()"),
+        ["[3, 1, 2]"]
+    );
+    assert_eq!(
+        lines("channel.of(3, 1, 2).toSortedList { a, b -> 0.5 }.view()"),
+        ["[3, 1, 2]"]
+    );
+}
+
+#[test]
 fn join_combine_and_cross() {
     let left = "channel.of(['a', 1], ['b', 2], ['a', 3], ['c', 4])";
     let right = "channel.of(['a', 'x'], ['a', 'y'], ['b', 'z'], ['d', 'w'])";
@@ -518,7 +601,7 @@ fn collect_file_writes_files_at_the_end() {
     let d = directory.path().display();
     assert_eq!(
         run(&format!(
-            "channel.of('b', 'a').collectFile(name: 'x.txt', newLine: true, storeDir: '{d}')\n\
+            "channel.of('b', 'a').collectFile(name: 'x.txt', newLine: true, sort: 'natural', storeDir: '{d}')\n\
              .map {{ f -> f.text }}.view()"
         ))
         .unwrap(),
@@ -536,10 +619,77 @@ fn collect_file_writes_files_at_the_end() {
     );
     assert_eq!(
         lines(&format!(
-            "channel.of(['y.txt', 'one'], ['x.txt', 'two']).collectFile(storeDir: '{d}').map {{ f -> f.name }}.view()"
+            "channel.of(['y.txt', 'one'], ['x.txt', 'two']).collectFile(sort: 'index', storeDir: '{d}').map {{ f -> f.name }}.view()"
         )),
         ["x.txt", "y.txt"]
     );
+}
+
+#[test]
+fn collect_file_sorting_preserves_original_values_and_stable_keys() {
+    let directory = tempfile::tempdir().unwrap();
+    let d = directory.path().display();
+    let collect = |source: &str, sort: &str| {
+        run(&format!("{source}.collectFile(name: 'out.txt', storeDir: '{d}', newLine: true, sort: {sort}).map {{ it.text }}.view()")).unwrap()
+    };
+    for sort in ["false", "'none'", "'index'"] {
+        assert_eq!(collect("channel.of('b', 'a')", sort), "b\na\n\n");
+    }
+    for sort in ["true", "'true'", "'natural'"] {
+        assert_eq!(collect("channel.of('b', 'a')", sort), "a\nb\n\n");
+    }
+    for sort in [
+        "{ v -> -v.size() }",
+        "{ v, offset = 0 -> -v.size() + offset }",
+    ] {
+        assert_eq!(
+            collect("channel.of('aa', 'b', 'cc')", sort),
+            "aa\ncc\nb\n\n"
+        );
+    }
+    let a = directory.path().join("a.txt");
+    let b = directory.path().join("b.txt");
+    std::fs::write(&a, "z").unwrap();
+    std::fs::write(&b, "a").unwrap();
+    let source = format!(
+        "channel.of(file('{}'), file('{}'))",
+        b.display(),
+        a.display()
+    );
+    assert_eq!(collect(&source, "'natural'"), "z\na\n\n");
+    assert_eq!(collect(&source, "{ path -> path.name }"), "z\na\n\n");
+    let error = run(&format!(
+        "channel.of('a', 'b').collectFile(storeDir: '{d}', sort: {{ a, b -> b <=> a }}).view()"
+    ))
+    .unwrap_err();
+    assert!(
+        error.contains("Invalid `collectFile` sort closure arity: 2"),
+        "{error}"
+    );
+}
+
+#[test]
+fn hash_sorting_is_explicitly_unsupported_until_native_hashing_exists() {
+    for operator in ["groupTuple", "collectFile"] {
+        let source = if operator == "groupTuple" {
+            "channel.of(['k', 1])"
+        } else {
+            "channel.of('a')"
+        };
+        for sort in ["hash", "deep"] {
+            let error = run(&format!("{source}.{operator}(sort: '{sort}').view()")).unwrap_err();
+            assert!(
+                error.contains(&format!("`{operator}` sort mode '{sort}'")),
+                "{error}"
+            );
+            assert!(
+                error.contains("native CacheHelper hashing is not implemented"),
+                "{error}"
+            );
+        }
+    }
+    let error = run("channel.of('a').collectFile().view()").unwrap_err();
+    assert!(error.contains("sort mode 'hash' (the default)"), "{error}");
 }
 
 /// Legacy syntax: a Java lambda with parameters in parentheses is a closure, as in the

@@ -12,6 +12,7 @@ use nextflow_evaluator::value::{ChannelId, Closure, Key, Value};
 
 use crate::channel::Message;
 use crate::network::{Behaviour, Context, State};
+use crate::operator::Sort;
 
 /// The elements of a value: a list gives its items, any other value is one element.
 fn items(value: &Value) -> Vec<Value> {
@@ -87,7 +88,7 @@ pub(crate) struct GroupTuple {
     /// Whether incomplete groups are emitted at the end when there is a size.
     pub remainder: bool,
     /// Whether each list of a group is sorted before it is emitted.
-    pub sort: bool,
+    pub sort: Sort,
     /// The open groups in first-seen key order, with their number of tuples and their size.
     pub groups: IndexMap<Vec<Key>, (Vec<Value>, usize, Option<usize>)>,
 }
@@ -99,7 +100,8 @@ impl Behaviour for GroupTuple {
                 for (_, (group, count, size)) in std::mem::take(&mut self.groups) {
                     let complete = size.is_none_or(|size| count == size);
                     if complete || self.remainder {
-                        context.emit(self.output, self.group_value(group));
+                        let value = self.group_value(context, group)?;
+                        context.emit(self.output, value);
                     }
                 }
                 context.close(self.output);
@@ -143,7 +145,8 @@ impl Behaviour for GroupTuple {
             if *size == Some(*count)
                 && let Some((group, _, _)) = self.groups.shift_remove(&key)
             {
-                context.emit(self.output, self.group_value(group));
+                let value = self.group_value(context, group)?;
+                context.emit(self.output, value);
             }
         }
         Ok(State::Running)
@@ -151,17 +154,17 @@ impl Behaviour for GroupTuple {
 }
 
 impl GroupTuple {
-    fn group_value(&self, group: Vec<Value>) -> Value {
-        if self.sort {
+    fn group_value(&self, context: &mut Context, group: Vec<Value>) -> Result<Value, Error> {
+        if !matches!(self.sort, Sort::None) {
             for item in &group {
                 if let Value::List(list) = item {
-                    list.borrow_mut()
-                        .items
-                        .sort_by(|a, b| a.number_aware_compare(b));
+                    let items = list.borrow().items.clone();
+                    let items = self.sort.apply(context, items)?;
+                    list.borrow_mut().items = items;
                 }
             }
         }
-        Value::list(group)
+        Ok(Value::list(group))
     }
 }
 

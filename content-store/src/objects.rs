@@ -174,8 +174,10 @@ impl Store {
         self.read(&layout::unreproducible(tool)).await
     }
 
-    /// Removes the cache entry of a key and the mark of its last use.
+    /// Evicts the cache entry and its last-use mark from this layer only. Shared stale
+    /// entries are repaired through [`Store::invalidate_entry`].
     pub async fn remove_entry(&self, namespace: &str, key: &Digest) -> Result<(), StoreError> {
+        let _guard = self.entry_guard(&layout::entry(namespace, key)?).await?;
         for location in [
             layout::entry(namespace, key)?,
             layout::used(namespace, key)?,
@@ -226,7 +228,7 @@ fn walk(root: &Path, prefix: &str) -> Result<Vec<Object>, StoreError> {
                 true => name,
                 false => format!("{location}/{name}"),
             };
-            let metadata = entry.metadata()?;
+            let metadata = std::fs::symlink_metadata(entry.path())?;
             if metadata.is_dir() {
                 pending.push((entry.path(), inside));
                 continue;

@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeSet;
+use std::fs::{File, TryLockError};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -90,6 +91,7 @@ pub struct SlurmBackend {
     pub configs: ImageConfigs,
     queue: Queue,
     made: Images,
+    recovery: Mutex<()>,
     /// The nodes where a job of this run left no log, as they do not see the scratch folder.
     excluded: Mutex<BTreeSet<String>>,
 }
@@ -135,6 +137,7 @@ impl SlurmBackend {
             poll: POLL,
             queue: Queue::default(),
             made: Images::default(),
+            recovery: Mutex::default(),
             excluded: Mutex::default(),
         }
     }
@@ -167,6 +170,9 @@ impl Backend for SlurmBackend {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
+        if cancel.is_cancelled() {
+            return Err(ExecutorError::Cancelled);
+        }
         if job.placement.accelerators.iter().any(|gpu| gpu.count > 0)
             && matches!(&self.container, Container::Engine(_))
         {
@@ -180,6 +186,10 @@ impl Backend for SlurmBackend {
             return Err(ExecutorError::Unsupported(
                 "the SLURM Singularity executor cannot run a task without network".into(),
             ));
+        }
+        tokio::select! {
+            result = self.reconcile() => result?,
+            () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
         }
         let root = self.scratch.join(job.name);
         let placed = {
@@ -290,6 +300,7 @@ impl SlurmBackend {
         mounts: &[executor::process::Mount],
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
+        let _ownership = ownership(root)?;
         let mut spec = job.spec.clone();
         let image = spec.image.as_mut().ok_or(ExecutorError::NoImage)?;
         let replaces = spec.replaces_entrypoint;
@@ -564,6 +575,7 @@ impl SlurmBackend {
         tokio::fs::create_dir_all(&self.images).await?;
         tokio::fs::create_dir_all(&self.scratch).await?;
         tokio::fs::create_dir(&root).await?;
+        let _ownership = ownership(&root)?;
         tokio::fs::create_dir_all(&control).await?;
         let script = pull_script(program, reference, path, &control.join(CONTAINER_EXIT));
         tokio::fs::write(control.join(SCRIPT), script).await?;
@@ -613,9 +625,11 @@ impl SlurmBackend {
         let started = owner_start(std::process::id()).ok_or_else(|| {
             std::io::Error::other("cannot identify the SLURM coordinator process")
         })?;
+        let script = std::path::absolute(script)?;
         let mut journal = serde_json::json!({"backend":"SLURM", "commands":self.commands,
             "options":options, "working_directory":std::path::absolute(root)?, "id":null, "cluster":null,
-            "owner":std::process::id(), "host":host, "started":started});
+            "owner":std::process::id(), "host":host, "started":started, "locked":true,
+            "script":script, "identity":null, "configuration":self.configuration()});
         journal_at(root, &journal)?;
         let mut sbatch = Command::new(self.command("sbatch"));
         if let Some(proxy) = &self.proxy {
@@ -623,7 +637,7 @@ impl SlurmBackend {
                 sbatch.env(name, proxy);
             }
         }
-        sbatch.args(options).arg(script);
+        sbatch.args(options).arg(&script);
         let output = tokio::select! {
             output = crate::queue::output(&mut sbatch, crate::queue::REQUEST_GRACE) => output.map_err(|error| unresolved(root, error))?,
             () = cancel.cancelled() => return Err(unresolved(root, "cancelled during submission; the response was not recorded")),
@@ -649,27 +663,147 @@ impl SlurmBackend {
                 .filter(|cluster| !cluster.is_empty())
         );
         journal_at(root, &journal).map_err(|error| unresolved(root, error))?;
+        let squeue = self.command("squeue");
+        let (_, identity) = tokio::select! {
+            value = crate::queue::identified(&squeue, id, journal["cluster"].as_str()) => value,
+            () = cancel.cancelled() => return Err(unresolved(root, "cancelled before scheduler identity was recorded")),
+        };
+        if let Some(identity) = identity {
+            if identity["script"] != journal["script"] {
+                return Err(unresolved(
+                    root,
+                    "the scheduler returned a different script",
+                ));
+            }
+            journal["identity"] = identity;
+            journal_at(root, &journal).map_err(|error| unresolved(root, error))?;
+        }
         Ok(id.to_owned())
     }
 
-    /// Keeps unresolved ownership visible until automatic recovery is available.
+    fn configuration(&self) -> serde_json::Value {
+        let conf = std::env::var("SLURM_CONF").ok();
+        let digest = std::fs::read(conf.as_deref().unwrap_or("/etc/slurm/slurm.conf"))
+            .ok()
+            .map(|bytes| task_model::Digest::sha256(&bytes).to_string());
+        serde_json::json!({"commands":self.commands.as_ref().and_then(|path| std::path::absolute(path).ok()),
+            "conf":conf, "conf_digest":digest, "server":std::env::var("SLURM_CONF_SERVER").ok(),
+            "clusters":std::env::var("SLURM_CLUSTERS").ok(),
+            "path":if self.commands.is_none() { std::env::var("PATH").ok() } else { None }})
+    }
+
+    /// Recovers matching orphaned tasks and skips proven active local owners.
     pub async fn reconcile(&self) -> Result<(), ExecutorError> {
+        tokio::time::timeout(CANCEL_GRACE, async {
+            let _gate = self.recovery.lock().await;
+            self.reconcile_records().await
+        })
+        .await
+        .map_err(|_| unresolved(&self.scratch, "admission recovery timed out"))?
+    }
+
+    async fn reconcile_records(&self) -> Result<(), ExecutorError> {
         let entries = match std::fs::read_dir(&self.scratch) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
             Err(error) => return Err(error.into()),
         };
         for entry in entries {
+            tokio::task::yield_now().await;
             let entry = entry?;
             if !entry.file_type()?.is_dir() {
                 continue;
             }
             let root = entry.path();
-            if root.join("remote.json").try_exists()? {
-                return Err(unresolved(
-                    &root,
-                    "resolve the recorded SLURM submission before starting another run",
-                ));
+            let path = root.join("remote.json");
+            if path.try_exists()? {
+                let bytes = match std::fs::read(&path) {
+                    Ok(bytes) => bytes,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(error) => return Err(error.into()),
+                };
+                let mut journal: serde_json::Value =
+                    serde_json::from_slice(&bytes).map_err(|error| unresolved(&root, error))?;
+                let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
+                if journal["backend"] != "SLURM" || journal["host"].as_str() != Some(host.as_str())
+                {
+                    return Err(unresolved(
+                        &root,
+                        "the original backend or coordinator host changed",
+                    ));
+                }
+                let lock = match File::options().write(true).open(root.join("remote.lock")) {
+                    Ok(lock) => lock,
+                    Err(_) if !path.try_exists()? => continue,
+                    Err(error) => return Err(unresolved(&root, error)),
+                };
+                match lock.try_lock() {
+                    Err(TryLockError::WouldBlock)
+                        if journal["locked"] == true
+                            && journal["started"].is_string()
+                            && journal["owner"]
+                                .as_u64()
+                                .and_then(|pid| u32::try_from(pid).ok())
+                                .and_then(owner_start)
+                                .as_deref()
+                                == journal["started"].as_str() =>
+                    {
+                        continue;
+                    }
+                    Err(TryLockError::Error(error)) => return Err(unresolved(&root, error)),
+                    Err(TryLockError::WouldBlock) => {
+                        return Err(unresolved(
+                            &root,
+                            "the journal lock has no matching live coordinator",
+                        ));
+                    }
+                    Ok(()) => {}
+                }
+                if !path.try_exists()? {
+                    continue;
+                }
+                journal = serde_json::from_slice(&std::fs::read(&path)?)
+                    .map_err(|error| unresolved(&root, error))?;
+                if journal["backend"] != "SLURM"
+                    || journal["host"].as_str() != Some(host.as_str())
+                    || journal["locked"] != true
+                    || journal["configuration"] != self.configuration()
+                    || !journal["identity"].is_object()
+                    || journal["identity"]["script"] != journal["script"]
+                {
+                    return Err(unresolved(
+                        &root,
+                        "the original ownership, configuration or scheduler identity is insufficient",
+                    ));
+                }
+                let id = journal["id"]
+                    .as_str()
+                    .filter(|id| !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_digit()))
+                    .ok_or_else(|| unresolved(&root, "the accepted job ID was not recorded"))?
+                    .to_owned();
+                let (look, identity) = crate::queue::identified(
+                    &self.command("squeue"),
+                    &id,
+                    journal["cluster"].as_str(),
+                )
+                .await;
+                if identity
+                    .as_ref()
+                    .is_some_and(|identity| identity != &journal["identity"])
+                    || (identity.is_none() && look != Look::Gone)
+                {
+                    return Err(unresolved(
+                        &root,
+                        "the original scheduler identity cannot be confirmed",
+                    ));
+                }
+                journal["owner"] = serde_json::json!(std::process::id());
+                journal["started"] =
+                    serde_json::json!(owner_start(std::process::id()).ok_or_else(
+                        || unresolved(&root, "cannot identify the recovery coordinator")
+                    )?);
+                journal_at(&root, &journal)?;
+                self.stop(&id, &root, CANCEL_GRACE, true).await?;
             }
         }
         Ok(())
@@ -741,31 +875,70 @@ impl SlurmBackend {
         )
         .map_err(|error| unresolved(root, error))?;
         let cluster = journal["cluster"].as_str();
+        if journal["configuration"] != self.configuration() {
+            return Err(unresolved(root, "the scheduler configuration changed"));
+        }
+        if !journal["identity"].is_object() {
+            return Err(unresolved(
+                root,
+                "the scheduler identity was not recorded; confirm the original job ended before removing its journal",
+            ));
+        }
         let stopped = async {
             loop {
-                if cancel {
+                let (look, identity) =
+                    crate::queue::identified(&self.command("squeue"), id, cluster).await;
+                let identified = identity.is_some();
+                if let Some(identity) = identity {
+                    if identity != journal["identity"] || identity["script"] != journal["script"] {
+                        return Err(unresolved(
+                            root,
+                            "the scheduler job identity changed or was not recorded",
+                        ));
+                    }
+                } else if look != Look::Gone {
+                    tokio::time::sleep(self.poll.min(Duration::from_secs(1))).await;
+                    continue;
+                }
+                if matches!(look, Look::Ended(_) | Look::Gone)
+                    && matches!(
+                        crate::queue::look_one(&self.command("squeue"), id, cluster).await,
+                        Look::Ended(_) | Look::Gone
+                    )
+                {
+                    return Ok(());
+                }
+                if cancel && identified {
                     let mut command = Command::new(self.command("scancel"));
-                    command.arg(id);
+                    // The name filter is not an atomic submit-time fence; fresh identity remains required.
+                    command.arg(id).arg("--ctld").arg(format!(
+                        "--name={}",
+                        journal["identity"]["name"].as_str().unwrap_or_default()
+                    ));
                     if let Some(cluster) = cluster {
                         command.arg(format!("--clusters={cluster}"));
                     }
                     let _ = crate::queue::output(&mut command, crate::queue::REQUEST_GRACE).await;
-                }
-                if matches!(
-                    crate::queue::look_one(&self.command("squeue"), id, cluster).await,
-                    Look::Ended(_) | Look::Gone
-                ) {
-                    return;
                 }
                 tokio::time::sleep(self.poll.min(Duration::from_secs(1))).await;
             }
         };
         tokio::time::timeout(grace, stopped)
             .await
-            .map_err(|_| unresolved(root, format!("job {id} termination was not confirmed")))?;
+            .map_err(|_| unresolved(root, format!("job {id} termination was not confirmed")))??;
         std::fs::remove_file(root.join("remote.json"))?;
         Ok(())
     }
+}
+
+fn ownership(root: &Path) -> Result<File, ExecutorError> {
+    let lock = File::options()
+        .write(true)
+        .create_new(true)
+        .open(root.join("remote.lock"))?;
+    lock.try_lock()
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+    Ok(lock)
 }
 
 fn owner_start(pid: u32) -> Option<String> {
@@ -948,6 +1121,49 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn vanished_identity_followed_by_active_replacement_is_not_cancelled() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().unwrap();
+        let mut backend = SlurmBackend::new(
+            folder.path().to_owned(),
+            Container::Apptainer("apptainer".into()),
+        );
+        backend.commands = Some(folder.path().to_owned());
+        backend.poll = Duration::from_millis(10);
+        for (name, script) in [
+            (
+                "squeue",
+                r#"case "$*" in
+    *'--format=%i|%T|%j|%V|%o'*)
+        if [ -e "$0.once" ]; then
+            echo '101|RUNNING|replacement|2026-10-03T00:00:01|/other'
+        else
+            touch "$0.once"
+        fi ;;
+    *) echo '101 RUNNING' ;;
+esac"#,
+            ),
+            ("scancel", "touch \"$0.called\""),
+        ] {
+            let path = folder.path().join(name);
+            std::fs::write(&path, format!("#!/bin/bash\n{script}\n")).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        journal_at(folder.path(), &serde_json::json!({
+            "id":"101", "cluster":null, "script":"/script", "configuration":backend.configuration(),
+            "identity":{"name":"owner","submitted":"2026-10-03T00:00:00","script":"/script"}
+        })).unwrap();
+        assert!(
+            backend
+                .stop("101", folder.path(), Duration::from_secs(1), true)
+                .await
+                .is_err()
+        );
+        assert!(folder.path().join("remote.json").is_file());
+        assert!(!folder.path().join("scancel.called").exists());
+    }
+
+    #[tokio::test]
     async fn refused_or_hung_cancellation_keeps_ownership() {
         use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
@@ -957,14 +1173,21 @@ mod tests {
         );
         backend.commands = Some(folder.path().to_owned());
         for script in ["exit 1", "exec sleep 30"] {
-            for (name, script) in [("scancel", script), ("squeue", "echo '101 RUNNING'")] {
+            for (name, script) in [
+                ("scancel", script),
+                (
+                    "squeue",
+                    "echo '101|RUNNING|owner|2026-10-03T00:00:00|/script'",
+                ),
+            ] {
                 let path = folder.path().join(name);
                 std::fs::write(&path, format!("#!/bin/bash\n{script}\n")).unwrap();
                 std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
             }
             journal_at(
                 folder.path(),
-                &serde_json::json!({"id":"101", "cluster":null}),
+                &serde_json::json!({"id":"101", "cluster":null, "script":"/script", "configuration":backend.configuration(),
+                    "identity":{"name":"owner","submitted":"2026-10-03T00:00:00","script":"/script"}}),
             )
             .unwrap();
             let error = backend

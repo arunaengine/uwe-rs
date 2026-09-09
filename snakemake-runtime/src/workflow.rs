@@ -806,11 +806,27 @@ impl Hook {
                     _ => modifier.output_flags = args.positional.clone(),
                 }
             }
-            GlobalKeyword::Report
-            | GlobalKeyword::OnStart
-            | GlobalKeyword::OnSuccess
-            | GlobalKeyword::OnError
-            | GlobalKeyword::ResourceScopes => {}
+            GlobalKeyword::OnStart | GlobalKeyword::OnSuccess | GlobalKeyword::OnError => {
+                return Err(workflow_error(format!(
+                    "{} lifecycle hooks are not supported by iunctus",
+                    directive.keyword.text()
+                )));
+            }
+            GlobalKeyword::ResourceScopes => {
+                if !args.keywords.is_empty() {
+                    return Err(workflow_error(
+                        "resource_scopes are not supported by iunctus",
+                    ));
+                }
+                for value in &args.positional {
+                    if interpreter.truthy(value)? {
+                        return Err(workflow_error(
+                            "resource_scopes are not supported by iunctus",
+                        ));
+                    }
+                }
+            }
+            GlobalKeyword::Report => {}
         }
         Ok(())
     }
@@ -1159,7 +1175,15 @@ impl Hook {
                     }
                     default_target = matches!(first.plain(), Value::Bool(true));
                 }
-                RuleKeyword::Shadow | RuleKeyword::Cache | RuleKeyword::Handover => {}
+                RuleKeyword::Shadow | RuleKeyword::Cache | RuleKeyword::Handover => {
+                    if interpreter.truthy(&first)? {
+                        return Err(workflow_error(format!(
+                            "{} is not supported by iunctus for rule {}",
+                            keyword.text(),
+                            rule.name
+                        )));
+                    }
+                }
                 RuleKeyword::PathVariables => {}
                 RuleKeyword::Shell => {
                     rule.action = Action::Shell(first);

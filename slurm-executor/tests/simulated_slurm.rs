@@ -26,12 +26,19 @@ for argument in "$@"; do
     case $argument in
         --chdir=*) chdir=${argument#--chdir=} ;;
         --output=*) output=${argument#--output=} ;;
+        --job-name=*) name=${argument#--job-name=} ;;
     esac
     script=$argument
 done
+exec 9> "$state/ids.lock"
+flock -x 9
 id=$(( $(cat "$state/last" 2>/dev/null || echo 100) + 1 ))
 echo "$id" > "$state/last"
+flock -u 9
 printf '%s\n' "$@" > "$state/$id.options"
+printf '%s\n' "$name" > "$state/$id.name"
+printf '%s\n' "$script" > "$state/$id.command"
+echo 2026-10-03T00:00:00 > "$state/$id.submitted"
 # A node of a shared file system may first see a wrapper that another machine has just
 # written as empty: the wrapper is empty for two seconds.
 if [ -e "$(dirname "$0")/late-wrapper" ]; then
@@ -66,6 +73,7 @@ for argument in "$@"; do
     case $argument in
         --jobs=*) jobs=${argument#--jobs=} ;;
         --format=%N) echo node-3; exit 0 ;;
+        '--format=%i|%T|%j|%V|%o') identified=yes ;;
         --json)
             [ -e "$(dirname "$0")/json" ] || { echo "squeue: unrecognized option '--json'" >&2; exit 1; }
             json=yes ;;
@@ -82,7 +90,9 @@ for id in ${jobs//,/ }; do
     elif [ "$(cat "$state/$id.exit")" = 0 ]; then job_state=COMPLETED
     else job_state=FAILED; fi
     [ ! -e "$(dirname "$0")/completing" ] || job_state=COMPLETING
-    if [ -n "$json" ]; then
+    if [ -n "$identified" ]; then
+        printf '%s|%s|%s|%s|%s\n' "$id" "$job_state" "$(cat "$state/$id.name")" "$(cat "$state/$id.submitted")" "$(cat "$state/$id.command")"
+    elif [ -n "$json" ]; then
         printf '%s{"job_id": %s, "job_state": ["%s"]}' "$separator" "$id" "$job_state"
         separator=,
     else
@@ -94,6 +104,10 @@ done
 
 const SCANCEL: &str = r#"#!/bin/bash
 state="$(dirname "$0")/state"
+for option in "$@"; do
+    case $option in --name=*) [ "${option#--name=}" = "$(cat "$state/$1.name")" ] || exit 0 ;; esac
+done
+printf '%s\n' "$*" >> "$state/scancel.calls"
 touch "$state/$1.cancelled"
 until [ -s "$state/$1.pid" ]; do sleep 0.1; done
 kill -TERM -- "-$(cat "$state/$1.pid")"
@@ -745,6 +759,153 @@ async fn ambiguous_submission_retains_scratch_and_blocks_resubmission() {
         .status()
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn library_admission_allows_a_proven_active_local_owner() {
+    let root = tempfile::tempdir().unwrap();
+    let bin = cluster(root.path(), APPTAINER);
+    let container = Container::Apptainer(text(&bin.join("apptainer")));
+    let active = backend(root.path(), &bin, container.clone());
+    let peer = backend(root.path(), &bin, container);
+    let mut spec = spec("sleep 2; echo owner > out.txt");
+    spec.image.as_mut().unwrap().reference = "/images/tool.sif".into();
+    let (staging, placement, cancel) = (Staging::default(), placement(), CancellationToken::new());
+    let job = Job {
+        name: "active",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let concurrent = async {
+        let journal = active.scratch.join("active/remote.json");
+        for _ in 0..100 {
+            if std::fs::read(&journal)
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+                .is_some_and(|record| record["identity"].is_object())
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let other = Job {
+            name: "peer",
+            ..job
+        };
+        peer.run(other, &cancel).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(active.run(job, &cancel), concurrent);
+    assert_eq!(result.unwrap().exit_code, Some(0));
+    assert!(!bin.join("state/scancel.calls").exists());
+}
+
+#[tokio::test]
+async fn dropped_library_attempt_recovers_before_new_admission() {
+    let root = tempfile::tempdir().unwrap();
+    let bin = cluster(root.path(), APPTAINER);
+    let container = Container::Apptainer(text(&bin.join("apptainer")));
+    let active = backend(root.path(), &bin, container.clone());
+    let peer = backend(root.path(), &bin, container);
+    let mut spec = spec("sleep 30");
+    spec.image.as_mut().unwrap().reference = "/images/tool.sif".into();
+    let (staging, placement, cancel) = (Staging::default(), placement(), CancellationToken::new());
+    let old = Job {
+        name: "dropped",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    assert!(
+        tokio::time::timeout(Duration::from_millis(500), active.run(old, &cancel))
+            .await
+            .is_err()
+    );
+    let delay = bin.join("completing");
+    std::fs::write(&delay, "").unwrap();
+    let mut next = spec.clone();
+    next.arguments = vec!["sh".into(), "-c".into(), "echo recovered > out.txt".into()];
+    let run = peer.run(
+        Job {
+            name: "next",
+            spec: &next,
+            ..old
+        },
+        &cancel,
+    );
+    let verify = async {
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        assert!(active.scratch.join("dropped/remote.json").is_file());
+        assert!(!peer.scratch.join("next").exists());
+        std::fs::remove_file(delay).unwrap();
+    };
+    let (result, ()) = tokio::join!(run, verify);
+    assert_eq!(result.unwrap().exit_code, Some(0));
+    assert!(!active.scratch.join("dropped/remote.json").exists());
+    assert!(
+        std::fs::read_to_string(bin.join("state/scancel.calls"))
+            .unwrap()
+            .contains("--name=iunctus-dropped")
+    );
+}
+
+#[tokio::test]
+async fn reused_scheduler_identity_and_changed_configuration_preserve_journals() {
+    let root = tempfile::tempdir().unwrap();
+    let bin = cluster(root.path(), APPTAINER);
+    let container = Container::Apptainer(text(&bin.join("apptainer")));
+    let active = backend(root.path(), &bin, container.clone());
+    let peer = backend(root.path(), &bin, container);
+    let mut spec = spec("sleep 120");
+    spec.image.as_mut().unwrap().reference = "/images/tool.sif".into();
+    let (staging, placement, cancel) = (Staging::default(), placement(), CancellationToken::new());
+    let job = Job {
+        name: "original",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    assert!(
+        tokio::time::timeout(Duration::from_millis(500), active.run(job, &cancel))
+            .await
+            .is_err()
+    );
+    let journal = active.scratch.join("original/remote.json");
+    let bytes = std::fs::read(&journal).unwrap();
+    let mut next = spec.clone();
+    next.arguments = vec!["sh".into(), "-c".into(), "exit 0".into()];
+    let blocked = Job {
+        name: "blocked",
+        spec: &next,
+        ..job
+    };
+    for (field, changed) in [
+        ("name", "replacement"),
+        ("submitted", "2026-10-03T00:00:01"),
+        ("command", "/another/script"),
+    ] {
+        let path = bin.join(format!("state/101.{field}"));
+        let original = std::fs::read(&path).unwrap();
+        std::fs::write(&path, format!("{changed}\n")).unwrap();
+        let result = peer.run(blocked, &cancel).await;
+        assert!(
+            result.is_err(),
+            "changed {field} admitted: {result:?}; original journal: {}",
+            String::from_utf8_lossy(&bytes)
+        );
+        assert_eq!(std::fs::read(&journal).unwrap(), bytes);
+        assert!(!bin.join("state/scancel.calls").exists());
+        std::fs::write(path, original).unwrap();
+    }
+    let mut record: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    record["configuration"] = serde_json::json!("changed");
+    let changed = record.to_string().into_bytes();
+    std::fs::write(&journal, &changed).unwrap();
+    assert!(peer.run(blocked, &cancel).await.is_err());
+    assert_eq!(std::fs::read(&journal).unwrap(), changed);
+    assert!(!peer.scratch.join("blocked").exists());
+    std::fs::write(&journal, bytes).unwrap();
+    peer.reconcile().await.unwrap();
 }
 
 #[tokio::test]

@@ -253,6 +253,7 @@ checkpoint pick:
             .expect("accepts the output");
         for delivery in driver.deliveries() {
             LocalFiles.deliver(&delivery).expect("delivers output");
+            driver.delivered(&delivery).expect("acknowledges delivery");
         }
         next
     };

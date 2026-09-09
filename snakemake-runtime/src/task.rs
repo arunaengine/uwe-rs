@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use python_evaluator::{Args, Error, Interpreter, Value};
@@ -213,7 +213,17 @@ pub fn build(
     job: &Job,
     id: TaskId,
     attempt: u32,
-) -> Result<Task, Error> {
+) -> Result<(Task, serde_json::Value), Error> {
+    if job
+        .output
+        .values
+        .iter()
+        .any(|value| value.tag("protected").is_some() && value.tag(crate::storage::TAG).is_some())
+    {
+        return Err(Error::unsupported(
+            "protected storage outputs require provider permission support",
+        ));
+    }
     let wildcards = NamedList::wildcards(&job.wildcards);
     let input = plain(&job.input, "InputFiles");
     let output = plain(&job.output, "OutputFiles");
@@ -344,6 +354,12 @@ pub fn build(
                 .push((name, start, if many { Some(end) } else { None }));
         }
     }
+    let recorded_params: Vec<Option<serde_json::Value>> = params
+        .values
+        .iter()
+        .map(|value| snapshot_param(value, &mut HashSet::new()))
+        .collect();
+    let param_names = params.names.clone();
     let params = params.value();
     // The names of the rule function that runs the command in Snakemake 9.27, then the globals.
     // Its dry run prints commands with `name` and `rulename` as the rule's name too, but the
@@ -739,26 +755,87 @@ pub fn build(
             .collect();
         format!("{} ({})", rule.name, values.join(", "))
     };
-    Ok(Task {
-        run_as: None,
-        id,
-        name: label,
-        step: rule.name.clone(),
-        image,
-        command,
-        script,
-        workdir: None,
-        environment,
-        inputs,
-        outputs,
-        stdin: None,
-        resources: crate::resources::task_resources(threads, &resources),
-        network: workflow_graph::Network::Unstated,
-        after: Vec::new(),
-        containers: Vec::new(),
-        replaces_entrypoint: false,
-        reuse: workflow_graph::Reuse::Allowed,
-    })
+    let signature = serde_json::json!({
+        "version": 1, "rule": rule.name, "command": command, "script": script, "image": image,
+        "params": recorded_params, "param_names": param_names,
+        "inputs": job.input.values.iter().filter_map(Value::as_str).collect::<Vec<_>>(),
+        "input_names": job.input.names,
+        "input_sources": job.input.values.iter().map(|value| value.tag(crate::storage::TAG).and_then(Value::as_str)).collect::<Vec<_>>(),
+    });
+    Ok((
+        Task {
+            run_as: None,
+            id,
+            name: label,
+            step: rule.name.clone(),
+            image,
+            command,
+            script,
+            workdir: None,
+            environment,
+            inputs,
+            outputs,
+            stdin: None,
+            resources: crate::resources::task_resources(threads, &resources),
+            network: workflow_graph::Network::Unstated,
+            after: Vec::new(),
+            containers: Vec::new(),
+            replaces_entrypoint: false,
+            reuse: workflow_graph::Reuse::Allowed,
+        },
+        signature,
+    ))
+}
+
+fn snapshot_param(value: &Value, seen: &mut HashSet<usize>) -> Option<serde_json::Value> {
+    let (kind, items) = match value {
+        Value::None => return Some(serde_json::json!(["none"])),
+        Value::Bool(value) => return Some(serde_json::json!(["bool", value])),
+        Value::Int(value) => return Some(serde_json::json!(["int", value.to_string()])),
+        Value::BigInt(value) => return Some(serde_json::json!(["int", value.to_string()])),
+        Value::Float(value) => return Some(serde_json::json!(["float", value.to_bits()])),
+        Value::Str(value) => return Some(serde_json::json!(["str", &**value])),
+        Value::Bytes(value) => return Some(serde_json::json!(["bytes", &**value])),
+        Value::List(items) => ("list", items.try_borrow().ok()?.clone()),
+        Value::Tuple(items) => ("tuple", items.to_vec()),
+        Value::Dict(items) => {
+            let items = items.try_borrow().ok()?;
+            if !matches!(items.kind, python_evaluator::value::DictKind::Plain) {
+                return None;
+            }
+            (
+                "dict",
+                items
+                    .entries
+                    .iter()
+                    .map(|(key, item)| Value::tuple(vec![key.0.clone(), item.clone()]))
+                    .collect(),
+            )
+        }
+        Value::Set(items) => {
+            let items = items.try_borrow().ok()?;
+            ("set", items.iter().map(|key| key.0.clone()).collect())
+        }
+        Value::FrozenSet(items) => ("frozenset", items.iter().map(|key| key.0.clone()).collect()),
+        _ => return None,
+    };
+    let identity = match value {
+        Value::FrozenSet(items) => std::rc::Rc::as_ptr(items) as usize,
+        _ => value.address(),
+    };
+    if seen.len() >= 256 || !seen.insert(identity) {
+        return None;
+    }
+    let snapshots: Option<Vec<_>> = items
+        .iter()
+        .map(|item| snapshot_param(item, seen))
+        .collect();
+    seen.remove(&identity);
+    let mut snapshots = snapshots?;
+    if matches!(kind, "dict" | "set" | "frozenset") {
+        snapshots.sort_by_key(serde_json::Value::to_string);
+    }
+    Some(serde_json::json!([kind, snapshots]))
 }
 
 /// The folders of relative outputs, without the ones inside another of them: made folders

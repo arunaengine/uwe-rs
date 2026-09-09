@@ -75,6 +75,37 @@ pub struct StoredDirectory {
     pub digest: Digest,
 }
 
+/// Cache entry bytes paired with the versions that may be invalidated after validation.
+#[derive(Debug)]
+pub struct EntrySnapshot {
+    bytes: Bytes,
+    location: String,
+    version: Option<EntryVersion>,
+    shared: Option<Box<EntrySnapshot>>,
+}
+
+impl EntrySnapshot {
+    pub fn bytes(&self) -> &Bytes {
+        &self.bytes
+    }
+}
+
+#[derive(Debug)]
+enum EntryVersion {
+    File(std::fs::File),
+    Memory,
+    Tag(String),
+    Unsupported,
+}
+
+// Memory has no conditional deletion; all entry mutations cooperate within this process.
+static MEMORY_ENTRIES: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+pub(crate) struct EntryGuard {
+    _file: Option<crate::Lease>,
+    _memory: Option<tokio::sync::MutexGuard<'static, ()>>,
+}
+
 #[derive(Clone, Debug)]
 pub struct Store {
     pub(crate) operator: Operator,
@@ -85,9 +116,17 @@ pub struct Store {
     /// For a store in layers, the shared store behind this one in a folder: new objects go
     /// there too, and it serves what the folder lacks (see `layers.rs`).
     pub(crate) shared: Option<std::sync::Arc<Store>>,
+    pub(crate) cache_reads: bool,
 }
 
 impl Store {
+    /// Clones this store without publishing read-through data into its front layer.
+    pub fn without_read_cache(&self) -> Self {
+        let mut store = self.clone();
+        store.cache_reads = false;
+        store
+    }
+
     pub fn local(root: &std::path::Path) -> Result<Self, StoreError> {
         std::fs::create_dir_all(root)?;
         let root = root.to_str().ok_or_else(|| {
@@ -161,6 +200,7 @@ impl Store {
             root: None,
             base: None,
             shared: None,
+            cache_reads: true,
         })
     }
 
@@ -337,8 +377,25 @@ impl Store {
                 "directory descriptor {key} names another location"
             )));
         }
-        if self.shared.is_some() {
+        if self.cache_reads && self.shared.is_some() {
             self.operator.write(&key, bytes).await?;
+        }
+        Ok(Some(directory.digest))
+    }
+
+    /// The directory association in this layer, without fetching or writing a shared copy.
+    pub async fn cached_directory(&self, location: &str) -> Result<Option<Digest>, StoreError> {
+        let key = layout::directory(location);
+        let bytes = match self.operator.read(&key).await {
+            Ok(bytes) => bytes.to_bytes(),
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        let directory = directory_record(&key, &bytes)?;
+        if directory.location != location {
+            return Err(StoreError::Location(format!(
+                "directory descriptor {key} names another location"
+            )));
         }
         Ok(Some(directory.digest))
     }
@@ -458,6 +515,7 @@ impl Store {
         file.flush().await.map_err(at(target))?;
         drop(file);
         if cache
+            && self.cache_reads
             && !std::ptr::eq(source, self)
             && let Some(cached) = self.local_path(location)
         {
@@ -490,6 +548,11 @@ impl Store {
             return Ok(false);
         }
         let location = layout::entry(namespace, key)?;
+        let _guard = self.entry_guard(&location).await?;
+        // The shared winner replaces a front copy hydrated before stale invalidation.
+        if self.shared.is_some() {
+            self.operator.delete(&location).await?;
+        }
         let written = self
             .operator
             .write_with(&location, entry)
@@ -508,7 +571,192 @@ impl Store {
         key: &Digest,
     ) -> Result<Option<Bytes>, StoreError> {
         let location = layout::entry(namespace, key)?;
+        let _guard = self.entry_guard(&location).await?;
         self.read(&location).await
+    }
+
+    /// Reads an entry together with its mutation version. An existing front copy needs no
+    /// shared access; its matching shared version is observed only if invalidation is needed.
+    pub async fn observe_entry(
+        &self,
+        namespace: &str,
+        key: &Digest,
+    ) -> Result<Option<EntrySnapshot>, StoreError> {
+        let location = layout::entry(namespace, key)?;
+        let here = self.observe_entry_here(&location).await?;
+        if here.is_some() {
+            return Ok(here);
+        }
+        let Some(shared) = &self.shared else {
+            return Ok(here);
+        };
+        Ok(shared
+            .observe_entry_here(&location)
+            .await?
+            .map(|behind| EntrySnapshot {
+                bytes: behind.bytes.clone(),
+                location,
+                version: None,
+                shared: Some(Box::new(behind)),
+            }))
+    }
+
+    async fn observe_entry_here(
+        &self,
+        location: &str,
+    ) -> Result<Option<EntrySnapshot>, StoreError> {
+        let (bytes, version) = if let Some(path) = self.local_path(location) {
+            let mut file = match tokio::fs::File::open(&path).await {
+                Ok(file) => file,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(error) => return Err(at(&path)(error)),
+            };
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes).await.map_err(at(&path))?;
+            (bytes.into(), EntryVersion::File(file.into_std().await))
+        } else if self.operator.info().scheme() == "memory" {
+            match self.operator.read(location).await {
+                Ok(bytes) => (bytes.to_bytes(), EntryVersion::Memory),
+                Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+                Err(error) => return Err(error.into()),
+            }
+        } else {
+            let capability = self.operator.info().capability();
+            let conditional = capability.read_with_if_match && capability.delete_with_if_match;
+            let mut attempts = 0;
+            loop {
+                attempts += 1;
+                let tag = match self.operator.stat(location).await {
+                    Ok(metadata) => metadata.etag().map(str::to_owned),
+                    Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+                    Err(error) => return Err(error.into()),
+                };
+                let tag = tag.filter(|_| conditional);
+                let read = match &tag {
+                    Some(tag) => self.operator.read_with(location).if_match(tag).await,
+                    None => self.operator.read(location).await,
+                };
+                match read {
+                    Ok(bytes) => {
+                        break (
+                            bytes.to_bytes(),
+                            tag.map_or(EntryVersion::Unsupported, EntryVersion::Tag),
+                        );
+                    }
+                    Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+                    Err(error) if error.kind() == ErrorKind::ConditionNotMatch && attempts < 4 => {
+                        continue;
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+            }
+        };
+        Ok(Some(EntrySnapshot {
+            bytes,
+            location: location.to_owned(),
+            version: Some(version),
+            shared: None,
+        }))
+    }
+
+    /// Removes only the observed stale versions, including a matching shared entry.
+    /// Unlike local eviction, this permits a subsequent first-writer publication to repair
+    /// the shared cache. Backends without conditional deletion refuse shared recovery.
+    /// Local and memory stores require cooperating Store writers; remote tags have their
+    /// provider's version semantics. Memory compares content; it and content-derived remote
+    /// tags cannot distinguish an identical-byte replacement. A front copy likewise cannot
+    /// distinguish an identical-byte shared replacement before its shared version is observed.
+    pub async fn invalidate_entry(
+        &self,
+        namespace: &str,
+        key: &Digest,
+        observed: &EntrySnapshot,
+    ) -> Result<bool, StoreError> {
+        let location = layout::entry(namespace, key)?;
+        if observed.location != location {
+            return Err(StoreError::Location(
+                "cache entry observation belongs to another key".into(),
+            ));
+        }
+        let mut removed = false;
+        if let Some(shared) = &self.shared {
+            let refreshed = if observed.shared.is_none() {
+                shared.observe_entry_here(&location).await?
+            } else {
+                None
+            };
+            if let Some(behind) = observed.shared.as_deref().or(refreshed.as_ref())
+                && behind.bytes == observed.bytes
+            {
+                removed = Box::pin(shared.invalidate_entry(namespace, key, behind)).await?;
+            }
+        }
+        let _guard = self.entry_guard(&location).await?;
+        let deleted = match &observed.version {
+            Some(EntryVersion::File(file)) => {
+                use std::os::unix::fs::MetadataExt;
+                let Some(path) = self.local_path(&location) else { return Ok(removed) };
+                let current = match tokio::fs::metadata(&path).await {
+                    Ok(metadata) => metadata,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(removed),
+                    Err(error) => return Err(at(&path)(error)),
+                };
+                let old = file.metadata().map_err(at(&path))?;
+                if (current.dev(), current.ino()) != (old.dev(), old.ino())
+                    || tokio::fs::read(&path).await.map_err(at(&path))? != observed.bytes
+                {
+                    return Ok(removed);
+                }
+                self.operator.delete(&location).await
+            }
+            Some(EntryVersion::Memory) if self.operator.info().scheme() == "memory" => {
+                match self.operator.read(&location).await {
+                    Ok(bytes) if bytes.to_bytes() == observed.bytes => self.operator.delete(&location).await,
+                    Ok(_) => return Ok(removed),
+                    Err(error) => Err(error),
+                }
+            }
+            Some(EntryVersion::Tag(tag)) => self.operator.delete_with(&location).if_match(tag).await,
+            Some(EntryVersion::Unsupported) => return Err(opendal::Error::new(
+                ErrorKind::Unsupported,
+                "stale cache entry recovery requires conditional reads and deletion with entity tags",
+            ).into()),
+            _ => return Ok(removed),
+        };
+        match deleted {
+            Ok(()) => Ok(true),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    ErrorKind::NotFound | ErrorKind::ConditionNotMatch
+                ) =>
+            {
+                Ok(removed)
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub(crate) async fn entry_guard(&self, location: &str) -> Result<EntryGuard, StoreError> {
+        let mut guard = EntryGuard {
+            _file: None,
+            _memory: None,
+        };
+        if self.root.is_some() {
+            let mut local = self.clone();
+            local.shared = None;
+            let name = format!("entries/{}", Digest::sha256(location.as_bytes()).hex());
+            loop {
+                if let Some(lease) = local.try_lease(&name, &crate::Holder::default()).await? {
+                    guard._file = Some(lease);
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+            }
+        } else if self.operator.info().scheme() == "memory" {
+            guard._memory = Some(MEMORY_ENTRIES.lock().await);
+        }
+        Ok(guard)
     }
 
     /// Stores one output file of a task attempt under its original path, reading it from a

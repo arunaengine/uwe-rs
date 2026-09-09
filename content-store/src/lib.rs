@@ -11,4 +11,6 @@ mod store;
 
 pub use lease::{Holder, LEASE_TIME, Lease};
 pub use objects::{FileIdentity, Object};
-pub use store::{S3Options, Store, StoreError, StoredDirectory, StoredOutput, hash_file};
+pub use store::{
+    EntrySnapshot, S3Options, Store, StoreError, StoredDirectory, StoredOutput, hash_file,
+};

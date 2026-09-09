@@ -83,6 +83,101 @@ fn absolute_entry_names_need_docker_as_a_requirement() {
     assert_eq!(run(&[("main.cwl", &required)]), Ok(1));
 }
 
+const FILE_WRITER: &str = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: update\n\
+    requirements:\n  InitialWorkDirRequirement:\n    listing: [{entry: $(inputs.f), writable: true}]\n  \
+    InplaceUpdateRequirement: {inplaceUpdate: true}\ninputs: {f: File}\n\
+    outputs: {changed: {type: File, outputBinding: {glob: data.txt}}}\n";
+
+#[test]
+fn file_writers_reject_parent_views_and_preserve_unrelated_directories_and_disabled_updates() {
+    for (parent, enabled, rejected) in [
+        ("file:///source", true, true),
+        ("file:///other", true, false),
+        ("file:///source", false, false),
+    ] {
+        let main = format!(
+            "cwlVersion: v1.2\nclass: Workflow\ninputs:\n  \
+             f: {{type: File, default: {{class: File, location: file:///source/data.txt}}}}\n  \
+             view: {{type: Directory, default: {{class: Directory, location: {parent}}}}}\n\
+             outputs: []\nsteps:\n  write: {{run: writer.cwl, in: {{f: f}}, out: [changed]}}\n"
+        );
+        let writer =
+            FILE_WRITER.replace("inplaceUpdate: true", &format!("inplaceUpdate: {enabled}"));
+        let result = run(&[("main.cwl", &main), ("writer.cwl", &writer)]);
+        if rejected {
+            let error = result.expect_err("parent view must be rejected before the writer starts");
+            assert!(error.contains("parent Directory views"), "{error}");
+        } else {
+            assert_eq!(result, Ok(1));
+        }
+    }
+}
+
+#[test]
+fn later_parent_views_are_rejected_in_outputs_and_initial_workdir() {
+    let source = tempfile::tempdir().expect("source folder");
+    std::fs::write(source.path().join("data.txt"), "seed").expect("source file");
+    let location = cwl_parser::iri::file_url(source.path());
+    let directory = "cwlVersion: v1.2\nclass: ExpressionTool\nrequirements: {InlineJavascriptRequirement: {}}\n\
+        inputs: {f: File}\noutputs: {view: Directory}\nexpression: \
+        '${return {view: {class: \"Directory\", location: \"file:///source\", listing: []}};}'\n";
+    let staged = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: read\n\
+        requirements:\n  InitialWorkDirRequirement:\n    listing: \
+        [{class: Directory, location: file:///source}]\ninputs: {f: File}\noutputs: []\n";
+    for later in [directory, staged] {
+        let later = later.replace("file:///source", &location);
+        let main = "cwlVersion: v1.2\nclass: Workflow\nrequirements: {SubworkflowFeatureRequirement: {}}\n\
+            inputs: {f: {type: File, default: {class: File, location: file:///source/data.txt}}}\n\
+            outputs: []\nsteps:\n  write: {run: writer.cwl, in: {f: f}, out: [changed]}\n  \
+            view: {run: later.cwl, in: {f: write/changed}, out: []}\n";
+        let main = main.replace("file:///source", &location);
+        let error = run(&[
+            ("main.cwl", &main),
+            ("writer.cwl", FILE_WRITER),
+            ("later.cwl", &later),
+        ])
+        .expect_err("a parent view cannot expose stale source bytes");
+        assert!(error.contains("parent Directory views"), "{error}");
+    }
+}
+
+#[test]
+fn completed_directory_reader_views_do_not_block_later_file_writers() {
+    let reader = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: read\n\
+        inputs: {view: Directory}\noutputs: []\n";
+    let main = "cwlVersion: v1.2\nclass: Workflow\nrequirements:\n  \
+        InlineJavascriptRequirement: {}\n  StepInputExpressionRequirement: {}\n\
+        inputs: {f: {type: File, default: {class: File, location: file:///source/data.txt}}}\n\
+        outputs: []\nsteps:\n  read:\n    run: reader.cwl\n    in:\n      \
+        view: {source: f, valueFrom: '${return {class: \"Directory\", location: \"file:///source\"};}'}\n    \
+        out: []\n  write: {run: writer.cwl, in: {f: f}, out: [changed]}\n";
+    assert_eq!(
+        run(&[
+            ("main.cwl", main),
+            ("reader.cwl", reader),
+            ("writer.cwl", FILE_WRITER),
+        ]),
+        Ok(2)
+    );
+}
+
+#[test]
+fn in_place_directory_writes_are_explicitly_unsupported() {
+    let tool = FILE_WRITER
+        .replace(
+            "inputs: {f: File}",
+            "inputs: {f: {type: Directory, default: {class: Directory, location: file:///source}}}",
+        )
+        .replace(
+            "outputs: {changed: {type: File, outputBinding: {glob: data.txt}}}",
+            "outputs: []",
+        );
+    let error = run(&[("main.cwl", &tool)]).expect_err("Directory writer must fail");
+    assert!(error.contains("in-place Directory updates"), "{error}");
+    let disabled = tool.replace("inplaceUpdate: true", "inplaceUpdate: false");
+    assert_eq!(run(&[("main.cwl", &disabled)]), Ok(1));
+}
+
 #[test]
 fn outputs_of_abstract_steps_bring_their_secondary_files() {
     let index = "cwlVersion: v1.2\nclass: Operation\ninputs: []\n\

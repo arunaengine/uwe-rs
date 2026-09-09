@@ -102,6 +102,10 @@ pub struct Pending {
 }
 
 impl Pending {
+    pub(crate) fn in_place_sources(&self) -> impl Iterator<Item = &str> {
+        self.in_place.iter().map(|entry| entry.location.as_str())
+    }
+
     /// The new locations of the files that the tool updated in place, by their old ones: the
     /// copies that the task changed, which later steps see instead, as cwltool updates the
     /// file itself.

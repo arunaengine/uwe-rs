@@ -87,6 +87,13 @@ pub(crate) struct ProcessNode {
     pub poisoned: bool,
     /// The tasks in flight.
     pub pending: HashMap<TaskId, InFlight>,
+    pub each_round: Option<EachRound>,
+}
+
+/// One round's `each` choices, with the first input varying fastest.
+pub(crate) struct EachRound {
+    values: Vec<Value>,
+    choices: Vec<(usize, Vec<Value>, usize)>,
 }
 
 /// The output files of a finished task: the names it staged its inputs under, which globs do
@@ -113,12 +120,17 @@ pub(crate) struct InFlight {
 }
 
 impl Behaviour for ProcessNode {
-    fn ignite(&mut self, context: &mut Context) -> Result<State, Error> {
-        self.run(context)
+    fn ignite(&mut self, _: &mut Context) -> Result<State, Error> {
+        Ok(State::Running)
     }
 
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
-        while !self.poisoned && !(self.one_round && self.rounds == 1) {
+        if self.each_round.is_some() {
+            self.start_each_task(context)?;
+            context.again_first();
+            return self.finish_if_done(context);
+        }
+        if !self.poisoned && !(self.one_round && self.rounds == 1) {
             // A round starts when every input has a message.
             let messages: Vec<_> = (0..context.input_count())
                 .map(|input| context.peek(input))
@@ -128,7 +140,7 @@ impl Behaviour for ProcessNode {
                 .any(|message| matches!(message, Some(Message::Stop)))
             {
                 self.poisoned = true;
-                break;
+                return self.finish_if_done(context);
             }
             let Some(messages) = messages.into_iter().collect::<Option<Vec<_>>>() else {
                 return Ok(State::Running);
@@ -147,6 +159,7 @@ impl Behaviour for ProcessNode {
                 .collect();
             self.rounds += 1;
             self.start_tasks(context, values)?;
+            context.again_first();
         }
         self.finish_if_done(context)
     }
@@ -218,18 +231,48 @@ impl ProcessNode {
         if each.is_empty() {
             return self.start_task(context, values);
         }
-        let lists: Vec<Value> = each.iter().map(|index| values[*index].clone()).collect();
-        for list in &lists {
+        let mut choices = Vec::new();
+        for index in each {
+            let list = &values[index];
             crate::notes::spread(context.interpreter.host(), list);
+            let items = match list {
+                Value::List(list) => list.borrow().items.clone(),
+                Value::Set(set) => set
+                    .borrow()
+                    .items
+                    .iter()
+                    .map(|item| item.0.clone())
+                    .collect(),
+                other => vec![other.clone()],
+            };
+            choices.push((index, items, 0));
         }
-        for combination in nextflow_evaluator::interpreter::combinations(&lists) {
-            let mut values = values.clone();
-            for (index, value) in each.iter().zip(combination) {
-                values[*index] = value;
+        if choices.iter().any(|(_, items, _)| items.is_empty()) {
+            return Ok(());
+        }
+        self.each_round = Some(EachRound { values, choices });
+        self.start_each_task(context)
+    }
+
+    fn start_each_task(&mut self, context: &mut Context) -> Result<(), Error> {
+        let round = self.each_round.as_mut().expect("an unfinished each round");
+        let mut values = round.values.clone();
+        for (index, items, position) in &round.choices {
+            values[*index] = items[*position].clone();
+        }
+        let mut done = true;
+        for (_, items, position) in &mut round.choices {
+            *position += 1;
+            if *position < items.len() {
+                done = false;
+                break;
             }
-            self.start_task(context, values)?;
+            *position = 0;
         }
-        Ok(())
+        if done {
+            self.each_round = None;
+        }
+        self.start_task(context, values)
     }
 
     /// Binds the inputs of one task, evaluates its directives and `task` object, renders it,
@@ -261,6 +304,21 @@ impl ProcessNode {
                 let value = setting(interpreter, frame, name, value, base)?;
                 directives.retain(|directive| directive.name != *name);
                 directives.extend(value);
+            }
+        }
+        for directive in &directives {
+            let active = match (directive.name.as_ref(), directive.arguments.as_slice()) {
+                ("beforeScript" | "afterScript" | "fair", [value]) => value.truth(),
+                ("maxErrors", [Value::Number(value)]) => value.to_f64() != -1.0,
+                ("maxErrors", [Value::Null]) => false,
+                ("maxErrors", _) => true,
+                _ => false,
+            };
+            if active {
+                return Err(Error::Unsupported {
+                    message: format!("process directive `{}`", directive.name),
+                    span: self.process.span,
+                });
             }
         }
         limit_resources(&mut directives);
@@ -563,7 +621,7 @@ impl ProcessNode {
     /// Closes the outputs once no round can start and no task is in flight.
     fn finish_if_done(&mut self, context: &mut Context) -> Result<State, Error> {
         let done = self.poisoned || (self.one_round && self.rounds == 1);
-        if done && self.pending.is_empty() {
+        if done && self.pending.is_empty() && self.each_round.is_none() {
             for output in self.outputs.clone() {
                 context.close(output);
             }

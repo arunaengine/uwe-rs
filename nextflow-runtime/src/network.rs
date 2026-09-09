@@ -21,6 +21,9 @@ enum Step {
     Complete(TaskOutcome),
 }
 
+/// Bound requests retained by the runtime until the executor returns their outcomes.
+const MAX_OUTSTANDING: usize = 128;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -69,6 +72,57 @@ mod tests {
             assert!(messages.is_empty());
         }
         assert_eq!(network.readers[channel.0 as usize], [1]);
+    }
+
+    #[test]
+    fn factories_yield_between_values_and_release_drained_messages() {
+        struct Count {
+            count: Rc<std::cell::Cell<usize>>,
+        }
+        impl Behaviour for Count {
+            fn run(&mut self, context: &mut Context) -> Result<State, Error> {
+                let Channel::Queue { messages, .. } = &context.channels[0] else {
+                    panic!("queue")
+                };
+                assert!(messages.len() <= 1, "factory emitted ahead of its reader");
+                while let Some(message) = context.read(0) {
+                    let Channel::Queue { messages, .. } = &context.channels[0] else {
+                        panic!("queue")
+                    };
+                    assert!(messages.len() <= 1, "factory retained unread messages");
+                    if matches!(message, Message::Stop) {
+                        return Ok(State::Stopped);
+                    }
+                    self.count.set(self.count.get() + 1);
+                }
+                Ok(State::Running)
+            }
+        }
+        let mut network = Network::default();
+        let output = network.channel(false);
+        network.add(
+            "factory",
+            &[],
+            Box::new(crate::operator::Factory {
+                values: vec![Value::Null; 10_000],
+                output,
+                close: true,
+                failure: None,
+            }),
+        );
+        let count = Rc::new(std::cell::Cell::new(0));
+        network.add(
+            "count",
+            &[output],
+            Box::new(Count {
+                count: count.clone(),
+            }),
+        );
+        let mut host = Silent;
+        let mut interpreter = Interpreter::new(&mut host);
+        network.ignite(&mut interpreter).unwrap();
+        assert_eq!(count.get(), 10_000);
+        assert!(network.running().is_empty());
     }
 }
 
@@ -159,6 +213,7 @@ pub(crate) struct Context<'n, 'i, 'h> {
     /// Whether the node has more to do without new input, and runs again after the nodes
     /// that read what it wrote.
     again: bool,
+    again_first: bool,
 }
 
 impl Context<'_, '_, '_> {
@@ -166,6 +221,11 @@ impl Context<'_, '_, '_> {
     /// writes many values does, so that they need not all wait in its channel.
     pub fn again(&mut self) {
         self.again = true;
+    }
+
+    /// Finishes this process's ready round before starting downstream nodes.
+    pub fn again_first(&mut self) {
+        self.again_first = true;
     }
 
     /// The next message of an input, as an operator reads it: a value channel gives its value
@@ -251,6 +311,11 @@ impl Context<'_, '_, '_> {
 
     pub fn emit(&mut self, channel: ChannelId, value: Value) {
         self.write(channel, Message::Value(value));
+    }
+
+    pub fn source(&mut self, channel: ChannelId, values: Vec<Value>, close: bool) {
+        self.channels[channel.0 as usize].source(values, close);
+        self.written.push(channel);
     }
 
     pub fn close(&mut self, channel: ChannelId) {
@@ -349,7 +414,10 @@ impl Network {
 
     /// Runs the nodes that have messages waiting until there are none.
     pub fn run(&mut self, interpreter: &mut Interpreter) -> Result<(), Error> {
-        while let Some(index) = self.waiting.pop_front() {
+        while self.owners.len() < MAX_OUTSTANDING {
+            let Some(index) = self.waiting.pop_front() else {
+                break;
+            };
             self.queued[index] = false;
             self.step(index, interpreter, Step::Run)?;
         }
@@ -397,6 +465,7 @@ impl Network {
             return Ok(());
         };
         self.step(index, interpreter, Step::Complete(outcome))?;
+        self.enqueue(index);
         self.run(interpreter)
     }
 
@@ -438,6 +507,7 @@ impl Network {
             task_files: &mut self.task_files,
             interpreter,
             again: false,
+            again_first: false,
         };
         let result = match step {
             Step::Ignite => behaviour.ignite(&mut context),
@@ -455,6 +525,7 @@ impl Network {
             requests.clear();
         }
         let again = context.again;
+        let again_first = context.again_first;
         for request in &requests {
             self.owners.insert(request.id, index);
         }
@@ -475,6 +546,10 @@ impl Network {
         }
         if again {
             self.enqueue(index);
+        }
+        if again_first && !self.queued[index] && self.nodes[index].state == State::Running {
+            self.queued[index] = true;
+            self.waiting.push_front(index);
         }
         Ok(())
     }

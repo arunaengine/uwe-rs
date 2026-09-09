@@ -379,6 +379,7 @@ impl Host for Builder<'_> {
             tasks: 0,
             poisoned: false,
             pending: Default::default(),
+            each_round: None,
         };
         self.network.add(name, &inputs, Box::new(node));
         for (output, channel) in process.outputs.iter().zip(&outputs) {
@@ -1029,6 +1030,12 @@ impl Builder<'_> {
                 (vec![source], Box::new(node), Value::Channel(output))
             }
             ("subscribe", rest) => {
+                if option(&options, "onError").is_some_and(|value| value.truth()) {
+                    return Err(Error::Unsupported {
+                        message: "subscribe `onError` callback".into(),
+                        span: Default::default(),
+                    });
+                }
                 let closure = |value: Option<Value>| match value {
                     Some(Value::Closure(closure)) => Some(closure),
                     _ => None,

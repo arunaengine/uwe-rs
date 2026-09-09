@@ -80,6 +80,41 @@ fn run(source: &str, options: &Options) -> Result<(Vec<TaskRequest>, String), St
 const DOUBLE: &str = "process DOUBLE {\n    input:\n    val x\n    output:\n    val y\n    script:\n    y = x * 2\n    \"echo ${x}\"\n}\n";
 
 #[test]
+fn unsupported_active_directives_fail_before_a_task_is_requested() {
+    for (name, value) in [
+        ("beforeScript", "'touch required'"),
+        ("afterScript", "'touch done'"),
+        ("fair", "true"),
+        ("maxErrors", "2"),
+    ] {
+        let source =
+            format!("process P {{\n {name} {value}\n script:\n 'true'\n}}\nworkflow {{ P() }}");
+        let error = run(&source, &Options::default()).expect_err("unsupported directive");
+        assert!(
+            error.contains(&format!("process directive `{name}`")),
+            "{error}"
+        );
+        let source = "process P {\n script:\n 'true'\n}\nworkflow { P() }";
+        let options = Options {
+            config: config(&format!("process.{name} = {value}")),
+            ..Options::default()
+        };
+        let error = run(source, &options).expect_err("unsupported config directive");
+        assert!(
+            error.contains(&format!("process directive `{name}`")),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn inactive_directives_preserve_task_execution() {
+    let source = "process P {\n beforeScript ''\n afterScript ''\n fair false\n maxErrors(-1)\n script:\n 'true'\n}\nworkflow { P() }";
+    let (tasks, _) = run(source, &Options::default()).expect("inactive directives");
+    assert_eq!(tasks.len(), 1);
+}
+
+#[test]
 fn closed_input_stops_a_process_with_an_unbound_input_in_both_orders() {
     for inputs in [
         "channel.empty(), channel.value()",
@@ -617,6 +652,57 @@ fn each_inputs_start_a_task_for_each_value() {
             "echo a1", "echo a2", "echo b1", "echo b2", "echo c3", "echo c4"
         ]
     );
+}
+
+#[test]
+fn large_process_rounds_and_each_products_bound_outstanding_requests() {
+    for (inputs, expected) in [("val x\n", 2000), ("each x\n each y\n", 2500)] {
+        let each = expected == 2500;
+        let arguments = if each {
+            "(1..50), (1..50)"
+        } else {
+            "channel.of(1..2000)"
+        };
+        let script = if each {
+            "\"echo ${x}:${y}\""
+        } else {
+            "\"echo ${x}\""
+        };
+        let source = format!(
+            "process P {{\n input:\n {inputs} script:\n {script}\n}}\nworkflow {{ P({arguments}) }}"
+        );
+        let parsed = parse_script(&source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let module = Rc::new(lower_module(&parsed.tree, &source).expect("lowers"));
+        let mut host = Output::default();
+        let (mut run, requests) =
+            Run::start(&module, &Options::default(), &mut host).expect("starts");
+        assert_eq!(requests.len(), 128);
+        let mut queue: std::collections::VecDeque<_> = requests.into();
+        let mut count = 0;
+        while let Some(request) = queue.pop_front() {
+            let command = if each {
+                format!("echo {}:{}", count % 50 + 1, count / 50 + 1)
+            } else {
+                format!("echo {}", count + 1)
+            };
+            assert_eq!(request.script.lines().last(), Some(command.as_str()));
+            count += 1;
+            queue.extend(
+                run.complete(
+                    TaskOutcome {
+                        id: request.id,
+                        ..TaskOutcome::default()
+                    },
+                    &mut host,
+                )
+                .expect("completes"),
+            );
+            assert!(queue.len() <= 128, "unbounded outstanding requests");
+        }
+        assert_eq!(count, expected);
+        run.finish(&mut host).expect("finishes");
+    }
 }
 
 /// A `path` output with a closure takes its value when the task runs, and a list gives a

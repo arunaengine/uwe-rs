@@ -12,7 +12,7 @@ use crate::channel::Message;
 use crate::network::{Behaviour, Context, State};
 use crate::notes::spread;
 
-/// `channel.of`, `channel.fromList` and `channel.empty`: emits its values at ignition, then
+/// `channel.of`, `channel.fromList` and `channel.empty`: binds its source at ignition, then
 /// closes. `channel.value(v)` binds its value channel; without a value it stays unbound.
 pub(crate) struct Factory {
     pub values: Vec<Value>,
@@ -28,12 +28,7 @@ impl Behaviour for Factory {
         if let Some(failure) = self.failure.take() {
             return Err(failure);
         }
-        for value in std::mem::take(&mut self.values) {
-            context.emit(self.output, value);
-        }
-        if self.close {
-            context.close(self.output);
-        }
+        context.source(self.output, std::mem::take(&mut self.values), self.close);
         Ok(State::Stopped)
     }
 

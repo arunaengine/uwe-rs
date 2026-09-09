@@ -51,3 +51,59 @@ fn directory_aliases_refresh_separately_held_descendants() {
     assert!(outputs["child"].get("contents").is_none());
     assert!(outputs["child"].get("size").is_none());
 }
+
+#[test]
+fn parent_view_conflicts_cover_canonical_directory_aliases_and_listed_hard_links() {
+    let root = tempfile::tempdir().expect("folder");
+    let parent = root.path().join("parent");
+    let other = root.path().join("other");
+    let unrelated = root.path().join("unrelated");
+    std::fs::create_dir(&parent).expect("parent");
+    std::fs::create_dir(&other).expect("other");
+    std::fs::create_dir(&unrelated).expect("unrelated");
+    std::fs::write(unrelated.join("independent.txt"), "other").expect("independent");
+    let child = parent.join("child.txt");
+    let alias = other.join("alias.txt");
+    std::fs::write(&child, "seed").expect("child");
+    std::fs::hard_link(&child, &alias).expect("hard link");
+    let directory_alias = root.path().join("directory-alias");
+    std::os::unix::fs::symlink(&parent, &directory_alias).expect("directory alias");
+    let writer = iri::file_url(&child);
+    let conflict = |location: &str, directory| {
+        source_conflicts(
+            location,
+            directory,
+            &writer,
+            &mut 10_000,
+            Instant::now() + Duration::from_secs(1),
+        )
+        .expect("resolves")
+    };
+    assert!(conflict(&iri::file_url(&directory_alias), true));
+    assert!(conflict(&iri::file_url(&alias), false));
+    assert!(conflict(&iri::file_url(&other), true));
+    assert!(!conflict(&iri::file_url(&unrelated), true));
+    let error = source_conflicts(
+        &iri::file_url(&unrelated),
+        true,
+        &writer,
+        &mut 0,
+        Instant::now() + Duration::from_secs(1),
+    )
+    .expect_err("unresolved alias scan must fail explicitly");
+    assert!(
+        error.contains("bounded directory scan exhausted"),
+        "{error}"
+    );
+    let view = Value::parse(
+        &serde_json::json!({
+            "class": "Directory", "location": iri::file_url(&other),
+            "listing": [{"class": "File", "location": iri::file_url(&alias)}]
+        })
+        .to_string(),
+    )
+    .expect("view");
+    let mut run = Run::new(Options::default(), false);
+    run.in_place_sources.insert(writer);
+    assert!(run.observe_directories(&view).is_err());
+}

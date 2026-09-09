@@ -7,6 +7,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::os::unix::fs::MetadataExt;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use cwl_parser::iri;
 use cwl_parser::model::{Class, Process, Requirement, RequirementClass, Step, short_name};
@@ -117,6 +118,101 @@ enum Event {
     Finished(JobId, Map),
 }
 
+fn directory_sources(value: &Value, member: bool, sources: &mut HashSet<(String, bool)>) {
+    match value {
+        Value::Map(map) => {
+            let directory = value.text("class") == Some("Directory");
+            let member = member || directory;
+            if member
+                && value.is_file_like()
+                && let Some(location) = value.text("location")
+            {
+                sources.insert((location.to_owned(), directory));
+            }
+            for value in map.values() {
+                directory_sources(value, member, sources);
+            }
+        }
+        Value::List(items) => {
+            for value in items {
+                directory_sources(value, member, sources);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn source_conflicts(
+    location: &str,
+    directory: bool,
+    writer: &str,
+    remaining: &mut usize,
+    deadline: Instant,
+) -> Result<bool, String> {
+    if location == writer
+        || (directory && writer.starts_with(&format!("{}/", location.trim_end_matches('/'))))
+    {
+        return Ok(true);
+    }
+    let (Some(path), Some(writer)) = (files::local_path(location), files::local_path(writer))
+    else {
+        return Ok(false);
+    };
+    if directory {
+        let (Ok(path), Ok(writer_path)) = (path.canonicalize(), writer.canonicalize()) else {
+            return Ok(false);
+        };
+        if writer_path.starts_with(&path) {
+            return Ok(true);
+        }
+        let Ok(identity) = writer.metadata() else {
+            return Ok(false);
+        };
+        if identity.nlink() <= 1 {
+            return Ok(false);
+        }
+        let unresolved = |reason: String| {
+            format!(
+                "{}cannot resolve in-place File aliases in Directory {location}: {reason}",
+                tool::UNSUPPORTED
+            )
+        };
+        let mut pending = vec![path];
+        let mut visited = HashSet::new();
+        while let Some(path) = pending.pop() {
+            let canonical = path
+                .canonicalize()
+                .map_err(|error| unresolved(error.to_string()))?;
+            if !visited.insert(canonical) {
+                continue;
+            }
+            let entries = std::fs::read_dir(path).map_err(|error| unresolved(error.to_string()))?;
+            for entry in entries {
+                if *remaining == 0 || Instant::now() >= deadline {
+                    return Err(unresolved("bounded directory scan exhausted".into()));
+                }
+                *remaining -= 1;
+                let entry = entry.map_err(|error| unresolved(error.to_string()))?;
+                let found = entry
+                    .metadata()
+                    .map_err(|error| unresolved(error.to_string()))?;
+                if found.dev() == identity.dev() && found.ino() == identity.ino() {
+                    return Ok(true);
+                }
+                if found.is_dir() {
+                    pending.push(entry.path());
+                }
+            }
+        }
+        Ok(false)
+    } else {
+        let (Ok(path), Ok(writer)) = (path.metadata(), writer.metadata()) else {
+            return Ok(false);
+        };
+        Ok(path.dev() == writer.dev() && path.ino() == writer.ino())
+    }
+}
+
 /// A run of one document.
 pub struct Run {
     options: Options,
@@ -128,6 +224,7 @@ pub struct Run {
     ready: Vec<Task>,
     deferred: VecDeque<JobId>,
     writer: Option<JobId>,
+    in_place_sources: HashSet<String>,
     events: VecDeque<Event>,
     result: Option<Map>,
     /// The folder URL of placeholder files, in a run on placeholder inputs.
@@ -162,6 +259,7 @@ impl Run {
             ready: Vec::new(),
             deferred: VecDeque::new(),
             writer: None,
+            in_place_sources: HashSet::new(),
             events: VecDeque::new(),
             result: None,
             placeholders: None,
@@ -496,6 +594,11 @@ impl Run {
             placeholder_strings: &self.placeholder_strings,
         };
         let job = inputs::prepare(process, job, &setting).map_err(at)?;
+        let mut job_directories = HashSet::new();
+        for value in job.values() {
+            directory_sources(value, false, &mut job_directories);
+        }
+        self.check_directories(&job_directories).map_err(at)?;
         match &process.class {
             Class::CommandLineTool(_) | Class::Operation => {
                 let task_id = TaskId(self.next_task);
@@ -512,6 +615,49 @@ impl Run {
                     fake,
                 )
                 .map_err(at)?;
+                let mut staged_directories = HashSet::new();
+                for directory in task.inputs.iter().filter(|input| input.directory) {
+                    for input in task.inputs.iter().filter(|input| {
+                        input.path == directory.path
+                            || input.path.starts_with(&format!("{}/", directory.path))
+                    }) {
+                        if !input.source.is_empty() {
+                            let source = if iri::has_scheme(&input.source) {
+                                input.source.clone()
+                            } else {
+                                iri::file_url(std::path::Path::new(&input.source))
+                            };
+                            staged_directories.insert((source, input.directory));
+                        }
+                    }
+                }
+                self.check_directories(&staged_directories).map_err(at)?;
+                if pending.in_place_sources().next().is_some() {
+                    job_directories.extend(staged_directories);
+                    job_directories.extend(self.held_directories());
+                    let mut remaining = 10_000;
+                    let deadline = Instant::now() + Duration::from_millis(100);
+                    for writer in pending.in_place_sources() {
+                        for (location, directory) in &job_directories {
+                            if source_conflicts(
+                                location,
+                                *directory,
+                                writer,
+                                &mut remaining,
+                                deadline,
+                            )
+                            .map_err(at)?
+                            {
+                                return Err(at(format!(
+                                    "{}in-place File updates cannot be combined with their parent Directory views",
+                                    tool::UNSUPPORTED
+                                )));
+                            }
+                        }
+                    }
+                }
+                self.in_place_sources
+                    .extend(pending.in_place_sources().map(str::to_owned));
                 self.ready.push(task);
                 self.tasks.insert(task_id, id);
                 self.task_of_job.insert(id, task_id);
@@ -669,7 +815,54 @@ impl Run {
         }
     }
 
+    fn check_directories(&self, sources: &HashSet<(String, bool)>) -> Result<(), String> {
+        let mut remaining = 10_000;
+        let deadline = Instant::now() + Duration::from_millis(100);
+        for (location, directory) in sources {
+            for writer in &self.in_place_sources {
+                if source_conflicts(location, *directory, writer, &mut remaining, deadline)? {
+                    return Err(format!(
+                        "{}parent Directory views cannot follow in-place File updates",
+                        tool::UNSUPPORTED
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn held_directories(&self) -> HashSet<(String, bool)> {
+        let mut sources = HashSet::new();
+        let mut gather = |value: &Value| directory_sources(value, false, &mut sources);
+        for job in &self.jobs {
+            match &job.state {
+                State::Deferred(raw) => raw.job.values().for_each(&mut gather),
+                State::Workflow(run) => run.values.values().for_each(&mut gather),
+                State::Scatter(scatter) => {
+                    for result in scatter.results.iter().flatten() {
+                        result.values().for_each(&mut gather);
+                    }
+                }
+                State::Task(_) | State::Finished => {}
+            }
+        }
+        for event in &self.events {
+            let Event::Finished(_, outputs) = event;
+            outputs.values().for_each(&mut gather);
+        }
+        sources
+    }
+
+    fn observe_directories(&self, value: &Value) -> Result<(), String> {
+        let mut sources = HashSet::new();
+        directory_sources(value, false, &mut sources);
+        self.check_directories(&sources)
+    }
+
     fn deliver(&mut self, job: JobId, outputs: Map) -> Result<(), String> {
+        for value in outputs.values() {
+            self.observe_directories(value)?;
+        }
         let parent = self.jobs[job].parent;
         self.jobs[job].state = State::Finished;
         match parent {

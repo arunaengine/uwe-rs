@@ -29,6 +29,8 @@ pub enum Channel {
         /// The position of the first message each reader has not read yet, counted from the
         /// first message of the channel.
         cursors: Vec<Option<usize>>,
+        /// A factory's values, materialized one message ahead of its readers.
+        source: Option<(std::vec::IntoIter<Value>, bool)>,
     },
     Value(Option<Message>),
 }
@@ -44,6 +46,7 @@ impl Channel {
             dropped: 0,
             stopped: false,
             cursors: Vec::new(),
+            source: None,
         }
     }
 
@@ -62,9 +65,13 @@ impl Channel {
                 messages,
                 dropped,
                 cursors,
+                source,
                 ..
             } => {
-                cursors.push(Some(*dropped + messages.len()));
+                let pending = source
+                    .as_ref()
+                    .map_or(0, |(values, close)| values.len() + usize::from(*close));
+                cursors.push(Some(*dropped + messages.len() + pending));
                 Cursor(cursors.len() - 1)
             }
             Channel::Value(_) => Cursor(0),
@@ -81,6 +88,7 @@ impl Channel {
                 dropped,
                 stopped,
                 cursors,
+                ..
             } => {
                 if *stopped {
                     return;
@@ -105,6 +113,57 @@ impl Channel {
         self.write(Message::Stop);
     }
 
+    pub(crate) fn source(&mut self, values: Vec<Value>, close: bool) {
+        match self {
+            Channel::Queue {
+                source,
+                stopped,
+                cursors,
+                dropped,
+                ..
+            } => {
+                if *stopped {
+                    return;
+                }
+                *stopped = close;
+                if cursors.iter().all(Option::is_none) {
+                    *dropped += values.len() + usize::from(close);
+                } else {
+                    *source = Some((values.into_iter(), close));
+                    self.fill_source();
+                }
+            }
+            Channel::Value(_) => {
+                for value in values {
+                    self.write(Message::Value(value));
+                }
+                if close {
+                    self.close();
+                }
+            }
+        }
+    }
+
+    fn fill_source(&mut self) {
+        let Channel::Queue {
+            source, messages, ..
+        } = self
+        else {
+            return;
+        };
+        let Some((values, close)) = source else {
+            return;
+        };
+        if let Some(value) = values.next() {
+            messages.push_back(Message::Value(value));
+        } else {
+            if *close {
+                messages.push_back(Message::Stop);
+            }
+            *source = None;
+        }
+    }
+
     /// The next message for a reader of a queue, which it then has read. A value channel gives
     /// its value on every read, and nothing before it is bound.
     pub fn read(&mut self, cursor: Cursor) -> Option<Message> {
@@ -126,6 +185,9 @@ impl Channel {
                     .unwrap_or(position + 1);
                 while *dropped < first && messages.pop_front().is_some() {
                     *dropped += 1;
+                }
+                if position + 1 == *dropped + messages.len() {
+                    self.fill_source();
                 }
                 Some(message)
             }
@@ -169,6 +231,7 @@ impl Channel {
             messages,
             dropped,
             cursors,
+            source,
             ..
         } = self
         {
@@ -183,6 +246,22 @@ impl Channel {
             while *dropped < first && messages.pop_front().is_some() {
                 *dropped += 1;
             }
+            if cursors.iter().all(Option::is_none)
+                && let Some((values, close)) = source.take()
+            {
+                *dropped += values.len() + usize::from(close);
+            } else if *dropped < first
+                && messages.is_empty()
+                && let Some((values, close)) = source
+            {
+                *dropped += values.by_ref().take(first - *dropped).count();
+                if values.len() == 0 {
+                    if *close && *dropped < first {
+                        *dropped += 1;
+                    }
+                    *source = None;
+                }
+            }
         }
     }
 }
@@ -190,6 +269,40 @@ impl Channel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lazy_source_preserves_multicast_and_late_subscription() {
+        let mut channel = Channel::queue();
+        let first = channel.subscribe();
+        let second = channel.subscribe();
+        channel.source(vec![Value::integer(1), Value::integer(2)], true);
+        let late = channel.subscribe();
+        assert!(!channel.ready(late));
+        for cursor in [first, second] {
+            for expected in ["1", "2"] {
+                let Some(Message::Value(value)) = channel.read(cursor) else {
+                    panic!("source value")
+                };
+                assert_eq!(value.to_string(), expected);
+            }
+            assert!(matches!(channel.read(cursor), Some(Message::Stop)));
+        }
+        assert!(!channel.ready(late));
+        let mut channel = Channel::queue();
+        let early = channel.subscribe();
+        channel.source(vec![Value::Null; 10_000], true);
+        let late = channel.subscribe();
+        channel.unsubscribe(early);
+        let Channel::Queue {
+            messages, source, ..
+        } = &channel
+        else {
+            panic!("queue")
+        };
+        assert!(messages.is_empty());
+        assert!(source.is_none());
+        assert!(!channel.ready(late));
+    }
 
     #[test]
     fn stopped_reader_does_not_retain_messages() {

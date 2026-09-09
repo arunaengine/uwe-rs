@@ -30,6 +30,11 @@ pub fn directory(location: &str) -> String {
     )
 }
 
+/// A complete local directory copy, published separately from child object locations.
+pub fn directory_snapshot(digest: &Digest) -> String {
+    format!("directory-snapshots/v1/{}", digest.hex())
+}
+
 /// The mark of a tool that gave other bytes from the same inputs when a task of it ran again:
 /// `tools/<digest hex>.json`, where the digest names the tool (its image and step).
 pub fn unreproducible(tool: &Digest) -> String {

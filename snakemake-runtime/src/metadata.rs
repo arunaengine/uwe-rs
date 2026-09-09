@@ -8,6 +8,9 @@
 use base64::Engine;
 use python_evaluator::Interpreter;
 use sha2::{Digest, Sha256};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// The folder of the records, in the working directory.
 const FOLDER: &str = ".snakemake/metadata";
@@ -15,6 +18,107 @@ const FOLDER: &str = ".snakemake/metadata";
 const LARGEST: u64 = 1_000_000;
 /// The longest file name of a record; a longer name goes on in folders (`PC_NAME_MAX`).
 const NAME_MAX: usize = 255;
+
+pub(crate) fn signature_path(workdir: &Path, output: &str) -> PathBuf {
+    workdir.join(record_path(output).replacen(FOLDER, ".snakemake/iunctus-signatures", 1))
+}
+
+pub(crate) fn incomplete_path(workdir: &Path, output: &str) -> PathBuf {
+    workdir.join(record_path(output).replacen(FOLDER, ".snakemake/iunctus-incomplete", 1))
+}
+
+pub(crate) fn mark_incomplete(workdir: &Path, output: &str) -> std::io::Result<()> {
+    let path = incomplete_path(workdir, output);
+    let parent = path.parent().unwrap_or(workdir);
+    std::fs::create_dir_all(parent)?;
+    std::fs::File::create(&path)?.sync_all()?;
+    let mut directory = Some(parent);
+    while let Some(path) = directory {
+        std::fs::File::open(path)?.sync_all()?;
+        if path == workdir {
+            break;
+        }
+        directory = path.parent();
+    }
+    Ok(())
+}
+
+pub(crate) fn clear_incomplete(workdir: &Path, output: &str) -> std::io::Result<()> {
+    let path = incomplete_path(workdir, output);
+    std::fs::remove_file(&path)?;
+    std::fs::File::open(path.parent().unwrap_or(workdir))?.sync_all()
+}
+
+pub(crate) fn signature_changed(workdir: &Path, output: &str, current: &serde_json::Value) -> bool {
+    let Some(mut recorded) = std::fs::read(signature_path(workdir, output))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+    else {
+        return true;
+    };
+    let mut current = current.clone();
+    let (Some(old), Some(new)) = (
+        recorded
+            .get_mut("params")
+            .and_then(serde_json::Value::as_array_mut),
+        current
+            .get_mut("params")
+            .and_then(serde_json::Value::as_array_mut),
+    ) else {
+        return true;
+    };
+    for (old, new) in old.iter_mut().zip(new.iter_mut()) {
+        if old.is_null() || new.is_null() {
+            *old = serde_json::Value::Null;
+            *new = serde_json::Value::Null;
+        }
+    }
+    recorded != current
+}
+
+pub(crate) fn protect(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = std::fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() {
+        return Ok(());
+    }
+    if metadata.is_dir() {
+        for entry in std::fs::read_dir(path)? {
+            protect(&entry?.path())?;
+        }
+    }
+    let mut permissions = metadata.permissions();
+    permissions.set_mode(permissions.mode() & !0o222);
+    std::fs::set_permissions(path, permissions)
+}
+
+pub(crate) fn publish_signature(
+    workdir: &Path,
+    output: &str,
+    signature: &serde_json::Value,
+) -> std::io::Result<()> {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let path = signature_path(workdir, output);
+    let parent = path.parent().unwrap_or(workdir);
+    std::fs::create_dir_all(parent)?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temporary = parent.join(format!(
+        ".signature-{}-{nanos}-{}.part",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let mut file = std::fs::File::options()
+        .create_new(true)
+        .write(true)
+        .open(&temporary)?;
+    file.write_all(&serde_json::to_vec(signature).map_err(std::io::Error::other)?)?;
+    file.sync_all()?;
+    std::fs::rename(&temporary, &path)?;
+    std::fs::File::open(parent)?.sync_all()
+}
 
 /// Whether every output of a job has a record that names the same checksum for an input, and
 /// the input has that checksum now.

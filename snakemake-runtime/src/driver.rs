@@ -88,6 +88,10 @@ pub struct Session {
     notes: Vec<Note>,
     /// The attempt of each job whose task was asked for, from 1.
     attempts: HashMap<usize, u32>,
+    signatures: HashMap<usize, serde_json::Value>,
+    prepared: HashMap<usize, Task>,
+    publications: Vec<SignaturePublication>,
+    protections: Vec<Delivery>,
     /// The files that stay even when they are temporary, as Snakemake's `derived_targetfiles`:
     /// the target files, and the inputs of target jobs without outputs, like those of `all`.
     kept: Vec<String>,
@@ -106,6 +110,11 @@ pub struct Session {
     /// starts unless the run keeps going, and the run fails once the running jobs have ended,
     /// as Snakemake does.
     failures: Vec<String>,
+}
+
+struct SignaturePublication {
+    deliveries: Vec<Delivery>,
+    records: Vec<(String, serde_json::Value)>,
 }
 
 impl Session {
@@ -182,6 +191,10 @@ impl Session {
             remaining: HashMap::new(),
             notes: Vec::new(),
             attempts: HashMap::new(),
+            signatures: HashMap::new(),
+            prepared: HashMap::new(),
+            publications: Vec::new(),
+            protections: Vec::new(),
             kept: Vec::new(),
             deliveries: Arc::default(),
             evaluation: None,
@@ -366,6 +379,69 @@ impl Session {
         }
         self.needrun = planner.needrun(&self.interpreter, &roots);
         self.order = planner.ordered_jobs(&roots);
+        self.prepared.clear();
+        if !self.launch.simulated {
+            for job in &self.order {
+                let entry = &planner.jobs[*job];
+                if entry
+                    .dependencies
+                    .iter()
+                    .any(|(_, dependency)| self.needrun.get(dependency).copied().unwrap_or(false))
+                {
+                    self.needrun.insert(*job, true);
+                }
+                if self.needrun.get(job).copied().unwrap_or(false) || self.done.contains(job) {
+                    continue;
+                }
+                let outputs: Vec<_> = entry
+                    .output
+                    .values
+                    .iter()
+                    .filter(|value| value.tag("service").is_none())
+                    .filter_map(Value::as_str)
+                    .collect();
+                if outputs.iter().any(|output| {
+                    crate::metadata::incomplete_path(&self.workdir, output)
+                        .try_exists()
+                        .unwrap_or(true)
+                }) {
+                    self.needrun.insert(*job, true);
+                    continue;
+                }
+                if !outputs
+                    .iter()
+                    .any(|output| crate::metadata::signature_path(&self.workdir, output).exists())
+                {
+                    continue;
+                }
+                let state = self.state.borrow();
+                let setting = crate::task::TaskSetting {
+                    state: &state,
+                    files: &self.files,
+                    workdir: &self.workdir,
+                    embedded: &self.embedded,
+                    sources: &self.sources,
+                };
+                let id = TaskId(self.next_task.get());
+                self.next_task.set(id.0 + 1);
+                let (task, signature) = crate::task::build(
+                    &mut self.interpreter,
+                    &setting,
+                    &planner.rules[entry.rule],
+                    entry,
+                    id,
+                    1,
+                )
+                .map_err(|error| driver_error(&error, &self.workdir))?;
+                if outputs.iter().any(|output| {
+                    crate::metadata::signature_changed(&self.workdir, output, &signature)
+                }) {
+                    self.needrun.insert(*job, true);
+                    self.signatures.insert(*job, signature);
+                    self.prepared.insert(*job, task);
+                }
+            }
+        }
         // Snakemake's `check_directory_outputs`: no output of a job lies in a directory
         // output of another job. Logs and benchmarks do not count, as in Snakemake.
         let mut outputs: Vec<(PathBuf, usize)> = (self.order.iter())
@@ -408,6 +484,20 @@ impl Session {
         }
         if !self.launch.simulated {
             for job in &self.order {
+                if self.needrun.get(job).copied().unwrap_or(false) {
+                    use std::os::unix::fs::PermissionsExt;
+                    for value in &planner.jobs[*job].output.values {
+                        if value.tag("protected").is_some()
+                            && let Some(output) = value.as_str()
+                            && std::fs::metadata(self.interpreter.host.resolve(output))
+                                .is_ok_and(|metadata| metadata.permissions().mode() & 0o222 == 0)
+                        {
+                            return Err(DriverError::new(format!(
+                                "ProtectedOutputException: write-protected output {output} must be made writable before rerunning"
+                            )));
+                        }
+                    }
+                }
                 for value in &planner.jobs[*job].output.values {
                     if value.tag("pipe").is_none() {
                         continue;
@@ -525,8 +615,15 @@ impl Session {
                 tasks.extend(self.service_group(job, &services, None)?);
                 continue;
             }
-            let id = TaskId(self.next_task.get());
-            self.next_task.set(id.0 + 1);
+            let prepared = self.prepared.remove(&job);
+            let id = prepared.as_ref().map_or_else(
+                || {
+                    let id = TaskId(self.next_task.get());
+                    self.next_task.set(id.0 + 1);
+                    id
+                },
+                |task| task.id,
+            );
             let rule = planner.rules[entry.rule].clone();
             let entry = entry.clone();
             if rule.checkpoint {
@@ -537,18 +634,24 @@ impl Session {
                 let marker = Marker::new(MarkerKind::Checkpoint, reason);
                 self.notes.push(Note::Mark(id, marker));
             }
-            let task = {
-                let state = self.state.borrow();
-                let setting = crate::task::TaskSetting {
-                    state: &state,
-                    files: &self.files,
-                    workdir: &self.workdir,
-                    embedded: &self.embedded,
-                    sources: &self.sources,
-                };
-                crate::task::build(&mut self.interpreter, &setting, &rule, &entry, id, 1)
-            }
-            .map_err(|error| self.error(&error))?;
+            let task = if let Some(task) = prepared {
+                task
+            } else {
+                let (task, signature) = {
+                    let state = self.state.borrow();
+                    let setting = crate::task::TaskSetting {
+                        state: &state,
+                        files: &self.files,
+                        workdir: &self.workdir,
+                        embedded: &self.embedded,
+                        sources: &self.sources,
+                    };
+                    crate::task::build(&mut self.interpreter, &setting, &rule, &entry, id, 1)
+                }
+                .map_err(|error| self.error(&error))?;
+                self.signatures.insert(job, signature);
+                task
+            };
             let mut task = task;
             // A job whose input function looked into a checkpoint's outputs runs after it,
             // even when it reads none of its files.
@@ -712,9 +815,15 @@ impl Session {
             }
             return self.failed(error.message);
         }
+        let delivery_start = self
+            .deliveries
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len();
         if let Some(message) = self.take_outcome(job, outcome)? {
             return self.failed(message);
         }
+        self.queue_signatures(&[job], delivery_start)?;
         self.next_tasks(&[job])
     }
 
@@ -767,12 +876,107 @@ impl Session {
             }
             outcomes.push((*job, own));
         }
+        let delivery_start = self
+            .deliveries
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len();
         for (job, own) in outcomes {
             if let Some(message) = self.take_outcome(job, own)? {
                 return self.failed(message);
             }
         }
+        self.queue_signatures(&jobs, delivery_start)?;
         self.next_tasks(&jobs)
+    }
+
+    fn queue_signatures(
+        &mut self,
+        jobs: &[usize],
+        delivery_start: usize,
+    ) -> Result<(), DriverError> {
+        if self.launch.simulated {
+            return Ok(());
+        }
+        let deliveries = self
+            .deliveries
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)[delivery_start..]
+            .to_vec();
+        if deliveries.is_empty() {
+            return Ok(());
+        }
+        let planner = self.planner.as_ref().expect("a planner");
+        let mut records = Vec::new();
+        for job in jobs {
+            if let Some(signature) = self.signatures.get(job) {
+                for value in &planner.jobs[*job].output.values {
+                    if value.tag("service").is_none()
+                        && let Some(output) = value.as_str()
+                    {
+                        records.push((output.to_owned(), signature.clone()));
+                    }
+                }
+            }
+        }
+        for (output, _) in &records {
+            crate::metadata::mark_incomplete(&self.workdir, output).map_err(|error| {
+                DriverError::new(format!("cannot mark output {output} incomplete: {error}"))
+            })?;
+        }
+        self.publications.push(SignaturePublication {
+            deliveries,
+            records,
+        });
+        Ok(())
+    }
+
+    fn delivered(&mut self, delivery: &Delivery) -> Result<(), DriverError> {
+        if let Some(position) = self
+            .protections
+            .iter()
+            .position(|expected| expected == delivery)
+        {
+            crate::metadata::protect(Path::new(&delivery.target)).map_err(|error| {
+                DriverError::new(format!(
+                    "cannot protect output {}: {error}",
+                    delivery.target
+                ))
+            })?;
+            self.protections.remove(position);
+        }
+        for index in (0..self.publications.len()).rev() {
+            let pending = &mut self.publications[index];
+            if let Some(position) = pending
+                .deliveries
+                .iter()
+                .position(|expected| expected == delivery)
+            {
+                pending.deliveries.remove(position);
+                if pending.deliveries.is_empty() {
+                    let pending = self.publications.remove(index);
+                    for (output, signature) in &pending.records {
+                        crate::metadata::publish_signature(&self.workdir, output, signature)
+                            .map_err(|error| {
+                                DriverError::new(format!(
+                                    "cannot record successful output {output}: {error}"
+                                ))
+                            })?;
+                    }
+                    for (output, _) in pending.records {
+                        crate::metadata::clear_incomplete(&self.workdir, &output).map_err(
+                            |error| {
+                                DriverError::new(format!(
+                                    "cannot complete output {output} metadata: {error}"
+                                ))
+                            },
+                        )?;
+                    }
+                }
+                break;
+            }
+        }
+        Ok(())
     }
 
     /// Takes the outcome of a job that ended well: checks its outputs, hands them to the
@@ -822,11 +1026,25 @@ impl Session {
                     .deliveries
                     .lock()
                     .unwrap_or_else(PoisonError::into_inner);
-                deliveries.push(Delivery {
+                let delivery = Delivery {
                     location: file.location.clone(),
                     target: storage_target.unwrap_or_else(|| path.to_string_lossy().into_owned()),
                     mode: DeliveryMode::Copy,
-                });
+                };
+                if !self.launch.simulated
+                    && self.planner.as_ref().is_some_and(|planner| {
+                        planner.jobs[job].output.values.iter().any(|value| {
+                            value.tag("protected").is_some()
+                                && value.as_str().is_some_and(|output| {
+                                    self.interpreter.host.resolve(output.trim_end_matches('/'))
+                                        == path
+                                })
+                        })
+                    })
+                {
+                    self.protections.push(delivery.clone());
+                }
+                deliveries.push(delivery);
             }
             if file.directory
                 && let Some(planner) = self.planner.as_mut()
@@ -963,7 +1181,7 @@ impl Session {
             let planner = self.planner.as_ref().expect("a planner");
             let rule = planner.rules[planner.jobs[member].rule].clone();
             let entry = planner.jobs[member].clone();
-            let task = {
+            let (task, signature) = {
                 let state = self.state.borrow();
                 let setting = crate::task::TaskSetting {
                     state: &state,
@@ -975,6 +1193,7 @@ impl Session {
                 crate::task::build(&mut self.interpreter, &setting, &rule, &entry, id, attempt)
             }
             .map_err(|error| self.error(&error))?;
+            self.signatures.insert(member, signature);
             declared.push((member, task.outputs.clone()));
             members.push(task);
         }
@@ -1272,7 +1491,7 @@ impl Session {
             rule.name,
             attempt + 1
         );
-        let task = {
+        let (task, signature) = {
             let state = self.state.borrow();
             let setting = crate::task::TaskSetting {
                 state: &state,
@@ -1291,6 +1510,7 @@ impl Session {
             )
         }
         .map_err(|error| self.error(&error))?;
+        self.signatures.insert(job, signature);
         let mut task = task;
         task.reuse = workflow_graph::Reuse::Denied;
         self.attempts.insert(job, attempt + 1);
@@ -1410,6 +1630,10 @@ impl Driver for SnakemakeDriver {
         std::mem::take(&mut deliveries)
     }
 
+    fn delivered(&mut self, delivery: &Delivery) -> Result<(), DriverError> {
+        self.ask(Request::Delivered(delivery.clone())).map(|_| ())
+    }
+
     fn use_files(&mut self, files: Arc<dyn Files>) {
         let _ = self.files.set(files);
     }
@@ -1521,7 +1745,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
             };
             let session = &mut session;
             while let Ok(request) = channel.requests.recv() {
-                let reply = match request {
+                let mut reply = match request {
                     Request::Inputs => {
                         let described = describe(session, &channel, &open, Session::inputs);
                         if let Ok(mut notes) = session_notes.lock() {
@@ -1544,6 +1768,9 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
                     }
                     Request::Start => session.start(),
                     Request::Complete(outcome) => session.complete(*outcome),
+                    Request::Delivered(delivery) => {
+                        session.delivered(&delivery).map(|()| Vec::new())
+                    }
                     Request::Finish => {
                         let result = session.finish().map(|()| Vec::new());
                         let _ = channel.replies.send(result);
@@ -1551,7 +1778,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
                     }
                 };
                 // The outcomes that came while commands of workflow code ran.
-                let reply = reply.and_then(|mut tasks| {
+                reply = reply.and_then(|mut tasks| {
                     loop {
                         let parked = channel.parked.borrow_mut().pop_front();
                         let Some(outcome) = parked else {
@@ -1561,6 +1788,14 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
                     }
                     Ok(tasks)
                 });
+                while let Some(delivery) = { channel.parked_deliveries.borrow_mut().pop_front() } {
+                    let acknowledged = session.delivered(&delivery);
+                    if reply.is_ok()
+                        && let Err(error) = acknowledged
+                    {
+                        reply = Err(error);
+                    }
+                }
                 session.stop_python_when_done();
                 if let Ok(mut notes) = session_notes.lock() {
                     notes.extend(session.take_notes());

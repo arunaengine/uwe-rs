@@ -20,7 +20,7 @@ use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 
 use python_evaluator::{Command, CommandOutcome, Error};
-use workflow_graph::{DriverError, Input, Inputs, Outcome, Task, TaskId, Writable};
+use workflow_graph::{Delivery, DriverError, Input, Inputs, Outcome, Task, TaskId, Writable};
 
 use crate::workflow::State;
 
@@ -36,6 +36,7 @@ pub enum Request {
     Outputs,
     Start,
     Complete(Box<Outcome>),
+    Delivered(Delivery),
     Finish,
 }
 
@@ -55,6 +56,7 @@ pub struct Channel {
     pub replies: Sender<Reply>,
     /// Outcomes of tasks of jobs that came while a command waited for its own.
     pub parked: RefCell<VecDeque<Outcome>>,
+    pub parked_deliveries: RefCell<VecDeque<Delivery>>,
     /// Whether the session loads the workflow only to describe its inputs, which runs no task.
     pub describing: Cell<bool>,
     /// Whether a command of workflow code had to be refused while describing.
@@ -67,6 +69,7 @@ impl Channel {
             requests,
             replies,
             parked: RefCell::new(VecDeque::new()),
+            parked_deliveries: RefCell::new(VecDeque::new()),
             describing: Cell::new(false),
             refused: Cell::new(false),
         }
@@ -160,6 +163,16 @@ impl CommandRunner {
                 }
                 Request::Complete(outcome) => {
                     self.channel.parked.borrow_mut().push_back(*outcome);
+                    self.channel
+                        .replies
+                        .send(Ok(Vec::new()))
+                        .map_err(|_| ended())?;
+                }
+                Request::Delivered(delivery) => {
+                    self.channel
+                        .parked_deliveries
+                        .borrow_mut()
+                        .push_back(delivery);
                     self.channel
                         .replies
                         .send(Ok(Vec::new()))

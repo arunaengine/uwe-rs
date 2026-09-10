@@ -18,10 +18,10 @@ use bollard::models::{ContainerCreateBody, HostConfig, ResourcesUlimits};
 use bollard::query_parameters::{
     AttachContainerOptions, CreateContainerOptions, LogsOptions, RemoveContainerOptions,
 };
-use futures_util::StreamExt;
+use futures_util::{Stream, StreamExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::runtime::Runtime;
-use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, channel, unbounded_channel};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
@@ -61,6 +61,13 @@ pub struct ContainerSpec {
     pub show_stderr: bool,
 }
 
+/// Hard bounds for an opt-in line protocol helper.
+#[derive(Clone, Copy, Debug)]
+pub struct ProcessLimits {
+    pub max_frame_bytes: usize,
+    pub reply_capacity: usize,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ProcessError {
     #[error("{0}")]
@@ -75,6 +82,8 @@ pub enum ProcessError {
     Cancelled,
     #[error("the container operation exceeded its time limit")]
     Timeout,
+    #[error("the container helper limit failed: {reason}")]
+    Limit { reason: String },
 }
 
 fn last_lines(lines: &[String]) -> String {
@@ -146,6 +155,9 @@ pub struct ContainerProcess {
     input: Option<Pin<Box<dyn AsyncWrite + Send>>>,
     /// The lines of standard output, from the task that reads what the container writes.
     lines: UnboundedReceiver<String>,
+    limited_lines: Option<Receiver<String>>,
+    limits: Option<ProcessLimits>,
+    failure: Arc<Mutex<Option<String>>>,
     stderr: Arc<Mutex<VecDeque<String>>>,
     reader: Option<JoinHandle<()>>,
     cancel: CancellationToken,
@@ -162,8 +174,44 @@ impl ContainerProcess {
         spec: &ContainerSpec,
         cancel: &CancellationToken,
     ) -> Result<ContainerProcess, ProcessError> {
+        Self::start_with_limits(spec, cancel, None)
+    }
+
+    /// Starts a bounded helper with mandatory memory enforcement and no swap.
+    pub fn start_bounded(
+        spec: &ContainerSpec,
+        limits: ProcessLimits,
+        cancel: &CancellationToken,
+    ) -> Result<ContainerProcess, ProcessError> {
+        Self::start_with_limits(spec, cancel, Some(limits))
+    }
+
+    fn start_with_limits(
+        spec: &ContainerSpec,
+        cancel: &CancellationToken,
+        limits: Option<ProcessLimits>,
+    ) -> Result<ContainerProcess, ProcessError> {
+        if cancel.is_cancelled() {
+            return Err(ProcessError::Cancelled);
+        }
+        if let Some(limits) = limits {
+            validate_limits(spec, limits)?;
+        }
         let engine = engine_cancellable(spec, cancel)?;
         let runtime = runtime()?;
+        if limits.is_some() {
+            let info = runtime
+                .block_on(bounded(cancel, OPERATION_LIMIT, engine.client().info()))?
+                .map_err(|error| ProcessError::Start {
+                    engine: engine.name.clone(),
+                    reason: error.to_string(),
+                })?;
+            if info.memory_limit != Some(true) || info.swap_limit != Some(true) {
+                return Err(ProcessError::Limit {
+                    reason: "the engine does not support memory and swap limits".into(),
+                });
+            }
+        }
         runtime
             .block_on(bounded(
                 cancel,
@@ -179,7 +227,7 @@ impl ContainerProcess {
             reason: error.to_string(),
         };
         let client = engine.client().clone();
-        let body = ContainerCreateBody {
+        let mut body = ContainerCreateBody {
             open_stdin: Some(true),
             // The container's input closes when the attached input does.
             stdin_once: Some(true),
@@ -188,6 +236,12 @@ impl ContainerProcess {
             attach_stderr: Some(true),
             ..create(spec, &engine, true)
         };
+        if limits.is_some() {
+            body.host_config
+                .as_mut()
+                .expect("a host config")
+                .memory_swap = spec.memory.map(|bytes| bytes as i64);
+        }
         let options = CreateContainerOptions {
             name: Some(spec.name.clone()),
             ..CreateContainerOptions::default()
@@ -222,44 +276,69 @@ impl ContainerProcess {
         let stderr = kept.clone();
         let show = spec.show_stderr;
         let mut output = attached.output;
-        let reader = runtime.spawn(async move {
-            let (mut out, mut err) = (Vec::new(), Vec::new());
-            while let Some(Ok(part)) = output.next().await {
-                match part {
-                    LogOutput::StdOut { message } | LogOutput::Console { message } => {
-                        out.extend_from_slice(&message);
-                        for line in take_lines(&mut out) {
-                            if sender.send(line).is_err() {
-                                return;
-                            }
-                        }
+        let process_cancel = cancel.child_token();
+        let failure = Arc::new(Mutex::new(None));
+        let mut limited_lines = None;
+        let reader = if let Some(limits) = limits {
+            let (sender, receiver) = channel(limits.reply_capacity);
+            limited_lines = Some(receiver);
+            let cancel = process_cancel.clone();
+            let failure = failure.clone();
+            let name = id.clone();
+            runtime.spawn(async move {
+                if let Err(reason) =
+                    read_limited(output, sender, stderr, show, limits, &cancel).await
+                {
+                    if let Ok(mut failure) = failure.lock() {
+                        *failure = Some(reason);
                     }
-                    LogOutput::StdErr { message } => {
-                        err.extend_from_slice(&message);
-                        for line in take_lines(&mut err) {
-                            if show {
-                                eprintln!("{line}");
-                            }
-                            if let Ok(mut lines) = stderr.lock() {
-                                if lines.len() == KEPT_LINES {
-                                    lines.pop_front();
-                                }
-                                lines.push_back(line);
-                            }
-                        }
-                    }
-                    LogOutput::StdIn { .. } => {}
+                    cancel.cancel();
                 }
-            }
-        });
+                remove_async(&client, &name).await;
+            })
+        } else {
+            runtime.spawn(async move {
+                let (mut out, mut err) = (Vec::new(), Vec::new());
+                while let Some(Ok(part)) = output.next().await {
+                    match part {
+                        LogOutput::StdOut { message } | LogOutput::Console { message } => {
+                            out.extend_from_slice(&message);
+                            for line in take_lines(&mut out) {
+                                if sender.send(line).is_err() {
+                                    return;
+                                }
+                            }
+                        }
+                        LogOutput::StdErr { message } => {
+                            err.extend_from_slice(&message);
+                            for line in take_lines(&mut err) {
+                                if show {
+                                    eprintln!("{line}");
+                                }
+                                if let Ok(mut lines) = stderr.lock() {
+                                    if lines.len() == KEPT_LINES {
+                                        lines.pop_front();
+                                    }
+                                    lines.push_back(line);
+                                }
+                            }
+                        }
+                        LogOutput::StdIn { .. } => {}
+                    }
+                }
+            })
+        };
         Ok(ContainerProcess {
             engine,
             name: id,
             input: Some(attached.input),
             lines,
+            limited_lines,
+            limits,
+            failure,
             stderr: kept,
             reader: Some(reader),
-            cancel: cancel.child_token(),
+            cancel: process_cancel,
         })
     }
 
@@ -274,26 +353,57 @@ impl ContainerProcess {
         line: &str,
         limit: Duration,
     ) -> Result<String, ProcessError> {
+        if let Some(limits) = self.limits
+            && (line.len() > limits.max_frame_bytes || line.contains('\n'))
+        {
+            self.cancel.cancel();
+            self.stop();
+            return Err(ProcessError::Limit {
+                reason: "the request exceeds its frame limit or contains a newline".into(),
+            });
+        }
         let (Some(input), Ok(runtime)) = (self.input.as_mut(), runtime()) else {
             return Err(self.ended());
         };
         let reply = runtime.block_on(bounded(&self.cancel, limit, async {
-            input.write_all(format!("{line}\n").as_bytes()).await?;
+            if self.limits.is_some() {
+                input.write_all(line.as_bytes()).await?;
+                input.write_all(b"\n").await?;
+            } else {
+                input.write_all(format!("{line}\n").as_bytes()).await?;
+            }
             input.flush().await?;
-            Ok::<_, std::io::Error>(self.lines.recv().await)
+            Ok::<_, std::io::Error>(match &mut self.limited_lines {
+                Some(lines) => lines.recv().await,
+                None => self.lines.recv().await,
+            })
         }));
         match reply {
             Ok(Ok(Some(reply))) => Ok(reply),
-            Ok(_) => Err(self.ended()),
+            Ok(_) => {
+                if self.limits.is_some() {
+                    self.cancel.cancel();
+                    self.stop();
+                }
+                Err(self.ended())
+            }
             Err(error) => {
                 self.cancel.cancel();
                 self.stop();
-                Err(error)
+                Err(self
+                    .failure
+                    .lock()
+                    .ok()
+                    .and_then(|failure| failure.clone())
+                    .map_or(error, |reason| ProcessError::Limit { reason }))
             }
         }
     }
 
     fn ended(&mut self) -> ProcessError {
+        if let Some(reason) = self.failure.lock().ok().and_then(|failure| failure.clone()) {
+            return ProcessError::Limit { reason };
+        }
         // The reader has the last lines once the container's output closed.
         if let (Some(mut reader), Ok(runtime)) = (self.reader.take(), runtime())
             && runtime
@@ -313,6 +423,10 @@ impl ContainerProcess {
     /// Closes the container's standard input, waits a few seconds for it to end, and then
     /// removes it.
     pub fn stop(&mut self) {
+        if let Some(lines) = self.limited_lines.as_mut() {
+            self.cancel.cancel();
+            lines.close();
+        }
         let Ok(runtime) = runtime() else {
             return;
         };
@@ -413,6 +527,107 @@ async fn create_id(
             }
             Err(error)
         }
+    }
+}
+
+fn validate_limits(spec: &ContainerSpec, limits: ProcessLimits) -> Result<(), ProcessError> {
+    if limits.max_frame_bytes == 0
+        || limits.reply_capacity == 0
+        || limits.reply_capacity > tokio::sync::Semaphore::MAX_PERMITS
+    {
+        return Err(ProcessError::Limit {
+            reason: "frame and reply limits must be positive and representable".into(),
+        });
+    }
+    if !spec
+        .memory
+        .is_some_and(|memory| memory > 0 && memory <= i64::MAX as u64)
+    {
+        return Err(ProcessError::Limit {
+            reason: "bounded helpers require a positive representable memory limit".into(),
+        });
+    }
+    Ok(())
+}
+
+async fn read_limited(
+    mut output: impl Stream<Item = Result<LogOutput, bollard::errors::Error>> + Unpin,
+    sender: Sender<String>,
+    stderr: Arc<Mutex<VecDeque<String>>>,
+    show: bool,
+    limits: ProcessLimits,
+    cancel: &CancellationToken,
+) -> Result<(), String> {
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    loop {
+        let part = tokio::select! {
+            biased;
+            () = cancel.cancelled() => return Ok(()),
+            part = output.next() => part,
+        };
+        let Some(part) = part else { break };
+        let part = part.map_err(|error| error.to_string())?;
+        let (message, buffer, stdout) = match part {
+            LogOutput::StdOut { message } | LogOutput::Console { message } => {
+                (message, &mut out, true)
+            }
+            LogOutput::StdErr { message } => (message, &mut err, false),
+            LogOutput::StdIn { .. } => continue,
+        };
+        if message.len() > limits.max_frame_bytes.saturating_add(1) {
+            return Err("a helper output chunk exceeds its frame limit".into());
+        }
+        for piece in message.split_inclusive(|byte| *byte == b'\n') {
+            let complete = piece.last() == Some(&b'\n');
+            let bytes = if complete {
+                &piece[..piece.len() - 1]
+            } else {
+                piece
+            };
+            if bytes.len() > limits.max_frame_bytes.saturating_sub(buffer.len()) {
+                return Err(format!(
+                    "{} exceeds its {} byte frame limit",
+                    if stdout { "stdout" } else { "stderr" },
+                    limits.max_frame_bytes
+                ));
+            }
+            buffer.extend_from_slice(bytes);
+            if complete {
+                let line = String::from_utf8(std::mem::take(buffer))
+                    .map_err(|_| "a helper frame is not UTF-8".to_owned())?;
+                if stdout {
+                    tokio::select! {
+                        biased;
+                        () = cancel.cancelled() => return Ok(()),
+                        result = sender.send(line) => if result.is_err() { return Ok(()); },
+                    }
+                } else {
+                    keep_limited_stderr(&stderr, line, show, limits.max_frame_bytes);
+                }
+            }
+        }
+    }
+    if !out.is_empty() {
+        return Err("stdout ended with an incomplete helper frame".into());
+    }
+    if !err.is_empty() {
+        let line = String::from_utf8(err).map_err(|_| "a helper frame is not UTF-8".to_owned())?;
+        keep_limited_stderr(&stderr, line, show, limits.max_frame_bytes);
+    }
+    Ok(())
+}
+
+fn keep_limited_stderr(stderr: &Mutex<VecDeque<String>>, line: String, show: bool, limit: usize) {
+    if show {
+        eprintln!("{line}");
+    }
+    if let Ok(mut lines) = stderr.lock() {
+        while lines.len() == KEPT_LINES
+            || lines.iter().map(String::len).sum::<usize>() > limit - line.len()
+        {
+            lines.pop_front();
+        }
+        lines.push_back(line);
     }
 }
 
@@ -722,5 +937,198 @@ mod tests {
         let mut buffer = b"one\ntwo\nthr".to_vec();
         assert_eq!(take_lines(&mut buffer), ["one", "two"]);
         assert_eq!(buffer, b"thr");
+    }
+
+    #[test]
+    fn bounded_helpers_reject_missing_memory_and_invalid_transport_limits_before_engine_access() {
+        let limits = ProcessLimits {
+            max_frame_bytes: 8,
+            reply_capacity: 1,
+        };
+        for memory in [None, Some(0), Some(u64::MAX)] {
+            let spec = ContainerSpec {
+                engine: "/nowhere/iunctus.sock".into(),
+                memory,
+                ..Default::default()
+            };
+            assert!(matches!(
+                ContainerProcess::start_bounded(&spec, limits, &CancellationToken::new()),
+                Err(ProcessError::Limit { .. })
+            ));
+        }
+        let spec = ContainerSpec {
+            memory: Some(256 << 20),
+            ..Default::default()
+        };
+        assert!(validate_limits(&spec, limits).is_ok());
+        for limits in [
+            ProcessLimits {
+                max_frame_bytes: 0,
+                reply_capacity: 1,
+            },
+            ProcessLimits {
+                max_frame_bytes: 8,
+                reply_capacity: 0,
+            },
+            ProcessLimits {
+                max_frame_bytes: 8,
+                reply_capacity: usize::MAX,
+            },
+        ] {
+            assert!(validate_limits(&spec, limits).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn bounded_frames_reject_oversize_complete_and_fragmented_stdout_and_stderr() {
+        for stdout in [false, true] {
+            for parts in [
+                vec![b"12345\n".to_vec()],
+                vec![b"12".to_vec(), b"345".to_vec()],
+            ] {
+                let output = futures_util::stream::iter(parts.into_iter().map(|message| {
+                    Ok(if stdout {
+                        LogOutput::StdOut {
+                            message: message.into(),
+                        }
+                    } else {
+                        LogOutput::StdErr {
+                            message: message.into(),
+                        }
+                    })
+                }));
+                let (sender, _) = channel(1);
+                let stderr = Arc::new(Mutex::new(VecDeque::new()));
+                let result = read_limited(
+                    output,
+                    sender,
+                    stderr.clone(),
+                    false,
+                    ProcessLimits {
+                        max_frame_bytes: 4,
+                        reply_capacity: 1,
+                    },
+                    &CancellationToken::new(),
+                )
+                .await;
+                assert!(result.unwrap_err().contains("frame limit"));
+                assert!(stderr.lock().unwrap().is_empty());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn bounded_frames_handle_multiple_lines_and_keep_only_bounded_stderr_bytes() {
+        let output = futures_util::stream::iter(vec![
+            Ok(LogOutput::StdOut {
+                message: b"one\ntwo\n".to_vec().into(),
+            }),
+            Ok(LogOutput::StdErr {
+                message: b"12345\n".to_vec().into(),
+            }),
+            Ok(LogOutput::StdErr {
+                message: b"67890\n".to_vec().into(),
+            }),
+            Ok(LogOutput::StdErr {
+                message: b"tail".to_vec().into(),
+            }),
+        ]);
+        let (sender, mut receiver) = channel(2);
+        let stderr = Arc::new(Mutex::new(VecDeque::new()));
+        read_limited(
+            output,
+            sender,
+            stderr.clone(),
+            false,
+            ProcessLimits {
+                max_frame_bytes: 8,
+                reply_capacity: 2,
+            },
+            &CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(receiver.recv().await.as_deref(), Some("one"));
+        assert_eq!(receiver.recv().await.as_deref(), Some("two"));
+        assert_eq!(receiver.recv().await, None);
+        assert_eq!(
+            stderr
+                .lock()
+                .unwrap()
+                .iter()
+                .map(String::len)
+                .sum::<usize>(),
+            4
+        );
+        assert_eq!(
+            stderr.lock().unwrap().back().map(String::as_str),
+            Some("tail")
+        );
+    }
+
+    #[tokio::test]
+    async fn bounded_frames_reject_non_utf8_and_incomplete_stdout() {
+        for message in [vec![0xff, b'\n'], b"incomplete".to_vec()] {
+            let output = futures_util::stream::iter(vec![Ok(LogOutput::StdOut {
+                message: message.into(),
+            })]);
+            let (sender, _receiver) = channel(1);
+            assert!(
+                read_limited(
+                    output,
+                    sender,
+                    Arc::new(Mutex::new(VecDeque::new())),
+                    false,
+                    ProcessLimits {
+                        max_frame_bytes: 16,
+                        reply_capacity: 1
+                    },
+                    &CancellationToken::new()
+                )
+                .await
+                .is_err()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn cancellation_unblocks_a_reader_waiting_on_a_full_reply_queue() {
+        let output = futures_util::stream::iter(vec![Ok(LogOutput::StdOut {
+            message: b"one\ntwo\n".to_vec().into(),
+        })]);
+        let (sender, mut receiver) = channel(1);
+        let cancel = CancellationToken::new();
+        let trigger = cancel.clone();
+        let reader = tokio::spawn(async move {
+            read_limited(
+                output,
+                sender,
+                Arc::new(Mutex::new(VecDeque::new())),
+                false,
+                ProcessLimits {
+                    max_frame_bytes: 8,
+                    reply_capacity: 1,
+                },
+                &cancel,
+            )
+            .await
+        });
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while receiver.is_empty() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(!reader.is_finished());
+        assert_eq!(receiver.len(), 1);
+        trigger.cancel();
+        tokio::time::timeout(Duration::from_secs(1), reader)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(receiver.recv().await.as_deref(), Some("one"));
+        assert_eq!(receiver.recv().await, None);
     }
 }

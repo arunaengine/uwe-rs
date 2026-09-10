@@ -2,22 +2,26 @@
 
 Work resumed at the user's request on 2026-10-03. Continue in `/home/beavis/projects/iunctus` on **`fix/production-readiness`**, using the same shared checkout. The original review is [report.md](report.md), covering source `cd37a1843cc183955577804f63b3f8dbd111bf10`; remediation began from `5e5399d4e21647f51ed9997703aa74ca24f29608`.
 
-The latest verified code checkpoint is **`825751d6c511ccc20d45f94bfd428d2cfe4a33cb`**. One hundred fourteen small signed source commits preserve the completed batches, including eighty-five from the resumed work. Author and committer identities/dates match, subjects are single semantic lines, and each commit changes at most 500 lines. No push or pull request was performed. Five resumed waves are committed; continue the remaining work in the same shared checkout.
+The latest verified code checkpoint is **`9937441ad18bdf993967e78ff36608aa75096596`**. One hundred thirty-one small signed source commits preserve the completed batches, including one hundred two from the resumed work. Author and committer identities/dates match, subjects are single semantic lines, and each commit changes at most 500 lines. No push or pull request was performed. The remaining numbered remediation is committed in the same shared checkout.
 
-This remains a trusted local workflow engine. Describe path-related findings as path handling, staging and result correctness under the calling user's permissions. Preserve explicitly configured local inputs and hostPath behavior. Keep all task and package execution in containers; Conda prepares images. Implementation should continue primarily with Sol workers and narrow file ownership.
+This remains a trusted local workflow engine. Describe path-related findings as path handling, staging and result correctness under the calling user's permissions. Preserve explicitly configured local inputs and hostPath behavior. Keep all task and package execution in containers; Conda prepares images. Default to Sol workers with narrow file ownership. Use Astra only when explicitly requested or the task is especially hard.
 
 ## Status
 
 | Finding state | Count | Meaning |
 | --- | ---: | --- |
-| Implemented | 112 | Committed correction with passing local checks. Real backend qualification remains a separate gate. |
-| Partial | 11 | Some required paths are corrected; specific caller/backend work remains. |
-| Open | 2 | No complete corrective patch is committed. |
+| Implemented | 125 | Reported behavior corrected or explicitly refused at its unsupported boundary, with passing checks. External qualification remains separate. |
+| Partial | 0 | No numbered finding retains silent incorrect behavior at its supported boundary. |
+| Open | 0 | No numbered finding lacks its corrective patch or explicit supported boundary. |
 | Total | 125 | Every numbered finding in the source review appears below. |
 
-The status register is authoritative for the latest committed checkpoint. Prepared changes do not count as verified fixes. The original report describes the reviewed baseline, so its line references and initial verdict should be interpreted at that revision. The project is not yet qualified for broad unattended production use.
+The status register is authoritative for the latest committed checkpoint. Implemented includes explicit rejection where the source review allowed it; it does not claim full native feature parity. Prepared changes do not count as verified fixes. The original report describes the reviewed baseline, so its line references and initial verdict refer to that revision. The project is not yet qualified for broad unattended production use.
 
 ## Verification
+
+Final remaining-work verification covers **1,657 primary tests across 192 workspace targets, zero failures, and 77 ignored external cases** under `--workspace --all-targets --all-features`. One nested snapshot-permission child summary is excluded. All **six real rootful Docker Boa helper cases pass**, including native parser/builtin/allocation bounds, oversized/deep results, cancellation, ordinary semantics, default-driver cancellation and Tokio evaluation/drop. Three Docker OOM events were observed during the earlier five-case resource qualification. Pinned formatting, full workspace Clippy and the loader-alias packaging regression pass. The final binary/helper image identities are sealed. No hosted CI, release publication, live TES/Kubernetes/SLURM/object-store or rootless qualification was performed.
+
+Seventeen new signed source/test commits complete shared stale-entry repair, private complete directory hydration and retention, owned local temporaries, digest-checked cache/staging, read-only previews, bounded order-preserving Nextflow requests, explicit language option boundaries and mandatory TES/Kubernetes library admission. Boa stays native and uses the existing binary in a helper container: effective cgroup memory/swap proof, 20-second operation budget, 16 MiB framing, depth 64 and a separate removal grace of up to ten seconds. Helper operations and drop work inside Tokio callers without nested runtimes. Unsupported active directives, conflicting in-place Directory views and destructive remote GC remain explicitly refused.
 
 The fifth-wave affected checks verify **618 primary tests across 65 targets, zero unresolved failures, and 13 ignored external cases**. Final CWL and Snakemake package reruns replace earlier failed targets; one nested snapshot-permission child summary is excluded. Full pinned workspace formatting and Clippy pass, with final focused Snakemake Clippy after fixture correction. Test/development debug symbols were disabled; runtime assertions remained enabled. This continuation did not run real backend/Docker, hosted CI, browser or artifact qualification.
 
@@ -39,20 +43,22 @@ Key receipts include `resumed-wave-3-commits.json`, `resumed-wave-4-commits.json
 
 Fifth-wave receipts include `continued-wave-5-final-source-v4.json`, `continued-wave-5-verification.json`, `continued-wave-5-commits.json`, all fifteen exact staged/reviewed patches, `continued-wave-5-final-tests-v2.log`, `continued-snk-cwl-wave-5-final.log`, `continued-wave-5-format-v3.log`, `continued-wave-5-clippy-v2.log`, and `continued-snk-wave-5-final-clippy.log`. The final Nextflow fixture formatting-only delta is recorded in the source receipt.
 
+Final receipts include `remaining-final-source-v2.json`, `remaining-final-verification.json`, `remaining-language-commits.json`, `remaining-final-commits.json`, exact staged/reviewed patches, `remaining-full-workspace-v2.log`, `remaining-cwl-real-helper-v4.log`, `remaining-all-clippy-v5.log`, `remaining-all-format-v3.log`, `remaining-final-helper-identity.json`, `remaining-helper-v3-oom-events.jsonl` and `remaining-helper-packaging-tests.log`. Failed intermediate attempts and the loader-incomplete image archive remain preserved. Final helper image: `sha256:85dfedbe7e172135a1890614269ef358e1ae82db4578db0f9e30dd411de0c081`.
+
 Generated test executables alone had debug symbols removed when disk space became tight. The path/size receipts are in `generated-test-binaries.json` and `generated-completed-test-binaries-wave-4.json`; source, test logs and pre-existing artifacts were preserved. Later Cargo builds can regenerate those symbols. Do not remove unrelated build caches or existing worktrees.
 
-## Highest priority remaining work
+## Remaining production capabilities and qualification
 
-1. Complete CAS-10 exact-version shared stale-entry replacement and CAS-17 corruption recovery. These are the two wholly open numbered findings.
-2. Complete CAS-08 private full-tree hydration and completion publication, including child-first, interrupted, concurrent and empty-directory cases. Directory descriptors/retention are implemented, but existing partial roots remain accepted. Finish CAS-09 owned cleanup for local counter-named temporaries.
-3. Provide genuine distributed fencing. Runner loss monitoring, cancellation and publication checks are implemented; expiry checks cannot atomically fence submitted mutations. Remote destructive GC remains refused.
-4. Integrate mandatory TES/Kubernetes library recovery admission and qualify live remote recovery. Local SLURM orphan recovery is implemented; ambiguous, foreign, changed-configuration and insufficient-identity work stays retained.
-5. Finish NFR-08 bounded emission, NFR-11 directives/error callbacks, SNK-09 lifecycle/resource/shadow/cache/handover contracts, CWL-08 merged parent-directory views, and CWL-05 native/parse/heap/cancellation bounds. Supported sorting and evaluated signatures/local protection are implemented; native hash/deep sorting is explicitly unsupported.
-6. Connect immutable Conda context preparation to container build, target capability discovery, transport and CLI reuse. Supply complete pinned corpus bundles and qualify hosted CI/artifacts and real backends.
+1. Qualify real TES/Kubernetes/SLURM/object-store, rootless and shared-filesystem recovery against this revision. Library admission is implemented; foreign, changed, ambiguous and insufficient-identity work stays retained. Host boot changes and ambiguous accepted responses require operator reconciliation.
+2. Provide genuine distributed fencing before enabling destructive remote GC. Conditional leases and caller loss handling are implemented; already-submitted remote mutations are not atomically fenced. Memory/content-derived ETags retain their documented identical-byte replacement ambiguity.
+3. Connect immutable Conda context preparation to container build, target capability discovery, transport and CLI reuse. Supply complete pinned corpus bundles and run hosted CI/artifact workflows.
+4. Implement native behavior for currently refused Nextflow/Snakemake directives and in-place Directory combinations only through separately scoped feature work. Current refusal is the corrective support contract. Native hash/deep sorting remains unsupported.
+5. Qualify helper images/artifacts across advertised architectures and rootless engines, independent provenance/signatures, backup restoration, historical schemas and rollout. Candidate build/image preparation is tracked; no release was published.
+6. Measure input-scale factory/path/aggregate retention, trace export, graph history, run identity and persistent operator scratch. The runtime request bound is 128; it does not claim constant memory for inherently retained input data.
 
 ## Finding register
 
-Implemented entries show the relevant code commits. Partial/open entries state the remaining correction; use the original review for the causal trace and proposed reproducer.
+Implemented entries show the relevant correction and any explicit support boundary; use the original review for the causal trace. Production capability and qualification gaps remain separate from the numbered defect register.
 
 | Finding | State | Remaining work or code evidence |
 | --- | --- | --- |
@@ -79,28 +85,28 @@ Implemented entries show the relevant code commits. Partial/open entries state t
 | REM-02 | Implemented | 32f34f46 |
 | REM-03 | Implemented | b736670d |
 | REM-04 | Implemented | 32f34f46 |
-| REM-05 | Partial | 802b71a5, 6780772a implement matching local SLURM orphan recovery before library admission. TES/Kubernetes library admission and live qualification remain. |
+| REM-05 | Implemented | 062aa6c5, 9937441a add mandatory TES/Kubernetes admission and per-attempt locks; matching same-process orphans recover. Prior SLURM recovery remains. Foreign/ambiguous records stay retained; live qualification separate. |
 | REM-06 | Implemented | 93b042d3 |
 | REM-07 | Implemented | b736670d |
 | REM-08 | Implemented | f47fa00b, 344d3ba2 |
 | REM-09 | Implemented | b736670d |
 | CAS-01 | Implemented | f0388fbb, 6b737545, cad90602 |
-| CAS-02 | Partial | Internal links are retained locally; complete remote tree hydration remains CAS-08. |
-| CAS-03 | Partial | Local cleanup/admission is synchronized. Destructive cleanup with expiring remote authority is refused until a genuine fence exists. |
-| CAS-04 | Partial | 9f8b4857, 420a54f9 implement runner authority checks, loss monitoring, backend cancellation and late-success rejection. Checks cannot atomically fence submitted remote mutations. |
+| CAS-02 | Implemented | 3286d842, 88714b4d preserve verified internal links and empty directories in complete private hydration. Malformed/corrupt trees fail explicitly. |
+| CAS-03 | Implemented | Local cleanup/admission and inode authority prevent stale-plan deletion. Destructive cleanup with expiring remote authority is explicitly refused; enabling genuine distributed fencing is separate capability work. |
+| CAS-04 | Implemented | Conditional takeover/renewal/release and 9f8b4857, 420a54f9 reject lost ownership and late success. No claim of atomic fencing for already-submitted remote mutations. |
 | CAS-05 | Implemented | 4dadf581, 7961ac5a, 6c4910b3 |
 | CAS-06 | Implemented | 16489cd4 |
 | CAS-07 | Implemented | 2e68446c, 2c7abf20 |
-| CAS-08 | Partial | 7961ac5a, 6c4910b3 implement manifest associations and retention. Complete private hydration/publication remain; an existing partial root is still accepted. |
-| CAS-09 | Partial | 7961ac5a, 5d9cbb6a add owned unique layered-transfer/runner-staging temporaries. Local counter-named store temporaries still need owned cancellation cleanup. |
-| CAS-10 | Open | Separate front eviction from shared stale-entry replacement; condition mutation on the stale version without deleting a concurrent repair. |
+| CAS-08 | Implemented | 3286d842, fd1d9833 publish complete private snapshots and integrate stored URL/local callers, read-only previews and retention. Child-created partial roots are not accepted. |
+| CAS-09 | Implemented | c173e5ad completes owned local publication temporaries through queued operations, preserving permissions and copy behavior. Earlier owned storage/staging transfers remain verified. |
+| CAS-10 | Implemented | f7b1f6fb, 51e185f2 condition shared stale invalidation on observed versions, preserve changed successors and separate local eviction. Unsupported non-CAS recovery fails explicitly; content/ETag identity limits documented. |
 | CAS-11 | Implemented | d430989a |
 | CAS-12 | Implemented | d430989a |
 | CAS-13 | Implemented | d430989a |
 | CAS-14 | Implemented | f0388fbb, 6b737545, cad90602 |
 | CAS-15 | Implemented | 686a9545 |
 | CAS-16 | Implemented | 962a5bfc, 6c4910b3; provider-aware immutable bundles pair source version/bytes. Legacy address-only caches are retained but ignored. |
-| CAS-17 | Open | Define corruption recovery for entries, output bytes and logs; quarantine or safely miss damaged cache data instead of silent reuse. |
+| CAS-17 | Implemented | fd1d9833 safely misses malformed entries, verifies output/CAS/log bytes and rejects corrupted staging before execution. Damaged immutable trees/snapshots return explicit integrity errors; backend failures remain errors. |
 | NFL-01 | Implemented | 3bc29285, 13064401 |
 | NFL-02 | Implemented | 6f8410f9 |
 | NFL-03 | Implemented | b2da319a |
@@ -116,10 +122,10 @@ Implemented entries show the relevant code commits. Partial/open entries state t
 | NFR-05 | Implemented | aa3e4ce7 |
 | NFR-06 | Implemented | 75c50272 |
 | NFR-07 | Implemented | 1400d141, 75c50272, fb1b3e64, 2d12a437 |
-| NFR-08 | Partial | Stopped cursors are reclaimed; bounded factory emission and process-round backpressure remain. |
+| NFR-08 | Implemented | 7d36a77d lazily materializes source messages, releases stopped readers, preserves order and expands each incrementally under 128 outstanding requests. Source/path/necessary aggregate retention remains input-scale. |
 | NFR-09 | Implemented | 5c3fc8df; key/comparator closures and natural/arrival policies preserved. Native hash/deep modes explicitly unsupported. |
 | NFR-10 | Implemented | d914d987, d96a4966, a1ee1791 |
-| NFR-11 | Partial | 5c3fc8df preserves supported collectFile sorting and refuses hash/deep including default hashing. beforeScript/afterScript/maxErrors/fair and subscribe error callbacks remain. |
+| NFR-11 | Implemented | 7d36a77d explicitly rejects active unsupported beforeScript/afterScript/fair/maxErrors and subscribe error callbacks; inactive defaults retained. Supported sorting remains verified; hash/deep explicitly refused. |
 | SNK-01 | Implemented | 238b3a82 |
 | SNK-02 | Implemented | fdd2e643 |
 | SNK-03 | Implemented | 8b1db743 |
@@ -128,7 +134,7 @@ Implemented entries show the relevant code commits. Partial/open entries state t
 | SNK-06 | Implemented | 4f4dee76 |
 | SNK-07 | Implemented | c4aee6fe; real FIFO execution explicitly refused before task publication; full concurrency remains unsupported. |
 | SNK-08 | Implemented | fdd2e643, 4f4dee76 |
-| SNK-09 | Partial | 971eb9f7, f732ff33, 825751d6 implement evaluated signatures/dependent reruns, local protection and durable incomplete delivery markers. Lifecycle/resource/shadow/cache/handover contracts remain; legacy outputs without records retain skip behavior and unsupported params are uncomparable. |
+| SNK-09 | Implemented | Prior evaluated signatures/protection/incomplete delivery correction plus 4ed2c0dc refuse active unsupported lifecycle/resource-scopes/shadow/cache/handover options. Legacy no-record skip and uncomparable values remain explicit contracts. |
 | PY-01 | Implemented | ecde037f |
 | PY-02 | Implemented | ecde037f |
 | PY-03 | Implemented | ecde037f |
@@ -146,10 +152,10 @@ Implemented entries show the relevant code commits. Partial/open entries state t
 | CWL-02 | Implemented | d8fab178 |
 | CWL-03 | Implemented | d8fab178 |
 | CWL-04 | Implemented | 08d96ca8 |
-| CWL-05 | Partial | Cooperative VM slices, total work and deadline are implemented. Parse/native builtin/heap limits and external cancellation remain. |
+| CWL-05 | Implemented | 89c21080, efa57018, 2c9df699, d7f93ec0, dc6b1634 isolate native Boa with verified container memory/swap, whole-operation deadline, bounded framing, engine cancellation and Tokio-safe operations/drop. Six real helper cases pass. |
 | CWL-06 | Implemented | 08d96ca8 |
 | CWL-07 | Implemented | d8fab178 |
-| CWL-08 | Partial | 941c72bc, 583699e0 defer raw preparation, refresh held aliases and serialize nested/scatter writer access. Updated children still need merged parent-directory listing/staging/delivery views. |
+| CWL-08 | Implemented | Prior deferred writer/alias correction plus b22525f7 explicitly refuse conflicting held/synthesized parent Directory views and in-place Directory updates. Unrelated directories/completed readers remain supported; unresolved alias scans fail clearly. |
 | CWL-09 | Implemented | 08d96ca8 |
 | CWL-10 | Implemented | 4bfeba6e, 854a749c, 88a0ae5b, dae77512 |
 | ARG-01 | Implemented | acacacfa |
@@ -192,9 +198,9 @@ Implemented entries show the relevant code commits. Partial/open entries state t
 | Overlay identity | FORMAT2 and canonical serialization are unchanged. Only aliased/ancestor input destinations append ordered domain-separated bytes to the key. Disjoint keys remain compatible; staged overlays use private copies and keep input order. |
 | Process inputs | `TaskFrame` and `TaskRequest` retain per-round environment and stdin. Input environment overrides config values; `Task.stdin` is literal text whose bytes the runner hashes. |
 | Image platform | Local, TES, Kubernetes and SLURM use matching selected references and metadata. Unsupported GPU/platform combinations fail explicitly. Implicit image inspection no longer pulls a missing image, and that case passed real Docker qualification. |
-| Remote ownership | TES, Kubernetes and SLURM persist ownership before submit and retain accepted identity. Independent terminal confirmation gates cleanup. Unknown/foreign/unconfirmed work retains journals and scratch; local SLURM startup reconciliation is implemented. Mandatory TES/Kubernetes library admission remains. |
-| Cleanup synchronization | Local maintenance/admission and inode checks cover preparation, cache use and destructive removal. Remote lease operations are conditional; expiring authority cannot authorize destructive GC. Caller loss handling is implemented; atomic distributed fencing remains CAS-04. |
-| Input snapshots | Local task bytes are copied before hashing and execution, and retained under input-snapshots. Internal directory links and effective executable mode are represented consistently. Directory location retention is implemented; full remote directory hydration remains. InPlace keeps explicit mutable semantics. |
+| Remote ownership | TES, Kubernetes and SLURM persist ownership before submit, reconcile before library admission and retain accepted identity. Per-attempt locks distinguish live work from dropped futures. Independent terminal confirmation gates cleanup; unknown/foreign/unconfirmed work retains journals and scratch. |
+| Cleanup synchronization | Local maintenance/admission and inode checks cover preparation, cache use and destructive removal. Remote lease operations are conditional; expiring authority cannot authorize destructive GC. Caller loss handling is implemented; enabling genuine atomic distributed fencing remains separate capability work. |
+| Input snapshots | Local task bytes are copied before hashing and execution. Complete private directory snapshots preserve internal links, effective executable mode and empty directories, with manifest retention. Mode::Look uses a non-caching view; InPlace keeps explicit mutable semantics. |
 | Package cancellation | Additive cancellable start/run/exchange APIs and CLI tokens cover planning. Engine phases default to 600 seconds each, configurable execution/exchange budgets; process stop is bounded to 20 seconds and Python shutdown to 30. Late accepted-ID cleanup requires the coordinator runtime to remain alive; ambiguous transport acceptance remains a recovery limit. |
 | Python pins | Complete workflow constraints feed every UV preparation/install and the helper cache identity. Already-installed constrained distributions are validated before returning imports. Custom images need packaging or pip vendored packaging. |
 | Conda compatibility | Authoritative virtual capabilities, verified fetch callbacks and immutable base/platform/recipe identity/context APIs are implemented. Container build/transport/CLI integration and target capability discovery remain; never infer capabilities from the driver host. |
@@ -208,8 +214,8 @@ The journal gate in `iunctus/src/clean.rs` remains inside the maintenance guard 
 | Support contract | README and provisional language/backend support matrix are implemented. Release versioning and qualification remain; plain-script workflow semantics remain undefined. |
 | Automated CI | Pinned source, explicit corpus/Docker qualification and candidate artifact workflows are tracked. Local format/Clippy gates pass. Hosted execution, complete bundle availability and required branch checks remain. |
 | Backend qualification | Run real Docker/rootless Podman, Funnel/TES, Kubernetes and SLURM cases for cancellation, restart, UID ownership, multi-image limits, GPU placement, timeouts and shared paths. |
-| Other remote recovery | All three remote backends retain durable runtime ownership. Local SLURM startup identity reconciliation is implemented; mandatory TES/Kubernetes library caller admission remains. |
-| Portable remote data | Shared driver paths remain a deployment prerequisite. Remote directory fidelity, empty directories, provider listings and staging without shared filesystems need completion. |
+| Other remote recovery | All three backends have mandatory library recovery admission. Live service/shared-filesystem qualification, changed-host recovery and ambiguous accepted responses remain separate gates. |
+| Portable remote data | Complete registered directory hydration is implemented. Shared driver paths remain a remote task deployment prerequisite; removing it needs separately scoped transport work and provider qualification. |
 | Conda image preparation | Verified immutable context APIs are implemented. Connect transport, target capability discovery and context submission through the container API/CLI, then verify final image reuse. Pip-bearing locks fail explicitly; no host Conda execution. |
 | Package environment reproducibility | Helper cancellation and complete transitive constraints are implemented; immutable helper image identity, system-library requirements and coordinator-crash cleanup remain. |
 | Network and cache policy | Decide documented sharing policy for network-dependent results and offline reuse; current behavior was explicitly an unresolved policy, not silently changed here. |
@@ -228,10 +234,10 @@ The journal gate in `iunctus/src/clean.rs` remains inside the maintenance guard 
 | Large CAS inputs and logs | Stream verified remote staging and bounded visible log excerpts while retaining full stored logs and successful task status. |
 | Trace export | All events/spans and cloned request chunks consume run-scale memory. Remove clones and introduce incremental event/export/send APIs where necessary. |
 | Simulator work | Add a consistent configurable expansion/work/output budget; preserve ordinary synthetic task behavior. |
-| Tree retention closure | Committed closure traversal retains descendants of imported/no-cache/recent manifests. Bare directory URL associations now retain manifests through descriptors; full-tree hydration remains CAS-08. |
+| Tree retention closure | Committed closure traversal retains descendants of imported/no-cache/recent manifests and completed directory snapshots. Bare directory URL associations retain manifests through descriptors. |
 | Best-effort leases | Remote lease mutation is conditional and old owners cannot delete successors. Runner loss monitoring is implemented; atomic distributed fencing remains an explicit gap. |
 | Stable identity | Nextflow task identity still depends on arrival order. CLI run IDs use time/PID only. Qualify resume/replay under reordered dynamic inputs and shared hosts. |
-| Native evaluation | VM budgets do not automatically bound JavaScript builtins/parse/heap or every Python native helper. Keep exact guarantees and residual limits visible. |
+| Native evaluation | CWL parsing/builtins/heap are isolated under verified helper limits. Python native helpers and other input-scale controller work still need their separately scoped work/output limits and qualification. |
 | os.walk | Generator expressions, live lists/custom iterators and supported generator functions now suspend correctly. os.walk link/topdown/pruning and unsupported function-suspension forms remain. |
 | Schema evolution | Test old-run export/resume/replay and old-cache compatibility across the supported version window. |
 | Recorder transactions | Add action savepoints/rollback and fault injection for partial action, disk-full, kill and commit failure. |
@@ -243,7 +249,7 @@ Denied validation retries execute freshly and lineage resume respects the same p
 
 ## Code organization and documentation remaining
 
-Accepted-option enforcement, error propagation and simulator/real mode boundaries still need the open semantic fixes. Cache policy and eviction/invalidation contracts remain duplicated. Temporary publication schemes, current-location versus historical-digest rules, frontend/backend terminal rules, source-span diagnostics and oracle version identities need consistent tests and documentation.
+Reported accepted-option and cache eviction/invalidation defects are corrected with explicit support boundaries and regressions. Broader source-span diagnostics, current-location versus historical-digest policy, oracle identities and organization remain separately scoped future work; they do not authorize cleanup in these patches.
 
 Large files remain a reviewability concern. Any restructuring should have a concrete behavioral reason and its own scoped patch. Workspace dependency centralization and existing crate responsibilities remain useful. Update the stale roadmap and documentation guarantees after the corresponding behavior is tested; historical receipts should retain their original dates and limits.
 
@@ -251,7 +257,7 @@ Large files remain a reviewability concern. Any restructuring should have a conc
 
 1. Read this handoff, `report.md`, `ledger.json`, and the current Git diff/status. Keep the shared branch and preserve user changes made after this checkpoint.
 2. Reconfirm the code revision and local tools. Restore evidence paths from this repository if `/tmp` was cleared. Use Sol implementation workers with exclusive directories; parent owns Git, root manifests, shared CLI contracts and checks.
-3. Start with the seven partial and eight open findings above, using the prepared caller-loss, hydration, provider-cache and writable-scheduling plans. Confirm false positives from source rather than blindly implementing every historical suggestion.
+3. Numbered remediation is complete within the documented supported boundaries. Start new capability or qualification work from its concrete requirements; do not silently widen support claims or implement historical suggestions without checking their current cause.
 4. Before edits, state the narrow cause, minimum correction and exact files. Produce coherent batches of at most 450 changed lines so final signed commits stay below 500.
 5. Freeze each batch, format only touched files, review the exact diff, and run meaningful bounded checks. Guarded Cargo needs approved host access to the systemd user scope; preserve the guard and signing hooks.
 6. Update each finding with a commit and exact validation, and retain unresolved policy or external qualification explicitly. Do not mark production readiness from local unit results alone.
@@ -262,8 +268,8 @@ Useful checks:
 git switch fix/production-readiness
 git status --short
 cargo test --offline --locked --workspace --all-targets --no-fail-fast -j 2
-cargo +nightly-2026-09-14 fmt --all -- --check
-cargo +nightly-2026-09-14 clippy --offline --locked --workspace --all-targets --all-features -j 2 -- -D warnings
+cargo fmt --all -- --check
+cargo clippy --offline --locked --workspace --all-targets --all-features -j 2 -- -D warnings
 cargo test --offline --locked --workspace --doc -j 2
 ```
 
@@ -287,4 +293,4 @@ Run expensive external/corpus gates only with their documented prerequisites. QL
 | Conda resolver | `conda-environment/` except corpus gate owned by quality |
 | Parent integration | Root manifests/lock, justfile, shared CLI main/cleanup, review/handoff and coordination |
 
-The 99 verified source commits remain on the separate branch. Four resumed waves are committed; proceed with the remaining numbered findings and capability gates in the same shared checkout. Implementation workers pause after each packet until the parent acknowledges a verified commit.
+The 131 verified source commits remain on the separate branch. All numbered findings now have corrective patches or explicit supported boundaries. Future capability/qualification work remains in the same shared checkout, with Sol workers by default and parent-owned checks/signing.

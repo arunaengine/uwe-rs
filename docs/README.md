@@ -62,6 +62,7 @@ Real runs learn from earlier ones: a task asks for the CPUs and memory that the 
 - [Decisions](decisions.md): what has been decided so far. It replaces the report's plan where they differ.
 - [Roadmap](roadmap.md): what is still missing for real runs and parity with the native engines, and how iunctus can give deeper insight, higher reproducibility, better efficiency and storage across providers.
 - [Universal workflow audit (2026-10-07)](universal-workflow-audit-2026-10-07.md): source-backed findings, JSON Schema and form gaps, native language coverage, Aruna integration contracts and a prioritized implementation backlog.
+- [Universal workflow remediation](universal-workflow-progress.md): current implementation status, verified commits and remaining qualification gates.
 - [Feasibility report](feasibility-report.md): verdict per language, proposed architecture, phased plan, open decisions and next steps.
 
 ## Design

@@ -18,6 +18,7 @@ use crate::binding::{self, Binder, Bound, Key};
 use crate::expression::{Evaluator, Variables};
 use crate::files::{self, Access};
 use crate::inputs::has_code;
+use crate::javascript_helper::JavaScriptSettings;
 use crate::scope::Scope;
 use crate::types::Types;
 use crate::value::{Map, Value};
@@ -58,6 +59,7 @@ pub struct Options {
     pub fill_optional: bool,
     /// Where files at addresses are read from while the run plans: the storage providers.
     pub remote: Remote,
+    pub javascript: JavaScriptSettings,
 }
 
 impl Default for Options {
@@ -67,6 +69,7 @@ impl Default for Options {
             image: DEFAULT_IMAGE.into(),
             fill_optional: false,
             remote: Remote::default(),
+            javascript: JavaScriptSettings::default(),
         }
     }
 }
@@ -140,7 +143,7 @@ pub fn task(
     fake: bool,
 ) -> Result<(Task, Pending), String> {
     let (name, step) = names;
-    let evaluator = scope.evaluator();
+    let evaluator = scope.evaluator(&options.javascript);
     let mut types = scope.types();
     for input in &process.inputs {
         types.add(&input.value_type);
@@ -327,7 +330,13 @@ pub fn task(
                 Ok(value) => value,
                 // An argument made from the content of files whose content is not real, as in
                 // a simulated run, cannot be made; it becomes a marker, so the task still exists.
-                Err(_) if fake && reads_contents(expression) => Value::string(FAKE_ARGUMENT),
+                Err(error)
+                    if fake
+                        && !crate::javascript_helper::boundary(&error)
+                        && reads_contents(expression) =>
+                {
+                    Value::string(FAKE_ARGUMENT)
+                }
                 Err(error) => return Err(format!("the command line: {error}")),
             },
             None => bound.value.clone(),

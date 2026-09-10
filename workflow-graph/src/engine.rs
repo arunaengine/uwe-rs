@@ -241,6 +241,7 @@ impl<'a> Engine<'a> {
         attempts: &mut Attempts,
     ) -> Result<(), ExecuteError> {
         self.check_cancel()?;
+        driver.use_cancel(self.cancel.clone());
         let mut queue = Queue::default();
         let files = self.executor.files();
         if let Some(files) = &files {

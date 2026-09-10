@@ -208,6 +208,9 @@ impl Run {
         let (Err(error), Some(base)) = (&first, &self.placeholders) else {
             return first;
         };
+        if crate::javascript_helper::boundary(error) {
+            return first;
+        }
         let mut values = gathered;
         let mut last = error.clone();
         for _ in 0..8 {
@@ -231,6 +234,7 @@ impl Run {
             }
             match self.element(step, values.clone(), evaluator) {
                 Ok(job) => return Ok(job),
+                Err(next) if crate::javascript_helper::boundary(&next) => return Err(next),
                 Err(next) => last = next,
             }
         }
@@ -246,6 +250,11 @@ impl Run {
                     runtime: &expression_runtime(),
                 },
             );
+            if let Err(error) = &skipped
+                && crate::javascript_helper::boundary(error)
+            {
+                return Err(error.clone());
+            }
             if matches!(skipped, Ok(Value::Bool(false) | Value::Null)) {
                 return Ok(None);
             }

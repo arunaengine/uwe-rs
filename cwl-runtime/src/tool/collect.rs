@@ -556,7 +556,13 @@ impl Collector<'_> {
                 Ok(value) => value,
                 // Expressions that read the files of a simulated run read empty files and may
                 // fail; the output then gets a placeholder, as when it does not fit its type.
-                Err(_) if self.access.assume_present && reads_self(expression) => Value::Null,
+                Err(error)
+                    if self.access.assume_present
+                        && !crate::javascript_helper::boundary(&error)
+                        && reads_self(expression) =>
+                {
+                    Value::Null
+                }
                 Err(error) => return Err(error),
             },
             None => Value::List(found),
@@ -595,7 +601,12 @@ impl Collector<'_> {
                 let value = match self.evaluate(format, primary) {
                     Ok(value) => value,
                     // The format is metadata; over the inputs of a simulated run it may not exist.
-                    Err(_) if self.access.assume_present => Value::Null,
+                    Err(error)
+                        if self.access.assume_present
+                            && !crate::javascript_helper::boundary(&error) =>
+                    {
+                        Value::Null
+                    }
                     Err(error) => return Err(error),
                 };
                 if let (Value::Map(map), Value::String(format)) = (&mut **primary, value) {

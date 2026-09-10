@@ -140,11 +140,18 @@ pub fn driver_with(
     storage: &Storage,
     downloads: PathBuf,
 ) -> Result<Box<dyn Driver>, DriverError> {
-    let options = Options {
-        simulated: launch.simulated,
-        remote: Remote::new(storage, downloads),
-        ..Options::default()
-    };
+    driver_with_options(launch, storage, downloads, Options::default())
+}
+
+/// Runs with explicit JavaScript helper settings and the launch's storage access.
+pub fn driver_with_options(
+    launch: &Launch,
+    storage: &Storage,
+    downloads: PathBuf,
+    mut options: Options,
+) -> Result<Box<dyn Driver>, DriverError> {
+    options.simulated = launch.simulated;
+    options.remote = Remote::new(storage, downloads);
     Ok(Box::new(CwlDriver::new(launch, options)?))
 }
 
@@ -211,6 +218,10 @@ impl Driver for CwlDriver {
 
     fn use_files(&mut self, files: Arc<dyn Files>) {
         self.run.use_files(files);
+    }
+
+    fn use_cancel(&mut self, cancel: workflow_graph::CancellationToken) {
+        self.run.use_cancel(cancel);
     }
 
     fn deliveries(&mut self) -> Vec<Delivery> {

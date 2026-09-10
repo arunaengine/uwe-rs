@@ -5,7 +5,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::{Delivery, ExecuteError, Files, Inputs, Language, Note, Outcome, Task};
+use crate::{
+    CancellationToken, Delivery, ExecuteError, Files, Inputs, Language, Note, Outcome, Task,
+};
 
 /// What a user asks to run, in the terms all languages share. Each language crate exposes
 /// `pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError>`.
@@ -129,6 +131,9 @@ pub trait Driver {
     /// engine gives them before `start`; a simulated run has none, and its outputs are local
     /// files. The default keeps nothing.
     fn use_files(&mut self, _files: Arc<dyn Files>) {}
+
+    /// Supplies cancellation to drivers that evaluate code while planning.
+    fn use_cancel(&mut self, _cancel: CancellationToken) {}
 
     /// The outputs of the workflow as one JSON Schema of the results of a run, from what the
     /// workflow declares, so that one workflow can feed another (decision 24). Like

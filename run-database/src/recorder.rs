@@ -564,15 +564,11 @@ impl Writer {
         run: &str,
         action: impl FnOnce(&Connection, &str, i64) -> rusqlite::Result<()>,
     ) {
-        if !self.begin() {
-            return;
+        let sequence = self.sequence + 1;
+        self.update(run, |connection, run| action(connection, run, sequence));
+        if self.error.is_none() {
+            self.sequence = sequence;
         }
-        self.sequence += 1;
-        if let Err(error) = action(&self.connection, run, self.sequence) {
-            self.error = Some(error.into());
-            return;
-        }
-        self.commit_if_old();
     }
 
     /// Runs one write that is no event inside the open transaction, as [`Writer::write`] does.
@@ -584,7 +580,22 @@ impl Writer {
         if !self.begin() {
             return;
         }
-        if let Err(error) = action(&self.connection, run) {
+        let mut rollback_failed = false;
+        let written =
+            self.connection
+                .savepoint()
+                .and_then(|savepoint| match action(&savepoint, run) {
+                    Ok(()) => savepoint.commit().inspect_err(|_| rollback_failed = true),
+                    Err(error) => {
+                        rollback_failed = savepoint.finish().is_err();
+                        Err(error)
+                    }
+                });
+        if let Err(error) = written {
+            if rollback_failed {
+                let _ = self.connection.execute_batch("ROLLBACK");
+                self.batch = None;
+            }
             self.error = Some(error.into());
             return;
         }
@@ -748,5 +759,91 @@ mod tests {
             "{}",
             kept.len()
         );
+    }
+
+    #[test]
+    fn failed_actions_rollback_without_losing_completed_actions() {
+        for (fails_event, failure) in [(true, "ABORT"), (false, "ABORT"), (true, "ROLLBACK")] {
+            let folder = tempfile::tempdir().expect("a folder");
+            let path = folder.path().join("runs.sqlite");
+            let start = RunStart {
+                id: "run-1".into(),
+                resumes: None,
+                workflow: "/work/main.cwl".into(),
+                language: workflow_graph::Language::Cwl,
+                revision: None,
+                arguments: Vec::new(),
+                parameters: Vec::new(),
+                executor: "local".into(),
+                simulated: false,
+                store: None,
+                program: None,
+                launch: None,
+                workflow_folder: None,
+                repeats: None,
+            };
+            let mut recorder = crate::Database::open(&path)
+                .and_then(|database| database.record(&start))
+                .expect("records");
+            lock(&recorder.writer)
+                .connection
+                .execute_batch(&format!(
+                    "CREATE TRIGGER reject_requested_event BEFORE INSERT ON events
+                     WHEN NEW.task = 2 BEGIN SELECT RAISE({failure}, 'injected event failure'); END;
+                     CREATE TRIGGER reject_source BEFORE INSERT ON sources
+                     WHEN NEW.path = 'rejected.cwl'
+                     BEGIN SELECT RAISE(ABORT, 'injected metadata failure'); END;"
+                ))
+                .expect("injects a late action failure");
+            let task = Task {
+                id: TaskId(1),
+                ..Task::default()
+            };
+            recorder.requested(&task, &[]);
+            let source = Source {
+                kind: crate::SourceKind::Workflow,
+                path: "prior.cwl".into(),
+                digest: format!("sha256:{}", "0".repeat(64)),
+                size: 1,
+            };
+            recorder.sources(std::slice::from_ref(&source));
+            if failure == "ROLLBACK" {
+                recorder.commit();
+            }
+            if fails_event {
+                recorder.requested(
+                    &Task {
+                        id: TaskId(2),
+                        inputs: vec![workflow_graph::Input {
+                            path: "in.txt".into(),
+                            content: Some("partial".into()),
+                            ..Default::default()
+                        }],
+                        ..Task::default()
+                    },
+                    &[],
+                );
+            } else {
+                recorder.sources(&[
+                    Source {
+                        path: "partial.cwl".into(),
+                        ..source.clone()
+                    },
+                    Source {
+                        path: "rejected.cwl".into(),
+                        ..source
+                    },
+                ]);
+            }
+            let error = recorder.close().expect_err("the first failure is reported");
+            assert!(error.to_string().contains("injected"), "{error}");
+            let database = crate::Database::open(&path).expect("opens");
+            assert_eq!(database.tasks("run-1").unwrap().len(), 1);
+            assert!(database.files("run-1", Some(2)).unwrap().is_empty());
+            assert_eq!(database.events("run-1", 0, 10).unwrap().len(), 1);
+            let sources = database.sources("run-1").unwrap();
+            assert_eq!(sources.len(), 1);
+            assert_eq!(sources[0].path, "prior.cwl");
+        }
     }
 }

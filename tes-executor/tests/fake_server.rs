@@ -86,6 +86,32 @@ fn serve(task: Arc<Mutex<Option<serde_json::Value>>>) -> String {
     address
 }
 
+fn simple_spec() -> TaskSpec {
+    TaskSpec {
+        run_as: None,
+        format: FORMAT,
+        namespace: String::new(),
+        image: Some(Image {
+            reference: "test".into(),
+            platform: None,
+        }),
+        arguments: vec!["true".into()],
+        workdir: None,
+        environment: Default::default(),
+        inputs: Vec::new(),
+        outputs: Vec::new(),
+        stdin: None,
+        containers: Vec::new(),
+        replaces_entrypoint: true,
+    }
+}
+
+fn process_start() -> String {
+    let stat = std::fs::read_to_string(format!("/proc/{}/stat", std::process::id())).unwrap();
+    let (_, fields) = stat.rsplit_once(')').unwrap();
+    fields.split_whitespace().nth(19).unwrap().to_owned()
+}
+
 #[test]
 fn tasks_run_on_the_server_and_give_back_their_outputs() {
     let folder = tempfile::tempdir().expect("a temporary directory");
@@ -416,6 +442,23 @@ fn ambiguous_submissions_keep_scratch_and_block_restart() {
             .contains("submission response was not recorded")
     );
     assert!(root.join("remote.json").exists());
+    let spec = simple_spec();
+    let (staging, placement) = (Staging::default(), Placement::default());
+    let blocked = Job {
+        name: "blocked",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = runtime
+        .block_on(backend.run(blocked, &CancellationToken::new()))
+        .expect_err("ambiguous ownership blocks admission");
+    assert!(
+        error
+            .to_string()
+            .contains("submission response was not recorded")
+    );
+    assert!(!backend.scratch.join("blocked").exists());
     let address = serve(Arc::new(Mutex::new(None)));
     let backend = TesBackend {
         client: Client::new(&address, None).unwrap(),
@@ -429,4 +472,107 @@ fn ambiguous_submissions_keep_scratch_and_block_restart() {
         .expect("a terminal accepted task reconciles");
     assert!(!root.join("remote.json").exists());
     assert!(root.exists());
+}
+
+#[test]
+fn dropped_attempt_is_recovered_in_the_same_live_coordinator() {
+    let folder = tempfile::tempdir().unwrap();
+    let scratch = folder.path().join("scratch");
+    let orphan = scratch.join("orphan");
+    std::fs::create_dir_all(&orphan).unwrap();
+    std::fs::File::create(orphan.join("remote.lock")).unwrap();
+    let task = Arc::new(Mutex::new(None));
+    let address = serve(task.clone());
+    let backend = TesBackend {
+        client: Client::new(&address, None).unwrap(),
+        scratch,
+        configs: ImageConfigs::known([("test".into(), ImageConfig::default())]),
+    };
+    std::fs::write(
+        orphan.join("remote.json"),
+        serde_json::json!({
+            "backend": "TES", "server": backend.client.server(), "name": "orphan",
+            "id": "task-1", "owner": std::process::id(), "started": process_start(),
+            "host": std::fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap(),
+            "locked": true,
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let spec = simple_spec();
+    let (staging, placement) = (Staging::default(), Placement::default());
+    let next = Job {
+        name: "next",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime
+        .block_on(backend.run(next, &CancellationToken::new()))
+        .unwrap();
+    assert!(!orphan.join("remote.json").exists());
+    assert!(task.lock().unwrap().is_some());
+}
+
+#[test]
+fn active_attempt_is_retained_and_pre_cancel_submits_nothing() {
+    let folder = tempfile::tempdir().unwrap();
+    let scratch = folder.path().join("scratch");
+    let active = scratch.join("active");
+    std::fs::create_dir_all(&active).unwrap();
+    let lock = std::fs::File::create(active.join("remote.lock")).unwrap();
+    lock.try_lock().unwrap();
+    let task = Arc::new(Mutex::new(None));
+    let address = serve(task.clone());
+    let backend = TesBackend {
+        client: Client::new(&address, None).unwrap(),
+        scratch,
+        configs: ImageConfigs::known([("test".into(), ImageConfig::default())]),
+    };
+    std::fs::write(
+        active.join("remote.json"),
+        serde_json::json!({
+            "backend": "TES", "server": backend.client.server(), "name": "active",
+            "id": "task-1", "owner": std::process::id(), "started": process_start(),
+            "host": std::fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap(),
+            "locked": true,
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let spec = simple_spec();
+    let (staging, placement) = (Staging::default(), Placement::default());
+    let cancelled = Job {
+        name: "cancelled",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    assert!(matches!(
+        runtime.block_on(backend.run(cancelled, &cancel)),
+        Err(ExecutorError::Cancelled)
+    ));
+    assert!(active.join("remote.json").is_file());
+    assert!(task.lock().unwrap().is_none());
+    let sibling = Job {
+        name: "sibling",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    runtime
+        .block_on(backend.run(sibling, &CancellationToken::new()))
+        .unwrap();
+    assert!(active.join("remote.json").is_file());
+    assert!(task.lock().unwrap().is_some());
 }

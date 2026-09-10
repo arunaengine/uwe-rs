@@ -64,6 +64,15 @@ use crate::setup::Setup;
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
+    if arguments.as_slice() == ["__cwl-js-worker"] {
+        return match cwl_runtime::javascript_worker_main() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                eprintln!("{message}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let Some((command, rest)) = arguments.split_first() else {
         eprintln!("{USAGE}");
         return ExitCode::from(failure::USAGE);
@@ -478,7 +487,11 @@ fn driver(
         }
         Language::Cwl => {
             let downloads = cache_directory().join("downloads");
-            cwl_runtime::driver_with(launch, &setup.storage, downloads)
+            let options = cwl_runtime::Options {
+                javascript: cwl_runtime::JavaScriptSettings::new(setup.engine(), cancel.clone()),
+                ..cwl_runtime::Options::default()
+            };
+            cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)
         }
         Language::Argo => argo_runtime::driver(launch),
     }

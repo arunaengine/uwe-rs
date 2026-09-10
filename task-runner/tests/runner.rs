@@ -210,6 +210,77 @@ fn reuses_shared_results() {
 }
 
 #[test]
+fn damaged_cache_entries_outputs_and_logs_are_not_reused() {
+    for damaged in ["entry", "output", "content", "log"] {
+        let root = tempfile::tempdir().unwrap();
+        let runner = runner(root.path(), 0);
+        let task = task(root.path(), "a");
+        let prepared = request(&runner, &task);
+        let key = prepared.request.spec.cache_key().unwrap();
+        let namespace = &prepared.request.spec.namespace;
+        let first = execute(&runner, &prepared);
+        let store = Store::local(&root.path().join("store")).unwrap();
+        let content_path = store
+            .local_path(&content_store::layout::content(&first.files[0].digest))
+            .unwrap();
+        let log_path = store
+            .local_path(&content_store::layout::content(
+                first.stdout.as_ref().unwrap(),
+            ))
+            .unwrap();
+        let content = std::fs::read(&content_path).unwrap();
+        let log = std::fs::read(&log_path).unwrap();
+        let location = match damaged {
+            "entry" => content_store::layout::entry(namespace, &key).unwrap(),
+            "output" => first.files[0].location.clone(),
+            "content" => content_store::layout::content(&first.files[0].digest),
+            _ => content_store::layout::content(first.stdout.as_ref().unwrap()),
+        };
+        let path = store.local_path(&location).unwrap();
+        let original = std::fs::read(&path).unwrap();
+        let corrupted = if damaged == "entry" {
+            b"{".as_slice()
+        } else {
+            b"evil\n".as_slice()
+        };
+        std::fs::write(&path, corrupted).unwrap();
+        let lookup = task_runner::Lookup::new(
+            store.clone(),
+            Settings {
+                downloads: root.path().join("downloads"),
+                import_inputs: false,
+                storage: storage::Storage::default(),
+                digests: None,
+            },
+        );
+        assert!(
+            block_on(lookup.find(&task, Some("debian@sha256:00".into())))
+                .unwrap()
+                .is_none(),
+            "{damaged}"
+        );
+        assert!(
+            block_on(store.get_entry(namespace, &key))
+                .unwrap()
+                .is_some()
+        );
+        let fresh = execute(&runner, &prepared);
+        assert!(!fresh.reused, "{damaged}");
+        let replacement = block_on(store.get_entry(namespace, &key)).unwrap().unwrap();
+        assert!(
+            task_runner::CacheEntry::parse(&key, &replacement).is_ok(),
+            "{damaged}"
+        );
+        if damaged != "entry" {
+            std::fs::write(&path, original).unwrap();
+        }
+        std::fs::write(content_path, content).unwrap();
+        std::fs::write(log_path, log).unwrap();
+        assert!(execute(&runner, &prepared).reused, "{damaged}");
+    }
+}
+
+#[test]
 fn preparation_executes_the_copied_bytes_and_retains_them() {
     let root = tempfile::tempdir().unwrap();
     let runner = runner(root.path(), 0);
@@ -231,6 +302,53 @@ fn preparation_executes_the_copied_bytes_and_retains_them() {
     assert!(execute(&runner, &restored).reused);
     drop(runner);
     assert_eq!(std::fs::read(snapshot).unwrap(), b"data\n");
+}
+
+#[tokio::test]
+async fn corrupt_literal_content_is_rejected_before_execution() {
+    for remote in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let store = if remote {
+            Store::memory().unwrap()
+        } else {
+            Store::local(&root.path().join("store")).unwrap()
+        };
+        let runner = runner_with(
+            store,
+            root.path(),
+            "literal",
+            std::time::Duration::ZERO,
+            0,
+            false,
+        );
+        let mut task = task(root.path(), "literal");
+        task.inputs[0].content = Some("literal\n".into());
+        task.reuse = workflow_graph::Reuse::Disabled;
+        let prepared = runner
+            .request(&task, Some("debian@sha256:00".into()))
+            .await
+            .unwrap();
+        runner
+            .execute(&prepared, &CancellationToken::new())
+            .await
+            .unwrap();
+        let cached = runner.backend().staged.lock().unwrap()[0].inputs[0]
+            .source
+            .clone();
+        std::fs::write(&cached, b"damaged\n").unwrap();
+        let error = runner
+            .execute(&prepared, &CancellationToken::new())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(
+                &error,
+                task_runner::RunnerError::Store(content_store::StoreError::Corrupt { .. })
+            ),
+            "{remote}: {error}"
+        );
+        assert_eq!(runner.backend().runs.lock().unwrap().len(), 1);
+    }
 }
 
 #[test]
@@ -565,6 +683,189 @@ fn remote_inputs_are_downloaded_once() {
     remote.inputs[0].source = "az://container/input.txt".into();
     let error = block_on(runner.request(&remote, None)).unwrap_err();
     assert!(error.unsupported(), "{error}");
+}
+
+#[tokio::test]
+async fn lookups_validate_shared_artifacts_without_populating_the_front() {
+    let root = tempfile::tempdir().unwrap();
+    let front = root.path().join("store");
+    let store = Store::layered(Store::local(&front).unwrap(), Store::memory().unwrap()).unwrap();
+    let runner = runner_with(
+        store.clone(),
+        root.path(),
+        "preview",
+        std::time::Duration::ZERO,
+        0,
+        false,
+    );
+    let mut task = task(root.path(), "preview");
+    task.outputs = vec!["directory/".into()];
+    let prepared = runner
+        .request(&task, Some("debian@sha256:00".into()))
+        .await
+        .unwrap();
+    runner
+        .execute(&prepared, &CancellationToken::new())
+        .await
+        .unwrap();
+    for prefix in ["cas/", "trees/"] {
+        for object in store.objects(prefix).await.unwrap() {
+            if !object.folder {
+                std::fs::remove_file(front.join(object.location)).unwrap();
+            }
+        }
+    }
+    let before = store.objects("").await.unwrap();
+    let lookup = task_runner::Lookup::new(
+        store.clone(),
+        Settings {
+            downloads: root.path().join("downloads"),
+            import_inputs: false,
+            storage: storage::Storage::default(),
+            digests: None,
+        },
+    );
+    assert!(
+        lookup
+            .find(&task, Some("debian@sha256:00".into()))
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(store.objects("").await.unwrap(), before);
+}
+
+#[tokio::test]
+async fn layered_directory_inputs_use_complete_snapshots_and_lookups_remain_read_only() {
+    let root = tempfile::tempdir().unwrap();
+    let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
+    let shared = Store::remote(operator, "s3://shared/cache").unwrap();
+    let a = shared
+        .put_content(bytes::Bytes::from_static(b"a"))
+        .await
+        .unwrap();
+    let b = shared
+        .put_content(bytes::Bytes::from_static(b"b"))
+        .await
+        .unwrap();
+    let tree = task_model::Tree {
+        entries: vec![
+            task_model::TreeEntry::File {
+                path: "a".into(),
+                digest: a,
+                size: 1,
+                executable: false,
+            },
+            task_model::TreeEntry::File {
+                path: "b".into(),
+                digest: b,
+                size: 1,
+                executable: false,
+            },
+            task_model::TreeEntry::EmptyDirectory {
+                path: "empty".into(),
+            },
+        ],
+    };
+    let digest = shared.put_tree(&tree).await.unwrap();
+    let location = "runs/earlier/task/1/work/directory";
+    shared
+        .put_output(
+            "earlier",
+            "task",
+            1,
+            "directory/a",
+            bytes::Bytes::from_static(b"a"),
+        )
+        .await
+        .unwrap();
+    shared.put_directory(location, &digest).await.unwrap();
+    let store = Store::layered(
+        Store::local(&root.path().join("store")).unwrap(),
+        shared.clone(),
+    )
+    .unwrap();
+    store.local_file(&format!("{location}/a")).await.unwrap();
+    let partial = store.local_path(location).unwrap();
+    assert!(!partial.join("b").exists());
+    let runner = runner_with(
+        store.clone(),
+        root.path(),
+        "consumer",
+        std::time::Duration::ZERO,
+        0,
+        false,
+    );
+    let mut task = task(root.path(), "directory");
+    task.inputs.push(Input {
+        path: "in".into(),
+        source: shared.url(location),
+        directory: true,
+        ..Input::default()
+    });
+    let prepared = runner
+        .request(&task, Some("debian@sha256:00".into()))
+        .await
+        .unwrap();
+    assert_eq!(prepared.request.spec.inputs[1].digest, digest);
+    runner
+        .execute(&prepared, &CancellationToken::new())
+        .await
+        .unwrap();
+    let directory = runner.backend().staged.lock().unwrap()[0].inputs[1]
+        .source
+        .clone();
+    assert_eq!(std::fs::read(directory.join("b")).unwrap(), b"b");
+    assert!(directory.join("empty").is_dir());
+    let lookup = task_runner::Lookup::new(
+        store.clone(),
+        Settings {
+            downloads: root.path().join("downloads"),
+            import_inputs: false,
+            storage: storage::Storage::default(),
+            digests: None,
+        },
+    );
+    for source in [
+        shared.url(location),
+        partial.to_string_lossy().into_owned(),
+        format!("file://{}", partial.display()),
+    ] {
+        task.inputs[1].source = source;
+        let before = store.objects("").await.unwrap();
+        assert!(
+            lookup
+                .find(&task, Some("debian@sha256:00".into()))
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(store.objects("").await.unwrap(), before);
+        let prepared = runner
+            .request(&task, Some("debian@sha256:00".into()))
+            .await
+            .unwrap();
+        assert_eq!(prepared.request.spec.inputs[1].digest, digest);
+    }
+    task.inputs[1].source = partial.to_string_lossy().into_owned();
+    task.inputs[1].writable = workflow_graph::Writable::InPlace;
+    assert_eq!(
+        runner
+            .request(&task, Some("debian@sha256:00".into()))
+            .await
+            .unwrap()
+            .request
+            .spec
+            .inputs[1]
+            .digest,
+        task_model::Digest::sha256(
+            std::fs::canonicalize(&partial)
+                .unwrap()
+                .to_string_lossy()
+                .as_bytes()
+        )
+    );
+    assert!(!partial.join("b").exists());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

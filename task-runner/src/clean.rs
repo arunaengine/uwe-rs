@@ -294,7 +294,7 @@ pub async fn plan(store: &Store, keep: &Keep) -> Result<Plan, RunnerError> {
             || locations.contains(location)
             || folders.into_iter().any(|folder| locations.contains(folder))
     };
-    for kind in ["runs/", "cas/", "trees/"] {
+    for kind in ["runs/", "cas/", "trees/", "directory-snapshots/"] {
         all.extend(store.objects(kind).await?);
     }
     if leases.is_empty() {
@@ -315,6 +315,15 @@ pub async fn plan(store: &Store, keep: &Keep) -> Result<Plan, RunnerError> {
     for object in &all {
         let kept = if object.location.starts_with("directories/v1/") {
             descriptors.contains(&object.location)
+        } else if let Some(snapshot) = object.location.strip_prefix("directory-snapshots/v1/") {
+            !leases.is_empty()
+                || snapshot
+                    .split('/')
+                    .next()
+                    .and_then(|hex| format!("sha256:{hex}").parse::<Digest>().ok())
+                    .is_some_and(|digest| digests.contains(&digest))
+        } else if object.location.starts_with("directory-snapshots/legacy/") {
+            !leases.is_empty()
         } else if object.location.starts_with("runs/") {
             kept_file(&object.location)
         } else {

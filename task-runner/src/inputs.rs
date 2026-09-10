@@ -171,16 +171,39 @@ impl Inputs<'_> {
     /// object into the folder of the store first, as it does with everything it reads there.
     /// A lookup of the cache downloads nothing.
     async fn taken_into_folder(&self, input: &Input) -> Result<Option<Input>, RunnerError> {
-        let shared = self.store.shared().is_some() && self.mode == Mode::Run;
-        let location = (shared && input.source.contains("://"))
-            .then(|| self.store.location_of(&input.source))
-            .flatten();
+        let shared = self.store.shared().is_some() && input.writable != Writable::InPlace;
+        let decoded = input
+            .source
+            .strip_prefix("file://")
+            .map(storage::address::decode);
+        let source = decoded.as_deref().unwrap_or(&input.source);
+        let location = shared.then(|| self.store.location_of(source)).flatten();
         let Some(location) = location else {
             return Ok(None);
         };
-        let Some(path) = self.store.local_file(&location).await? else {
+        if location.starts_with("directory-snapshots/") {
+            return Ok(None);
+        }
+        let path = match self.mode {
+            Mode::Run => self.store.local_file(&location).await?,
+            Mode::Look => match self.store.cached_directory(&location).await? {
+                Some(digest) => self
+                    .store
+                    .local_path(&content_store::layout::directory_snapshot(&digest))
+                    .map(|path| path.join("input"))
+                    .filter(|path| path.is_dir()),
+                None => self
+                    .store
+                    .local_path(&location)
+                    .filter(|path| path.is_file()),
+            },
+        };
+        let Some(path) = path else {
             return Ok(None);
         };
+        if path.as_os_str() == std::ffi::OsStr::new(source) {
+            return Ok(None);
+        }
         Ok(Some(Input {
             source: path.to_string_lossy().into_owned(),
             ..input.clone()

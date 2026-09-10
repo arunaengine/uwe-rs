@@ -17,12 +17,18 @@ async fn named_runs_bare_locations_and_tree_digests_keep_directory_closure() {
             .await
             .unwrap();
         let tree = Tree {
-            entries: vec![TreeEntry::File {
-                path: "a".into(),
-                digest: content.clone(),
-                size: 6,
-                executable: false,
-            }],
+            entries: vec![
+                TreeEntry::File {
+                    path: "a".into(),
+                    digest: content.clone(),
+                    size: 6,
+                    executable: false,
+                },
+                TreeEntry::Symlink {
+                    path: "cycle".into(),
+                    target: ".".into(),
+                },
+            ],
         };
         let manifest = store.put_tree(&tree).await.unwrap();
         let location = "runs/nocache/task/1/work/directory";
@@ -37,6 +43,14 @@ async fn named_runs_bare_locations_and_tree_digests_keep_directory_closure() {
             .await
             .unwrap();
         store.put_directory(location, &manifest).await.unwrap();
+        std::os::unix::fs::symlink(".", folder.path().join(location).join("cycle")).unwrap();
+        let snapshot = folder
+            .path()
+            .join(layout::directory_snapshot(&manifest))
+            .join("input");
+        std::fs::create_dir_all(&snapshot).unwrap();
+        std::fs::write(snapshot.join("a"), b"member").unwrap();
+        std::os::unix::fs::symlink(".", snapshot.join("cycle")).unwrap();
         let keep = match selected {
             0 => Keep {
                 locations: [location.to_owned()].into(),
@@ -57,6 +71,11 @@ async fn named_runs_bare_locations_and_tree_digests_keep_directory_closure() {
         assert!(store.has_content(&content).await.unwrap());
         assert!(store.has_tree(&manifest).await.unwrap());
         assert!(store.exists(&layout::directory(location)).await.unwrap());
+        assert!(snapshot.join("a").is_file());
+        assert_eq!(
+            std::fs::read_link(snapshot.join("cycle")).unwrap(),
+            std::path::Path::new(".")
+        );
         let unkept = plan(&store, &Keep::default()).await.unwrap();
         assert!(
             unkept
@@ -68,5 +87,6 @@ async fn named_runs_bare_locations_and_tree_digests_keep_directory_closure() {
         assert_eq!(store.directory(location).await.unwrap(), None);
         assert!(!store.has_tree(&manifest).await.unwrap());
         assert!(!store.has_content(&content).await.unwrap());
+        assert!(!snapshot.exists());
     }
 }

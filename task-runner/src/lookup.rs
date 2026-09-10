@@ -39,8 +39,9 @@ impl Lookup {
         if task.reuse != Reuse::Allowed {
             return Ok(None);
         }
+        let store = self.store.without_read_cache();
         let inputs = Inputs {
-            store: &self.store,
+            store: &store,
             settings: &self.settings,
             mode: Mode::Look,
         };
@@ -53,15 +54,15 @@ impl Lookup {
         }
         if let Some(image) = &spec.image {
             let tool = crate::check::tool(&image.reference, &prepared.step);
-            if self.store.unreproducible(&tool).await?.is_some() {
+            if store.unreproducible(&tool).await?.is_some() {
                 return Ok(None);
             }
         }
         let key = spec.cache_key()?;
-        let found = entry::stored(&self.store, &spec.namespace, &key, Stale::Keep).await?;
+        let found = entry::stored(&store, &spec.namespace, &key, Stale::Keep).await?;
         match found {
             Some(entry) => {
-                let outcome = outcome_of(&self.store, task, 1, entry.result(), image).await?;
+                let outcome = outcome_of(&store, task, 1, entry.result(), image).await?;
                 Ok(Some(outcome))
             }
             None => Ok(None),

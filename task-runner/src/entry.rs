@@ -72,6 +72,7 @@ impl CacheEntry {
     /// Whether the store still has every file of the entry: each output, the manifest of each
     /// directory, and the captured streams.
     pub async fn complete(&self, store: &Store) -> Result<bool, RunnerError> {
+        let verified = tempfile::tempdir()?;
         for file in &self.files {
             // In an object store, the location of a directory is only the prefix of its files,
             // no object itself; its manifest stands for it there.
@@ -84,10 +85,34 @@ impl CacheEntry {
             if file.directory && !directory_complete(store, file).await? {
                 return Ok(false);
             }
+            if !file.directory {
+                let target = verified.path().join("output");
+                match store
+                    .materialize_object(&file.location, &file.digest, &target)
+                    .await
+                {
+                    Ok(()) => {}
+                    Err(error) if damaged(&error) => return Ok(false),
+                    Err(error) => return Err(error.into()),
+                }
+                if tokio::fs::metadata(&target).await?.len() != file.size {
+                    return Ok(false);
+                }
+                match store.materialize_content(&file.digest, &target).await {
+                    Ok(()) => {}
+                    Err(error) if damaged(&error) => return Ok(false),
+                    Err(error) => return Err(error.into()),
+                }
+            }
         }
         for digest in self.logs() {
-            if !store.has_content(digest).await? {
-                return Ok(false);
+            match store
+                .materialize_content(digest, &verified.path().join("stream"))
+                .await
+            {
+                Ok(()) => {}
+                Err(error) if damaged(&error) => return Ok(false),
+                Err(error) => return Err(error.into()),
             }
         }
         Ok(true)
@@ -290,15 +315,16 @@ pub(crate) async fn stored(
     key: &Digest,
     stale: Stale,
 ) -> Result<Option<CacheEntry>, RunnerError> {
-    let Some(bytes) = store.get_entry(namespace, key).await? else {
+    let Some(observed) = store.observe_entry(namespace, key).await? else {
         return Ok(None);
     };
-    let entry = CacheEntry::parse(key, &bytes)?;
-    if entry.complete(store).await? {
+    if let Ok(entry) = CacheEntry::parse(key, observed.bytes())
+        && entry.complete(store).await?
+    {
         return Ok(Some(entry));
     }
     if stale == Stale::Remove {
-        store.remove_entry(namespace, key).await?;
+        store.invalidate_entry(namespace, key, &observed).await?;
     }
     Ok(None)
 }

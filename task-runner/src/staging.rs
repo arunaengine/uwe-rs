@@ -160,6 +160,14 @@ impl<B: Backend> Runner<B> {
     /// store in layers, else a download.
     pub(crate) async fn local_content(&self, digest: &Digest) -> Result<PathBuf, RunnerError> {
         if let Some(path) = self.store.local_file(&layout::content(digest)).await? {
+            let (actual, _) = content_store::hash_file(&path).await?;
+            if actual != *digest {
+                return Err(content_store::StoreError::Corrupt {
+                    expected: digest.clone(),
+                    actual,
+                }
+                .into());
+            }
             return Ok(path);
         }
         let downloads = &self.settings.downloads;
@@ -177,6 +185,14 @@ impl<B: Backend> Runner<B> {
             drop(file);
             part.persist(&path)
                 .map_err(|error| at(&path)(error.error))?;
+        }
+        let (actual, _) = content_store::hash_file(&path).await?;
+        if actual != *digest {
+            return Err(content_store::StoreError::Corrupt {
+                expected: digest.clone(),
+                actual,
+            }
+            .into());
         }
         Ok(path)
     }

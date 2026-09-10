@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
+use std::fs::{File, TryLockError};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -53,6 +54,9 @@ impl Backend for TesBackend {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
+        if cancel.is_cancelled() {
+            return Err(ExecutorError::Cancelled);
+        }
         if job.placement.offline {
             return Err(ExecutorError::Unsupported(
                 "the TES executor cannot run a task without network".into(),
@@ -63,9 +67,15 @@ impl Backend for TesBackend {
                 "TES GPU placement is not supported".into(),
             ));
         }
+        let peers = [self];
+        tokio::select! {
+            result = self.reconcile(&peers) => result?,
+            () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
+        }
         let root = self.scratch.join(job.name);
         tokio::fs::create_dir_all(&self.scratch).await?;
         tokio::fs::create_dir(&root).await?;
+        let _ownership = ownership(&root)?;
         tokio::fs::create_dir(root.join("empty")).await?;
         let result = self.attempt(job, &root, cancel).await;
         if result.is_err() && !root.join("remote.json").exists() {
@@ -148,7 +158,8 @@ impl TesBackend {
         let started = owner_start(std::process::id())
             .ok_or_else(|| std::io::Error::other("cannot identify the TES coordinator process"))?;
         let mut journal = serde_json::json!({"backend": "TES", "server": self.client.server(),
-            "name": job.name, "id": null, "owner": std::process::id(), "host": host, "started": started});
+            "name": job.name, "id": null, "owner": std::process::id(), "host": host,
+            "started": started, "locked": true});
         journal_at(root, &journal)?;
         let id = self
             .client
@@ -191,6 +202,29 @@ impl TesBackend {
 
     /// Resolves submissions whose coordinator no longer runs before accepting a new run.
     pub async fn reconcile(&self, peers: &[&TesBackend]) -> Result<(), ExecutorError> {
+        tokio::time::timeout(CANCEL_GRACE, async {
+            std::fs::create_dir_all(&self.scratch)?;
+            let gate = File::options()
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(self.scratch.join("remote-recovery.lock"))?;
+            loop {
+                match gate.try_lock() {
+                    Ok(()) => break,
+                    Err(TryLockError::WouldBlock) => {
+                        tokio::time::sleep(Duration::from_millis(10)).await
+                    }
+                    Err(TryLockError::Error(error)) => return Err(error.into()),
+                }
+            }
+            self.reconcile_records(peers).await
+        })
+        .await
+        .map_err(|_| unresolved(&self.scratch, "admission recovery timed out"))?
+    }
+
+    async fn reconcile_records(&self, peers: &[&TesBackend]) -> Result<(), ExecutorError> {
         let entries = match std::fs::read_dir(&self.scratch) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -198,26 +232,64 @@ impl TesBackend {
         };
         let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
         for entry in entries {
-            let root = entry?.path();
-            let path = root.join("remote.json");
-            if !path.exists() {
+            tokio::task::yield_now().await;
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
                 continue;
             }
-            let journal: serde_json::Value = serde_json::from_slice(&std::fs::read(&path)?)
+            let root = entry.path();
+            let path = root.join("remote.json");
+            if !path.try_exists()? {
+                continue;
+            }
+            let mut journal: serde_json::Value = serde_json::from_slice(&std::fs::read(&path)?)
                 .map_err(|error| unresolved(&root, error))?;
-            if journal["host"].as_str() != Some(host.as_str()) {
+            if journal["backend"] != "TES" || journal["host"].as_str() != Some(host.as_str()) {
                 return Err(unresolved(
                     &root,
-                    "the coordinator host changed; confirm its remote task ended before removing the journal",
+                    "the original backend or coordinator host changed",
                 ));
             }
-            if let Some(owner) = journal["owner"]
+            let live_owner = journal["owner"]
                 .as_u64()
                 .and_then(|pid| u32::try_from(pid).ok())
-                && owner_start(owner).as_deref() == journal["started"].as_str()
-                && journal["started"].is_string()
-            {
+                .and_then(owner_start)
+                .as_deref()
+                == journal["started"].as_str()
+                && journal["started"].is_string();
+            let _ownership = if journal["locked"] == true {
+                let lock = match File::options().write(true).open(root.join("remote.lock")) {
+                    Ok(lock) => lock,
+                    Err(_) if !path.try_exists()? => continue,
+                    Err(error) => return Err(unresolved(&root, error)),
+                };
+                match lock.try_lock() {
+                    Err(TryLockError::WouldBlock) if live_owner => continue,
+                    Err(TryLockError::WouldBlock) => {
+                        return Err(unresolved(
+                            &root,
+                            "the journal lock has no matching live coordinator",
+                        ));
+                    }
+                    Err(TryLockError::Error(error)) => return Err(unresolved(&root, error)),
+                    Ok(()) => lock,
+                }
+            } else {
+                if live_owner {
+                    continue;
+                }
+                File::open(&path)?
+            };
+            if !path.try_exists()? {
                 continue;
+            }
+            journal = serde_json::from_slice(&std::fs::read(&path)?)
+                .map_err(|error| unresolved(&root, error))?;
+            if journal["backend"] != "TES" || journal["host"].as_str() != Some(host.as_str()) {
+                return Err(unresolved(
+                    &root,
+                    "the original backend or coordinator host changed",
+                ));
             }
             let backend = peers
                 .iter()
@@ -311,6 +383,16 @@ impl TesBackend {
         std::fs::remove_file(root.join("remote.json"))?;
         Ok(status)
     }
+}
+
+fn ownership(root: &Path) -> Result<File, ExecutorError> {
+    let lock = File::options()
+        .write(true)
+        .create_new(true)
+        .open(root.join("remote.lock"))?;
+    lock.try_lock()
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+    Ok(lock)
 }
 
 fn owner_start(pid: u32) -> Option<String> {

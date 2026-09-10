@@ -10,6 +10,7 @@ use cwl_parser::model::{Class, LoadListing, Process, Requirement, RequirementCla
 use workflow_graph::DriverError;
 
 use crate::expression::Evaluator;
+use crate::javascript_helper::JavaScriptSettings;
 use crate::types::Types;
 
 /// Extension requirements that change nothing a task needs, so they can be satisfied by
@@ -98,15 +99,17 @@ impl Scope {
 
     /// The evaluator for expressions: with JavaScript and its `expressionLib` when
     /// `InlineJavascriptRequirement` is a requirement or a hint.
-    pub fn evaluator(&self) -> Evaluator {
+    pub fn evaluator(&self, settings: &JavaScriptSettings) -> Evaluator {
         let library = self.find(|class| match class {
             RequirementClass::InlineJavascript { expression_lib } => Some(expression_lib),
             _ => None,
         });
-        match library {
+        let mut evaluator = match library {
             Some((library, _)) => Evaluator::with_javascript(library.clone()),
             None => Evaluator::default(),
-        }
+        };
+        evaluator.settings = settings.clone();
+        evaluator
     }
 
     /// The named types of every `SchemaDefRequirement` in scope.

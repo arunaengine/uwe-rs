@@ -278,6 +278,10 @@ impl Run {
         self.files = Some(files);
     }
 
+    pub fn use_cancel(&mut self, cancel: workflow_graph::CancellationToken) {
+        self.options.javascript.bind_cancel(cancel);
+    }
+
     /// The markers found since the last call.
     pub fn take_notes(&mut self) -> Vec<Note> {
         std::mem::take(&mut self.notes)
@@ -507,7 +511,12 @@ impl Run {
         } = *raw;
         if let Some(step) = step {
             job = match self
-                .step_job(&step, job, &outer.evaluator(), &outer)
+                .step_job(
+                    &step,
+                    job,
+                    &outer.evaluator(&self.options.javascript),
+                    &outer,
+                )
                 .map_err(|error| format!("{}: {error}", names.display))?
             {
                 Some(job) => job,
@@ -526,7 +535,11 @@ impl Run {
             // In a run on placeholder inputs, optional inputs are null, but the expressions
             // of a tool may need them: the optional inputs that a failing expression names get
             // placeholders, a few rounds at most.
-            (Err(error), Some(base)) if leaf && !error.contains(tool::UNSUPPORTED) => {
+            (Err(error), Some(base))
+                if leaf
+                    && !error.contains(tool::UNSUPPORTED)
+                    && !crate::javascript_helper::boundary(&error) =>
+            {
                 let base = base.clone();
                 let mut job = job;
                 let mut last = error.clone();
@@ -538,6 +551,7 @@ impl Run {
                     };
                     match self.start_process(id, process, filled.clone(), outer, &names, toplevel) {
                         Ok(()) => return Ok(()),
+                        Err(next) if crate::javascript_helper::boundary(&next) => return Err(next),
                         Err(next) => (job, last) = (filled, next),
                     }
                 }
@@ -546,7 +560,13 @@ impl Run {
                 match placeholder::fill_optional(process, &job, outer, &base, None) {
                     Some(filled) => self
                         .start_process(id, process, filled, outer, &names, toplevel)
-                        .map_err(|_| error),
+                        .map_err(|later| {
+                            if crate::javascript_helper::boundary(&later) {
+                                later
+                            } else {
+                                error
+                            }
+                        }),
                     None => Err(error),
                 }
             }
@@ -575,7 +595,7 @@ impl Run {
         scope
             .check_supported()
             .map_err(|error| format!("{}{}", tool::UNSUPPORTED, error.message))?;
-        let evaluator = scope.evaluator();
+        let evaluator = scope.evaluator(&self.options.javascript);
         let mut types = scope.types();
         for input in &process.inputs {
             types.add(&input.value_type);
@@ -680,7 +700,9 @@ impl Run {
                 let value = match value {
                     Ok(Value::Map(map)) => Value::Map(map),
                     Ok(Value::Null) => Value::Map(Map::new()),
-                    Err(_) if fake => Value::Map(Map::new()),
+                    Err(error) if fake && !crate::javascript_helper::boundary(&error) => {
+                        Value::Map(Map::new())
+                    }
                     Err(error) => return Err(at(format!("the expression: {error}"))),
                     Ok(other) if fake => {
                         let _ = other;

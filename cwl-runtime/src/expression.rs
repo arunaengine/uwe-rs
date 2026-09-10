@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use cwl_parser::model::{Expression, ExpressionKind, Part};
 
-use crate::javascript;
+use crate::javascript_helper::{FRAME_LIMIT, Failure, JavaScriptSettings};
 use crate::value::Value;
 
 /// What an expression sees: `inputs`, `self` and `runtime`.
@@ -32,12 +32,14 @@ pub struct Evaluator {
     /// The `expressionLib` of `InlineJavascriptRequirement`; `None` when the requirement is
     /// not in effect.
     pub javascript: Option<Arc<Vec<String>>>,
+    pub settings: JavaScriptSettings,
 }
 
 impl Evaluator {
     pub fn with_javascript(library: Vec<String>) -> Self {
         Evaluator {
             javascript: Some(Arc::new(library)),
+            ..Evaluator::default()
         }
     }
 
@@ -110,16 +112,33 @@ impl Evaluator {
                 // Without the requirement only real references fail here; `$(1)` or `$(true)`
                 // are not references and run as JavaScript.
                 Err(error) if self.javascript.is_none() && refers(code) => Err(error),
-                Err(_) => self.javascript(&format!("return ({code}\n);"), code, variables),
+                Err(_) => self
+                    .javascript_expression(code, variables)
+                    .map_err(Failure::text),
             },
-            Part::Javascript(code) => {
-                self.javascript(&format!("return ({code}\n);"), code, variables)
-            }
+            Part::Javascript(code) => self
+                .javascript_expression(code, variables)
+                .map_err(Failure::text),
             Part::Function(body) => match self.javascript(body, body, variables) {
-                Err(_) if self.javascript.is_none() => Ok(Value::String(format!("${{{body}}}"))),
-                result => result,
+                Err(error) if self.javascript.is_none() && error.language() => {
+                    Ok(Value::String(format!("${{{body}}}")))
+                }
+                result => result.map_err(Failure::text),
             },
         }
+    }
+
+    fn javascript_expression(
+        &self,
+        code: &str,
+        variables: Variables<'_>,
+    ) -> Result<Value, Failure> {
+        if code.len() > FRAME_LIMIT {
+            return Err(Failure::Boundary(
+                "expression source exceeded 16 MiB".into(),
+            ));
+        }
+        self.javascript(&format!("return ({code}\n);"), code, variables)
     }
 
     /// Runs a function body; `code` is the expression as written, for messages.
@@ -128,22 +147,30 @@ impl Evaluator {
         body: &str,
         code: &str,
         variables: Variables<'_>,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, Failure> {
         let library = self.javascript.as_deref().map_or(&[][..], Vec::as_slice);
         let globals = [
             ("inputs", variables.inputs),
             ("self", variables.this),
             ("runtime", variables.runtime),
         ];
-        javascript::evaluate(library, &globals, body).map_err(|error| {
-            let error = error.lines().next().unwrap_or_default().to_owned();
-            let note = if self.javascript.is_none() {
-                " (the process has no InlineJavascriptRequirement)"
-            } else {
-                ""
-            };
-            format!("JavaScript error in `{}`: {error}{note}", shown(code))
-        })
+        self.settings
+            .evaluate(library, &globals, body)
+            .map_err(|error| {
+                let Failure::Language(error) = error else {
+                    return error;
+                };
+                let error = error.lines().next().unwrap_or_default().to_owned();
+                let note = if self.javascript.is_none() {
+                    " (the process has no InlineJavascriptRequirement)"
+                } else {
+                    ""
+                };
+                Failure::Language(format!(
+                    "JavaScript error in `{}`: {error}{note}",
+                    shown(code)
+                ))
+            })
     }
 }
 
@@ -157,11 +184,23 @@ fn refers(code: &str) -> bool {
 
 /// Code for messages: on one line, and cut after 80 characters.
 fn shown(code: &str) -> String {
-    let line = code.split_whitespace().collect::<Vec<_>>().join(" ");
-    match line.char_indices().nth(80) {
-        Some((cut, _)) => format!("{}...", &line[..cut]),
-        None => line,
+    let mut line = String::new();
+    let mut length = 0;
+    for word in code.split_whitespace() {
+        for character in (!line.is_empty())
+            .then_some(' ')
+            .into_iter()
+            .chain(word.chars())
+        {
+            if length == 80 {
+                line.push_str("...");
+                return line;
+            }
+            line.push(character);
+            length += 1;
+        }
     }
+    line
 }
 
 /// Evaluates a parameter reference such as `inputs.reads[0].path`, following cwl-utils:

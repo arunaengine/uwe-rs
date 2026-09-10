@@ -62,6 +62,41 @@ fn task(id: u64, after: &[u64]) -> Task {
     }
 }
 
+#[test]
+fn planning_receives_engine_cancellation_before_start() {
+    #[derive(Default)]
+    struct Planning {
+        cancel: Option<CancellationToken>,
+    }
+    impl Driver for Planning {
+        fn language(&self) -> Language {
+            Language::Cwl
+        }
+        fn use_cancel(&mut self, cancel: CancellationToken) {
+            self.cancel = Some(cancel);
+        }
+        fn start(&mut self) -> Result<Vec<Task>, DriverError> {
+            self.cancel
+                .as_ref()
+                .expect("planning cancellation supplied")
+                .cancel();
+            Ok(vec![task(1, &[])])
+        }
+        fn complete(&mut self, _: Outcome) -> Result<Vec<Task>, DriverError> {
+            Ok(Vec::new())
+        }
+        fn finish(&mut self) -> Result<(), DriverError> {
+            Ok(())
+        }
+    }
+    let cancel = CancellationToken::new();
+    let execution = Engine::new(&mut Sleeper::default())
+        .cancel(cancel.clone())
+        .run("planning", &mut Planning::default());
+    assert!(cancel.is_cancelled());
+    assert!(matches!(execution.error, Some(ExecuteError::Cancelled)));
+}
+
 /// Sleeps as long as each task says, in milliseconds by its id, and fails the attempts it is
 /// told to: with the machine, or with an exit code.
 #[derive(Default)]

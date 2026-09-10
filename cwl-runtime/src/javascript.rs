@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use boa_engine::{Context, JsError, JsValue, Script, Source};
 
+use crate::javascript_helper::Failure;
 use crate::value::Value;
 
 const LOOP_LIMIT: u64 = 100_000_000;
@@ -28,11 +29,28 @@ const UNDEFINED: &str = "\u{0}undefined";
 /// cwltool's sandbox does, and returns its result as JSON data. cwltool adds "use strict";
 /// the spec asks for ECMAScript 5.1 only, and real documents assign to undeclared variables,
 /// which other runners accept, so the code runs in sloppy mode.
+#[cfg(test)]
 pub fn evaluate(
     library: &[String],
     variables: &[(&str, &Value)],
     body: &str,
 ) -> Result<Value, String> {
+    let literals: Vec<_> = variables
+        .iter()
+        .map(|(name, value)| (*name, value.to_javascript()))
+        .collect();
+    let variables: Vec<_> = literals
+        .iter()
+        .map(|(name, value)| (*name, value.as_str()))
+        .collect();
+    evaluate_literals(library, &variables, body).map_err(Failure::text)
+}
+
+pub(crate) fn evaluate_literals(
+    library: &[String],
+    variables: &[(&str, &str)],
+    body: &str,
+) -> Result<Value, Failure> {
     let deadline = Instant::now() + TIME_LIMIT;
     // Expressions that log for debugging find a console that drops what they write, as
     // cwltool's does unless `--js-console` shows it.
@@ -42,7 +60,7 @@ pub fn evaluate(
         code.push('\n');
     }
     for (name, value) in variables {
-        code.push_str(&format!("var {name} = {};\n", value.to_javascript()));
+        code.push_str(&format!("var {name} = {value};\n"));
     }
     code.push_str(&format!(
         "var $iunctus = (function(){{{body}\n}})();\n\
@@ -52,7 +70,7 @@ pub fn evaluate(
     context
         .runtime_limits_mut()
         .set_loop_iteration_limit(LOOP_LIMIT);
-    let result = bounded_eval(&code, &mut context, VM_SLICES, deadline)?;
+    let result = bounded_eval_typed(&code, &mut context, VM_SLICES, deadline)?;
     let Some(text) = result.as_string() else {
         // JSON.stringify gives undefined for functions and symbols.
         return Ok(Value::Null);
@@ -61,34 +79,53 @@ pub fn evaluate(
     if text == UNDEFINED {
         return Ok(Value::Null);
     }
-    Value::parse(&text).map_err(|error| format!("the result is not JSON: {error}"))
+    crate::javascript_helper::check_frame(&text, crate::javascript_helper::NESTING_LIMIT)
+        .map_err(Failure::Boundary)?;
+    Value::parse(&text)
+        .map_err(|error| Failure::Language(format!("the result is not JSON: {error}")))
 }
 
 /// Limits VM work and checks elapsed time between slices. Parsing, compilation and
 /// native builtins run synchronously, and allocations have no heap ceiling here.
+#[cfg(test)]
 fn bounded_eval(
     code: &str,
     context: &mut Context,
     slices: u64,
     deadline: Instant,
 ) -> Result<JsValue, String> {
+    bounded_eval_typed(code, context, slices, deadline).map_err(Failure::text)
+}
+
+fn bounded_eval_typed(
+    code: &str,
+    context: &mut Context,
+    slices: u64,
+    deadline: Instant,
+) -> Result<JsValue, Failure> {
     let script = Script::parse(Source::from_bytes(code.as_bytes()), None, context)
-        .map_err(|error| message(&error, context))?;
+        .map_err(|error| failure(&error, context))?;
     let result = {
         let mut evaluation = pin!(script.evaluate_async_with_budget(context, VM_SLICE));
         let mut task = std::task::Context::from_waker(Waker::noop());
         let mut spent = 0;
         loop {
             if Instant::now() >= deadline {
-                return Err("JavaScript evaluation exceeded its time deadline".into());
+                return Err(Failure::Boundary(
+                    "JavaScript evaluation exceeded its time deadline".into(),
+                ));
             }
             if spent >= slices {
-                return Err("JavaScript evaluation exceeded its total VM work budget".into());
+                return Err(Failure::Boundary(
+                    "JavaScript evaluation exceeded its total VM work budget".into(),
+                ));
             }
             match evaluation.as_mut().poll(&mut task) {
                 Poll::Ready(result) => {
                     if Instant::now() >= deadline {
-                        return Err("JavaScript evaluation exceeded its time deadline".into());
+                        return Err(Failure::Boundary(
+                            "JavaScript evaluation exceeded its time deadline".into(),
+                        ));
                     }
                     break result;
                 }
@@ -96,17 +133,20 @@ fn bounded_eval(
             }
         }
     };
-    result.map_err(|error| message(&error, context))
+    result.map_err(|error| failure(&error, context))
 }
 
 /// An error as `TypeError: message`, without Boa's place in the code that wraps the
 /// expression, which means nothing to the author of the expression.
-fn message(error: &JsError, context: &mut Context) -> String {
-    match error.try_native(context) {
+fn failure(error: &JsError, context: &mut Context) -> Failure {
+    if let Some(engine) = error.as_engine() {
+        return Failure::Boundary(format!("JavaScript engine failure: {engine}"));
+    }
+    Failure::Language(match error.try_native(context) {
         Ok(native) if native.message().trim().is_empty() => native.kind().to_string(),
         Ok(native) => format!("{}: {}", native.kind(), native.message().trim()),
         Err(_) => error.to_string(),
-    }
+    })
 }
 
 #[cfg(test)]

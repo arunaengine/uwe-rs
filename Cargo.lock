@@ -928,12 +928,15 @@ dependencies = [
  "boa_engine",
  "config-file",
  "cwl-parser",
+ "executor",
  "indexmap",
  "input-schema",
+ "serde",
  "serde_json",
  "sha1",
  "storage",
  "tempfile",
+ "tokio",
  "workflow-graph",
 ]
 

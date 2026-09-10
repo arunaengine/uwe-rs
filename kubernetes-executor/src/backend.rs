@@ -6,6 +6,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::fs::{File, TryLockError};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -90,10 +91,17 @@ impl Backend for KubernetesBackend {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
+        if cancel.is_cancelled() {
+            return Err(ExecutorError::Cancelled);
+        }
         if job.placement.offline {
             return Err(ExecutorError::Unsupported(
                 "the Kubernetes executor cannot run a task without network".into(),
             ));
+        }
+        tokio::select! {
+            result = self.reconcile() => result?,
+            () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
         }
         let root = self.scratch.join(job.name);
         let placed = {
@@ -108,7 +116,10 @@ impl Backend for KubernetesBackend {
                 return Err(error.into());
             }
             Err(error) => Err(error.into()),
-            Ok(mounts) => self.attempt(job, &root, &mounts, cancel).await,
+            Ok(mounts) => {
+                let _ownership = ownership(&root)?;
+                self.attempt(job, &root, &mounts, cancel).await
+            }
         };
         if result.is_err() && !root.join("remote.json").try_exists().unwrap_or(true) {
             let _ = tokio::fs::remove_dir_all(&root).await;
@@ -281,7 +292,7 @@ impl KubernetesBackend {
         })?;
         let mut journal = serde_json::json!({"backend": "Kubernetes", "server": self.cluster.server(),
             "namespace": self.cluster.namespace(), "name": name, "label": self.label, "uid": null,
-            "owner": std::process::id(), "host": host, "started": started});
+            "owner": std::process::id(), "host": host, "started": started, "locked": true});
         journal_at(root, &journal)?;
         let uid = tokio::select! {
             result = self.create(manifest) => result.map_err(|error| unresolved(root, error))?,
@@ -335,6 +346,29 @@ impl KubernetesBackend {
 
     /// Resolves accepted work whose original coordinator is no longer running.
     pub async fn reconcile(&self) -> Result<(), ExecutorError> {
+        tokio::time::timeout(CANCEL_GRACE, async {
+            std::fs::create_dir_all(&self.scratch)?;
+            let gate = File::options()
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(self.scratch.join("remote-recovery.lock"))?;
+            loop {
+                match gate.try_lock() {
+                    Ok(()) => break,
+                    Err(TryLockError::WouldBlock) => {
+                        tokio::time::sleep(Duration::from_millis(10)).await
+                    }
+                    Err(TryLockError::Error(error)) => return Err(error.into()),
+                }
+            }
+            self.reconcile_records().await
+        })
+        .await
+        .map_err(|_| unresolved(&self.scratch, "admission recovery timed out"))?
+    }
+
+    async fn reconcile_records(&self) -> Result<(), ExecutorError> {
         let entries = match std::fs::read_dir(&self.scratch) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -342,12 +376,17 @@ impl KubernetesBackend {
         };
         let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
         for entry in entries {
-            let root = entry?.path();
-            let path = root.join("remote.json");
-            if !path.exists() {
+            tokio::task::yield_now().await;
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
                 continue;
             }
-            let journal: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)
+            let root = entry.path();
+            let path = root.join("remote.json");
+            if !path.try_exists()? {
+                continue;
+            }
+            let mut journal: serde_json::Value = serde_json::from_slice(&std::fs::read(&path)?)
                 .map_err(|error| unresolved(&root, error))?;
             if journal["backend"] != "Kubernetes"
                 || journal["host"].as_str() != Some(host.as_str())
@@ -359,13 +398,50 @@ impl KubernetesBackend {
                     "the original coordinator host or cluster settings changed",
                 ));
             }
-            if let Some(owner) = journal["owner"]
+            let live_owner = journal["owner"]
                 .as_u64()
                 .and_then(|pid| u32::try_from(pid).ok())
-                && journal["started"].is_string()
-                && owner_start(owner).as_deref() == journal["started"].as_str()
-            {
+                .and_then(owner_start)
+                .as_deref()
+                == journal["started"].as_str()
+                && journal["started"].is_string();
+            let _ownership = if journal["locked"] == true {
+                let lock = match File::options().write(true).open(root.join("remote.lock")) {
+                    Ok(lock) => lock,
+                    Err(_) if !path.try_exists()? => continue,
+                    Err(error) => return Err(unresolved(&root, error)),
+                };
+                match lock.try_lock() {
+                    Err(TryLockError::WouldBlock) if live_owner => continue,
+                    Err(TryLockError::WouldBlock) => {
+                        return Err(unresolved(
+                            &root,
+                            "the journal lock has no matching live coordinator",
+                        ));
+                    }
+                    Err(TryLockError::Error(error)) => return Err(unresolved(&root, error)),
+                    Ok(()) => lock,
+                }
+            } else {
+                if live_owner {
+                    continue;
+                }
+                File::open(&path)?
+            };
+            if !path.try_exists()? {
                 continue;
+            }
+            journal = serde_json::from_slice(&std::fs::read(&path)?)
+                .map_err(|error| unresolved(&root, error))?;
+            if journal["backend"] != "Kubernetes"
+                || journal["host"].as_str() != Some(host.as_str())
+                || journal["server"].as_str() != Some(self.cluster.server())
+                || journal["namespace"].as_str() != Some(self.cluster.namespace())
+            {
+                return Err(unresolved(
+                    &root,
+                    "the original coordinator host or cluster settings changed",
+                ));
             }
             self.stop(&root, &journal, CANCEL_GRACE).await?;
         }
@@ -489,6 +565,16 @@ impl KubernetesBackend {
         std::fs::remove_file(root.join("remote.json"))?;
         Ok(())
     }
+}
+
+fn ownership(root: &Path) -> Result<File, ExecutorError> {
+    let lock = File::options()
+        .write(true)
+        .create_new(true)
+        .open(root.join("remote.lock"))?;
+    lock.try_lock()
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+    Ok(lock)
 }
 
 fn owner_start(pid: u32) -> Option<String> {

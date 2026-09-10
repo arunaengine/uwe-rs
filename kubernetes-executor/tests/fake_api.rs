@@ -806,9 +806,110 @@ async fn lost_submission_response_keeps_scratch_and_requires_disposition() {
     assert_eq!(state.lock().unwrap().submitted.len(), 1);
     record["owner"] = json!(0);
     std::fs::write(&journal, record.to_string()).unwrap();
-    let error = backend.reconcile().await.unwrap_err();
+    let blocked = Job {
+        name: "blocked",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = backend
+        .run(blocked, &CancellationToken::new())
+        .await
+        .unwrap_err();
     assert!(error.to_string().contains("UID was not recorded"));
     assert!(journal.is_file());
+    assert_eq!(state.lock().unwrap().submitted.len(), 1);
+}
+
+#[tokio::test]
+async fn dropped_attempt_is_recovered_before_the_next_submission() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, state) = backend(root.path()).await;
+    let old_spec = spec("debian:stable-slim", "sleep 30");
+    let (staging, placement) = (Staging::default(), placement());
+    let old = Job {
+        name: "orphan",
+        spec: &old_spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(600),
+            backend.run(old, &CancellationToken::new())
+        )
+        .await
+        .is_err()
+    );
+    let record: Value =
+        serde_json::from_slice(&std::fs::read(backend.scratch.join("orphan/remote.json")).unwrap())
+            .unwrap();
+    assert_eq!(record["owner"], json!(std::process::id()));
+
+    let next_spec = spec("debian:stable-slim", "echo next > out.txt");
+    let next = Job {
+        name: "next",
+        spec: &next_spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    backend.run(next, &CancellationToken::new()).await.unwrap();
+    let state = state.lock().unwrap();
+    assert!(state.jobs["iunctus-orphan"].deleted);
+    assert_eq!(state.submitted.len(), 2);
+}
+
+#[tokio::test]
+async fn admission_keeps_a_legitimate_active_sibling() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, state) = backend(root.path()).await;
+    let active_spec = spec("debian:stable-slim", "sleep 1; echo active > out.txt");
+    let next_spec = spec("debian:stable-slim", "echo next > out.txt");
+    let (staging, placement, cancel) = (Staging::default(), placement(), CancellationToken::new());
+    let active = Job {
+        name: "active",
+        spec: &active_spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let next = async {
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let next = Job {
+            name: "sibling",
+            spec: &next_spec,
+            staging: &staging,
+            placement: &placement,
+        };
+        let result = backend.run(next, &cancel).await;
+        assert!(!state.lock().unwrap().jobs["iunctus-active"].deleted);
+        result
+    };
+    let (active, next) = tokio::join!(backend.run(active, &cancel), next);
+    active.unwrap();
+    next.unwrap();
+    let state = state.lock().unwrap();
+    assert_eq!(state.submitted.len(), 2);
+}
+
+#[tokio::test]
+async fn pre_cancelled_admission_submits_nothing() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, state) = backend(root.path()).await;
+    let spec = spec("debian:stable-slim", "true");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "cancelled-before-admission",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    assert!(matches!(
+        backend.run(job, &cancel).await,
+        Err(ExecutorError::Cancelled)
+    ));
+    assert!(state.lock().unwrap().submitted.is_empty());
 }
 
 #[tokio::test]

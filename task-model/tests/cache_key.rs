@@ -204,6 +204,43 @@ fn rejects_invalid_specs() {
     assert_eq!(future.validate(), Err(SpecError::Format(FORMAT + 1)));
 }
 
+#[test]
+fn checks_environment_names_before_execution() {
+    for name in ["", "1_NAME", "BAD-NAME", "NAME=value\nprintf injected"] {
+        let mut spec = fastqc();
+        spec.environment
+            .insert(name.to_owned(), EnvironmentValue::Literal("value".into()));
+        assert_eq!(
+            spec.validate(),
+            Err(SpecError::Environment(name.to_owned()))
+        );
+    }
+
+    let mut spec = fastqc();
+    for name in ["PATH", "lower_1", "_PRIVATE"] {
+        spec.environment.insert(
+            name.to_owned(),
+            EnvironmentValue::Literal("ordinary value".into()),
+        );
+    }
+    assert_eq!(spec.validate(), Ok(()));
+
+    let mut spec = with_containers();
+    spec.containers[1].environment.insert(
+        "SECONDARY_PATH".into(),
+        EnvironmentValue::Literal("ordinary value".into()),
+    );
+    assert_eq!(spec.validate(), Ok(()));
+    let name = "SECONDARY; printf injected";
+    spec.containers[1]
+        .environment
+        .insert(name.into(), EnvironmentValue::Literal("value".into()));
+    assert_eq!(
+        spec.validate(),
+        Err(SpecError::Environment(name.to_owned()))
+    );
+}
+
 /// A task of two containers: the main one of FASTQC and one before it in another image.
 fn with_containers() -> TaskSpec {
     let mut spec = fastqc();

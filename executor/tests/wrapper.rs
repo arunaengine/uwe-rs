@@ -73,6 +73,37 @@ fn paths(files: &[Collected]) -> Vec<&str> {
 }
 
 #[test]
+fn invalid_environment_never_reaches_or_runs_in_the_wrapper() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let injected = root.path().join("injected");
+    let command = format!("BAD=value\nprintf injected > {} #", injected.display());
+    let mut spec = spec(&[]);
+    spec.environment
+        .insert(command.clone(), EnvironmentValue::Literal("value".into()));
+    let folders = Folders {
+        owner: "",
+        work: "/unused/work",
+        control: "/unused/control",
+        home: "/unused/home",
+        outbox: "",
+    };
+
+    let text = wrapper(&spec, &folders);
+    assert!(!text.contains(&command));
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(text)
+        .output()
+        .expect("runs the failure wrapper");
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "iunctus: invalid task specification\n"
+    );
+    assert!(!injected.exists());
+}
+
+#[test]
 fn collects_outputs_after_success() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let script = "echo \"$GREETING in ${TASK_DIR##*/}\"\necho oops >&2\necho hi > out.txt\n\

@@ -145,6 +145,8 @@ pub enum SpecError {
     Workdir(String),
     #[error("the input path `{0}` appears more than once")]
     DuplicateInput(String),
+    #[error("`{0}` is not a valid environment variable name")]
+    Environment(String),
     #[error("the containers of the task are not valid: {0}")]
     Containers(String),
     #[error("cannot encode the specification: {0}")]
@@ -159,6 +161,7 @@ impl TaskSpec {
         if self.arguments.is_empty() && self.image.is_none() {
             return Err(SpecError::NoProgram);
         }
+        check_environment(&self.environment)?;
         if let Some(workdir) = &self.workdir
             && (!workdir.starts_with('/') || check_path(workdir).is_err())
         {
@@ -191,6 +194,7 @@ impl TaskSpec {
             if !names.insert(name) {
                 return invalid(format!("`{name}` appears more than once"));
             }
+            check_environment(&container.environment)?;
             if container.arguments.is_empty() && container.image.is_none() {
                 return Err(SpecError::NoProgram);
             }
@@ -282,6 +286,19 @@ fn check_path(path: &str) -> Result<(), SpecError> {
     let escapes = path.split('/').any(|part| part == "..");
     if path.trim_matches('/').is_empty() || escapes || path.contains('\0') {
         return Err(SpecError::Path(path.to_owned()));
+    }
+    Ok(())
+}
+
+fn check_environment(environment: &BTreeMap<String, EnvironmentValue>) -> Result<(), SpecError> {
+    if let Some(name) = environment.keys().find(|name| {
+        let mut characters = name.chars();
+        !characters
+            .next()
+            .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+            || !characters.all(|character| character.is_ascii_alphanumeric() || character == '_')
+    }) {
+        return Err(SpecError::Environment(name.clone()));
     }
     Ok(())
 }

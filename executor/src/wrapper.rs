@@ -27,6 +27,10 @@ pub(crate) const NOW: &str = "echo \"${EPOCHREALTIME:-$(date +%s)}\"";
 /// `read_bytes`, `write_bytes` and `oom_kills`, one per line with its number.
 pub const USAGE: &str = "usage";
 
+pub(crate) fn invalid_specification() -> String {
+    "#!/bin/sh\necho 'iunctus: invalid task specification' >&2\nexit 1\n".to_owned()
+}
+
 /// Where the wrapper of a task finds its folders, as absolute paths inside the container.
 #[derive(Clone, Copy, Debug)]
 pub struct Folders<'a> {
@@ -62,7 +66,11 @@ pub struct Folders<'a> {
 /// With an outbox, the wrapper also copies each output in the work directory to the same path
 /// there, and at last lets every user change what the task made, since such a server may run
 /// the container as root and then cannot remove the folders that the task made.
+/// An invalid specification produces only a failure wrapper.
 pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
+    if spec.validate().is_err() {
+        return invalid_specification();
+    }
     let Folders {
         work,
         control,

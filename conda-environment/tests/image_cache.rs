@@ -84,6 +84,100 @@ async fn concurrent_builders_have_one_owner() {
 }
 
 #[tokio::test]
+async fn malformed_stale_and_archive_missing_entries_are_removed_by_observed_version() {
+    let store = Store::memory().unwrap();
+    let cache = ImageCache::new(store.clone());
+    let current = preparation('a');
+    let cache_key = key(&current);
+
+    store
+        .put_entry(
+            IMAGE_CACHE_NAMESPACE,
+            &cache_key,
+            b"not json".as_slice().into(),
+        )
+        .await
+        .unwrap();
+    assert!(cache.lookup(&current).await.unwrap().is_none());
+    assert!(
+        store
+            .get_entry(IMAGE_CACHE_NAMESPACE, &cache_key)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let other = preparation('b');
+    let stale = serde_json::to_vec(&completed(&other, 'c', None)).unwrap();
+    store
+        .put_entry(IMAGE_CACHE_NAMESPACE, &cache_key, stale.into())
+        .await
+        .unwrap();
+    assert!(cache.lookup(&current).await.unwrap().is_none());
+
+    let missing: Digest = format!("sha256:{}", "d".repeat(64)).parse().unwrap();
+    let stale = serde_json::to_vec(&completed(&current, 'c', Some(&missing))).unwrap();
+    store
+        .put_entry(IMAGE_CACHE_NAMESPACE, &cache_key, stale.into())
+        .await
+        .unwrap();
+    assert!(cache.lookup(&current).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn stale_observation_does_not_remove_a_replacement() {
+    let folder = tempfile::tempdir().unwrap();
+    let store = Store::local(folder.path()).unwrap();
+    let cache = ImageCache::new(store.clone());
+    let preparation = preparation('a');
+    let cache_key = key(&preparation);
+    let first = completed(&preparation, 'b', None);
+    store
+        .put_entry(
+            IMAGE_CACHE_NAMESPACE,
+            &cache_key,
+            serde_json::to_vec(&first).unwrap().into(),
+        )
+        .await
+        .unwrap();
+    let observed = cache.lookup(&preparation).await.unwrap().unwrap();
+    let replacement = completed(&preparation, 'c', None);
+    let path = store
+        .local_path(&layout::entry(IMAGE_CACHE_NAMESPACE, &cache_key).unwrap())
+        .unwrap();
+    std::fs::write(path, serde_json::to_vec(&replacement).unwrap()).unwrap();
+    assert!(!cache.invalidate(&preparation, &observed).await.unwrap());
+    assert_eq!(
+        cache.lookup(&preparation).await.unwrap().unwrap().receipt(),
+        &replacement
+    );
+}
+
+#[tokio::test]
+async fn an_unpublished_or_failed_build_leaves_the_cache_claimable() {
+    let folder = tempfile::tempdir().unwrap();
+    let store = Store::local(folder.path()).unwrap();
+    let cache = ImageCache::new(store);
+    let preparation = preparation('a');
+    let claim = match cache
+        .try_build(&preparation, &holder("failed"))
+        .await
+        .unwrap()
+    {
+        ImageBuild::Owner(claim) => claim,
+        _ => panic!("first build must own the preparation"),
+    };
+    drop(claim);
+    assert!(matches!(
+        cache
+            .try_build(&preparation, &holder("retry"))
+            .await
+            .unwrap(),
+        ImageBuild::Owner(_)
+    ));
+}
+
+#[tokio::test]
 async fn publication_requires_its_archive_and_returns_the_stored_winner() {
     let store = Store::memory().unwrap();
     let cache = ImageCache::new(store.clone());
@@ -183,3 +277,40 @@ async fn foreign_claims_and_observations_are_rejected() {
     assert!(second.lookup(&preparation).await.unwrap().is_some());
 }
 
+#[tokio::test]
+async fn layered_caches_read_the_shared_winner_over_stale_fronts() {
+    let shared = Store::memory().unwrap();
+    let preparation = preparation('a');
+    let cache_key = key(&preparation);
+    let stale = completed(&preparation, 'b', None);
+    let winner = completed(&preparation, 'c', None);
+    let first_folder = tempfile::tempdir().unwrap();
+    let second_folder = tempfile::tempdir().unwrap();
+    let first = Store::local(first_folder.path()).unwrap();
+    let second = Store::local(second_folder.path()).unwrap();
+    for front in [&first, &second] {
+        front
+            .put_entry(
+                IMAGE_CACHE_NAMESPACE,
+                &cache_key,
+                serde_json::to_vec(&stale).unwrap().into(),
+            )
+            .await
+            .unwrap();
+    }
+    shared
+        .put_entry(
+            IMAGE_CACHE_NAMESPACE,
+            &cache_key,
+            serde_json::to_vec(&winner).unwrap().into(),
+        )
+        .await
+        .unwrap();
+    for front in [first, second] {
+        let cache = ImageCache::new(Store::layered(front, shared.clone()).unwrap());
+        assert_eq!(
+            cache.lookup(&preparation).await.unwrap().unwrap().receipt(),
+            &winner
+        );
+    }
+}

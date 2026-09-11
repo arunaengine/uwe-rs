@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use conda_environment::{Environment, LockError, VirtualPackage, lock, lock_with_virtual};
+use conda_environment::{Environment, Index, LockError, VirtualPackage, lock, lock_with_virtual};
 use serde_json::{Value, json};
 
 /// A package of a repodata file.
@@ -83,6 +83,51 @@ fn locked(folder: &Path, text: &str) -> Result<Vec<String>, LockError> {
 }
 
 const CHANNELS: &str = "channels:\n  - conda-forge\n  - bioconda\n";
+
+#[test]
+fn repodata_load_rejects_paths_outside_its_folder() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    for channel in ["../outside", "/outside", "pkgs//main"] {
+        let error = Index::load(folder.path(), &[channel.to_owned()], "linux-64")
+            .err()
+            .expect("an invalid channel path");
+        assert!(
+            matches!(
+                error,
+                LockError::Io { ref error, .. }
+                    if error.kind() == std::io::ErrorKind::InvalidInput
+            ),
+            "{error}"
+        );
+    }
+    for platform in ["../outside", "/linux-64", "linux/amd64"] {
+        let error = Index::load(folder.path(), &["conda-forge".to_owned()], platform)
+            .err()
+            .expect("an invalid platform path");
+        assert!(
+            matches!(
+                error,
+                LockError::Io { ref error, .. }
+                    if error.kind() == std::io::ErrorKind::InvalidInput
+            ),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn repodata_load_accepts_compound_channel_paths() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    write(
+        folder.path(),
+        "pkgs/main",
+        "linux-64",
+        vec![package("python", "3.13", "0", &[])],
+    );
+    write(folder.path(), "pkgs/main", "noarch", vec![]);
+    Index::load(folder.path(), &["pkgs/main".to_owned()], "linux-64")
+        .expect("compound channel path");
+}
 
 #[test]
 fn environments_get_the_newest_packages_that_fit() {

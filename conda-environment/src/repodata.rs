@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeMap, HashMap};
+use std::io;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -72,6 +73,15 @@ pub fn repodata_path(folder: &Path, channel: &str, subdir: &str) -> PathBuf {
     folder.join(channel).join(subdir).join("repodata.json")
 }
 
+pub(crate) fn component(name: &str) -> bool {
+    !name.is_empty()
+        && name != "."
+        && name != ".."
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_.-".contains(&byte))
+}
+
 /// The channels that a name of an environment file stands for: `defaults` is the main and R
 /// channels of Anaconda, `nodefaults` stands for none.
 pub fn channels(named: &[String]) -> Vec<String> {
@@ -93,8 +103,22 @@ pub fn channels(named: &[String]) -> Vec<String> {
 
 impl Index {
     /// Reads the repodata of each channel for the platform and for `noarch`. Repodata that the
-    /// folder lacks is an error that names every missing file.
+    /// folder lacks is an error that names every missing file. Channel and platform paths are
+    /// lexically contained in the folder; the caller controls any symlinks below that folder.
     pub fn load(folder: &Path, channels: &[String], platform: &str) -> Result<Index, LockError> {
+        if !component(platform)
+            || channels
+                .iter()
+                .any(|channel| !channel.split('/').all(component))
+        {
+            return Err(LockError::Io {
+                path: folder.to_owned(),
+                error: io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "invalid Conda channel or platform cache path",
+                ),
+            });
+        }
         let mut by_name: HashMap<String, Vec<Record>> = HashMap::new();
         let mut missing = Vec::new();
         for channel in channels {

@@ -4,7 +4,10 @@
 
 use std::io::{self, Read, Write};
 
-use conda_environment::{FORMAT, ImagePreparation, Lock, Package, VirtualPackage, fetch_packages};
+use conda_environment::{
+    BuiltImage, CompletedImage, FORMAT, IMAGE_RECEIPT_FORMAT, ImagePreparation, Lock, Package,
+    VirtualPackage, fetch_packages,
+};
 use sha2::{Digest as _, Sha256};
 
 fn base() -> String {
@@ -43,6 +46,20 @@ fn locked() -> Lock {
             md5: None,
         }],
         virtual_packages: Some(capabilities()),
+    }
+}
+
+fn built(preparation: &ImagePreparation) -> BuiltImage {
+    let manifest = format!("sha256:{}", "b".repeat(64));
+    BuiltImage {
+        preparation: preparation.digest().into(),
+        base: preparation.base().into(),
+        recipe_digest: preparation.recipe_digest(),
+        platform: preparation.platform().into(),
+        image_id: format!("sha256:{}", "c".repeat(64)),
+        manifest_digest: Some(manifest.clone()),
+        archive_digest: Some(format!("sha256:{}", "d".repeat(64))),
+        reference: Some(format!("registry.example/iunctus/conda@{manifest}")),
     }
 }
 
@@ -162,6 +179,101 @@ fn identity_binds_lock_base_platform_recipe_and_target_capabilities() {
         .expect("variant identity");
     assert_ne!(arm.digest(), variant.digest());
     assert_ne!(arm.recipe(), variant.recipe());
+}
+
+#[test]
+fn completed_receipts_bind_inspected_image_provenance_and_distinct_digests() {
+    let preparation =
+        ImagePreparation::new(&locked(), &base(), "linux/amd64", &capabilities()).unwrap();
+    let receipt = preparation
+        .completed(built(&preparation))
+        .expect("a receipt");
+    assert_eq!(receipt.format(), IMAGE_RECEIPT_FORMAT);
+    assert_eq!(receipt.preparation(), preparation.digest());
+    assert_eq!(receipt.base(), preparation.base());
+    assert_eq!(receipt.recipe_digest(), preparation.recipe_digest());
+    assert_eq!(receipt.platform(), preparation.platform());
+    assert_eq!(receipt.image_id(), format!("sha256:{}", "c".repeat(64)));
+    assert_eq!(
+        receipt.manifest_digest(),
+        Some(format!("sha256:{}", "b".repeat(64)).as_str())
+    );
+    assert_eq!(
+        receipt.archive_digest(),
+        Some(format!("sha256:{}", "d".repeat(64)).as_str())
+    );
+    receipt.validate(&preparation).expect("valid binding");
+}
+
+#[test]
+fn completed_receipts_reject_mismatched_preparation_evidence() {
+    let preparation =
+        ImagePreparation::new(&locked(), &base(), "linux/amd64", &capabilities()).unwrap();
+    for field in ["preparation", "base", "recipe", "platform"] {
+        let mut image = built(&preparation);
+        match field {
+            "preparation" => image.preparation = format!("sha256:{}", "e".repeat(64)),
+            "base" => image.base = format!("other/base@sha256:{}", "a".repeat(64)),
+            "recipe" => image.recipe_digest = format!("sha256:{}", "e".repeat(64)),
+            "platform" => image.platform = "linux/arm64".into(),
+            _ => unreachable!(),
+        }
+        assert!(preparation.completed(image).is_err(), "accepted {field}");
+    }
+}
+
+#[test]
+fn completed_receipts_require_canonical_digest_spelling_and_reference_agreement() {
+    let preparation =
+        ImagePreparation::new(&locked(), &base(), "linux/amd64", &capabilities()).unwrap();
+    for field in ["image", "manifest", "archive"] {
+        for invalid in [
+            format!("sha256:{}", "A".repeat(64)),
+            "a".repeat(64),
+            format!("sha256:{}", "a".repeat(63)),
+        ] {
+            let mut image = built(&preparation);
+            match field {
+                "image" => image.image_id = invalid,
+                "manifest" => image.manifest_digest = Some(invalid),
+                "archive" => image.archive_digest = Some(invalid),
+                _ => unreachable!(),
+            }
+            assert!(preparation.completed(image).is_err(), "accepted {field}");
+        }
+    }
+    let mut image = built(&preparation);
+    image.reference = Some(format!(
+        "registry.example/iunctus/conda@sha256:{}",
+        "e".repeat(64)
+    ));
+    assert!(preparation.completed(image).is_err());
+    let mut image = built(&preparation);
+    image.reference = Some("registry.example/iunctus/conda:latest".into());
+    assert!(preparation.completed(image).is_err());
+    let mut image = built(&preparation);
+    image.manifest_digest = None;
+    assert!(preparation.completed(image).is_err());
+}
+
+#[test]
+fn completed_receipts_are_strict_and_round_trip_deterministically() {
+    let preparation =
+        ImagePreparation::new(&locked(), &base(), "linux/amd64", &capabilities()).unwrap();
+    let receipt = preparation.completed(built(&preparation)).unwrap();
+    let first = serde_json::to_vec(&receipt).unwrap();
+    let decoded: CompletedImage = serde_json::from_slice(&first).unwrap();
+    decoded.validate(&preparation).unwrap();
+    assert_eq!(serde_json::to_vec(&decoded).unwrap(), first);
+
+    let mut unknown: serde_json::Value = serde_json::from_slice(&first).unwrap();
+    unknown["unexpected"] = serde_json::json!(true);
+    assert!(serde_json::from_value::<CompletedImage>(unknown).is_err());
+
+    let mut unsupported: serde_json::Value = serde_json::from_slice(&first).unwrap();
+    unsupported["format"] = serde_json::json!(IMAGE_RECEIPT_FORMAT + 1);
+    let unsupported: CompletedImage = serde_json::from_value(unsupported).unwrap();
+    assert!(unsupported.validate(&preparation).is_err());
 }
 
 #[test]

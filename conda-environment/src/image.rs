@@ -6,10 +6,52 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use tar::{Builder, Header};
 
 use crate::{FORMAT, Lock, VirtualPackage};
+
+/// Version of a completed image receipt.
+pub const IMAGE_RECEIPT_FORMAT: u32 = 1;
+
+/// Evidence inspected from an already-built image and its optional distribution objects.
+/// `preparation`, `base` and `recipe_digest` must come from immutable image metadata recorded
+/// by the builder. A requested image name or tag is not evidence of that provenance.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BuiltImage {
+    pub preparation: String,
+    pub base: String,
+    pub recipe_digest: String,
+    pub platform: String,
+    /// The image's configuration digest, called its image ID by Docker-compatible engines.
+    pub image_id: String,
+    /// The selected platform manifest digest in an OCI registry, when the image was published.
+    pub manifest_digest: Option<String>,
+    /// The digest of exported transport archive bytes, when those bytes were stored.
+    pub archive_digest: Option<String>,
+    /// A registry reference pinned to `manifest_digest`, when the image was published.
+    pub reference: Option<String>,
+}
+
+/// A strictly validated receipt binding an immutable built image to its exact preparation.
+/// The image ID, OCI manifest digest and transport archive digest are distinct identities.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompletedImage {
+    format: u32,
+    preparation: String,
+    base: String,
+    recipe_digest: String,
+    platform: String,
+    image_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    archive_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reference: Option<String>,
+}
 
 /// Preparation for a resolved micromamba base. The caller must obtain the base's platform
 /// and virtual capabilities from that target image, rather than the driver host.
@@ -113,6 +155,31 @@ impl ImagePreparation {
         &self.recipe
     }
 
+    /// The digest of the exact recipe bytes, for provenance recorded by an image builder.
+    pub fn recipe_digest(&self) -> String {
+        format!(
+            "sha256:{}",
+            hex(Sha256::digest(self.recipe.as_bytes()).as_slice())
+        )
+    }
+
+    /// Registers inspected evidence of an already-built image as a portable receipt.
+    pub fn completed(&self, image: BuiltImage) -> io::Result<CompletedImage> {
+        let completed = CompletedImage {
+            format: IMAGE_RECEIPT_FORMAT,
+            preparation: image.preparation,
+            base: image.base,
+            recipe_digest: image.recipe_digest,
+            platform: image.platform,
+            image_id: image.image_id,
+            manifest_digest: image.manifest_digest,
+            archive_digest: image.archive_digest,
+            reference: image.reference,
+        };
+        completed.validate(self)?;
+        Ok(completed)
+    }
+
     /// Writes a deterministic tar from the SHA-256 package cache of [`crate::fetch_packages`].
     /// Package bytes are checked while copied. Output may be partial on any error: consumers
     /// must stage the context and submit it to the container API only after this succeeds.
@@ -163,12 +230,98 @@ impl ImagePreparation {
     }
 }
 
+impl CompletedImage {
+    /// Checks the receipt's format, provenance binding and distinct immutable identities.
+    pub fn validate(&self, preparation: &ImagePreparation) -> io::Result<()> {
+        if self.format != IMAGE_RECEIPT_FORMAT {
+            return Err(invalid("unsupported completed image receipt format"));
+        }
+        if self.preparation != preparation.digest
+            || self.base != preparation.base
+            || self.recipe_digest != preparation.recipe_digest()
+            || self.platform != preparation.platform
+        {
+            return Err(invalid(
+                "completed image provenance differs from its preparation",
+            ));
+        }
+        if !valid_sha256(&self.preparation)
+            || !valid_sha256(&self.recipe_digest)
+            || !valid_sha256(&self.image_id)
+            || self
+                .manifest_digest
+                .as_deref()
+                .is_some_and(|digest| !valid_sha256(digest))
+            || self
+                .archive_digest
+                .as_deref()
+                .is_some_and(|digest| !valid_sha256(digest))
+        {
+            return Err(invalid(
+                "completed image receipt has an invalid SHA-256 identity",
+            ));
+        }
+        if let Some(reference) = &self.reference {
+            let Some((name, digest)) = reference.rsplit_once('@') else {
+                return Err(invalid("completed image reference is not pinned"));
+            };
+            let valid_name = !name.is_empty()
+                && name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"/:._-".contains(&byte));
+            if !valid_name
+                || !valid_sha256(digest)
+                || self.manifest_digest.as_deref() != Some(digest)
+            {
+                return Err(invalid(
+                    "completed image reference differs from its OCI manifest digest",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn format(&self) -> u32 {
+        self.format
+    }
+    pub fn preparation(&self) -> &str {
+        &self.preparation
+    }
+    pub fn base(&self) -> &str {
+        &self.base
+    }
+    pub fn recipe_digest(&self) -> &str {
+        &self.recipe_digest
+    }
+    pub fn platform(&self) -> &str {
+        &self.platform
+    }
+    pub fn image_id(&self) -> &str {
+        &self.image_id
+    }
+    pub fn manifest_digest(&self) -> Option<&str> {
+        self.manifest_digest.as_deref()
+    }
+    pub fn archive_digest(&self) -> Option<&str> {
+        self.archive_digest.as_deref()
+    }
+    pub fn reference(&self) -> Option<&str> {
+        self.reference.as_deref()
+    }
+}
+
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
 
 fn valid_digest(digest: &str) -> bool {
     digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn valid_sha256(digest: &str) -> bool {
+    digest
+        .strip_prefix("sha256:")
+        .is_some_and(|hex| valid_digest(hex) && hex.bytes().all(|byte| !byte.is_ascii_uppercase()))
 }
 
 fn hex(bytes: &[u8]) -> String {

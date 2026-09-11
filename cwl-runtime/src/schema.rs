@@ -79,7 +79,7 @@ fn object(process: &Process, properties: JsonMap<String, Json>, required: Vec<Js
 /// The schema of one output: its type, whose files and directories need not exist before the
 /// run, with the format and secondary files of a file.
 fn output_schema(output: &OutputParameter, types: &Types, namespaces: &Namespaces) -> Json {
-    let mut schema = type_schema(&output.value_type, types, 0);
+    let mut schema = type_schema(&output.value_type, types, namespaces, 0);
     without_exists(&mut schema);
     if let Some(label) = &output.label {
         schema["title"] = json!(label);
@@ -114,7 +114,7 @@ fn without_exists(schema: &mut Json) {
 
 /// The schema of one input: its type, with the formats and secondary files of a file.
 fn parameter(input: &InputParameter, types: &Types, namespaces: &Namespaces) -> Json {
-    let mut schema = type_schema(&input.value_type, types, 0);
+    let mut schema = type_schema(&input.value_type, types, namespaces, 0);
     if let Json::Object(fields) = &mut schema {
         if let Some(label) = &input.label {
             fields.insert("title".into(), json!(label));
@@ -180,7 +180,7 @@ fn literal(expression: &Expression) -> Option<&str> {
 
 /// The JSON Schema of a CWL type. `null` in a union makes the value optional, which the
 /// `required` list of the object says, so the union keeps its other members.
-fn type_schema(value_type: &Type, types: &Types, depth: usize) -> Json {
+fn type_schema(value_type: &Type, types: &Types, namespaces: &Namespaces, depth: usize) -> Json {
     if depth > DEPTH {
         return json!({});
     }
@@ -196,7 +196,7 @@ fn type_schema(value_type: &Type, types: &Types, depth: usize) -> Json {
         Type::Directory => json!({"type": "string", "format": DIRECTORY_PATH, "exists": true}),
         Type::Any | Type::Named(_) => json!({}),
         Type::Array(array) => {
-            json!({"type": "array", "items": type_schema(&array.items, types, depth + 1)})
+            json!({"type": "array", "items": type_schema(&array.items, types, namespaces, depth + 1)})
         }
         Type::Enum(schema) => {
             let symbols: Vec<&str> = schema.symbols.iter().map(|s| short_name(s)).collect();
@@ -206,12 +206,26 @@ fn type_schema(value_type: &Type, types: &Types, depth: usize) -> Json {
             let mut properties = JsonMap::new();
             let mut required = Vec::new();
             for field in &record.fields {
-                let mut schema = type_schema(&field.value_type, types, depth + 1);
+                let mut schema = type_schema(&field.value_type, types, namespaces, depth + 1);
                 if let Some(label) = &field.label {
                     schema["title"] = json!(label);
                 }
                 if !field.doc.is_empty() {
                     schema["description"] = json!(field.doc.join("\n").trim());
+                }
+                let formats: Vec<String> = field
+                    .format
+                    .iter()
+                    .filter_map(literal)
+                    .map(|format| namespaces.expand_prefix(format))
+                    .collect();
+                let secondary: Vec<&str> = field
+                    .secondary_files
+                    .iter()
+                    .filter_map(|file| literal(&file.pattern))
+                    .collect();
+                if !formats.is_empty() || !secondary.is_empty() {
+                    with_file_details(&mut schema, &formats, &secondary);
                 }
                 if !types.optional(&field.value_type) {
                     required.push(json!(field.name));
@@ -228,7 +242,7 @@ fn type_schema(value_type: &Type, types: &Types, depth: usize) -> Json {
             let members: Vec<Json> = members
                 .iter()
                 .filter(|member| !matches!(types.resolve(member), Type::Null))
-                .map(|member| type_schema(member, types, depth + 1))
+                .map(|member| type_schema(member, types, namespaces, depth + 1))
                 .collect();
             let simple: Option<Vec<&Json>> = members
                 .iter()

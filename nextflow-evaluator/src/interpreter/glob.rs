@@ -75,9 +75,7 @@ pub fn glob(
     };
     let mut pending = vec![(root, String::new(), 0usize)];
     while let Some((directory, relative, depth)) = pending.pop() {
-        let Ok(entries) = host.list(&directory) else {
-            continue;
-        };
+        let entries = host.list(&directory)?;
         for (entry, is_directory) in entries {
             if !hidden && entry.starts_with('.') {
                 continue;

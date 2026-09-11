@@ -268,11 +268,11 @@ impl Nextflow {
     }
 
     /// The container tasks of the requests of the network, which are kept until they finish.
-    fn tasks(&mut self, requests: Vec<TaskRequest>) -> Vec<Task> {
+    fn tasks(&mut self, requests: Vec<TaskRequest>) -> Result<Vec<Task>, DriverError> {
         requests
             .into_iter()
             .map(|request| {
-                let mut task = task(&request, &self.environment);
+                let mut task = task(&request, &self.environment)?;
                 let registry = self.registry.as_deref();
                 task.image = (task.image).map(|image| with_registry(&image, registry));
                 for input in &task.inputs {
@@ -289,7 +289,7 @@ impl Nextflow {
                     reports.asked(&task);
                 }
                 self.requests.insert(request.id, request);
-                task
+                Ok(task)
             })
             .collect()
     }
@@ -326,7 +326,7 @@ impl Driver for Nextflow {
         };
         let (run, requests) = Run::start_retained(&loaded.module, &options, &mut host);
         self.run = Some(run);
-        Ok(self.tasks(requests.map_err(error)?))
+        self.tasks(requests.map_err(error)?)
     }
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
@@ -363,7 +363,7 @@ impl Driver for Nextflow {
             notes: &mut self.notes,
         };
         let requests = run.complete(outcome, &mut host).map_err(error)?;
-        Ok(self.tasks(requests))
+        self.tasks(requests)
     }
 
     fn draining(&self) -> bool {
@@ -658,7 +658,10 @@ fn environment(config: &Config) -> BTreeMap<String, String> {
 
 /// The container task of a Nextflow task: `.command.sh`, with the code that captures `env` and
 /// `eval` outputs, runs in the shell of the `shell` directive; the staged files are its inputs.
-pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Task {
+pub fn task(
+    request: &TaskRequest,
+    environment: &BTreeMap<String, String>,
+) -> Result<Task, DriverError> {
     let reuse = match request
         .directives
         .iter()
@@ -678,8 +681,9 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
             .map(|(name, value)| (name.to_string(), value.to_string())),
     );
     if request.made.is_some() {
-        return exec_task(request, environment, reuse);
+        return Ok(exec_task(request, environment, reuse));
     }
+    let resources = resources(request).map_err(DriverError::new)?;
     let mut inputs = vec![Input {
         path: SCRIPT.into(),
         source: String::new(),
@@ -709,7 +713,7 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
     if !request.env.is_empty() || !request.eval.is_empty() {
         outputs.push(ENVIRONMENT.into());
     }
-    Task {
+    Ok(Task {
         run_as: None,
         id: workflow_graph::TaskId(request.id.0),
         name: request.name.clone(),
@@ -722,13 +726,13 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
         inputs,
         outputs,
         stdin: request.stdin.as_ref().map(Value::to_string),
-        resources: resources(request),
+        resources,
         network: workflow_graph::Network::Unstated,
         after: Vec::new(),
         containers: Vec::new(),
         replaces_entrypoint: false,
         reuse,
-    }
+    })
 }
 
 /// What the network reads of the outcome of a task: its output files, its standard output, and

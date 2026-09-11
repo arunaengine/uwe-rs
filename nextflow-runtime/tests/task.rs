@@ -82,7 +82,7 @@ fn cache_false_disables_task_reuse() {
             name: "cache".into(),
             arguments: vec![value],
         });
-        assert_eq!(task(&request, &BTreeMap::new()).reuse, expected);
+        assert_eq!(task(&request, &BTreeMap::new()).unwrap().reuse, expected);
     }
 }
 
@@ -93,7 +93,7 @@ fn retries_force_fresh_results_without_enabling_disabled_cache() {
     for made in [None, Some(Vec::new())] {
         request.made = made;
         assert_eq!(
-            task(&request, &BTreeMap::new()).reuse,
+            task(&request, &BTreeMap::new()).unwrap().reuse,
             workflow_graph::Reuse::Denied
         );
         request.directives.push(TaskDirective {
@@ -101,7 +101,7 @@ fn retries_force_fresh_results_without_enabling_disabled_cache() {
             arguments: vec![Value::Boolean(false)],
         });
         assert_eq!(
-            task(&request, &BTreeMap::new()).reuse,
+            task(&request, &BTreeMap::new()).unwrap().reuse,
             workflow_graph::Reuse::Disabled
         );
         request.directives.pop();
@@ -117,13 +117,13 @@ fn input_environment_and_stdin_reach_container_tasks() {
         ("SAMPLE".into(), "config".into()),
         ("CONFIG_ONLY".into(), "retained".into()),
     ]);
-    let first = task(&request, &environment);
+    let first = task(&request, &environment).unwrap();
     assert_eq!(first.environment["SAMPLE"], "round one");
     assert_eq!(first.environment["CONFIG_ONLY"], "retained");
     assert_eq!(first.stdin.as_deref(), Some("first\nsecond\n"));
     request.input_environment[0].1 = Value::string("round two");
     request.stdin = Some(Value::string("different\n"));
-    let second = task(&request, &environment);
+    let second = task(&request, &environment).unwrap();
     assert_ne!(first.environment, second.environment);
     assert_ne!(first.stdin, second.stdin);
 }
@@ -131,7 +131,7 @@ fn input_environment_and_stdin_reach_container_tasks() {
 #[test]
 fn container_tasks() {
     let plain = request(&[], &[], None);
-    let container = task(&plain, &BTreeMap::new());
+    let container = task(&plain, &BTreeMap::new()).unwrap();
     assert_eq!(container.image, None);
     assert_eq!(container.step, "P");
     assert_eq!(container.command, ["/bin/bash", "-ue", ".command.sh"]);
@@ -151,7 +151,7 @@ fn container_tasks() {
     assert_eq!(container.resources.cpus, Some(2.0));
     let tagged = request(&["true"], &[], Some("debian:stable-slim"));
     let environment = BTreeMap::from([("A".to_owned(), "1".to_owned())]);
-    let container = task(&tagged, &environment);
+    let container = task(&tagged, &environment).unwrap();
     assert_eq!(container.image.as_deref(), Some("debian:stable-slim"));
     assert_eq!(container.outputs, ["out.txt", ".command.env"]);
     assert_eq!(container.environment, environment);
@@ -161,6 +161,58 @@ fn container_tasks() {
             .as_deref()
             .is_some_and(|text| text.contains("nxf_out_eval_1"))
     );
+}
+
+#[test]
+fn valid_resource_values_reach_container_tasks() {
+    let mut request = request(&[], &[], None);
+    request.directives.extend([
+        TaskDirective {
+            name: "memory".into(),
+            arguments: vec![Value::MemoryUnit(2 << 30)],
+        },
+        TaskDirective {
+            name: "disk".into(),
+            arguments: vec![Value::string("1.5 GB")],
+        },
+        TaskDirective {
+            name: "time".into(),
+            arguments: vec![Value::Duration(90_000)],
+        },
+        TaskDirective {
+            name: "accelerator".into(),
+            arguments: vec![Value::Null],
+        },
+    ]);
+    let resources = task(&request, &BTreeMap::new()).unwrap().resources;
+    assert_eq!(resources.cpus, Some(2.0));
+    assert_eq!(resources.memory_bytes, Some(2 << 30));
+    assert_eq!(resources.disk_bytes, Some(3 << 29));
+    assert_eq!(resources.time_seconds, Some(90));
+    assert_eq!(resources.gpus, None);
+}
+
+#[test]
+fn invalid_resource_values_fail_task_construction() {
+    for (name, value) in [
+        ("cpus", "many"),
+        ("memory", "lots"),
+        ("disk", "plenty"),
+        ("time", "forever"),
+        ("accelerator", "all"),
+    ] {
+        let mut request = request(&[], &[], None);
+        request.directives.push(TaskDirective {
+            name: name.into(),
+            arguments: vec![Value::string(value)],
+        });
+        let error = task(&request, &BTreeMap::new()).unwrap_err().message;
+        assert!(error.contains("process `P`"), "{error}");
+        assert!(
+            error.contains(&format!("`{name}` directive value `{value}`")),
+            "{error}"
+        );
+    }
 }
 
 #[test]

@@ -98,28 +98,56 @@ pub fn with_registry(image: &str, registry: Option<&str>) -> String {
 
 /// The resources a task asks for with its `cpus`, `memory`, `disk`, `time` and `accelerator`
 /// directives. Text like `'2 GB'` or `'1h'` counts as Nextflow reads it.
-pub fn resources(request: &TaskRequest) -> Resources {
+pub fn resources(request: &TaskRequest) -> Result<Resources, String> {
     let directives = &request.directives;
-    let number = |name: &str| match directive(directives, name) {
-        Some(Value::Number(number)) => Some(number.to_i64().max(0) as u64),
-        Some(Value::MemoryUnit(bytes)) => Some(bytes.max(0) as u64),
-        Some(Value::Duration(millis)) => Some(millis.max(0) as u64 / 1_000),
-        Some(Value::String(text)) => match name {
-            "memory" | "disk" => parse_memory(&text).ok().map(|bytes| bytes.max(0) as u64),
-            "time" => parse_duration(&text)
-                .ok()
-                .map(|millis| millis.max(0) as u64 / 1_000),
-            _ => text.trim().parse().ok(),
-        },
-        _ => None,
+    let number = |name: &str| -> Result<Option<u64>, String> {
+        let Some(directive) = directives
+            .iter()
+            .rev()
+            .find(|directive| &*directive.name == name)
+        else {
+            return Ok(None);
+        };
+        let Some(value) = directive.arguments.last() else {
+            return Err(format!(
+                "process `{}` has an invalid `{name}` directive: no value was given",
+                request.process
+            ));
+        };
+        let invalid = |detail: String| {
+            format!(
+                "process `{}` has an invalid `{name}` directive value `{value}`: {detail}",
+                request.process
+            )
+        };
+        let number = match value {
+            Value::Null => return Ok(None),
+            Value::Number(number) => number.to_i64().max(0) as u64,
+            Value::MemoryUnit(bytes) => (*bytes).max(0) as u64,
+            Value::Duration(millis) => (*millis).max(0) as u64 / 1_000,
+            Value::String(text) => match name {
+                "memory" | "disk" => parse_memory(text)
+                    .map(|bytes| bytes.max(0) as u64)
+                    .map_err(|error| invalid(error.to_string()))?,
+                "time" => parse_duration(text)
+                    .map(|millis| millis.max(0) as u64 / 1_000)
+                    .map_err(|error| invalid(error.to_string()))?,
+                _ => text
+                    .trim()
+                    .parse()
+                    .map_err(|error: std::num::ParseIntError| invalid(error.to_string()))?,
+            },
+            _ => return Err(invalid("expected a number or unit value".into())),
+        };
+        Ok(Some(number))
     };
-    Resources {
-        cpus: number("cpus").map(|cpus| cpus as f64),
-        memory_bytes: number("memory"),
-        disk_bytes: number("disk"),
-        time_seconds: number("time"),
-        gpus: number("accelerator").map(|count| count as u32),
-    }
+    Ok(Resources {
+        cpus: number("cpus")?.map(|cpus| cpus as f64),
+        memory_bytes: number("memory")?,
+        disk_bytes: number("disk")?,
+        time_seconds: number("time")?,
+        gpus: number("accelerator")?.map(|count| count as u32),
+    })
 }
 
 /// The last value of a directive.

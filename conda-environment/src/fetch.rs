@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use sha2::{Digest as _, Sha256};
 
+use crate::repodata::component;
 use crate::{Environment, Lock, base, channels, repodata_path};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -84,15 +85,6 @@ pub fn fetch_packages(
         paths.push(path);
     }
     Ok(paths)
-}
-
-fn component(name: &str) -> bool {
-    !name.is_empty()
-        && name != "."
-        && name != ".."
-        && name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"_.-".contains(&byte))
 }
 
 fn verify(path: &Path, expected: &str) -> io::Result<()> {

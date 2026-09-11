@@ -9,7 +9,9 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use run_database::{Attempt, Database, DatabaseError, Event, MarkerRow, Run, TaskRow};
+use run_database::{
+    Attempt, Database, DatabaseError, Event, MarkerRow, Run, TaskRow, redact_public_text,
+};
 use sha2::{Digest, Sha256};
 
 use crate::otlp::{
@@ -86,9 +88,30 @@ fn request(spans: Vec<Span>) -> Request {
                     name: SERVICE.to_owned(),
                     version: version.to_owned(),
                 },
-                spans,
+                spans: spans.into_iter().map(public_span).collect(),
             }],
         }],
+    }
+}
+
+/// Redacts private text at the boundary of the public telemetry artifact.
+fn public_span(mut span: Span) -> Span {
+    span.name = redact_public_text(&span.name);
+    redact_attributes(&mut span.attributes);
+    for event in &mut span.events {
+        event.name = redact_public_text(&event.name);
+        redact_attributes(&mut event.attributes);
+    }
+    span.status.message = redact_public_text(&span.status.message);
+    span
+}
+
+fn redact_attributes(attributes: &mut [KeyValue]) {
+    for attribute in attributes {
+        attribute.key = redact_public_text(&attribute.key);
+        if let crate::otlp::Value::Text(text) = &mut attribute.value {
+            *text = redact_public_text(text);
+        }
     }
 }
 

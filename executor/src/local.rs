@@ -92,6 +92,7 @@ impl crate::Backend for LocalContainer {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
+        let job = admit(job)?;
         let placement = job.placement;
         let groups = crate::containers::groups(job.spec).ok_or(ExecutorError::NoImage)?;
         let memory = placement.memory_bytes.map(|bytes| {
@@ -130,6 +131,20 @@ impl crate::Backend for LocalContainer {
         }
         result
     }
+}
+
+fn admit<'a>(job: Job<'a>) -> Result<Job<'a>, ExecutorError> {
+    if job
+        .placement
+        .accelerators
+        .iter()
+        .any(|accelerator| accelerator.count != 0)
+    {
+        return Err(ExecutorError::Unsupported(
+            "the local executor does not support accelerators".into(),
+        ));
+    }
+    Ok(job)
 }
 
 /// How a container runs the wrapper of a task staged in its scratch directory.
@@ -946,6 +961,65 @@ fn read(path: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accelerator_requests_are_refused_before_local_work() {
+        let spec = TaskSpec {
+            format: task_model::FORMAT,
+            namespace: String::new(),
+            image: Some(Image {
+                reference: "debian:stable-slim".into(),
+                platform: None,
+            }),
+            arguments: vec!["true".into()],
+            workdir: None,
+            environment: std::collections::BTreeMap::new(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            stdin: None,
+            containers: Vec::new(),
+            replaces_entrypoint: false,
+            run_as: None,
+        };
+        let staging = crate::job::Staging::default();
+        let placement = task_model::Placement {
+            accelerators: vec![task_model::Accelerator {
+                count: 1,
+                kind: Some("gpu".into()),
+            }],
+            ..task_model::Placement::default()
+        };
+        let error = admit(Job {
+            name: "accelerated",
+            spec: &spec,
+            staging: &staging,
+            placement: &placement,
+        })
+        .expect_err("accelerators are unsupported");
+        assert!(matches!(error, ExecutorError::Unsupported(_)), "{error}");
+
+        for accelerators in [
+            Vec::new(),
+            vec![task_model::Accelerator {
+                count: 0,
+                kind: Some("gpu".into()),
+            }],
+        ] {
+            let placement = task_model::Placement {
+                accelerators,
+                ..task_model::Placement::default()
+            };
+            assert!(
+                admit(Job {
+                    name: "ordinary",
+                    spec: &spec,
+                    staging: &staging,
+                    placement: &placement,
+                })
+                .is_ok()
+            );
+        }
+    }
 
     #[test]
     fn image_groups_partition_the_aggregate_grant_in_generated_configs() {

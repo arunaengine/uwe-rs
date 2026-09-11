@@ -33,6 +33,11 @@ fn directory() -> String {
 
 fn to_list(sheet: &str, schema: &str) -> Result<String, Error> {
     let directory = directory();
+    to_list_in(Path::new(&directory), sheet, schema)
+}
+
+fn to_list_in(directory: &Path, sheet: &str, schema: &str) -> Result<String, Error> {
+    let directory = directory.to_string_lossy().into_owned();
     let mut host = Fixtures(directory.clone());
     let config = Config::default();
     let mut context = Context {
@@ -43,6 +48,110 @@ fn to_list(sheet: &str, schema: &str) -> Result<String, Error> {
     };
     let arguments = vec![Value::string(sheet), Value::string(schema)];
     call("nf-schema", "samplesheetToList", arguments, &mut context).map(|rows| rows.to_string())
+}
+
+#[test]
+fn referenced_rows_meta_paths_and_defaults_are_converted() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(
+        directory.path().join("sheet.csv"),
+        "sample,fastq,group\nS1,reads.fq,\n",
+    )
+    .unwrap();
+    std::fs::write(
+        directory.path().join("schema.json"),
+        r##"{
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "array",
+          "items": {"$ref": "#/$defs/row"},
+          "$defs": {
+            "row": {
+              "type": "object",
+              "properties": {
+                "sample": {"$ref": "#/$defs/sample"},
+                "fastq": {"$ref": "#/$defs/path"},
+                "group": {"$ref": "#/$defs/group"}
+              }
+            },
+            "sample": {"type": "string", "meta": ["id"]},
+            "path": {"type": "string", "format": "file-path"},
+            "group": {"type": "integer", "default": 7}
+          }
+        }"##,
+    )
+    .unwrap();
+    let rows = to_list_in(directory.path(), "sheet.csv", "schema.json").unwrap();
+    assert_eq!(
+        rows,
+        format!("[[[id:S1], {}/reads.fq, 7]]", directory.path().display())
+    );
+}
+
+#[test]
+fn unsupported_or_broken_sample_references_fail_explicitly() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(directory.path().join("sheet.csv"), "value\nx\n").unwrap();
+    for (reference, definitions, expected) in [
+        (
+            "#/$defs/missing",
+            "{}",
+            "pointer segment `missing` does not exist",
+        ),
+        ("rows.json#/$defs/row", "{}", "external reference"),
+        (
+            "#/$defs/row",
+            r##"{"row":{"$ref":"#/$defs/row"}}"##,
+            "cyclic samplesheet schema reference",
+        ),
+    ] {
+        let schema = format!(
+            r##"{{"type":"array","items":{{"$ref":"{reference}"}},"$defs":{definitions}}}"##
+        );
+        std::fs::write(directory.path().join("schema.json"), schema).unwrap();
+        let error = to_list_in(directory.path(), "sheet.csv", "schema.json")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(expected), "{error}");
+    }
+}
+
+#[test]
+fn structural_compositions_fail_and_literal_ids_remain_data() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(directory.path().join("sheet.json"), r#"[{"sample":"S1"}]"#).unwrap();
+    std::fs::write(
+        directory.path().join("schema.json"),
+        r#"{"type":"array","items":{"type":"object","allOf":[{"properties":{"sample":{"type":"string"}}}]}}"#,
+    )
+    .unwrap();
+    let error = to_list_in(directory.path(), "sheet.json", "schema.json")
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("`properties` under `allOf`"), "{error}");
+
+    std::fs::write(directory.path().join("sheet.json"), r#"[{"$id":"row"}]"#).unwrap();
+    std::fs::write(
+        directory.path().join("schema.json"),
+        r#"{
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "$id": {"type": "string"},
+              "payload": {
+                "type": "object",
+                "properties": {"$id": {"type": "string"}},
+                "default": {"$id": "data"}
+              }
+            }
+          }
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(
+        to_list_in(directory.path(), "sheet.json", "schema.json").unwrap(),
+        "[[row, [data]]]"
+    );
 }
 
 #[test]

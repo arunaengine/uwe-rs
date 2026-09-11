@@ -192,10 +192,32 @@ pub fn os(interpreter: &mut Interpreter) -> Result<Vec<(&'static str, Value)>, E
         ("removedirs", function("removedirs", remove)),
         ("rename", function("rename", rename)),
         ("replace", function("replace", rename)),
-        ("symlink", function("symlink", |_, _| Ok(Value::None))),
-        ("link", function("link", |_, _| Ok(Value::None))),
-        ("chmod", function("chmod", |_, _| Ok(Value::None))),
-        ("utime", function("utime", |_, _| Ok(Value::None))),
+        (
+            "symlink",
+            function("symlink", |_, _| {
+                Err(Error::unsupported(
+                    "os.symlink while the workflow is planned",
+                ))
+            }),
+        ),
+        (
+            "link",
+            function("link", |_, _| {
+                Err(Error::unsupported("os.link while the workflow is planned"))
+            }),
+        ),
+        (
+            "chmod",
+            function("chmod", |_, _| {
+                Err(Error::unsupported("os.chmod while the workflow is planned"))
+            }),
+        ),
+        (
+            "utime",
+            function("utime", |_, _| {
+                Err(Error::unsupported("os.utime while the workflow is planned"))
+            }),
+        ),
         ("umask", function("umask", |_, _| Ok(Value::Int(0o22)))),
         (
             "access",
@@ -385,37 +407,186 @@ fn stat(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
     Ok(Value::native(Record(RefCell::new(record), "stat_result")))
 }
 
-fn walk(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+fn walk(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    args.expect("walk", 1, 4)?;
     let top = text(interpreter, &args, 0, "walk")?;
-    let mut results = Vec::new();
-    let mut pending = vec![top];
-    while let Some(directory) = pending.pop() {
-        let resolved = interpreter.host.resolve(&directory);
-        let Ok(names) = interpreter.host.list(&resolved) else {
-            continue;
-        };
-        let mut directories = Vec::new();
-        let mut files = Vec::new();
-        for name in names {
-            match interpreter
-                .host
-                .stat(&resolved.join(&name))
-                .map(|stat| stat.kind)
-            {
-                Some(FileKind::Directory) => directories.push(name),
-                _ => files.push(name),
+    let topdown = match args.take(1, "topdown") {
+        Some(value) => interpreter.truthy(&value)?,
+        None => true,
+    };
+    let followlinks = match args.take(3, "followlinks") {
+        Some(value) => interpreter.truthy(&value)?,
+        None => false,
+    };
+    args.take(2, "onerror");
+    args.no_keywords("walk")?;
+    let resolved = interpreter.host.resolve(&top);
+    let ancestors = vec![interpreter.host.canonicalize(&resolved)];
+    Ok(Value::native(Walk(RefCell::new(WalkState {
+        topdown,
+        followlinks,
+        pending: vec![WalkFrame::Visit {
+            directory: top,
+            ancestors,
+        }],
+    }))))
+}
+
+struct Walk(RefCell<WalkState>);
+
+struct WalkState {
+    topdown: bool,
+    followlinks: bool,
+    pending: Vec<WalkFrame>,
+}
+
+enum WalkFrame {
+    Visit {
+        directory: String,
+        ancestors: Vec<std::path::PathBuf>,
+    },
+    Descend {
+        directory: String,
+        directories: Value,
+        ancestors: Vec<std::path::PathBuf>,
+    },
+    Yield(Value),
+}
+
+impl WalkState {
+    fn next(&mut self, interpreter: &mut Interpreter) -> Result<Option<Value>, Error> {
+        while let Some(frame) = self.pending.pop() {
+            match frame {
+                WalkFrame::Yield(value) => return Ok(Some(value)),
+                WalkFrame::Descend {
+                    directory,
+                    directories,
+                    ancestors,
+                } => {
+                    let Value::List(names) = directories.plain() else {
+                        unreachable!("walk directory names are a list");
+                    };
+                    let names = names.borrow().clone();
+                    self.push_children(interpreter, &directory, &names, &ancestors)?;
+                }
+                WalkFrame::Visit {
+                    directory,
+                    ancestors,
+                } => {
+                    let resolved = interpreter.host.resolve(&directory);
+                    let Ok(names) = interpreter.host.list(&resolved) else {
+                        continue;
+                    };
+                    let mut directories = Vec::new();
+                    let mut files = Vec::new();
+                    for name in names {
+                        match interpreter
+                            .host
+                            .stat(&resolved.join(&name))
+                            .map(|stat| stat.kind)
+                        {
+                            Some(FileKind::Directory) => directories.push(Value::str(name)),
+                            _ => files.push(Value::str(name)),
+                        }
+                    }
+                    let directories = Value::list(directories);
+                    let value = Value::tuple(vec![
+                        Value::str(directory.as_str()),
+                        directories.clone(),
+                        Value::list(files),
+                    ]);
+                    if self.topdown {
+                        self.pending.push(WalkFrame::Descend {
+                            directory,
+                            directories,
+                            ancestors,
+                        });
+                        return Ok(Some(value));
+                    }
+                    self.pending.push(WalkFrame::Yield(value));
+                    let Value::List(names) = directories.plain() else {
+                        unreachable!("walk directory names are a list");
+                    };
+                    let names = names.borrow().clone();
+                    self.push_children(interpreter, &directory, &names, &ancestors)?;
+                }
             }
         }
-        for name in directories.iter().rev() {
-            pending.push(join_two(&directory, name));
-        }
-        results.push(Value::tuple(vec![
-            Value::str(directory.as_str()),
-            Value::list(directories.into_iter().map(Value::str).collect()),
-            Value::list(files.into_iter().map(Value::str).collect()),
-        ]));
+        Ok(None)
     }
-    Ok(Value::iterator(results))
+
+    fn push_children(
+        &mut self,
+        interpreter: &mut Interpreter,
+        directory: &str,
+        names: &[Value],
+        ancestors: &[std::path::PathBuf],
+    ) -> Result<(), Error> {
+        for name in names.iter().rev() {
+            let name = path_text(interpreter, name)?;
+            let child = join_two(directory, &name);
+            let resolved = interpreter.host.resolve(&child);
+            if interpreter
+                .host
+                .stat(&resolved)
+                .is_none_or(|stat| stat.kind != FileKind::Directory)
+                || (!self.followlinks && interpreter.host.is_symlink(&resolved))
+            {
+                continue;
+            }
+            let identity = interpreter.host.canonicalize(&resolved);
+            if ancestors.contains(&identity) {
+                continue;
+            }
+            let mut child_ancestors = ancestors.to_vec();
+            child_ancestors.push(identity);
+            self.pending.push(WalkFrame::Visit {
+                directory: child,
+                ancestors: child_ancestors,
+            });
+        }
+        Ok(())
+    }
+}
+
+impl Native for Walk {
+    fn type_name(&self) -> &str {
+        "generator"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn iterate(&self, interpreter: &mut Interpreter) -> Result<Option<Vec<Value>>, Error> {
+        let mut values = Vec::new();
+        while let Some(value) = self.0.borrow_mut().next(interpreter)? {
+            values.push(value);
+        }
+        Ok(Some(values))
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        this: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let this = this.clone();
+        Ok(match name {
+            "__iter__" => Some(Value::builtin("__iter__", move |_, _| Ok(this.clone()))),
+            "__next__" => Some(Value::builtin("__next__", move |interpreter, _| {
+                let Some(walk) = this.as_native::<Walk>() else {
+                    return Err(Error::type_error("not an os.walk iterator"));
+                };
+                walk.0
+                    .borrow_mut()
+                    .next(interpreter)?
+                    .ok_or_else(Error::stop_iteration)
+            })),
+            _ => None,
+        })
+    }
 }
 
 /// `os.path.join` of two parts.

@@ -3,10 +3,11 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::rc::Rc;
 
-use python_evaluator::{Interpreter, LocalHost};
+use python_evaluator::{Host, Interpreter, LocalHost};
 
 fn run(path: &Path) -> String {
     let text = std::fs::read_to_string(path).expect("reads the program");
@@ -71,6 +72,127 @@ fn writes_stay_in_memory() {
         !std::env::temp_dir()
             .join("iunctus-test-never-written.txt")
             .exists()
+    );
+}
+
+#[test]
+fn unavailable_os_mutations_are_explicit_and_leave_files_unchanged() {
+    for (name, call) in [
+        ("symlink", "os.symlink('source.txt', 'created.txt')"),
+        ("link", "os.link('source.txt', 'created.txt')"),
+        ("chmod", "os.chmod('source.txt', 0)"),
+        ("utime", "os.utime('source.txt', (1, 1))"),
+    ] {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let source = folder.path().join("source.txt");
+        std::fs::write(&source, "source").expect("writes the source");
+        let before = std::fs::metadata(&source).expect("source metadata");
+        let before = (
+            before.permissions().mode(),
+            before.modified().expect("modified"),
+        );
+        let host = Rc::new(LocalHost::new(folder.path()));
+        let mut interpreter = Interpreter::new(host.clone());
+        interpreter
+            .run_text(
+                "<setup>",
+                "with open('virtual.txt', 'w') as file:\n    file.write('virtual')\n",
+            )
+            .expect("writes a virtual file");
+
+        let error = interpreter
+            .run_text("<test>", &format!("import os\n{call}\n"))
+            .err()
+            .expect("mutation is unsupported");
+        let diagnostic = format!("os.{name} while the workflow is planned");
+        assert!(error.is_unsupported(), "{name}: {error}");
+        assert_eq!(error.message(), diagnostic);
+        assert_eq!(
+            error.to_string(),
+            format!("<test>:2: Not supported yet: {diagnostic}")
+        );
+        assert!(!folder.path().join("created.txt").exists());
+        assert_eq!(std::fs::read(&source).expect("source remains"), b"source");
+        let after = std::fs::metadata(&source).expect("source metadata remains");
+        assert_eq!(after.permissions().mode(), before.0);
+        assert_eq!(after.modified().expect("modified remains"), before.1);
+        assert_eq!(
+            host.read(&folder.path().join("virtual.txt"))
+                .expect("virtual file remains"),
+            b"virtual"
+        );
+
+        interpreter
+            .run_text(
+                "<supported>",
+                "import os\nos.rename('virtual.txt', 'renamed.txt')\n",
+            )
+            .expect("rename remains supported");
+        assert_eq!(
+            host.read(&folder.path().join("renamed.txt"))
+                .expect("renamed virtual file"),
+            b"virtual"
+        );
+    }
+}
+
+#[test]
+fn os_walk_prunes_live_orders_bottom_up_and_bounds_link_cycles() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let tree = folder.path().join("tree");
+    for directory in ["keep", "prune", "real/nested"] {
+        std::fs::create_dir_all(tree.join(directory)).expect("makes a directory");
+    }
+    std::fs::write(tree.join("keep/leaf.txt"), "keep").expect("writes a kept file");
+    std::fs::write(tree.join("prune/hidden.txt"), "prune").expect("writes a pruned file");
+    std::fs::write(tree.join("real/nested/data.txt"), "data").expect("writes nested data");
+    std::os::unix::fs::symlink("real", tree.join("link")).expect("links to a directory");
+    std::os::unix::fs::symlink("..", tree.join("real/back")).expect("links to an ancestor");
+    let host = Rc::new(LocalHost::new(folder.path()));
+    let mut interpreter = Interpreter::new(host.clone());
+    interpreter
+        .run_text(
+            "<test>",
+            concat!(
+                "import os\n",
+                "os.makedirs('tree/virtual/inside')\n",
+                "with open('tree/virtual/inside/memory.txt', 'w') as file:\n",
+                "    file.write('memory')\n",
+                "for root, dirs, files in os.walk('tree'):\n",
+                "    if root == 'tree':\n",
+                "        dirs.remove('prune')\n",
+                "    print('top', root, dirs, files)\n",
+                "for root, dirs, files in os.walk('tree', topdown=False):\n",
+                "    print('bottom', root)\n",
+                "for root, dirs, files in os.walk('tree', followlinks=True):\n",
+                "    print('follow', root)\n",
+            ),
+        )
+        .expect("walks the tree");
+    assert_eq!(
+        *host.output.borrow(),
+        "top tree ['keep', 'link', 'real', 'virtual'] []\n\
+         top tree/keep [] ['leaf.txt']\n\
+         top tree/real ['back', 'nested'] []\n\
+         top tree/real/nested [] ['data.txt']\n\
+         top tree/virtual ['inside'] []\n\
+         top tree/virtual/inside [] ['memory.txt']\n\
+         bottom tree/keep\n\
+         bottom tree/prune\n\
+         bottom tree/real/nested\n\
+         bottom tree/real\n\
+         bottom tree/virtual/inside\n\
+         bottom tree/virtual\n\
+         bottom tree\n\
+         follow tree\n\
+         follow tree/keep\n\
+         follow tree/link\n\
+         follow tree/link/nested\n\
+         follow tree/prune\n\
+         follow tree/real\n\
+         follow tree/real/nested\n\
+         follow tree/virtual\n\
+         follow tree/virtual/inside\n"
     );
 }
 

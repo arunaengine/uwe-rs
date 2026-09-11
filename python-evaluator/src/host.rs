@@ -49,6 +49,16 @@ pub trait Host {
 
     fn stat(&self, path: &Path) -> Option<Stat>;
 
+    /// Whether a path is a symbolic link, without following it.
+    fn is_symlink(&self, path: &Path) -> bool {
+        std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink())
+    }
+
+    /// A stable identity for cycle checks while following directory links.
+    fn canonicalize(&self, path: &Path) -> PathBuf {
+        std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned())
+    }
+
     /// The names in a directory, sorted.
     fn list(&self, path: &Path) -> std::io::Result<Vec<String>>;
 
@@ -247,6 +257,26 @@ impl Host for LocalHost {
             size: metadata.len(),
             modified,
         })
+    }
+
+    fn is_symlink(&self, path: &Path) -> bool {
+        if self.written.borrow().contains_key(path)
+            || self.directories.borrow().contains(path)
+            || self.is_removed(path)
+        {
+            return false;
+        }
+        std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink())
+    }
+
+    fn canonicalize(&self, path: &Path) -> PathBuf {
+        if self.written.borrow().contains_key(path)
+            || self.directories.borrow().contains(path)
+            || self.is_removed(path)
+        {
+            return path.to_owned();
+        }
+        std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned())
     }
 
     fn list(&self, path: &Path) -> std::io::Result<Vec<String>> {

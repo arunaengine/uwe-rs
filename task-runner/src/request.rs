@@ -18,6 +18,8 @@ use crate::{Runner, RunnerError};
 
 /// The longest step name that an identity keeps, so that it stays a short path segment.
 const STEP_LENGTH: usize = 100;
+/// Separates results made without network access from otherwise identical online results.
+const OFFLINE_NAMESPACE: &str = "network-denied";
 
 impl<B: Backend> Runner<B> {
     /// The request of a task whose image is `image`, pinned to a digest where possible, for
@@ -110,7 +112,10 @@ pub fn request(
         .collect();
     let spec = TaskSpec {
         format: FORMAT,
-        namespace: String::new(),
+        namespace: match task.network {
+            Network::Denied => OFFLINE_NAMESPACE.to_owned(),
+            Network::Allowed | Network::Unstated => String::new(),
+        },
         image,
         arguments: task.command.clone(),
         workdir: task.workdir.clone(),
@@ -223,6 +228,45 @@ mod tests {
         );
         let pinned = request(&task, Some("debian@sha256:ab".into()), vec![input], None);
         assert_eq!(pinned.scope, ReuseScope::Shared);
+    }
+
+    #[test]
+    fn offline_policy_has_a_separate_reusable_cache_identity() {
+        let task = Task {
+            command: vec!["true".into()],
+            ..Task::default()
+        };
+        let online = request(&task, Some("image@sha256:ab".into()), Vec::new(), None);
+        let mut explicitly_online = task.clone();
+        explicitly_online.network = Network::Allowed;
+        let explicitly_online = request(
+            &explicitly_online,
+            Some("image@sha256:ab".into()),
+            Vec::new(),
+            None,
+        );
+        let mut offline = task;
+        offline.network = Network::Denied;
+        let offline = request(&offline, Some("image@sha256:ab".into()), Vec::new(), None);
+
+        assert!(!online.placement.offline && !explicitly_online.placement.offline);
+        assert!(offline.placement.offline);
+        assert!(online.spec.namespace.is_empty());
+        assert_eq!(explicitly_online.spec.namespace, online.spec.namespace);
+        assert_eq!(offline.spec.namespace, OFFLINE_NAMESPACE);
+        assert_eq!(
+            online.spec.cache_key().expect("an online key"),
+            explicitly_online
+                .spec
+                .cache_key()
+                .expect("an explicitly online key")
+        );
+        assert_ne!(
+            online.spec.cache_key().expect("an online key"),
+            offline.spec.cache_key().expect("an offline key")
+        );
+        assert_eq!(online.scope, ReuseScope::Shared);
+        assert_eq!(offline.scope, ReuseScope::Shared);
     }
 
     #[test]

@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use input_schema::{Problem, Severity, check};
+use input_schema::{Problem, Severity, check, validate};
 use serde_json::{Value as Json, json};
 use workflow_graph::Inputs;
 
@@ -73,6 +73,110 @@ fn texts_from_the_command_line_read_as_numbers_and_booleans() {
     });
     let values = json!({"threads": "4", "ratio": "0.5", "skip": "True", "either": "7"});
     assert_eq!(check(&inputs(schema, values, Path::new("/")), false), []);
+}
+
+#[test]
+fn detailed_validation_has_normalized_values_and_json_pointers() {
+    let schema = json!({
+        "type": "object",
+        "required": ["missing/name~"],
+        "properties": {
+            "samples": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "count": {"type": "integer"},
+                        "ratio": {"type": "number"},
+                        "enabled": {"type": "boolean"}
+                    }
+                }
+            },
+            "a/b~c": {"type": "integer"},
+            "defaulted": {"type": "integer", "default": 3}
+        }
+    });
+    let values = json!({
+        "samples": [
+            {"count": "7", "ratio": "0.5", "enabled": "False"},
+            {"count": "many"}
+        ],
+        "a/b~c": "wrong"
+    });
+    let details = validate(&inputs(schema, values, Path::new("/")), false);
+
+    assert_eq!(details.values["samples"][0]["count"], json!(7));
+    assert_eq!(details.values["samples"][0]["ratio"], json!(0.5));
+    assert_eq!(details.values["samples"][0]["enabled"], json!(false));
+    assert!(details.values.get("defaulted").is_none());
+    let nested = details
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.instance_path == "/samples/1/count")
+        .expect("the nested array error");
+    assert_eq!(
+        nested.schema_path,
+        "/properties/samples/items/properties/count/type"
+    );
+    assert_eq!(
+        (nested.keyword.as_str(), nested.code.as_str()),
+        ("type", "schema.type")
+    );
+    let escaped = details
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.input == "a/b~c")
+        .expect("the escaped property error");
+    assert_eq!(escaped.instance_path, "/a~1b~0c");
+    assert_eq!(escaped.schema_path, "/properties/a~1b~0c/type");
+    let required = details
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.keyword == "required")
+        .expect("the required error");
+    assert_eq!(required.instance_path, "/missing~1name~0");
+    assert_eq!(required.schema_path, "/required");
+    assert_eq!(details.json()["values"], details.values);
+}
+
+#[test]
+fn detailed_validation_keeps_nested_choice_branches() {
+    let schema = json!({
+        "properties": {
+            "choice": {
+                "oneOf": [
+                    {"type": "integer"},
+                    {"anyOf": [
+                        {"type": "boolean"},
+                        {"enum": ["yes"]}
+                    ]}
+                ]
+            }
+        }
+    });
+    let details = validate(
+        &inputs(schema, json!({"choice": []}), Path::new("/")),
+        false,
+    );
+
+    let choice = details.diagnostics.first().expect("the oneOf error");
+    assert_eq!(
+        (choice.keyword.as_str(), choice.code.as_str()),
+        ("oneOf", "schema.oneOf")
+    );
+    assert_eq!(choice.instance_path, "/choice");
+    assert_eq!(choice.schema_path, "/properties/choice/oneOf");
+    assert_eq!(choice.branches.len(), 2);
+    assert_eq!(choice.branches[0][0].keyword, "type");
+    let nested = &choice.branches[1][0];
+    assert_eq!(nested.keyword, "anyOf");
+    assert_eq!(nested.branches.len(), 2);
+    assert_eq!(nested.branches[0][0].keyword, "type");
+    assert_eq!(nested.branches[1][0].keyword, "enum");
+    assert_eq!(
+        details.json()["diagnostics"][0]["branches"][1][0]["code"],
+        "schema.anyOf"
+    );
 }
 
 #[test]

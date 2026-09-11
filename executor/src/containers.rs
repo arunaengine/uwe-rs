@@ -24,7 +24,7 @@ use task_model::{EnvironmentValue, Image, TaskSpec};
 use crate::braces::expand_braces;
 use crate::wrapper::{
     BASH, COLLECT, END, ENDED, EXIT, Folders, MANIFEST, NOW, START, STDERR, STDIN, STDOUT,
-    USAGE_SCRIPT, hand_back, quote, start_in,
+    USAGE_SCRIPT, hand_back, invalid_specification, quote, start_in,
 };
 
 /// The folder in the control folder that holds a folder for each container of a task that
@@ -118,8 +118,11 @@ pub fn sequence(spec: &TaskSpec) -> Option<Vec<usize>> {
 
 /// The wrapper of the container at `position` of a task that runs several, in the folders
 /// that its container sees. Its arguments must be what the container runs, the entrypoint of
-/// its image included.
+/// its image included. An invalid specification produces only a failure wrapper.
 pub fn container_wrapper(spec: &TaskSpec, position: usize, folders: &Folders<'_>) -> String {
+    if spec.validate().is_err() {
+        return invalid_specification();
+    }
     let container = &spec.containers[position];
     let main = position == 0;
     let own = own_folder(spec, position);
@@ -475,6 +478,26 @@ mod tests {
             [ \"$code\" -eq 0 ] || [ -s '/c/exit' ] || echo \"$code\" > '/c/exit'\n    exit \
             \"$code\"\n} &\nwait\n";
         assert!(group.contains(expected), "{group}");
+    }
+
+    #[test]
+    fn invalid_environment_never_reaches_a_container_wrapper() {
+        let mut spec = spec(&[("main", "a", &[]), ("other", "a", &[])]);
+        let command = "BAD=value\nprintf injected";
+        spec.containers[1]
+            .environment
+            .insert(command.into(), EnvironmentValue::Literal("value".into()));
+        let folders = Folders {
+            work: "/w",
+            control: "/c",
+            home: "/h",
+            outbox: "",
+            owner: "",
+        };
+
+        let text = container_wrapper(&spec, 1, &folders);
+        assert_eq!(text, invalid_specification());
+        assert!(!text.contains(command));
     }
 
     #[test]

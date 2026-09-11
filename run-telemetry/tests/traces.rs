@@ -165,6 +165,85 @@ fn requests_of(database: &Database, run: &str) -> Option<Vec<Request>> {
 }
 
 #[test]
+fn written_traces_redact_url_passwords_without_changing_private_records() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    let private = "https://user:password@host/path";
+    let start = RunStart {
+        id: "private-run".into(),
+        resumes: None,
+        workflow: "/work/private.nf".into(),
+        language: Language::Nextflow,
+        revision: None,
+        arguments: Vec::new(),
+        parameters: vec![(private.into(), private.into())],
+        executor: private.into(),
+        simulated: false,
+        store: None,
+        program: None,
+        launch: None,
+        workflow_folder: None,
+        repeats: None,
+    };
+    let mut recorder = Database::open(&path)
+        .and_then(|database| database.record(&start))
+        .expect("starts a private record");
+    let task = Task {
+        id: TaskId(1),
+        name: private.into(),
+        step: private.into(),
+        image: Some(private.into()),
+        command: vec!["false".into()],
+        ..Task::default()
+    };
+    recorder.requested(&task, &[]);
+    recorder.ended(Some(private));
+    recorder.close().expect("records private text");
+
+    let database = Database::open(&path).expect("opens again");
+    let requests = requests_of(&database, "private-run").expect("knows the run");
+    let spans = spans(&requests);
+    let [run, task] = spans.as_slice() else {
+        panic!("run and task spans");
+    };
+    let public = "https://user:[secret]@host/path";
+    assert_eq!(
+        text(run, &format!("iunctus.parameter.{public}")),
+        Some(&Value::Text(public.into()))
+    );
+    assert_eq!(
+        text(run, "iunctus.executor"),
+        Some(&Value::Text(public.into()))
+    );
+    assert_eq!(task.name, public);
+    assert_eq!(
+        text(task, "iunctus.task.name"),
+        Some(&Value::Text(public.into()))
+    );
+    assert_eq!(run.status.message, public);
+
+    let mut lines = Vec::new();
+    write_lines(&requests, &mut lines).expect("writes traces");
+    let written = String::from_utf8(lines).expect("UTF-8 JSON lines");
+    assert!(written.contains(public), "{written}");
+    assert!(!written.contains("password"), "{written}");
+
+    let stored = database
+        .run("private-run")
+        .expect("reads private run")
+        .expect("stored run");
+    assert_eq!(
+        stored.parameters,
+        vec![(private.to_owned(), private.to_owned())]
+    );
+    assert_eq!(stored.executor, private);
+    assert_eq!(stored.error.as_deref(), Some(private));
+    let stored_tasks = database.tasks("private-run").expect("reads private tasks");
+    assert_eq!(stored_tasks[0].name, private);
+    assert_eq!(stored_tasks[0].step, private);
+}
+
+#[test]
 fn traces_go_to_an_otlp_endpoint_with_their_headers() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");

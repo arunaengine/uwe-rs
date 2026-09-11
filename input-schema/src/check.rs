@@ -40,34 +40,161 @@ impl fmt::Display for Problem {
     }
 }
 
+/// One machine-readable problem, with its location in the values and schema.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Diagnostic {
+    pub severity: Severity,
+    pub input: String,
+    pub message: String,
+    /// RFC 6901 JSON Pointer into the normalized values.
+    pub instance_path: String,
+    /// RFC 6901 JSON Pointer into the schema.
+    pub schema_path: String,
+    /// The JSON Schema keyword, such as `required`, `type` or `anyOf`.
+    pub keyword: String,
+    /// A stable code for programmatic consumers, such as `schema.required`.
+    pub code: String,
+    /// The errors of each branch of `anyOf` or `oneOf`, in schema order.
+    pub branches: Vec<Vec<Diagnostic>>,
+}
+
+/// The normalized values and all validation diagnostics.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Validation {
+    pub values: Json,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+impl Validation {
+    /// This result as JSON for forms and other machine consumers.
+    pub fn json(&self) -> Json {
+        serde_json::json!({
+            "values": self.values,
+            "diagnostics": self.diagnostics.iter().map(diagnostic_json).collect::<Vec<_>>()
+        })
+    }
+}
+
 /// Checks the values of a run against the schema of its inputs. A simulated run assumes its
 /// input files, so a file that does not exist is only a warning there, and so is a required
 /// input without a value when the run makes up such values ([`Inputs::assumes_values`]). Every
 /// problem of an advisory schema ([`Inputs::advisory`]) is a warning, and the values of ignored
 /// inputs ([`Inputs::ignored`]) have none. A schema that is not valid gives one error.
 pub fn check(inputs: &Inputs, simulated: bool) -> Vec<Problem> {
+    validate(inputs, simulated)
+        .diagnostics
+        .into_iter()
+        .map(|diagnostic| Problem {
+            severity: diagnostic.severity,
+            input: diagnostic.input,
+            message: diagnostic.message,
+        })
+        .collect()
+}
+
+/// Checks and returns normalized values with machine-readable diagnostics. Defaults remain
+/// schema annotations and are not inserted into the values.
+pub fn validate(inputs: &Inputs, simulated: bool) -> Validation {
     let values = prepared(&inputs.schema, &inputs.schema, inputs.values.clone());
     let validator = match validator(&inputs.schema, &inputs.base) {
         Ok(validator) => validator,
         Err(message) => {
-            return vec![Problem {
-                severity: Severity::Error,
-                input: String::new(),
-                message: format!("the schema of the inputs is not valid: {message}"),
-            }];
+            return Validation {
+                values,
+                diagnostics: vec![Diagnostic {
+                    severity: Severity::Error,
+                    input: String::new(),
+                    message: format!("the schema of the inputs is not valid: {message}"),
+                    instance_path: String::new(),
+                    schema_path: String::new(),
+                    keyword: "schema".into(),
+                    code: "schema.invalid".into(),
+                    branches: Vec::new(),
+                }],
+            };
         }
     };
-    let mut problems: Vec<Problem> = validator
+    let mut diagnostics: Vec<Diagnostic> = validator
         .iter_errors(&values)
         .filter(|error| !of_ignored(error, inputs))
-        .map(|error| problem(&error, simulated, inputs.assumes_values))
+        .map(|error| diagnostic(&error, simulated, inputs.assumes_values))
         .collect();
     if inputs.advisory {
-        for problem in &mut problems {
-            problem.severity = Severity::Warning;
+        for diagnostic in &mut diagnostics {
+            warning(diagnostic);
         }
     }
-    problems
+    Validation {
+        values,
+        diagnostics,
+    }
+}
+
+fn diagnostic(error: &ValidationError<'_>, simulated: bool, assumes_values: bool) -> Diagnostic {
+    let problem = problem(error, simulated, assumes_values);
+    let keyword = error.kind().keyword().to_owned();
+    let mut instance_path = error.instance_path().to_string();
+    if let Kind::Required { property } = error.kind()
+        && let Some(property) = property.as_str()
+    {
+        instance_path = pointer_join(&instance_path, property);
+    }
+    let branches = match error.kind() {
+        Kind::AnyOf { context }
+        | Kind::OneOfNotValid { context }
+        | Kind::OneOfMultipleValid { context } => context
+            .iter()
+            .map(|branch| {
+                branch
+                    .iter()
+                    .map(|error| diagnostic(error, simulated, assumes_values))
+                    .collect()
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    Diagnostic {
+        severity: problem.severity,
+        input: problem.input,
+        message: problem.message,
+        instance_path,
+        schema_path: error.schema_path().to_string(),
+        code: format!("schema.{keyword}"),
+        keyword,
+        branches,
+    }
+}
+
+fn warning(diagnostic: &mut Diagnostic) {
+    diagnostic.severity = Severity::Warning;
+    for branch in &mut diagnostic.branches {
+        for diagnostic in branch {
+            warning(diagnostic);
+        }
+    }
+}
+
+fn diagnostic_json(diagnostic: &Diagnostic) -> Json {
+    serde_json::json!({
+        "severity": match diagnostic.severity {
+            Severity::Error => "error",
+            Severity::Warning => "warning",
+        },
+        "input": diagnostic.input,
+        "message": diagnostic.message,
+        "instance_path": diagnostic.instance_path,
+        "schema_path": diagnostic.schema_path,
+        "keyword": diagnostic.keyword,
+        "code": diagnostic.code,
+        "branches": diagnostic.branches.iter().map(|branch| {
+            branch.iter().map(diagnostic_json).collect::<Vec<_>>()
+        }).collect::<Vec<_>>()
+    })
+}
+
+fn pointer_join(parent: &str, property: &str) -> String {
+    let property = property.replace('~', "~0").replace('/', "~1");
+    format!("{parent}/{property}")
 }
 
 /// Whether an error concerns the value of an ignored input. A required input without a value

@@ -42,49 +42,70 @@ pub fn from_file(file: &Path, project: &Path) -> Result<Json, String> {
     let schema: Json = serde_json::from_str(&text)
         .map_err(|error| format!("{} is not valid JSON: {error}", file.display()))?;
     let mut schema = upgrade(schema);
-    embed_sample_sheets(&mut schema, project);
+    embed_sample_sheets(&mut schema, project)?;
     Ok(schema)
 }
 
 /// Puts the schema of each file that a `schema` keyword of a text names, like
-/// `assets/schema_input.json`, in the place of the name. A name whose file is missing stays.
-fn embed_sample_sheets(schema: &mut Json, project: &Path) {
+/// `assets/schema_input.json`, in the place of the name.
+fn embed_sample_sheets(schema: &mut Json, project: &Path) -> Result<(), String> {
     match schema {
         Json::Object(map) => {
             let schema_of_text = map.contains_key("type") || map.contains_key("format");
-            if schema_of_text
-                && let Some(Json::String(name)) = map.get("schema")
-                && let Some(embedded) = sample_sheet(name, project)
-            {
+            if schema_of_text && let Some(Json::String(name)) = map.get("schema") {
+                let embedded = sample_sheet(name, project)?;
                 map.insert("schema".into(), embedded);
-                return;
+                return Ok(());
             }
-            map.values_mut()
-                .for_each(|value| embed_sample_sheets(value, project));
+            for value in map.values_mut() {
+                embed_sample_sheets(value, project)?;
+            }
         }
-        Json::Array(items) => items
-            .iter_mut()
-            .for_each(|item| embed_sample_sheets(item, project)),
+        Json::Array(items) => {
+            for item in items {
+                embed_sample_sheets(item, project)?;
+            }
+        }
         _ => {}
     }
+    Ok(())
 }
 
 /// The schema of a sample sheet by the name that nf-schema takes, relative to the project
-/// directory, in draft 2020-12 and without the `$schema` and `$id` of a document of its own.
-fn sample_sheet(name: &str, project: &Path) -> Option<Json> {
+/// directory, in draft 2020-12 and without a nested `$schema`. Its `$id` remains the base URI
+/// of its references.
+fn sample_sheet(name: &str, project: &Path) -> Result<Json, String> {
     let candidates = [
         project.join(name),
         project.join(name.trim_start_matches('/')),
     ];
-    let file = candidates.iter().find(|file| file.is_file())?;
-    let text = std::fs::read_to_string(file).ok()?;
-    let schema: Json = serde_json::from_str(&text).ok()?;
+    let file = candidates
+        .iter()
+        .find(|file| file.is_file())
+        .unwrap_or(&candidates[1]);
+    let text = std::fs::read_to_string(file).map_err(|error| {
+        format!(
+            "cannot read sample-sheet schema {}: {error}",
+            file.display()
+        )
+    })?;
+    let schema: Json = serde_json::from_str(&text).map_err(|error| {
+        format!(
+            "sample-sheet schema {} is not valid JSON: {error}",
+            file.display()
+        )
+    })?;
     let mut schema = upgrade(schema);
+    input_schema::valid(&schema).map_err(|error| {
+        format!(
+            "sample-sheet schema {} is not valid: {error}",
+            file.display()
+        )
+    })?;
     if let Json::Object(map) = &mut schema {
         map.remove("$schema");
-        map.remove("$id");
     }
-    Some(schema)
+    Ok(schema)
 }
 
 /// What a pipeline without a schema file declares: the params of the config and of its
@@ -447,6 +468,79 @@ fn identifier(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pipeline_schema(name: &str) -> Json {
+        json!({
+            "$schema": DRAFT,
+            "type": "object",
+            "properties": {
+                "input": {"type": "string", "schema": name}
+            }
+        })
+    }
+
+    #[test]
+    fn referenced_sample_sheet_errors_name_the_file() {
+        let project = tempfile::tempdir().expect("a folder");
+        let assets = project.path().join("assets");
+        std::fs::create_dir(&assets).expect("makes assets");
+        let pipeline = project.path().join("nextflow_schema.json");
+        std::fs::write(
+            &pipeline,
+            pipeline_schema("assets/missing.json").to_string(),
+        )
+        .unwrap();
+        let missing = assets.join("missing.json");
+        let error = from_file(&pipeline, project.path()).unwrap_err();
+        assert!(error.contains(&missing.display().to_string()), "{error}");
+        assert!(error.contains("cannot read sample-sheet schema"), "{error}");
+
+        let malformed = assets.join("malformed.json");
+        std::fs::write(&malformed, "{").unwrap();
+        std::fs::write(
+            &pipeline,
+            pipeline_schema("assets/malformed.json").to_string(),
+        )
+        .unwrap();
+        let error = from_file(&pipeline, project.path()).unwrap_err();
+        assert!(error.contains(&malformed.display().to_string()), "{error}");
+        assert!(error.contains("is not valid JSON"), "{error}");
+
+        let invalid = assets.join("invalid.json");
+        std::fs::write(&invalid, r#"{"type":"words"}"#).unwrap();
+        std::fs::write(
+            &pipeline,
+            pipeline_schema("assets/invalid.json").to_string(),
+        )
+        .unwrap();
+        let error = from_file(&pipeline, project.path()).unwrap_err();
+        assert!(error.contains(&invalid.display().to_string()), "{error}");
+        assert!(error.contains("is not valid"), "{error}");
+    }
+
+    #[test]
+    fn valid_referenced_sample_sheet_keeps_its_reference_scope() {
+        let project = tempfile::tempdir().expect("a folder");
+        let assets = project.path().join("assets");
+        std::fs::create_dir(&assets).expect("makes assets");
+        let pipeline = project.path().join("nextflow_schema.json");
+        std::fs::write(&pipeline, pipeline_schema("assets/rows.json").to_string()).unwrap();
+        let rows = json!({
+            "$schema": DRAFT,
+            "$id": "https://example.org/schemas/rows.json",
+            "$defs": {"row": {"type": "object", "properties": {"sample": {"type": "string"}}}},
+            "type": "array",
+            "items": {"$ref": "#/$defs/row"}
+        });
+        std::fs::write(assets.join("rows.json"), rows.to_string()).unwrap();
+
+        let schema = from_file(&pipeline, project.path()).unwrap();
+        let embedded = &schema["properties"]["input"]["schema"];
+        assert_eq!(embedded["$id"], rows["$id"]);
+        assert!(embedded.get("$schema").is_none());
+        assert_eq!(embedded["items"], json!({"$ref": "#/$defs/row"}));
+        assert_eq!(input_schema::valid(embedded), Ok(()));
+    }
 
     fn read_in(source: &str, dialect: Dialect) -> Vec<String> {
         let mut names = BTreeSet::new();

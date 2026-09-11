@@ -7,6 +7,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod cache;
 mod environment;
 mod fetch;
 mod image;
@@ -18,6 +19,7 @@ mod version;
 
 use std::path::{Path, PathBuf};
 
+pub use cache::{CachedImage, IMAGE_CACHE_NAMESPACE, ImageBuild, ImageBuildClaim, ImageCache};
 pub use environment::{Environment, EnvironmentError};
 pub use fetch::{fetch_packages, fetch_repodata};
 pub use image::{BuiltImage, CompletedImage, IMAGE_RECEIPT_FORMAT, ImagePreparation};

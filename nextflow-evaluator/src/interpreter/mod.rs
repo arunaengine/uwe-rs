@@ -237,7 +237,18 @@ pub struct FileMetadata {
 /// The entries of a local directory: each name and whether it is a directory.
 pub fn list_local(directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
     let local = local_path(directory)?;
-    let entries = std::fs::read_dir(local).map_err(|error| file_error(directory, &error))?;
+    let entries = match std::fs::read_dir(local) {
+        Ok(entries) => entries,
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            return Ok(Vec::new());
+        }
+        Err(error) => return Err(file_error(directory, &error)),
+    };
     let mut result = Vec::new();
     for entry in entries.flatten() {
         let is_directory = std::fs::metadata(entry.path()).is_ok_and(|m| m.is_dir());

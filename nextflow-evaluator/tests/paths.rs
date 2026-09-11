@@ -4,8 +4,11 @@
 
 use std::rc::Rc;
 
-use nextflow_evaluator::interpreter::{Host, Interpreter};
+use nextflow_evaluator::exception::Exception;
+use nextflow_evaluator::interpreter::glob::{GlobOptions, glob};
+use nextflow_evaluator::interpreter::{Error, Host, Interpreter};
 use nextflow_evaluator::lower::lower_module;
+use nextflow_evaluator::value::PathValue;
 use nextflow_parser::parse_script;
 
 struct Launch;
@@ -279,6 +282,44 @@ fn globs_match_like_java_globs() {
     assert_eq!(
         eval(&format!("file('{d}/x.fq', checkIfExists: true)")).unwrap_err(),
         format!("NoSuchFileException: No such file or directory: {d}/x.fq")
+    );
+}
+
+#[test]
+fn glob_propagates_recursive_listing_failure() {
+    struct FailingListing;
+
+    impl Host for FailingListing {
+        fn print(&mut self, _: &str) {}
+
+        fn list(&mut self, directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
+            if directory.path == "/bucket/denied" {
+                return Err(Error::Thrown {
+                    exception: Rc::new(Exception::new("IOException", "listing denied")),
+                    span: Default::default(),
+                });
+            }
+            Ok(vec![("root.fq".into(), false), ("denied".into(), true)])
+        }
+    }
+
+    let error = glob(
+        &mut FailingListing,
+        "s3://bucket/**.fq",
+        &GlobOptions::default(),
+    )
+    .unwrap_err();
+    assert_eq!(error.to_string(), "IOException: listing denied");
+}
+
+#[test]
+fn glob_with_absent_local_prefix_has_no_matches() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let pattern = format!("{}/absent/*.fq", directory.path().display());
+    assert!(
+        glob(&mut Launch, &pattern, &GlobOptions::default())
+            .unwrap()
+            .is_empty()
     );
 }
 

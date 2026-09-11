@@ -742,12 +742,15 @@ name = "conda-environment"
 version = "0.1.0"
 dependencies = [
  "argo-parser",
+ "content-store",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "tar",
+ "task-model",
  "tempfile",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]

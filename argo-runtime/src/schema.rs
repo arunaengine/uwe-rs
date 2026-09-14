@@ -19,7 +19,8 @@ use workflow_graph::Inputs;
 
 use crate::Options;
 use crate::library::{Document, Kind, Library};
-use crate::run::{Failure, Result};
+use crate::merge::with_defaults;
+use crate::run::{Failure, Result, scalar_text};
 use crate::start::{Joined, joined_spec, workflow_parameters};
 
 /// The annotation that holds the description of a workflow in Argo's user interface.
@@ -33,7 +34,11 @@ pub(crate) fn inputs(document: &Document, library: &Library, options: &Options) 
     let entrypoint = (options.entrypoint.clone())
         .filter(|entrypoint| !entrypoint.is_empty())
         .unwrap_or_else(|| spec.entrypoint.clone());
-    let entry_node = template(&node, &entrypoint);
+    let entry_node = template(&node, &entrypoint).map(|entry| match node.get("templateDefaults") {
+        Some(defaults) => with_defaults(entry, defaults),
+        None => entry.clone(),
+    });
+    let entry_node = entry_node.as_ref();
     let entry = entry_node
         .and_then(|entry| decode::<Template>(entry).ok())
         .map(|(template, _)| template)
@@ -67,9 +72,11 @@ pub(crate) fn inputs(document: &Document, library: &Library, options: &Options) 
     let mut values = Map::new();
     for artifact in spec.arguments.artifacts.iter().chain(entry_artifacts) {
         let mut schema = json!({"type": "string", "format": PATH, "readOnly": true});
-        if let Some(location) = location(artifact) {
+        if let Some(location) = location(artifact)? {
             schema["default"] = json!(location);
             values.insert(artifact.name.clone(), json!(location));
+        } else if !artifact.optional {
+            required.push(json!(artifact.name));
         }
         properties.insert(artifact.name.clone(), schema);
     }
@@ -211,26 +218,70 @@ fn parameter_schema(parameter: &Parameter) -> Json {
 }
 
 /// Where an artifact comes from, as an address, when it names one.
-fn location(artifact: &Artifact) -> Option<String> {
-    let text = |node: &Option<Node>, key: &str| {
-        node.as_ref()?
-            .get(key)
-            .and_then(Node::as_str)
-            .map(str::to_owned)
+fn location(artifact: &Artifact) -> Result<Option<String>> {
+    let text = |node: &Node, key: &str| node.get(key).map(scalar_text).unwrap_or_default();
+    if let Some(raw) = &artifact.raw {
+        return Ok(Some(data_address(&text(raw, "data"))));
+    }
+    let location = if let Some(s3) = &artifact.s3 {
+        let key = text(s3, "key");
+        let bucket = text(s3, "bucket");
+        if key.is_empty() && bucket.is_empty() {
+            return Ok(None);
+        }
+        let bucket = if bucket.is_empty() {
+            "default-artifact-repository"
+        } else {
+            &bucket
+        };
+        format!("s3://{bucket}/{}", key.trim_start_matches('/'))
+    } else if let Some(http) = &artifact.http {
+        text(http, "url")
+    } else if let Some(git) = &artifact.git {
+        let repository = text(git, "repo");
+        match text(git, "revision") {
+            revision if revision.is_empty() => repository,
+            revision => format!("{repository}#{revision}"),
+        }
+    } else if let Some(gcs) = &artifact.gcs {
+        format!("gs://{}/{}", text(gcs, "bucket"), text(gcs, "key"))
+    } else if let Some(azure) = &artifact.azure {
+        format!(
+            "{}/{}/{}",
+            text(azure, "endpoint").trim_end_matches('/'),
+            text(azure, "container"),
+            text(azure, "blob")
+        )
+    } else if let Some(artifactory) = &artifact.artifactory {
+        text(artifactory, "url")
+    } else if artifact.hdfs.is_some() || artifact.oss.is_some() || artifact.plugin.is_some() {
+        let kind = if artifact.hdfs.is_some() {
+            "HDFS"
+        } else if artifact.oss.is_some() {
+            "OSS"
+        } else {
+            "plugin"
+        };
+        return Err(Failure::unsupported(format!(
+            "input artifact {} uses {kind}, which is not supported",
+            artifact.name
+        )));
+    } else {
+        return Ok(None);
     };
-    let bucket_key = |node: &Option<Node>, scheme: &str| {
-        let key = text(node, "key")?;
-        Some(match text(node, "bucket") {
-            Some(bucket) => format!("{scheme}://{bucket}/{key}"),
-            None => format!("{scheme}://{key}"),
-        })
-    };
-    text(&artifact.http, "url")
-        .or_else(|| text(&artifact.git, "repo"))
-        .or_else(|| text(&artifact.artifactory, "url"))
-        .or_else(|| bucket_key(&artifact.s3, "s3"))
-        .or_else(|| bucket_key(&artifact.gcs, "gs"))
-        .or_else(|| text(&artifact.raw, "data").map(|_| "data:,".to_owned()))
+    Ok(Some(location))
+}
+
+fn data_address(text: &str) -> String {
+    let mut address = String::from("data:,");
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            address.push(char::from(byte));
+        } else {
+            address.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    address
 }
 
 /// The template of a spec by its name.

@@ -4,6 +4,7 @@
 
 use std::path::Path;
 
+use serde_json::json;
 use workflow_graph::{EdgeKind, ExecutionGraph, Launch, Simulator, execute};
 
 const PIPELINE: &str = r#"
@@ -127,6 +128,40 @@ fn params_come_from_the_params_file_and_the_command_line() {
     let graph = run(directory.path(), launch);
     let script = graph.nodes[0].task.script.clone().unwrap_or_default();
     assert!(script.contains("echo hello 3 world"), "{script}");
+}
+
+#[test]
+fn normalized_params_are_used_to_plan_tasks() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let pipeline = PIPELINE.replace("${params.count}", "${params.count + 1}");
+    std::fs::write(directory.path().join("main.nf"), pipeline).expect("writes the script");
+    std::fs::write(directory.path().join("nextflow.config"), CONFIG).expect("writes the config");
+    std::fs::write(
+        directory.path().join("nextflow_schema.json"),
+        r#"{"type":"object","properties":{"count":{"type":"integer"}}}"#,
+    )
+    .expect("writes the schema");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        params: vec![("count".into(), "3".into())],
+        ..Launch::default()
+    };
+    let mut driver = nextflow_runtime::driver(&launch).expect("a driver");
+    let inputs = driver.inputs().expect("describes inputs").expect("inputs");
+    assert_eq!(inputs.values["count"], json!("3"));
+    let validation = input_schema::validate(&inputs, false);
+    assert!(validation.diagnostics.is_empty());
+    assert_eq!(validation.values["count"], json!(3));
+    driver
+        .use_inputs(validation.values)
+        .expect("applies normalized inputs");
+
+    let mut executor = Simulator::new(directory.path().join("simulator"));
+    let graph = execute("main.nf", driver.as_mut(), &mut executor)
+        .into_result()
+        .expect("the run succeeds");
+    let script = graph.nodes[0].task.script.as_deref().unwrap_or_default();
+    assert!(script.contains("echo hi 4 world"), "{script}");
 }
 
 #[test]

@@ -421,6 +421,16 @@ impl Driver for Nextflow {
         inputs.map(Some)
     }
 
+    fn use_inputs(&mut self, values: serde_json::Value) -> Result<(), DriverError> {
+        self.load()?;
+        let text =
+            serde_json::to_string(&values).map_err(|error| DriverError::new(error.to_string()))?;
+        let values = parse_json(&text).map_err(|error| DriverError::new(error.to_string()))?;
+        let loaded = self.loaded.as_mut().ok_or_else(not_started)?;
+        tree::deep_merge(&loaded.config.params(), &values);
+        Ok(())
+    }
+
     fn use_files(&mut self, files: Arc<dyn Files>) {
         self.files = Some(files);
     }

@@ -125,6 +125,21 @@ pub trait Driver {
         Ok(None)
     }
 
+    /// Applies normalized input values before [`Driver::start`]. The default accepts values
+    /// only when normalization changed nothing, so a driver never silently executes other
+    /// values than the ones that were checked.
+    fn use_inputs(&mut self, values: serde_json::Value) -> Result<(), DriverError> {
+        let same = self.inputs()?.is_some_and(|inputs| inputs.values == values);
+        if same {
+            Ok(())
+        } else {
+            Err(DriverError::new(format!(
+                "the {} driver cannot apply normalized input values",
+                self.language()
+            )))
+        }
+    }
+
     /// The files that the tasks make, where the executor keeps them. A driver that reads the
     /// content of task outputs, like a Nextflow `.command.env`, reads it through
     /// [`Files::local`], so that a store elsewhere works too ([`crate::files::read`]). The

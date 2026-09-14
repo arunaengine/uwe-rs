@@ -8,8 +8,8 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use argo_parser::model::normalize;
-use argo_parser::{Node, Value, parse_documents};
+use argo_parser::model::{CronWorkflowSpec, WorkflowSpec, normalize};
+use argo_parser::{Node, UnknownField, Value, decode, parse_documents};
 
 /// The kinds of Argo documents that iunctus reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -141,6 +141,21 @@ pub fn load_file(path: &Path) -> Result<Vec<Rc<Document>>, String> {
             continue;
         }
         normalize(&mut node);
+        let unknown = unknown_fields(&node, kind);
+        if !unknown.is_empty() {
+            let problems: Vec<String> = unknown
+                .iter()
+                .map(|field| {
+                    format!(
+                        "{}:{}: unknown Argo field `spec.{}`",
+                        path.display(),
+                        field.position,
+                        field.path
+                    )
+                })
+                .collect();
+            return Err(problems.join("\n"));
+        }
         let metadata = node.get("metadata");
         let text = |key: &str| {
             metadata
@@ -162,6 +177,19 @@ pub fn load_file(path: &Path) -> Result<Vec<Rc<Document>>, String> {
         }));
     }
     Ok(documents)
+}
+
+/// Unknown fields of typed workflow data. Metadata and model fields kept as raw nodes are
+/// intentionally outside this check, so Kubernetes and extension payloads remain intact.
+fn unknown_fields(node: &Node, kind: Kind) -> Vec<UnknownField> {
+    let Some(spec) = node.get("spec") else {
+        return Vec::new();
+    };
+    match kind {
+        Kind::CronWorkflow => decode::<CronWorkflowSpec>(spec).map(|(_, unknown)| unknown),
+        _ => decode::<WorkflowSpec>(spec).map(|(_, unknown)| unknown),
+    }
+    .unwrap_or_default()
 }
 
 /// The name of the executor plugin that a ConfigMap installs, if it is one: its name without

@@ -7,6 +7,59 @@ use content_store::{Store, StoreError, layout};
 use task_model::Digest;
 
 #[tokio::test]
+async fn bounded_content_preserves_targets_and_does_not_cache_oversized_bytes() {
+    let front = tempfile::tempdir().unwrap();
+    let shared = Store::memory().unwrap();
+    let digest = shared
+        .put_content(Bytes::from_static(b"larger"))
+        .await
+        .unwrap();
+    let store = Store::layered(Store::local(front.path()).unwrap(), shared).unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    let target = folder.path().join("target");
+    std::fs::write(&target, b"old").unwrap();
+    for path in [&target, &folder.path().join("missing/target")] {
+        let error = store
+            .materialize_content_bounded(&digest, path, 5)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("byte limit"), "{error}");
+    }
+    assert_eq!(std::fs::read(&target).unwrap(), b"old");
+    assert_eq!(std::fs::read_dir(folder.path()).unwrap().count(), 1);
+    assert_eq!(std::fs::read_dir(front.path()).unwrap().count(), 0);
+    store
+        .materialize_content_bounded(&digest, &target, 6)
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(&target).unwrap(), b"larger");
+}
+
+#[tokio::test]
+async fn bounded_content_still_verifies_digest_and_accepts_empty_bytes() {
+    let folder = tempfile::tempdir().unwrap();
+    let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
+    let store = Store::remote(operator.clone(), "s3://shared/cache").unwrap();
+    let digest = Digest::sha256(b"good");
+    operator
+        .write(&layout::content(&digest), Bytes::from_static(b"bad!"))
+        .await
+        .unwrap();
+    let target = folder.path().join("target");
+    assert!(matches!(
+        store.materialize_content_bounded(&digest, &target, 4).await,
+        Err(StoreError::Corrupt { .. })
+    ));
+    assert!(!target.exists());
+    let empty = store.put_content(Bytes::new()).await.unwrap();
+    store
+        .materialize_content_bounded(&empty, &target, 0)
+        .await
+        .unwrap();
+    assert_eq!(std::fs::metadata(&target).unwrap().len(), 0);
+}
+
+#[tokio::test]
 async fn materializes_remote_content_larger_than_one_part() {
     let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
     let store = Store::remote(operator, "s3://shared/cache").unwrap();

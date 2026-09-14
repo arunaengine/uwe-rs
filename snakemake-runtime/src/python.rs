@@ -12,11 +12,20 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use executor::CancellationToken;
-use executor::process::{ContainerProcess, ContainerSpec, Mount, run_to_end_cancellable};
+use executor::process::{
+    ContainerProcess, ContainerSpec, Mount, ProcessLimits, run_to_end_cancellable_with_timeout,
+};
 use python_evaluator::packages::{PythonProcess, PythonStart, PythonStarter};
 
 /// The image of the Python container when the user gives none: a slim Python with uv.
 pub const DEFAULT_IMAGE: &str = "ghcr.io/astral-sh/uv:0.9.30-python3.12-bookworm-slim";
+
+const HELPER_MEMORY: u64 = 1 << 30;
+const PREPARE_MEMORY: u64 = 2 << 30;
+const FRAME_LIMIT: usize = 16 << 20;
+const REPLY_CAPACITY: usize = 1;
+const HELPER_DEADLINE: Duration = Duration::from_secs(600);
+const PREPARE_DEADLINE: Duration = Duration::from_secs(600);
 
 /// How the Python container of a run starts.
 #[derive(Clone, Debug)]
@@ -250,10 +259,11 @@ impl ContainerStarter {
                 }],
                 workdir: None,
                 environment: self.environment(&constraints),
-                memory: None,
+                memory: Some(PREPARE_MEMORY),
                 show_stderr: false,
             };
-            run_to_end_cancellable(&spec, &self.cancel).map_err(|error| error.to_string())?;
+            run_to_end_cancellable_with_timeout(&spec, &self.cancel, PREPARE_DEADLINE)
+                .map_err(|error| error.to_string())?;
         }
         drop(lock);
         Ok(environment)
@@ -312,11 +322,18 @@ impl PythonStarter for ContainerStarter {
             mounts,
             workdir: Some(start.cwd.to_string_lossy().into_owned()),
             environment: self.environment(&start.constraints),
-            memory: None,
+            memory: Some(HELPER_MEMORY),
             show_stderr: self.settings.show_output,
         };
-        let process = ContainerProcess::start_cancellable(&spec, &self.cancel)
-            .map_err(|error| error.to_string())?;
+        let process = ContainerProcess::start_bounded(
+            &spec,
+            ProcessLimits {
+                max_frame_bytes: FRAME_LIMIT,
+                reply_capacity: REPLY_CAPACITY,
+            },
+            &self.cancel,
+        )
+        .map_err(|error| error.to_string())?;
         Ok(Box::new(ContainerPython(process)))
     }
 }
@@ -326,7 +343,9 @@ struct ContainerPython(ContainerProcess);
 
 impl PythonProcess for ContainerPython {
     fn exchange(&mut self, line: &str) -> Result<String, String> {
-        self.0.exchange(line).map_err(|error| error.to_string())
+        self.0
+            .exchange_with_timeout(line, HELPER_DEADLINE)
+            .map_err(|error| error.to_string())
     }
 
     fn stop(&mut self) {

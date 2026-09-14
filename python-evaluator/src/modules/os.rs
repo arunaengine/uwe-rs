@@ -418,13 +418,14 @@ fn walk(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
         Some(value) => interpreter.truthy(&value)?,
         None => false,
     };
-    args.take(2, "onerror");
+    let onerror = args.take(2, "onerror").unwrap_or(Value::None);
     args.no_keywords("walk")?;
     let resolved = interpreter.host.resolve(&top);
     let ancestors = vec![interpreter.host.canonicalize(&resolved)];
     Ok(Value::native(Walk(RefCell::new(WalkState {
         topdown,
         followlinks,
+        onerror,
         pending: vec![WalkFrame::Visit {
             directory: top,
             ancestors,
@@ -437,6 +438,7 @@ struct Walk(RefCell<WalkState>);
 struct WalkState {
     topdown: bool,
     followlinks: bool,
+    onerror: Value,
     pending: Vec<WalkFrame>,
 }
 
@@ -474,8 +476,18 @@ impl WalkState {
                     ancestors,
                 } => {
                     let resolved = interpreter.host.resolve(&directory);
-                    let Ok(names) = interpreter.host.list(&resolved) else {
-                        continue;
+                    let names = match interpreter.host.list(&resolved) {
+                        Ok(names) => names,
+                        Err(error) => {
+                            if !matches!(self.onerror, Value::None) {
+                                let error = Error::os_error(&error, &directory);
+                                interpreter.call(
+                                    &self.onerror,
+                                    Args::new(vec![error.exception().unwrap().clone()]),
+                                )?;
+                            }
+                            continue;
+                        }
                     };
                     let mut directories = Vec::new();
                     let mut files = Vec::new();

@@ -197,6 +197,42 @@ fn os_walk_prunes_live_orders_bottom_up_and_bounds_link_cycles() {
 }
 
 #[test]
+fn os_walk_calls_error_handler_and_propagates_callback_errors() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let host = Rc::new(LocalHost::new(folder.path()));
+    let mut interpreter = Interpreter::new(host.clone());
+    interpreter
+        .run_text(
+            "<test>",
+            concat!(
+                "import os\n",
+                "def report(error):\n",
+                "    print(type(error).__name__, error.errno, error.filename)\n",
+                "for item in os.walk('missing', onerror=report):\n",
+                "    print('unexpected', item)\n",
+                "print(list(os.walk('missing')))\n",
+            ),
+        )
+        .expect("reports failed listings");
+    assert_eq!(*host.output.borrow(), "FileNotFoundError 2 missing\n[]\n");
+
+    let error = interpreter
+        .run_text(
+            "<test>",
+            concat!(
+                "import os\n",
+                "def stop(error):\n",
+                "    raise ValueError(error.filename)\n",
+                "list(os.walk('missing', onerror=stop))\n",
+            ),
+        )
+        .err()
+        .expect("callback error propagates");
+    assert!(error.is("ValueError"), "{error}");
+    assert_eq!(error.message(), "missing");
+}
+
+#[test]
 fn loops_that_never_end_stop() {
     let host = Rc::new(LocalHost::new(std::env::temp_dir()));
     let mut interpreter = Interpreter::new(host);

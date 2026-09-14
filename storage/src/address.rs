@@ -51,6 +51,57 @@ pub fn bucket_and_key(address: &str) -> Option<(&str, &str)> {
     (!bucket.is_empty()).then_some((bucket, key))
 }
 
+pub(crate) struct ObjectLocation<'a> {
+    pub bucket: &'a str,
+    pub key: String,
+    pub version: Option<String>,
+}
+
+/// The bucket, decoded object key and supported immutable selector of a configured object
+/// provider. Queries never become part of the key.
+pub(crate) fn object_location(address: &str) -> Result<Option<ObjectLocation<'_>>, &'static str> {
+    let Some((scheme, rest)) = address.split_once("://") else {
+        return Ok(None);
+    };
+    let rest = match scheme {
+        "http" | "https" => match rest.split_once('/') {
+            Some((_, path)) => path,
+            None => return Ok(None),
+        },
+        _ => rest,
+    };
+    if rest.contains('#') {
+        return Err("object address fragments are not supported");
+    }
+    let (path, query) = rest
+        .split_once('?')
+        .map_or((rest, None), |(path, query)| (path, Some(query)));
+    let (bucket, key) = path.split_once('/').unwrap_or((path, ""));
+    if bucket.is_empty() {
+        return Ok(None);
+    }
+    let version = match query {
+        None => None,
+        Some(query) if scheme == "s3" => {
+            let mut pairs = query.split('&');
+            let Some(("versionId", value)) = pairs.next().and_then(|pair| pair.split_once('='))
+            else {
+                return Err("only one non-empty S3 versionId query is supported");
+            };
+            if value.is_empty() || pairs.next().is_some() {
+                return Err("only one non-empty S3 versionId query is supported");
+            }
+            Some(decode(value))
+        }
+        Some(_) => return Err("object address query parameters are not supported"),
+    };
+    Ok(Some(ObjectLocation {
+        bucket,
+        key: decode(key),
+        version,
+    }))
+}
+
 /// The web address of a file that anyone may read: `http` and `https` addresses as they are,
 /// and files of public S3 and Google Cloud Storage buckets at their public addresses. `None`
 /// for other addresses.
@@ -125,6 +176,24 @@ mod tests {
         );
         assert_eq!(bucket_and_key("s3:///key"), None);
         assert_eq!(decode("a%20b%2Fc%zz"), "a b/c%zz");
+    }
+
+    #[test]
+    fn object_locations_separate_encoded_keys_and_versions() {
+        let selected = object_location("s3://bucket/a%3Fb%2525?versionId=v%2F1")
+            .expect("supported selector")
+            .expect("an object location");
+        assert_eq!(selected.bucket, "bucket");
+        assert_eq!(selected.key, "a?b%25");
+        assert_eq!(selected.version.as_deref(), Some("v/1"));
+
+        let plain = object_location("s3://bucket/a/b.txt")
+            .expect("plain location")
+            .expect("an object location");
+        assert_eq!(plain.key, "a/b.txt");
+        assert_eq!(plain.version, None);
+        assert!(object_location("s3://bucket/key?versionId=v&x=1").is_err());
+        assert!(object_location("gs://bucket/key?versionId=v").is_err());
     }
 
     #[test]

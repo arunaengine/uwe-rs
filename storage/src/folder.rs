@@ -17,6 +17,17 @@ impl Folder {
     /// The path of an address that `prefix` serves. A name `..` could leave the folder, so it
     /// is not allowed.
     pub fn path(&self, prefix: &str, target: &str) -> Result<PathBuf, Problem> {
+        if target.starts_with("s3://") {
+            match address::object_location(target) {
+                Ok(Some(location)) if location.version.is_some() => {
+                    return Err(Problem::fixed(
+                        "a folder provider cannot select or write an S3 object version",
+                    ));
+                }
+                Err(message) => return Err(Problem::fixed(message)),
+                _ => {}
+            }
+        }
         let rest = target.strip_prefix(prefix).unwrap_or_default();
         let rest = rest.split(['?', '#']).next().unwrap_or_default();
         let mut path = self.root.clone();

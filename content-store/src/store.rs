@@ -447,8 +447,25 @@ impl Store {
         digest: &Digest,
         target: &std::path::Path,
     ) -> Result<(), StoreError> {
-        self.materialize(&layout::content(digest), digest, target, true)
+        self.materialize(&layout::content(digest), digest, target, true, None)
             .await
+    }
+
+    /// Streams verified content only when its stored size fits the caller's byte allowance.
+    pub async fn materialize_content_bounded(
+        &self,
+        digest: &Digest,
+        target: &std::path::Path,
+        max_bytes: u64,
+    ) -> Result<(), StoreError> {
+        self.materialize(
+            &layout::content(digest),
+            digest,
+            target,
+            true,
+            Some(max_bytes),
+        )
+        .await
     }
 
     /// Streams verified output bytes without publishing a partial directory in the front layer.
@@ -458,7 +475,8 @@ impl Store {
         digest: &Digest,
         target: &std::path::Path,
     ) -> Result<(), StoreError> {
-        self.materialize(location, digest, target, false).await
+        self.materialize(location, digest, target, false, None)
+            .await
     }
 
     async fn materialize(
@@ -467,6 +485,7 @@ impl Store {
         digest: &Digest,
         target: &std::path::Path,
         cache: bool,
+        max_bytes: Option<u64>,
     ) -> Result<(), StoreError> {
         let (source, metadata) = match self.operator.stat(location).await {
             Ok(metadata) => (self, metadata),
@@ -478,6 +497,13 @@ impl Store {
             }
             Err(error) => return Err(error.into()),
         };
+        if max_bytes.is_some_and(|limit| metadata.content_length() > limit) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "stored content exceeds its byte limit",
+            )
+            .into());
+        }
         let parent = target
             .parent()
             .filter(|parent| !parent.as_os_str().is_empty())

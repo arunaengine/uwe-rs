@@ -19,10 +19,28 @@ pub fn check(
     simulated: bool,
     quiet: bool,
 ) -> Result<Option<Inputs>, Failure> {
+    checked(driver, simulated, quiet, true)
+}
+
+fn checked(
+    driver: &mut dyn Driver,
+    simulated: bool,
+    quiet: bool,
+    apply: bool,
+) -> Result<Option<Inputs>, Failure> {
     let Some(inputs) = driver.inputs()? else {
         return Ok(None);
     };
-    let problems = input_schema::check(&inputs, simulated);
+    let validation = input_schema::validate(&inputs, simulated);
+    let problems: Vec<Problem> = validation
+        .diagnostics
+        .iter()
+        .map(|diagnostic| Problem {
+            severity: diagnostic.severity,
+            input: diagnostic.input.clone(),
+            message: diagnostic.message.clone(),
+        })
+        .collect();
     let say = |text: String| match quiet {
         true => eprintln!("{text}"),
         false => println!("{text}"),
@@ -38,6 +56,11 @@ pub fn check(
     if !errors.is_empty() {
         return Err(failure(errors.join("\n")));
     }
+    if apply {
+        driver.use_inputs(validation.values.clone())?;
+    }
+    let mut inputs = inputs;
+    inputs.values = validation.values;
     Ok(Some(inputs))
 }
 
@@ -64,7 +87,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let _stop = cancel.clone().drop_guard();
     let (mut driver, language, simulated) = describing(arguments, &cancel)?;
     let inputs = match arguments.check {
-        true => check(driver.as_mut(), simulated, true)?,
+        true => checked(driver.as_mut(), simulated, true, false)?,
         false => {
             let inputs = driver.inputs()?;
             if let Some(inputs) = &inputs {

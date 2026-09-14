@@ -8,6 +8,7 @@ use std::process::Command;
 use std::rc::Rc;
 
 use nextflow_evaluator::interpreter::TaskDirective;
+use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_runtime::driver::{task, task_outcome};
 use nextflow_runtime::task::{command_script, read_environment};
@@ -212,6 +213,70 @@ fn invalid_resource_values_fail_task_construction() {
             error.contains(&format!("`{name}` directive value `{value}`")),
             "{error}"
         );
+    }
+}
+
+#[test]
+fn invalid_numeric_resources_fail_before_publication() {
+    let too_large = Number::parse_integer("18446744073709551616").unwrap();
+    for (name, value, detail) in [
+        ("cpus", Value::integer(-1), "cannot be negative"),
+        ("memory", Value::integer(-1), "cannot be negative"),
+        ("disk", Value::integer(-1), "cannot be negative"),
+        ("time", Value::integer(-1), "cannot be negative"),
+        ("accelerator", Value::integer(-1), "cannot be negative"),
+        (
+            "cpus",
+            Value::Number(Number::Long(i64::from(i32::MAX) + 1)),
+            "signed 32-bit count",
+        ),
+        (
+            "accelerator",
+            Value::Number(Number::Long(i64::from(i32::MAX) + 1)),
+            "signed 32-bit count",
+        ),
+        (
+            "memory",
+            Value::Number(too_large.clone()),
+            "signed 64-bit range",
+        ),
+        (
+            "time",
+            Value::Number(Number::Double(f64::INFINITY)),
+            "signed 64-bit range",
+        ),
+    ] {
+        let mut request = request(&[], &[], None);
+        request.directives.push(TaskDirective {
+            name: name.into(),
+            arguments: vec![value],
+        });
+        let error = task(&request, &BTreeMap::new()).unwrap_err().message;
+        assert!(error.contains(&format!("`{name}` directive")), "{error}");
+        assert!(error.contains(detail), "{error}");
+    }
+}
+
+#[test]
+fn fractional_cpus_keep_nextflows_java_integer_conversion() {
+    for (text, value) in [
+        ("0", Value::integer(0)),
+        (
+            "0.75",
+            Value::Number(Number::parse_decimal("0.75").unwrap()),
+        ),
+        (
+            "1.75",
+            Value::Number(Number::parse_decimal("1.75").unwrap()),
+        ),
+    ] {
+        let mut request = request(&[], &[], None);
+        request.directives.push(TaskDirective {
+            name: "cpus".into(),
+            arguments: vec![value],
+        });
+        let resources = task(&request, &BTreeMap::new()).unwrap().resources;
+        assert_eq!(resources.cpus, Some(1.0), "cpus {text}");
     }
 }
 

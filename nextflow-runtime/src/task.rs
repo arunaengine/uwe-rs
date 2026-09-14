@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use nextflow_evaluator::interpreter::TaskDirective;
+use nextflow_evaluator::number::Number;
 use nextflow_evaluator::units::{parse_duration, parse_memory};
 use nextflow_evaluator::value::Value;
 use workflow_graph::Resources;
@@ -120,18 +121,29 @@ pub fn resources(request: &TaskRequest) -> Result<Resources, String> {
                 request.process
             )
         };
+        let nonnegative = |value: i64| {
+            if value < 0 {
+                Err(invalid("resource values cannot be negative".into()))
+            } else {
+                Ok(value as u64)
+            }
+        };
         let number = match value {
             Value::Null => return Ok(None),
-            Value::Number(number) => number.to_i64().max(0) as u64,
-            Value::MemoryUnit(bytes) => (*bytes).max(0) as u64,
-            Value::Duration(millis) => (*millis).max(0) as u64 / 1_000,
+            Value::Number(number) => nonnegative(
+                checked_i64(number)
+                    .ok_or_else(|| invalid("value is outside the signed 64-bit range".into()))?,
+            )?,
+            Value::MemoryUnit(bytes) => nonnegative(*bytes)?,
+            Value::Duration(millis) => nonnegative(*millis)? / 1_000,
             Value::String(text) => match name {
-                "memory" | "disk" => parse_memory(text)
-                    .map(|bytes| bytes.max(0) as u64)
-                    .map_err(|error| invalid(error.to_string()))?,
-                "time" => parse_duration(text)
-                    .map(|millis| millis.max(0) as u64 / 1_000)
-                    .map_err(|error| invalid(error.to_string()))?,
+                "memory" | "disk" => {
+                    nonnegative(parse_memory(text).map_err(|error| invalid(error.to_string()))?)?
+                }
+                "time" => {
+                    nonnegative(parse_duration(text).map_err(|error| invalid(error.to_string()))?)?
+                        / 1_000
+                }
                 _ => text
                     .trim()
                     .parse()
@@ -139,15 +151,41 @@ pub fn resources(request: &TaskRequest) -> Result<Resources, String> {
             },
             _ => return Err(invalid("expected a number or unit value".into())),
         };
+        if matches!(name, "cpus" | "accelerator") && number > i32::MAX as u64 {
+            return Err(invalid(
+                "value exceeds Nextflow's signed 32-bit count".into(),
+            ));
+        }
         Ok(Some(number))
     };
     Ok(Resources {
-        cpus: number("cpus")?.map(|cpus| cpus as f64),
+        cpus: number("cpus")?.map(|cpus| cpus.max(1) as f64),
         memory_bytes: number("memory")?,
         disk_bytes: number("disk")?,
         time_seconds: number("time")?,
         gpus: number("accelerator")?.map(|count| count as u32),
     })
+}
+
+/// Java's truncating `longValue`, but without wrapping large integers or saturating floats.
+fn checked_i64(number: &Number) -> Option<i64> {
+    match number {
+        Number::Integer(value) => Some(i64::from(*value)),
+        Number::Long(value) => Some(*value),
+        Number::BigInteger(value) => value.to_string().parse().ok(),
+        Number::BigDecimal(value) => value.to_bigint().to_string().parse().ok(),
+        Number::Double(value) if value.is_finite() => (-9_223_372_036_854_775_808.0
+            ..9_223_372_036_854_775_808.0)
+            .contains(value)
+            .then_some(*value as i64),
+        Number::Float(value) if value.is_finite() => {
+            let value = f64::from(*value);
+            (-9_223_372_036_854_775_808.0..9_223_372_036_854_775_808.0)
+                .contains(&value)
+                .then_some(value as i64)
+        }
+        Number::Double(_) | Number::Float(_) => None,
+    }
 }
 
 /// The last value of a directive.

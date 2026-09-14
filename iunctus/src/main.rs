@@ -320,7 +320,19 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
     let taken = resume::Taken::default();
     let mut executor = match reusable {
         Some(reusable) => {
-            let resumed = resume::Resumed::new(executor, reusable, taken.clone(), verbose);
+            let mode = if real {
+                resume::Mode::Real
+            } else {
+                resume::Mode::Simulated
+            };
+            let resumed = resume::Resumed::new(
+                executor,
+                reusable,
+                taken.clone(),
+                mode,
+                network_rule(arguments, &setup),
+                verbose,
+            );
             Box::new(resumed)
         }
         None => executor,

@@ -1,17 +1,29 @@
 //! Resume from the run database: a run that continues an earlier one takes the result of each
-//! task that finished there, instead of running it again. A task counts as the same when its
-//! fingerprint is the same: the same description and the same size and time of each local
-//! input. This works for every executor, simulated or real; the store's cache still answers
-//! tasks whose image is pinned, in any run.
+//! task that finished there, instead of running it again. Real results additionally need their
+//! recorded input and output bytes and pinned image identity. Simulated results have no such
+//! identities to prove. The store's cache still answers tasks whose image is pinned, in any run.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use run_database::{Recorder, Reusable, fingerprint, input_states};
-use workflow_graph::{Attempt, Event, Executor, Files, Observer, Outcome, Reuse, Running, TaskId};
+use task_model::Digest;
+use task_runner::NetworkRule;
+use workflow_graph::{
+    Attempt, Event, Executor, Files, Network, Observer, Outcome, Reuse, Running, Task, TaskId,
+    Writable,
+};
+
+/// How strongly a lineage result must be verified before it is used.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    /// Real results must still have the exact recorded bytes and immutable execution identity.
+    Real,
+    /// Simulated results have no bytes or resolved image identity to verify.
+    Simulated,
+}
 
 /// The tasks whose results came from an earlier run, and that run, until the recorder hears of
 /// them.
@@ -36,6 +48,8 @@ pub struct Resumed {
     /// The finished tasks of the lineage, by fingerprint.
     reusable: HashMap<String, Reusable>,
     taken: Taken,
+    mode: Mode,
+    network: NetworkRule,
     /// Prints one line per task taken from an earlier run when set.
     verbose: bool,
 }
@@ -45,12 +59,16 @@ impl Resumed {
         executor: Box<dyn Executor>,
         reusable: HashMap<String, Reusable>,
         taken: Taken,
+        mode: Mode,
+        network: NetworkRule,
         verbose: bool,
     ) -> Self {
         Resumed {
             executor,
             reusable,
             taken,
+            mode,
+            network,
             verbose,
         }
     }
@@ -63,10 +81,14 @@ impl Executor for Resumed {
             return self.executor.run(attempt);
         }
         let key = fingerprint(task, &input_states(task));
-        // A result whose files are gone cannot be taken.
-        let found = self.reusable.get(&key).filter(|found| {
-            let files = &found.outcome.files;
-            files.iter().all(|file| Path::new(&file.location).exists())
+        let files = self.executor.files();
+        let found = self.reusable.get(&key).filter(|found| match self.mode {
+            Mode::Real => verified(task, &found.outcome, files.as_deref(), &self.network),
+            Mode::Simulated => found
+                .outcome
+                .files
+                .iter()
+                .all(|file| std::path::Path::new(&file.location).exists()),
         });
         let Some(found) = found else {
             return self.executor.run(attempt);
@@ -91,6 +113,103 @@ impl Executor for Resumed {
     fn hold(&mut self) {
         self.executor.hold();
     }
+}
+
+/// Whether a real result still has every identity that this wrapper can prove. Unsupported
+/// identities safely miss so that the underlying runner can resolve and execute the task.
+fn verified(
+    task: &Task,
+    outcome: &Outcome,
+    files: Option<&dyn Files>,
+    network: &NetworkRule,
+) -> bool {
+    let network_matches = match task.network {
+        Network::Unstated => false,
+        Network::Allowed => !network.offline(task),
+        Network::Denied => network.offline(task),
+    };
+    if !network_matches || !task.containers.is_empty() {
+        return false;
+    }
+    let Some(image) = task.image.as_deref().filter(|image| {
+        image
+            .rsplit_once('@')
+            .is_some_and(|(_, digest)| digest.parse::<Digest>().is_ok())
+    }) else {
+        return false;
+    };
+    if outcome.image.as_deref() != Some(image) || !inputs_match(task, outcome) {
+        return false;
+    }
+    if outcome.files.is_empty() {
+        return true;
+    }
+    let Some(files) = files else {
+        return false;
+    };
+    outcome.files.iter().all(|file| {
+        if file.directory {
+            return false;
+        }
+        let (Some(size), Some(expected)) = (file.size, file.digest.as_deref()) else {
+            return false;
+        };
+        let Ok(expected) = expected.parse::<Digest>() else {
+            return false;
+        };
+        let Ok(local) = files.local(&file.location) else {
+            return false;
+        };
+        let Ok(metadata) = std::fs::metadata(&local) else {
+            return false;
+        };
+        metadata.is_file()
+            && hash(&local)
+                .is_some_and(|(actual, actual_size)| actual == expected && actual_size == size)
+    })
+}
+
+fn inputs_match(task: &Task, outcome: &Outcome) -> bool {
+    if task.inputs.len() != outcome.inputs.len() {
+        return false;
+    }
+    task.inputs.iter().all(|input| {
+        let Some(expected) = outcome.inputs.get(&input.path) else {
+            return false;
+        };
+        let Ok(expected) = expected.parse::<Digest>() else {
+            return false;
+        };
+        let actual = match &input.content {
+            Some(content) if !input.directory => Digest::sha256(content.as_bytes()),
+            Some(_) => return false,
+            None if input.directory
+                || input.source.contains("://")
+                || input.writable == Writable::InPlace =>
+            {
+                return false;
+            }
+            None => {
+                let source = std::path::Path::new(&input.source);
+                let Ok(metadata) = std::fs::metadata(source) else {
+                    return false;
+                };
+                if !metadata.is_file() {
+                    return false;
+                }
+                let Some((digest, _)) = hash(source) else {
+                    return false;
+                };
+                digest
+            }
+        };
+        actual == expected
+    })
+}
+
+fn hash(path: &std::path::Path) -> Option<(Digest, u64)> {
+    let runtime = workflow_graph::runtime().ok()?;
+    runtime.block_on(content_store::hash_file(path)).ok()
 }
 
 /// Passes the events of the engine to the recorder, and marks the results that came from an
@@ -126,21 +245,83 @@ impl Observer for Noting<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
-    use workflow_graph::{CancellationToken, Task};
+    use workflow_graph::{CancellationToken, Delivery, Input, OutputFile, Task};
 
-    struct Fresh(Arc<AtomicUsize>);
+    const PINNED_IMAGE: &str =
+        "image@sha256:0000000000000000000000000000000000000000000000000000000000000000";
+
+    #[derive(Default)]
+    struct FakeFiles {
+        locations: HashMap<String, PathBuf>,
+    }
+
+    impl Files for FakeFiles {
+        fn local(&self, location: &str) -> io::Result<PathBuf> {
+            self.locations.get(location).cloned().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::NotFound, format!("no file at {location}"))
+            })
+        }
+
+        fn deliver(&self, _delivery: &Delivery) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct Fresh {
+        calls: Arc<AtomicUsize>,
+        files: Arc<dyn Files>,
+    }
 
     impl Executor for Fresh {
         fn run(&mut self, attempt: Attempt) -> Running {
-            self.0.fetch_add(1, Ordering::SeqCst);
+            self.calls.fetch_add(1, Ordering::SeqCst);
             Running::ended(Ok(Outcome {
                 id: attempt.task.id,
                 ..Outcome::default()
             }))
         }
+
+        fn files(&self) -> Option<Arc<dyn Files>> {
+            Some(self.files.clone())
+        }
+    }
+
+    fn fresh(calls: Arc<AtomicUsize>, files: Arc<dyn Files>) -> Box<dyn Executor> {
+        Box::new(Fresh { calls, files })
+    }
+
+    fn attempt(task: Arc<Task>) -> Attempt {
+        Attempt {
+            task,
+            number: 2,
+            cancel: CancellationToken::new(),
+        }
+    }
+
+    fn real_task() -> Task {
+        Task {
+            id: TaskId(1),
+            image: Some(PINNED_IMAGE.into()),
+            command: vec!["true".into()],
+            network: Network::Allowed,
+            ..Task::default()
+        }
+    }
+
+    fn history(task: &Task, outcome: Outcome) -> HashMap<String, Reusable> {
+        [(
+            fingerprint(task, &input_states(task)),
+            Reusable {
+                run: "prior".into(),
+                outcome,
+            },
+        )]
+        .into()
     }
 
     #[test]
@@ -160,22 +341,225 @@ mod tests {
             let calls = Arc::new(AtomicUsize::new(0));
             let taken = Taken::default();
             let mut resumed = Resumed::new(
-                Box::new(Fresh(calls.clone())),
+                fresh(calls.clone(), Arc::new(FakeFiles::default())),
                 history,
                 taken.clone(),
+                Mode::Simulated,
+                NetworkRule::default(),
                 false,
             );
-            let outcome = runtime
-                .block_on(resumed.run(Attempt {
-                    task,
-                    number: 2,
-                    cancel: CancellationToken::new(),
-                }))
-                .unwrap();
+            let outcome = runtime.block_on(resumed.run(attempt(task))).unwrap();
             let reused = policy == Reuse::Allowed;
             assert_eq!(outcome.cached, reused);
             assert_eq!(calls.load(Ordering::SeqCst), usize::from(!reused));
             assert_eq!(taken.take(TaskId(1)).is_some(), reused);
+        }
+    }
+
+    #[test]
+    fn remote_output_bytes_are_verified_before_resume() {
+        let runtime = workflow_graph::runtime().unwrap();
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let output = folder.path().join("output.txt");
+        std::fs::write(&output, "old").expect("writes the output");
+        let task = Arc::new(real_task());
+        let prior = Outcome {
+            image: task.image.clone(),
+            files: vec![OutputFile {
+                path: "output.txt".into(),
+                location: "memory://output".into(),
+                directory: false,
+                size: Some(3),
+                digest: Some(Digest::sha256(b"old").to_string()),
+            }],
+            ..Outcome::default()
+        };
+        let provider = Arc::new(FakeFiles {
+            locations: [("memory://output".into(), output.clone())].into(),
+        });
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut resumed = Resumed::new(
+            fresh(calls.clone(), provider.clone()),
+            history(&task, prior.clone()),
+            Taken::default(),
+            Mode::Real,
+            NetworkRule::default(),
+            false,
+        );
+        let found = runtime
+            .block_on(resumed.run(attempt(task.clone())))
+            .unwrap();
+        assert!(found.cached);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+        std::fs::write(&output, "new").expect("mutates the output without changing its size");
+        let mut resumed = Resumed::new(
+            fresh(calls.clone(), provider),
+            history(&task, prior.clone()),
+            Taken::default(),
+            Mode::Real,
+            NetworkRule::default(),
+            false,
+        );
+        let found = runtime.block_on(resumed.run(attempt(task))).unwrap();
+        assert!(!found.cached);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        std::fs::remove_file(&output).expect("removes the changed output");
+        std::fs::create_dir(&output).expect("replaces the output with a directory");
+        let task = Arc::new(real_task());
+        let mut resumed = Resumed::new(
+            fresh(
+                calls.clone(),
+                Arc::new(FakeFiles {
+                    locations: [("memory://output".into(), output)].into(),
+                }),
+            ),
+            history(
+                &task,
+                Outcome {
+                    image: task.image.clone(),
+                    files: prior.files,
+                    ..Outcome::default()
+                },
+            ),
+            Taken::default(),
+            Mode::Real,
+            NetworkRule::default(),
+            false,
+        );
+        let found = runtime.block_on(resumed.run(attempt(task))).unwrap();
+        assert!(!found.cached);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn local_input_bytes_are_verified_despite_same_size_and_time() {
+        let runtime = workflow_graph::runtime().unwrap();
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let input = folder.path().join("input.txt");
+        std::fs::write(&input, "old").expect("writes the input");
+        let modified = std::fs::metadata(&input)
+            .expect("input metadata")
+            .modified()
+            .expect("input modification time");
+        let mut task = real_task();
+        task.inputs.push(Input {
+            path: "input.txt".into(),
+            source: input.to_string_lossy().into_owned(),
+            ..Input::default()
+        });
+        let old_states = input_states(&task);
+        let prior = Outcome {
+            image: task.image.clone(),
+            inputs: [("input.txt".into(), Digest::sha256(b"old").to_string())].into(),
+            ..Outcome::default()
+        };
+        let history = [(
+            fingerprint(&task, &old_states),
+            Reusable {
+                run: "prior".into(),
+                outcome: prior,
+            },
+        )]
+        .into();
+        std::fs::write(&input, "new").expect("mutates the input without changing its size");
+        std::fs::File::options()
+            .write(true)
+            .open(&input)
+            .expect("opens the input")
+            .set_times(std::fs::FileTimes::new().set_modified(modified))
+            .expect("restores the modification time");
+        assert_eq!(input_states(&task), old_states);
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut resumed = Resumed::new(
+            fresh(calls.clone(), Arc::new(FakeFiles::default())),
+            history,
+            Taken::default(),
+            Mode::Real,
+            NetworkRule::default(),
+            false,
+        );
+        let found = runtime
+            .block_on(resumed.run(attempt(Arc::new(task))))
+            .unwrap();
+        assert!(!found.cached);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn unpinned_images_defer_to_the_underlying_runner() {
+        let runtime = workflow_graph::runtime().unwrap();
+        let mut task = real_task();
+        task.image = Some("image@sha256:abc".into());
+        let prior = Outcome {
+            image: Some(PINNED_IMAGE.into()),
+            ..Outcome::default()
+        };
+        let history = history(&task, prior);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut resumed = Resumed::new(
+            fresh(calls.clone(), Arc::new(FakeFiles::default())),
+            history,
+            Taken::default(),
+            Mode::Real,
+            NetworkRule::default(),
+            false,
+        );
+
+        let found = runtime
+            .block_on(resumed.run(attempt(Arc::new(task))))
+            .unwrap();
+        assert!(!found.cached);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn changed_or_unstated_network_policy_defers_to_the_runner() {
+        let runtime = workflow_graph::runtime().unwrap();
+        let cases = [
+            (
+                Network::Unstated,
+                "ordinary",
+                NetworkRule {
+                    none_by_default: true,
+                    ..NetworkRule::default()
+                },
+            ),
+            (
+                Network::Denied,
+                "fetch",
+                NetworkRule {
+                    allowed_steps: vec!["fetch".into()],
+                    ..NetworkRule::default()
+                },
+            ),
+        ];
+        for (network, step, rule) in cases {
+            let mut task = real_task();
+            task.network = network;
+            task.step = step.into();
+            let prior = Outcome {
+                image: task.image.clone(),
+                ..Outcome::default()
+            };
+            let history = history(&task, prior);
+            let calls = Arc::new(AtomicUsize::new(0));
+            let mut resumed = Resumed::new(
+                fresh(calls.clone(), Arc::new(FakeFiles::default())),
+                history,
+                Taken::default(),
+                Mode::Real,
+                rule,
+                false,
+            );
+
+            let found = runtime
+                .block_on(resumed.run(attempt(Arc::new(task))))
+                .unwrap();
+            assert!(!found.cached);
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
         }
     }
 }

@@ -169,28 +169,58 @@ impl Objects {
     /// An operator whose paths start at the address, for a store that keeps its own objects
     /// there and adds its own layers.
     pub fn at(&self, target: &str) -> Result<Operator, Problem> {
-        let (bucket, key) = bucket_and_key(target)?;
-        self.build(bucket, &format!("/{}", key.trim_matches('/')))
+        let location = location(target)?;
+        if location.version.is_some() {
+            return Err(Problem::fixed(
+                "a cache store cannot be rooted at a selected object version",
+            ));
+        }
+        self.build(
+            location.bucket,
+            &format!("/{}", location.key.trim_matches('/')),
+        )
     }
 
     pub async fn stat(&self, target: &str) -> Result<Option<Metadata>, Problem> {
-        let (bucket, key) = bucket_and_key(target)?;
-        let operator = self.operator(bucket)?;
-        let key = key.trim_end_matches('/');
+        let location = location(target)?;
+        let operator = self.operator(location.bucket)?;
+        let key = location.key.trim_end_matches('/');
         if !key.is_empty() {
-            match operator.stat(key).await {
+            let found = match location.version.as_deref() {
+                Some(version) => {
+                    if !operator.info().capability().stat_with_version {
+                        return Err(Problem::fixed(
+                            "the object service cannot select a version while finding an object",
+                        ));
+                    }
+                    operator.stat_with(key).version(version).await
+                }
+                None => operator.stat(key).await,
+            };
+            match found {
                 Ok(found) if !found.is_dir() => {
                     let changed = found.last_modified().map(|time| time.to_string());
                     return Ok(Some(Metadata {
                         directory: false,
                         size: found.content_length(),
-                        version: found.etag().map(str::to_owned).or(changed),
+                        version: location
+                            .version
+                            .clone()
+                            .or_else(|| found.version().map(str::to_owned))
+                            .or_else(|| found.etag().map(str::to_owned))
+                            .or(changed),
                     }));
                 }
                 Ok(_) => {}
+                Err(error) if error.kind() == ErrorKind::NotFound && location.version.is_some() => {
+                    return Ok(None);
+                }
                 Err(error) if error.kind() == ErrorKind::NotFound => {}
                 Err(error) => return Err(problem(error)),
             }
+        }
+        if location.version.is_some() {
+            return Ok(None);
         }
         // A key that is a prefix of other keys is a directory.
         let entries = operator.list(&directory(key)).await;
@@ -207,10 +237,15 @@ impl Objects {
     }
 
     pub async fn list(&self, target: &str) -> Result<Vec<Entry>, Problem> {
-        let (bucket, key) = bucket_and_key(target)?;
-        let folder = directory(key.trim_end_matches('/'));
+        let location = location(target)?;
+        if location.version.is_some() {
+            return Err(Problem::fixed(
+                "a selected object version is not a directory",
+            ));
+        }
+        let folder = directory(location.key.trim_end_matches('/'));
         let entries = self
-            .operator(bucket)?
+            .operator(location.bucket)?
             .list(&folder)
             .await
             .map_err(problem)?;
@@ -231,28 +266,50 @@ impl Objects {
         file: &Path,
         offset: u64,
     ) -> Result<Downloaded, Problem> {
-        let (bucket, key) = bucket_and_key(target)?;
-        let operator = self.operator(bucket)?;
-        let metadata = operator.stat(key).await.map_err(problem)?;
-        let version = metadata
-            .etag()
-            .filter(|tag| !tag.is_empty() && !tag.starts_with("W/"))
-            .ok_or_else(|| {
-                Problem::fixed(
-                    "the object service provides no strong version for a ranged download",
-                )
-            })?;
-        if !operator.info().capability().read_with_if_match {
-            return Err(Problem::fixed(
-                "the object service cannot bind ranged downloads to a version",
-            ));
+        let location = location(target)?;
+        let operator = self.operator(location.bucket)?;
+        let metadata = match location.version.as_deref() {
+            Some(version) => {
+                let capability = operator.info().capability();
+                if !capability.stat_with_version || !capability.read_with_version {
+                    return Err(Problem::fixed(
+                        "the object service cannot read a selected object version",
+                    ));
+                }
+                operator
+                    .stat_with(&location.key)
+                    .version(version)
+                    .await
+                    .map_err(problem)?
+            }
+            None => operator.stat(&location.key).await.map_err(problem)?,
+        };
+        let version = match location.version.as_deref() {
+            Some(version) => version,
+            None => {
+                let version = metadata
+                    .etag()
+                    .filter(|tag| !tag.is_empty() && !tag.starts_with("W/"))
+                    .ok_or_else(|| {
+                        Problem::fixed(
+                            "the object service provides no strong version for a ranged download",
+                        )
+                    })?;
+                if !operator.info().capability().read_with_if_match {
+                    return Err(Problem::fixed(
+                        "the object service cannot bind ranged downloads to a version",
+                    ));
+                }
+                version
+            }
+        };
+        let reader = match location.version.as_deref() {
+            Some(version) => operator.reader_with(&location.key).version(version),
+            None => operator.reader_with(&location.key).if_match(version),
         }
-        let reader = operator
-            .reader_with(key)
-            .if_match(version)
-            .chunk(PART_SIZE)
-            .await
-            .map_err(problem)?;
+        .chunk(PART_SIZE)
+        .await
+        .map_err(problem)?;
         let mut stream = reader.into_bytes_stream(offset..).await.map_err(problem)?;
         let mut output = open(file, offset > 0).await?;
         let mut written = offset;
@@ -280,10 +337,13 @@ impl Objects {
 
     /// Uploads a local file in parts.
     pub async fn upload(&self, file: &Path, target: &str) -> Result<(), Problem> {
-        let (bucket, key) = bucket_and_key(target)?;
-        let operator = self.operator(bucket)?;
+        let location = location(target)?;
+        if location.version.is_some() {
+            return Err(Problem::fixed("cannot write to a selected object version"));
+        }
+        let operator = self.operator(location.bucket)?;
         let mut writer = operator
-            .writer_with(key)
+            .writer_with(&location.key)
             .chunk(PART_SIZE)
             .await
             .map_err(problem)?;
@@ -307,8 +367,10 @@ impl Objects {
     }
 }
 
-fn bucket_and_key(target: &str) -> Result<(&str, &str), Problem> {
-    address::bucket_and_key(target).ok_or_else(|| Problem::fixed("it names no bucket"))
+fn location(target: &str) -> Result<address::ObjectLocation<'_>, Problem> {
+    address::object_location(target)
+        .map_err(|message| Problem::fixed(message))?
+        .ok_or_else(|| Problem::fixed("it names no bucket"))
 }
 
 /// The path that lists a directory: its key with a slash at the end, or `/` for the bucket.

@@ -747,6 +747,78 @@ async fn object_download_without_a_strong_version_fails_before_reading_ranges() 
 }
 
 #[tokio::test]
+async fn versioned_object_locations_keep_encoded_keys_and_exact_selectors() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let seen = requests.clone();
+    std::thread::spawn(move || {
+        for mut stream in listener.incoming().take(3).flatten() {
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut request = String::new();
+            reader.read_line(&mut request).unwrap();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line.trim().is_empty() {
+                    break;
+                }
+            }
+            seen.lock().unwrap().push(request.trim_end().to_owned());
+            if request.starts_with("HEAD ") {
+                stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nETag: \"old\"\r\nx-amz-version-id: v-1\r\nConnection: close\r\n\r\n").unwrap();
+            } else {
+                stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nETag: \"old\"\r\nx-amz-version-id: v-1\r\nConnection: close\r\n\r\nold!").unwrap();
+            }
+        }
+    });
+    let objects = storage(&format!(
+        "[storage.objects]\ntype='s3'\nprefixes='s3://bucket/'\nendpoint='{endpoint}'\nregion='us-east-1'\nanonymous=true"
+    ));
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("selected");
+    objects
+        .download("s3://bucket/a%3Fb%2525?versionId=v-1", &file)
+        .await
+        .expect("downloads the selected version");
+    assert_eq!(std::fs::read(&file).unwrap(), b"old!");
+    assert_eq!(
+        *requests.lock().unwrap(),
+        [
+            "HEAD /bucket/a%3Fb%2525?versionId=v-1 HTTP/1.1",
+            "HEAD /bucket/a%3Fb%2525?versionId=v-1 HTTP/1.1",
+            "GET /bucket/a%3Fb%2525?versionId=v-1 HTTP/1.1",
+        ]
+    );
+
+    let error = objects
+        .upload(&file, "s3://bucket/output?versionId=v-1")
+        .await
+        .expect_err("cannot overwrite a selected version");
+    assert!(
+        error
+            .to_string()
+            .contains("cannot write to a selected object version"),
+        "{error}"
+    );
+
+    let mirror = tempfile::tempdir().unwrap();
+    let folder = storage(&format!(
+        "[storage.mirror]\ntype='folder'\nprefixes='s3://bucket/'\npath='{}'",
+        mirror.path().display()
+    ));
+    let error = folder
+        .upload(&file, "s3://bucket/output?versionId=v-1")
+        .await
+        .expect_err("folder mirrors cannot overwrite a selected version");
+    assert!(
+        error.to_string().contains("cannot select or write"),
+        "{error}"
+    );
+    assert!(!mirror.path().join("output").exists());
+}
+
+#[tokio::test]
 async fn completed_downloads_are_isolated_by_provider_and_ignore_legacy_copies() {
     let roots = [tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap()];
     let downloads = tempfile::tempdir().unwrap();

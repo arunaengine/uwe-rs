@@ -21,16 +21,21 @@ impl Database {
             return Ok(None);
         };
         let mut statement = self.connection.prepare(
-            "SELECT t.description, a.exit_code, a.reused IS NOT NULL
+            "SELECT t.description, a.exit_code, a.reused IS NOT NULL, a.accepted
              FROM tasks t LEFT JOIN attempts a ON a.run = t.run AND a.task = t.id
                 AND a.number = (SELECT MAX(number) FROM attempts WHERE run = t.run AND task = t.id)
              WHERE t.run = ?1 ORDER BY t.rowid",
         )?;
         let rows = statement
             .query_map([run], |row| {
-                Ok((row.get::<_, String>(0)?, row.get(1)?, row.get(2)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                ))
             })?
-            .collect::<Result<Vec<(String, Option<i32>, Option<bool>)>, _>>()?;
+            .collect::<Result<Vec<(String, Option<i32>, Option<bool>, Option<bool>)>, _>>()?;
         let mut markers: HashMap<u64, Vec<Marker>> = HashMap::new();
         for marker in self.markers(run)? {
             let kind: MarkerKind = serde_json::from_value(marker.kind.into())?;
@@ -38,12 +43,13 @@ impl Database {
             found.push(Marker::new(kind, marker.reason));
         }
         let mut nodes = Vec::with_capacity(rows.len());
-        for (description, exit_code, reused) in rows {
+        for (description, exit_code, reused, accepted) in rows {
             let task: Task = serde_json::from_str(&description)?;
             nodes.push(Node {
                 markers: markers.remove(&task.id.0).unwrap_or_default(),
                 task,
                 exit_code,
+                accepted,
                 reused: reused.unwrap_or(false),
             });
         }

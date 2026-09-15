@@ -318,6 +318,7 @@ impl Reports {
             graph.nodes.push(Node {
                 task: task.clone(),
                 exit_code: self.exits.get(id).copied(),
+                accepted: None,
                 reused: false,
                 markers: Vec::new(),
             });

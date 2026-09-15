@@ -20,6 +20,12 @@ pub enum Event<'a> {
         attempt: u32,
         retried: bool,
     },
+    /// The driver's native output checks decided whether this exact attempt was accepted.
+    Validated {
+        task: TaskId,
+        attempt: u32,
+        accepted: bool,
+    },
     /// A task got a marker: the tasks that follow it depend on its outputs, so a run with real
     /// data can have more or fewer tasks there. Once per new marker of a task.
     Marked { task: TaskId, marker: &'a Marker },

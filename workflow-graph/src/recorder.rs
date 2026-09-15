@@ -61,6 +61,7 @@ impl Recorder {
                 .ok_or(ExecuteError::DuplicateTask(task.id))?;
             node.task = task.clone();
             node.exit_code = None;
+            node.accepted = None;
             node.reused = false;
             return Ok(&[]);
         }
@@ -102,6 +103,7 @@ impl Recorder {
         self.graph.nodes.push(Node {
             task: task.clone(),
             exit_code: None,
+            accepted: None,
             reused: false,
             markers: Vec::new(),
         });
@@ -210,6 +212,7 @@ impl Recorder {
             .and_then(|position| self.graph.nodes.get_mut(*position))
         {
             node.exit_code = Some(outcome.exit_code);
+            node.accepted = outcome.accepted;
             node.reused = outcome.cached;
         }
         for file in &outcome.files {
@@ -219,6 +222,15 @@ impl Recorder {
                 (outcome.id, path.clone()),
             );
             self.outputs.entry(outcome.id).or_default().push(path);
+        }
+    }
+    pub(crate) fn validated(&mut self, task: TaskId, accepted: bool) {
+        if let Some(node) = self
+            .positions
+            .get(&task)
+            .and_then(|position| self.graph.nodes.get_mut(*position))
+        {
+            node.accepted = Some(accepted);
         }
     }
 }

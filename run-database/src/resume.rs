@@ -60,6 +60,7 @@ impl Database {
                 "SELECT t.id, t.fingerprint, a.number FROM tasks t JOIN attempts a
                     ON a.run = t.run AND a.task = t.id
                  WHERE t.run = ?1 AND t.state = 'succeeded' AND a.exit_code = 0
+                    AND a.accepted = 1
                     AND a.number = (SELECT MAX(number) FROM attempts
                         WHERE run = t.run AND task = t.id)",
             )?;
@@ -140,6 +141,7 @@ impl Database {
             cached: true,
             image,
             inputs,
+            accepted: Some(true),
             ..Outcome::default()
         }))
     }

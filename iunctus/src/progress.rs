@@ -202,7 +202,7 @@ impl Board {
                 self.failed = error.is_some();
                 self.running = 0;
             }
-            Event::Marked { .. } => {}
+            Event::Marked { .. } | Event::Validated { .. } => {}
         }
     }
 

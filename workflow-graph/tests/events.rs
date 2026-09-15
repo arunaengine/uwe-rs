@@ -110,6 +110,9 @@ struct Notes(Vec<String>);
 
 impl Observer for Notes {
     fn event(&mut self, event: Event<'_>) {
+        if matches!(event, Event::Validated { .. }) {
+            return;
+        }
         self.0.push(match event {
             Event::Requested { task, edges } => format!("requested {} {}", task.id, edges.len()),
             Event::Started { task, attempt } => format!("started {task} {attempt}"),
@@ -119,6 +122,7 @@ impl Observer for Notes {
             Event::Marked { task, marker } => format!("marked {task} {}", marker.kind.name()),
             Event::Delivered { delivery } => format!("delivered {}", delivery.location),
             Event::Ended { error } => format!("ended {}", error.is_some()),
+            Event::Validated { .. } => unreachable!(),
         });
     }
 }

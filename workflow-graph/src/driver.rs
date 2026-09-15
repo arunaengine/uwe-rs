@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::{
-    CancellationToken, Delivery, ExecuteError, Files, Inputs, Language, Note, Outcome, Task,
+    CancellationToken, Delivery, ExecuteError, Files, Inputs, Language, Note, Outcome, Task, TaskId,
 };
 
 /// What a user asks to run, in the terms all languages share. Each language crate exposes
@@ -88,6 +88,16 @@ pub trait Driver {
 
     /// Takes the outcome of a task and returns the tasks that can run now.
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError>;
+
+    /// Consumes explicit output-validation acceptance for exactly this task and attempt after
+    /// [`Driver::complete`]. Drivers record the identity from [`Outcome::id`] and
+    /// [`Outcome::attempt`], and approve only after their native output checks pass.
+    /// A successful `complete` call or process exit does not imply acceptance. Missing,
+    /// rejected or already consumed decisions return false; querying another identity must
+    /// not consume this attempt's decision. The default approves nothing.
+    fn take_acceptance(&mut self, _task: TaskId, _attempt: u32) -> bool {
+        false
+    }
 
     /// Ends the run: an error when the workflow failed or waits for something that will not
     /// come.

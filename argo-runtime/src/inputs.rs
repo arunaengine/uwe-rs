@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
+use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 
 use argo_parser::model::{AnyString, Artifact, Template};
@@ -83,15 +84,16 @@ impl Run {
             values.push((input.name.clone(), value.0));
         }
         let mut artifacts = Vec::new();
+        let mut deferred_sub_paths = Vec::new();
         for input in &typed.inputs.artifacts {
             let argument = args
                 .artifacts
                 .iter()
                 .find(|artifact| artifact.name == input.name);
-            let own = self.artifact_value(input)?;
-            let mut value = match argument {
-                Some(argument) if argument.location.is_some() => argument.clone(),
-                _ => own,
+            let from_argument = argument.is_some_and(|argument| argument.location.is_some());
+            let mut value = match argument.filter(|argument| argument.location.is_some()) {
+                Some(argument) => argument.clone(),
+                None => self.artifact_value(input)?,
             };
             if value.location.is_none() && !input.optional {
                 return Err(Failure::error(format!(
@@ -103,6 +105,7 @@ impl Run {
             value.path = input.path.clone();
             value.optional = input.optional;
             artifacts.push(value);
+            deferred_sub_paths.push(from_argument || crate::tags::has_tag(&input.sub_path));
         }
         let mut locals = locals.unwrap_or_default();
         if is_pod(&typed) {
@@ -159,8 +162,15 @@ impl Run {
         let (template, _) = decode::<Template>(&node)
             .map_err(|error| Failure::error(format!("template {}: {error}", typed.name)))?;
         // Paths of input artifacts may hold tags that the passes resolved.
-        for (artifact, input) in artifacts.iter_mut().zip(&template.inputs.artifacts) {
+        for (index, (artifact, input)) in artifacts
+            .iter_mut()
+            .zip(&template.inputs.artifacts)
+            .enumerate()
+        {
             artifact.path = input.path.clone();
+            if deferred_sub_paths[index] {
+                apply_sub_path(artifact, &input.sub_path)?;
+            }
         }
         Ok(Processed {
             node,
@@ -173,13 +183,17 @@ impl Run {
     /// The artifact that a declared artifact names by its location, if it has one.
     pub(crate) fn artifact_value(&mut self, artifact: &Artifact) -> Result<ArtifactValue> {
         let location = self.location(artifact)?;
-        Ok(ArtifactValue {
+        let mut value = ArtifactValue {
             name: artifact.name.clone(),
             path: artifact.path.clone(),
             location,
             optional: artifact.optional,
             directory: artifact.git.is_some(),
-        })
+        };
+        if !crate::tags::has_tag(&artifact.sub_path) {
+            apply_sub_path(&mut value, &artifact.sub_path)?;
+        }
+        Ok(value)
     }
 
     fn location(&mut self, artifact: &Artifact) -> Result<Option<Location>> {
@@ -237,6 +251,73 @@ impl Run {
         }
         Ok(Some(Location::Url(url)))
     }
+}
+
+/// Selects a child of a materialized directory artifact without leaving that directory.
+fn apply_sub_path(artifact: &mut ArtifactValue, sub_path: &str) -> Result<()> {
+    if sub_path.is_empty() {
+        return Ok(());
+    }
+    if crate::tags::has_tag(sub_path) {
+        return Err(Failure::error(format!(
+            "artifact {} has unresolved subPath {sub_path}",
+            artifact.name
+        )));
+    }
+    let mut relative = PathBuf::new();
+    for component in Path::new(sub_path).components() {
+        match component {
+            Component::Normal(part) => relative.push(part),
+            Component::CurDir => {}
+            _ => {
+                return Err(Failure::error(format!(
+                    "artifact {} has invalid subPath {sub_path}",
+                    artifact.name
+                )));
+            }
+        }
+    }
+    let Some(Location::File(root)) = &artifact.location else {
+        let kind = match &artifact.location {
+            Some(Location::Raw(_)) => "raw content",
+            Some(Location::Url(_)) => "an unmaterialized remote source",
+            _ => "no source",
+        };
+        return Err(Failure::unsupported(format!(
+            "artifact {} cannot select subPath {sub_path} from {kind}",
+            artifact.name
+        )));
+    };
+    if !root.is_dir() {
+        return Err(Failure::error(format!(
+            "artifact {} cannot select subPath {sub_path} from the file {}",
+            artifact.name,
+            root.display()
+        )));
+    }
+    let selected = root.join(relative);
+    let base = root.canonicalize().map_err(|error| {
+        Failure::error(format!(
+            "cannot inspect artifact {}: {error}",
+            artifact.name
+        ))
+    })?;
+    let canonical = selected.canonicalize().map_err(|error| {
+        Failure::error(format!(
+            "artifact {} subPath {sub_path} cannot be selected: {error}",
+            artifact.name
+        ))
+    })?;
+    if !canonical.starts_with(&base) {
+        return Err(Failure::error(format!(
+            "artifact {} subPath {sub_path} escapes {}",
+            artifact.name,
+            root.display()
+        )));
+    }
+    artifact.directory = selected.is_dir();
+    artifact.location = Some(Location::File(selected));
+    Ok(())
 }
 
 fn template_label(template: &Node) -> String {

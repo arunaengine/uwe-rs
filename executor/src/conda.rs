@@ -3,13 +3,17 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::io::{self, Write};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use bollard::query_parameters::{BuildImageOptions, BuilderVersion};
+use bollard::query_parameters::{BuildImageOptions, BuilderVersion, ImportImageOptions};
 use conda_environment::{BuiltImage, CompletedImage, ImagePreparation};
+use content_store::Store;
 use futures_util::StreamExt;
+use tokio::io::AsyncWriteExt;
+use tokio_util::io::ReaderStream;
 
 use crate::{CancellationToken, ContainerEngine};
 
@@ -35,10 +39,133 @@ pub enum CondaImageError {
     Io(#[from] io::Error),
     #[error("Conda image engine request failed: {0}")]
     Engine(#[from] bollard::errors::Error),
+    #[error("Conda image content store failed: {0}")]
+    Store(#[from] content_store::StoreError),
     #[error("Conda image operation was cancelled")]
     Cancelled,
     #[error("Conda image operation exceeded its {0} limit")]
     Limit(&'static str),
+}
+
+/// Bounds exported and downloaded archive bytes, decoded import progress, and total time.
+#[derive(Clone, Copy, Debug)]
+pub struct TransferLimits {
+    pub archive_bytes: u64,
+    pub progress_bytes: usize,
+    pub timeout: Duration,
+}
+
+/// Saves an inspected image by its immutable ID. Only the archive digest is added; saving
+/// does not publish a registry manifest. Cancellation may leave unreferenced content bytes.
+pub async fn save(
+    engine: &ContainerEngine,
+    preparation: &ImagePreparation,
+    receipt: &CompletedImage,
+    store: &Store,
+    limits: TransferLimits,
+    cancel: &CancellationToken,
+) -> Result<CompletedImage, CondaImageError> {
+    transfer(limits, cancel, async {
+        receipt.validate(preparation)?;
+        let image = inspect(engine, preparation, receipt.image_id()).await?;
+        let temporary = tempfile::NamedTempFile::new()?;
+        let mut file = tokio::fs::File::from_std(temporary.reopen()?);
+        let mut bytes = 0u64;
+        let mut stream = engine.client().export_image(image.image_id());
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            bytes = bytes
+                .checked_add(chunk.len() as u64)
+                .filter(|size| *size <= limits.archive_bytes)
+                .ok_or(CondaImageError::Limit("archive bytes"))?;
+            file.write_all(&chunk).await?;
+        }
+        file.flush().await?;
+        let (digest, _) = store.put_file(temporary.path()).await?;
+        Ok(preparation.completed(BuiltImage {
+            preparation: image.preparation().into(),
+            base: image.base().into(),
+            recipe_digest: image.recipe_digest().into(),
+            platform: image.platform().into(),
+            image_id: image.image_id().into(),
+            manifest_digest: None,
+            archive_digest: Some(digest.to_string()),
+            reference: None,
+        })?)
+    })
+    .await
+}
+
+/// Reuses a verified local ID, or imports checksum-verified stored bytes when that exact
+/// ID is missing. Import success is accepted only after inspecting the expected ID again.
+/// Cancellation closes the request but cannot confirm daemon-side import termination.
+pub async fn restore(
+    engine: &ContainerEngine,
+    preparation: &ImagePreparation,
+    receipt: &CompletedImage,
+    store: &Store,
+    limits: TransferLimits,
+    cancel: &CancellationToken,
+) -> Result<CompletedImage, CondaImageError> {
+    transfer(limits, cancel, async {
+        receipt.validate(preparation)?;
+        match inspect(engine, preparation, receipt.image_id()).await {
+            Ok(_) => return Ok(receipt.clone()),
+            Err(CondaImageError::Engine(bollard::errors::Error::DockerResponseServerError {
+                status_code: 404,
+                ..
+            })) => {}
+            Err(error) => return Err(error),
+        }
+        let digest: task_model::Digest = receipt
+            .archive_digest()
+            .ok_or_else(|| invalid("missing image has no stored archive"))?
+            .parse()
+            .map_err(|error| invalid(&format!("invalid archive digest: {error}")))?;
+        let temporary = tempfile::NamedTempFile::new()?;
+        store
+            .materialize_content_bounded(&digest, temporary.path(), limits.archive_bytes)
+            .await?;
+        let file = tokio::fs::File::open(temporary.path()).await?;
+        // The pinned client cannot encode platform arrays; inspection below checks platform.
+        let mut stream = engine.client().import_image(
+            ImportImageOptions::default(),
+            bollard::body_try_stream(ReaderStream::new(file)),
+            None,
+        );
+        let mut used = 0usize;
+        while let Some(step) = stream.next().await {
+            let size = format!("{:?}", step?).len();
+            used = used
+                .checked_add(size)
+                .filter(|size| *size <= limits.progress_bytes)
+                .ok_or(CondaImageError::Limit("import progress"))?;
+        }
+        inspect(engine, preparation, receipt.image_id()).await?;
+        Ok(receipt.clone())
+    })
+    .await
+}
+
+async fn transfer<T>(
+    limits: TransferLimits,
+    cancel: &CancellationToken,
+    work: impl Future<Output = Result<T, CondaImageError>>,
+) -> Result<T, CondaImageError> {
+    if limits.archive_bytes == 0
+        || limits.progress_bytes == 0
+        || limits.timeout.is_zero()
+        || Instant::now().checked_add(limits.timeout).is_none()
+    {
+        return Err(invalid("transfer limits must be positive and finite"));
+    }
+    tokio::select! {
+        biased;
+        _ = cancel.cancelled() => Err(CondaImageError::Cancelled),
+        result = tokio::time::timeout(limits.timeout, work) => {
+            result.map_err(|_| CondaImageError::Limit("wall-clock"))?
+        }
+    }
 }
 
 /// Builds with the classic builder only. Engines requiring BuildKit are unsupported.

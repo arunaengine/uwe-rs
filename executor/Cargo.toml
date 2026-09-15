@@ -14,15 +14,16 @@ publish.workspace = true
 [dependencies]
 bollard.workspace = true
 conda-environment.workspace = true
+content-store.workspace = true
 futures-util.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
 storage.workspace = true
 task-model.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["process", "time", "sync"] }
-tokio-util.workspace = true
+tokio-util = { workspace = true, features = ["io"] }
 
 [dev-dependencies]
-tempfile.workspace = true
 tokio = { workspace = true, features = ["process", "time", "sync", "rt"] }

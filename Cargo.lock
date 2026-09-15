@@ -1230,6 +1230,7 @@ version = "0.1.0"
 dependencies = [
  "bollard",
  "conda-environment",
+ "content-store",
  "futures-util",
  "reqwest",
  "serde_json",

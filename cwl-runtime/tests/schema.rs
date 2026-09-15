@@ -140,3 +140,77 @@ outputs: []
     );
     assert_eq!(input_schema::valid(&inputs.schema), Ok(()));
 }
+
+#[test]
+fn long_defaults_keep_every_i64_exact() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let tool = folder.path().join("longs.cwl");
+    let source = r#"cwlVersion: v1.2
+class: CommandLineTool
+baseCommand: 'true'
+inputs:
+  ordinary: {type: long, default: 42}
+  precise: {type: long, default: 9007199254740993}
+  minimum: {type: long, default: -9223372036854775808}
+  maximum: {type: long, default: 9223372036854775807}
+outputs: []
+"#;
+    std::fs::write(&tool, source).expect("writes the tool");
+    let launch = Launch {
+        target: tool,
+        params: vec![
+            ("ordinary".into(), "42".into()),
+            ("precise".into(), "9007199254740993".into()),
+            ("minimum".into(), "-9223372036854775808".into()),
+            ("maximum".into(), "9223372036854775807".into()),
+        ],
+        ..Launch::default()
+    };
+    let mut driver = CwlDriver::new(&launch, Options::default()).expect("loads the tool");
+    let inputs = driver.inputs().expect("describes").expect("inputs");
+    for (name, expected) in [
+        ("ordinary", 42),
+        ("precise", 9_007_199_254_740_993),
+        ("minimum", i64::MIN),
+        ("maximum", i64::MAX),
+    ] {
+        assert_eq!(
+            inputs.schema["properties"][name]["default"].as_i64(),
+            Some(expected)
+        );
+        assert_eq!(inputs.values[name].as_i64(), Some(expected));
+    }
+    let text = serde_json::to_string(&inputs.schema).expect("schema text");
+    assert!(text.contains("9007199254740993"), "{text}");
+    assert!(!text.contains("9007199254740992"), "{text}");
+    assert_eq!(input_schema::valid(&inputs.schema), Ok(()));
+}
+
+#[test]
+fn integers_outside_cwl_long_bounds_are_an_error() {
+    for digits in ["9223372036854775808", "-9223372036854775809"] {
+        let folder = tempfile::tempdir().expect("a folder");
+        let tool = folder.path().join("outside.cwl");
+        let source = format!(
+            "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: 'true'\n\
+             inputs:\n  value: {{type: long, default: {digits}}}\noutputs: []\n"
+        );
+        std::fs::write(&tool, source).expect("writes the tool");
+        let launch = Launch {
+            target: tool,
+            ..Launch::default()
+        };
+        let mut driver = CwlDriver::new(&launch, Options::default()).expect("loads the tool");
+        let error = driver
+            .inputs()
+            .err()
+            .expect("the integer is outside CWL long bounds");
+        assert!(error.to_string().contains(digits), "{error}");
+        assert!(
+            error
+                .to_string()
+                .contains("outside the range of a CWL long"),
+            "{error}"
+        );
+    }
+}

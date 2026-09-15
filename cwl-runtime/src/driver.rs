@@ -234,8 +234,9 @@ impl Driver for CwlDriver {
     fn inputs(&mut self) -> Result<Option<Inputs>, DriverError> {
         let job = self.input_object().map_err(error)?;
         Ok(Some(Inputs {
-            schema: schema::of(&self.process, &self.types(), &self.namespaces),
-            values: schema::values(&job),
+            schema: schema::of(&self.process, &self.types(), &self.namespaces)
+                .map_err(DriverError::new)?,
+            values: schema::values(&job).map_err(DriverError::new)?,
             base: std::env::current_dir().unwrap_or_default(),
             read: Some(schema::read(&self.process)),
             assumes_values: self.launch.inputs.is_none(),

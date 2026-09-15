@@ -5,7 +5,7 @@
 
 mod common;
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -28,6 +28,45 @@ fn settings_error(text: &str) -> String {
     Settings::from_config(&config(text))
         .expect_err("invalid settings")
         .to_string()
+}
+
+fn s3_put_server(version: Option<&str>) -> (String, std::sync::mpsc::Receiver<(String, Vec<u8>)>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let version = version.map(str::to_owned);
+    let (send, receive) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut request = String::new();
+        reader.read_line(&mut request).unwrap();
+        let mut length = 0;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line.trim().is_empty() {
+                break;
+            }
+            if let Some((name, value)) = line.split_once(':')
+                && name.eq_ignore_ascii_case("content-length")
+            {
+                length = value.trim().parse().unwrap();
+            }
+        }
+        let mut body = vec![0; length];
+        reader.read_exact(&mut body).unwrap();
+        send.send((request.trim_end().to_owned(), body)).unwrap();
+        let version = version.as_deref().map_or(String::new(), |version| {
+            format!("x-amz-version-id: {version}\r\n")
+        });
+        stream
+            .write_all(
+                format!("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nETag: \"etag-only\"\r\n{version}Connection: close\r\n\r\n")
+                    .as_bytes(),
+            )
+            .unwrap();
+    });
+    (endpoint, receive)
 }
 
 #[test]
@@ -816,6 +855,58 @@ async fn versioned_object_locations_keep_encoded_keys_and_exact_selectors() {
         "{error}"
     );
     assert!(!mirror.path().join("output").exists());
+}
+
+#[tokio::test]
+async fn upload_receipts_come_from_the_completed_write_without_a_head_request() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    std::fs::write(&source, b"data").unwrap();
+
+    for (returned, expected) in [(Some("written-v1"), Some("written-v1")), (None, None)] {
+        let (endpoint, request) = s3_put_server(returned);
+        let objects = storage(&format!(
+            "[storage.objects]\ntype='s3'\nprefixes='s3://bucket/'\nendpoint='{endpoint}'\nregion='us-east-1'\nanonymous=true"
+        ));
+        let receipt = objects
+            .upload_with_receipt(&source, "s3://bucket/output")
+            .await
+            .expect("uploads with a receipt");
+        assert_eq!(receipt.address, "s3://bucket/output");
+        assert_eq!(receipt.size, 4);
+        assert_eq!(receipt.version.as_deref(), expected);
+        assert_eq!(
+            request.recv().unwrap(),
+            ("PUT /bucket/output HTTP/1.1".into(), b"data".to_vec())
+        );
+    }
+
+    let (endpoint, request) = s3_put_server(None);
+    let objects = storage(&format!(
+        "[storage.objects]\ntype='s3'\nprefixes='s3://bucket/'\nendpoint='{endpoint}'\nregion='us-east-1'\nanonymous=true"
+    ));
+    objects
+        .upload(&source, "s3://bucket/plain")
+        .await
+        .expect("the existing upload API remains supported");
+    assert_eq!(
+        request.recv().unwrap(),
+        ("PUT /bucket/plain HTTP/1.1".into(), b"data".to_vec())
+    );
+
+    let mirror = root.path().join("mirror");
+    let folder = storage(&format!(
+        "[storage.mirror]\ntype='folder'\nprefixes='s3://mirror/'\npath='{}'",
+        mirror.display()
+    ));
+    let receipt = folder
+        .upload_with_receipt(&source, "s3://mirror/output")
+        .await
+        .expect("copies to a folder provider");
+    assert_eq!(receipt.address, "s3://mirror/output");
+    assert_eq!(receipt.size, 4);
+    assert_eq!(receipt.version, None);
+    assert_eq!(std::fs::read(mirror.join("output")).unwrap(), b"data");
 }
 
 #[tokio::test]

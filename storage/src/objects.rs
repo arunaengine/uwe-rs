@@ -20,7 +20,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::error::Problem;
 use crate::web::{open, shared_client};
-use crate::{Downloaded, Entry, Metadata, address};
+use crate::{Downloaded, Entry, Metadata, Written, address};
 
 /// Files are downloaded and uploaded in parts of this size, so they never sit in memory whole.
 const PART_SIZE: usize = 8 * 1024 * 1024;
@@ -336,7 +336,7 @@ impl Objects {
     }
 
     /// Uploads a local file in parts.
-    pub async fn upload(&self, file: &Path, target: &str) -> Result<(), Problem> {
+    pub async fn upload(&self, file: &Path, target: &str) -> Result<Written, Problem> {
         let location = location(target)?;
         if location.version.is_some() {
             return Err(Problem::fixed("cannot write to a selected object version"));
@@ -351,6 +351,7 @@ impl Objects {
             .await
             .map_err(|error| Problem::local(file, error))?;
         let mut buffer = vec![0; PART_SIZE];
+        let mut written = 0;
         loop {
             let read = reader
                 .read(&mut buffer)
@@ -361,9 +362,13 @@ impl Objects {
             }
             let part = Bytes::copy_from_slice(&buffer[..read]);
             writer.write(part).await.map_err(problem)?;
+            written += read as u64;
         }
-        writer.close().await.map_err(problem)?;
-        Ok(())
+        let metadata = writer.close().await.map_err(problem)?;
+        Ok(Written {
+            size: written,
+            version: metadata.version().map(str::to_owned),
+        })
     }
 }
 

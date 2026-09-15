@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::error::Problem;
-use crate::{Downloaded, Entry, Metadata, address};
+use crate::{Downloaded, Entry, Metadata, Written, address};
 
 pub(crate) struct Folder {
     pub root: PathBuf,
@@ -107,7 +107,7 @@ impl Folder {
 
     /// Copies a local file into the folder, through a temporary name, so that a reader never
     /// sees half a file.
-    pub async fn upload(&self, file: &Path, path: &Path) -> Result<(), Problem> {
+    pub async fn upload(&self, file: &Path, path: &Path) -> Result<Written, Problem> {
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
@@ -122,9 +122,17 @@ impl Folder {
         let part = copied(file, part)
             .await
             .map_err(|error| Problem::local(file, error))?;
+        let size = part
+            .as_file()
+            .metadata()
+            .map_err(|error| Problem::local(file, error))?
+            .len();
         part.persist(path)
-            .map(|_| ())
-            .map_err(|error| Problem::local(path, error.error))
+            .map_err(|error| Problem::local(path, error.error))?;
+        Ok(Written {
+            size,
+            version: None,
+        })
     }
 }
 

@@ -18,7 +18,7 @@ use crate::objects::{Objects, Service};
 use crate::public::PublicBuckets;
 use crate::settings::{self, Kind, ProviderSettings};
 use crate::web::Web;
-use crate::{Downloaded, Entry, Metadata, StorageError};
+use crate::{Downloaded, Entry, Metadata, StorageError, Written};
 
 /// Where a provider comes from.
 pub(crate) enum Source {
@@ -228,7 +228,12 @@ impl Connection {
         }
     }
 
-    pub async fn upload(&self, file: &Path, prefix: &str, target: &str) -> Result<(), Problem> {
+    pub async fn upload(
+        &self,
+        file: &Path,
+        prefix: &str,
+        target: &str,
+    ) -> Result<Written, Problem> {
         match &self.backend {
             Backend::Objects(objects) => objects.upload(file, target).await,
             Backend::Folder(folder) => folder.upload(file, &folder.path(prefix, target)?).await,

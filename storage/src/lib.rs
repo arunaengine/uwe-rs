@@ -56,6 +56,20 @@ pub(crate) struct Downloaded {
     pub version: Option<String>,
 }
 
+/// What a completed upload wrote, from the same write operation that committed it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UploadReceipt {
+    pub address: String,
+    pub size: u64,
+    /// The immutable provider version returned by the write, when the provider has one.
+    pub version: Option<String>,
+}
+
+pub(crate) struct Written {
+    pub size: u64,
+    pub version: Option<String>,
+}
+
 /// An entry of a directory.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Entry {
@@ -285,6 +299,15 @@ impl Storage {
 
     /// Uploads a local file to an address.
     pub async fn upload(&self, file: &Path, target: &str) -> Result<(), StorageError> {
+        self.upload_with_receipt(file, target).await.map(|_| ())
+    }
+
+    /// Uploads a local file and returns the identity reported by that completed write.
+    pub async fn upload_with_receipt(
+        &self,
+        file: &Path,
+        target: &str,
+    ) -> Result<UploadReceipt, StorageError> {
         let served = self.serve(target)?;
         if !served.connection.writes() {
             let message = format!(
@@ -294,7 +317,12 @@ impl Storage {
             return Err(StorageError::Unsupported(message));
         }
         let done = served.connection.upload(file, served.prefix, target).await;
-        done.map_err(|problem| served.failed("write", target, problem))
+        let written = done.map_err(|problem| served.failed("write", target, problem))?;
+        Ok(UploadReceipt {
+            address: target.to_owned(),
+            size: written.size,
+            version: written.version,
+        })
     }
 
     /// Where a cache store at `location` lives: a local path, a `file://` address, or an

@@ -41,6 +41,10 @@ pub enum CondaImageError {
     Engine(#[from] bollard::errors::Error),
     #[error("Conda image content store failed: {0}")]
     Store(#[from] content_store::StoreError),
+    #[error("Conda image provenance is invalid: {0}")]
+    Provenance(String),
+    #[error("missing Conda image has no stored archive")]
+    MissingArchive,
     #[error("Conda image operation was cancelled")]
     Cancelled,
     #[error("Conda image operation exceeded its {0} limit")]
@@ -119,7 +123,7 @@ pub async fn restore(
         }
         let digest: task_model::Digest = receipt
             .archive_digest()
-            .ok_or_else(|| invalid("missing image has no stored archive"))?
+            .ok_or(CondaImageError::MissingArchive)?
             .parse()
             .map_err(|error| invalid(&format!("invalid archive digest: {error}")))?;
         let temporary = tempfile::NamedTempFile::new()?;
@@ -261,7 +265,7 @@ pub async fn build(
     }
 }
 
-async fn inspect(
+pub(crate) async fn inspect(
     engine: &ContainerEngine,
     preparation: &ImagePreparation,
     id: &str,
@@ -272,12 +276,14 @@ async fn inspect(
                 .bytes()
                 .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
     }) {
-        return Err(invalid("builder returned an invalid immutable image ID"));
+        return Err(CondaImageError::Provenance(
+            "invalid immutable image ID".into(),
+        ));
     }
     let image = engine.client().inspect_image(id).await?;
     if image.id.as_deref() != Some(id) {
-        return Err(invalid(
-            "inspected image ID differs from the completed build",
+        return Err(CondaImageError::Provenance(
+            "inspected image ID differs from the completed build".into(),
         ));
     }
     let mut platform = format!(
@@ -293,16 +299,18 @@ async fn inspect(
         .config
         .and_then(|config| config.labels)
         .unwrap_or_default();
-    Ok(preparation.completed(BuiltImage {
-        preparation: labels.get(PREPARATION).cloned().unwrap_or_default(),
-        base: labels.get(BASE).cloned().unwrap_or_default(),
-        recipe_digest: labels.get(RECIPE).cloned().unwrap_or_default(),
-        platform,
-        image_id: id.into(),
-        manifest_digest: None,
-        archive_digest: None,
-        reference: None,
-    })?)
+    preparation
+        .completed(BuiltImage {
+            preparation: labels.get(PREPARATION).cloned().unwrap_or_default(),
+            base: labels.get(BASE).cloned().unwrap_or_default(),
+            recipe_digest: labels.get(RECIPE).cloned().unwrap_or_default(),
+            platform,
+            image_id: id.into(),
+            manifest_digest: None,
+            archive_digest: None,
+            reference: None,
+        })
+        .map_err(|error| CondaImageError::Provenance(error.to_string()))
 }
 
 fn invalid(message: &str) -> CondaImageError {

@@ -6,6 +6,7 @@
 pub mod access;
 mod braces;
 pub mod conda;
+pub mod conda_cache;
 pub mod containers;
 pub mod engine;
 pub mod http;

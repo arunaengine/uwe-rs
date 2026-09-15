@@ -23,21 +23,21 @@ use crate::value::{Map, Value};
 /// How deep named types may nest, which stops types that name themselves.
 const DEPTH: usize = 16;
 
-/// The schema of the inputs of a process.
-pub fn of(process: &Process, types: &Types, namespaces: &Namespaces) -> Json {
+/// The schema of the inputs of a process. An integer outside CWL `long` bounds is an error.
+pub fn of(process: &Process, types: &Types, namespaces: &Namespaces) -> Result<Json, String> {
     let mut properties = JsonMap::new();
     let mut required = Vec::new();
     for input in &process.inputs {
         let name = short_name(&input.id).to_owned();
         let mut schema = parameter(input, types, namespaces);
         if let Some(default) = &input.default {
-            schema["default"] = to_json(&Value::from_node(default));
+            schema["default"] = to_json(&Value::from_node(default))?;
         } else if !types.optional(&input.value_type) {
             required.push(Json::String(name.clone()));
         }
         properties.insert(name, schema);
     }
-    object(process, properties, required)
+    Ok(object(process, properties, required))
 }
 
 /// The schema of the outputs of a process: the output object of a run. A file or directory is
@@ -262,28 +262,31 @@ fn type_schema(value_type: &Type, types: &Types, namespaces: &Namespaces, depth:
 }
 
 /// The input object of a run as JSON, with files and directories as their paths or addresses.
-/// A `null` is no value in CWL, so it is left out.
-pub fn values(job: &Map) -> Json {
+/// A `null` is no value in CWL, so it is left out. Integers must fit a CWL `long`.
+pub fn values(job: &Map) -> Result<Json, String> {
     to_json(&Value::Map(job.clone()))
 }
 
 /// A value as JSON: a file or directory is its local path, else its address; a literal file
 /// without either is a `data:` address of its content.
-fn to_json(value: &Value) -> Json {
-    match value {
+fn to_json(value: &Value) -> Result<Json, String> {
+    Ok(match value {
         Value::Null => Json::Null,
         Value::Bool(value) => json!(value),
         Value::Integer(value) => json!(value),
-        Value::BigInteger(digits) => digits
-            .parse::<f64>()
-            .ok()
-            .and_then(serde_json::Number::from_f64)
-            .map_or(Json::Null, Json::Number),
+        Value::BigInteger(digits) => {
+            let value = digits
+                .parse::<i64>()
+                .map_err(|_| format!("integer `{digits}` is outside the range of a CWL long"))?;
+            json!(value)
+        }
         Value::Float(value) => {
             serde_json::Number::from_f64(*value).map_or(Json::Null, Json::Number)
         }
         Value::String(text) => json!(text),
-        Value::List(items) => Json::Array(items.iter().map(to_json).collect()),
+        Value::List(items) => {
+            Json::Array(items.iter().map(to_json).collect::<Result<Vec<_>, _>>()?)
+        }
         Value::Map(map) if value.is_file_like() => {
             let location = map
                 .get("path")
@@ -303,10 +306,10 @@ fn to_json(value: &Value) -> Json {
         Value::Map(map) => Json::Object(
             map.iter()
                 .filter(|(_, value)| !value.is_null())
-                .map(|(key, value)| (key.clone(), to_json(value)))
-                .collect(),
+                .map(|(key, value)| Ok((key.clone(), to_json(value)?)))
+                .collect::<Result<JsonMap<_, _>, String>>()?,
         ),
-    }
+    })
 }
 
 /// A `data:` address that holds a text, percent-encoded.

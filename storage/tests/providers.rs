@@ -863,7 +863,11 @@ async fn upload_receipts_come_from_the_completed_write_without_a_head_request() 
     let source = root.path().join("source");
     std::fs::write(&source, b"data").unwrap();
 
-    for (returned, expected) in [(Some("written-v1"), Some("written-v1")), (None, None)] {
+    for (returned, expected) in [
+        (Some("written-v1"), Some("written-v1")),
+        (None, None),
+        (Some("null"), None),
+    ] {
         let (endpoint, request) = s3_put_server(returned);
         let objects = storage(&format!(
             "[storage.objects]\ntype='s3'\nprefixes='s3://bucket/'\nendpoint='{endpoint}'\nregion='us-east-1'\nanonymous=true"

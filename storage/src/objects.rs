@@ -367,7 +367,11 @@ impl Objects {
         let metadata = writer.close().await.map_err(problem)?;
         Ok(Written {
             size: written,
-            version: metadata.version().map(str::to_owned),
+            version: metadata
+                .version()
+                .filter(|version| !version.is_empty())
+                .filter(|version| !matches!(self.service, Service::S3 { .. }) || *version != "null")
+                .map(str::to_owned),
         })
     }
 }

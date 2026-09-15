@@ -237,6 +237,10 @@ pub struct Outcome {
     /// Which attempt of the task this was, counting from 1; the engine sets it.
     pub attempt: u32,
     pub exit_code: i32,
+    /// Whether native output validation accepted this attempt. `None` is no recorded decision,
+    /// including historical outcomes and attempts the driver did not hear.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted: Option<bool>,
     /// The output files, by the path the driver asked for and the local path that holds them.
     pub files: Vec<OutputFile>,
     pub stdout: String,

@@ -128,6 +128,7 @@ mod tests {
                 ..Task::default()
             },
             exit_code: Some(0),
+            accepted: None,
             reused,
             markers: Vec::new(),
         }

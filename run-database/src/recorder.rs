@@ -252,7 +252,8 @@ impl Recorder {
                 .prepare_cached(
                     "UPDATE attempts SET ended = ?4, exit_code = ?5, retried = ?6, image = ?7,
                         reused = COALESCE(?8, reused), started = COALESCE(?9, started),
-                        cpu_usec = ?10, memory_peak = ?11, read_bytes = ?12, write_bytes = ?13
+                        cpu_usec = ?10, memory_peak = ?11, read_bytes = ?12, write_bytes = ?13,
+                        accepted = ?14
                      WHERE run = ?1 AND task = ?2 AND number = ?3",
                 )?
                 .execute(params![
@@ -269,11 +270,13 @@ impl Recorder {
                     usage.memory_peak.map(clamp),
                     usage.read_bytes.map(clamp),
                     usage.write_bytes.map(clamp),
+                    outcome.accepted,
                 ])?;
-            let state = match (retried, outcome.exit_code) {
-                (true, _) => "running",
-                (false, 0) => "succeeded",
-                (false, _) => "failed",
+            let state = match (retried, outcome.exit_code, outcome.accepted) {
+                (true, _, _) => "running",
+                (false, 0, Some(false)) => "failed",
+                (false, 0, _) => "succeeded",
+                (false, _, _) => "failed",
             };
             connection
                 .prepare_cached("UPDATE tasks SET state = ?3 WHERE run = ?1 AND id = ?2")?
@@ -367,6 +370,39 @@ impl Recorder {
                 sequence,
                 "finished",
                 Some(outcome.id),
+                Some(attempt),
+            )
+        });
+    }
+
+    /// The driver's native output checks accepted or rejected an exact finished attempt.
+    pub fn validated(&mut self, task: TaskId, attempt: u32, accepted: bool) {
+        self.write(|connection, run, sequence| {
+            connection
+                .prepare_cached(
+                    "UPDATE attempts SET accepted = ?4
+                     WHERE run = ?1 AND task = ?2 AND number = ?3",
+                )?
+                .execute(params![run, task.0, attempt, accepted])?;
+            connection
+                .prepare_cached(
+                    "UPDATE tasks SET state = CASE
+                        WHEN ?4 AND EXISTS (
+                            SELECT 1 FROM attempts
+                            WHERE run = ?1 AND task = ?2 AND number = ?3
+                                AND exit_code = 0 AND retried = 0
+                        ) THEN 'succeeded' ELSE 'failed' END
+                     WHERE run = ?1 AND id = ?2 AND ?3 = (
+                        SELECT MAX(number) FROM attempts WHERE run = ?1 AND task = ?2
+                     )",
+                )?
+                .execute(params![run, task.0, attempt, accepted])?;
+            event(
+                connection,
+                run,
+                sequence,
+                "validated",
+                Some(task),
                 Some(attempt),
             )
         });
@@ -655,6 +691,11 @@ impl Observer for Recorder {
                 attempt,
                 retried,
             } => self.finished(outcome, attempt, retried),
+            Event::Validated {
+                task,
+                attempt,
+                accepted,
+            } => self.validated(task, attempt, accepted),
             Event::Marked { task, marker } => self.marked(task, marker.kind.name(), &marker.reason),
             Event::Ended { error } => self.ended(error.map(ToString::to_string).as_deref()),
             Event::Delivered { delivery } => self.delivered(&delivery.target, &delivery.location),

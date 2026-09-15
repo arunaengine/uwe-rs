@@ -8,11 +8,11 @@ use crate::DatabaseError;
 
 /// The version of the schema that this build writes. SQLite keeps it in `PRAGMA user_version`.
 /// A change to the tables adds a step to [`MIGRATIONS`] and raises this number.
-pub const VERSION: u32 = 7;
+pub const VERSION: u32 = 8;
 
 /// The steps from each version to the next: the first creates version 1 in an empty file.
 const MIGRATIONS: [&str; VERSION as usize] = [
-    VERSION_1, VERSION_2, VERSION_3, VERSION_4, VERSION_5, VERSION_6, VERSION_7,
+    VERSION_1, VERSION_2, VERSION_3, VERSION_4, VERSION_5, VERSION_6, VERSION_7, VERSION_8,
 ];
 
 /// Version 1. Times are milliseconds since the Unix epoch (UTC). Text in JSON is marked as such.
@@ -65,7 +65,8 @@ CREATE TABLE tasks (
     -- input: the same task with the same inputs in another run has the same fingerprint.
     fingerprint TEXT NOT NULL,
     requested   INTEGER NOT NULL,
-    -- `waiting`, `running`, `succeeded`, `failed`, or `stopped` when the run ended first.
+    -- `waiting`, `running`, `succeeded`, `failed` after a process failure or semantic
+    -- rejection, or `stopped` when the run ended first.
     state       TEXT NOT NULL,
     PRIMARY KEY (run, id)
 );
@@ -266,6 +267,12 @@ const VERSION_7: &str = "
 ALTER TABLE runs ADD COLUMN process_host TEXT;
 ALTER TABLE runs ADD COLUMN process_boot TEXT;
 ALTER TABLE runs ADD COLUMN process_start TEXT;
+";
+
+/// Version 8: whether the driver explicitly accepted an attempt's process result. NULL keeps
+/// the unknown verdict of rows written before acceptance was recorded.
+const VERSION_8: &str = "
+ALTER TABLE attempts ADD COLUMN accepted INTEGER CHECK (accepted IN (0, 1));
 ";
 
 /// Brings the schema of a database to [`VERSION`]: creates it in a new file, and runs the

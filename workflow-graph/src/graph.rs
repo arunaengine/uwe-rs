@@ -26,6 +26,8 @@ pub struct ExecutionGraph {
 pub struct Node {
     pub task: Task,
     pub exit_code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted: Option<bool>,
     /// Whether an earlier result answered the task, from the cache store or from an earlier
     /// run, so that it did not run.
     #[serde(default, skip_serializing_if = "is_false")]

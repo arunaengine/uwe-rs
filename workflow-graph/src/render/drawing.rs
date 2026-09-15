@@ -520,6 +520,7 @@ mod tests {
                 ..Task::default()
             },
             exit_code: Some(0),
+            accepted: None,
             reused: false,
             markers: Vec::new(),
         };
@@ -639,6 +640,7 @@ mod tests {
                 ..Task::default()
             },
             exit_code: Some(0),
+            accepted: None,
             reused: false,
             markers: Vec::new(),
         };

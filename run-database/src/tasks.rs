@@ -31,6 +31,9 @@ pub struct Attempt {
     pub started: i64,
     pub ended: Option<i64>,
     pub exit_code: Option<i32>,
+    /// Whether the driver accepted the process result; unknown for historical attempts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accepted: Option<bool>,
     pub reused: Option<String>,
     pub image: Option<String>,
     pub retried: bool,
@@ -157,7 +160,7 @@ impl Database {
             "SELECT {ATTEMPT_COLUMNS}, task FROM attempts WHERE run = ?1 ORDER BY task, number"
         ))?;
         let attempts = statement
-            .query_map([run], |row| Ok((row.get(11)?, attempt_row(row)?)))?
+            .query_map([run], |row| Ok((row.get(12)?, attempt_row(row)?)))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(attempts)
     }
@@ -239,7 +242,7 @@ impl Database {
 
 /// The columns of an attempt that [`attempt_row`] reads, in its order.
 const ATTEMPT_COLUMNS: &str = "number, started, ended, exit_code, reused, image, retried,
-    cpu_usec, memory_peak, read_bytes, write_bytes";
+    cpu_usec, memory_peak, read_bytes, write_bytes, accepted";
 
 fn attempt_row(row: &Row) -> rusqlite::Result<Attempt> {
     Ok(Attempt {
@@ -247,6 +250,7 @@ fn attempt_row(row: &Row) -> rusqlite::Result<Attempt> {
         started: row.get(1)?,
         ended: row.get(2)?,
         exit_code: row.get(3)?,
+        accepted: row.get(11)?,
         reused: row.get(4)?,
         image: row.get(5)?,
         retried: row.get(6)?,

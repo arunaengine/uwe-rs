@@ -60,6 +60,7 @@ fn outcome(id: u64, location: PathBuf, stdout: &str) -> Outcome {
             ..OutputFile::default()
         }],
         stdout: stdout.into(),
+        accepted: Some(true),
         ..Outcome::default()
     }
 }
@@ -226,6 +227,7 @@ fn tasks_are_read_back_with_their_files_and_edges() {
         (Some(1500), Some(4096))
     );
     assert_eq!(attempt.read_bytes, None);
+    assert_eq!(attempt.accepted, Some(true));
 
     let detail = database.task("run-1", 2).expect("reads").expect("a task");
     assert_eq!(detail.description.step, "USE");
@@ -352,6 +354,7 @@ fn directory_inputs_are_not_reused_after_a_child_changes() {
     recorder.finished(
         &Outcome {
             id: task.id,
+            accepted: Some(true),
             ..Outcome::default()
         },
         1,
@@ -393,6 +396,7 @@ fn reused_outcomes_preserve_known_input_and_output_identity() {
     let database = Database::open(&path).expect("opens");
     let reusable = database.reusable(&["run-1".into()]).expect("reads");
     let found = &reusable.values().next().expect("a reusable task").outcome;
+    assert_eq!(found.accepted, Some(true));
     assert_eq!(found.files, expected.files);
     assert_eq!(found.inputs, expected.inputs);
     let mut recorder = database
@@ -414,6 +418,162 @@ fn reused_outcomes_preserve_known_input_and_output_identity() {
 }
 
 #[test]
+fn rejected_exit_zero_attempts_keep_process_evidence_but_are_not_reused() {
+    let directory = tempfile::tempdir().expect("a directory");
+    let path = directory.path().join("runs.sqlite");
+    let task = task(1, "DECLINED", Vec::new());
+    let mut recorder = Database::open(&path)
+        .expect("opens")
+        .record(&start("run-1", None))
+        .expect("records");
+    recorder.requested(&task, &[]);
+    recorder.started(task.id, 1);
+    recorder.finished(
+        &Outcome {
+            id: task.id,
+            exit_code: 0,
+            accepted: Some(false),
+            stdout: "process exited successfully\n".into(),
+            files: Vec::new(),
+            ..Outcome::default()
+        },
+        1,
+        false,
+    );
+    recorder.ended(Some("the driver rejected the task result"));
+    recorder.close().expect("closes");
+
+    let database = Database::open(&path).expect("opens again");
+    let detail = database.task("run-1", 1).expect("reads").expect("a task");
+    assert_eq!(detail.row.state, "failed");
+    assert_eq!(detail.row.exit_code, Some(0));
+    assert_eq!(detail.attempts[0].exit_code, Some(0));
+    assert_eq!(detail.attempts[0].accepted, Some(false));
+    assert!(detail.outputs.is_empty(), "rejected result has no outputs");
+    assert_eq!(
+        database
+            .log("run-1", 1, 1, "stdout")
+            .expect("reads log")
+            .expect("stdout")
+            .text,
+        "process exited successfully\n"
+    );
+    assert!(
+        database
+            .reusable(&["run-1".into()])
+            .expect("checks reuse")
+            .is_empty()
+    );
+}
+
+#[test]
+fn validations_gate_reuse_and_stale_decisions_preserve_the_latest_state() {
+    let directory = tempfile::tempdir().expect("a directory");
+    let path = directory.path().join("runs.sqlite");
+    let approved = task(1, "APPROVED", Vec::new());
+    let rejected = task(2, "REJECTED", Vec::new());
+    let mut recorder = Database::open(&path)
+        .expect("opens")
+        .record(&start("run-1", None))
+        .expect("records");
+
+    recorder.requested(&approved, &[]);
+    let mut first = outcome(1, directory.path().join("first"), "first raw\n");
+    first.accepted = None;
+    recorder.started(approved.id, 1);
+    recorder.finished(&first, 1, false);
+    let mut second = outcome(1, directory.path().join("second"), "second raw\n");
+    second.accepted = None;
+    recorder.started(approved.id, 2);
+    recorder.finished(&second, 2, false);
+    workflow_graph::Observer::event(
+        &mut recorder,
+        workflow_graph::Event::Validated {
+            task: approved.id,
+            attempt: 2,
+            accepted: true,
+        },
+    );
+    recorder.validated(approved.id, 1, false);
+
+    recorder.requested(&rejected, &[]);
+    recorder.started(rejected.id, 1);
+    recorder.finished(
+        &Outcome {
+            id: rejected.id,
+            exit_code: 0,
+            accepted: None,
+            stdout: "rejected raw\n".into(),
+            files: Vec::new(),
+            ..Outcome::default()
+        },
+        1,
+        false,
+    );
+    workflow_graph::Observer::event(
+        &mut recorder,
+        workflow_graph::Event::Validated {
+            task: rejected.id,
+            attempt: 1,
+            accepted: false,
+        },
+    );
+    recorder.ended(Some("the second task result was rejected"));
+    recorder.close().expect("closes");
+
+    let database = Database::open(&path).expect("opens again");
+    let approved = database
+        .task("run-1", 1)
+        .expect("reads")
+        .expect("approved task");
+    assert_eq!(approved.row.state, "succeeded");
+    assert_eq!(approved.attempts[0].accepted, Some(false));
+    assert_eq!(approved.attempts[1].accepted, Some(true));
+    assert_eq!(approved.attempts[0].exit_code, Some(0));
+    assert_eq!(approved.attempts[1].exit_code, Some(0));
+    let rejected = database
+        .task("run-1", 2)
+        .expect("reads")
+        .expect("rejected task");
+    assert_eq!(rejected.row.state, "failed");
+    assert_eq!(rejected.row.exit_code, Some(0));
+    assert_eq!(rejected.attempts[0].accepted, Some(false));
+    assert!(rejected.outputs.is_empty());
+    assert_eq!(
+        database
+            .log("run-1", 1, 1, "stdout")
+            .expect("reads first log")
+            .expect("first stdout")
+            .text,
+        "first raw\n"
+    );
+    assert_eq!(
+        database
+            .log("run-1", 1, 2, "stdout")
+            .expect("reads second log")
+            .expect("second stdout")
+            .text,
+        "second raw\n"
+    );
+    let reusable = database.reusable(&["run-1".into()]).expect("checks reuse");
+    assert_eq!(reusable.len(), 1);
+    let found = reusable.values().next().expect("approved result");
+    assert_eq!(found.outcome.id, TaskId(1));
+    assert_eq!(found.outcome.accepted, Some(true));
+    let validated: Vec<(Option<u64>, Option<u32>)> = database
+        .events("run-1", 0, 100)
+        .expect("reads events")
+        .into_iter()
+        .filter(|event| event.kind == "validated")
+        .map(|event| (event.task, event.attempt))
+        .collect();
+    assert_eq!(
+        validated,
+        [(Some(1), Some(2)), (Some(1), Some(1)), (Some(2), Some(1))]
+    );
+}
+
+#[test]
 fn a_database_of_version_1_gets_the_inputs_of_runs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
@@ -431,6 +591,7 @@ fn a_database_of_version_1_gets_the_inputs_of_runs() {
              ALTER TABLE runs DROP COLUMN replays; ALTER TABLE runs DROP COLUMN replays_task;
              DROP TABLE deliveries; ALTER TABLE runs DROP COLUMN process_host;
              ALTER TABLE runs DROP COLUMN process_boot; ALTER TABLE runs DROP COLUMN process_start;
+             ALTER TABLE attempts DROP COLUMN accepted;
              PRAGMA user_version = 1;",
         )
         .expect("goes back to version 1");
@@ -559,6 +720,7 @@ fn version_six_legacy_rows_migrate_without_guessing_local_pid_ownership() {
         .execute_batch(
             "ALTER TABLE runs DROP COLUMN process_host;
         ALTER TABLE runs DROP COLUMN process_boot; ALTER TABLE runs DROP COLUMN process_start;
+        ALTER TABLE attempts DROP COLUMN accepted;
         UPDATE runs SET process = 4294967295; PRAGMA user_version = 6;",
         )
         .expect("old recorded row");
@@ -571,6 +733,53 @@ fn version_six_legacy_rows_migrate_without_guessing_local_pid_ownership() {
     assert_eq!(
         database.running_runs().expect("protects legacy row").len(),
         1
+    );
+}
+
+#[test]
+fn version_seven_attempts_keep_raw_evidence_and_unknown_acceptance() {
+    let root = tempfile::tempdir().expect("a directory");
+    let path = root.path().join("runs.sqlite");
+    let task = task(1, "LEGACY", Vec::new());
+    let mut recorder = Database::open(&path)
+        .expect("opens")
+        .record(&start("legacy", None))
+        .expect("records");
+    recorder.requested(&task, &[]);
+    recorder.started(task.id, 1);
+    recorder.finished(
+        &outcome(1, root.path().join("legacy-output"), "legacy stdout\n"),
+        1,
+        false,
+    );
+    recorder.ended(None);
+    recorder.close().expect("closes");
+
+    let connection = rusqlite::Connection::open(&path).expect("opens raw");
+    connection
+        .execute_batch("ALTER TABLE attempts DROP COLUMN accepted; PRAGMA user_version = 7;")
+        .expect("makes a version seven database");
+    drop(connection);
+
+    let database = Database::open(&path).expect("migrates version seven");
+    assert_eq!(database.version().expect("version"), VERSION);
+    let detail = database.task("legacy", 1).expect("reads").expect("a task");
+    assert_eq!(detail.attempts[0].exit_code, Some(0));
+    assert_eq!(detail.attempts[0].accepted, None);
+    assert_eq!(
+        database
+            .log("legacy", 1, 1, "stdout")
+            .expect("reads log")
+            .expect("stdout")
+            .text,
+        "legacy stdout\n"
+    );
+    assert!(
+        database
+            .reusable(&["legacy".into()])
+            .expect("checks reuse")
+            .is_empty(),
+        "historical unknown acceptance is not reusable"
     );
 }
 

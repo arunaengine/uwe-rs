@@ -12,7 +12,7 @@ use std::task::{Context, Poll};
 
 pub use tokio_util::sync::CancellationToken;
 
-use crate::{ExecuteError, Files, Outcome, Task};
+use crate::{ExecuteError, Files, Outcome, Task, TaskId};
 
 /// One attempt of a task.
 #[derive(Clone, Debug)]
@@ -81,6 +81,25 @@ impl Future for Running {
 /// future it returns on Tokio, so that many attempts run at the same time.
 pub trait Executor {
     fn run(&mut self, attempt: Attempt) -> Running;
+
+    /// Settles retained cache metadata for exactly this task and attempt after native output
+    /// validation. Approval permits publication; rejection leaves a new candidate unpublished
+    /// or conditionally invalidates the observed entry of a rejected cache hit. Unknown or
+    /// already settled attempts do nothing. The default has no retained metadata.
+    ///
+    /// The future owns its state and performs asynchronous store I/O without blocking the
+    /// caller. Build leases must be released before awaiting native acceptance, since ordered
+    /// outcomes can otherwise deadlock. Failure or dropping the future does not prove a remote
+    /// mutation did not happen; implementations retain unresolved evidence where needed and
+    /// must never settle another attempt. This hook provides no atomic distributed fence.
+    fn settle(
+        &mut self,
+        _task: TaskId,
+        _attempt: u32,
+        _accepted: bool,
+    ) -> Pin<Box<dyn Future<Output = Result<(), ExecuteError>> + Send + 'static>> {
+        Box::pin(async { Ok(()) })
+    }
 
     /// The files that the tasks made, to deliver them. `None` for an executor whose files are
     /// made up, like the simulator: a simulated run delivers nothing.

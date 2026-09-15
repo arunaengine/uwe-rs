@@ -41,6 +41,7 @@ fn output(driver: &mut CwlDriver, task: &Task, root: &Path, value: serde_json::V
     driver
         .complete(Outcome {
             id: task.id,
+            attempt: 2,
             files: vec![OutputFile {
                 path: "cwl.output.json".into(),
                 location: json.to_string_lossy().into_owned(),
@@ -88,6 +89,9 @@ fn output_json_returns_staged_files_and_unlisted_directory_children() {
             root,
             serde_json::json!({"out": {"class": "File", "path": path}}),
         );
+        assert!(!driver.take_acceptance(task.id, 1));
+        assert!(driver.take_acceptance(task.id, 2));
+        assert!(!driver.take_acceptance(task.id, 2));
         let out = driver
             .outputs()
             .expect("output object")
@@ -125,6 +129,7 @@ fn output_json_rejects_unrelated_and_parent_locations_before_reading() {
             folder.path(),
             serde_json::json!({"out": {"class": "File", "location": location}}),
         );
+        assert!(!driver.take_acceptance(task.id, 2));
         assert!(driver.outputs().is_none());
         let error = driver.finish().expect_err("location rejected").message;
         assert!(error.contains("outside the task's"), "{error}");
@@ -149,6 +154,7 @@ fn missing_output_json_preserves_the_read_error() {
     driver
         .complete(Outcome {
             id: task.id,
+            attempt: 2,
             files: vec![OutputFile {
                 path: "cwl.output.json".into(),
                 location: folder
@@ -161,6 +167,7 @@ fn missing_output_json_preserves_the_read_error() {
             ..Outcome::default()
         })
         .expect("records failure");
+    assert!(!driver.take_acceptance(task.id, 2));
     let error = driver.finish().expect_err("read failure").message;
     assert!(error.contains("cannot read cwl.output.json"), "{error}");
 }

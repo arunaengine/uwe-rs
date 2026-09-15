@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -13,7 +14,7 @@ use cwl_parser::salad::context::Namespaces;
 use cwl_parser::source::Remote;
 use storage::Storage;
 use workflow_graph::{
-    Delivery, Driver, DriverError, Files, Inputs, Language, Launch, Note, Outcome, Task,
+    Delivery, Driver, DriverError, Files, Inputs, Language, Launch, Note, Outcome, Task, TaskId,
 };
 
 use crate::files;
@@ -38,6 +39,7 @@ pub struct CwlDriver {
     /// Why the tools that failed failed, in the order they ended. After the first, no step
     /// starts unless the run keeps going, and the run fails at its end, as cwltool does.
     failures: Vec<String>,
+    acceptance: HashSet<(TaskId, u32)>,
 }
 
 impl CwlDriver {
@@ -63,6 +65,7 @@ impl CwlDriver {
             namespaces: Namespaces::default().extend(document.namespaces),
             process: document.process,
             failures: Vec::new(),
+            acceptance: HashSet::new(),
         })
     }
 
@@ -194,7 +197,13 @@ impl Driver for CwlDriver {
     /// run fails at its end.
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
         let stopping = !self.failures.is_empty() && !self.launch.keep_going;
-        match self.run.complete(&outcome) {
+        let identity = (outcome.id, outcome.attempt);
+        let accepted = outcome.exit_code == 0;
+        let completed = self.run.complete(&outcome);
+        if accepted && completed.is_ok() {
+            self.acceptance.insert(identity);
+        }
+        match completed {
             Err(message) if message.contains(UNSUPPORTED) => Err(error(message)),
             Err(message) => {
                 self.failures.push(message);
@@ -206,6 +215,10 @@ impl Driver for CwlDriver {
             Ok(_) if stopping => Ok(Vec::new()),
             Ok(tasks) => Ok(tasks),
         }
+    }
+
+    fn take_acceptance(&mut self, task: TaskId, attempt: u32) -> bool {
+        self.acceptance.remove(&(task, attempt))
     }
 
     fn notes(&mut self) -> Vec<Note> {

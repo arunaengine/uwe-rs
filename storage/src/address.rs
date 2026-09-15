@@ -91,7 +91,11 @@ pub(crate) fn object_location(address: &str) -> Result<Option<ObjectLocation<'_>
             if value.is_empty() || pairs.next().is_some() {
                 return Err("only one non-empty S3 versionId query is supported");
             }
-            Some(decode(value))
+            let version = decode(value);
+            if version == "null" {
+                return Err("the mutable S3 null version is not an immutable selector");
+            }
+            Some(version)
         }
         Some(_) => return Err("object address query parameters are not supported"),
     };
@@ -193,6 +197,7 @@ mod tests {
         assert_eq!(plain.key, "a/b.txt");
         assert_eq!(plain.version, None);
         assert!(object_location("s3://bucket/key?versionId=v&x=1").is_err());
+        assert!(object_location("s3://bucket/key?versionId=n%75ll").is_err());
         assert!(object_location("gs://bucket/key?versionId=v").is_err());
     }
 

@@ -201,3 +201,25 @@ The 179 Nextflow outputs that are not files are emits, whose type the script doe
 - The schema of the outputs in the run database and the RO-Crate, and a run that takes the outputs of another run as its inputs.
 - Checking the content of local sample sheets against their `schema`, and remote files once runs may use the network again.
 - The inputs on the web page of a run, and a form made from the schema.
+
+## 11. Embedding an input form
+
+`iunctus::forms` exposes a version 1 form contract for a configured native driver. It keeps the original JSON Schema, including references, compositions and file annotations, rather than flattening it into help properties:
+
+```rust
+use iunctus::application::Policy;
+use iunctus::forms;
+
+let form = forms::describe(driver.as_mut(), Policy::Strict)?;
+let description = form.json();
+// Send description to the caller's schema renderer.
+let response = form.validate(posted_values);
+```
+
+The description contains `version`, `language`, `schema`, effective launch `values`, `outputs` and `validation` policy. A validation response contains `accepted`, an optional error code, unchanged typed `values` and structured `diagnostics`. Each diagnostic retains its instance/schema JSON Pointers, keyword, stable code and alternative branches. The server retains the configured schema and policy; a validation request supplies values only.
+
+Forms use typed JSON validation. The number `4` is accepted for an integer; the string `"4"` is rejected. `input_schema::validate_json` and `application::validate_json` expose the same mode separately. Existing CLI checking still converts strings using the declared types. Neither mode inserts JSON Schema defaults.
+
+`form.check(values)` returns the structured admission result without starting tasks or changing the driver. Before execution, configure the submission's driver with those values and admit it through the application API. Strict policy refuses missing/advisory schemas and simulated assumptions; relaxed policy preserves declared advisory and ignored-input behavior. Local path checks use the server's launch base. Remote content checking remains a separate provider-aware phase.
+
+This is an embedding interface, not a hosted submission server or a browser renderer. The embedding application controls workflow selection, profiles, credentials, authorization and disclosure of schemas and effective values. The run viewer remains a viewer.

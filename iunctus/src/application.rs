@@ -115,6 +115,24 @@ pub fn validate(
     simulated: bool,
     policy: Policy,
 ) -> Result<Admission, ApplicationError> {
+    checked(description, simulated, policy, input_schema::validate)
+}
+
+/// Validates already typed JSON without command-line coercion or default insertion.
+pub fn validate_json(
+    description: Description,
+    simulated: bool,
+    policy: Policy,
+) -> Result<Admission, ApplicationError> {
+    checked(description, simulated, policy, input_schema::validate_json)
+}
+
+fn checked(
+    description: Description,
+    simulated: bool,
+    policy: Policy,
+    validate: fn(&Inputs, bool) -> Validation,
+) -> Result<Admission, ApplicationError> {
     let Description {
         language, inputs, ..
     } = description;
@@ -133,7 +151,7 @@ pub fn validate(
     if strict {
         inputs.assumes_values = false;
     }
-    let validation = input_schema::validate(&inputs, simulated && !strict);
+    let validation = validate(&inputs, simulated && !strict);
     inputs.values = validation.values.clone();
     let admission = Admission {
         language,

@@ -36,7 +36,7 @@ mod upgrade;
 mod valid;
 mod values;
 
-pub use check::{Diagnostic, Problem, Severity, Validation, check, validate};
+pub use check::{Diagnostic, Problem, Severity, Validation, check, validate, validate_json};
 pub use compare::compare;
 pub use counts::{Counts, OutputCounts};
 pub use infer::{infer, value_schema};

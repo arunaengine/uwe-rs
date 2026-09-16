@@ -183,6 +183,8 @@ pub struct Network {
     keep_going: bool,
     /// The node that requested each task in flight.
     owners: HashMap<TaskId, usize>,
+    /// Native output-check verdicts, consumed by the driver after each completion.
+    acceptance: HashMap<TaskId, bool>,
     next_task: u64,
     pub(crate) succeeded: i64,
     pub(crate) failed_task: Option<Value>,
@@ -208,6 +210,7 @@ pub(crate) struct Context<'n, 'i, 'h> {
     next_task: &'n mut u64,
     pub succeeded: &'n mut i64,
     pub failed_task: &'n mut Option<Value>,
+    acceptance: &'n mut HashMap<TaskId, bool>,
     task_files: &'n mut HashMap<String, String>,
     pub interpreter: &'i mut Interpreter<'h>,
     /// Whether the node has more to do without new input, and runs again after the nodes
@@ -217,6 +220,10 @@ pub(crate) struct Context<'n, 'i, 'h> {
 }
 
 impl Context<'_, '_, '_> {
+    pub fn accept(&mut self, task: TaskId, accepted: bool) {
+        self.acceptance.insert(task, accepted);
+    }
+
     /// Runs the node again later, after the nodes that read what it wrote, as a node that
     /// writes many values does, so that they need not all wait in its channel.
     pub fn again(&mut self) {
@@ -450,6 +457,10 @@ impl Network {
         std::mem::take(&mut self.deliveries)
     }
 
+    pub fn take_acceptance(&mut self, task: TaskId) -> bool {
+        self.acceptance.remove(&task).unwrap_or(false)
+    }
+
     /// Whether tasks are in flight.
     pub fn has_tasks(&self) -> bool {
         !self.owners.is_empty()
@@ -504,6 +515,7 @@ impl Network {
             next_task: &mut self.next_task,
             succeeded: &mut self.succeeded,
             failed_task: &mut self.failed_task,
+            acceptance: &mut self.acceptance,
             task_files: &mut self.task_files,
             interpreter,
             again: false,

@@ -172,6 +172,7 @@ impl Behaviour for ProcessNode {
         let Some(flight) = self.pending.remove(&outcome.id) else {
             return Ok(State::Running);
         };
+        context.accept(outcome.id, false);
         if outcome.exit_status != 0 || outcome.failure.is_some() {
             let failure = if outcome.exit_status == 0 {
                 outcome.failure.take()
@@ -209,6 +210,7 @@ impl Behaviour for ProcessNode {
             &bound.files,
         )?;
         context.deliver(deliveries);
+        context.accept(outcome.id, true);
         *context.succeeded += 1;
         for (channel, value) in self.outputs.clone().into_iter().zip(values) {
             if let Some(value) = value {

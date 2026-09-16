@@ -175,6 +175,11 @@ impl Run {
         self.network.take_deliveries()
     }
 
+    /// Consumes the native output-check verdict of the task just completed.
+    pub fn take_acceptance(&mut self, task: TaskId) -> bool {
+        self.network.take_acceptance(task)
+    }
+
     /// Whether the run ends once the running tasks have ended, after a failure.
     pub fn draining(&self) -> bool {
         self.network.draining()

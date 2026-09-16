@@ -172,6 +172,7 @@ pub(crate) struct Run {
     pub nodes: Vec<NodeStatus>,
     pub names: HashMap<String, usize>,
     pub tasks: HashMap<TaskId, (usize, usize)>,
+    acceptance: HashSet<(TaskId, u32)>,
     workflow_active: Rc<Cell<usize>>,
     template_invocations: HashSet<usize>,
     template_active: HashMap<usize, usize>,
@@ -317,6 +318,7 @@ impl Run {
             nodes: Vec::new(),
             names: HashMap::new(),
             tasks: HashMap::new(),
+            acceptance: HashSet::new(),
             workflow_active: Rc::new(Cell::new(0)),
             template_invocations: HashSet::new(),
             template_active: HashMap::new(),
@@ -1023,6 +1025,8 @@ impl Run {
 
     /// Takes the outcome of a task.
     pub fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>> {
+        let identity = (outcome.id, outcome.attempt);
+        self.acceptance.remove(&identity);
         let Some((index, slot)) = self.tasks.remove(&outcome.id) else {
             if let Some(child) = self
                 .children
@@ -1030,6 +1034,12 @@ impl Run {
                 .position(|child| child.run.owns(outcome.id))
             {
                 self.step_child(child, |run| run.complete(outcome))?;
+                if self.children[child]
+                    .run
+                    .take_acceptance(identity.0, identity.1)
+                {
+                    self.acceptance.insert(identity);
+                }
                 return self.operate();
             }
             return Err(Failure::error(format!(
@@ -1054,16 +1064,27 @@ impl Run {
         {
             node.started = started;
         }
-        if node.outcomes.iter().all(Option::is_some) {
-            if node.kind == NodeKind::Plugin {
+        let ready = node.outcomes.iter().all(Option::is_some);
+        if ready {
+            let kind = self.nodes[index].kind;
+            let initializing = self.initializing(index);
+            if kind == NodeKind::Plugin {
                 self.finish_plugin(index)?;
-            } else if self.initializing(index) {
+            } else if initializing {
                 self.finish_init(index)?;
             } else {
                 self.finish_pod(index)?;
             }
+            let phase = self.nodes[index].phase;
+            if phase == Phase::Succeeded || (initializing && !phase.failed_or_error()) {
+                self.acceptance.insert(identity);
+            }
         }
         self.operate()
+    }
+
+    pub fn take_acceptance(&mut self, task: TaskId, attempt: u32) -> bool {
+        self.acceptance.remove(&(task, attempt))
     }
 
     /// The phase of the whole run and its message, once nothing runs.

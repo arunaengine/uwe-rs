@@ -93,6 +93,7 @@ pub struct ArgoDriver {
     deliveries: Vec<Delivery>,
     /// The files of the tasks, where a real executor keeps them.
     files: Option<std::sync::Arc<dyn Files>>,
+    acceptance: std::collections::HashSet<(workflow_graph::TaskId, u32)>,
 }
 
 impl ArgoDriver {
@@ -106,6 +107,7 @@ impl ArgoDriver {
             results: None,
             deliveries: Vec::new(),
             files: None,
+            acceptance: std::collections::HashSet::new(),
         }
     }
 
@@ -153,10 +155,19 @@ impl Driver for ArgoDriver {
     }
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+        let identity = (outcome.id, outcome.attempt);
         let Some(run) = &mut self.run else {
             return Err(DriverError::new("the run has not started"));
         };
-        run.complete(outcome).map_err(driver_error)
+        let completed = run.complete(outcome);
+        if run.take_acceptance(identity.0, identity.1) {
+            self.acceptance.insert(identity);
+        }
+        completed.map_err(driver_error)
+    }
+
+    fn take_acceptance(&mut self, task: workflow_graph::TaskId, attempt: u32) -> bool {
+        self.acceptance.remove(&(task, attempt))
     }
 
     /// Ends the run, and delivers the output artifacts of its steps to the results folder.

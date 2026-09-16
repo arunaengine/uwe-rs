@@ -309,6 +309,7 @@ impl<'a> Engine<'a> {
             };
             outcome.id = task.id;
             outcome.attempt = attempt;
+            outcome.accepted = None;
             outcome.started.get_or_insert(started);
             outcome.ended.get_or_insert(time);
             recorder.finished(&outcome);
@@ -318,7 +319,23 @@ impl<'a> Engine<'a> {
                 retried: false,
             });
             let id = outcome.id;
+            let succeeded = outcome.exit_code == 0;
             let next = driver.complete(outcome);
+            let accepted = driver.take_acceptance(id, attempt) && succeeded;
+            recorder.validated(id, accepted);
+            self.report(Event::Validated {
+                task: id,
+                attempt,
+                accepted,
+            });
+            let settlement = self.executor.settle(id, attempt, accepted);
+            crate::runtime()?.block_on(async {
+                tokio::select! {
+                    biased;
+                    () = self.cancel.cancelled() => Err(ExecuteError::Cancelled),
+                    result = settlement => result,
+                }
+            })?;
             let notes = driver.notes();
             // A driver that asks for the task again retries it; the tasks after it wait.
             let again = (next.as_ref()).is_ok_and(|next| next.iter().any(|task| task.id == id));
@@ -404,6 +421,7 @@ impl<'a> Engine<'a> {
             };
             outcome.id = slot.task.id;
             outcome.attempt = slot.attempt;
+            outcome.accepted = None;
             outcome.started.get_or_insert(slot.started);
             outcome.ended.get_or_insert(end.time);
             recorder.finished(&outcome);

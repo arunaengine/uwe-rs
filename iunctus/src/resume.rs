@@ -113,6 +113,21 @@ impl Executor for Resumed {
     fn hold(&mut self) {
         self.executor.hold();
     }
+
+    fn settle(
+        &mut self,
+        task: TaskId,
+        attempt: u32,
+        accepted: bool,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<(), workflow_graph::ExecuteError>>
+                + Send
+                + 'static,
+        >,
+    > {
+        self.executor.settle(task, attempt, accepted)
+    }
 }
 
 /// Whether a real result still has every identity that this wrapper can prove. Unsupported
@@ -128,7 +143,7 @@ fn verified(
         Network::Allowed => !network.offline(task),
         Network::Denied => network.offline(task),
     };
-    if !network_matches || !task.containers.is_empty() {
+    if outcome.accepted != Some(true) || !network_matches || !task.containers.is_empty() {
         return false;
     }
     let Some(image) = task.image.as_deref().filter(|image| {
@@ -365,6 +380,7 @@ mod tests {
         let task = Arc::new(real_task());
         let prior = Outcome {
             image: task.image.clone(),
+            accepted: Some(true),
             files: vec![OutputFile {
                 path: "output.txt".into(),
                 location: "memory://output".into(),
@@ -419,6 +435,7 @@ mod tests {
                 &task,
                 Outcome {
                     image: task.image.clone(),
+                    accepted: Some(true),
                     files: prior.files,
                     ..Outcome::default()
                 },
@@ -452,6 +469,7 @@ mod tests {
         let old_states = input_states(&task);
         let prior = Outcome {
             image: task.image.clone(),
+            accepted: Some(true),
             inputs: [("input.txt".into(), Digest::sha256(b"old").to_string())].into(),
             ..Outcome::default()
         };
@@ -489,12 +507,41 @@ mod tests {
     }
 
     #[test]
+    fn unaccepted_exit_zero_results_with_no_files_are_not_resumed() {
+        let runtime = workflow_graph::runtime().unwrap();
+        for accepted in [None, Some(false), Some(true)] {
+            let task = Arc::new(real_task());
+            let prior = Outcome {
+                image: task.image.clone(),
+                accepted,
+                ..Outcome::default()
+            };
+            let calls = Arc::new(AtomicUsize::new(0));
+            let mut resumed = Resumed::new(
+                fresh(calls.clone(), Arc::new(FakeFiles::default())),
+                history(&task, prior),
+                Taken::default(),
+                Mode::Real,
+                NetworkRule::default(),
+                false,
+            );
+            let outcome = runtime.block_on(resumed.run(attempt(task))).unwrap();
+            assert_eq!(outcome.cached, accepted == Some(true));
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                usize::from(accepted != Some(true))
+            );
+        }
+    }
+
+    #[test]
     fn unpinned_images_defer_to_the_underlying_runner() {
         let runtime = workflow_graph::runtime().unwrap();
         let mut task = real_task();
         task.image = Some("image@sha256:abc".into());
         let prior = Outcome {
             image: Some(PINNED_IMAGE.into()),
+            accepted: Some(true),
             ..Outcome::default()
         };
         let history = history(&task, prior);
@@ -542,6 +589,7 @@ mod tests {
             task.step = step.into();
             let prior = Outcome {
                 image: task.image.clone(),
+                accepted: Some(true),
                 ..Outcome::default()
             };
             let history = history(&task, prior);

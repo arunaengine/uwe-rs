@@ -90,6 +90,7 @@ pub struct Nextflow {
     /// The files that `exec:` sections made, by their path, with the task that made them, so
     /// that the tasks that read them wait for it.
     made_by: HashMap<String, workflow_graph::TaskId>,
+    acceptance: HashMap<(workflow_graph::TaskId, u32), bool>,
 }
 
 /// What a run needs before it starts, which [`Driver::inputs`] loads too.
@@ -123,6 +124,7 @@ impl Nextflow {
             loaded: None,
             files: None,
             made_by: HashMap::new(),
+            acceptance: HashMap::new(),
         })
     }
 
@@ -330,6 +332,7 @@ impl Driver for Nextflow {
     }
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+        let identity = (outcome.id, outcome.attempt);
         let id = TaskId(outcome.id.0);
         let request = self.requests.remove(&id).ok_or_else(|| {
             DriverError::new(format!("the task {} was not asked for", outcome.id))
@@ -362,8 +365,15 @@ impl Driver for Nextflow {
             host: self.settings.host.as_mut(),
             notes: &mut self.notes,
         };
-        let requests = run.complete(outcome, &mut host).map_err(error)?;
+        let completed = run.complete(outcome, &mut host);
+        self.acceptance
+            .insert(identity, run.take_acceptance(request.id));
+        let requests = completed.map_err(error)?;
         self.tasks(requests)
+    }
+
+    fn take_acceptance(&mut self, task: workflow_graph::TaskId, attempt: u32) -> bool {
+        self.acceptance.remove(&(task, attempt)).unwrap_or(false)
     }
 
     fn draining(&self) -> bool {

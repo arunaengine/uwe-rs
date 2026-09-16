@@ -96,6 +96,16 @@ pub fn check(inputs: &Inputs, simulated: bool) -> Vec<Problem> {
 /// schema annotations and are not inserted into the values.
 pub fn validate(inputs: &Inputs, simulated: bool) -> Validation {
     let values = prepared(&inputs.schema, &inputs.schema, inputs.values.clone());
+    validate_values(inputs, values, simulated)
+}
+
+/// Checks already typed JSON without applying command-line string coercion. The submitted
+/// values are preserved exactly, and defaults remain schema annotations.
+pub fn validate_json(inputs: &Inputs, simulated: bool) -> Validation {
+    validate_values(inputs, inputs.values.clone(), simulated)
+}
+
+fn validate_values(inputs: &Inputs, values: Json, simulated: bool) -> Validation {
     let validator = match validator(&inputs.schema, &inputs.base) {
         Ok(validator) => validator,
         Err(message) => {

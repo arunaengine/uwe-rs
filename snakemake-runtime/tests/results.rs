@@ -98,8 +98,9 @@ rule make:
         let checked = folder.path().join("checked");
         std::fs::write(&good, "good").unwrap();
         std::fs::write(&checked, "").unwrap();
-        let outcome = || Outcome {
+        let outcome = |attempt| Outcome {
             id: first.id,
+            attempt,
             files: vec![
                 OutputFile {
                     path: "good.txt".into(),
@@ -114,12 +115,15 @@ rule make:
             ],
             ..Outcome::default()
         };
-        let retry = driver.complete(outcome()).unwrap().remove(0);
+        let retry = driver.complete(outcome(1)).unwrap().remove(0);
+        assert!(!driver.take_acceptance(first.id, 1));
         assert_eq!(retry.id, first.id);
         assert_eq!(retry.resources.memory_bytes, Some(191 * 1024 * 1024));
         assert!(driver.deliveries().is_empty(), "{ensure}");
         std::fs::write(&checked, "abc").unwrap();
-        assert!(driver.complete(outcome()).unwrap().is_empty());
+        assert!(driver.complete(outcome(2)).unwrap().is_empty());
+        assert!(!driver.take_acceptance(first.id, 3));
+        assert!(driver.take_acceptance(first.id, 2));
         assert_eq!(driver.deliveries().len(), 2);
         driver.finish().unwrap();
     }
@@ -150,8 +154,9 @@ rule make:
         let first = driver.start().unwrap().remove(0);
         let made = folder.path().join("empty");
         std::fs::write(&made, "").unwrap();
-        let outcome = || Outcome {
+        let outcome = |attempt| Outcome {
             id: first.id,
+            attempt,
             files: if output.starts_with("ensure") {
                 vec![OutputFile {
                     path: "out.txt".into(),
@@ -163,8 +168,10 @@ rule make:
             },
             ..Outcome::default()
         };
-        assert_eq!(driver.complete(outcome()).unwrap().len(), 1);
-        assert!(driver.complete(outcome()).unwrap().is_empty());
+        assert_eq!(driver.complete(outcome(1)).unwrap().len(), 1);
+        assert!(!driver.take_acceptance(first.id, 1));
+        assert!(driver.complete(outcome(2)).unwrap().is_empty());
+        assert!(!driver.take_acceptance(first.id, 2));
         assert!(driver.deliveries().is_empty());
         assert!(driver.finish().is_err());
     }

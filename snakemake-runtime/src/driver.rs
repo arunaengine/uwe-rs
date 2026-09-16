@@ -110,6 +110,7 @@ pub struct Session {
     /// starts unless the run keeps going, and the run fails once the running jobs have ended,
     /// as Snakemake does.
     failures: Vec<String>,
+    acceptance: Arc<Mutex<HashSet<(TaskId, u32)>>>,
 }
 
 struct SignaturePublication {
@@ -202,6 +203,7 @@ impl Session {
             touched: None,
             sources: Rc::default(),
             failures: Vec::new(),
+            acceptance: Arc::default(),
         })
     }
 
@@ -787,6 +789,7 @@ impl Session {
         if let Some(members) = self.groups.remove(&outcome.id) {
             return self.complete_group(members, outcome);
         }
+        let identity = (outcome.id, outcome.attempt);
         let Some(job) = self.jobs_of_tasks.get(&outcome.id).copied() else {
             return Err(DriverError::new(format!("unknown task {}", outcome.id)));
         };
@@ -824,7 +827,11 @@ impl Session {
             return self.failed(message);
         }
         self.queue_signatures(&[job], delivery_start)?;
-        self.next_tasks(&[job])
+        let next = self.next_tasks(&[job]);
+        if next.is_ok() {
+            self.accept(identity);
+        }
+        next
     }
 
     /// Takes the outcome of a group of a service job and the jobs that use it: each job gets
@@ -834,6 +841,7 @@ impl Session {
         members: Vec<(usize, Vec<String>)>,
         outcome: Outcome,
     ) -> Result<Vec<Task>, DriverError> {
+        let identity = (outcome.id, outcome.attempt);
         self.outstanding = self.outstanding.saturating_sub(1);
         *self.files.last_output_read.borrow_mut() = None;
         if outcome.exit_code != 0 {
@@ -887,7 +895,19 @@ impl Session {
             }
         }
         self.queue_signatures(&jobs, delivery_start)?;
-        self.next_tasks(&jobs)
+        let next = self.next_tasks(&jobs);
+        if next.is_ok() {
+            self.accept(identity);
+        }
+        next
+    }
+
+    fn accept(&self, identity: (TaskId, u32)) {
+        let mut acceptance = self
+            .acceptance
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        acceptance.insert(identity);
     }
 
     fn queue_signatures(
@@ -1589,6 +1609,7 @@ struct SnakemakeDriver {
     files: Arc<OnceLock<Arc<dyn Files>>>,
     /// Whether the session drains the run after a failed job, as of its last reply.
     draining: Arc<AtomicBool>,
+    acceptance: Arc<Mutex<HashSet<(TaskId, u32)>>>,
 }
 
 impl SnakemakeDriver {
@@ -1613,6 +1634,14 @@ impl Driver for SnakemakeDriver {
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
         self.ask(Request::Complete(Box::new(outcome)))
+    }
+
+    fn take_acceptance(&mut self, task: TaskId, attempt: u32) -> bool {
+        let mut acceptance = self
+            .acceptance
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        acceptance.remove(&(task, attempt))
     }
 
     fn notes(&mut self) -> Vec<Note> {
@@ -1706,6 +1735,8 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
     let task_files = files.clone();
     let draining: Arc<AtomicBool> = Arc::default();
     let session_draining = draining.clone();
+    let acceptance: Arc<Mutex<HashSet<(TaskId, u32)>>> = Arc::default();
+    let session_acceptance = acceptance.clone();
     let worker = std::thread::Builder::new()
         .name("snakemake".into())
         .stack_size(512 << 20)
@@ -1713,6 +1744,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
             let channel = Rc::new(Channel::new(incoming, outgoing));
             let open = || -> Result<Session, DriverError> {
                 let mut session = Session::new(&launch, &settings.storage)?;
+                session.acceptance = session_acceptance.clone();
                 session.deliveries = shared.clone();
                 session.files.read_outputs_through(task_files.clone());
                 if let Some(python) = settings.python.clone() {
@@ -1819,6 +1851,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
         deliveries,
         files,
         draining,
+        acceptance,
     }))
 }
 

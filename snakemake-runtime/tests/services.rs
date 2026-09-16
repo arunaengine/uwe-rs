@@ -151,12 +151,14 @@ fn ordered_service_groups_retry_exit_missing_and_integrity_failures() {
         let retry = driver
             .complete(Outcome {
                 id: first.id,
+                attempt: 1,
                 exit_code: if failure == "exit" { 1 } else { 0 },
                 files,
                 ..Outcome::default()
             })
             .unwrap()
             .remove(0);
+        assert!(!driver.take_acceptance(first.id, 1), "{failure}");
         assert_eq!(retry.id, first.id);
         assert_eq!(retry.resources.cpus, Some(if bridge { 5.0 } else { 4.0 }));
         assert_eq!(retry.reuse, workflow_graph::Reuse::Denied);
@@ -168,10 +170,14 @@ fn ordered_service_groups_retry_exit_missing_and_integrity_failures() {
         let next = driver
             .complete(Outcome {
                 id: first.id,
+                attempt: 2,
                 files,
                 ..Outcome::default()
             })
             .unwrap();
+        assert!(!driver.take_acceptance(first.id, 3), "{failure}");
+        assert!(driver.take_acceptance(first.id, 2), "{failure}");
+        assert!(!driver.take_acceptance(first.id, 2), "{failure}");
         assert_eq!(driver.deliveries().len(), if bridge { 3 } else { 2 });
         for task in next {
             driver

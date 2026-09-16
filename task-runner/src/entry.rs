@@ -6,7 +6,7 @@
 
 use std::os::unix::fs::PermissionsExt;
 
-use content_store::{Store, StoreError};
+use content_store::{EntrySnapshot, Store, StoreError};
 use serde::{Deserialize, Serialize};
 use task_model::{Digest, TreeEntry};
 
@@ -315,13 +315,32 @@ pub(crate) async fn stored(
     key: &Digest,
     stale: Stale,
 ) -> Result<Option<CacheEntry>, RunnerError> {
+    Ok(observed(store, namespace, key, stale)
+        .await?
+        .map(|found| found.entry))
+}
+
+pub(crate) struct Observed {
+    pub entry: CacheEntry,
+    pub snapshot: EntrySnapshot,
+}
+
+pub(crate) async fn observed(
+    store: &Store,
+    namespace: &str,
+    key: &Digest,
+    stale: Stale,
+) -> Result<Option<Observed>, RunnerError> {
     let Some(observed) = store.observe_entry(namespace, key).await? else {
         return Ok(None);
     };
     if let Ok(entry) = CacheEntry::parse(key, observed.bytes())
         && entry.complete(store).await?
     {
-        return Ok(Some(entry));
+        return Ok(Some(Observed {
+            entry,
+            snapshot: observed,
+        }));
     }
     if stale == Stale::Remove {
         store.invalidate_entry(namespace, key, &observed).await?;

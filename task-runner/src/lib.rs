@@ -16,6 +16,7 @@ mod outputs;
 mod request;
 pub mod resources;
 mod runner;
+mod settlement;
 mod sites;
 mod staging;
 mod together;

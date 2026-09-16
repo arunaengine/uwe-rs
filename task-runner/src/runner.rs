@@ -24,6 +24,7 @@ use crate::digests::DigestCache;
 use crate::entry::{self, CacheEntry, Stale};
 use crate::inputs::{Inputs, Mode};
 use crate::outputs;
+use crate::settlement::{Candidate, Source as CandidateSource};
 
 /// How long a task first waits for another run that runs the same task, before it looks for
 /// the result again; each wait is twice as long as the one before, up to [`LONGEST_PAUSE`].
@@ -211,7 +212,7 @@ pub struct Runner<B> {
 /// Whose turn it is to run a task whose key another run may run at the same moment.
 enum Turn {
     /// The other run stored the result, which answers this request too.
-    Reused(CacheEntry),
+    Reused(entry::Observed),
     /// This run runs the task, and holds the lease of its key until it has stored the result.
     Ours(Lease),
 }
@@ -356,6 +357,15 @@ impl<B: Backend> Runner<B> {
         prepared: &Prepared,
         cancel: &CancellationToken,
     ) -> Result<TaskResult, RunnerError> {
+        Ok(self.execute_inner(prepared, cancel, false).await?.0)
+    }
+
+    pub(crate) async fn execute_inner(
+        &self,
+        prepared: &Prepared,
+        cancel: &CancellationToken,
+        deferred: bool,
+    ) -> Result<(TaskResult, Option<Candidate>), RunnerError> {
         let mut admission = Some(tokio::select! {
             result = self.admit() => result?,
             () = cancel.cancelled() => return Err(ExecutorError::Cancelled.into()),
@@ -406,7 +416,14 @@ impl<B: Backend> Runner<B> {
                     Turn::Reused(entry) if check::chosen(self.check, &self.run, &key) => {
                         (Some(entry), None)
                     }
-                    Turn::Reused(entry) => return Ok(entry.result()),
+                    Turn::Reused(found) => {
+                        let candidate = deferred.then(|| Candidate {
+                            namespace: namespace.to_owned(),
+                            key,
+                            source: CandidateSource::Hit(found.snapshot),
+                        });
+                        return Ok((found.entry.result(), candidate));
+                    }
                     Turn::Ours(lease) => (None, Some(lease)),
                 }
             }
@@ -483,15 +500,22 @@ impl<B: Backend> Runner<B> {
         })
         .await?;
         if let Some(earlier) = earlier {
-            return self
+            let result = self
                 .phase(
                     _turn.as_ref(),
                     None,
                     Some(cancel),
-                    self.checked(earlier, &result, tool.as_ref(), prepared, &task),
+                    self.checked(earlier.entry, &result, tool.as_ref(), prepared, &task),
                 )
-                .await;
+                .await?;
+            let candidate = deferred.then(|| Candidate {
+                namespace: namespace.to_owned(),
+                key,
+                source: CandidateSource::Hit(earlier.snapshot),
+            });
+            return Ok((result, candidate));
         }
+        let mut candidate = None;
         if result.exit_code == Some(0) && request.scope != ReuseScope::None {
             let entry = CacheEntry {
                 run: self.run.clone(),
@@ -502,20 +526,30 @@ impl<B: Backend> Runner<B> {
                 milliseconds: Some(milliseconds),
                 containers: result.containers.clone(),
             };
-            let bytes = entry.to_bytes(&key)?;
-            self.phase(
-                _turn.as_ref(),
-                None,
-                Some(cancel),
-                self.store.put_entry(namespace, &key, bytes.into()),
-            )
-            .await?;
+            if deferred {
+                candidate = Some(Candidate {
+                    namespace: namespace.to_owned(),
+                    key,
+                    source: CandidateSource::Publish(entry),
+                });
+            } else {
+                let bytes = entry.to_bytes(&key)?;
+                self.phase(
+                    _turn.as_ref(),
+                    None,
+                    Some(cancel),
+                    self.store.put_entry(namespace, &key, bytes.into()),
+                )
+                .await?;
+            }
         }
         self.authority(_turn.as_ref(), None).await?;
         if cancel.is_cancelled() {
             return Err(ExecutorError::Cancelled.into());
         }
-        Ok(result)
+        // Ordered outcomes must not retain a lease that another pending attempt needs.
+        drop(_turn);
+        Ok((result, candidate))
     }
 
     /// The result in the cache, with what the task gave when it ran again for the
@@ -561,7 +595,7 @@ impl<B: Backend> Runner<B> {
         &self,
         namespace: &str,
         key: &Digest,
-    ) -> Result<Option<CacheEntry>, RunnerError> {
+    ) -> Result<Option<entry::Observed>, RunnerError> {
         let admission = self.admit().await?;
         self.phase(
             None,
@@ -576,8 +610,8 @@ impl<B: Backend> Runner<B> {
         &self,
         namespace: &str,
         key: &Digest,
-    ) -> Result<Option<CacheEntry>, RunnerError> {
-        let Some(found) = entry::stored(&self.store, namespace, key, Stale::Remove).await? else {
+    ) -> Result<Option<entry::Observed>, RunnerError> {
+        let Some(found) = entry::observed(&self.store, namespace, key, Stale::Remove).await? else {
             return Ok(None);
         };
         self.authority(None, None).await?;

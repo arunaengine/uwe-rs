@@ -7,16 +7,19 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 
 use content_store::Store;
 use executor::{Backend, ExecutorError};
 use task_model::{Digest, Measured, ReuseScope};
 use workflow_graph::{
     Attempt, CancellationToken, ContainerOutcome, ExecuteError, Executor, Files, Network, Outcome,
-    OutputFile, ReproducibilityCheck, Running, Task, Verdict,
+    OutputFile, ReproducibilityCheck, Running, Task, TaskId, Verdict,
 };
 
+use crate::settlement::{Candidate, Completing, Pending};
 use crate::{NetworkRule, Runner, RunnerError, SiteRule, StorageFiles, TaskResult};
 
 /// A runner as the executor of a run.
@@ -24,6 +27,7 @@ pub struct RunnerExecutor<B> {
     runner: Runner<B>,
     /// The image of tasks that name none, from `-default-image`.
     default_image: Option<String>,
+    pending: HashMap<(TaskId, u32), Arc<Pending>>,
     /// Prints a line when a task ends.
     pub verbose: bool,
     /// How soon the tasks of each step should start when tasks wait for the machine: the time
@@ -55,6 +59,7 @@ impl<B: Backend> RunnerExecutor<B> {
         RunnerExecutor {
             runner,
             default_image,
+            pending: HashMap::new(),
             verbose: false,
             priorities: Arc::default(),
             reuse: true,
@@ -84,6 +89,15 @@ impl<B: Backend> RunnerExecutor<B> {
 
 impl<B: Backend> Executor for RunnerExecutor<B> {
     fn run(&mut self, attempt: Attempt) -> Running {
+        self.pending.retain(|(id, _), pending| {
+            if *id == attempt.task.id {
+                pending.cancel.cancel();
+            }
+            if pending.cancel.is_cancelled() {
+                pending.finish();
+            }
+            !pending.terminal()
+        });
         let task = match checked(&attempt.task, self.default_image.as_deref()) {
             Ok(Some(task)) => with_network(task, &self.network),
             Ok(None) => {
@@ -95,6 +109,14 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
             Err(error) => return Running::ended(Err(error)),
         };
         let mut runner = self.runner.clone();
+        let pending = Arc::new(Pending {
+            task: task.clone(),
+            cancel: attempt.cancel.child_token(),
+            candidate: Mutex::new(None),
+            terminal: Default::default(),
+        });
+        self.pending
+            .insert((task.id, attempt.number), pending.clone());
         runner.verbose_groups = self.verbose;
         let verbose = self.verbose;
         let priority = self.priorities.get(&task.step).copied().unwrap_or_default();
@@ -103,7 +125,12 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
         let right_sizing = self.right_sizing;
         let site = self.sites.site(&task).map(str::to_owned);
         let measured = self.measured.clone();
+        let completing = Completing {
+            pending: pending.clone(),
+            retained: false,
+        };
         Running::new(async move {
+            let mut completing = completing;
             let number = attempt.number;
             let measured = measured.get(&task.step).map_or(&[][..], Vec::as_slice);
             let options = AttemptOptions {
@@ -114,7 +141,17 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
                 together,
                 site,
             };
-            let result = outcome(&runner, &task, number, &options, &attempt.cancel).await;
+            let result = outcome(&runner, &task, number, &options, &pending.cancel).await;
+            let result = result.map(|(outcome, candidate)| {
+                if !pending.cancel.is_cancelled() {
+                    completing.retained = candidate.is_some();
+                    *pending
+                        .candidate
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner()) = candidate;
+                }
+                outcome
+            });
             if verbose && let Ok(outcome) = &result {
                 let state = match (outcome.cached, outcome.exit_code) {
                     (true, _) => "cached".to_owned(),
@@ -130,6 +167,32 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
         })
     }
 
+    fn settle(
+        &mut self,
+        task: TaskId,
+        attempt: u32,
+        accepted: bool,
+    ) -> Pin<Box<dyn Future<Output = Result<(), ExecuteError>> + Send + 'static>> {
+        self.pending.retain(|_, pending| !pending.terminal());
+        let settling = self.pending.get(&(task, attempt)).and_then(Pending::take);
+        let runner = self.runner.clone();
+        Box::pin(async move {
+            let Some(mut settling) = settling else {
+                return Ok(());
+            };
+            let candidate = settling.candidate.as_ref().expect("retained candidate");
+            let result = runner
+                .settle(candidate, accepted, &settling.pending.cancel)
+                .await
+                .map_err(|error| failure(&settling.pending.task, error));
+            if result.is_ok() {
+                settling.candidate = None;
+                settling.pending.finish();
+            }
+            result
+        })
+    }
+
     /// The files of the store, wherever it is, which go to paths of this machine and to
     /// addresses of the storage providers.
     fn files(&self) -> Option<Arc<dyn Files>> {
@@ -140,6 +203,14 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
 
     fn hold(&mut self) {
         self.runner.backend().hold();
+    }
+}
+
+impl<B> Drop for RunnerExecutor<B> {
+    fn drop(&mut self) {
+        for pending in self.pending.values() {
+            pending.cancel.cancel();
+        }
     }
 }
 
@@ -223,7 +294,7 @@ async fn outcome<B: Backend>(
     attempt: u32,
     options: &AttemptOptions<'_>,
     cancel: &CancellationToken,
-) -> Result<Outcome, ExecuteError> {
+) -> Result<(Outcome, Option<Candidate>), ExecuteError> {
     if cancel.is_cancelled() {
         return Err(ExecuteError::Cancelled);
     }
@@ -260,14 +331,17 @@ async fn outcome<B: Backend>(
     if !options.reuse {
         prepared.request.scope = ReuseScope::None;
     }
-    let result = runner.execute(&prepared, cancel).await.map_err(failed)?;
+    let (result, candidate) = runner
+        .execute_inner(&prepared, cancel, true)
+        .await
+        .map_err(failed)?;
     let mut outcome = outcome_of(&runner.store, task, attempt, result, image)
         .await
         .map_err(failed)?;
     outcome.inputs = (prepared.request.spec.inputs.iter())
         .map(|input| (input.path.clone(), input.digest.to_string()))
         .collect();
-    Ok(outcome)
+    Ok((outcome, candidate))
 }
 
 /// The outcome of an attempt from its result in the store: each output at its path on this

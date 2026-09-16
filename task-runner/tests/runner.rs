@@ -1037,6 +1037,7 @@ fn containers_of_a_task_are_pinned_and_keep_their_logs_in_the_cache() {
         cancel: CancellationToken::new(),
     };
     let first = block_on(executor.run(attempt(&task, 1))).expect("an outcome");
+    block_on(executor.settle(first.id, first.attempt, true)).expect("accepted outputs");
     let second = block_on(executor.run(attempt(&task, 2))).expect("an outcome");
     assert_eq!((first.cached, second.cached), (false, true));
     for outcome in [&first, &second] {
@@ -1067,6 +1068,7 @@ fn a_replay_runs_its_task_whatever_the_cache_holds() {
         cancel: CancellationToken::new(),
     };
     let first = block_on(executor.run(attempt(1))).expect("an outcome");
+    block_on(executor.settle(first.id, first.attempt, true)).expect("accepted outputs");
     let second = block_on(executor.run(attempt(2))).expect("an outcome");
     assert_eq!((first.cached, second.cached), (false, true));
     executor.reuse = false;

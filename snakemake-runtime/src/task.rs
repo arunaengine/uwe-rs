@@ -689,7 +689,7 @@ pub fn build(
             let conda = pattern::apply(&conda, &job.wildcards).unwrap_or(conda);
             let is_file = conda.ends_with(".yaml") || conda.ends_with(".yml");
             let reference = if is_file && !conda.contains("://") {
-                source_file(rule, &conda, setting).0
+                source_file(rule, &conda, setting).1
             } else {
                 conda
             };

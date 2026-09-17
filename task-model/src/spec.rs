@@ -274,7 +274,9 @@ impl TaskSpec {
     /// Whether the image is pinned to a digest, one condition for sharing results across runs.
     pub fn image_pinned(&self) -> bool {
         let pinned = |image: &Option<Image>| {
-            (image.as_ref()).is_none_or(|image| image.reference.contains("@sha256:"))
+            (image.as_ref()).is_none_or(|image| {
+                image.reference.contains("@sha256:") || image.reference.parse::<Digest>().is_ok()
+            })
         };
         pinned(&self.image) && (self.containers.iter()).all(|container| pinned(&container.image))
     }

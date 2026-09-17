@@ -203,8 +203,7 @@ fn integers_outside_cwl_long_bounds_are_an_error() {
         let mut driver = CwlDriver::new(&launch, Options::default()).expect("loads the tool");
         let error = driver
             .inputs()
-            .err()
-            .expect("the integer is outside CWL long bounds");
+            .expect_err("the integer is outside CWL long bounds");
         assert!(error.to_string().contains(digits), "{error}");
         assert!(
             error

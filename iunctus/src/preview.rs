@@ -74,20 +74,6 @@ fn preview_image(image: &str, pins: &HashMap<String, String>) -> Option<String> 
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn conda_markers_ignore_historical_pins() {
-        let marker = "conda-env:/workflow/environment.yaml";
-        let pinned = format!("sha256:{}", "a".repeat(64));
-        let pins = [(marker.into(), pinned)].into();
-
-        assert_eq!(preview_image(marker, &pins), None);
-    }
-}
-
 impl Executor for Previewed {
     fn run(&mut self, attempt: Attempt) -> Running {
         match self.cached(&attempt.task) {
@@ -102,5 +88,19 @@ impl Executor for Previewed {
             }
             None => self.simulator.run(attempt),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn conda_markers_ignore_historical_pins() {
+        let marker = "conda-env:/workflow/environment.yaml";
+        let pinned = format!("sha256:{}", "a".repeat(64));
+        let pins = [(marker.into(), pinned)].into();
+
+        assert_eq!(preview_image(marker, &pins), None);
     }
 }

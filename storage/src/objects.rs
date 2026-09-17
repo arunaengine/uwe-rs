@@ -378,7 +378,7 @@ impl Objects {
 
 fn location(target: &str) -> Result<address::ObjectLocation<'_>, Problem> {
     address::object_location(target)
-        .map_err(|message| Problem::fixed(message))?
+        .map_err(Problem::fixed)?
         .ok_or_else(|| Problem::fixed("it names no bucket"))
 }
 

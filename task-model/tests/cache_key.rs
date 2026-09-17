@@ -312,6 +312,29 @@ fn detects_pinned_images() {
         platform: None,
     });
     assert!(!floating.image_pinned());
+
+    for reference in [
+        file_digest("local configuration").to_string(),
+        format!("local@{}", file_digest("local configuration")),
+    ] {
+        let mut local = fastqc();
+        local.image.as_mut().unwrap().reference = reference;
+        assert!(local.image_pinned());
+    }
+    for reference in [
+        "sha256:abc",
+        "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "prefix-sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    ] {
+        let mut malformed = fastqc();
+        malformed.image.as_mut().unwrap().reference = reference.into();
+        assert!(!malformed.image_pinned(), "{reference}");
+    }
+
+    let mut secondary = with_containers();
+    secondary.containers[1].image.as_mut().unwrap().reference =
+        file_digest("secondary local configuration").to_string();
+    assert!(secondary.image_pinned());
 }
 
 #[test]

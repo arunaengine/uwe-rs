@@ -13,6 +13,7 @@ use workflow_graph::{Launch, Simulator, execute};
 /// rule does not declare.
 const SNAKEFILE: &str = r#"
 configfile: "config.yaml"
+include: "rules/table.smk"
 
 rule all:
     input: "default_name.out", "results/table.txt"
@@ -20,11 +21,6 @@ rule all:
 rule module:
     output: "default_name.out"
     shell: "python -m some_package.some_module > {output}"
-
-rule table:
-    output: "results/table.txt"
-    conda: "envs/tools.yaml"
-    script: "scripts/table.py"
 "#;
 
 fn write(folder: &Path, path: &str, text: &str) {
@@ -47,6 +43,11 @@ fn jobs_see_the_source_files_of_the_workflow() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let workdir = folder.path().join("workflow");
     write(&workdir, "Snakefile", SNAKEFILE);
+    write(
+        &workdir,
+        "rules/table.smk",
+        "rule table:\n    output: 'results/table.txt'\n    conda: '../envs/tools.yaml'\n    script: '../scripts/table.py'\n",
+    );
     write(&workdir, "config.yaml", "samples: 2\n");
     write(&workdir, "some_package/__init__.py", "");
     write(&workdir, "some_package/some_module.py", "print('works')\n");
@@ -86,6 +87,11 @@ fn jobs_see_the_source_files_of_the_workflow() {
         paths.sort();
         paths
     };
+    let table_task = (graph.nodes.iter())
+        .find(|node| node.task.step == "table")
+        .expect("the table task");
+    let environment = format!("conda-env:{}", workdir.join("envs/tools.yaml").display());
+    assert_eq!(table_task.task.image.as_deref(), Some(environment.as_str()));
     // Tracked files, the config file, the conda file and the folder of every script; not the
     // Snakefile, not untracked data, and not what lies where the job's outputs go.
     let everything = [

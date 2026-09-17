@@ -19,6 +19,7 @@ mod changes;
 mod check;
 mod clean;
 mod conda;
+mod conda_backend;
 mod detect;
 mod failure;
 mod fetched;
@@ -569,9 +570,16 @@ fn executor(
             let store = setup.store(arguments)?;
             let storage = setup.storage.clone();
             let engine = setup.engine();
-            let mut executor =
-                local::executor(store, &scratch, run, default_image, storage, &engine)
-                    .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
+            let mut executor = local::executor(
+                store,
+                &scratch,
+                run,
+                default_image,
+                storage,
+                &engine,
+                setup.conda.clone(),
+            )
+            .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             executor.priorities = std::sync::Arc::new(chains(arguments));
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
@@ -700,6 +708,15 @@ fn real<B: executor::Backend>(
     pinned: &Pinned,
     measured: &resources::Measures,
 ) -> Result<Box<dyn Executor>, Failure> {
+    if pinned
+        .images
+        .keys()
+        .any(|image| image.starts_with("conda-env:"))
+    {
+        return Err(Failure::setup(
+            "iunctus: repeating historical Conda image pins is unsupported; run the workflow with current explicit Conda preparation inputs",
+        ));
+    }
     executor.verbose = verbose;
     executor.measured = measured.clone();
     executor.right_sizing = !arguments.no_right_sizing;

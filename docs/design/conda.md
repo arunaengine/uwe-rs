@@ -2,9 +2,10 @@
 
 Decision 12 says that a Conda environment is locked for the platform of the task and then built
 into a container image. No Conda installation on the host takes part. This page says what
-iunctus does today without network, what needs the network, and how images will be built.
+iunctus does today without network, what needs prepared inputs, and how images are reused.
 
-The code is in the crate `conda-environment`. The command is `iunctus lock-environment`.
+The code is in `conda-environment` and `executor`. `iunctus lock-environment` writes a lock;
+the local workflow executor can also prepare and reuse images for Snakemake Conda rules.
 
 ## What works without network
 
@@ -69,8 +70,9 @@ The resolver is no full solver like conda's or libsolv. It is a search with goin
 5. When no package fits, the search goes back to the last choice that has another candidate.
 6. It gives up after 200000 tries and says so, rather than search for long.
 
-Virtual packages of a Linux container (`__unix`, `__linux`, `__glibc`, `__archspec`) count as
-present. Others, like `__cuda`, count as missing, so a package that needs them does not fit.
+The legacy lock command assumes common Linux virtual packages are present without checking
+their versions. Image preparation uses `lock_with_virtual` with explicit target capabilities;
+an omitted virtual package is absent. Driver-host capabilities are not inferred.
 
 A package that no channel has for a spec is named at once. When the packages exist but cannot
 be installed together, the error lists the specs of the environment. Both exit with 1.
@@ -89,27 +91,63 @@ iunctus lock-environment <conda environment file> [-platform <name>] [-output <f
 - Without `-output`, the lock goes to standard output as JSON. With `-output`, it goes to that
   file; a name that ends in `.txt` gets the explicit list. The command then prints the number
   of packages and the digest of the environment.
-- The lock does not pin the `pip` packages. A warning says so; pip installs them when the image
-  is built.
+- The legacy lock does not pin `pip` packages. The image preparation path refuses such locks.
 
-## Building the image (not done yet)
+## Building and reusing images for local workflows
 
-The plan follows decision 12 and decision 26 (one binary, no external programs):
+The local executor follows decision 12 and decision 26 (one binary, no host installers):
 
 - The build goes through the Docker Engine API (bollard), which Podman serves too. iunctus
   sends a build context as a tar stream: the explicit list and a short recipe that starts from
-  a pinned micromamba image and runs `micromamba install --file <list>` inside the build.
+  a pinned micromamba image and runs `micromamba create --offline --file <list>` inside the build.
 - The image is named by the digest of the lock, the digest of the base image, the platform
   and the recipe. A second build of the same environment finds the image and builds nothing.
-- The digest of the built image goes into the cache key of the task, like the digest of any
-  other image. The environment file alone does not.
-- The build needs the network to fetch the packages, unless a folder of packages is mounted
-  into it. A run without network can use images that were built before.
-- Rules and processes with only `conda:` then get such an image in place of the default image.
+- The inspected immutable Docker configuration ID goes into the task cache key. It is kept
+  separate from registry manifest and exported archive digests.
+- Completed-image receipts and verified transport archives use the deepest shared content
+  store. A compatible local image can be registered; a missing local image can be restored.
+- Packages are checked only for a cold build. A later workflow can reuse the image after
+  package-cache eviction. Current environment YAML and repodata remain necessary to resolve
+  the exact preparation identity.
+- Local Snakemake rules with only `conda:` get the prepared image before task cache lookup.
+  Included rules resolve the YAML from the declaring rule's folder. Preparation is cancellable;
+  path-only historical image pins and frozen Conda repeats cannot bypass current preparation.
+
+Configure the local path explicitly in the existing iunctus TOML file:
+
+```toml
+[conda]
+base = "registry/micromamba@sha256:<selected-platform-manifest>"
+platform = "linux/amd64"
+installer = "micromamba"
+offline = true
+capabilities = "/srv/iunctus/conda/target.json"
+repodata = "/srv/iunctus/conda/repodata"
+packages = "/srv/iunctus/conda/packages"
+```
+
+Replace the base placeholder with a real pinned manifest. The base must already provide
+Micromamba. The capability JSON has exactly `base`, `platform` and `virtual_packages`; each
+package has `name`, `version` and `build`. Its base/platform must match the configuration.
+These are trusted operator inputs obtained from the target container or deployment metadata.
+
+Repodata lives at `<repodata>/<channel>/<conda-platform>/repodata.json` and the channel's
+`noarch/repodata.json`. Package files live at `<packages>/<SHA-256 hex>`. Source reads and
+contexts have finite byte limits. The cold path inspects the exact base manifest and platform
+before building, with network disabled, one CPU and 1 GiB memory. Hot reuse does not require
+the base or package files. Classic builder availability is required; BuildKit support remains open.
+
+The focused native fixture `real_conda_rule_reuses_its_image_after_package_cache_eviction`
+accepts `IUNCTUS_CONDA_TEST_FIXTURE` containing `target.json`, `repodata/` and `packages/`.
+It installs a pinned tzdata package, executes two fresh native Snakemake workflows with task
+cache reuse disabled, deletes its own copied package cache between runs, and checks the same
+completed-image receipt and native output.
 
 ## Limits
 
 - No download of repodata or packages yet; see above.
+- Workflow preparation currently supports local YAML and the local executor only. Remote
+  executors, remote environment sources and named host environments are unsupported.
 - The form of match specs with brackets is not read.
 - `pip` packages are not pinned.
 - The resolver is a search with a limit, not a full solver. A large environment with many

@@ -90,3 +90,22 @@ fn config_files_render_their_yte_templates() {
         "{command}"
     );
 }
+
+#[test]
+fn mapping_lookup_matches_character_classes() {
+    let folder = tempfile::tempdir().expect("a folder");
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        "values = {'a1': 'one', 'b2': 'two', 'c3': 'three'}\nassert lookup(dpath='[ab]?', within=values) == ['one', 'two']\nassert lookup(dpath='[!ab]?', within=values) == ['three']\nrule all:\n    shell: 'true'\n",
+    )
+    .expect("a Snakefile");
+    let launch = Launch {
+        target: folder.path().to_path_buf(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    snakemake_runtime::driver(&launch)
+        .expect("a driver")
+        .start()
+        .expect("character classes match");
+}

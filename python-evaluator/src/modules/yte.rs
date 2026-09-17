@@ -269,8 +269,18 @@ fn process_yaml(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, 
         }
     };
     let document = super::data::load_yaml(&text)?;
+    render_document(interpreter, document, variables.as_ref(), require_use_yte)
+}
+
+/// Renders an already loaded YAML document with the same semantics as `process_yaml`.
+pub fn render_document(
+    interpreter: &mut Interpreter,
+    document: Value,
+    variables: Option<&Value>,
+    require_use_yte: bool,
+) -> Result<Value, Error> {
     let scope = Scope::new(None);
-    if let Some(variables) = &variables {
+    if let Some(variables) = variables {
         for (name, value) in interpreter.mapping_items(variables)? {
             scope.set(&interpreter.to_str(&name)?, value);
         }

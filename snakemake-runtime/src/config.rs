@@ -25,7 +25,7 @@ pub fn load(interpreter: &mut Interpreter, path: &str, kind: &str) -> Result<Val
         })?,
     };
     // Snakemake renders the YTE templates of a document that asks for it.
-    crate::yte::render(interpreter, value)
+    python_evaluator::modules::render_yte(interpreter, value, None, true)
 }
 
 /// Loads a config file that must hold a mapping at the top.

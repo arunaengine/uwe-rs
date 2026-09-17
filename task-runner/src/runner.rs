@@ -274,6 +274,10 @@ impl<B: Backend> Runner<B> {
 
     /// The image pinned to its digest where it has one, found once per run.
     pub async fn pin(&self, image: &str) -> Result<String, RunnerError> {
+        if image.starts_with("conda-env:") {
+            let pinned = self.backend.pin(image).await?;
+            return Ok(pinned.unwrap_or_else(|| image.to_owned()));
+        }
         let cell = {
             let mut pinned = self
                 .pinned

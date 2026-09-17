@@ -165,6 +165,98 @@ fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
         .block_on(future)
 }
 
+struct ChangingPin {
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl Backend for ChangingPin {
+    async fn pin(&self, image: &str) -> Result<Option<String>, ExecutorError> {
+        let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if image == "conda-env:block" {
+            return std::future::pending().await;
+        }
+        let digit = char::from_digit((call % 10) as u32, 10).unwrap();
+        Ok(Some(format!("sha256:{}", digit.to_string().repeat(64))))
+    }
+
+    async fn run(
+        &self,
+        _job: Job<'_>,
+        _cancel: &CancellationToken,
+    ) -> Result<Finished, ExecutorError> {
+        Err(ExecutorError::Unsupported("not run by this test".into()))
+    }
+}
+
+fn pinning_runner(root: &Path) -> Runner<ChangingPin> {
+    Runner::new(
+        Store::memory().unwrap(),
+        ChangingPin {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        },
+        "pinning",
+        Settings {
+            downloads: root.join("downloads"),
+            import_inputs: false,
+            storage: storage::Storage::default(),
+            digests: None,
+        },
+    )
+}
+
+#[tokio::test]
+async fn conda_pins_bypass_stale_and_memoized_decisions() {
+    let root = tempfile::tempdir().unwrap();
+    let runner = pinning_runner(root.path());
+    let marker = "conda-env:/workflow/environment.yaml";
+    runner.pin_images(&[(marker.into(), "stale".into())].into());
+
+    let first = runner.pin(marker).await.unwrap();
+    let second = runner.pin(marker).await.unwrap();
+    assert_ne!(first, second);
+    assert_ne!(first, "stale");
+    let ordinary = runner.pin("registry/image:tag").await.unwrap();
+    assert_eq!(runner.pin("registry/image:tag").await.unwrap(), ordinary);
+    assert_eq!(
+        runner
+            .backend()
+            .calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        3
+    );
+}
+
+#[tokio::test]
+async fn cancellation_stops_a_blocked_conda_pin() {
+    use workflow_graph::{Attempt, ExecuteError, Executor};
+
+    let root = tempfile::tempdir().unwrap();
+    let runner = pinning_runner(root.path());
+    let mut executor = task_runner::RunnerExecutor::new(runner, None);
+    let cancel = CancellationToken::new();
+    let mut running = Box::pin(executor.run(Attempt {
+        task: std::sync::Arc::new(Task {
+            id: TaskId(99),
+            image: Some("conda-env:block".into()),
+            command: vec!["true".into()],
+            ..Task::default()
+        }),
+        number: 1,
+        cancel: cancel.clone(),
+    }));
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(30), &mut running)
+            .await
+            .is_err()
+    );
+    cancel.cancel();
+    let result = tokio::time::timeout(std::time::Duration::from_millis(200), &mut running)
+        .await
+        .expect("cancellation ends the attempt");
+    assert!(matches!(result, Err(ExecuteError::Cancelled)));
+    executor.settle(TaskId(99), 1, true).await.unwrap();
+}
+
 fn request(runner: &Runner<Fake>, task: &Task) -> Prepared {
     block_on(runner.request(task, Some("debian@sha256:00".into()))).expect("a request")
 }

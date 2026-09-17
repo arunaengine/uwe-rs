@@ -300,7 +300,11 @@ async fn outcome<B: Backend>(
     }
     let failed = |error: RunnerError| failure(task, error);
     let image = match &task.image {
-        Some(image) => Some(runner.pin(image).await.map_err(failed)?),
+        Some(image) => Some(tokio::select! {
+            biased;
+            () = cancel.cancelled() => return Err(ExecuteError::Cancelled),
+            pinned = runner.pin(image) => pinned.map_err(failed)?,
+        }),
         None => None,
     };
     // The other containers of a task that runs several are pinned too, so that the key of
@@ -308,7 +312,11 @@ async fn outcome<B: Backend>(
     let mut pinned = task.clone();
     for container in pinned.containers.iter_mut().skip(1) {
         if let Some(image) = &container.image {
-            container.image = Some(runner.pin(image).await.map_err(failed)?);
+            container.image = Some(tokio::select! {
+                biased;
+                () = cancel.cancelled() => return Err(ExecuteError::Cancelled),
+                pinned = runner.pin(image) => pinned.map_err(failed)?,
+            });
         }
     }
     let mut prepared = tokio::select! {

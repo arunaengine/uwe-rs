@@ -351,7 +351,10 @@ impl Session {
         } else {
             self.launch.targets.clone()
         };
-        let planner = self.planner.as_mut().expect("a planner");
+        let planner = self
+            .planner
+            .as_mut()
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         planner.reset();
         let mut roots = Vec::new();
         for target in &targets {
@@ -584,7 +587,10 @@ impl Session {
         };
         // A job that uses a service starts with the service job, so that one is a candidate too.
         let mut candidates = candidates;
-        let planner = self.planner.as_ref().expect("a planner");
+        let planner = self
+            .planner
+            .as_ref()
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         let services: Vec<usize> = (candidates.iter())
             .flat_map(|job| {
                 planner.jobs[*job]
@@ -604,7 +610,9 @@ impl Session {
             if !self.needrun.get(&job).copied().unwrap_or(false) || self.tasks.contains_key(&job) {
                 continue;
             }
-            let planner = self.planner.as_ref().expect("a planner");
+            let planner = self.planner.as_ref().ok_or_else(|| {
+                DriverError::new("the Snakemake session has not planned its jobs")
+            })?;
             let entry = &planner.jobs[job];
             if entry.incomplete {
                 continue;
@@ -657,7 +665,9 @@ impl Session {
             let mut task = task;
             // A job whose input function looked into a checkpoint's outputs runs after it,
             // even when it reads none of its files.
-            let planner = self.planner.as_ref().expect("a planner");
+            let planner = self.planner.as_ref().ok_or_else(|| {
+                DriverError::new("the Snakemake session has not planned its jobs")
+            })?;
             for file in &entry.checkpoints {
                 for (other, other_task) in &self.tasks {
                     if planner.jobs[*other].output_files().contains(file)
@@ -667,7 +677,11 @@ impl Session {
                     }
                 }
             }
-            self.planner.as_mut().expect("a planner").fixed.insert(job);
+            self.planner
+                .as_mut()
+                .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?
+                .fixed
+                .insert(job);
             self.tasks.insert(job, id);
             self.attempts.insert(job, 1);
             self.jobs_of_tasks.insert(id, job);
@@ -926,7 +940,10 @@ impl Session {
         if deliveries.is_empty() {
             return Ok(());
         }
-        let planner = self.planner.as_ref().expect("a planner");
+        let planner = self
+            .planner
+            .as_ref()
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         let mut records = Vec::new();
         for job in jobs {
             if let Some(signature) = self.signatures.get(job) {
@@ -1091,7 +1108,10 @@ impl Session {
                 }
             }
         }
-        let planner = self.planner.as_mut().expect("a planner");
+        let planner = self
+            .planner
+            .as_mut()
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         if planner.rules[planner.jobs[job].rule].checkpoint {
             planner
                 .checkpoints_done
@@ -1127,7 +1147,10 @@ impl Session {
         services: &[String],
         retry: Option<TaskId>,
     ) -> Result<Option<Task>, DriverError> {
-        let planner = self.planner.as_ref().expect("a planner");
+        let planner = self
+            .planner
+            .as_ref()
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         let users: Vec<usize> = (self.order.iter().copied())
             .filter(|user| {
                 (planner.jobs[*user].dependencies.iter())
@@ -1198,7 +1221,9 @@ impl Session {
         let mut members = Vec::new();
         let mut declared = Vec::new();
         for member in std::iter::once(job).chain(users) {
-            let planner = self.planner.as_ref().expect("a planner");
+            let planner = self.planner.as_ref().ok_or_else(|| {
+                DriverError::new("the Snakemake session has not planned its jobs")
+            })?;
             let rule = planner.rules[planner.jobs[member].rule].clone();
             let entry = planner.jobs[member].clone();
             let (task, signature) = {
@@ -1225,7 +1250,7 @@ impl Session {
         for (member, _) in &declared {
             self.planner
                 .as_mut()
-                .expect("a planner")
+                .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?
                 .fixed
                 .insert(*member);
             self.tasks.insert(*member, id);
@@ -1245,7 +1270,10 @@ impl Session {
         let Some((job, _)) = members.first() else {
             return Ok(None);
         };
-        let planner = self.planner.as_ref().expect("a planner");
+        let planner = self
+            .planner
+            .as_ref()
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         let retries = members
             .iter()
             .filter_map(|(member, _)| {
@@ -1292,7 +1320,10 @@ impl Session {
     /// Makes the `touch()` outputs that the job did not make, as Snakemake touches them after
     /// the job, and fails as Snakemake does when other outputs are missing.
     fn check_outputs(&mut self, job: usize, outcome: &mut Outcome) -> Result<(), DriverError> {
-        let planner = self.planner.as_ref().expect("a planner");
+        let planner = self
+            .planner
+            .as_ref()
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         let entry = &planner.jobs[job];
         let rule = planner.rules[entry.rule].name.clone();
         let touched = entry.touched_files();
@@ -1496,7 +1527,10 @@ impl Session {
     /// The next attempt of a failed job, while its rule's `retries` allow one, with its
     /// resources evaluated for that attempt, as Snakemake runs it.
     fn retry(&mut self, job: usize, id: TaskId) -> Result<Option<Task>, DriverError> {
-        let planner = self.planner.as_ref().expect("a planner");
+        let planner = self
+            .planner
+            .as_ref()
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         let rule = planner.rules[planner.jobs[job].rule].clone();
         let entry = planner.jobs[job].clone();
         let attempt = self.attempts.get(&job).copied().unwrap_or(1);

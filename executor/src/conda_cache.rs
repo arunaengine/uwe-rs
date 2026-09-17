@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -36,6 +37,36 @@ pub async fn ensure(
     limits: CacheLimits,
     cancel: &CancellationToken,
 ) -> Result<CompletedImage, CondaImageError> {
+    ensure_with(
+        engine,
+        preparation,
+        package_cache,
+        store,
+        holder,
+        limits,
+        cancel,
+        || async { Ok(()) },
+    )
+    .await
+}
+
+/// Prepares prerequisites only before a cold build, after receipt and local-image reuse.
+/// The callback shares the total deadline and cancellation and is checked for ownership
+/// before and after it runs. Dropping it cannot undo external work already submitted.
+pub async fn ensure_with<F, Fut>(
+    engine: &ContainerEngine,
+    preparation: &ImagePreparation,
+    package_cache: &Path,
+    store: &Store,
+    holder: &Holder,
+    limits: CacheLimits,
+    cancel: &CancellationToken,
+    mut prepare: F,
+) -> Result<CompletedImage, CondaImageError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<(), CondaImageError>>,
+{
     if limits.attempts == 0
         || limits.candidates == 0
         || limits.retry_delay.is_zero()
@@ -73,6 +104,9 @@ pub async fn ensure(
                             let image = match existing {
                                 Some(image) => image,
                                 None => {
+                                    claim.check().await?;
+                                    prepare().await?;
+                                    claim.check().await?;
                                     conda::build(
                                         engine,
                                         preparation,

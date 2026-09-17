@@ -3,15 +3,239 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::io::{self, Read};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
-use conda_environment::{Environment, Lock, LockError};
+use conda_environment::{Environment, ImagePreparation, Lock, LockError, VirtualPackage};
+use config_file::{ConfigError, ConfigFile};
 
 use crate::arguments::Arguments;
 use crate::failure::{Failure, failure};
 
 /// The channel of an environment file that names none, as Miniforge has it.
 const DEFAULT_CHANNEL: &str = "conda-forge";
+
+/// Operator-supplied, offline preparation inputs for one exact target base and platform.
+#[derive(Clone, Debug)]
+pub struct Config {
+    pub base: String,
+    pub platform: String,
+    pub capabilities: Vec<VirtualPackage>,
+    pub repodata: PathBuf,
+    pub packages: PathBuf,
+}
+
+impl Config {
+    pub fn read(config: &ConfigFile) -> Result<Option<Self>, ConfigError> {
+        let Some(table) = config.section("conda")? else {
+            return Ok(None);
+        };
+        table.only(&[
+            "base",
+            "platform",
+            "installer",
+            "offline",
+            "capabilities",
+            "repodata",
+            "packages",
+        ])?;
+        if table.flag("offline")? != Some(true) {
+            return Err(table.invalid("offline", "must be true; online preparation is unsupported"));
+        }
+        if table.text("installer")?.as_deref() != Some("micromamba") {
+            return Err(table.invalid(
+                "installer",
+                "must be micromamba, installed inside the pinned base",
+            ));
+        }
+        let text = |key| {
+            table
+                .text(key)?
+                .ok_or_else(|| table.missing(key, "an explicit value"))
+        };
+        let path = |key| -> Result<PathBuf, ConfigError> {
+            let path = PathBuf::from(text(key)?);
+            if !path.is_absolute() {
+                return Err(table.invalid(key, "must be an absolute path"));
+            }
+            Ok(path)
+        };
+        let base = text("base")?;
+        let platform = text("platform")?;
+        let metadata = bounded_bytes(&path("capabilities")?, 64 * 1024)
+            .map_err(|error| table.invalid("capabilities", error.to_string()))?;
+        let metadata: serde_json::Value = serde_json::from_slice(&metadata)
+            .map_err(|error| table.invalid("capabilities", error.to_string()))?;
+        let object = metadata
+            .as_object()
+            .ok_or_else(|| table.invalid("capabilities", "must contain a JSON object"))?;
+        if object
+            .keys()
+            .any(|key| !["base", "platform", "virtual_packages"].contains(&key.as_str()))
+            || metadata["base"].as_str() != Some(base.as_str())
+            || metadata["platform"].as_str() != Some(platform.as_str())
+        {
+            return Err(table.invalid(
+                "capabilities",
+                "must bind exactly this base and platform, with no unknown fields",
+            ));
+        }
+        let mut capabilities: Vec<VirtualPackage> =
+            serde_json::from_value(metadata["virtual_packages"].clone())
+                .map_err(|error| table.invalid("capabilities", error.to_string()))?;
+        if capabilities.len() > 64 {
+            return Err(table.invalid("capabilities", "exceeds 64 virtual packages"));
+        }
+        if metadata["virtual_packages"]
+            .as_array()
+            .is_none_or(|packages| {
+                packages.iter().any(|package| {
+                    package.as_object().is_none_or(|object| {
+                        object
+                            .keys()
+                            .any(|key| !["name", "version", "build"].contains(&key.as_str()))
+                    })
+                })
+            })
+        {
+            return Err(table.invalid("capabilities", "has unknown virtual package fields"));
+        }
+        capabilities.sort_by(|a, b| a.name.cmp(&b.name));
+        for (index, package) in capabilities.iter().enumerate() {
+            if !package.name.starts_with("__")
+                || !conda_environment::MatchSpec::parse(&package.name)
+                    .is_ok_and(|spec| spec.name == package.name)
+                || conda_environment::Version::parse(&package.version).is_none()
+                || (index > 0 && capabilities[index - 1].name == package.name)
+            {
+                return Err(
+                    table.invalid("capabilities", "has invalid or duplicate virtual packages")
+                );
+            }
+        }
+        let configured = Self {
+            base,
+            platform,
+            capabilities,
+            repodata: path("repodata")?,
+            packages: path("packages")?,
+        };
+        let lock = Lock {
+            format: conda_environment::FORMAT,
+            platform: configured
+                .conda_platform()
+                .map_err(|error| table.invalid("platform", error.to_string()))?
+                .into(),
+            channels: vec![],
+            specs: vec![],
+            pip: vec![],
+            packages: vec![],
+            virtual_packages: Some(configured.capabilities.clone()),
+        };
+        ImagePreparation::new(
+            &lock,
+            &configured.base,
+            &configured.platform,
+            &configured.capabilities,
+        )
+        .map_err(|error| table.invalid("base", error.to_string()))?;
+        Ok(Some(configured))
+    }
+
+    fn conda_platform(&self) -> io::Result<&'static str> {
+        match self.platform.as_str() {
+            "linux/amd64" => Ok("linux-64"),
+            "linux/arm64" | "linux/arm64/v8" => Ok("linux-aarch64"),
+            "linux/ppc64le" => Ok("linux-ppc64le"),
+            "linux/s390x" => Ok("linux-s390x"),
+            "linux/386" => Ok("linux-32"),
+            _ => Err(io::Error::other("unsupported Conda OCI platform")),
+        }
+    }
+
+    /// Resolves current source bytes; paths and historical image mappings are never cache keys.
+    pub fn preparation(&self, source: &str) -> io::Result<ImagePreparation> {
+        if source.contains("://")
+            || !matches!(
+                Path::new(source).extension().and_then(|s| s.to_str()),
+                Some("yaml" | "yml")
+            )
+        {
+            return Err(io::Error::other(
+                "Conda preparation supports local YAML files only; remote files and named host environments are unsupported",
+            ));
+        }
+        let bytes = bounded_bytes(Path::new(source), 1024 * 1024)?;
+        let text = std::str::from_utf8(&bytes).map_err(io::Error::other)?;
+        let mut environment = Environment::parse(text).map_err(io::Error::other)?;
+        if !environment.pip.is_empty() {
+            return Err(io::Error::other(
+                "Conda image preparation does not support unpinned pip requirements",
+            ));
+        }
+        if environment.channels.is_empty() {
+            environment.channels.push(DEFAULT_CHANNEL.into());
+        }
+        let channels = conda_environment::channels(&environment.channels);
+        if channels.len() > 16
+            || channels.iter().any(|channel| {
+                channel.split('/').any(|part| {
+                    part.is_empty()
+                        || part == "."
+                        || part == ".."
+                        || !part
+                            .bytes()
+                            .all(|byte| byte.is_ascii_alphanumeric() || b"_.-".contains(&byte))
+                })
+            })
+        {
+            return Err(io::Error::other(
+                "unsupported Conda channel name or more than 16 channels",
+            ));
+        }
+        let snapshot = tempfile::tempdir()?;
+        let mut remaining = 256 * 1024 * 1024;
+        let platform = self.conda_platform()?;
+        for channel in channels {
+            for subdir in [platform, "noarch"] {
+                let source = conda_environment::repodata_path(&self.repodata, &channel, subdir);
+                let bytes = bounded_bytes(&source, remaining)?;
+                remaining -= bytes.len() as u64;
+                let target = conda_environment::repodata_path(snapshot.path(), &channel, subdir);
+                std::fs::create_dir_all(target.parent().expect("repodata parent"))?;
+                std::fs::write(target, bytes)?;
+            }
+        }
+        let lock = conda_environment::lock_with_virtual(
+            &environment,
+            snapshot.path(),
+            platform,
+            &self.capabilities,
+        )
+        .map_err(io::Error::other)?;
+        ImagePreparation::new(&lock, &self.base, &self.platform, &self.capabilities)
+    }
+}
+
+fn bounded_bytes(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32)
+        .open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::other("Conda source must be a regular file"));
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > limit {
+        return Err(io::Error::other(format!(
+            "{} exceeds its Conda source byte limit",
+            path.display()
+        )));
+    }
+    Ok(bytes)
+}
 
 /// Writes the lock of an environment file: as JSON to standard output, or to `-output`, where
 /// a name that ends in `.txt` gets the explicit list that conda and micromamba install from.
@@ -84,5 +308,90 @@ fn locked(file: &Path, error: LockError) -> Failure {
             Failure::setup(message)
         }
         _ => failure(message),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn fifo_sources_fail_without_waiting_for_a_writer() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("source.yaml");
+        rustix::fs::mkfifoat(rustix::fs::CWD, &path, rustix::fs::Mode::RUSR).unwrap();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _folder = folder;
+            sender
+                .send(bounded_bytes(&path, 1024).unwrap_err().to_string())
+                .unwrap();
+        });
+        let error = receiver
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("FIFO open must not block");
+        assert!(error.contains("regular file"), "{error}");
+    }
+
+    #[test]
+    fn preparation_reads_changed_environment_and_repodata_without_package_bytes() {
+        let folder = tempfile::tempdir().unwrap();
+        let root = folder.path();
+        let config = Config {
+            base: format!("mamba@sha256:{}", "a".repeat(64)),
+            platform: "linux/amd64".into(),
+            capabilities: vec![],
+            repodata: root.join("repodata"),
+            packages: root.join("missing-packages"),
+        };
+        let channel = config.repodata.join("conda-forge");
+        for subdir in ["linux-64", "noarch"] {
+            std::fs::create_dir_all(channel.join(subdir)).unwrap();
+        }
+        std::fs::write(channel.join("noarch/repodata.json"), "{}").unwrap();
+        let mut records = json!({"packages": {
+            "foo-1-0.conda": {"name":"foo", "version":"1", "build":"0", "sha256":"b".repeat(64)},
+            "foo-2-0.conda": {"name":"foo", "version":"2", "build":"0", "sha256":"c".repeat(64)}
+        }});
+        let repodata = channel.join("linux-64/repodata.json");
+        std::fs::write(&repodata, records.to_string()).unwrap();
+        let file = root.join("env.yaml");
+        std::fs::write(&file, "dependencies: [foo=1]\n").unwrap();
+        let first = config.preparation(file.to_str().unwrap()).unwrap();
+        std::fs::write(&file, "dependencies: [foo=2]\n").unwrap();
+        let second = config.preparation(file.to_str().unwrap()).unwrap();
+        assert_ne!(first.digest(), second.digest());
+        records["packages"]["foo-2-0.conda"]["sha256"] = json!("d".repeat(64));
+        std::fs::write(repodata, records.to_string()).unwrap();
+        assert_ne!(
+            second.digest(),
+            config.preparation(file.to_str().unwrap()).unwrap().digest()
+        );
+        for unsupported in ["host-environment", "https://example.org/env.yaml"] {
+            assert!(
+                config
+                    .preparation(unsupported)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("local YAML")
+            );
+        }
+        std::fs::write(&file, "dependencies:\n  - pip:\n    - unpinned\n").unwrap();
+        assert!(
+            config
+                .preparation(file.to_str().unwrap())
+                .unwrap_err()
+                .to_string()
+                .contains("pip")
+        );
+        std::fs::write(&file, vec![b' '; 1024 * 1024 + 1]).unwrap();
+        assert!(
+            config
+                .preparation(file.to_str().unwrap())
+                .unwrap_err()
+                .to_string()
+                .contains("byte limit")
+        );
     }
 }

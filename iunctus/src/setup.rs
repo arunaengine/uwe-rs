@@ -26,6 +26,7 @@ const SECTIONS: &[&str] = &[
     "network",
     "cache",
     "report",
+    "conda",
 ];
 
 /// The executors that `-executor` and `default` of `[executor]` may name.
@@ -42,6 +43,7 @@ pub struct Setup {
     pub telemetry: Option<Telemetry>,
     /// Which tasks get the network, from `[network]`.
     pub network: NetworkRule,
+    pub conda: Option<crate::conda::Config>,
 }
 
 /// The settings of executors from the `[executor.<name>]` sections. Options on the command line
@@ -261,11 +263,13 @@ impl Setup {
         let executors = Executors::read(&config).map_err(failed)?;
         let telemetry = Telemetry::read(&config).map_err(failed)?;
         let network = network(&config).map_err(failed)?;
+        let conda = crate::conda::Config::read(&config).map_err(failed)?;
         Ok(Setup {
             storage,
             executors,
             telemetry,
             network,
+            conda,
         })
     }
 

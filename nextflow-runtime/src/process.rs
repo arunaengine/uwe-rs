@@ -311,8 +311,7 @@ impl ProcessNode {
         for directive in &directives {
             let active = match (directive.name.as_ref(), directive.arguments.as_slice()) {
                 ("beforeScript" | "afterScript" | "fair", [value]) => value.truth(),
-                ("maxErrors", [Value::Number(value)]) => value.to_f64() != -1.0,
-                ("maxErrors", [Value::Null]) => false,
+                ("maxErrors", [value]) => !unlimited_errors(value),
                 ("maxErrors", _) => true,
                 _ => false,
             };
@@ -741,12 +740,22 @@ fn built_in_default(directive: &TaskDirective) -> bool {
         ("debug", Value::Boolean(value)) => !value,
         ("cacheable", Value::Boolean(value)) => *value,
         ("maxRetries", Value::Number(value)) => value.to_f64() == 1.0,
-        ("maxErrors", Value::Number(value)) => value.to_f64() == -1.0,
+        ("maxErrors", value) => unlimited_errors(value),
         ("errorStrategy", Value::String(text)) => text.eq_ignore_ascii_case("terminate"),
         ("shell", Value::List(list)) => {
             let items: Vec<String> = list.borrow().items.iter().map(Value::to_string).collect();
             items == ["/bin/bash", "-ue"]
         }
+        _ => false,
+    }
+}
+
+/// Whether a `maxErrors` value means no limit: -1, also as text like nf-core's `'-1'`, or null.
+fn unlimited_errors(value: &Value) -> bool {
+    match value {
+        Value::Number(value) => value.to_f64() == -1.0,
+        Value::String(text) => text.trim().parse::<f64>() == Ok(-1.0),
+        Value::Null => true,
         _ => false,
     }
 }

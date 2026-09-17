@@ -115,6 +115,18 @@ fn inactive_directives_preserve_task_execution() {
 }
 
 #[test]
+fn quoted_unlimited_max_errors_from_config_stays_inactive() {
+    // nf-core `conf/base.config` sets `maxErrors = '-1'` as a string.
+    let source = "process P {\n script:\n 'true'\n}\nworkflow { P() }";
+    let options = Options {
+        config: config("process.maxErrors = '-1'"),
+        ..Options::default()
+    };
+    let (tasks, _) = run(source, &options).expect("unlimited maxErrors");
+    assert_eq!(tasks.len(), 1);
+}
+
+#[test]
 fn closed_input_stops_a_process_with_an_unbound_input_in_both_orders() {
     for inputs in [
         "channel.empty(), channel.value()",

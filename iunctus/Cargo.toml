@@ -26,18 +26,18 @@ run-crate.workspace = true
 run-database.workspace = true
 run-page.workspace = true
 run-telemetry.workspace = true
-rustix = { workspace = true, features = ["pipe", "stdio", "termios"] }
+rustix = { workspace = true, features = ["fs", "pipe", "stdio", "termios"] }
 serde_json.workspace = true
 snakemake-runtime.workspace = true
 storage.workspace = true
 task-model.workspace = true
 task-runner.workspace = true
+tempfile.workspace = true
 kubernetes-executor.workspace = true
 slurm-executor.workspace = true
 tes-executor.workspace = true
-tokio = { workspace = true, features = ["signal"] }
+tokio = { workspace = true, features = ["signal", "sync"] }
 workflow-graph.workspace = true
 
 [dev-dependencies]
 fancy-regex.workspace = true
-tempfile.workspace = true

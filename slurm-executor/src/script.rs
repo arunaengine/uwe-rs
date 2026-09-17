@@ -270,9 +270,8 @@ fn command(container: &Container, run: &ContainerRun<'_>, gpus: bool) -> Vec<Str
 /// runs it starts in its `workdir`, or in `/`, the working directory of most images, which a
 /// job cannot ask the registry for; its file system is writable in memory
 /// (`--writable-tmpfs`), so that it may write outside its folders where its user may write.
-/// A task without network gets a network of its own with only loopback, which Apptainer
-/// 1.1 and later gives any user; Singularity may not, so its tasks keep the network of the
-/// node.
+/// A task without network requests an isolated network. Sites or runtimes that cannot
+/// provide it must fail the container launch.
 fn apptainer(program: &str, run: &ContainerRun<'_>, gpus: bool) -> Vec<String> {
     let start = match run.access.run_as {
         Some(_) => run.start().unwrap_or_else(|| "/".to_owned()),
@@ -288,7 +287,7 @@ fn apptainer(program: &str, run: &ContainerRun<'_>, gpus: bool) -> Vec<String> {
     if run.access.run_as.is_some() {
         command.push("--writable-tmpfs".into());
     }
-    if run.offline && program.ends_with("apptainer") {
+    if run.offline {
         command.extend(["--net".into(), "--network".into(), "none".into()]);
     }
     for bind in run.binds() {
@@ -470,6 +469,12 @@ mod tests {
             offline: true,
             ..run(&image, &[], None)
         };
+        let isolated = command(&Container::Apptainer("singularity".into()), &offline, false);
+        assert!(
+            isolated
+                .windows(3)
+                .any(|words| words == ["--net", "--network", "none"])
+        );
         let script = job_script(
             &Container::Apptainer("apptainer".into()),
             &offline,

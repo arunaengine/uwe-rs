@@ -259,6 +259,25 @@ impl ContainerRun<'_> {
         self.create_with_cpus(i64::from(self.cpus) * 1_000_000_000)
     }
 
+    fn policy(&self) -> HostConfig {
+        HostConfig {
+            cap_drop: Some(vec!["ALL".to_owned()]),
+            cap_add: Some(
+                self.access
+                    .capabilities
+                    .iter()
+                    .map(|&name| name.to_owned())
+                    .collect(),
+            ),
+            security_opt: Some(vec![NO_NEW_PRIVILEGES.to_owned()]),
+            auto_remove: Some(true),
+            nano_cpus: Some(i64::from(self.cpus) * 1_000_000_000),
+            memory: self.memory.map(|bytes| bytes.max(LEAST_MEMORY) as i64),
+            network_mode: self.offline.then(|| "none".to_owned()),
+            ..HostConfig::default()
+        }
+    }
+
     fn create_with_cpus(&self, nano_cpus: i64) -> ContainerCreateBody {
         let mounts = (self.binds().into_iter())
             .map(|bind| bollard::models::Mount {
@@ -277,25 +296,9 @@ impl ContainerRun<'_> {
             user: self.access.user.clone(),
             working_dir: self.start(),
             host_config: Some(HostConfig {
-                // The least permissions (decision 28): no capabilities but those the task
-                // needs, and no way to gain privileges.
-                cap_drop: Some(vec!["ALL".to_owned()]),
-                cap_add: Some(
-                    self.access
-                        .capabilities
-                        .iter()
-                        .map(|&name| name.to_owned())
-                        .collect(),
-                ),
-                security_opt: Some(vec![NO_NEW_PRIVILEGES.to_owned()]),
-                // The engine removes the container once it ended, which takes it a while, so
-                // that the task need not wait for it.
-                auto_remove: Some(true),
                 mounts: Some(mounts),
                 nano_cpus: Some(nano_cpus),
-                memory: self.memory.map(|bytes| bytes.max(LEAST_MEMORY) as i64),
-                network_mode: self.offline.then(|| "none".to_owned()),
-                ..HostConfig::default()
+                ..self.policy()
             }),
             ..ContainerCreateBody::default()
         }
@@ -303,33 +306,45 @@ impl ContainerRun<'_> {
 
     /// The arguments of the engine's command that run the wrapper with Bash in the image.
     pub fn arguments(&self, engine: &EngineCommand) -> Vec<String> {
-        let mut arguments: Vec<String> = ["run", "--rm", "--name", self.name]
-            .into_iter()
-            .chain(["--entrypoint", "sh"])
-            .map(str::to_owned)
-            .collect();
+        let policy = self.policy();
+        let mut arguments = vec!["run".to_owned()];
+        if policy.auto_remove == Some(true) {
+            arguments.push("--rm".into());
+        }
+        arguments.extend(
+            ["--name", self.name]
+                .into_iter()
+                .chain(["--entrypoint", "sh"])
+                .map(str::to_owned),
+        );
         match (self.access.run_as, &self.access.user) {
             (None, _) => arguments.extend(engine.user_options(self.owner.0, self.owner.1)),
             (Some(_), Some(user)) => arguments.extend(["--user".into(), user.clone()]),
             (Some(_), None) => {}
         }
-        arguments.extend(["--cap-drop".into(), "ALL".into()]);
-        for capability in &self.access.capabilities {
-            arguments.extend(["--cap-add".into(), (*capability).to_owned()]);
+        for capability in policy.cap_drop.into_iter().flatten() {
+            arguments.extend(["--cap-drop".into(), capability]);
         }
-        arguments.extend(["--security-opt".into(), NO_NEW_PRIVILEGES.into()]);
+        for capability in policy.cap_add.into_iter().flatten() {
+            arguments.extend(["--cap-add".into(), capability]);
+        }
+        for option in policy.security_opt.into_iter().flatten() {
+            arguments.extend(["--security-opt".into(), option]);
+        }
         for bind in self.binds() {
             arguments.extend(["--volume".into(), volume(&bind)]);
         }
         if let Some(start) = self.start() {
             arguments.extend(["--workdir".into(), start]);
         }
-        arguments.extend(["--cpus".into(), self.cpus.to_string()]);
-        if let Some(memory) = self.memory {
-            arguments.extend(["--memory".into(), memory.max(LEAST_MEMORY).to_string()]);
+        if let Some(nano_cpus) = policy.nano_cpus {
+            arguments.extend(["--cpus".into(), (nano_cpus / 1_000_000_000).to_string()]);
         }
-        if self.offline {
-            arguments.extend(["--network".into(), "none".into()]);
+        if let Some(memory) = policy.memory {
+            arguments.extend(["--memory".into(), memory.to_string()]);
+        }
+        if let Some(network) = policy.network_mode {
+            arguments.extend(["--network".into(), network]);
         }
         if let Some(platform) = &self.image.platform {
             arguments.extend(["--platform".into(), platform.clone()]);
@@ -1186,6 +1201,16 @@ mod tests {
         let arguments = run.arguments(&EngineCommand::docker("docker"));
         let memory = arguments.iter().position(|argument| argument == "--memory");
         assert_eq!(memory.map(|at| arguments[at + 1].as_str()), Some("6291456"));
+        let policy = run.create().host_config.unwrap();
+        for (flag, values) in [
+            ("--cap-drop", policy.cap_drop),
+            ("--cap-add", policy.cap_add),
+            ("--security-opt", policy.security_opt),
+        ] {
+            for value in values.into_iter().flatten() {
+                assert!(arguments.windows(2).any(|pair| pair == [flag, &value]));
+            }
+        }
         run.memory = None;
         // A mount at the work directory takes the place of the work directory of the scratch.
         run.workdir = Some("/work");

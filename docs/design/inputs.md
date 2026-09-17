@@ -206,6 +206,8 @@ The 179 Nextflow outputs that are not files are emits, whose type the script doe
 
 `iunctus::forms` exposes a version 1 form contract for a configured native driver. It keeps the original JSON Schema, including references, compositions and file annotations, rather than flattening it into help properties:
 
+The CLI exposes the same description with `iunctus inputs <workflow> -format form`, using the selected profile and effective launch values with explicit relaxed policy. Existing `-format json` and `-format text` keep their behavior.
+
 ```rust
 use iunctus::application::Policy;
 use iunctus::forms;

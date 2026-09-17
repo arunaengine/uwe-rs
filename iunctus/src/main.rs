@@ -880,9 +880,8 @@ options:
   -license <url>                      the license of the exported crate
   -platform <name>                    the conda platform of `lock-environment`, like linux-64
                                       (default: Linux on the processor of this machine)
-  -format json|text                   what `inputs` writes: the JSON Schema of the inputs
-                                      (the default), or the inputs as help text;
-                                      for `outputs` the same of the outputs
+  -format json|text|form              what `inputs` writes: JSON Schema, help text, or a JSON form description;
+                                      for `outputs` use json (the default) or text
   -check                              `inputs` also checks the given values against the
                                       schema, as a run does before any task starts
   -keep-days <n>                      `clean` keeps what runs made or used in the last n days

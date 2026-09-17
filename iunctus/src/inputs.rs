@@ -9,6 +9,8 @@ use workflow_graph::{CancellationToken, Driver, Inputs, Language};
 
 use crate::arguments::Arguments;
 use crate::{Failure, failure};
+use iunctus::application::{Description, Policy};
+use iunctus::forms::Form;
 
 /// Checks the inputs of a run before any task starts. Warnings go where the messages of the
 /// workflow go: standard output, or standard error when `quiet` keeps standard output for the
@@ -77,12 +79,17 @@ fn warnings(inputs: &Inputs, problems: &[Problem]) -> Vec<String> {
     warnings
 }
 
-/// `iunctus inputs`: prints the JSON Schema of the inputs of a workflow, or with `-format text`
-/// the inputs as help text. With `-check`, the values of the launch are checked as `iunctus run`
-/// with the same options checks them: a simulated run, unless `-executor local` asks for a real
-/// one. The workflow runs no task.
+/// `iunctus inputs`: prints the JSON Schema of the inputs of a workflow, their help text with
+/// `-format text`, or their versioned form description with `-format form`. With `-check`, the
+/// launch values are checked as `iunctus run` with the same options checks them: a simulated
+/// run, unless `-executor local` asks for a real one. The workflow runs no task.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
-    let text = text_format(arguments, "inputs")?;
+    let form = arguments.format.as_deref() == Some("form");
+    let text = if form {
+        false
+    } else {
+        text_format(arguments, "inputs")?
+    };
     let cancel = crate::stop_on_interrupt();
     let _stop = cancel.clone().drop_guard();
     let (mut driver, language, simulated) = describing(arguments, &cancel)?;
@@ -103,6 +110,19 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             "iunctus: the {language} driver does not describe the inputs of its workflows yet"
         )));
     };
+    if form {
+        let outputs = driver.outputs()?;
+        let form = Form::new(
+            Description {
+                language,
+                inputs: Some(inputs),
+                outputs,
+            },
+            Policy::Relaxed,
+        )
+        .map_err(|error| failure(format!("iunctus: {error}")))?;
+        return print(&form.json(), None);
+    }
     print(&inputs.schema, text.then_some(input_schema::text))
 }
 

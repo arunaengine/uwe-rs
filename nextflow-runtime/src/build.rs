@@ -366,6 +366,14 @@ impl Host for Builder<'_> {
             .map(|_| self.network.channel(singleton))
             .collect();
         let node = ProcessNode {
+            conda_enabled: self
+                .config
+                .get(&["conda", "enabled"])
+                .is_some_and(|v| v.truth()),
+            spack_enabled: self
+                .config
+                .get(&["spack", "enabled"])
+                .is_some_and(|v| v.truth()),
             module: module.clone(),
             process: process.clone(),
             name: name.into(),

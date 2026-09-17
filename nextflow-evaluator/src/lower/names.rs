@@ -93,7 +93,7 @@ pub(super) const OPERATORS: &[&str] = &[
 ];
 
 /// Process directives (`ProcessDsl.DirectiveDsl`).
-pub(super) const DIRECTIVES: &[&str] = &[
+pub const DIRECTIVES: &[&str] = &[
     "accelerator",
     "afterScript",
     "arch",

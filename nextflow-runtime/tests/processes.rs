@@ -86,6 +86,16 @@ fn unsupported_active_directives_fail_before_a_task_is_requested() {
         ("afterScript", "'touch done'"),
         ("fair", "true"),
         ("maxErrors", "2"),
+        ("storeDir", "'stored'"),
+        ("maxForks", "2"),
+        ("containerOptions", "'--privileged'"),
+        ("clusterOptions", "'--exclusive'"),
+        ("queue", "'batch'"),
+        ("module", "'samtools'"),
+        ("arch", "'arm64'"),
+        ("stageOutMode", "'move'"),
+        ("secret", "'TOKEN'"),
+        ("executor", "'slurm'"),
     ] {
         let source =
             format!("process P {{\n {name} {value}\n script:\n 'true'\n}}\nworkflow {{ P() }}");
@@ -109,9 +119,42 @@ fn unsupported_active_directives_fail_before_a_task_is_requested() {
 
 #[test]
 fn inactive_directives_preserve_task_execution() {
-    let source = "process P {\n beforeScript ''\n afterScript ''\n fair false\n maxErrors(-1)\n script:\n 'true'\n}\nworkflow { P() }";
+    let source = "process P {\n beforeScript ''\n afterScript ''\n fair false\n maxErrors(-1)\n storeDir ''\n maxForks null\n containerOptions ''\n clusterOptions ''\n queue ''\n module []\n arch null\n stageOutMode 'copy'\n secret []\n executor null\n script:\n 'true'\n}\nworkflow { P() }";
     let (tasks, _) = run(source, &Options::default()).expect("inactive directives");
     assert_eq!(tasks.len(), 1);
+}
+
+#[test]
+fn inactive_config_directives_preserve_task_execution() {
+    let source = "process P {\n script:\n 'true'\n}\nworkflow { P() }";
+    let options = Options {
+        config: config(
+            "process {\n storeDir = ''\n maxForks = null\n containerOptions = ''\n clusterOptions = ''\n queue = ''\n module = []\n arch = null\n stageOutMode = 'copy'\n secret = []\n executor = null\n}\n",
+        ),
+        ..Options::default()
+    };
+    let (tasks, _) = run(source, &options).expect("inactive config directives");
+    assert_eq!(tasks.len(), 1);
+}
+
+#[test]
+fn environment_directives_are_refused_only_when_enabled() {
+    for name in ["conda", "spack"] {
+        let source = format!(
+            "process P {{\n {name} 'environment.yml'\n script:\n 'true'\n}}\nworkflow {{ P() }}"
+        );
+        let (tasks, _) = run(&source, &Options::default()).expect("disabled environment");
+        assert_eq!(tasks.len(), 1);
+        let options = Options {
+            config: config(&format!("{name}.enabled = true")),
+            ..Options::default()
+        };
+        let error = run(&source, &options).expect_err("unsupported environment");
+        assert!(
+            error.contains(&format!("process directive `{name}`")),
+            "{error}"
+        );
+    }
 }
 
 #[test]

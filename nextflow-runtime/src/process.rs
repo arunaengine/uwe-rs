@@ -22,6 +22,54 @@ use crate::network::{Behaviour, Context, State};
 use crate::publish;
 use crate::strategy::{self, Strategy};
 
+const HANDLED_DIRECTIVES: &[&str] = &[
+    "accelerator",
+    "cache",
+    "container",
+    "cpus",
+    "disk",
+    "errorStrategy",
+    "ext",
+    "label",
+    "maxRetries",
+    "memory",
+    "publishDir",
+    "resourceLimits",
+    "shell",
+    "stageInMode",
+    "tag",
+    "time",
+];
+
+const REFUSED_DIRECTIVES: &[&str] = &[
+    "afterScript",
+    "arch",
+    "array",
+    "beforeScript",
+    "clusterOptions",
+    "conda",
+    "containerOptions",
+    "debug",
+    "echo",
+    "executor",
+    "fair",
+    "hints",
+    "machineType",
+    "maxErrors",
+    "maxForks",
+    "maxSubmitAwait",
+    "module",
+    "penv",
+    "pod",
+    "queue",
+    "resourceLabels",
+    "scratch",
+    "secret",
+    "spack",
+    "stageOutMode",
+    "storeDir",
+];
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TaskId(pub u64);
 
@@ -80,6 +128,8 @@ pub(crate) struct ProcessNode {
     pub exec_folder: Option<Rc<Path>>,
     /// The config settings of this call of the process.
     pub settings: Rc<ProcessSettings>,
+    pub conda_enabled: bool,
+    pub spack_enabled: bool,
     pub rounds: u32,
     /// The number of tasks started, which gives each task its index.
     pub tasks: u32,
@@ -310,10 +360,15 @@ impl ProcessNode {
         }
         for directive in &directives {
             let active = match (directive.name.as_ref(), directive.arguments.as_slice()) {
-                ("beforeScript" | "afterScript" | "fair", [value]) => value.truth(),
                 ("maxErrors", [value]) => !unlimited_errors(value),
                 ("maxErrors", _) => true,
-                _ => false,
+                ("conda", _) if !self.conda_enabled => false,
+                ("spack", _) if !self.spack_enabled => false,
+                ("stageOutMode", [Value::String(mode)]) if &**mode == "copy" => false,
+                (name, _) if REFUSED_DIRECTIVES.contains(&name) => {
+                    directive.arguments.iter().any(Value::truth)
+                }
+                (name, _) => !HANDLED_DIRECTIVES.contains(&name) && name != "cacheable",
             };
             if active {
                 return Err(Error::Unsupported {
@@ -884,5 +939,18 @@ fn thrown(exception: Exception) -> Error {
     Error::Thrown {
         exception: Rc::new(exception),
         span: Default::default(),
+    }
+}
+
+#[cfg(test)]
+mod directive_tests {
+    #[test]
+    fn every_lowered_directive_is_handled_or_refused() {
+        let mut runtime = super::HANDLED_DIRECTIVES.to_vec();
+        runtime.extend_from_slice(super::REFUSED_DIRECTIVES);
+        runtime.sort_unstable();
+        let mut lowered = nextflow_evaluator::lower::PROCESS_DIRECTIVES.to_vec();
+        lowered.sort_unstable();
+        assert_eq!(runtime, lowered);
     }
 }

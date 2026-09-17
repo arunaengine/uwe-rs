@@ -130,6 +130,7 @@ pub enum Resume {
 /// Reads the options after the command name.
 pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
     let mut parsed = Arguments::default();
+    let mut parameter_options = Vec::new();
     let mut index = 0;
     while index < arguments.len() {
         let argument = &arguments[index];
@@ -293,6 +294,7 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
                 }
             }
             param if param.starts_with("--") => {
+                parameter_options.push(param.split('=').next().unwrap_or(param).to_owned());
                 let (name, text) = match param[2..].split_once('=') {
                     Some((name, text)) => (name.to_owned(), text.to_owned()),
                     None => {
@@ -315,11 +317,76 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
                 None => parsed.target = Some(PathBuf::from(other)),
                 Some(_) => parsed.targets.push(other.to_owned()),
             },
-            other => return Err(format!("unknown option `{other}`")),
+            other => {
+                return Err(engine_option(other, None)
+                    .map(|help| format!("engine option `{other}` is unsupported; {help}"))
+                    .unwrap_or_else(|| format!("unknown option `{other}`")));
+            }
         }
+    }
+    let language = parsed.language.or_else(|| {
+        parsed.target.as_deref().and_then(|target| {
+            if matches!(
+                target.file_name().and_then(|name| name.to_str()),
+                Some("Snakefile" | "snakefile")
+            ) || target
+                .extension()
+                .is_some_and(|extension| extension == "smk")
+            {
+                Some(Language::Snakemake)
+            } else {
+                crate::detect::language(target).ok()
+            }
+        })
+    });
+    for option in parameter_options {
+        if let Some(help) = engine_option(&option, language) {
+            return Err(format!("engine option `{option}` is unsupported; {help}"));
+        }
+    }
+    if language == Some(Language::Snakemake) && parsed.profiles.is_some() {
+        return Err(
+            "Snakemake profiles are unsupported; use `-iunctus-config file` for executor settings"
+                .into(),
+        );
     }
     take_job_file(&mut parsed);
     Ok(parsed)
+}
+
+fn engine_option(option: &str, language: Option<Language>) -> Option<&'static str> {
+    Some(match option {
+        "-work-dir" | "-w" => "set `[cache] folder` in the iunctus config file",
+        "-with-docker" | "-with-podman" | "-with-singularity" | "-with-apptainer" => {
+            "use `-executor local` and `-default-image image`, or `-executor slurm -slurm-container name`"
+        }
+        "-bg" => "run iunctus in the foreground or use your service manager",
+        "-with-report" => "use `-report file`",
+        "-with-dag" => "use `-graph file`",
+        "-with-trace" | "-with-timeline" => "use `-report file` or `iunctus telemetry`",
+        "-j" | "-n" => {
+            "use `-max-pending n` for concurrency or `-executor simulator` for a dry run"
+        }
+        _ if language == Some(Language::Snakemake) => match option {
+            "--cores" | "--jobs" => {
+                "use `-max-pending n` for concurrency and `[executor.local] cpus` for the CPU pool"
+            }
+            "--use-conda" => {
+                "configure `[conda]` in the iunctus config file; Conda preparation is container-only"
+            }
+            "--use-singularity" | "--use-apptainer" => {
+                "use `-executor slurm -slurm-container apptainer`"
+            }
+            "--dry-run" => "use `-executor simulator`",
+            "--profile" | "--workflow-profile" => {
+                "use `-iunctus-config file`; Snakemake profiles are unsupported"
+            }
+            "--directory" => "launch iunctus from the desired working directory",
+            "--snakefile" => "give the Snakefile as the workflow argument",
+            _ => return None,
+        },
+        _ => return None,
+    })
 }
 
 /// Takes a job file after a CWL document as its inputs, as cwltool does in
@@ -421,6 +488,34 @@ mod tests {
     fn parse_all(arguments: &[&str]) -> Arguments {
         let arguments: Vec<String> = arguments.iter().map(|text| text.to_string()).collect();
         parse(&arguments).expect("valid options")
+    }
+
+    #[test]
+    fn engine_flags_are_not_workflow_parameters() {
+        for flag in [
+            "--cores",
+            "--use-conda",
+            "--use-singularity",
+            "--dry-run",
+            "--profile",
+            "-j",
+            "-n",
+        ] {
+            let words = ["Snakefile".to_owned(), flag.to_owned(), "8".to_owned()];
+            assert!(parse(&words).unwrap_err().contains("unsupported;"), "{flag}");
+        }
+        for flag in ["-work-dir", "-w", "-with-docker", "-bg", "-with-report"] {
+            let words = ["main.nf".to_owned(), flag.to_owned()];
+            assert!(parse(&words).unwrap_err().contains("unsupported"), "{flag}");
+        }
+        assert_eq!(
+            parse_all(&["main.nf", "--cores", "8"]).params,
+            [("cores".into(), "8".into())]
+        );
+        assert_eq!(
+            parse_all(&["Snakefile", "--config", "cores=8"]).params,
+            [("cores".into(), "8".into())]
+        );
     }
 
     #[test]

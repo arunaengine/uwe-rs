@@ -530,6 +530,5 @@ fn set_globals(interpreter: &mut Interpreter, options: &Options, workflow: &Valu
     ] {
         interpreter.set_global(name, workflow::property(workflow, property));
     }
-    // Secrets are not supported; reading one gives `null`, as a missing secret does.
-    interpreter.set_global("secrets", Value::map([]));
+    interpreter.set_global("secrets", Value::Namespace("secrets".into()));
 }

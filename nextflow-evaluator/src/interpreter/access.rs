@@ -22,6 +22,9 @@ impl Interpreter<'_> {
         span: Span,
     ) -> Result<Value, Error> {
         Ok(match object {
+            Value::Namespace(namespace) if &**namespace == "secrets" => {
+                return Err(unsupported(format!("reading `secrets.{name}`"), span));
+            }
             Value::Null => {
                 let message = format!("Cannot get property '{name}' on null object");
                 return Err(thrown(
@@ -217,6 +220,9 @@ impl Interpreter<'_> {
             }
         };
         Ok(match (object, index) {
+            (Value::Namespace(namespace), key) if &**namespace == "secrets" => {
+                return Err(unsupported(format!("reading `secrets[{key}]`"), span));
+            }
             (Value::Path(path), Value::Number(position)) => {
                 let items = super::library::path_items(path);
                 let position = position.to_i64();

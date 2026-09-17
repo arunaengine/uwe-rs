@@ -50,6 +50,36 @@ fn run(directory: &Path, launch: Launch) -> ExecutionGraph {
 }
 
 #[test]
+fn secret_reads_in_workflows_processes_and_config_are_unsupported() {
+    for read in [
+        "secrets.TOKEN",
+        "secrets['TOKEN']",
+        "secrets.getProperty('TOKEN')",
+    ] {
+        for (script, config) in [
+            (format!("workflow {{ println {read} }}"), String::new()),
+            (
+                format!("process P {{\n script:\n \"echo ${{{read}}}\"\n}}\nworkflow {{ P() }}"),
+                String::new(),
+            ),
+            ("workflow {}".into(), format!("params.token = {read}")),
+        ] {
+            let directory = tempfile::tempdir().expect("a temporary directory");
+            std::fs::write(directory.path().join("main.nf"), script).unwrap();
+            std::fs::write(directory.path().join("nextflow.config"), config).unwrap();
+            let mut driver = nextflow_runtime::driver(&Launch {
+                target: directory.path().to_owned(),
+                ..Launch::default()
+            })
+            .expect("a driver");
+            let error = driver.start().expect_err("secret read");
+            assert!(error.unsupported, "{error}");
+            assert!(error.to_string().contains("secrets"), "{error}");
+        }
+    }
+}
+
+#[test]
 fn tasks_and_their_files_make_the_graph() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), PIPELINE).expect("writes the script");

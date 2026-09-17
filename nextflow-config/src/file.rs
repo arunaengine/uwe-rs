@@ -577,7 +577,7 @@ impl<'a> Evaluator<'a> {
         interpreter.set_global("projectDir", project.clone());
         interpreter.set_global("baseDir", project);
         interpreter.set_global("launchDir", directory(&self.options.launch_dir));
-        interpreter.set_global("secrets", tree::map());
+        interpreter.set_global("secrets", Value::Namespace("secrets".into()));
         interpreter
             .evaluate(&Rc::new(code), &file.module)
             .map_err(|error| ConfigError::Failed {

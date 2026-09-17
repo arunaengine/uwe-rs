@@ -47,6 +47,19 @@ fn load_text(text: &str) -> Result<Config, ConfigError> {
 }
 
 #[test]
+fn secret_reads_are_unsupported() {
+    for read in [
+        "secrets.TOKEN",
+        "secrets['TOKEN']",
+        "secrets.getProperty('TOKEN')",
+    ] {
+        let error = load_text(&format!("params.token = {read}\n")).expect_err("secret read");
+        assert!(error.unsupported(), "{error}");
+        assert!(error.to_string().contains("secrets"), "{error}");
+    }
+}
+
+#[test]
 fn assignments_blocks_and_selectors() {
     let text = "process {\n    cpus = 2\n    withName: 'FOO' { memory = 1.GB }\n}\n\
                 params.a.b = 1\nprocess.cpus = 4\n";

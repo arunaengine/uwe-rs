@@ -92,3 +92,150 @@ fn an_environment_file_gets_its_lock_from_the_repodata_in_the_cache() {
     let (code, _, error) = lock(root, &[]);
     assert_eq!(code, 2, "{error}");
 }
+
+fn configuration(
+    root: &Path,
+    base: &str,
+    capabilities: &Path,
+    repodata: &Path,
+    packages: &Path,
+) -> std::path::PathBuf {
+    let file = root.join("conda.toml");
+    let quote = |path: &Path| serde_json::to_string(path.to_str().unwrap()).unwrap();
+    std::fs::write(&file, format!(
+        "[conda]\nbase = {base:?}\nplatform = \"linux/amd64\"\ninstaller = \"micromamba\"\noffline = true\ncapabilities = {}\nrepodata = {}\npackages = {}\n",
+        quote(capabilities), quote(repodata), quote(packages),
+    )).unwrap();
+    file
+}
+
+#[test]
+fn conda_configuration_rejects_online_installers_and_unbound_capabilities() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let base = format!("mamba@sha256:{}", "a".repeat(64));
+    let capabilities = root.join("target.json");
+    std::fs::write(
+        &capabilities,
+        serde_json::json!({"base":base,"platform":"linux/amd64","virtual_packages":[]}).to_string(),
+    )
+    .unwrap();
+    let config = configuration(
+        root,
+        &base,
+        &capabilities,
+        &root.join("repodata"),
+        &root.join("packages"),
+    );
+    let original = std::fs::read_to_string(&config).unwrap();
+    std::fs::write(root.join("main.nf"), "workflow {}\n").unwrap();
+    for (from, to, expected) in [
+        ("offline = true", "offline = false", "online preparation"),
+        (
+            "installer = \"micromamba\"",
+            "installer = \"conda\"",
+            "inside the pinned base",
+        ),
+        (
+            "platform = \"linux/amd64\"",
+            "platform = \"linux/arm64\"",
+            "exactly this base and platform",
+        ),
+        ("[conda]", "[conda]\nunknown = true", "unknown"),
+    ] {
+        std::fs::write(&config, original.replace(from, to)).unwrap();
+        let output = common::command()
+            .args(["graph", "main.nf", "-iunctus-config"])
+            .arg(&config)
+            .current_dir(root)
+            .env("XDG_CACHE_HOME", root.join("cache"))
+            .output()
+            .unwrap();
+        let error = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(3), "{error}");
+        assert!(error.contains(expected), "{error}");
+    }
+}
+
+#[test]
+#[ignore = "requires Docker/Podman, the pinned micromamba base, and IUNCTUS_CONDA_TEST_FIXTURE with target.json, repodata and SHA-256 packages"]
+fn real_conda_rule_reuses_its_image_after_package_cache_eviction() {
+    let fixture = std::path::PathBuf::from(
+        std::env::var_os("IUNCTUS_CONDA_TEST_FIXTURE").expect("explicit offline fixture"),
+    );
+    let target = fixture.join("target.json");
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&target).unwrap()).unwrap();
+    let base = metadata["base"].as_str().unwrap();
+    assert_eq!(metadata["platform"], "linux/amd64");
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let packages = root.join("packages");
+    std::fs::create_dir(&packages).unwrap();
+    let digest = "b928c30ddcb0e3f544c6eade8352737e6e610e263276b90232db6a578ef899d8";
+    std::fs::copy(fixture.join("packages").join(digest), packages.join(digest)).unwrap();
+    let repodata = fixture.join("repodata");
+    let config = configuration(root, base, &target, &repodata, &packages);
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let environment = format!("dependencies:\n  - tzdata=2026c\n  - tzdata!=0.{nonce}\n");
+    let capabilities: Vec<conda_environment::VirtualPackage> =
+        serde_json::from_value(metadata["virtual_packages"].clone()).unwrap();
+    let mut parsed = conda_environment::Environment::parse(&environment).unwrap();
+    parsed.channels.push("conda-forge".into());
+    let lock = conda_environment::lock_with_virtual(&parsed, &repodata, "linux-64", &capabilities)
+        .unwrap();
+    let preparation =
+        conda_environment::ImagePreparation::new(&lock, base, "linux/amd64", &capabilities)
+            .unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let store = content_store::Store::local(&root.join("store")).unwrap();
+    let mut first = None;
+    for name in ["first", "second"] {
+        let work = root.join(name);
+        std::fs::create_dir(&work).unwrap();
+        std::fs::write(work.join("env.yaml"), &environment).unwrap();
+        std::fs::write(work.join("Snakefile"), "rule result:\n    output: 'timezone.txt'\n    conda: 'env.yaml'\n    shell: \"test -s /opt/iunctus/share/zoneinfo/UTC && printf timezone-ready > {output}\"\n").unwrap();
+        let output = common::command()
+            .args([
+                "run",
+                "Snakefile",
+                "-executor",
+                "local",
+                "-no-cache",
+                "-no-network",
+                "-iunctus-config",
+            ])
+            .arg(&config)
+            .arg("-store")
+            .arg(root.join("store"))
+            .current_dir(&work)
+            .env("XDG_CACHE_HOME", root.join("cache"))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            std::fs::read_to_string(work.join("timezone.txt")).unwrap(),
+            "timezone-ready"
+        );
+        let cache = conda_environment::ImageCache::new(store.clone());
+        let found = runtime
+            .block_on(cache.lookup(&preparation))
+            .unwrap()
+            .unwrap();
+        match &first {
+            None => {
+                first = Some(found.receipt().clone());
+                std::fs::remove_dir_all(&packages).unwrap();
+            }
+            Some(first) => assert_eq!(first, found.receipt()),
+        }
+    }
+}

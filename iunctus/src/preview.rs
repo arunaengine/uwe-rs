@@ -56,14 +56,35 @@ impl Previewed {
             return None;
         }
         let image = task.image.as_ref().or(self.default_image.as_ref())?;
-        let pinned = match image.contains("@sha256:") {
-            true => image.clone(),
-            false => self.pins.get(image)?.clone(),
-        };
+        let pinned = preview_image(image, &self.pins)?;
         let runtime = workflow_graph::runtime().ok()?;
         // A store that cannot be read only makes the preview simulate the task.
         let found = runtime.block_on(self.lookup.find(task, Some(pinned)));
         found.ok().flatten()
+    }
+}
+
+fn preview_image(image: &str, pins: &HashMap<String, String>) -> Option<String> {
+    if image.starts_with("conda-env:") {
+        return None;
+    }
+    match image.contains("@sha256:") {
+        true => Some(image.to_owned()),
+        false => pins.get(image).cloned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn conda_markers_ignore_historical_pins() {
+        let marker = "conda-env:/workflow/environment.yaml";
+        let pinned = format!("sha256:{}", "a".repeat(64));
+        let pins = [(marker.into(), pinned)].into();
+
+        assert_eq!(preview_image(marker, &pins), None);
     }
 }
 

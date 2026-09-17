@@ -209,7 +209,7 @@ async fn copy_out(store: &Store, source: &Source, target: &Path) -> Result<(), F
 fn images(database: &Database, run: &Run) -> Result<HashMap<String, String>, Failure> {
     let images = database.images(&run.id).map_err(broken)?;
     Ok((images.into_iter())
-        .filter(|image| image.pinned())
+        .filter(|image| image.named.starts_with("conda-env:") || image.pinned())
         .map(|image| (image.named, image.ran))
         .collect())
 }
@@ -293,6 +293,8 @@ fn compared(run: &Run, repeat: &str, differences: &[run_database::StepDifference
 #[cfg(test)]
 mod tests {
     use super::*;
+    use run_database::RunStart;
+    use workflow_graph::{Language, Outcome, Task, TaskId};
 
     #[test]
     fn concurrent_restorations_keep_independent_sources() {
@@ -307,6 +309,63 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(first.join("main.nf")).expect("reads"),
             "original workflow"
+        );
+    }
+
+    #[test]
+    fn repeat_keeps_conda_markers_with_bare_local_ids() {
+        let root = tempfile::tempdir().expect("a folder");
+        let database_path = root.path().join("runs.sqlite");
+        let start = RunStart {
+            id: "original".into(),
+            resumes: None,
+            workflow: "/work/Snakefile".into(),
+            language: Language::Snakemake,
+            revision: None,
+            arguments: vec!["run".into()],
+            parameters: Vec::new(),
+            executor: "local".into(),
+            simulated: false,
+            store: Some("/store".into()),
+            program: None,
+            launch: Some("/work".into()),
+            workflow_folder: Some("/work".into()),
+            repeats: None,
+        };
+        let database = Database::open(&database_path).expect("opens");
+        let mut recorder = database.record(&start).expect("records");
+        let local = format!("sha256:{}", "a".repeat(64));
+        for (id, named, ran) in [
+            (1, "conda-env:/work/env.yaml", local.as_str()),
+            (2, "registry/image:latest", "registry/image:latest"),
+        ] {
+            let task = Task {
+                id: TaskId(id),
+                image: Some(named.into()),
+                command: vec!["true".into()],
+                ..Task::default()
+            };
+            recorder.requested(&task, &[]);
+            recorder.started(task.id, 1);
+            recorder.finished(
+                &Outcome {
+                    id: task.id,
+                    exit_code: 0,
+                    image: Some(ran.into()),
+                    accepted: Some(true),
+                    ..Outcome::default()
+                },
+                1,
+                false,
+            );
+        }
+        recorder.close().expect("closes");
+        let database = Database::open(&database_path).expect("opens again");
+        let run = database.run("original").expect("reads").expect("a run");
+
+        assert_eq!(
+            images(&database, &run).unwrap_or_else(|error| panic!("{}", error.message)),
+            [("conda-env:/work/env.yaml".into(), local),].into()
         );
     }
 }

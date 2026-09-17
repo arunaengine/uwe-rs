@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use content_store::Store;
+use content_store::{Holder, Store};
 use executor::{ContainerEngine, LocalContainer, Pool};
 use storage::Storage;
 use task_runner::{Runner, RunnerExecutor};
@@ -20,13 +20,21 @@ pub fn executor(
     default_image: Option<String>,
     storage: Storage,
     engine: &str,
-) -> Result<RunnerExecutor<LocalContainer>, String> {
+    conda: Option<crate::conda::Config>,
+) -> Result<RunnerExecutor<crate::conda_backend::Local>, String> {
     // The client of the engine runs on the runtime of the engine, which runs the attempts.
     let runtime = workflow_graph::runtime().map_err(|error| error.to_string())?;
     let named = Some(engine).filter(|name| !name.is_empty());
     let found = runtime.block_on(ContainerEngine::named(named));
     let engine = found.map_err(|error| error.to_string())?;
     let backend = LocalContainer::new(engine, scratch.to_owned(), Pool::of_this_machine());
+    let backend = crate::conda_backend::Local {
+        backend,
+        store: store.clone(),
+        config: conda,
+        holder: Holder::new(run, "Conda image preparation"),
+        preparing: std::sync::Arc::new(tokio::sync::Semaphore::new(1)),
+    };
     // Remote inputs share the folder of downloads with the files that workflow code reads.
     let runner = Runner::new(store, backend, run, crate::runner_settings(storage, false));
     Ok(RunnerExecutor::new(runner, default_image))

@@ -7,7 +7,7 @@ use std::os::unix::net::UnixListener;
 use std::time::Duration;
 
 use conda_environment::{FORMAT, ImagePreparation, Lock};
-use executor::conda::{BuildLimits, CondaImageError, build};
+use executor::conda::{BuildLimits, CondaImageError, build, require_base};
 use executor::{CancellationToken, ContainerEngine};
 use serde_json::{Value, json};
 
@@ -119,6 +119,50 @@ fn success() -> (String, String) {
         "/build?".into(),
         format!("{{\"aux\":{{\"ID\":\"sha256:{}\"}}}}\n", "b".repeat(64)),
     )
+}
+
+#[tokio::test]
+async fn base_inspection_requires_manifest_and_exact_platform_without_pull_or_build() {
+    for changed in [
+        "none",
+        "digest",
+        "missing digest",
+        "os",
+        "architecture",
+        "variant",
+    ] {
+        let folder = tempfile::tempdir().unwrap();
+        let preparation = preparation();
+        let mut image = inspected(&preparation);
+        image["RepoDigests"] = json!([format!(
+            "docker.io/library/micromamba@sha256:{}",
+            "a".repeat(64)
+        )]);
+        match changed {
+            "digest" => {
+                image["RepoDigests"] = json!([format!("micromamba@sha256:{}", "c".repeat(64))])
+            }
+            "missing digest" => image["RepoDigests"] = json!(null),
+            "os" => image["Os"] = json!("windows"),
+            "architecture" => image["Architecture"] = json!("arm64"),
+            "variant" => image["Variant"] = json!("v8"),
+            _ => {}
+        }
+        let (engine, server) =
+            fixture(folder.path(), vec![("/json".into(), image.to_string())]).await;
+        let result = require_base(&engine, &preparation).await;
+        if changed == "none" {
+            result.unwrap();
+        } else {
+            assert!(
+                matches!(result, Err(CondaImageError::Provenance(_))),
+                "{changed}"
+            );
+        }
+        let paths = server.join().unwrap();
+        assert_eq!(paths.len(), 3);
+        assert!(paths[2].contains("micromamba") && paths[2].contains(&"a".repeat(64)));
+    }
 }
 
 #[tokio::test]

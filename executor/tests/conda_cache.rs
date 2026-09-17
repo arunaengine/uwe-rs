@@ -12,7 +12,7 @@ use conda_environment::{
 };
 use content_store::{Holder, Store, layout};
 use executor::conda::{BuildLimits, CondaImageError, TransferLimits};
-use executor::conda_cache::{CacheLimits, ensure};
+use executor::conda_cache::{CacheLimits, ensure, ensure_with};
 use executor::{CancellationToken, ContainerEngine};
 use serde_json::json;
 use task_model::Digest;
@@ -131,6 +131,7 @@ async fn engine(
                 assert!(line.contains("org.iunctus.conda.preparation"));
             }
             let mut size = 0;
+            let mut chunked = false;
             loop {
                 line.clear();
                 assert_ne!(reader.read_line(&mut line).unwrap(), 0);
@@ -140,8 +141,24 @@ async fn engine(
                 if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
                     size = value.trim().parse().unwrap();
                 }
+                chunked |= line
+                    .to_ascii_lowercase()
+                    .contains("transfer-encoding: chunked");
             }
             reader.read_exact(&mut vec![0; size]).unwrap();
+            if chunked {
+                loop {
+                    line.clear();
+                    reader.read_line(&mut line).unwrap();
+                    let size = usize::from_str_radix(line.trim(), 16).unwrap();
+                    reader.read_exact(&mut vec![0; size]).unwrap();
+                    line.clear();
+                    reader.read_line(&mut line).unwrap();
+                    if size == 0 {
+                        break;
+                    }
+                }
+            }
             write!(stream, "HTTP/1.1 {status} Response\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
         }
     });
@@ -171,7 +188,7 @@ async fn deterministic_local_reuse_publishes_and_next_workflow_skips_build() {
     let store = Store::local(&folder.path().join("cache")).unwrap();
     let cancel = CancellationToken::new();
     for run in ["first", "second"] {
-        let image = ensure(
+        let image = ensure_with(
             &engine,
             &p,
             folder.path(),
@@ -179,6 +196,11 @@ async fn deterministic_local_reuse_publishes_and_next_workflow_skips_build() {
             &Holder::new(run, "test"),
             limits(),
             &cancel,
+            || async {
+                Err(CondaImageError::Provenance(
+                    "hot reuse called preparation".into(),
+                ))
+            },
         )
         .await
         .unwrap();
@@ -209,7 +231,8 @@ async fn cold_cache_builds_once_and_publishes_verified_archive() {
     )
     .await;
     let store = Store::local(&folder.path().join("cache")).unwrap();
-    let image = ensure(
+    let calls = std::cell::Cell::new(0);
+    let image = ensure_with(
         &engine,
         &p,
         folder.path(),
@@ -217,9 +240,14 @@ async fn cold_cache_builds_once_and_publishes_verified_archive() {
         &Holder::new("cold", "test"),
         limits(),
         &CancellationToken::new(),
+        || {
+            calls.set(calls.get() + 1);
+            async { Ok(()) }
+        },
     )
     .await
     .unwrap();
+    assert_eq!(calls.get(), 1);
     assert_eq!(
         ImageCache::new(store)
             .lookup(&p)
@@ -230,6 +258,149 @@ async fn cold_cache_builds_once_and_publishes_verified_archive() {
         &image
     );
     server.join().unwrap();
+}
+
+#[tokio::test]
+async fn a_shared_archive_restores_without_preparing_prerequisites() {
+    let folder = tempfile::tempdir().unwrap();
+    let p = preparation();
+    let store = Store::local(&folder.path().join("cache")).unwrap();
+    store.put_content(ARCHIVE.as_bytes().into()).await.unwrap();
+    store
+        .put_entry(
+            IMAGE_CACHE_NAMESPACE,
+            &p.digest().parse().unwrap(),
+            serde_json::to_vec(&receipt(&p)).unwrap().into(),
+        )
+        .await
+        .unwrap();
+    let (engine, server) = engine(
+        folder.path(),
+        vec![
+            (
+                "/json".into(),
+                404,
+                "{\"message\":\"missing local image\"}".into(),
+            ),
+            (
+                "/images/load".into(),
+                200,
+                "{\"stream\":\"loaded\"}\n".into(),
+            ),
+            inspect(&p),
+        ],
+    )
+    .await;
+    let image = ensure_with(
+        &engine,
+        &p,
+        &folder.path().join("absent packages"),
+        &store,
+        &Holder::new("restore", "test"),
+        limits(),
+        &CancellationToken::new(),
+        || async {
+            Err(CondaImageError::Provenance(
+                "archive reuse called preparation".into(),
+            ))
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(image, receipt(&p));
+    server.join().unwrap();
+}
+
+#[tokio::test]
+async fn cold_missing_denied_broken_or_wrong_platform_base_stops_before_build() {
+    for status in [404, 403, 500, 200] {
+        let folder = tempfile::tempdir().unwrap();
+        let p = preparation();
+        let store = Store::local(&folder.path().join("cache")).unwrap();
+        let body = if status == 200 {
+            json!({"RepoDigests": [p.base()], "Os": "linux", "Architecture": "arm64"}).to_string()
+        } else {
+            json!({"message": "base is unavailable"}).to_string()
+        };
+        let (engine, server) = engine(
+            folder.path(),
+            vec![images(&[]), ("/json".into(), status, body)],
+        )
+        .await;
+        let result = ensure_with(
+            &engine,
+            &p,
+            folder.path(),
+            &store,
+            &Holder::new("cold", "test"),
+            limits(),
+            &CancellationToken::new(),
+            || executor::conda::require_base(&engine, &p),
+        )
+        .await;
+        if status == 200 {
+            assert!(matches!(result, Err(CondaImageError::Provenance(_))));
+        } else {
+            assert!(matches!(result, Err(CondaImageError::Engine(
+                bollard::errors::Error::DockerResponseServerError { status_code, .. }
+            )) if status_code == status));
+        }
+        assert!(ImageCache::new(store).lookup(&p).await.unwrap().is_none());
+        server.join().unwrap();
+    }
+}
+
+#[tokio::test]
+async fn cold_preparation_obeys_total_timeout_cancellation_and_lease_ownership() {
+    for stop in ["timeout", "cancel", "lease"] {
+        let folder = tempfile::tempdir().unwrap();
+        let p = preparation();
+        let store = Store::local(&folder.path().join("cache")).unwrap();
+        let (engine, server) = engine(folder.path(), vec![images(&[])]).await;
+        let cancel = CancellationToken::new();
+        let called = std::cell::Cell::new(false);
+        let mut bounded = limits();
+        bounded.timeout = Duration::from_millis(250);
+        let result = ensure_with(
+            &engine,
+            &p,
+            folder.path(),
+            &store,
+            &Holder::new("cold", "test"),
+            bounded,
+            &cancel,
+            || {
+                called.set(true);
+                if stop == "cancel" {
+                    cancel.cancel();
+                }
+                if stop == "lease" {
+                    let key: Digest = p.digest().parse().unwrap();
+                    let location = layout::lease(&format!("conda-images/{}", key.hex())).unwrap();
+                    std::fs::remove_file(store.local_path(&location).unwrap()).unwrap();
+                }
+                async {
+                    if stop == "lease" {
+                        Ok(())
+                    } else {
+                        std::future::pending().await
+                    }
+                }
+            },
+        )
+        .await;
+        assert!(called.get());
+        match stop {
+            "timeout" => assert!(matches!(
+                result,
+                Err(CondaImageError::Limit("cache wall-clock"))
+            )),
+            "cancel" => assert!(matches!(result, Err(CondaImageError::Cancelled))),
+            _ => assert!(matches!(result, Err(CondaImageError::Store(_)))),
+        }
+        assert!(ImageCache::new(store).lookup(&p).await.unwrap().is_none());
+        server.join().unwrap();
+    }
 }
 
 #[tokio::test]

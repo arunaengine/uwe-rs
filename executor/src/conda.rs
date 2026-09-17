@@ -59,6 +59,52 @@ pub struct TransferLimits {
     pub timeout: Duration,
 }
 
+/// Requires the exact digest-selected base to be local, without pulling it. A Docker image
+/// ID is a configuration digest; RepoDigests supplies the requested manifest identity.
+/// Callers may impose a shorter deadline or cancellation by dropping this read-only future.
+pub async fn require_base(
+    engine: &ContainerEngine,
+    preparation: &ImagePreparation,
+) -> Result<(), CondaImageError> {
+    let image = tokio::time::timeout(
+        Duration::from_secs(30),
+        engine.client().inspect_image(preparation.base()),
+    )
+    .await
+    .map_err(|_| CondaImageError::Limit("base inspection wall-clock"))??;
+    let (_, digest) = preparation
+        .base()
+        .rsplit_once('@')
+        .ok_or_else(|| invalid("unpinned base"))?;
+    if !image.repo_digests.as_ref().is_some_and(|references| {
+        references.iter().any(|reference| {
+            reference
+                .rsplit_once('@')
+                .is_some_and(|(_, found)| found == digest)
+        })
+    }) {
+        return Err(CondaImageError::Provenance(
+            "base inspection does not contain the requested manifest digest".into(),
+        ));
+    }
+    let mut platform = format!(
+        "{}/{}",
+        image.os.unwrap_or_default(),
+        image.architecture.unwrap_or_default()
+    );
+    if let Some(variant) = image.variant.filter(|variant| !variant.is_empty()) {
+        platform.push('/');
+        platform.push_str(&variant);
+    }
+    if platform != preparation.platform() {
+        return Err(CondaImageError::Provenance(format!(
+            "base platform {platform} differs from {}",
+            preparation.platform()
+        )));
+    }
+    Ok(())
+}
+
 /// Saves an inspected image by its immutable ID. Only the archive digest is added; saving
 /// does not publish a registry manifest. Cancellation may leave unreferenced content bytes.
 pub async fn save(

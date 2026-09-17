@@ -873,8 +873,8 @@ fn dpath_get(interpreter: &mut Interpreter, within: &Value, path: &str) -> Resul
             if part == "*" || part.contains(['*', '?', '[']) {
                 glob = true;
                 let regex = fancy_regex::Regex::new(&format!(
-                    "^{}$",
-                    python_evaluator::modules::translate_regex(&fnmatch_regex(part))
+                    "^{}",
+                    python_evaluator::modules::glob_regex(part)
                 ))
                 .map_err(|error| Error::value_error(error.to_string()))?;
                 for (key, item) in interpreter.mapping_items(value).unwrap_or_default() {
@@ -913,18 +913,6 @@ fn dpath_get(interpreter: &mut Interpreter, within: &Value, path: &str) -> Resul
         0 => Err(lookup_error(&format!("Dpath {path} not found."))),
         _ => Ok(Value::list(current)),
     }
-}
-
-fn fnmatch_regex(pattern: &str) -> String {
-    let mut regex = String::new();
-    for c in pattern.chars() {
-        match c {
-            '*' => regex.push_str(".*"),
-            '?' => regex.push('.'),
-            other => regex.push_str(&fancy_regex::escape(&other.to_string())),
-        }
-    }
-    regex
 }
 
 /// `input`, `output`, `params` and `resources` used outside of rule bodies: attribute and

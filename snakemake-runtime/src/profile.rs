@@ -23,6 +23,7 @@ pub struct Profile {
     pub set_resources: Vec<(String, String, String)>,
     /// `set-threads:` as rule and value.
     pub set_threads: Vec<(String, String)>,
+    pub retries: Option<u32>,
 }
 
 /// The folder of the workflow profile, as Snakemake looks for it: `profiles/default` in the
@@ -145,6 +146,9 @@ impl Profile {
         if !other.set_threads.is_empty() {
             self.set_threads = other.set_threads;
         }
+        if other.retries.is_some() {
+            self.retries = other.retries;
+        }
     }
 
     /// Reads the settings of a profile folder.
@@ -162,7 +166,9 @@ impl Profile {
             .map_err(|error| Error::os_error(&error, &file.to_string_lossy()))?;
         let settings = load_yaml(&text)?;
         if !matches!(settings.plain(), Value::Dict(_)) {
-            return Ok(profile);
+            return Err(workflow_error(
+                "A profile must contain a mapping of settings",
+            ));
         }
         for (key, value) in interpreter.mapping_items(&settings)? {
             if value.is_none() {
@@ -185,6 +191,18 @@ impl Profile {
                     profile.default_resources = pairs(interpreter, &value)?
                 }
                 "set-threads" => profile.set_threads = pairs(interpreter, &value)?,
+                "retries" | "restart-times" => {
+                    profile.retries = Some(
+                        value
+                            .as_int()
+                            .and_then(|number| u32::try_from(number).ok())
+                            .ok_or_else(|| {
+                                workflow_error(
+                                    "Profile retries must be an integer >= 0 and <= 4294967295",
+                                )
+                            })?,
+                    );
+                }
                 "set-resources" => {
                     if let Value::Dict(_) = value.plain() {
                         for (rule, resources) in interpreter.mapping_items(&value)? {
@@ -206,7 +224,12 @@ impl Profile {
                         }
                     }
                 }
-                _ => {}
+                "quiet" | "printshellcmds" | "verbose" | "nocolor" | "show-failed-logs" => {}
+                key => {
+                    return Err(Error::unsupported(format!(
+                        "Snakemake profile setting '{key}'"
+                    )));
+                }
             }
         }
         Ok(profile)
@@ -225,7 +248,7 @@ mod tests {
         std::fs::write(profile_folder.join("extra.yaml"), "a: 1\n").expect("a config file");
         std::fs::write(
             profile_folder.join("config.yaml"),
-            "configfile: extra.yaml\nconfig:\n  n: '2'\ndefault-resources:\n  mem_mb: 500\nset-resources:\n  align:\n    runtime: 30\nset-threads:\n  align: 4\ncores: 3\n",
+            "configfile: extra.yaml\nconfig:\n  n: '2'\ndefault-resources:\n  mem_mb: 500\nset-resources:\n  align:\n    runtime: 30\nset-threads:\n  align: 4\nquiet: true\n",
         )
         .expect("the profile");
         let snakefile = folder.path().join("workflow/Snakefile");

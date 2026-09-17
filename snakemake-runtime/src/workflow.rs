@@ -1211,6 +1211,9 @@ impl Hook {
         }
         {
             let state = self.state.borrow();
+            if rule.retries.as_ref().is_none_or(Value::is_none) {
+                rule.retries = state.profile.retries.map(|count| Value::Int(count.into()));
+            }
             if rule.container.is_none()
                 && let Some(container) = &state.modifier().container
                 && !matches!(rule.action, Action::TemplateEngine(_))

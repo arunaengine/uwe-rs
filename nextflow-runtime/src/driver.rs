@@ -106,10 +106,10 @@ struct Loaded {
 
 impl Nextflow {
     pub fn new(launch: &Launch, settings: Settings) -> Result<Self, DriverError> {
-        if let Some(target) = launch.targets.first() {
-            return Err(DriverError::unsupported(format!(
-                "choosing the entry workflow or a target like `{target}` is not supported yet"
-            )));
+        if launch.targets.len() > 1 {
+            return Err(DriverError::new(
+                "Only one Nextflow workflow entry may be selected",
+            ));
         }
         Ok(Nextflow {
             launch: launch.clone(),
@@ -182,6 +182,7 @@ impl Nextflow {
         };
         let profiles = &self.launch.profiles;
         Options {
+            entry: self.launch.targets.first().cloned(),
             stub: self.launch.stub,
             simulated: self.launch.simulated,
             keep_going: self.launch.keep_going,

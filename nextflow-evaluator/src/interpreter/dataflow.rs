@@ -15,6 +15,26 @@ use crate::lowered::{Module, Place, Workflow};
 use crate::value::{ChannelOut, DefinitionRef, Value};
 
 impl Interpreter<'_> {
+    /// Runs the named workflow selected by `-entry`, including an imported workflow alias.
+    pub fn run_named_entry(&mut self, module: &Rc<Module>, name: &str) -> Result<(), Error> {
+        let (target, target_name) = resolve(module, name);
+        if !target
+            .workflows
+            .iter()
+            .any(|workflow| workflow.name.as_deref() == Some(&*target_name))
+        {
+            return Err(thrown(
+                Exception::new(
+                    "AbortOperationException",
+                    format!("Unknown workflow entry name: {name}"),
+                ),
+                Span::default(),
+            ));
+        }
+        self.call_definition(module, name, Vec::new(), Span::default())
+            .map(drop)
+    }
+
     /// Runs the entry workflow of a script, which builds the dataflow network. As in Nextflow,
     /// a script with named workflows only fails, and one without workflows and processes, like
     /// an empty script, does nothing.

@@ -27,6 +27,7 @@ const SECTIONS: &[&str] = &[
     "cache",
     "report",
     "conda",
+    "page",
 ];
 
 /// The executors that `-executor` and `default` of `[executor]` may name.

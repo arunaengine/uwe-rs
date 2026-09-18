@@ -12,6 +12,8 @@ use workflow_graph::{Language, Order};
 /// The options of a command.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Arguments {
+    pub help: bool,
+    pub version: bool,
     /// The workflow file or project directory.
     pub target: Option<PathBuf>,
     /// `-lang name`; else the language is found from the target.
@@ -129,12 +131,43 @@ pub enum Resume {
 
 /// Reads the options after the command name.
 pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
+    parse_for(None, arguments)
+}
+
+pub fn parse_command(command: &str, arguments: &[String]) -> Result<Arguments, String> {
+    if !COMMANDS.contains(&command) {
+        return Err(format!("unknown command `{command}`"));
+    }
+    parse_for(Some(command), arguments)
+}
+
+fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, String> {
     let mut parsed = Arguments::default();
     let mut parameter_options = Vec::new();
     let mut index = 0;
     while index < arguments.len() {
         let argument = &arguments[index];
         index += 1;
+        if let Some(command) = command {
+            let option = OPTIONS.iter().find(|(names, _)| {
+                names
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or_default()
+                    .split(',')
+                    .any(|name| name == argument)
+            });
+            let allowed = option
+                .map(|(_, commands)| *commands)
+                .or_else(|| argument.starts_with("--").then_some(WORKFLOW));
+            if let Some(allowed) = allowed
+                && !allowed.contains(&command)
+            {
+                return Err(format!(
+                    "option `{argument}` does not apply to `iunctus {command}`; use `iunctus {command} -help`"
+                ));
+            }
+        }
         let mut value = || {
             index += 1;
             arguments
@@ -143,6 +176,8 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
                 .ok_or(format!("the option `{argument}` needs a value"))
         };
         match argument.as_str() {
+            "-help" | "--help" => parsed.help = true,
+            "-version" | "--version" => parsed.version = true,
             "-stub" | "-stub-run" => parsed.stub = true,
             "-keep-going" => parsed.keep_going = true,
             "-store" => {
@@ -354,6 +389,181 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
     Ok(parsed)
 }
 
+pub const COMMANDS: &[&str] = &[
+    "run",
+    "graph",
+    "check",
+    "check-machine",
+    "config",
+    "runs",
+    "export",
+    "page",
+    "why",
+    "origin",
+    "inputs",
+    "outputs",
+    "clean",
+    "check-order",
+    "changes",
+    "repeat",
+    "lock-environment",
+    "time",
+    "compare",
+    "replay",
+    "telemetry",
+    "report",
+    "version",
+];
+const WORKFLOW: &[&str] = &[
+    "run",
+    "graph",
+    "check",
+    "config",
+    "inputs",
+    "outputs",
+    "check-order",
+];
+const EXECUTION: &[&str] = &["run", "graph", "check-order", "repeat", "replay"];
+const BACKEND: &[&str] = &[
+    "run",
+    "graph",
+    "check-order",
+    "repeat",
+    "replay",
+    "check-machine",
+];
+const OPTIONS: &[(&str, &[&str])] = &[
+    ("-help,--help", COMMANDS),
+    ("-version,--version", COMMANDS),
+    ("-iunctus-config <file>", COMMANDS),
+    (
+        "-database <file>",
+        &[
+            "run",
+            "graph",
+            "check-machine",
+            "runs",
+            "export",
+            "page",
+            "why",
+            "origin",
+            "clean",
+            "check-order",
+            "changes",
+            "repeat",
+            "time",
+            "compare",
+            "replay",
+            "telemetry",
+            "report",
+        ],
+    ),
+    ("-lang <nextflow|snakemake|cwl|argo>", WORKFLOW),
+    ("-profile <a,b>", WORKFLOW),
+    ("-c,-config,-configfile,--configfile <file>", WORKFLOW),
+    ("-inputs,-params-file <file>", WORKFLOW),
+    ("-entry <name>", WORKFLOW),
+    ("--config <name=value>", WORKFLOW),
+    ("-stub,-stub-run", &["run", "graph", "check", "check-order"]),
+    ("-keep-going", &["run", "graph", "check-order"]),
+    ("-executor <simulator|local|tes|slurm|kubernetes>", BACKEND),
+    (
+        "-store <folder|address>",
+        &[
+            "run",
+            "graph",
+            "check-machine",
+            "export",
+            "clean",
+            "check-order",
+            "repeat",
+            "replay",
+        ],
+    ),
+    ("-tes-server <address>", BACKEND),
+    (
+        "-slurm-container <apptainer|singularity|podman|docker>",
+        BACKEND,
+    ),
+    ("-slurm-options <options>", BACKEND),
+    ("-kubeconfig <file>", BACKEND),
+    ("-kubernetes-namespace <name>", BACKEND),
+    (
+        "-default-image <image>",
+        &["run", "graph", "check", "check-order", "repeat", "replay"],
+    ),
+    ("-python-image <image>", WORKFLOW),
+    ("-output-dir <folder>", WORKFLOW),
+    ("-graph <file>", &["run", "graph"]),
+    ("-report <file>", &["run"]),
+    (
+        "-format <format>",
+        &["graph", "inputs", "outputs", "time", "compare"],
+    ),
+    ("-check", &["inputs"]),
+    ("-view <tasks|steps>", &["run", "graph"]),
+    ("-direction <down|right>", &["run", "graph"]),
+    ("-fold <n>", &["run", "graph"]),
+    (
+        "-max-pending <n>",
+        &["run", "graph", "check-order", "repeat"],
+    ),
+    (
+        "-order <asked|reversed|finished|shuffled[:seed]>",
+        &["run", "graph", "repeat"],
+    ),
+    (
+        "-output <path>",
+        &["export", "lock-environment", "telemetry", "report"],
+    ),
+    ("-platform <name>", &["lock-environment"]),
+    ("-license <url>", &["export"]),
+    ("-resume [run]", &["run", "graph"]),
+    ("-page", &["run", "repeat"]),
+    ("-address <ip>", &["run", "repeat", "page"]),
+    ("-port <number>", &["run", "repeat", "page"]),
+    ("-keep-days <n>", &["clean"]),
+    ("-keep-run <run>", &["clean"]),
+    ("-keep-slower-than <time>", &["clean"]),
+    ("-remove", &["clean"]),
+    (
+        "-check-reproducibility <percent>",
+        &["run", "graph", "check-order", "repeat", "replay"],
+    ),
+    ("-no-cache", &["run", "graph", "check-order"]),
+    ("-no-network", EXECUTION),
+    (
+        "-no-right-sizing",
+        &["run", "graph", "check-order", "replay"],
+    ),
+    ("-no-grouping", &["run", "graph", "check-order", "replay"]),
+];
+
+pub fn help(command: &str) -> Result<String, String> {
+    if !COMMANDS.contains(&command) {
+        return Err(format!("unknown command `{command}`"));
+    }
+    let mut help = format!("usage: iunctus {command} [options]");
+    let target = match command {
+        "runs" | "clean" | "check-machine" | "version" => "",
+        "page" => " [run]",
+        "compare" => " <run> <run>",
+        "why" | "replay" => " <run> <task>",
+        "origin" => " <file>",
+        _ if WORKFLOW.contains(&command) => " <workflow> [targets] [--param value]",
+        "lock-environment" => " <environment.yml>",
+        _ => " <run>",
+    };
+    help.push_str(target);
+    help.push_str("\n\noptions:\n");
+    for (names, commands) in OPTIONS {
+        if commands.contains(&command) {
+            help.push_str(&format!("  {}\n", names.replace(',', " | ")));
+        }
+    }
+    Ok(help)
+}
+
 fn engine_option(option: &str, language: Option<Language>) -> Option<&'static str> {
     Some(match option {
         "-work-dir" | "-w" => "set `[cache] folder` in the iunctus config file",
@@ -502,7 +712,10 @@ mod tests {
             "-n",
         ] {
             let words = ["Snakefile".to_owned(), flag.to_owned(), "8".to_owned()];
-            assert!(parse(&words).unwrap_err().contains("unsupported;"), "{flag}");
+            assert!(
+                parse(&words).unwrap_err().contains("unsupported;"),
+                "{flag}"
+            );
         }
         for flag in ["-work-dir", "-w", "-with-docker", "-bg", "-with-report"] {
             let words = ["main.nf".to_owned(), flag.to_owned()];

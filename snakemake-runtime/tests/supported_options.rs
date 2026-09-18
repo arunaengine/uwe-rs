@@ -22,12 +22,14 @@ fn unsupported_rule_options_reject_enabled_values_and_preserve_disabled_values()
                 ..Launch::default()
             };
             let result = snakemake_runtime::driver(&launch).and_then(|mut driver| driver.start());
-            if matches!(value, "True" | "'minimal'") {
-                let error = result.expect_err("enabled option must fail").to_string();
-                assert!(
-                    error.contains(option) && error.contains("not supported"),
-                    "{error}"
-                );
+            let supported = (option == "shadow" && value == "'minimal'")
+                || (option == "cache" && value == "True");
+            if matches!(value, "True" | "'minimal'") && !supported {
+                let error = result.expect_err("unsupported option must fail");
+                assert!(error.message.contains(option), "{error}");
+                if option != "handover" {
+                    assert!(error.unsupported, "{error}");
+                }
             } else {
                 assert_eq!(result.expect("disabled option starts").len(), 1);
             }
@@ -76,5 +78,74 @@ fn empty_resource_scopes_preserve_default_scheduling() {
             .and_then(|mut driver| driver.start())
             .expect("empty scopes");
         assert_eq!(tasks.len(), 1);
+    }
+}
+
+#[test]
+fn minimal_shadow_stages_declared_files_without_extra_workflow_sources() {
+    for mode in ["'minimal'", "False"] {
+        let folder = tempfile::tempdir().expect("a folder");
+        std::fs::write(folder.path().join("data"), "input").expect("input data");
+        std::fs::write(folder.path().join("config.yaml"), "value: 1\n").expect("config");
+        std::fs::write(
+            folder.path().join("Snakefile"),
+            format!("configfile: 'config.yaml'\nrule make:\n    input: 'data'\n    output: 'result/out'\n    log: 'logs/make.log'\n    shadow: {mode}\n    cache: True\n    shell: 'cat {{input}} > {{output}}'\n"),
+        ).expect("Snakefile");
+        let launch = Launch {
+            target: folder.path().to_path_buf(),
+            scratch: folder.path().join("scratch"),
+            ..Launch::default()
+        };
+        let task = snakemake_runtime::driver(&launch)
+            .unwrap()
+            .start()
+            .unwrap()
+            .remove(0);
+        assert!(task.workdir.is_none());
+        assert!(task.inputs.iter().any(|input| input.path == "data"));
+        assert_eq!(
+            task.inputs.iter().any(|input| input.path == "config.yaml"),
+            mode == "False"
+        );
+        assert!(
+            task.inputs
+                .iter()
+                .any(|input| input.path == "result" && input.directory)
+        );
+        assert!(
+            task.inputs
+                .iter()
+                .any(|input| input.path == "logs" && input.directory)
+        );
+        assert_eq!(task.reuse, workflow_graph::Reuse::Allowed);
+    }
+}
+
+#[test]
+fn shadow_parent_paths_and_unsupported_modes_fail_before_task_publication() {
+    for directive in [
+        "shadow: 'shallow'",
+        "shadow: 'full'",
+        "shadow: 'copy-minimal'",
+        "shadow: True",
+        "cache: 'omit-software'",
+        "shadow: 'minimal'\n    output: '../out'",
+    ] {
+        let folder = tempfile::tempdir().expect("a folder");
+        std::fs::write(
+            folder.path().join("Snakefile"),
+            format!("rule make:\n    {directive}\n    shell: 'true'\n"),
+        )
+        .expect("Snakefile");
+        let launch = Launch {
+            target: folder.path().to_path_buf(),
+            scratch: folder.path().join("scratch"),
+            ..Launch::default()
+        };
+        let error = snakemake_runtime::driver(&launch)
+            .unwrap()
+            .start()
+            .expect_err("refused");
+        assert_eq!(error.unsupported, !directive.contains("../out"), "{error}");
     }
 }

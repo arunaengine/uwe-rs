@@ -78,10 +78,37 @@ fn main() -> ExitCode {
         eprintln!("{USAGE}");
         return ExitCode::from(failure::USAGE);
     };
-    let mut arguments = match arguments::parse(rest) {
+    if matches!(command.as_str(), "help" | "-help" | "--help") {
+        return exit(match rest {
+            [] => {
+                println!("{USAGE}");
+                Ok(())
+            }
+            [command] => arguments::help(command)
+                .map(|text| println!("{text}"))
+                .map_err(Failure::usage),
+            _ => Err(Failure::usage("use `iunctus help [command]`")),
+        });
+    }
+    if matches!(command.as_str(), "-version" | "--version" | "version") && rest.is_empty() {
+        println!("iunctus {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
+    }
+    let mut arguments = match arguments::parse_command(command, rest) {
         Ok(arguments) => arguments,
         Err(message) => return exit(Err(Failure::usage(format!("{message}; {HELP}")))),
     };
+    if arguments.help {
+        return exit(
+            arguments::help(command)
+                .map(|text| println!("{text}"))
+                .map_err(Failure::usage),
+        );
+    }
+    if arguments.version {
+        println!("iunctus {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
+    }
     if !matches!(command.as_str(), "help" | "-help" | "--help") {
         match setup::Defaults::load(&arguments) {
             Ok(defaults) => defaults.apply(command, &mut arguments),

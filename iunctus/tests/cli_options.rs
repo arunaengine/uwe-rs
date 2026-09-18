@@ -1,0 +1,42 @@
+//! Command-specific options, help and version output.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+mod common;
+
+#[test]
+fn commands_reject_options_from_other_commands() {
+    for words in [
+        ["runs", "-remove"],
+        ["clean", "-executor"],
+        ["page", "--sample"],
+    ] {
+        let output = common::command().args(words).output().unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("does not apply"));
+    }
+}
+
+#[test]
+fn help_and_version_do_not_load_configuration() {
+    for words in [vec!["run", "-help"], vec!["help", "run"]] {
+        let output = common::command()
+            .args(words)
+            .env("IUNCTUS_SITE_CONFIG", "/missing.toml")
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let help = String::from_utf8_lossy(&output.stdout);
+        assert!(help.contains("usage: iunctus run"));
+        assert!(help.contains("-executor"));
+        assert!(!help.contains("-remove"));
+    }
+    for flag in ["version", "-version", "--version"] {
+        let output = common::command().arg(flag).output().unwrap();
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            format!("iunctus {}\n", env!("CARGO_PKG_VERSION"))
+        );
+    }
+}

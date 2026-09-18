@@ -47,6 +47,14 @@ pub struct Executed {
     pub execution: Execution,
 }
 
+/// Settings shared by execution with and without an observer.
+pub struct ExecutionSettings {
+    pub options: RunOptions,
+    pub cancel: CancellationToken,
+    pub simulated: bool,
+    pub policy: Policy,
+}
+
 /// Why description or admission did not reach execution.
 #[derive(Debug)]
 pub enum ApplicationError {
@@ -56,11 +64,11 @@ pub enum ApplicationError {
     },
     AdvisorySchema {
         language: Language,
-        admission: Admission,
+        admission: Box<Admission>,
     },
     InvalidInputs {
         language: Language,
-        admission: Admission,
+        admission: Box<Admission>,
     },
 }
 
@@ -161,7 +169,7 @@ fn checked(
     if strict && advisory {
         return Err(ApplicationError::AdvisorySchema {
             language,
-            admission,
+            admission: Box::new(admission),
         });
     }
     let invalid = admission.validation.as_ref().is_some_and(|validation| {
@@ -173,7 +181,7 @@ fn checked(
     if invalid {
         return Err(ApplicationError::InvalidInputs {
             language,
-            admission,
+            admission: Box::new(admission),
         });
     }
     Ok(admission)
@@ -203,7 +211,16 @@ pub fn execute(
     policy: Policy,
 ) -> Result<Executed, ApplicationError> {
     run(
-        workflow, driver, executor, options, cancel, simulated, policy, None,
+        workflow,
+        driver,
+        executor,
+        ExecutionSettings {
+            options,
+            cancel,
+            simulated,
+            policy,
+        },
+        None,
     )
 }
 
@@ -212,34 +229,25 @@ pub fn execute_with(
     workflow: &str,
     driver: &mut dyn Driver,
     executor: &mut dyn Executor,
-    options: RunOptions,
-    cancel: CancellationToken,
-    simulated: bool,
-    policy: Policy,
+    settings: ExecutionSettings,
     observer: &mut dyn Observer,
 ) -> Result<Executed, ApplicationError> {
-    run(
-        workflow,
-        driver,
-        executor,
-        options,
-        cancel,
-        simulated,
-        policy,
-        Some(observer),
-    )
+    run(workflow, driver, executor, settings, Some(observer))
 }
 
 fn run(
     workflow: &str,
     driver: &mut dyn Driver,
     executor: &mut dyn Executor,
-    options: RunOptions,
-    cancel: CancellationToken,
-    simulated: bool,
-    policy: Policy,
+    settings: ExecutionSettings,
     observer: Option<&mut dyn Observer>,
 ) -> Result<Executed, ApplicationError> {
+    let ExecutionSettings {
+        options,
+        cancel,
+        simulated,
+        policy,
+    } = settings;
     let admission = admit(driver, simulated, policy)?;
     let engine = Engine::new(executor).options(options).cancel(cancel);
     let execution = match observer {

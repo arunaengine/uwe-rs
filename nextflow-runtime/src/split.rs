@@ -186,6 +186,7 @@ fn thrown(exception: Exception) -> Error {
 pub(crate) struct Subscribe {
     pub on_next: Option<Rc<Closure>>,
     pub on_complete: Option<Rc<Closure>>,
+    pub on_error: Option<Rc<Closure>>,
 }
 
 impl Behaviour for Subscribe {
@@ -193,8 +194,18 @@ impl Behaviour for Subscribe {
         while let Some(message) = context.read(0) {
             match message {
                 Message::Value(value) => {
-                    if let Some(closure) = &self.on_next {
-                        context.interpreter.call_closure(closure, vec![value])?;
+                    if let Some(closure) = &self.on_next
+                        && let Err(error) = context.interpreter.call_closure(closure, vec![value])
+                    {
+                        if let (Some(handler), Some(exception)) =
+                            (&self.on_error, error.exception())
+                        {
+                            context
+                                .interpreter
+                                .call_closure(handler, vec![Value::Exception(exception.clone())])?;
+                            return Ok(State::Stopped);
+                        }
+                        return Err(error);
                     }
                 }
                 Message::Stop => {

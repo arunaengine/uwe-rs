@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use content_store::{Holder, Store};
 use executor::conda::{BuildLimits, TransferLimits};
-use executor::conda_cache::{CacheLimits, ensure_with};
+use executor::conda_cache::{CacheContext, CacheLimits, ensure_with};
 use executor::{Backend, CancellationToken, ExecutorError, Finished, Job, LocalContainer};
 use tokio::sync::Semaphore;
 
@@ -78,8 +78,10 @@ impl Backend for Local {
                 engine,
                 &preparation,
                 &packages,
-                &self.store,
-                &self.holder,
+                CacheContext {
+                    store: &self.store,
+                    holder: &self.holder,
+                },
                 limits,
                 &cancel,
                 || executor::conda::require_base(engine, &preparation),

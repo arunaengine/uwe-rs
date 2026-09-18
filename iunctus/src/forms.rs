@@ -74,10 +74,10 @@ impl Form {
         match self.check(values) {
             Ok(admission) => response(admission, None),
             Err(ApplicationError::InvalidInputs { admission, .. }) => {
-                response(admission, Some("input.invalid"))
+                response(*admission, Some("input.invalid"))
             }
             Err(ApplicationError::AdvisorySchema { admission, .. }) => {
-                response(admission, Some("input.advisory_schema"))
+                response(*admission, Some("input.advisory_schema"))
             }
             Err(error) => json!({
                 "version": FORMAT,

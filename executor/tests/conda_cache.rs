@@ -12,7 +12,7 @@ use conda_environment::{
 };
 use content_store::{Holder, Store, layout};
 use executor::conda::{BuildLimits, CondaImageError, TransferLimits};
-use executor::conda_cache::{CacheLimits, ensure, ensure_with};
+use executor::conda_cache::{CacheContext, CacheLimits, ensure, ensure_with};
 use executor::{CancellationToken, ContainerEngine};
 use serde_json::json;
 use task_model::Digest;
@@ -192,8 +192,10 @@ async fn deterministic_local_reuse_publishes_and_next_workflow_skips_build() {
             &engine,
             &p,
             folder.path(),
-            &store,
-            &Holder::new(run, "test"),
+            CacheContext {
+                store: &store,
+                holder: &Holder::new(run, "test"),
+            },
             limits(),
             &cancel,
             || async {
@@ -236,8 +238,10 @@ async fn cold_cache_builds_once_and_publishes_verified_archive() {
         &engine,
         &p,
         folder.path(),
-        &store,
-        &Holder::new("cold", "test"),
+        CacheContext {
+            store: &store,
+            holder: &Holder::new("cold", "test"),
+        },
         limits(),
         &CancellationToken::new(),
         || {
@@ -295,8 +299,10 @@ async fn a_shared_archive_restores_without_preparing_prerequisites() {
         &engine,
         &p,
         &folder.path().join("absent packages"),
-        &store,
-        &Holder::new("restore", "test"),
+        CacheContext {
+            store: &store,
+            holder: &Holder::new("restore", "test"),
+        },
         limits(),
         &CancellationToken::new(),
         || async {
@@ -331,8 +337,10 @@ async fn cold_missing_denied_broken_or_wrong_platform_base_stops_before_build() 
             &engine,
             &p,
             folder.path(),
-            &store,
-            &Holder::new("cold", "test"),
+            CacheContext {
+                store: &store,
+                holder: &Holder::new("cold", "test"),
+            },
             limits(),
             &CancellationToken::new(),
             || executor::conda::require_base(&engine, &p),
@@ -365,8 +373,10 @@ async fn cold_preparation_obeys_total_timeout_cancellation_and_lease_ownership()
             &engine,
             &p,
             folder.path(),
-            &store,
-            &Holder::new("cold", "test"),
+            CacheContext {
+                store: &store,
+                holder: &Holder::new("cold", "test"),
+            },
             bounded,
             &cancel,
             || {

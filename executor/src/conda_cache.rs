@@ -25,6 +25,12 @@ pub struct CacheLimits {
     pub candidates: usize,
 }
 
+/// The shared cache store and the owner of a preparation attempt.
+pub struct CacheContext<'a> {
+    pub store: &'a Store,
+    pub holder: &'a Holder,
+}
+
 /// Reuses a verified cache winner or compatible local image before building. Receipts and
 /// archives use the deepest shared store. Lease checks surround work and publication but
 /// are not an atomic distributed fence; an interrupted publication may have succeeded.
@@ -41,8 +47,7 @@ pub async fn ensure(
         engine,
         preparation,
         package_cache,
-        store,
-        holder,
+        CacheContext { store, holder },
         limits,
         cancel,
         || async { Ok(()) },
@@ -57,8 +62,7 @@ pub async fn ensure_with<F, Fut>(
     engine: &ContainerEngine,
     preparation: &ImagePreparation,
     package_cache: &Path,
-    store: &Store,
-    holder: &Holder,
+    context: CacheContext<'_>,
     limits: CacheLimits,
     cancel: &CancellationToken,
     mut prepare: F,
@@ -67,6 +71,7 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<(), CondaImageError>>,
 {
+    let CacheContext { store, holder } = context;
     if limits.attempts == 0
         || limits.candidates == 0
         || limits.retry_delay.is_zero()

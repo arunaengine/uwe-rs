@@ -103,7 +103,7 @@ pub fn without_display(output: &str) -> String {
         if line.starts_with("executor >  ") {
             summary = true;
         }
-        if !summary && !line.starts_with(&header) {
+        if !summary && !line.starts_with(&header) && !line.starts_with("iunctus: simulated run ") {
             kept.push(line);
         }
         if line.starts_with("More: `iunctus runs`") {

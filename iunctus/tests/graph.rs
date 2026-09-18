@@ -111,7 +111,9 @@ fn runs_write_the_graph_and_tes_documents() {
     assert_eq!(code, 0, "{stderr}");
     assert_eq!(
         stdout,
-        "[simulated] GREET\n[simulated] SHOUT\nmade shout.txt\n"
+        "iunctus: simulated run selected; use `-executor local` to run tasks for real\n\
+         [simulated] GREET\n[simulated] SHOUT\nmade shout.txt\n\
+         iunctus: simulated run ended; use `-executor local` to run tasks for real\n"
     );
     let text = std::fs::read_to_string(directory.path().join("graph.json")).expect("the graph");
     let graph: ExecutionGraph = serde_json::from_str(&text).expect("the graph as JSON");

@@ -314,6 +314,7 @@ impl TesBackend {
         let mut deadline = None;
         let mut trouble: Option<tokio::time::Instant> = None;
         loop {
+            tracing::debug!(task = id, "polling TES task");
             let read = async {
                 tokio::time::sleep(pause).await;
                 self.client.status(id).await

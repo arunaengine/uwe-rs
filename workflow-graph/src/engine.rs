@@ -298,6 +298,7 @@ impl<'a> Engine<'a> {
                         retried,
                     });
                     if retried {
+                        tracing::debug!(task = %task.name, attempt, "retrying after a machine failure");
                         self.start(task, pending, attempts)?;
                         continue;
                     }

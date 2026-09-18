@@ -104,6 +104,7 @@ async fn send_requests(
     };
     let mut sent = Sent::default();
     for request in requests {
+        tracing::debug!(spans = request.spans().count(), "sending telemetry request");
         let body = serde_json::to_vec(request)?;
         let mut response = client
             .post(&address)

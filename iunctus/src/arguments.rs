@@ -14,6 +14,8 @@ use workflow_graph::{Language, Order};
 pub struct Arguments {
     pub help: bool,
     pub version: bool,
+    pub verbose: bool,
+    pub quiet: bool,
     /// The workflow file or project directory.
     pub target: Option<PathBuf>,
     /// `-lang name`; else the language is found from the target.
@@ -178,6 +180,8 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
         match argument.as_str() {
             "-help" | "--help" => parsed.help = true,
             "-version" | "--version" => parsed.version = true,
+            "-v" | "-verbose" => parsed.verbose = true,
+            "-quiet" => parsed.quiet = true,
             "-stub" | "-stub-run" => parsed.stub = true,
             "-keep-going" => parsed.keep_going = true,
             "-store" => {
@@ -435,6 +439,8 @@ const BACKEND: &[&str] = &[
 const OPTIONS: &[(&str, &[&str])] = &[
     ("-help,--help", COMMANDS),
     ("-version,--version", COMMANDS),
+    ("-v,-verbose", COMMANDS),
+    ("-quiet", COMMANDS),
     ("-iunctus-config <file>", COMMANDS),
     (
         "-database <file>",

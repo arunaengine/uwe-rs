@@ -42,8 +42,8 @@ pub fn after_run(arguments: &Arguments, run: &str) -> Option<PathBuf> {
     match written {
         Ok(_) => Some(std::path::absolute(file).unwrap_or_else(|_| file.clone())),
         Err(problem) => {
-            eprintln!(
-                "iunctus: warning: the report of the run was not written: {}",
+            tracing::warn!(
+                "iunctus: the report of the run was not written: {}",
                 problem.message.trim_start_matches("iunctus: ")
             );
             None

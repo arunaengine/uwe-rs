@@ -40,3 +40,30 @@ fn help_and_version_do_not_load_configuration() {
         );
     }
 }
+
+#[test]
+fn logging_respects_filters() {
+    let root = tempfile::tempdir().unwrap();
+    let output = common::command()
+        .args(["runs", "-verbose"])
+        .env("IUNCTUS_LOG", "invalid[")
+        .env("XDG_CACHE_HOME", root.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let output = common::command()
+        .args(["runs", "-quiet"])
+        .env("IUNCTUS_LOG", "invalid[")
+        .env("XDG_CACHE_HOME", root.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let output = common::command()
+        .arg("runs")
+        .env("IUNCTUS_LOG", "invalid[")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("invalid IUNCTUS_LOG"));
+    assert!(output.stdout.is_empty());
+}

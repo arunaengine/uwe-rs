@@ -27,6 +27,7 @@ mod inputs;
 mod insight;
 mod kubernetes;
 mod local;
+mod logging;
 mod machine;
 mod nextflow;
 mod order;
@@ -108,6 +109,9 @@ fn main() -> ExitCode {
     if arguments.version {
         println!("iunctus {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
+    }
+    if let Err(failure) = logging::init(&arguments) {
+        return exit(Err(failure));
     }
     if !matches!(command.as_str(), "help" | "-help" | "--help") {
         match setup::Defaults::load(&arguments) {
@@ -348,10 +352,10 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
     if let Some(store) = &kept
         && let Err(message) = runtime.block_on(sources::keep(store, &sources))
     {
-        eprintln!("iunctus: warning: the store does not keep the files of the workflow: {message}");
+        tracing::warn!("iunctus: the store does not keep the files of the workflow: {message}");
     }
     if let (true, Some(reason)) = (real, &sources.skipped) {
-        eprintln!("iunctus: note: the run records no files of its workflow, as {reason}");
+        tracing::info!("iunctus: the run records no files of its workflow, as {reason}");
     }
     let taken = resume::Taken::default();
     let mut executor = match reusable {
@@ -416,9 +420,7 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
     if let Some(store) = &kept
         && let Err(message) = runtime.block_on(fetched::keep(store, &read))
     {
-        eprintln!(
-            "iunctus: warning: the store does not keep the remote files of the run: {message}"
-        );
+        tracing::warn!("iunctus: the store does not keep the remote files of the run: {message}");
     }
     close(recorder);
     // A failed run leaves its error as the first line on standard error.
@@ -458,7 +460,7 @@ struct Ran {
 /// Ends the record of a run. A run goes on when the database fails; it only says so.
 fn close(recorder: Recorder) {
     if let Err(error) = recorder.close() {
-        eprintln!("iunctus: the run database did not record the whole run: {error}");
+        tracing::warn!("iunctus: the run database did not record the whole run: {error}");
     }
 }
 

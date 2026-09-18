@@ -88,11 +88,16 @@ where
         for _ in 0..limits.attempts {
             let cached = match cache.try_build(preparation, holder).await? {
                 ImageBuild::Busy => {
+                    tracing::debug!("Conda image cache is busy; waiting to retry");
                     tokio::time::sleep(limits.retry_delay).await;
                     continue;
                 }
-                ImageBuild::Ready(cached) => cached,
+                ImageBuild::Ready(cached) => {
+                    tracing::debug!("Conda image cache hit");
+                    cached
+                }
                 ImageBuild::Owner(claim) => {
+                    tracing::debug!("Conda image cache ownership acquired");
                     if let Some(cached) = cache.recheck(preparation, &claim).await? {
                         cached
                     } else {

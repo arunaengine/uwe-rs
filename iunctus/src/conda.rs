@@ -257,7 +257,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let lock = conda_environment::lock(&environment, &folder, &platform)
         .map_err(|error| locked(file, error))?;
     if !lock.pip.is_empty() {
-        eprintln!(
+        tracing::warn!(
             "iunctus: {}: the lock does not pin the {} packages of pip; pip installs them when \
              the image is built",
             file.display(),

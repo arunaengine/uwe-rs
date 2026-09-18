@@ -34,10 +34,12 @@ impl Host for Session<'_> {
     }
 
     fn operator_directory(&mut self) -> Result<PathValue, Error> {
-        if self.operator_directory.is_none() {
-            *self.operator_directory = Some(self.base.operator_directory()?);
+        if let Some(directory) = self.operator_directory.as_ref() {
+            return Ok(directory.clone());
         }
-        Ok(self.operator_directory.as_ref().unwrap().clone())
+        let directory = self.base.operator_directory()?;
+        *self.operator_directory = Some(directory.clone());
+        Ok(directory)
     }
 
     fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {

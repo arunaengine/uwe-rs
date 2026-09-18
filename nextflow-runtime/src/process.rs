@@ -404,7 +404,7 @@ impl ProcessNode {
         let interpreter = &mut *context.interpreter;
         let mut frame =
             interpreter.bind_task_as(&self.module, &self.process, &self.name, &values)?;
-        let ext = ext_map(&self.settings);
+        let ext = ext_map(&self.settings)?;
         let base = task_object(&self.name, index, attempt, None, &[], &ext);
         let directives = self.directives(interpreter, &mut frame, &base)?;
         let task = task_object(&self.name, index, attempt, None, &directives, &ext);
@@ -512,7 +512,7 @@ impl ProcessNode {
             ..
         } = flight;
         let interpreter = &mut *context.interpreter;
-        let ext = ext_map(&self.settings);
+        let ext = ext_map(&self.settings)?;
         let status = Some(outcome.exit_status);
         let base = task_object(&self.name, index, attempt, status, &[], &ext);
         let directives = self.directives(interpreter, &mut frame, &base)?;
@@ -651,7 +651,10 @@ impl ProcessNode {
                             "IllegalArityException",
                             format!(
                                 "Output arity `{}` expected by process `{task}`, but found {} file(s)",
-                                option(options, "arity").unwrap(),
+                                option(options, "arity").ok_or_else(|| thrown(Exception::new(
+                                    "IllegalStateException",
+                                    "Output arity disappeared during collection"
+                                )))?,
                                 files.len()
                             ),
                         )));
@@ -741,10 +744,13 @@ fn made_files(folder: &Path) -> std::io::Result<Vec<(String, PathValue)>> {
 
 /// The `task.ext` map of the config: selectors replace entries, plain settings add missing
 /// ones. Closures in it are called when a script reads them.
-fn ext_map(settings: &ProcessSettings) -> Value {
+fn ext_map(settings: &ProcessSettings) -> Result<Value, Error> {
     let ext = Value::map([]);
     let Value::Map(map) = &ext else {
-        unreachable!("a map")
+        return Err(thrown(Exception::new(
+            "IllegalStateException",
+            "Cannot create task.ext map",
+        )));
     };
     map.borrow_mut().kind = MapKind::Lazy;
     let selected = settings.selected.iter().map(|setting| (setting, true));
@@ -763,7 +769,7 @@ fn ext_map(settings: &ProcessSettings) -> Value {
             }
         }
     }
-    ext
+    Ok(ext)
 }
 
 /// The directive of a config setting for a task. A `tag` whose closure fails is left out, as

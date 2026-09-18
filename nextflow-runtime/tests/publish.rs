@@ -54,6 +54,66 @@ process {
 }
 "#;
 
+#[test]
+fn unsupported_publish_options_are_refused_in_processes_and_config() {
+    for (option, diagnostic) in [
+        ("mode: 'move'", "publish mode `move`"),
+        ("failOnError: false", "publishDir option `failOnError`"),
+        ("contentType: true", "publishDir option `contentType`"),
+        (
+            "contentType: 'text/plain'",
+            "publishDir option `contentType`",
+        ),
+        ("tags: [sample: 'a']", "publishDir option `tags`"),
+    ] {
+        for from_config in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let directive = if from_config {
+                String::new()
+            } else {
+                format!(" publishDir 'published', {option}\n")
+            };
+            let script = format!(
+                "process P {{\n{directive} output:\n path 'out.txt'\n script:\n 'touch out.txt'\n}}\nworkflow {{ P() }}"
+            );
+            std::fs::write(directory.path().join("main.nf"), script).unwrap();
+            if from_config {
+                std::fs::write(
+                    directory.path().join("nextflow.config"),
+                    format!("process.publishDir = [path: 'published', {option}]"),
+                )
+                .unwrap();
+            }
+            let mut driver = nextflow_runtime::driver(&Launch {
+                target: directory.path().to_owned(),
+                ..Launch::default()
+            })
+            .unwrap();
+            let error = driver.start().expect_err("unsupported publishing");
+            assert!(error.unsupported, "{error}");
+            assert!(error.to_string().contains(diagnostic), "{error}");
+        }
+    }
+}
+
+#[test]
+fn default_publish_options_and_disabled_rules_are_accepted() {
+    for options in [
+        "mode: 'copy', failOnError: true, contentType: false, tags: [:]",
+        "mode: 'copy', failOnError: null, contentType: null, tags: null",
+        "enabled: false, mode: 'move', failOnError: false, contentType: true, tags: [sample: 'a']",
+    ] {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("main.nf"), format!("process P {{\n publishDir 'published', {options}\n script:\n 'true'\n}}\nworkflow {{ P() }}")).unwrap();
+        let mut driver = nextflow_runtime::driver(&Launch {
+            target: directory.path().to_owned(),
+            ..Launch::default()
+        })
+        .unwrap();
+        assert_eq!(driver.start().expect("supported options").len(), 1);
+    }
+}
+
 /// Notes each delivery as its target relative to the launch directory and its mode.
 #[derive(Default)]
 struct Deliveries(Vec<(String, DeliveryMode)>, std::path::PathBuf);

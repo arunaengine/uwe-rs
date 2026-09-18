@@ -60,6 +60,18 @@ pub(crate) fn rules(
             if !enabled {
                 continue;
             }
+            for name in ["failOnError", "contentType", "tags"] {
+                let active = get(name).is_some_and(|value| match name {
+                    "failOnError" => !matches!(value, Value::Null) && !value.truth(),
+                    _ => value.truth(),
+                });
+                if active {
+                    return Err(Error::Unsupported {
+                        message: format!("publishDir option `{name}`"),
+                        span: Default::default(),
+                    });
+                }
+            }
             let target = interpreter.resolve_setting(frame, &target, task_object)?;
             let mode = match get("mode") {
                 Some(mode) => mode_of(&mode.to_string())?,
@@ -126,14 +138,20 @@ pub(crate) fn deliveries(
     Ok(deliveries)
 }
 
-/// How a mode of `publishDir` delivers. A move becomes a copy, since the store keeps the file,
-/// and a copy that does not follow links is a copy, since stored files are no links.
+/// How a mode of `publishDir` delivers. Stored files are not links, so `copyNoFollow` copies.
 pub(crate) fn mode_of(mode: &str) -> Result<DeliveryMode, Error> {
     Ok(match mode {
         "symlink" => DeliveryMode::Link,
         "rellink" => DeliveryMode::RelativeLink,
         "link" => DeliveryMode::HardLink,
-        "copy" | "copyNoFollow" | "move" => DeliveryMode::Copy,
+        "copy" | "copyNoFollow" => DeliveryMode::Copy,
+        "move" => {
+            return Err(Error::Unsupported {
+                message: "publish mode `move`: task outputs must remain in the content store"
+                    .into(),
+                span: Default::default(),
+            });
+        }
         other => return Err(thrown(&format!("Unknown publish mode: {other}"))),
     })
 }

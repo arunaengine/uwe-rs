@@ -35,6 +35,8 @@ pub struct Settings {
     pub address: IpAddr,
     /// The port; 0 lets the system choose a free one.
     pub port: u16,
+    /// The access token, required when listening beyond loopback.
+    pub token: Option<String>,
 }
 
 impl Settings {
@@ -43,12 +45,17 @@ impl Settings {
             database,
             address: IpAddr::V4(Ipv4Addr::LOCALHOST),
             port: 0,
+            token: None,
         }
     }
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum PageError {
+    #[error("a non-loopback web page requires an access token")]
+    TokenRequired,
+    #[error("the web page token must contain only letters, digits, hyphens or underscores")]
+    InvalidToken,
     #[error(transparent)]
     Database(#[from] DatabaseError),
     #[error("the web page cannot listen on {address}: {error}")]
@@ -72,6 +79,17 @@ impl Server {
     /// Opens the database and starts serving. The address is bound before this returns, so
     /// the page can be opened at once.
     pub fn start(settings: &Settings) -> Result<Server, PageError> {
+        if let Some(token) = &settings.token {
+            if token.is_empty()
+                || !token
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+            {
+                return Err(PageError::InvalidToken);
+            }
+        } else if !settings.address.is_loopback() {
+            return Err(PageError::TokenRequired);
+        }
         let database = Database::open(&settings.database)?;
         let address = SocketAddr::new(settings.address, settings.port);
         let listener =
@@ -88,6 +106,7 @@ impl Server {
         let state = Arc::new(State {
             database: Mutex::new(database),
             stop: CancellationToken::new(),
+            token: settings.token.clone(),
         });
         let (stop, stopped) = oneshot::channel();
         let thread = std::thread::Builder::new()
@@ -153,6 +172,7 @@ impl Server {
 pub(crate) struct State {
     database: Mutex<Database>,
     stop: CancellationToken,
+    token: Option<String>,
 }
 
 pub(crate) type Shared = Arc<State>;

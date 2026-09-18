@@ -6,9 +6,12 @@ use std::collections::{BTreeMap, HashMap};
 
 use axum::Json;
 use axum::Router;
+use axum::extract::Request;
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::http::header;
-use axum::response::IntoResponse;
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
 use run_database::{Database, DatabaseError, Log, MarkerRow, Run, TaskDetail, TaskRow};
 use serde::{Deserialize, Serialize};
@@ -50,7 +53,59 @@ pub(crate) fn router(state: Shared) -> Router {
             "/api/runs/{run}/tasks/{task}/{role}/{index}",
             get(files::file),
         )
+        .layer(middleware::from_fn_with_state(state.clone(), authenticate))
         .with_state(state)
+}
+
+async fn authenticate(State(state): State<Shared>, request: Request, next: Next) -> Response {
+    let Some(token) = &state.token else {
+        return next.run(request).await;
+    };
+    let matches = |candidate: &str| {
+        candidate.len() == token.len()
+            && candidate
+                .bytes()
+                .zip(token.bytes())
+                .fold(0_u8, |difference, (a, b)| difference | (a ^ b))
+                == 0
+    };
+    let bearer = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "));
+    let cookie = request
+        .headers()
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|cookies| {
+            cookies
+                .split(';')
+                .find_map(|cookie| cookie.trim().strip_prefix("iunctus_token="))
+        });
+    let query = Query::<HashMap<String, String>>::try_from_uri(request.uri()).ok();
+    let supplied = query.as_ref().and_then(|query| query.get("token"));
+    let mut response = if supplied.is_some_and(|candidate| matches(candidate)) {
+        let mut response = Redirect::to(request.uri().path()).into_response();
+        response.headers_mut().insert(
+            header::SET_COOKIE,
+            format!("iunctus_token={token}; HttpOnly; SameSite=Strict; Path=/")
+                .parse()
+                .expect("validated token"),
+        );
+        response
+    } else if bearer.is_some_and(matches) || cookie.is_some_and(matches) {
+        next.run(request).await
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
+    };
+    response
+        .headers_mut()
+        .insert(header::REFERRER_POLICY, "no-referrer".parse().unwrap());
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+    response
 }
 
 async fn runs(State(state): State<Shared>) -> Result<Json<serde_json::Value>, Failure> {

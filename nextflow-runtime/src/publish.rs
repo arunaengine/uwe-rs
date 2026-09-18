@@ -62,7 +62,10 @@ pub(crate) fn rules(
             }
             for name in ["failOnError", "contentType", "tags"] {
                 let active = get(name).is_some_and(|value| match name {
-                    "failOnError" => !matches!(value, Value::Null) && !value.truth(),
+                    "failOnError" => {
+                        !matches!(value, Value::Null)
+                            && !value.to_string().eq_ignore_ascii_case("true")
+                    }
                     _ => value.truth(),
                 });
                 if active {

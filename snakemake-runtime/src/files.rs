@@ -44,6 +44,7 @@ pub struct WorkflowFiles {
     /// Whether the writes of workflow code also reach the disk, as in a real run, where
     /// Snakemake's Python writes files while it plans. A simulated run keeps them in memory.
     on_disk: std::cell::Cell<bool>,
+    pub lifecycle: std::cell::Cell<Option<&'static str>>,
 }
 
 impl WorkflowFiles {
@@ -58,6 +59,7 @@ impl WorkflowFiles {
             notes: RefCell::new(Vec::new()),
             task_files: RefCell::new(Arc::default()),
             on_disk: std::cell::Cell::new(false),
+            lifecycle: std::cell::Cell::new(None),
         }
     }
 
@@ -248,6 +250,11 @@ impl Host for WorkflowFiles {
     }
 
     fn run_command(&self, command: &Command) -> Result<CommandOutcome, Error> {
+        if let Some(hook) = self.lifecycle.get() {
+            return Err(Error::unsupported(format!(
+                "commands in the {hook} lifecycle hook require a container task"
+            )));
+        }
         let runner = self.commands.borrow().clone();
         match runner {
             Some(runner) => runner.run(command),

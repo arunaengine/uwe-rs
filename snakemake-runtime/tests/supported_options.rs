@@ -36,30 +36,26 @@ fn unsupported_rule_options_reject_enabled_values_and_preserve_disabled_values()
 }
 
 #[test]
-fn lifecycle_hooks_and_nonempty_resource_scopes_fail_at_dispatch() {
-    for directive in [
-        "onstart:\n    print('start')",
-        "onsuccess:\n    print('success')",
-        "onerror:\n    print('error')",
-        "resource_scopes: mem_mb='global'",
-    ] {
-        let folder = tempfile::tempdir().expect("folder");
-        std::fs::write(
-            folder.path().join("Snakefile"),
-            format!("{directive}\nrule make:\n    output: 'out.txt'\n    shell: 'echo made > {{output}}'\n"),
-        )
-        .expect("Snakefile");
-        let launch = Launch {
-            target: folder.path().to_path_buf(),
-            scratch: folder.path().join("scratch"),
-            ..Launch::default()
-        };
-        let error = snakemake_runtime::driver(&launch)
-            .and_then(|mut driver| driver.start())
-            .expect_err("unsupported directive")
-            .to_string();
-        assert!(error.contains("not supported"), "{error}");
-    }
+fn nonempty_resource_scopes_fail_at_dispatch() {
+    let directive = "resource_scopes: mem_mb='global'";
+    let folder = tempfile::tempdir().expect("folder");
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        format!(
+            "{directive}\nrule make:\n    output: 'out.txt'\n    shell: 'echo made > {{output}}'\n"
+        ),
+    )
+    .expect("Snakefile");
+    let launch = Launch {
+        target: folder.path().to_path_buf(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let error = snakemake_runtime::driver(&launch)
+        .and_then(|mut driver| driver.start())
+        .expect_err("unsupported directive")
+        .to_string();
+    assert!(error.contains("not supported"), "{error}");
 }
 
 #[test]

@@ -38,6 +38,7 @@ pub enum Request {
     Complete(Box<Outcome>),
     Delivered(Delivery),
     Finish,
+    Failed(String),
 }
 
 /// The answer to a request: the tasks that can run now.
@@ -178,7 +179,11 @@ impl CommandRunner {
                         .send(Ok(Vec::new()))
                         .map_err(|_| ended())?;
                 }
-                Request::Inputs | Request::Outputs | Request::Start | Request::Finish => {
+                Request::Inputs
+                | Request::Outputs
+                | Request::Start
+                | Request::Finish
+                | Request::Failed(_) => {
                     return Err(Error::runtime_error(
                         "the engine asked the session to start or finish while a command ran",
                     ));

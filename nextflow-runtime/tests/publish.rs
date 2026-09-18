@@ -59,6 +59,9 @@ fn unsupported_publish_options_are_refused_in_processes_and_config() {
     for (option, diagnostic) in [
         ("mode: 'move'", "publish mode `move`"),
         ("failOnError: false", "publishDir option `failOnError`"),
+        ("failOnError: 'false'", "publishDir option `failOnError`"),
+        ("failOnError: 1", "publishDir option `failOnError`"),
+        ("failOnError: { false }", "publishDir option `failOnError`"),
         ("contentType: true", "publishDir option `contentType`"),
         (
             "contentType: 'text/plain'",
@@ -100,6 +103,7 @@ fn unsupported_publish_options_are_refused_in_processes_and_config() {
 fn default_publish_options_and_disabled_rules_are_accepted() {
     for options in [
         "mode: 'copy', failOnError: true, contentType: false, tags: [:]",
+        "mode: 'copy', failOnError: 'TRUE'",
         "mode: 'copy', failOnError: null, contentType: null, tags: null",
         "enabled: false, mode: 'move', failOnError: false, contentType: true, tags: [sample: 'a']",
     ] {

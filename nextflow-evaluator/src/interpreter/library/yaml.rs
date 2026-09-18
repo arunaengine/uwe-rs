@@ -172,16 +172,63 @@ fn write_block(value: &Value, indent: usize, out: &mut String) {
                         out.push_str(&format!("{pad}{key}:\n"));
                         write_block(value, indent, out);
                     }
-                    other => out.push_str(&format!("{pad}{key}: {}\n", scalar_text(other))),
+                    other => {
+                        out.push_str(&format!("{pad}{key}: "));
+                        write_scalar(other, indent + 2, out);
+                    }
                 }
             }
         }
         Value::List(list) => {
+            if list.borrow().items.is_empty() {
+                out.push_str(&format!("{pad}[]\n"));
+            }
             for item in list.borrow().items.iter() {
-                out.push_str(&format!("{pad}- {}\n", scalar_text(item)));
+                out.push_str(&format!("{pad}- "));
+                match item {
+                    Value::Map(_) | Value::List(_) => {
+                        let mut nested = String::new();
+                        write_block(item, indent + 2, &mut nested);
+                        out.push_str(nested.trim_start_matches(' '));
+                    }
+                    other => write_scalar(other, indent + 2, out),
+                }
             }
         }
-        other => out.push_str(&format!("{pad}{}\n", scalar_text(other))),
+        other => {
+            out.push_str(&pad);
+            write_scalar(other, indent + 2, out);
+        }
+    }
+}
+
+fn write_scalar(value: &Value, indent: usize, out: &mut String) {
+    if let Value::String(text) | Value::GString(text) = value
+        && text.contains('\n')
+        && !text.contains('\r')
+    {
+        let chomp = match text.len() - text.trim_end_matches('\n').len() {
+            0 => "-",
+            1 => "",
+            _ => "+",
+        };
+        let indicator = if text.starts_with([' ', '\n']) {
+            "2"
+        } else {
+            ""
+        };
+        out.push_str(&format!("|{indicator}{chomp}\n"));
+        let pad = " ".repeat(indent);
+        for line in text.strip_suffix('\n').unwrap_or(text).split('\n') {
+            if !line.is_empty() {
+                out.push_str(&pad);
+                out.push_str(line);
+            }
+            out.push('\n');
+        }
+    } else {
+        out.push_str(&scalar_text(value));
+        out.push('\n');
     }
 }
 
@@ -190,6 +237,16 @@ fn scalar_text(value: &Value) -> String {
     match value {
         Value::Null => "null".into(),
         Value::String(text) | Value::GString(text) => {
+            if text.contains(['\n', '\r', '\t']) {
+                return format!(
+                    "\"{}\"",
+                    text.replace('\\', "\\\\")
+                        .replace('"', "\\\"")
+                        .replace('\n', "\\n")
+                        .replace('\r', "\\r")
+                        .replace('\t', "\\t")
+                );
+            }
             let plain = !text.is_empty()
                 && matches!(scalar(text), Value::String(_))
                 && !text.starts_with([
@@ -209,6 +266,15 @@ fn scalar_text(value: &Value) -> String {
         Value::List(list) => {
             let items: Vec<String> = list.borrow().items.iter().map(scalar_text).collect();
             format!("[{}]", items.join(", "))
+        }
+        Value::Map(map) => {
+            let entries: Vec<String> = map
+                .borrow()
+                .entries
+                .iter()
+                .map(|(key, value)| format!("{}: {}", scalar_text(&key.0), scalar_text(value)))
+                .collect();
+            format!("{{{}}}", entries.join(", "))
         }
         other => other.to_string(),
     }

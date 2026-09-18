@@ -387,6 +387,42 @@ fn yaml_load_and_dump() {
 }
 
 #[test]
+fn yaml_dump_writes_nested_sequences_and_maps_as_snakeyaml() {
+    assert_eq!(
+        value(
+            "new org.yaml.snakeyaml.Yaml().dumpAsMap([versions: [[process: 'P', tools: [samtools: '1.20']], [process: 'Q', tools: [bwa: '0.7.17']]]])"
+        ),
+        "versions:\n- process: P\n  tools:\n    samtools: '1.20'\n- process: Q\n  tools:\n    bwa: 0.7.17\n"
+    );
+    assert_eq!(
+        value("new org.yaml.snakeyaml.Yaml().dumpAsMap([nested: [[1, 2], [[:], []]]])"),
+        "nested:\n- - 1\n  - 2\n- - {}\n  - []\n"
+    );
+}
+
+#[test]
+fn yaml_dump_preserves_multiline_text_and_trailing_newlines() {
+    for (text, expected) in [
+        ("first\nsecond", "text: |-\n  first\n  second\n"),
+        ("first\nsecond\n", "text: |\n  first\n  second\n"),
+        ("first\nsecond\n\n", "text: |+\n  first\n  second\n\n"),
+        ("  first\nsecond", "text: |2-\n    first\n  second\n"),
+        ("\n\n", "text: |2+\n\n\n"),
+    ] {
+        let body = format!(
+            "def y = new org.yaml.snakeyaml.Yaml()\ndef v = [text: {text:?}]\ndef dumped = y.dumpAsMap(v)\nassert y.load(dumped) == v\ndumped"
+        );
+        assert_eq!(value(&body), expected);
+    }
+    assert_eq!(
+        value(
+            "def y = new org.yaml.snakeyaml.Yaml()\ndef v = [items: ['first\\nsecond', [:], []]]\ndef dumped = y.dumpAsMap(v)\nassert y.load(dumped) == v\ndumped"
+        ),
+        "items:\n- |-\n  first\n  second\n- {}\n- []\n"
+    );
+}
+
+#[test]
 fn uris_have_their_parts() {
     assert_eq!(
         value(

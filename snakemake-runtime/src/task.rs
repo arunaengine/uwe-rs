@@ -214,6 +214,28 @@ pub fn build(
     id: TaskId,
     attempt: u32,
 ) -> Result<(Task, serde_json::Value), Error> {
+    if rule.shadow_minimal {
+        for file in job
+            .input
+            .values
+            .iter()
+            .chain(&job.output.values)
+            .chain(&job.log.values)
+        {
+            if let Some(path) = file.as_str()
+                && !Path::new(path).is_absolute()
+                && !interpreter
+                    .host
+                    .resolve(path)
+                    .starts_with(interpreter.host.cwd())
+            {
+                return Err(workflow_error(format!(
+                    "File {path} references a parent directory, which is not supported for shadow: 'minimal' in rule {}",
+                    rule.name
+                )));
+            }
+        }
+    }
     if job
         .output
         .values
@@ -725,8 +747,10 @@ pub fn build(
     let taken: Vec<&str> = (inputs.iter().map(|input| input.path.as_str()))
         .chain(outputs.iter().map(String::as_str))
         .collect();
-    let sources = setting.sources.inputs(&taken);
-    inputs.extend(sources);
+    if !rule.shadow_minimal {
+        let sources = setting.sources.inputs(&taken);
+        inputs.extend(sources);
+    }
     let mut environment = BTreeMap::new();
     for name in &setting.state.envvars {
         if let Ok(value) = std::env::var(name) {

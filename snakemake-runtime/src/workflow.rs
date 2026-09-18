@@ -1194,7 +1194,27 @@ impl Hook {
                     }
                     default_target = matches!(first.plain(), Value::Bool(true));
                 }
-                RuleKeyword::Shadow | RuleKeyword::Cache | RuleKeyword::Handover => {
+                RuleKeyword::Shadow => {
+                    if first.as_str() == Some("minimal") {
+                        rule.shadow_minimal = true;
+                    } else if interpreter.truthy(&first)? {
+                        return Err(Error::unsupported(format!(
+                            "shadow mode {} for rule {}; only 'minimal' is supported",
+                            interpreter.repr(&first)?,
+                            rule.name
+                        )));
+                    }
+                }
+                RuleKeyword::Cache => {
+                    if interpreter.truthy(&first)? && !matches!(first.plain(), Value::Bool(true)) {
+                        return Err(Error::unsupported(format!(
+                            "cache mode {} for rule {}; only True is supported",
+                            interpreter.repr(&first)?,
+                            rule.name
+                        )));
+                    }
+                }
+                RuleKeyword::Handover => {
                     if interpreter.truthy(&first)? {
                         return Err(workflow_error(format!(
                             "{} is not supported by iunctus for rule {}",

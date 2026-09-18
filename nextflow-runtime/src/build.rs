@@ -206,6 +206,7 @@ impl Host for Builder<'_> {
         let label = format!("output {name}");
         if setting("enabled").is_some_and(|enabled| !enabled.truth()) {
             let node = Subscribe {
+                on_error: None,
                 on_next: None,
                 on_complete: None,
             };
@@ -1038,17 +1039,17 @@ impl Builder<'_> {
                 (vec![source], Box::new(node), Value::Channel(output))
             }
             ("subscribe", rest) => {
-                if option(&options, "onError").is_some_and(|value| value.truth()) {
-                    return Err(Error::Unsupported {
-                        message: "subscribe `onError` callback".into(),
-                        span: Default::default(),
-                    });
-                }
+                let on_error = match option(&options, "onError") {
+                    Some(Value::Closure(closure)) => Some(closure),
+                    None | Some(Value::Null) => None,
+                    Some(_) => return Err(thrown("subscribe `onError` must be a closure".into())),
+                };
                 let closure = |value: Option<Value>| match value {
                     Some(Value::Closure(closure)) => Some(closure),
                     _ => None,
                 };
                 let node = Subscribe {
+                    on_error,
                     on_next: closure(rest.first().cloned().or_else(|| option(&options, "onNext"))),
                     on_complete: closure(option(&options, "onComplete")),
                 };

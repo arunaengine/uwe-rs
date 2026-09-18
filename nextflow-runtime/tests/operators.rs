@@ -62,14 +62,47 @@ fn lines(body: &str) -> Vec<String> {
 }
 
 #[test]
-fn subscribe_error_callbacks_are_explicitly_unsupported() {
-    let error = run("channel.of(1).subscribe(onError: { error -> println error })")
-        .expect_err("unsupported error callback");
-    assert!(error.contains("subscribe `onError` callback"), "{error}");
+fn subscribe_error_callbacks_handle_exceptions_and_stop_the_subscription() {
+    assert_eq!(
+        lines(
+            "channel.of(1, 2).subscribe(onNext: { throw new IllegalArgumentException('broken') }, onError: { error -> println error.message }, onComplete: { println 'wrong' })"
+        ),
+        ["broken"]
+    );
+    assert!(lines("channel.of(1).subscribe(onError: { error -> println error })").is_empty());
     assert_eq!(
         lines("channel.of(1).subscribe(onError: null, onNext: { println it })"),
         ["1"]
     );
+}
+
+#[test]
+fn subscribe_error_handler_failures_and_unsupported_features_propagate() {
+    for (body, diagnostic) in [
+        (
+            "channel.of(1).subscribe(onNext: { throw new IllegalArgumentException('broken') }, onError: { throw new IllegalStateException('handler failed') })",
+            "IllegalStateException: handler failed",
+        ),
+        (
+            "channel.of(1).subscribe(onNext: { throw new IllegalArgumentException('broken') })",
+            "IllegalArgumentException: broken",
+        ),
+        (
+            "channel.of(1).subscribe(onNext: { secrets.TOKEN }, onError: { println 'wrong' })",
+            "reading `secrets.TOKEN`",
+        ),
+        (
+            "channel.of(1).subscribe(onComplete: { throw new IllegalStateException('completion failed') }, onError: { println 'wrong' })",
+            "IllegalStateException: completion failed",
+        ),
+        (
+            "channel.of(1).subscribe(onError: true)",
+            "subscribe `onError` must be a closure",
+        ),
+    ] {
+        let error = run(body).expect_err("unhandled error");
+        assert!(error.contains(diagnostic), "{error}");
+    }
 }
 
 #[test]

@@ -231,10 +231,11 @@ fn remote_files(
             None => None,
         };
         let Some(copy) = copy else {
-            eprintln!(
-                "iunctus: note: the store does not keep {} as run {} read it; the repeat reads \
+            tracing::warn!(
+                "iunctus: the store does not keep {} as run {} read it; the repeat reads \
                  it again from its address",
-                file.address, run.id
+                file.address,
+                run.id
             );
             continue;
         };

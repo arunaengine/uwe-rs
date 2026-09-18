@@ -101,9 +101,9 @@ pub fn after_run(arguments: &Arguments, setup: &Setup, run: &str) {
         .and_then(|database| traces(&database, run))
         .and_then(|requests| send(telemetry, &requests));
     match sent {
-        Ok(sent) => eprintln!("iunctus: {}", said(telemetry, &sent)),
-        Err(problem) => eprintln!(
-            "iunctus: warning: the trace of the run was not sent: {}",
+        Ok(sent) => tracing::info!("iunctus: {}", said(telemetry, &sent)),
+        Err(problem) => tracing::warn!(
+            "iunctus: the trace of the run was not sent: {}",
             problem.message.trim_start_matches("iunctus: ")
         ),
     }

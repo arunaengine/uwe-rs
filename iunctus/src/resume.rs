@@ -91,8 +91,10 @@ impl Executor for Resumed {
                 .all(|file| std::path::Path::new(&file.location).exists()),
         });
         let Some(found) = found else {
+            tracing::debug!(task = %task.name, "resume cache miss");
             return self.executor.run(attempt);
         };
+        tracing::debug!(task = %task.name, run = %found.run, "resume cache hit");
         if self.verbose {
             println!("[resumed] {} (from run {})", task.name, found.run);
         }

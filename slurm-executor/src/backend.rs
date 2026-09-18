@@ -821,6 +821,7 @@ impl SlurmBackend {
         let mut pause = Duration::from_millis(250);
         let mut ended: Option<(Instant, Option<String>)> = None;
         loop {
+            tracing::debug!(job = id, "polling SLURM job");
             tokio::select! {
                 () = tokio::time::sleep(pause) => {}
                 () = cancel.cancelled() => {

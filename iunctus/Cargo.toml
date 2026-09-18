@@ -38,6 +38,8 @@ slurm-executor.workspace = true
 tes-executor.workspace = true
 tokio = { workspace = true, features = ["signal", "sync"] }
 workflow-graph.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [dev-dependencies]
 fancy-regex.workspace = true

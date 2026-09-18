@@ -99,7 +99,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             let inputs = driver.inputs()?;
             if let Some(inputs) = &inputs {
                 for warning in warnings(inputs, &[]) {
-                    eprintln!("iunctus: warning: {warning}");
+                    tracing::warn!("iunctus: {warning}");
                 }
             }
             inputs

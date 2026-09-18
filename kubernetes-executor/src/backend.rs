@@ -468,6 +468,7 @@ impl KubernetesBackend {
         let mut pause = Duration::from_millis(250);
         let mut trouble: Option<Instant> = None;
         loop {
+            tracing::debug!(job = name, "polling Kubernetes job");
             let look = tokio::select! {
                 look = async {
                     tokio::time::sleep(pause).await;

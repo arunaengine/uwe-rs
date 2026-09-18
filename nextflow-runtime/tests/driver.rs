@@ -195,14 +195,89 @@ fn normalized_params_are_used_to_plan_tasks() {
 }
 
 #[test]
-fn entry_workflows_are_not_supported_yet() {
-    let launch = Launch {
-        target: "main.nf".into(),
-        targets: vec!["ALIGN".into()],
+fn named_entry_selects_only_that_workflow() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(directory.path().join("main.nf"), "process P {\n input:\n val x\n script:\n \"echo ${x}\"\n}\nworkflow ALIGN { P('selected') }\nworkflow OTHER { P('other') }\nworkflow { P('default') }\n").unwrap();
+    for (entry, step, script) in [
+        (None, "P", "echo default"),
+        (Some("ALIGN"), "ALIGN:P", "echo selected"),
+        (Some("OTHER"), "OTHER:P", "echo other"),
+    ] {
+        let graph = run(
+            directory.path(),
+            Launch {
+                target: directory.path().to_owned(),
+                targets: entry.map(str::to_owned).into_iter().collect(),
+                ..Launch::default()
+            },
+        );
+        assert_eq!(graph.nodes.len(), 1);
+        assert_eq!(graph.nodes[0].task.step, step);
+        assert!(
+            graph.nodes[0]
+                .task
+                .script
+                .as_ref()
+                .unwrap()
+                .contains(script)
+        );
+    }
+}
+
+#[test]
+fn an_imported_workflow_alias_can_be_selected_as_entry() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(
+        directory.path().join("main.nf"),
+        "include { SUB as ALIGN } from './sub'\nworkflow { error 'wrong workflow' }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        directory.path().join("sub.nf"),
+        "process P {\n script:\n 'true'\n}\nworkflow SUB { P() }\n",
+    )
+    .unwrap();
+    let graph = run(
+        directory.path(),
+        Launch {
+            target: directory.path().to_owned(),
+            targets: vec!["ALIGN".into()],
+            ..Launch::default()
+        },
+    );
+    assert_eq!(graph.steps(), ["ALIGN:P"]);
+}
+
+#[test]
+fn missing_or_multiple_workflow_entries_have_clear_errors() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(directory.path().join("main.nf"), "workflow ALIGN {}\n").unwrap();
+    let mut driver = nextflow_runtime::driver(&Launch {
+        target: directory.path().to_owned(),
+        targets: vec!["MISSING".into()],
         ..Launch::default()
-    };
-    let error = nextflow_runtime::driver(&launch).err().expect("an error");
-    assert!(error.unsupported);
+    })
+    .unwrap();
+    let error = driver.start().expect_err("unknown entry");
+    assert!(
+        error
+            .to_string()
+            .contains("Unknown workflow entry name: MISSING"),
+        "{error}"
+    );
+    let error = nextflow_runtime::driver(&Launch {
+        target: directory.path().to_owned(),
+        targets: vec!["ALIGN".into(), "OTHER".into()],
+        ..Launch::default()
+    })
+    .err()
+    .expect("multiple entries");
+    assert!(
+        error
+            .to_string()
+            .contains("Only one Nextflow workflow entry"),
+        "{error}"
+    );
 }
 
 /// In a simulated run, an output that a stub surely does not make is left out, as in Nextflow's

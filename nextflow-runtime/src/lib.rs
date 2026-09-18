@@ -43,6 +43,8 @@ use session::Session;
 /// How a run behaves.
 #[derive(Clone, Debug)]
 pub struct Options {
+    /// The named workflow selected by `-entry`, otherwise the unnamed entry workflow.
+    pub entry: Option<String>,
     /// Run the `stub:` section of processes instead of their script.
     pub stub: bool,
     /// Whether the run is simulated, so that its files are made up (`Launch.simulated`).
@@ -128,7 +130,10 @@ impl Run {
                 script_params(&mut interpreter, module, &params, &mut Vec::new())
                     .and_then(|()| typed_params(&mut interpreter, module, &params))
                     .and_then(|()| interpreter.start_statements(module))
-                    .and_then(|()| interpreter.run_entry(module))
+                    .and_then(|()| match options.entry.as_deref() {
+                        Some(name) => interpreter.run_named_entry(module, name),
+                        None => interpreter.run_entry(module),
+                    })
                     .map_err(|error| interpreter.locate(error))?;
             }
             let mut interpreter = Interpreter::new(&mut session);
@@ -307,6 +312,7 @@ pub fn run(module: &Rc<Module>, host: &mut dyn Host) -> Result<(), Error> {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            entry: None,
             stub: false,
             simulated: false,
             output_dir: None,

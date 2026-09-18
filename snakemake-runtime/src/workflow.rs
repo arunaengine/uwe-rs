@@ -293,6 +293,8 @@ pub struct State {
     pub validations: Vec<crate::inputs::Validation>,
     /// The PEP project of `pepfile:` and `pepschema:`.
     pub pep: Option<crate::inputs::Pep>,
+    pub lifecycle: HashMap<GlobalKeyword, Value>,
+    pub logfile: PathBuf,
 }
 
 impl State {
@@ -318,6 +320,7 @@ impl State {
             include_stack: Vec::new(),
             main_snakefile,
             workdir,
+            logfile: PathBuf::new(),
             globals: globals.clone(),
             scatter: IndexMap::new(),
             envvars: Vec::new(),
@@ -329,6 +332,7 @@ impl State {
             profile: crate::profile::Profile::default(),
             validations: Vec::new(),
             pep: None,
+            lifecycle: HashMap::new(),
             mirrors,
             snakefiles: HashMap::new(),
             unused: Vec::new(),
@@ -807,10 +811,25 @@ impl Hook {
                 }
             }
             GlobalKeyword::OnStart | GlobalKeyword::OnSuccess | GlobalKeyword::OnError => {
-                return Err(workflow_error(format!(
-                    "{} lifecycle hooks are not supported by iunctus",
-                    directive.keyword.text()
-                )));
+                if let DirectiveValue::Body(body) = &directive.value {
+                    let name = directive.keyword.text();
+                    let log = python_evaluator::format::quote(
+                        &self.state.borrow().logfile.to_string_lossy(),
+                    );
+                    let mut definition = Interpreter::parse(
+                        &frame.source.path,
+                        &format!("def {name}(log={log}):\n    pass\n"),
+                    )?;
+                    if let [ast::Stmt::FunctionDef(function)] = definition.as_mut_slice() {
+                        function.body = body.clone();
+                    }
+                    interpreter.run(&definition, frame)?;
+                    let function = interpreter.lookup(frame, name)?;
+                    let mut state = self.state.borrow_mut();
+                    if !state.modifiers.iter().any(|modifier| modifier.is_module) {
+                        state.lifecycle.insert(directive.keyword, function);
+                    }
+                }
             }
             GlobalKeyword::ResourceScopes => {
                 if !args.keywords.is_empty() {

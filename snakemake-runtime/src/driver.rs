@@ -6,7 +6,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,8 +14,9 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::thread::JoinHandle;
 
-use python_evaluator::{Error, Interpreter, Value};
+use python_evaluator::{Args, Error, Interpreter, Value};
 use sha2::Digest;
+use snakemake_parser::keyword::GlobalKeyword;
 use storage::Storage;
 use workflow_graph::{
     Delivery, DeliveryMode, Driver, DriverError, Files, Inputs, Language, Launch, Marker,
@@ -111,6 +112,8 @@ pub struct Session {
     /// as Snakemake does.
     failures: Vec<String>,
     acceptance: Arc<Mutex<HashSet<(TaskId, u32)>>>,
+    hooks_started: bool,
+    hooks_finished: bool,
 }
 
 struct SignaturePublication {
@@ -159,6 +162,7 @@ impl Session {
             workdir.clone(),
             mirrors,
         )));
+        state.borrow_mut().logfile = launch.scratch.join("snakemake.log");
         crate::functions::install(&globals, &state);
         crate::utils::register(&mut interpreter, &state, &globals);
         crate::namespace::install(&mut interpreter, &globals)
@@ -204,6 +208,8 @@ impl Session {
             sources: Rc::default(),
             failures: Vec::new(),
             acceptance: Arc::default(),
+            hooks_started: false,
+            hooks_finished: false,
         })
     }
 
@@ -727,6 +733,9 @@ impl Session {
     /// Stops the Python container once no more Python code runs: every job that must run has
     /// its task, and no checkpoint job is left whose outputs make the workflow planned again.
     fn stop_python_when_done(&self) {
+        if !self.hooks_finished && !self.state.borrow().lifecycle.is_empty() {
+            return;
+        }
         if !self.interpreter.packages.is_running() {
             return;
         }
@@ -783,7 +792,69 @@ impl Session {
         self.sources = Rc::new(crate::sources::Sources::find(&self.state.borrow()));
         self.plan()?;
         self.report_assumed();
+        if self.needrun.values().any(|needed| *needed) {
+            if !self.state.borrow().lifecycle.is_empty() {
+                std::fs::create_dir_all(&self.launch.scratch)
+                    .and_then(|()| {
+                        std::fs::write(
+                            self.launch.scratch.join("snakemake.log"),
+                            self.files.messages.borrow().join("\n"),
+                        )
+                    })
+                    .map_err(|error| DriverError::new(error.to_string()))?;
+            }
+            self.run_hook(GlobalKeyword::OnStart)?;
+            self.hooks_started = true;
+        }
         self.ready_tasks(None)
+    }
+
+    fn run_hook(&mut self, keyword: GlobalKeyword) -> Result<(), DriverError> {
+        let function = self.state.borrow().lifecycle.get(&keyword).cloned();
+        let Some(function) = function else {
+            return Ok(());
+        };
+        let log = self.launch.scratch.join("snakemake.log");
+        let before = self.files.messages.borrow().len();
+        self.files.lifecycle.set(Some(keyword.text()));
+        let result = self.interpreter.call(
+            &function,
+            Args::new(vec![Value::str(log.to_string_lossy().as_ref())]),
+        );
+        self.files.lifecycle.set(None);
+        let messages = self.files.messages.borrow()[before..].to_vec();
+        for message in &messages {
+            eprintln!("{message}");
+        }
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&log)
+            .and_then(|mut file| writeln!(file, "{}", messages.join("\n")))
+            .map_err(|error| DriverError::new(error.to_string()))?;
+        result.map(|_| ()).map_err(|error| self.error(&error))
+    }
+
+    fn failure_hook(&mut self, error: &str) -> Result<(), DriverError> {
+        let result = if self.hooks_started && !self.hooks_finished {
+            self.hooks_finished = true;
+            if self
+                .state
+                .borrow()
+                .lifecycle
+                .contains_key(&GlobalKeyword::OnError)
+            {
+                std::fs::OpenOptions::new()
+                    .append(true)
+                    .open(self.launch.scratch.join("snakemake.log"))
+                    .and_then(|mut file| writeln!(file, "{error}"))
+                    .map_err(|error| DriverError::new(error.to_string()))?;
+            }
+            self.run_hook(GlobalKeyword::OnError)
+        } else {
+            Ok(())
+        };
+        self.interpreter.packages.stop();
+        result
     }
 
     fn report_assumed(&self) {
@@ -1573,7 +1644,6 @@ impl Session {
     }
 
     pub fn finish(&mut self) -> Result<(), DriverError> {
-        self.interpreter.packages.stop();
         if let Some(first) = self.failures.first() {
             let message = match self.failures.len() {
                 1 => first.clone(),
@@ -1597,6 +1667,11 @@ impl Session {
                 waiting[0]
             )));
         }
+        if self.hooks_started && !self.hooks_finished {
+            self.hooks_finished = true;
+            self.run_hook(GlobalKeyword::OnSuccess)?;
+        }
+        self.interpreter.packages.stop();
         Ok(())
     }
 }
@@ -1719,6 +1794,19 @@ impl Driver for SnakemakeDriver {
 
     fn finish(&mut self) -> Result<(), DriverError> {
         let result = self.ask(Request::Finish).map(|_| ());
+        if result.is_ok()
+            && let Some(worker) = self.worker.take()
+        {
+            let _ = worker.join();
+        }
+        result
+    }
+
+    fn failed(&mut self, error: &workflow_graph::ExecuteError) -> Result<(), DriverError> {
+        if self.worker.is_none() {
+            return Ok(());
+        }
+        let result = self.ask(Request::Failed(error.to_string())).map(|_| ());
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
@@ -1799,7 +1887,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
                         let _ = match request {
                             Request::Inputs => inputs_outgoing.send(Err(error.clone())).is_ok(),
                             Request::Outputs => outputs_outgoing.send(Err(error.clone())).is_ok(),
-                            Request::Finish => {
+                            Request::Finish | Request::Failed(_) => {
                                 let _ = channel.replies.send(Err(error.clone()));
                                 break;
                             }
@@ -1839,6 +1927,15 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
                     }
                     Request::Finish => {
                         let result = session.finish().map(|()| Vec::new());
+                        let finished = result.is_ok();
+                        let _ = channel.replies.send(result);
+                        if finished {
+                            break;
+                        }
+                        continue;
+                    }
+                    Request::Failed(error) => {
+                        let result = session.failure_hook(&error).map(|()| Vec::new());
                         let _ = channel.replies.send(result);
                         break;
                     }

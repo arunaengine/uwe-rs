@@ -407,6 +407,10 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
     };
     let mut execution = Engine::new(executor.as_mut())
         .options(options)
+        .retries(arguments.machine_retries.unwrap_or(2))
+        .retry_delay(std::time::Duration::from_millis(
+            arguments.machine_retry_delay_ms.unwrap_or(1_000),
+        ))
         .observer(observer)
         .cancel(interrupt.clone())
         .run(&workflow, driver.as_mut());

@@ -245,6 +245,34 @@ fn the_engine_runs_a_task_again_after_the_machine_failed() {
 }
 
 #[test]
+fn machine_retry_backoff_is_cancellable() {
+    let token = CancellationToken::new();
+    let stop = token.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(50));
+        stop.cancel();
+    });
+    let mut driver = Tasks {
+        first: vec![task(1, &[])],
+        ..Default::default()
+    };
+    let mut executor = Sleeper {
+        machine_failures: HashMap::from([((1, 1), ())]),
+        ..Default::default()
+    };
+    let mut retries = Retries::default();
+    let started = std::time::Instant::now();
+    let execution = Engine::new(&mut executor)
+        .observer(&mut retries)
+        .cancel(token)
+        .retry_delay(Duration::from_secs(60))
+        .run("backoff", &mut driver);
+    assert!(matches!(execution.error, Some(ExecuteError::Cancelled)));
+    assert!(started.elapsed() < Duration::from_secs(2));
+    assert_eq!(retries.0, [(TaskId(1), 1, true)]);
+}
+
+#[test]
 fn a_driver_retries_a_failed_task_and_the_tasks_after_it_wait() {
     let mut driver = Tasks {
         first: vec![task(1, &[]), task(2, &[1])],

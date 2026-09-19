@@ -112,6 +112,10 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     };
     let interrupt = crate::stop_on_interrupt();
     let execution = Engine::new(executor_of_run.as_mut())
+        .retries(arguments.machine_retries.unwrap_or(2))
+        .retry_delay(std::time::Duration::from_millis(
+            arguments.machine_retry_delay_ms.unwrap_or(1_000),
+        ))
         .observer(&mut recorder)
         .cancel(interrupt.clone())
         .run(&original.workflow, &mut driver);

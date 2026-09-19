@@ -71,6 +71,8 @@ pub struct Arguments {
     pub fold: Option<usize>,
     /// `-max-pending n`: how many tasks may be pending at once.
     pub max_pending: Option<usize>,
+    pub machine_retries: Option<u32>,
+    pub machine_retry_delay_ms: Option<u64>,
     /// `-order asked|reversed|finished|shuffled[:seed]`: the order in which pending tasks
     /// finish.
     pub order: Option<Order>,
@@ -315,6 +317,21 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
                     format!("`-max-pending` needs a number above zero, not `{number}`"),
                 )?);
             }
+            "-machine-retries" => {
+                let number = value()?;
+                parsed.machine_retries = Some(number.parse().map_err(|_| {
+                    format!("`-machine-retries` needs a whole number from zero, not `{number}`")
+                })?);
+            }
+            "-machine-retry-delay-ms" => {
+                let number = value()?;
+                parsed.machine_retry_delay_ms =
+                    Some(number.parse().ok().filter(|n| *n > 0).ok_or_else(|| {
+                        format!(
+                            "`-machine-retry-delay-ms` needs a number above zero, not `{number}`"
+                        )
+                    })?);
+            }
             "-order" => {
                 let name = value()?;
                 parsed.order = Some(order(&name).ok_or(format!(
@@ -538,6 +555,8 @@ const OPTIONS: &[(&str, &[&str])] = &[
     ),
     ("-no-cache", &["run", "graph", "check-order"]),
     ("-no-network", EXECUTION),
+    ("-machine-retries <n>", EXECUTION),
+    ("-machine-retry-delay-ms <milliseconds>", EXECUTION),
     (
         "-no-right-sizing",
         &["run", "graph", "check-order", "replay"],
@@ -704,6 +723,16 @@ mod tests {
     fn parse_all(arguments: &[&str]) -> Arguments {
         let arguments: Vec<String> = arguments.iter().map(|text| text.to_string()).collect();
         parse(&arguments).expect("valid options")
+    }
+
+    #[test]
+    fn machine_retry_options_take_bounded_numbers() {
+        let parsed = parse_all(&["-machine-retries", "0", "-machine-retry-delay-ms", "250"]);
+        assert_eq!(parsed.machine_retries, Some(0));
+        assert_eq!(parsed.machine_retry_delay_ms, Some(250));
+        for pair in [["-machine-retries", "-1"], ["-machine-retry-delay-ms", "0"]] {
+            assert!(parse(&pair.map(str::to_owned)).is_err());
+        }
     }
 
     #[test]

@@ -28,6 +28,7 @@ const SECTIONS: &[&str] = &[
     "report",
     "conda",
     "page",
+    "retry",
 ];
 
 /// The executors that `-executor` and `default` of `[executor]` may name.
@@ -194,6 +195,8 @@ pub struct Defaults {
     pub cache_folder: Option<PathBuf>,
     pub proxy: Option<String>,
     pub report: Option<PathBuf>,
+    pub machine_retries: Option<u32>,
+    pub machine_retry_delay_ms: Option<u64>,
 }
 
 impl Defaults {
@@ -232,6 +235,25 @@ impl Defaults {
             report.only(&["file"])?;
             defaults.report = report.text("file")?.map(PathBuf::from);
         }
+        if let Some(retry) = config.section("retry")? {
+            retry.only(&["machine_count", "base_delay_ms"])?;
+            defaults.machine_retries = retry
+                .integer("machine_count")?
+                .map(|number| {
+                    u32::try_from(number)
+                        .map_err(|_| retry.invalid("machine_count", "use a whole number from zero"))
+                })
+                .transpose()?;
+            defaults.machine_retry_delay_ms = retry
+                .integer("base_delay_ms")?
+                .map(|number| {
+                    u64::try_from(number)
+                        .ok()
+                        .filter(|n| *n > 0)
+                        .ok_or_else(|| retry.invalid("base_delay_ms", "use a number above zero"))
+                })
+                .transpose()?;
+        }
         Ok(defaults)
     }
 
@@ -239,6 +261,15 @@ impl Defaults {
     /// `check-machine`; other commands, like `iunctus graph`, keep the simulator. `-report`
     /// wins over the file for `run`.
     pub fn apply(self, command: &str, arguments: &mut Arguments) {
+        if matches!(
+            command,
+            "run" | "graph" | "check-order" | "repeat" | "replay"
+        ) {
+            arguments.machine_retries = arguments.machine_retries.or(self.machine_retries);
+            arguments.machine_retry_delay_ms = arguments
+                .machine_retry_delay_ms
+                .or(self.machine_retry_delay_ms);
+        }
         if matches!(command, "run" | "check-machine") && arguments.executor.is_none() {
             arguments.executor = self.executor;
         }
@@ -362,6 +393,30 @@ mod tests {
 
     use super::Executors;
     use task_runner::NetworkRule;
+
+    #[test]
+    fn retry_defaults_validate_and_cli_values_win() {
+        let config = ConfigFile::parse(
+            "[retry]\nmachine_count = 4\nbase_delay_ms = 250\n",
+            Path::new("config.toml"),
+        )
+        .unwrap();
+        let mut arguments = crate::arguments::Arguments {
+            machine_retries: Some(0),
+            ..Default::default()
+        };
+        super::Defaults::read(&config)
+            .unwrap()
+            .apply("run", &mut arguments);
+        assert_eq!(arguments.machine_retries, Some(0));
+        assert_eq!(arguments.machine_retry_delay_ms, Some(250));
+        for setting in ["machine_count = -1", "base_delay_ms = 0"] {
+            let config =
+                ConfigFile::parse(&format!("[retry]\n{setting}\n"), Path::new("config.toml"))
+                    .unwrap();
+            assert!(super::Defaults::read(&config).is_err());
+        }
+    }
 
     #[test]
     fn nextflow_sees_the_engine_that_runs_the_tasks() {

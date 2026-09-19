@@ -92,6 +92,8 @@ pub(crate) fn chosen_here(repeated: &mut Arguments, given: &Arguments) {
         kubernetes_namespace,
         default_image,
         max_pending,
+        machine_retries,
+        machine_retry_delay_ms,
         order,
         database,
         address,

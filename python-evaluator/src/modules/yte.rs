@@ -104,12 +104,18 @@ impl Conditional {
         for (condition, value) in branches {
             let holds = interpreter.eval_text(&condition, scope)?;
             if interpreter.truthy(&holds)? {
-                items.push(render(interpreter, &value, scope)?);
+                let rendered = render(interpreter, &value, scope)?;
+                if !rendered.is_none() {
+                    items.push(rendered);
+                }
                 return Ok(());
             }
         }
         if let Some(value) = otherwise {
-            items.push(render(interpreter, &value, scope)?);
+            let rendered = render(interpreter, &value, scope)?;
+            if !rendered.is_none() {
+                items.push(rendered);
+            }
         }
         Ok(())
     }

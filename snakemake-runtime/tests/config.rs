@@ -44,6 +44,9 @@ fn config_values_merge_into_config_files() {
 }
 
 const YTE: &str = r#"__use_yte__: true
+?if True: null
+?if False: {unexpected: true}
+?else: null
 __definitions__:
   - import os
   - base = 5

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
+use std::hash::BuildHasher;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -113,6 +114,7 @@ pub struct Engine<'a> {
     observer: Option<&'a mut dyn Observer>,
     cancel: CancellationToken,
     retries: u32,
+    retry_delay: Duration,
     /// The number of attempts of each task so far.
     attempts: HashMap<TaskId, u32>,
 }
@@ -127,6 +129,7 @@ impl<'a> Engine<'a> {
             observer: None,
             cancel: CancellationToken::new(),
             retries: MACHINE_RETRIES,
+            retry_delay: Duration::from_secs(1),
             attempts: HashMap::new(),
         }
     }
@@ -151,6 +154,12 @@ impl<'a> Engine<'a> {
     /// How often a task runs again after the machine failed.
     pub fn retries(mut self, retries: u32) -> Self {
         self.retries = retries;
+        self
+    }
+
+    /// The base pause for machine retries, doubled per attempt and capped at one minute.
+    pub fn retry_delay(mut self, delay: Duration) -> Self {
+        self.retry_delay = delay;
         self
     }
 
@@ -298,7 +307,15 @@ impl<'a> Engine<'a> {
                         retried,
                     });
                     if retried {
-                        tracing::debug!(task = %task.name, attempt, "retrying after a machine failure");
+                        let pause = retry_pause(self.retry_delay, attempt);
+                        tracing::debug!(task = %task.name, attempt, delay_ms = pause.as_millis(), "waiting to retry after a machine failure");
+                        crate::runtime()?.block_on(async {
+                            tokio::select! {
+                                biased;
+                                () = self.cancel.cancelled() => Err(ExecuteError::Cancelled),
+                                () = tokio::time::sleep(pause) => Ok(()),
+                            }
+                        })?;
                         self.start(task, pending, attempts)?;
                         continue;
                     }
@@ -432,6 +449,29 @@ impl<'a> Engine<'a> {
                 retried: false,
             });
         }
+    }
+}
+
+fn retry_pause(base: Duration, attempt: u32) -> Duration {
+    let ceiling = base
+        .saturating_mul(2_u32.saturating_pow(attempt.saturating_sub(1)))
+        .min(Duration::from_secs(60));
+    let random = std::collections::hash_map::RandomState::new().hash_one(attempt);
+    ceiling.mul_f64(0.5 + (random as f64 / u64::MAX as f64) * 0.5)
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::*;
+
+    #[test]
+    fn exponential_retry_jitter_stays_within_bounds() {
+        for attempt in 1..=8 {
+            let ceiling = Duration::from_secs((1_u64 << (attempt - 1)).min(60));
+            let pause = retry_pause(Duration::from_secs(1), attempt);
+            assert!(pause >= ceiling / 2 && pause <= ceiling);
+        }
+        assert!(retry_pause(Duration::MAX, u32::MAX) <= Duration::from_secs(60));
     }
 }
 

@@ -276,10 +276,18 @@ impl Run {
             if input.load_contents != Some(true) {
                 continue;
             }
-            if let Some(Value::Map(file)) = sources.get_mut(short_name(&input.id))
-                && file.get("class").and_then(Value::as_str) == Some("File")
-            {
-                access.load_contents(file)?;
+            if let Some(value) = sources.get_mut(short_name(&input.id)) {
+                let files = match value {
+                    Value::List(items) => items.as_mut_slice(),
+                    value => std::slice::from_mut(value),
+                };
+                for value in files {
+                    if let Value::Map(file) = value
+                        && file.get("class").and_then(Value::as_str) == Some("File")
+                    {
+                        access.load_contents(file)?;
+                    }
+                }
             }
         }
         let before = Value::Map(sources.clone());

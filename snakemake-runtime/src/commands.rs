@@ -62,6 +62,7 @@ pub struct Channel {
     pub describing: Cell<bool>,
     /// Whether a command of workflow code had to be refused while describing.
     pub refused: Cell<bool>,
+    pub failed: RefCell<Option<String>>,
 }
 
 impl Channel {
@@ -73,6 +74,7 @@ impl Channel {
             parked_deliveries: RefCell::new(VecDeque::new()),
             describing: Cell::new(false),
             refused: Cell::new(false),
+            failed: RefCell::new(None),
         }
     }
 }
@@ -179,11 +181,11 @@ impl CommandRunner {
                         .send(Ok(Vec::new()))
                         .map_err(|_| ended())?;
                 }
-                Request::Inputs
-                | Request::Outputs
-                | Request::Start
-                | Request::Finish
-                | Request::Failed(_) => {
+                Request::Failed(error) => {
+                    *self.channel.failed.borrow_mut() = Some(error);
+                    return Err(ended());
+                }
+                Request::Inputs | Request::Outputs | Request::Start | Request::Finish => {
                     return Err(Error::runtime_error(
                         "the engine asked the session to start or finish while a command ran",
                     ));

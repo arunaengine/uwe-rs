@@ -129,6 +129,32 @@ fn job_and_executor_failures_run_only_the_error_hook() {
 }
 
 #[test]
+fn executor_failure_during_a_planning_command_ends_the_worker() {
+    let folder = tempfile::tempdir().expect("a folder");
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        "onerror:\n    assert False\nshell('true')\nrule make:\n    shell: 'true'\n",
+    )
+    .expect("a Snakefile");
+    let launch = Launch {
+        target: folder.path().to_path_buf(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    let execution = execute("hooks", driver.as_mut(), &mut Failing(true));
+    assert!(
+        execution
+            .error
+            .unwrap()
+            .to_string()
+            .contains("executor failed")
+    );
+    assert!(execution.failure_hook_error.is_none());
+    assert_eq!(execution.graph.nodes.len(), 1);
+}
+
+#[test]
 fn up_to_date_workflows_and_planning_errors_run_no_hooks() {
     for input in ["", "    input: 'missing'\n"] {
         let folder = tempfile::tempdir().expect("a folder");

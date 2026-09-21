@@ -15,10 +15,7 @@ use crate::types::Types;
 
 /// Extension requirements that change nothing a task needs, so they can be satisfied by
 /// ignoring them; by the last part of their class IRI.
-const IGNORED_EXTENSIONS: [&str; 6] = [
-    "Secrets",
-    "ShmSize",
-    "RuntimeConstraints",
+const IGNORED_EXTENSIONS: [&str; 3] = [
     "IntermediateOutput",
     "ProcessProperties",
     "OutputStorageClass",
@@ -146,8 +143,31 @@ impl Scope {
                         entry.location
                     )));
                 }
-                RequirementClass::Other { class, .. } => {
+                RequirementClass::Other { class, value } => {
                     let name = class.rsplit(['#', ':']).next().unwrap_or(class);
+                    if name == "CUDARequirement" {
+                        let min = value.get("cudaDeviceCountMin");
+                        let max = value.get("cudaDeviceCountMax");
+                        let count = |node: &cwl_parser::Node| match node.value {
+                            cwl_parser::Value::Integer(count) => u32::try_from(count).ok(),
+                            _ => None,
+                        };
+                        let minimum = min.and_then(count).unwrap_or(1);
+                        let fields = value.as_map().unwrap_or_default();
+                        if fields.iter().any(|entry| {
+                            !matches!(
+                                entry.key.as_str(),
+                                "class" | "cudaDeviceCountMin" | "cudaDeviceCountMax"
+                            )
+                        }) || min.is_some_and(|node| count(node).is_none())
+                            || max.is_some_and(|node| count(node).is_none_or(|max| max < minimum))
+                        {
+                            return Err(DriverError::unsupported(format!(
+                                "{}: CUDARequirement supports only static device counts with min <= max",
+                                entry.location
+                            )));
+                        }
+                    }
                     if !IGNORED_EXTENSIONS.contains(&name) && name != "CUDARequirement" {
                         return Err(DriverError::unsupported(format!(
                             "{}: the requirement `{class}` is not supported",

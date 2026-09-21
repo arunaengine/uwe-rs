@@ -49,8 +49,8 @@ fn profile_retry_aliases_apply_unless_the_rule_overrides_them() {
 #[test]
 fn profile_settings_are_diagnosed_or_explicitly_ignored() {
     for (settings, unsupported) in [
-        ("rerun-triggers: [mtime]\n", true),
-        ("cores: 3\n", true),
+        ("notemp: true\n", true),
+        ("no-hooks: true\n", true),
         ("retries: -1\n", false),
         ("restart-times: two\n", false),
         ("retries: 4294967296\n", false),
@@ -76,4 +76,30 @@ fn profile_settings_are_diagnosed_or_explicitly_ignored() {
         assert_eq!(error.unsupported, unsupported, "{error}");
         assert!(error.message.contains("rofile"), "{error}");
     }
+}
+
+#[test]
+fn profile_settings_that_only_choose_how_jobs_run_are_ignored() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let profile = folder.path().join("profiles/default");
+    std::fs::create_dir_all(&profile).expect("a profile folder");
+    std::fs::write(
+        profile.join("config.yaml"),
+        "cores: 3\njobs: 8\nuse-conda: true\nsoftware-deployment-method: conda\nexecutor: slurm\nrerun-triggers: [mtime]\n",
+    )
+    .expect("a profile");
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        "rule make:\n    cache: 'omit-software'\n    output: 'out'\n    shell: 'touch out'\n",
+    )
+    .expect("a Snakefile");
+    let launch = Launch {
+        target: folder.path().to_path_buf(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    snakemake_runtime::driver(&launch)
+        .expect("a driver")
+        .start()
+        .expect("ignored settings and omit-software caching");
 }

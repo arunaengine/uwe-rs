@@ -225,6 +225,43 @@ impl Profile {
                     }
                 }
                 "quiet" | "printshellcmds" | "verbose" | "nocolor" | "show-failed-logs" => {}
+                // How and where jobs run, not what they compute: iunctus chooses its own
+                // executor, containers, environments and limits.
+                "use-conda"
+                | "use-singularity"
+                | "use-apptainer"
+                | "use-envmodules"
+                | "software-deployment-method"
+                | "sdm"
+                | "conda-frontend"
+                | "conda-prefix"
+                | "conda-cleanup-pkgs"
+                | "singularity-args"
+                | "apptainer-args"
+                | "singularity-prefix"
+                | "apptainer-prefix"
+                | "jobs"
+                | "cores"
+                | "local-cores"
+                | "max-threads"
+                | "resources"
+                | "executor"
+                | "cluster"
+                | "cluster-status"
+                | "cluster-cancel"
+                | "cluster-generic-submit-cmd"
+                | "cluster-generic-status-cmd"
+                | "cluster-generic-cancel-cmd"
+                | "jobscript"
+                | "latency-wait"
+                | "max-jobs-per-second"
+                | "max-status-checks-per-second"
+                | "scheduler"
+                | "reason"
+                | "keep-going"
+                | "rerun-incomplete"
+                | "keep-incomplete"
+                | "rerun-triggers" => {}
                 key => {
                     return Err(Error::unsupported(format!(
                         "Snakemake profile setting '{key}'"

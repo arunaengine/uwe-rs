@@ -142,7 +142,11 @@ pub fn parse_command(command: &str, arguments: &[String]) -> Result<Arguments, S
     if !COMMANDS.contains(&command) {
         return Err(format!("unknown command `{command}`"));
     }
-    parse_for(Some(command), arguments)
+    let parsed = parse_for(Some(command), arguments)?;
+    if command == "version" && parsed.target.is_some() {
+        return Err("`iunctus version` takes no target".into());
+    }
+    Ok(parsed)
 }
 
 fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, String> {
@@ -445,6 +449,7 @@ const WORKFLOW: &[&str] = &[
     "outputs",
     "check-order",
 ];
+const CONFIGURED: &[&str] = COMMANDS.split_at(COMMANDS.len() - 1).0;
 const EXECUTION: &[&str] = &["run", "graph", "check-order", "repeat", "replay"];
 const BACKEND: &[&str] = &[
     "run",
@@ -457,9 +462,9 @@ const BACKEND: &[&str] = &[
 const OPTIONS: &[(&str, &[&str])] = &[
     ("-help", COMMANDS),
     ("-version,--version", COMMANDS),
-    ("-v,-verbose", COMMANDS),
-    ("-quiet", COMMANDS),
-    ("-iunctus-config <file>", COMMANDS),
+    ("-v,-verbose", CONFIGURED),
+    ("-quiet", CONFIGURED),
+    ("-iunctus-config <file>", CONFIGURED),
     (
         "-database <file>",
         &[
@@ -482,11 +487,17 @@ const OPTIONS: &[(&str, &[&str])] = &[
             "report",
         ],
     ),
-    ("-lang <nextflow|snakemake|cwl|argo>", WORKFLOW),
+    (
+        "-lang <nextflow|snakemake|cwl|argo>",
+        &["run", "graph", "check", "inputs", "outputs", "check-order"],
+    ),
     ("-profile <a,b>", WORKFLOW),
     ("-c,-config,-configfile,--configfile <file>", WORKFLOW),
     ("-inputs,-params-file <file>", WORKFLOW),
-    ("-entry <name>", WORKFLOW),
+    (
+        "-entry <name>",
+        &["run", "graph", "check", "inputs", "outputs", "check-order"],
+    ),
     ("--config <name=value>", WORKFLOW),
     ("-stub,-stub-run", &["run", "graph", "check", "check-order"]),
     ("-keep-going", &["run", "graph", "check-order"]),
@@ -516,7 +527,10 @@ const OPTIONS: &[(&str, &[&str])] = &[
         "-default-image <image>",
         &["run", "graph", "check", "check-order", "repeat", "replay"],
     ),
-    ("-python-image <image>", WORKFLOW),
+    (
+        "-python-image <image>",
+        &["run", "graph", "check", "inputs", "outputs", "check-order"],
+    ),
     ("-output-dir <folder>", WORKFLOW),
     ("-graph <file>", &["run", "graph"]),
     ("-report <file>", &["run"]),
@@ -555,7 +569,7 @@ const OPTIONS: &[(&str, &[&str])] = &[
         &["run", "graph", "check-order", "repeat", "replay"],
     ),
     ("-no-cache", &["run", "graph", "check-order"]),
-    ("-no-network", EXECUTION),
+    ("-no-network", &["run", "graph", "check-order", "replay"]),
     ("-machine-retries <n>", EXECUTION),
     ("-machine-retry-delay-ms <milliseconds>", EXECUTION),
     (

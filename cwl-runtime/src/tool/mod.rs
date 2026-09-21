@@ -651,30 +651,51 @@ fn resources(
     let mut tmpdir = 1024.0;
     let mut outdir = 1024.0;
     if let Some((resource, _)) = requirement {
-        let pick =
-            |min: Option<f64>, max: Option<f64>, default: f64| min.or(max).unwrap_or(default);
+        let pick = |min: Option<f64>, max: Option<f64>, default: f64| {
+            if min
+                .into_iter()
+                .chain(max)
+                .any(|value| !value.is_finite() || value < 0.0)
+                || matches!((min, max), (Some(min), Some(max)) if min > max)
+            {
+                return Err(
+                    "resource amounts must be finite, nonnegative and min <= max".to_owned(),
+                );
+            }
+            Ok(min.or(max).unwrap_or(default))
+        };
         cores = pick(
             amount(&resource.cores_min)?,
             amount(&resource.cores_max)?,
             cores,
-        );
-        ram = pick(amount(&resource.ram_min)?, amount(&resource.ram_max)?, ram);
+        )?;
+        ram = pick(amount(&resource.ram_min)?, amount(&resource.ram_max)?, ram)?;
         tmpdir = pick(
             amount(&resource.tmpdir_min)?,
             amount(&resource.tmpdir_max)?,
             tmpdir,
-        );
+        )?;
         outdir = pick(
             amount(&resource.outdir_min)?,
             amount(&resource.outdir_max)?,
             outdir,
-        );
+        )?;
     }
-    let mebibytes = |amount: f64| (amount.ceil().max(0.0) as u64) * 1024 * 1024;
+    let mebibytes = |amount: f64| {
+        (amount.ceil() as u64)
+            .checked_mul(1024 * 1024)
+            .ok_or_else(|| "resource amount exceeds the supported byte range".to_owned())
+    };
     let resources = Resources {
         cpus: Some(cores),
-        memory_bytes: Some(mebibytes(ram)),
-        disk_bytes: Some(mebibytes(tmpdir) + mebibytes(outdir)),
+        memory_bytes: Some(mebibytes(ram)?),
+        disk_bytes: Some(
+            mebibytes(tmpdir)?
+                .checked_add(mebibytes(outdir)?)
+                .ok_or_else(|| {
+                    "combined disk resource amount exceeds the supported byte range".to_owned()
+                })?,
+        ),
         time_seconds: None,
         gpus: None,
     };

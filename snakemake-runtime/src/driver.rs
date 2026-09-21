@@ -1940,6 +1940,11 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
                         break;
                     }
                 };
+                if let Some(error) = channel.failed.borrow_mut().take() {
+                    let result = session.failure_hook(&error).map(|()| Vec::new());
+                    let _ = channel.replies.send(result);
+                    break;
+                }
                 // The outcomes that came while commands of workflow code ran.
                 reply = reply.and_then(|mut tasks| {
                     loop {

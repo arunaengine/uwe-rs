@@ -121,7 +121,12 @@ fn expand_sequence(sequence: &Sequence) -> Result<Vec<Value>, String> {
     ) {
         (Some(end), _) => end,
         (None, Some(0)) => return Ok(Vec::new()),
-        (None, Some(count)) => start + count - 1,
+        (None, Some(count)) if count < 0 => {
+            return Err("withSequence.count must be nonnegative".into());
+        }
+        (None, Some(count)) => start
+            .checked_add(count - 1)
+            .ok_or_else(|| "withSequence bounds exceed the supported integer range".to_owned())?,
         (None, None) => return Err("neither end nor count was specified in withSequence".into()),
     };
     let format = if sequence.format.is_empty() {
@@ -375,6 +380,27 @@ mod tests {
         assert_eq!(
             texts(expand_sequence(&sequence("1", "2", "", "file-%02d.txt")).expect("a list")),
             ["file-01.txt", "file-02.txt"]
+        );
+    }
+
+    #[test]
+    fn sequences_reject_negative_counts_and_overflowing_bounds() {
+        for (start, count) in [(0, -1), (i64::MAX, 2)] {
+            let sequence = Sequence {
+                start: Some(argo_parser::model::AnyString(start.to_string())),
+                count: Some(argo_parser::model::AnyString(count.to_string())),
+                ..Sequence::default()
+            };
+            assert!(expand_sequence(&sequence).is_err());
+        }
+        let sequence = Sequence {
+            start: Some(argo_parser::model::AnyString(i64::MAX.to_string())),
+            count: Some(argo_parser::model::AnyString("1".into())),
+            ..Sequence::default()
+        };
+        assert_eq!(
+            expand_sequence(&sequence),
+            Ok(vec![Value::String(i64::MAX.to_string())])
         );
     }
 

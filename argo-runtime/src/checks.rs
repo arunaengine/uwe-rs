@@ -99,6 +99,41 @@ pub(crate) fn process_args(template: &Template, supplied: Supplied) -> Result<()
 /// templates, sidecars and daemons.
 pub(crate) fn cluster_only(template: &Template) -> Option<String> {
     let name = &template.name;
+    for (field, present) in [
+        ("synchronization", template.synchronization.is_some()),
+        ("memoize", template.memoize.is_some()),
+        ("suspend", template.suspend.is_some()),
+        ("podSpecPatch", template.pod_spec_patch.is_some()),
+        ("podResources", template.pod_resources.is_some()),
+        ("resourceClaims", template.resource_claims.is_some()),
+        ("pendingTimeout", template.pending_timeout.is_some()),
+        ("archiveLocation", template.archive_location.is_some()),
+    ] {
+        if present {
+            return Some(format!("template {name}: `{field}` is not supported"));
+        }
+    }
+    for container in template.container.iter().chain(&template.script).chain(
+        template
+            .container_set
+            .iter()
+            .flat_map(|set| &set.containers),
+    ) {
+        for (field, present) in [
+            ("lifecycle", container.lifecycle.is_some()),
+            ("livenessProbe", container.liveness_probe.is_some()),
+            ("readinessProbe", container.readiness_probe.is_some()),
+            ("startupProbe", container.startup_probe.is_some()),
+            ("restartPolicy", container.restart_policy.is_some()),
+            ("resizePolicy", container.resize_policy.is_some()),
+        ] {
+            if present {
+                return Some(format!(
+                    "template {name}: container `{field}` is not supported"
+                ));
+            }
+        }
+    }
     let reason = if let Some(resource) = &template.resource {
         // Tags that name no variable yet stand for text, so that the manifest parses.
         let kind = parse_yaml(&without_tags(&resource.manifest))

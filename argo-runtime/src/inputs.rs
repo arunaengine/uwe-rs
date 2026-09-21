@@ -31,6 +31,9 @@ impl Run {
         let (typed, _) = decode::<Template>(template).map_err(|error| {
             Failure::error(format!("template {}: {error}", template_label(template)))
         })?;
+        if let Some(reason) = crate::checks::cluster_only(&typed) {
+            return Err(Failure::unsupported(reason));
+        }
         let mut node = template.clone();
         let mut values: Vec<(String, String)> = Vec::new();
         for (position, input) in typed.inputs.parameters.iter().enumerate() {

@@ -180,7 +180,7 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
                 .ok_or(format!("the option `{argument}` needs a value"))
         };
         match argument.as_str() {
-            "-help" | "--help" => parsed.help = true,
+            "-help" => parsed.help = true,
             "-version" | "--version" => parsed.version = true,
             "-v" | "-verbose" => parsed.verbose = true,
             "-quiet" => parsed.quiet = true,
@@ -350,7 +350,6 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
                 }
             }
             param if param.starts_with("--") => {
-                parameter_options.push(param.split('=').next().unwrap_or(param).to_owned());
                 let (name, text) = match param[2..].split_once('=') {
                     Some((name, text)) => (name.to_owned(), text.to_owned()),
                     None => {
@@ -366,7 +365,10 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
                 };
                 match setting(&text).filter(|_| name == "config") {
                     Some((name, text)) => parsed.params.push((name.to_owned(), text.to_owned())),
-                    None => parsed.params.push((name, text)),
+                    None => {
+                        parameter_options.push(param.split('=').next().unwrap_or(param).to_owned());
+                        parsed.params.push((name, text));
+                    }
                 }
             }
             other if !other.starts_with('-') => match parsed.target {
@@ -399,12 +401,11 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
         if let Some(help) = engine_option(&option, language) {
             return Err(format!("engine option `{option}` is unsupported; {help}"));
         }
-    }
-    if language == Some(Language::Snakemake) && parsed.profiles.is_some() {
-        return Err(
-            "Snakemake profiles are unsupported; use `-iunctus-config file` for executor settings"
-                .into(),
-        );
+        if language == Some(Language::Snakemake) {
+            return Err(format!(
+                "Snakemake option `{option}` is unsupported; use `--config name=value` for workflow parameters or `iunctus run -help` for engine options"
+            ));
+        }
     }
     take_job_file(&mut parsed);
     Ok(parsed)
@@ -454,7 +455,7 @@ const BACKEND: &[&str] = &[
     "check-machine",
 ];
 const OPTIONS: &[(&str, &[&str])] = &[
-    ("-help,--help", COMMANDS),
+    ("-help", COMMANDS),
     ("-version,--version", COMMANDS),
     ("-v,-verbose", COMMANDS),
     ("-quiet", COMMANDS),
@@ -604,7 +605,7 @@ fn engine_option(option: &str, language: Option<Language>) -> Option<&'static st
         }
         _ if language == Some(Language::Snakemake) => match option {
             "--cores" | "--jobs" => {
-                "use `-max-pending n` for concurrency and `[executor.local] cpus` for the CPU pool"
+                "use `-max-pending n` to limit concurrent tasks; task CPUs are defined by the workflow"
             }
             "--use-conda" => {
                 "configure `[conda]` in the iunctus config file; Conda preparation is container-only"
@@ -614,7 +615,7 @@ fn engine_option(option: &str, language: Option<Language>) -> Option<&'static st
             }
             "--dry-run" => "use `-executor simulator`",
             "--profile" | "--workflow-profile" => {
-                "use `-iunctus-config file`; Snakemake profiles are unsupported"
+                "use `-profile name` or `-profile path` for Snakemake profiles"
             }
             "--directory" => "launch iunctus from the desired working directory",
             "--snakefile" => "give the Snakefile as the workflow argument",
@@ -743,6 +744,7 @@ mod tests {
             "--use-singularity",
             "--dry-run",
             "--profile",
+            "--forceall",
             "-j",
             "-n",
         ] {
@@ -763,6 +765,18 @@ mod tests {
         assert_eq!(
             parse_all(&["Snakefile", "--config", "cores=8"]).params,
             [("cores".into(), "8".into())]
+        );
+        assert_eq!(
+            parse_all(&["Snakefile", "--config=cores=8"]).params,
+            [("cores".into(), "8".into())]
+        );
+        assert_eq!(
+            parse_all(&["Snakefile", "-profile", "lab"]).profiles,
+            Some(vec!["lab".into()])
+        );
+        assert_eq!(
+            parse_all(&["main.nf", "--help"]).params,
+            [("help".into(), "true".into())]
         );
     }
 

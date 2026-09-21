@@ -13,7 +13,7 @@ use serde_json::Value;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
-pub(crate) const REQUEST_GRACE: Duration = Duration::from_secs(5);
+pub(crate) use executor::poll::REQUEST_GRACE;
 
 pub(crate) async fn output(
     command: &mut Command,

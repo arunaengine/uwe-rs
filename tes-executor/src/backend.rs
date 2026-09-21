@@ -11,6 +11,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use executor::poll::{CANCEL_GRACE, Poll, REQUEST_GRACE, WaitError};
 use executor::registry::{self, ImageConfigs};
 use executor::{Backend, ExecutorError, Finished, Job, containers, wrapper};
 use task_model::TaskSpec;
@@ -30,8 +31,7 @@ const CONTAINER_WRAPPERS: &str = "/iunctus/containers";
 /// How long the backend waits between two looks at a task, at most.
 const POLL: Duration = Duration::from_secs(5);
 
-/// How long a cancelled task may take to end before the backend stops waiting for it.
-const CANCEL_GRACE: Duration = Duration::from_secs(60);
+/// How long failed status reads may persist before the backend stops the task.
 const READ_GRACE: Duration = Duration::from_secs(120);
 
 /// The TES executor's backend.
@@ -310,51 +310,40 @@ impl TesBackend {
         seconds: Option<u64>,
         cancel: &CancellationToken,
     ) -> Result<(crate::client::Status, bool), ExecutorError> {
-        let mut pause = Duration::from_millis(250);
-        let mut deadline = None;
-        let mut trouble: Option<tokio::time::Instant> = None;
+        let mut poll = Poll::new(POLL);
         loop {
             tracing::debug!(task = id, "polling TES task");
-            let read = async {
-                tokio::time::sleep(pause).await;
-                self.client.status(id).await
-            };
-            let expiry = async {
-                match deadline {
-                    Some(deadline) => tokio::time::sleep_until(deadline).await,
-                    None => std::future::pending().await,
-                }
-            };
-            let answer = tokio::select! {
-                answer = read => answer,
-                () = cancel.cancelled() => {
+            let answer = match poll.read(cancel, self.client.status(id)).await {
+                Ok(answer) => answer,
+                Err(WaitError::Cancelled) => {
                     self.stop(id, root, CANCEL_GRACE).await?;
                     return Err(ExecutorError::Cancelled);
                 }
-                () = expiry => return self.stop(id, root, CANCEL_GRACE).await.map(|status| (status, true)),
+                Err(WaitError::Expired) => {
+                    return self
+                        .stop(id, root, CANCEL_GRACE)
+                        .await
+                        .map(|status| (status, true));
+                }
             };
             match answer {
                 Ok(status) => {
-                    trouble = None;
+                    poll.troubled(false, READ_GRACE);
                     if status.state.is_final() {
                         std::fs::remove_file(root.join("remote.json"))?;
                         return Ok((status, false));
                     }
-                    if status.state == State::Running && deadline.is_none() {
-                        deadline = seconds.map(|seconds| {
-                            tokio::time::Instant::now() + Duration::from_secs(seconds)
-                        });
+                    if status.state == State::Running {
+                        poll.running_for(seconds);
                     }
                 }
                 Err(error) => {
-                    let since = trouble.get_or_insert_with(tokio::time::Instant::now);
-                    if since.elapsed() >= READ_GRACE {
+                    if poll.troubled(true, READ_GRACE) {
                         self.stop(id, root, CANCEL_GRACE).await?;
                         return Err(machine(error));
                     }
                 }
             }
-            pause = (pause * 2).min(POLL);
         }
     }
 
@@ -365,22 +354,19 @@ impl TesBackend {
         root: &Path,
         grace: Duration,
     ) -> Result<crate::client::Status, ExecutorError> {
-        let stopped = async {
-            loop {
-                let request_grace = grace.min(Duration::from_secs(5));
-                let _ = tokio::time::timeout(request_grace, self.client.cancel(id)).await;
-                if let Ok(Ok(status)) =
-                    tokio::time::timeout(request_grace, self.client.status(id)).await
-                    && status.state.is_final()
-                {
-                    return status;
-                }
-                tokio::time::sleep(Duration::from_secs(1)).await;
+        let status = executor::poll::until_stopped(grace, Duration::from_secs(1), || async {
+            let request_grace = grace.min(REQUEST_GRACE);
+            let _ = tokio::time::timeout(request_grace, self.client.cancel(id)).await;
+            if let Ok(Ok(status)) =
+                tokio::time::timeout(request_grace, self.client.status(id)).await
+                && status.state.is_final()
+            {
+                return Some(status);
             }
-        };
-        let status = tokio::time::timeout(grace, stopped)
-            .await
-            .map_err(|_| unresolved(root, format!("task {id} termination was not confirmed")))?;
+            None
+        })
+        .await
+        .map_err(|_| unresolved(root, format!("task {id} termination was not confirmed")))?;
         std::fs::remove_file(root.join("remote.json"))?;
         Ok(status)
     }

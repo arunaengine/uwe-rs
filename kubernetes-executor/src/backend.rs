@@ -9,9 +9,10 @@
 use std::fs::{File, TryLockError};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use executor::manifest::parse;
+use executor::poll::{CANCEL_GRACE, Poll, REQUEST_GRACE};
 use executor::process::Mount;
 use executor::registry::{self, ImageConfigs};
 use executor::wrapper::{Folders, MANIFEST, STDERR};
@@ -34,10 +35,6 @@ const POLL: Duration = Duration::from_secs(5);
 
 /// How long a Job may have no pod, or a pod that cannot start, before it counts as failed.
 const GRACE: Duration = Duration::from_secs(120);
-
-/// How long a cancelled Job may take to remove its pod before the backend stops waiting.
-const CANCEL_GRACE: Duration = Duration::from_secs(60);
-const REQUEST_GRACE: Duration = Duration::from_secs(5);
 
 /// The Kubernetes executor's backend.
 #[derive(Debug)]
@@ -465,19 +462,20 @@ impl KubernetesBackend {
 
     /// Waits for a container outcome or cancellation before confirming termination.
     async fn wait(&self, name: &str, cancel: &CancellationToken) -> Result<Ended, ExecutorError> {
-        let mut pause = Duration::from_millis(250);
-        let mut trouble: Option<Instant> = None;
+        let mut poll = Poll::new(self.poll);
         loop {
             tracing::debug!(job = name, "polling Kubernetes job");
-            let look = tokio::select! {
-                look = async {
-                    tokio::time::sleep(pause).await;
-                    tokio::time::timeout(REQUEST_GRACE, self.pods.look(name, self.poll, &self.cluster, &self.label))
-                        .await.unwrap_or_else(|_| Look::Unavailable("pod query timed out".into()))
-                } => look,
-                () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
-            };
-            pause = (pause * 2).min(self.poll);
+            let look = poll
+                .read(cancel, async {
+                    tokio::time::timeout(
+                        REQUEST_GRACE,
+                        self.pods.look(name, self.poll, &self.cluster, &self.label),
+                    )
+                    .await
+                    .unwrap_or_else(|_| Look::Unavailable("pod query timed out".into()))
+                })
+                .await
+                .map_err(|_| ExecutorError::Cancelled)?;
             let problem = match look {
                 Look::Active | Look::Unknown => None,
                 Look::Ended { exit_code, reason } => return Ok(Ended::Exited(exit_code, reason)),
@@ -487,13 +485,10 @@ impl KubernetesBackend {
                 Look::Unavailable(error) => Some(format!("cannot list the pods: {error}")),
             };
             // A pod may appear late, and an image may be pulled at the next try.
-            match (problem, trouble) {
-                (None, _) => trouble = None,
-                (Some(_), None) => trouble = Some(Instant::now()),
-                (Some(problem), Some(since)) if since.elapsed() >= GRACE => {
-                    return Err(machine(problem));
-                }
-                (Some(_), Some(_)) => {}
+            if poll.troubled(problem.is_some(), GRACE)
+                && let Some(problem) = problem
+            {
+                return Err(machine(problem));
             }
         }
     }
@@ -518,51 +513,48 @@ impl KubernetesBackend {
                     "the accepted UID was not recorded; resolve the submission on the cluster",
                 )
             })?;
-        let stopped = async {
-            let jobs = self.cluster.jobs();
-            let pods = self.cluster.pods();
-            let selector = ListParams::default().labels(&format!("job-name={name}"));
-            loop {
-                match tokio::time::timeout(REQUEST_GRACE, jobs.get_opt(name)).await {
-                    Ok(Ok(Some(job))) => {
-                        if job.metadata.uid.as_deref() != Some(uid)
-                            || job
-                                .metadata
-                                .labels
-                                .as_ref()
-                                .and_then(|labels| labels.get(crate::manifest::LABEL))
-                                .map(String::as_str)
-                                != journal["label"].as_str()
-                        {
-                            return Err(unresolved(root, "the Job identity changed"));
-                        }
-                        let parameters = DeleteParams {
-                            propagation_policy: Some(PropagationPolicy::Foreground),
-                            preconditions: Some(Preconditions {
-                                uid: Some(uid.to_owned()),
-                                ..Preconditions::default()
-                            }),
-                            ..DeleteParams::default()
-                        };
-                        let _ = tokio::time::timeout(REQUEST_GRACE, jobs.delete(name, &parameters))
-                            .await;
+        let jobs = self.cluster.jobs();
+        let pods = self.cluster.pods();
+        let selector = ListParams::default().labels(&format!("job-name={name}"));
+        executor::poll::until_stopped(grace, self.poll.min(Duration::from_secs(1)), || async {
+            match tokio::time::timeout(REQUEST_GRACE, jobs.get_opt(name)).await {
+                Ok(Ok(Some(job))) => {
+                    if job.metadata.uid.as_deref() != Some(uid)
+                        || job
+                            .metadata
+                            .labels
+                            .as_ref()
+                            .and_then(|labels| labels.get(crate::manifest::LABEL))
+                            .map(String::as_str)
+                            != journal["label"].as_str()
+                    {
+                        return Some(Err(unresolved(root, "the Job identity changed")));
                     }
-                    Ok(Ok(None)) => {
-                        if let Ok(Ok(list)) =
-                            tokio::time::timeout(REQUEST_GRACE, pods.list(&selector)).await
-                            && list.items.is_empty()
-                        {
-                            return Ok(());
-                        }
-                    }
-                    _ => {}
+                    let parameters = DeleteParams {
+                        propagation_policy: Some(PropagationPolicy::Foreground),
+                        preconditions: Some(Preconditions {
+                            uid: Some(uid.to_owned()),
+                            ..Preconditions::default()
+                        }),
+                        ..DeleteParams::default()
+                    };
+                    let _ =
+                        tokio::time::timeout(REQUEST_GRACE, jobs.delete(name, &parameters)).await;
                 }
-                tokio::time::sleep(self.poll.min(Duration::from_secs(1))).await;
+                Ok(Ok(None)) => {
+                    if let Ok(Ok(list)) =
+                        tokio::time::timeout(REQUEST_GRACE, pods.list(&selector)).await
+                        && list.items.is_empty()
+                    {
+                        return Some(Ok(()));
+                    }
+                }
+                _ => {}
             }
-        };
-        tokio::time::timeout(grace, stopped)
-            .await
-            .map_err(|_| unresolved(root, format!("Job {name} termination was not confirmed")))??;
+            None
+        })
+        .await
+        .map_err(|_| unresolved(root, format!("Job {name} termination was not confirmed")))??;
         std::fs::remove_file(root.join("remote.json"))?;
         Ok(())
     }

@@ -88,3 +88,30 @@ fn rejects_unsupported_container_lifecycle_controls() {
         assert!(error.message.contains(field), "{error}");
     }
 }
+
+#[test]
+fn rejects_unsupported_retry_controls_and_invalid_limits() {
+    for strategy in [
+        "backoff: {duration: 5s}",
+        "affinity: {nodeAntiAffinity: {}}",
+        "retryPolicy: OnTransientError",
+        "limit: -1",
+        "limit: invalid",
+    ] {
+        for spec in [
+            format!(
+                "  retryStrategy: {{{strategy}}}\n  templates:\n  - name: main\n    container: {{image: alpine}}\n"
+            ),
+            format!(
+                "  templates:\n  - name: main\n    retryStrategy: {{{strategy}}}\n    container: {{image: alpine}}\n"
+            ),
+        ] {
+            let error = start_error(&spec);
+            assert_eq!(error.unsupported, !strategy.starts_with("limit"), "{error}");
+            assert!(
+                error.message.contains("retry") || error.message.contains("Retry"),
+                "{error}"
+            );
+        }
+    }
+}

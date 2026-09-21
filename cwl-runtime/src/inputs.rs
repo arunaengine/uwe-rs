@@ -7,7 +7,7 @@
 use std::collections::HashSet;
 
 use cwl_parser::model::{
-    Expression, InputParameter, LoadListing, Process, SecondaryFile, Type, Version, short_name,
+    Expression, InputParameter, LoadListing, Process, SecondaryFile, Type, short_name,
 };
 
 use crate::expression::{Evaluator, Variables};
@@ -138,7 +138,6 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
         let mut walk = Walk {
             setting,
             inputs: &snapshot,
-            legacy: process.version == Version::V1_0,
         };
         walk.parameter(input, value)?;
     }
@@ -187,7 +186,6 @@ fn absent(job: &mut Map, setting: &Setting<'_>) -> Result<(), String> {
 struct Walk<'a, 'b> {
     setting: &'a Setting<'b>,
     inputs: &'a Value,
-    legacy: bool,
 }
 
 /// What a schema asks of the files at one place.
@@ -213,7 +211,7 @@ impl Walk<'_, '_> {
         let asks = Asks {
             secondary: &input.secondary_files,
             load_contents: binding_loads || schema_loads,
-            items_load: binding_loads || (self.legacy && schema_loads),
+            items_load: binding_loads || schema_loads,
             load_listing: input.load_listing,
             format: &input.format,
         };

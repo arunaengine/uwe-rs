@@ -65,6 +65,31 @@ fn rejects_negative_time_limits() {
 }
 
 #[test]
+fn step_load_contents_applies_to_file_arrays_before_value_from() {
+    let root = tempfile::tempdir().expect("folder");
+    let file = root.path().join("input.txt");
+    std::fs::write(&file, "step contents").expect("input");
+    let main = root.path().join("main.cwl");
+    std::fs::write(&main, "cwlVersion: v1.2\nclass: Workflow\nrequirements: {StepInputExpressionRequirement: {}}\ninputs: {files: 'File[]'}\noutputs: []\nsteps:\n  use:\n    in:\n      text: {source: files, loadContents: true, valueFrom: '$(self[0].contents)'}\n    out: []\n    run:\n      class: CommandLineTool\n      baseCommand: echo\n      inputs: {text: {type: string, inputBinding: {}}}\n      outputs: []\n").expect("workflow");
+    let job = root.path().join("job.json");
+    std::fs::write(&job, serde_json::json!({"files": [{"class": "File", "location": cwl_parser::iri::file_url(&file)}]}).to_string()).expect("job");
+    let mut driver = CwlDriver::new(
+        &Launch {
+            target: main,
+            inputs: Some(job),
+            ..Launch::default()
+        },
+        Options {
+            simulated: false,
+            ..Options::default()
+        },
+    )
+    .expect("driver");
+    let tasks = workflow_graph::Driver::start(&mut driver).expect("starts");
+    assert_eq!(tasks[0].command, ["echo", "step contents"]);
+}
+
+#[test]
 fn rejects_invalid_and_overflowing_resource_amounts() {
     for fields in [
         "ramMin: -1",

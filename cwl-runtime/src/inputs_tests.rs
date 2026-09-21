@@ -69,6 +69,31 @@ fn optional_inputs_of_the_top_process_get_placeholders_when_asked() {
 }
 
 #[test]
+fn load_contents_applies_to_file_array_items() {
+    let folder = tempfile::tempdir().expect("folder");
+    let file = folder.path().join("input.txt");
+    std::fs::write(&file, "array contents").expect("input file");
+    for version in ["v1.1", "v1.2"] {
+        let tool = process(&format!(
+            "cwlVersion: {version}\nclass: CommandLineTool\nbaseCommand: cat\noutputs: []\n\
+             inputs: {{files: {{type: 'File[]', loadContents: true}}}}\n"
+        ));
+        let (types, evaluator) = (Types::default(), Evaluator::default());
+        let settings = Setting {
+            placeholders: None,
+            access: Access::default(),
+            ..setting(&types, &evaluator, &[])
+        };
+        let Value::Map(job) = Value::parse(&serde_json::json!({"files": [{"class": "File", "location": cwl_parser::iri::file_url(&file)}]}).to_string()).expect("job") else { panic!("map") };
+        let job = prepare(&tool, job, &settings).expect("prepared inputs");
+        assert_eq!(
+            job["files"].as_list().unwrap()[0].text("contents"),
+            Some("array contents")
+        );
+    }
+}
+
+#[test]
 fn broken_defaults_of_the_top_process_give_way_to_placeholders() {
     let tool = process(
         "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\noutputs: []\n\

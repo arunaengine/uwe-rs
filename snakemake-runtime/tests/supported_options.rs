@@ -128,7 +128,6 @@ fn shadow_parent_paths_and_unsupported_modes_fail_before_task_publication() {
         "shadow: 'full'",
         "shadow: 'copy-minimal'",
         "shadow: True",
-        "cache: 'omit-software'",
         "shadow: 'minimal'\n    output: '../out'",
     ] {
         let folder = tempfile::tempdir().expect("a folder");

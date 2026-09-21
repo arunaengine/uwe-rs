@@ -1206,7 +1206,12 @@ impl Hook {
                     }
                 }
                 RuleKeyword::Cache => {
-                    if interpreter.truthy(&first)? && !matches!(first.plain(), Value::Bool(true)) {
+                    // The task cache key always includes the software, so "omit-software"
+                    // can only reuse less, never give a different result.
+                    if interpreter.truthy(&first)?
+                        && !matches!(first.plain(), Value::Bool(true))
+                        && first.as_str() != Some("omit-software")
+                    {
                         return Err(Error::unsupported(format!(
                             "cache mode {} for rule {}; only True is supported",
                             interpreter.repr(&first)?,

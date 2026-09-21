@@ -221,6 +221,42 @@ impl<'a> Check<'a> {
         entry: Option<(&str, Supplied)>,
         allow_empty: bool,
     ) -> Result<(), String> {
+        for (field, present) in [
+            ("synchronization", spec.synchronization.is_some()),
+            (
+                "activeDeadlineSeconds",
+                spec.active_deadline_seconds.is_some(),
+            ),
+            (
+                "artifactRepositoryRef",
+                spec.artifact_repository_ref.is_some(),
+            ),
+            ("podSpecPatch", spec.pod_spec_patch.is_some()),
+            ("podResources", spec.pod_resources.is_some()),
+            (
+                "shutdown",
+                spec.shutdown
+                    .as_ref()
+                    .is_some_and(|node| node.as_str().is_none_or(|value| !value.is_empty())),
+            ),
+            (
+                "suspend",
+                spec.suspend
+                    .as_ref()
+                    .is_some_and(|node| node.value != Yaml::Bool(false)),
+            ),
+        ] {
+            if present {
+                self.unsupported = true;
+                return Err(format!("spec.{field} is not supported"));
+            }
+        }
+        if let Some(defaults) = &spec.template_defaults
+            && let Some(reason) = cluster_only(defaults)
+        {
+            self.unsupported = true;
+            return Err(format!("templateDefaults: {reason}"));
+        }
         let names: Vec<&str> = base
             .templates
             .iter()

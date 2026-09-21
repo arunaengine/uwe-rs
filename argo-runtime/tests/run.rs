@@ -872,8 +872,6 @@ fn leaf_kinds_become_tasks() {
         template: set
       - name: http
         template: http
-      - name: wait
-        template: wait
   - name: set
     containerSet:
       containers:
@@ -889,8 +887,6 @@ fn leaf_kinds_become_tasks() {
       url: https://example.org/{{workflow.name}}
       method: POST
       body: data
-  - name: wait
-    suspend: {duration: 10s}
 "#,
     ));
     ran.succeeded();

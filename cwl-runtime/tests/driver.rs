@@ -65,6 +65,24 @@ fn rejects_negative_time_limits() {
 }
 
 #[test]
+fn rejects_invalid_and_overflowing_resource_amounts() {
+    for fields in [
+        "ramMin: -1",
+        "coresMin: 4, coresMax: 2",
+        "ramMin: 18446744073709551615.0",
+        "tmpdirMin: 9000000000000, outdirMin: 9000000000000",
+        "ramMin: .inf",
+    ] {
+        let tool = format!(
+            "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: echo\n\
+             requirements: {{ResourceRequirement: {{{fields}}}}}\ninputs: []\noutputs: []\n"
+        );
+        let error = run(&[("main.cwl", &tool)]).expect_err("invalid resources fail");
+        assert!(error.contains("resource"), "{fields}: {error}");
+    }
+}
+
+#[test]
 fn absolute_entry_names_need_docker_as_a_requirement() {
     let tool = |docker: &str| {
         format!(

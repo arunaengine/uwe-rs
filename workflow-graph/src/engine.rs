@@ -460,21 +460,6 @@ fn retry_pause(base: Duration, attempt: u32) -> Duration {
     ceiling.mul_f64(0.5 + (random as f64 / u64::MAX as f64) * 0.5)
 }
 
-#[cfg(test)]
-mod retry_tests {
-    use super::*;
-
-    #[test]
-    fn exponential_retry_jitter_stays_within_bounds() {
-        for attempt in 1..=8 {
-            let ceiling = Duration::from_secs((1_u64 << (attempt - 1)).min(60));
-            let pause = retry_pause(Duration::from_secs(1), attempt);
-            assert!(pause >= ceiling / 2 && pause <= ceiling);
-        }
-        assert!(retry_pause(Duration::MAX, u32::MAX) <= Duration::from_secs(60));
-    }
-}
-
 /// The outcome of an attempt that failed without one, for the observer: exit code -1 and the
 /// error as its standard error.
 fn failed(
@@ -492,5 +477,20 @@ fn failed(
         started: Some(started),
         ended: Some(ended),
         ..Outcome::default()
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::*;
+
+    #[test]
+    fn exponential_retry_jitter_stays_within_bounds() {
+        for attempt in 1..=8 {
+            let ceiling = Duration::from_secs((1_u64 << (attempt - 1)).min(60));
+            let pause = retry_pause(Duration::from_secs(1), attempt);
+            assert!(pause >= ceiling / 2 && pause <= ceiling);
+        }
+        assert!(retry_pause(Duration::MAX, u32::MAX) <= Duration::from_secs(60));
     }
 }

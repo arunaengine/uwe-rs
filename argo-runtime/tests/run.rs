@@ -781,6 +781,53 @@ fn exit_handlers_see_the_status() {
 }
 
 #[test]
+fn invalid_retry_and_lifecycle_hook_expressions_fail_loudly() {
+    let retried = run_with(
+        &workflow(
+            "  - name: main\n    retryStrategy: {limit: 1, expression: 'missing.name'}\n    container: {image: alpine}\n",
+        ),
+        Setup {
+            exit: vec![("main", vec![1])],
+            ..Setup::default()
+        },
+    );
+    assert!(
+        retried.error().contains("retryStrategy.expression"),
+        "{}",
+        retried.error()
+    );
+    let workflow_hook = run(
+        "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {name: hook}\nspec:\n  entrypoint: main\n  hooks:\n    check: {template: main, expression: 'missing.name'}\n  templates:\n  - name: main\n    container: {image: alpine}\n",
+    );
+    assert!(
+        workflow_hook.error().contains("hook check"),
+        "{}",
+        workflow_hook.error()
+    );
+    let step_hook = run(&workflow(
+        "  - name: main\n    steps:\n    - - name: use\n        template: work\n        hooks:\n          check: {template: work, expression: 'missing.name'}\n  - name: work\n    container: {image: alpine}\n",
+    ));
+    assert!(
+        step_hook.error().contains("hooks.check"),
+        "{}",
+        step_hook.error()
+    );
+}
+
+#[test]
+fn workflow_retry_limits_resolve_parameters_instead_of_becoming_unlimited() {
+    let ran = run_with(
+        "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {name: retries}\nspec:\n  entrypoint: main\n  arguments: {parameters: [{name: limit, value: '0'}]}\n  retryStrategy: {limit: '{{workflow.parameters.limit}}'}\n  templates:\n  - name: main\n    container: {image: alpine}\n",
+        Setup {
+            exit: vec![("main", vec![1, 0])],
+            ..Setup::default()
+        },
+    );
+    assert_eq!(ran.tasks().len(), 1);
+    assert!(ran.error().contains("failed"));
+}
+
+#[test]
 fn generated_names_do_not_depend_on_the_location() {
     // Each run writes the workflow into a new temporary directory.
     let names: Vec<String> = (0..2)

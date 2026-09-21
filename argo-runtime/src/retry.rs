@@ -14,23 +14,61 @@ use crate::node::{NodeKind, Phase};
 use crate::run::{Call, Failure, Processed, Result, Run};
 use crate::tags::{Variables, replace_node};
 
+pub(crate) fn check_strategy(strategy: &argo_parser::model::RetryStrategy) -> Result<()> {
+    if strategy.backoff.is_some()
+        || strategy.affinity.is_some()
+        || strategy.retry_policy == "OnTransientError"
+    {
+        return Err(Failure::unsupported(
+            "retryStrategy backoff, affinity and OnTransientError are not supported",
+        ));
+    }
+    if !matches!(
+        strategy.retry_policy.as_str(),
+        "" | "Always" | "OnError" | "OnFailure"
+    ) {
+        return Err(Failure::error(format!(
+            "{} is not a valid RetryPolicy",
+            strategy.retry_policy
+        )));
+    }
+    if let Some(limit) = &strategy.limit
+        && !crate::tags::has_tag(&limit.0)
+        && limit.0.trim().parse::<usize>().is_err()
+    {
+        return Err(Failure::error(
+            "retryStrategy.limit must be a nonnegative integer",
+        ));
+    }
+    Ok(())
+}
+
 impl Run {
     /// Makes an attempt of a retry node, or ends the node by its last attempt.
     pub(crate) fn continue_retry(&mut self, index: usize) -> Result<()> {
         let Some(call) = self.nodes[index].retry.clone() else {
             return Ok(());
         };
+        check_strategy(&call.strategy)?;
+        let limit = call
+            .strategy
+            .limit
+            .as_ref()
+            .map(|limit| {
+                let variables = Variables::new(self.globals.clone());
+                let text =
+                    crate::tags::replace(&limit.0, &variables, true).map_err(Failure::error)?;
+                text.trim().parse::<usize>().map_err(|_| {
+                    Failure::error("retryStrategy.limit must resolve to a nonnegative integer")
+                })
+            })
+            .transpose()?;
         if let Some(&last) = self.nodes[index].children.last() {
             if !self.nodes[last].phase.fulfilled() {
                 return self.reenter(last);
             }
             let phase = self.nodes[last].phase;
             let attempts = self.nodes[index].children.len();
-            let limit = call
-                .strategy
-                .limit
-                .as_ref()
-                .and_then(|limit| limit.0.trim().parse::<usize>().ok());
             let policy = match call.strategy.retry_policy.as_str() {
                 "" if !call.strategy.expression.is_empty() => "Always",
                 "" => "OnFailure",
@@ -65,7 +103,9 @@ impl Run {
                 let variables = Variables::new(values);
                 retry =
                     crate::expr::evaluate_bool(&call.strategy.expression, variables.environment())
-                        .unwrap_or(false);
+                        .map_err(|error| {
+                            Failure::error(format!("retryStrategy.expression: {error}"))
+                        })?;
             }
             if !retry {
                 let outputs = self.nodes[last].outputs.clone();

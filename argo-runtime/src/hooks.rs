@@ -44,7 +44,7 @@ impl Run {
                 false
             } else {
                 crate::expr::evaluate_bool(&hook.expression, variables.environment())
-                    .unwrap_or(false)
+                    .map_err(|error| Failure::error(format!("hook {name}: {error}")))?
             };
             if !holds {
                 continue;
@@ -229,7 +229,7 @@ impl Run {
             self.add_node_scope(&mut scope, prefix, index);
             let variables = self.variables(&scope);
             let holds = crate::expr::evaluate_bool(&hook.expression, variables.environment())
-                .unwrap_or(false);
+                .map_err(|error| Failure::error(format!("hook {name}: {error}")))?;
             if !holds {
                 continue;
             }

@@ -221,6 +221,12 @@ impl<'a> Check<'a> {
         entry: Option<(&str, Supplied)>,
         allow_empty: bool,
     ) -> Result<(), String> {
+        if let Some(strategy) = &spec.retry_strategy {
+            crate::retry::check_strategy(strategy).map_err(|failure| {
+                self.unsupported = failure.unsupported;
+                failure.message
+            })?;
+        }
         for (field, present) in [
             ("synchronization", spec.synchronization.is_some()),
             (
@@ -353,16 +359,11 @@ impl<'a> Check<'a> {
         if types == 0 {
             return Err(format!("template '{}' type is unknown", template.name));
         }
-        if let Some(strategy) = &template.retry_strategy
-            && !matches!(
-                strategy.retry_policy.as_str(),
-                "" | "Always" | "OnError" | "OnFailure" | "OnTransientError"
-            )
-        {
-            return Err(format!(
-                "{} is not a valid RetryPolicy",
-                strategy.retry_policy
-            ));
+        if let Some(strategy) = &template.retry_strategy {
+            crate::retry::check_strategy(strategy).map_err(|failure| {
+                self.unsupported = failure.unsupported;
+                failure.message
+            })?;
         }
         self.template(&template, node.as_ref(), &base, supplied)
     }

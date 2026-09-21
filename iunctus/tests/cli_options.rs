@@ -10,6 +10,9 @@ fn commands_reject_options_from_other_commands() {
         ["runs", "-remove"],
         ["clean", "-executor"],
         ["page", "--sample"],
+        ["version", "-quiet"],
+        ["config", "-lang"],
+        ["repeat", "-no-network"],
     ] {
         let output = common::command().args(words).output().unwrap();
         assert_eq!(output.status.code(), Some(2));
@@ -39,6 +42,17 @@ fn help_and_version_do_not_load_configuration() {
             format!("iunctus {}\n", env!("CARGO_PKG_VERSION"))
         );
     }
+    let output = common::command()
+        .args(["version", "unexpected"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("takes no target"));
+    let output = common::command()
+        .args(["run", "-version"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
 }
 
 #[test]

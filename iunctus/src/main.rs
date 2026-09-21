@@ -106,7 +106,7 @@ fn main() -> ExitCode {
                 .map_err(Failure::usage),
         );
     }
-    if arguments.version {
+    if arguments.version || command == "version" {
         println!("iunctus {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }

@@ -83,6 +83,48 @@ fn rejects_invalid_and_overflowing_resource_amounts() {
 }
 
 #[test]
+fn rejects_execution_extensions_as_requirements_but_allows_hints() {
+    for class in ["Secrets", "ShmSize", "RuntimeConstraints"] {
+        for kind in ["requirements", "hints"] {
+            let tool = format!(
+                "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: echo\n\
+                 {kind}: [{{class: 'http://commonwl.org/cwltool#{class}'}}]\ninputs: []\noutputs: []\n"
+            );
+            let result = run(&[("main.cwl", &tool)]);
+            if kind == "requirements" {
+                let error = result.expect_err("unsupported requirement fails");
+                assert!(error.contains(class), "{error}");
+            } else {
+                assert_eq!(result, Ok(1));
+            }
+        }
+    }
+}
+
+#[test]
+fn required_cuda_constraints_cannot_be_discarded() {
+    for fields in [
+        "cudaVersionMin: '12'",
+        "cudaComputeCapability: ['7.0']",
+        "cudaDeviceCountMin: -1",
+        "cudaDeviceCountMin: 2, cudaDeviceCountMax: 1",
+        "cudaDeviceCountMin: $(inputs.count)",
+    ] {
+        let tool = format!(
+            "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: echo\n\
+             requirements: [{{class: 'http://commonwl.org/cwltool#CUDARequirement', {fields}}}]\ninputs: []\noutputs: []\n"
+        );
+        let error = run(&[("main.cwl", &tool)]).expect_err("unsupported CUDA requirement fails");
+        assert!(error.contains("CUDARequirement"), "{error}");
+    }
+    let task = task_of(
+        "v1.2",
+        "requirements: [{class: 'http://commonwl.org/cwltool#CUDARequirement', cudaDeviceCountMin: 2, cudaDeviceCountMax: 3}]\n",
+    );
+    assert_eq!(task.resources.gpus, Some(2));
+}
+
+#[test]
 fn absolute_entry_names_need_docker_as_a_requirement() {
     let tool = |docker: &str| {
         format!(

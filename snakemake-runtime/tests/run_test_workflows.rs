@@ -339,7 +339,7 @@ fn child(name: &str, folder: &Path, outcome: &Path) -> String {
 }
 
 /// The records of the workflows that cannot run: the workflow, the reason (`invalid`,
-/// `missing` or `unsupported (decision N)`) and one sentence why.
+/// `missing`, `runtime`, `timeout` or `unsupported (decision N)`) and one sentence why.
 const REJECTED: &str = include_str!("fixtures/run_test_workflows_rejected.txt");
 
 /// What real Snakemake did with the workflows it could not evaluate, from `oracle.py`.
@@ -395,8 +395,13 @@ fn check_records(outcomes: &[(String, String)]) -> Vec<String> {
                     .strip_prefix("unsupported (decision ")
                     .and_then(|rest| rest.strip_suffix(')'))
                     .is_some_and(|number| number.parse::<u32>().is_ok());
-                if !(reason == "invalid" || reason == "missing" || decision) {
-                    problems.push(format!("{name}: the reason {reason:?} is none of invalid, missing, unsupported (decision N)"));
+                if !(matches!(reason, "invalid" | "missing" | "runtime" | "timeout") || decision) {
+                    problems.push(format!("{name}: the reason {reason:?} is none of invalid, missing, runtime, timeout, unsupported (decision N)"));
+                }
+                if reason == "timeout" && !outcome.starts_with("124 ") {
+                    problems.push(format!(
+                        "{name}: the record says timeout, but the outcome is {outcome}"
+                    ));
                 }
                 if sentence.is_empty() {
                     problems.push(format!("{name}: the record says nothing about why"));
@@ -409,6 +414,20 @@ fn check_records(outcomes: &[(String, String)]) -> Vec<String> {
         }
     }
     problems
+}
+
+#[test]
+fn recorded_outcomes_agree_with_rejections() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/run_test_workflows.txt");
+    let text = std::fs::read_to_string(path).expect("the recorded outcomes");
+    let outcomes: Vec<_> = text
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .filter_map(|line| line.split_once(' '))
+        .map(|(name, outcome)| (name.to_owned(), outcome.to_owned()))
+        .collect();
+    let problems = check_records(&outcomes);
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
 #[test]

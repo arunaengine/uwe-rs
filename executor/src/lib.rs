@@ -14,6 +14,7 @@ mod image;
 mod job;
 pub mod local;
 pub mod manifest;
+pub mod poll;
 mod pool;
 pub mod process;
 pub mod registry;

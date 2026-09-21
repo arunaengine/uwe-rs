@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use executor::manifest::parse;
+use executor::poll::{CANCEL_GRACE, Poll};
 use executor::registry::{ImageConfig, ImageConfigs};
 use executor::wrapper::{MANIFEST, STDERR};
 use executor::{
@@ -41,9 +42,6 @@ const PULL_PAUSE: Duration = Duration::from_secs(20);
 
 /// How often the job that pulls an image is tried before the tasks of the image fail.
 const PULL_TRIES: u32 = 3;
-
-/// How long a cancelled job may take to leave the queue before the backend stops waiting.
-const CANCEL_GRACE: Duration = Duration::from_secs(60);
 
 /// The tools of SLURM that the backend runs.
 pub const TOOLS: [&str; 4] = ["sbatch", "squeue", "sacct", "scancel"];
@@ -818,22 +816,18 @@ impl SlurmBackend {
     ) -> Result<Ended, ExecutorError> {
         let squeue = self.command("squeue");
         let sacct = self.command("sacct");
-        let mut pause = Duration::from_millis(250);
-        let mut ended: Option<(Instant, Option<String>)> = None;
+        let mut poll = Poll::new(self.poll);
+        let mut ended: Option<Option<String>> = None;
         loop {
             tracing::debug!(job = id, "polling SLURM job");
-            tokio::select! {
-                () = tokio::time::sleep(pause) => {}
-                () = cancel.cancelled() => {
-                    return Err(ExecutorError::Cancelled);
-                }
-            }
-            pause = (pause * 2).min(self.poll);
+            poll.read(cancel, std::future::ready(()))
+                .await
+                .map_err(|_| ExecutorError::Cancelled)?;
             if let Some(status) = read_number(&control.join(CONTAINER_EXIT)).await {
                 return Ok(Ended::Done(status));
             }
-            if let Some((since, state)) = &ended {
-                if since.elapsed() >= EXIT_GRACE {
+            if let Some(state) = &ended {
+                if poll.troubled(true, EXIT_GRACE) {
                     return Ok(Ended::Stopped(state.clone()));
                 }
                 continue;
@@ -857,7 +851,10 @@ impl SlurmBackend {
             // A job that ended well has recorded its container; the shared file system may
             // show the record late. Other ends need no wait.
             match state.as_deref() {
-                Some("COMPLETED") | None => ended = Some((Instant::now(), state)),
+                Some("COMPLETED") | None => {
+                    ended = Some(state);
+                    poll.troubled(true, EXIT_GRACE);
+                }
                 Some(_) => return Ok(Ended::Stopped(state)),
             }
         }
@@ -885,48 +882,44 @@ impl SlurmBackend {
                 "the scheduler identity was not recorded; confirm the original job ended before removing its journal",
             ));
         }
-        let stopped = async {
-            loop {
-                let (look, identity) =
-                    crate::queue::identified(&self.command("squeue"), id, cluster).await;
-                let identified = identity.is_some();
-                if let Some(identity) = identity {
-                    if identity != journal["identity"] || identity["script"] != journal["script"] {
-                        return Err(unresolved(
-                            root,
-                            "the scheduler job identity changed or was not recorded",
-                        ));
-                    }
-                } else if look != Look::Gone {
-                    tokio::time::sleep(self.poll.min(Duration::from_secs(1))).await;
-                    continue;
+        executor::poll::until_stopped(grace, self.poll.min(Duration::from_secs(1)), || async {
+            let (look, identity) =
+                crate::queue::identified(&self.command("squeue"), id, cluster).await;
+            let identified = identity.is_some();
+            if let Some(identity) = identity {
+                if identity != journal["identity"] || identity["script"] != journal["script"] {
+                    return Some(Err(unresolved(
+                        root,
+                        "the scheduler job identity changed or was not recorded",
+                    )));
                 }
-                if matches!(look, Look::Ended(_) | Look::Gone)
-                    && matches!(
-                        crate::queue::look_one(&self.command("squeue"), id, cluster).await,
-                        Look::Ended(_) | Look::Gone
-                    )
-                {
-                    return Ok(());
-                }
-                if cancel && identified {
-                    let mut command = Command::new(self.command("scancel"));
-                    // The name filter is not an atomic submit-time fence; fresh identity remains required.
-                    command.arg(id).arg("--ctld").arg(format!(
-                        "--name={}",
-                        journal["identity"]["name"].as_str().unwrap_or_default()
-                    ));
-                    if let Some(cluster) = cluster {
-                        command.arg(format!("--clusters={cluster}"));
-                    }
-                    let _ = crate::queue::output(&mut command, crate::queue::REQUEST_GRACE).await;
-                }
-                tokio::time::sleep(self.poll.min(Duration::from_secs(1))).await;
+            } else if look != Look::Gone {
+                return None;
             }
-        };
-        tokio::time::timeout(grace, stopped)
-            .await
-            .map_err(|_| unresolved(root, format!("job {id} termination was not confirmed")))??;
+            if matches!(look, Look::Ended(_) | Look::Gone)
+                && matches!(
+                    crate::queue::look_one(&self.command("squeue"), id, cluster).await,
+                    Look::Ended(_) | Look::Gone
+                )
+            {
+                return Some(Ok(()));
+            }
+            if cancel && identified {
+                let mut command = Command::new(self.command("scancel"));
+                // The name filter is not an atomic submit-time fence; fresh identity remains required.
+                command.arg(id).arg("--ctld").arg(format!(
+                    "--name={}",
+                    journal["identity"]["name"].as_str().unwrap_or_default()
+                ));
+                if let Some(cluster) = cluster {
+                    command.arg(format!("--clusters={cluster}"));
+                }
+                let _ = crate::queue::output(&mut command, crate::queue::REQUEST_GRACE).await;
+            }
+            None
+        })
+        .await
+        .map_err(|_| unresolved(root, format!("job {id} termination was not confirmed")))??;
         std::fs::remove_file(root.join("remote.json"))?;
         Ok(())
     }

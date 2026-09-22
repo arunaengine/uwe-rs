@@ -289,6 +289,14 @@ pub(crate) fn workflow_parameters(
         if parameter.value.is_some() {
             continue;
         }
+        if parameter.value_from.as_ref().is_some_and(|from| {
+            !from.event.is_empty() || from.supplied.is_some() || !from.jq_filter.is_empty()
+        }) {
+            return Err(Failure::unsupported(format!(
+                "parameter {}: valueFrom event, supplied and jqFilter sources are not supported",
+                parameter.name
+            )));
+        }
         let reference = parameter
             .value_from
             .as_ref()

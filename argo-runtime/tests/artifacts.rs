@@ -42,21 +42,23 @@ spec:
   - name: main
     steps:
     - - {{name: make, template: make}}
-    - - {{name: use, template: use}}
+    - - name: use
+        template: use
+        arguments:
+          artifacts:
+          - {{name: tree, from: "{{{{steps.make.outputs.artifacts.tree}}}}"}}
   - name: make
     container: {{image: busybox}}
     outputs:
       artifacts:
       - name: tree
         path: /tree
-        s3: {{bucket: cache, key: tree}}
   - name: use
     inputs:
       artifacts:
       - name: tree
         path: /input
         subPath: "{{{{workflow.parameters.selected}}}}"
-        s3: {{bucket: cache, key: tree}}
     container: {{image: busybox}}
 "#
     )

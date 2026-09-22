@@ -99,6 +99,59 @@ pub(crate) fn process_args(template: &Template, supplied: Supplied) -> Result<()
 /// templates, sidecars and daemons.
 pub(crate) fn cluster_only(template: &Template) -> Option<String> {
     let name = &template.name;
+    for artifact in template
+        .inputs
+        .artifacts
+        .iter()
+        .chain(&template.outputs.artifacts)
+    {
+        if let Err(failure) = crate::inputs::check_artifact(artifact) {
+            return Some(failure.message);
+        }
+    }
+    for artifact in &template.outputs.artifacts {
+        if artifact.s3.is_some()
+            || artifact.gcs.is_some()
+            || artifact.azure.is_some()
+            || artifact.http.is_some()
+            || artifact.artifactory.is_some()
+        {
+            return Some(format!(
+                "artifact {}: declared repository uploads are not supported; use the results destination",
+                artifact.name
+            ));
+        }
+    }
+    if template.resource.is_some() {
+        for parameter in &template.outputs.parameters {
+            if parameter.value_from.as_ref().is_some_and(|from| {
+                !from.jq_filter.is_empty()
+                    || !from.expression.is_empty()
+                    || !from.parameter.is_empty()
+                    || !from.path.is_empty()
+            }) {
+                return Some(format!(
+                    "template {name}: resource output {} supports only valueFrom.jsonPath",
+                    parameter.name
+                ));
+            }
+        }
+    }
+    if template.steps.is_empty() && template.dag.is_none() && template.resource.is_none() {
+        for parameter in &template.outputs.parameters {
+            if parameter.value_from.as_ref().is_some_and(|from| {
+                !from.json_path.is_empty()
+                    || !from.jq_filter.is_empty()
+                    || !from.expression.is_empty()
+                    || !from.parameter.is_empty()
+            }) {
+                return Some(format!(
+                    "template {name}: output {} supports only valueFrom.path",
+                    parameter.name
+                ));
+            }
+        }
+    }
     for (field, present) in [
         ("synchronization", template.synchronization.is_some()),
         ("memoize", template.memoize.is_some()),

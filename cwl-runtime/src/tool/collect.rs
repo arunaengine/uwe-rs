@@ -817,7 +817,15 @@ impl Collector<'_> {
                     None => false,
                     Some(Dynamic::Value(required)) => *required,
                     Some(Dynamic::Expression(expression)) => {
-                        self.evaluate(expression, &this)?.is_truthy()
+                        match self.evaluate(expression, &this)? {
+                            Value::Bool(required) => required,
+                            other => {
+                                return Err(format!(
+                                    "secondaryFiles.required must give a boolean, not {}",
+                                    other.to_json()
+                                ));
+                            }
+                        }
                     }
                 };
                 let names = if has_code(&entry.pattern) {

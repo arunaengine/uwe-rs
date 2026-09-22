@@ -10,7 +10,10 @@ use std::time::Duration;
 use reqwest::{Method, Url, header};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
+pub use crate::states::{ExecutionState, JobKind, JobState, LogicalState};
+
 const MAX_BODY: usize = 1024 * 1024;
+const MAX_ERROR_BODY: usize = 8 * 1024;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Submit {
@@ -61,7 +64,7 @@ pub struct Submitted {
     pub created: bool,
     pub submission_id: Option<String>,
     pub canonical_job_id: String,
-    pub state: String,
+    pub state: JobState,
     pub origin_node_url: String,
     pub status_url: String,
 }
@@ -70,8 +73,8 @@ pub struct Submitted {
 #[derive(Clone, Debug, Deserialize)]
 pub struct Status {
     pub job_id: String,
-    pub kind: String,
-    pub state: String,
+    pub kind: JobKind,
+    pub state: JobState,
     pub attempts: u32,
     pub cancel_requested: bool,
     pub created_at: String,
@@ -117,7 +120,7 @@ pub struct Family {
     pub aliases: Vec<String>,
     pub alias_count: u32,
     pub conflict_count: u32,
-    pub logical_state: String,
+    pub logical_state: LogicalState,
     pub canonical_execution_id: Option<String>,
     pub executions: u32,
     pub execution_list: Vec<Execution>,
@@ -135,7 +138,7 @@ pub struct Family {
 pub struct Execution {
     pub execution_id: String,
     pub executor_node_id: String,
-    pub state: String,
+    pub state: ExecutionState,
     pub started_at_ms: Option<u64>,
     pub observed_at_ms: Option<u64>,
     pub canonical: bool,
@@ -157,18 +160,39 @@ pub struct Object {
     pub endpoint_url: Option<String>,
 }
 
+/// Bounded response evidence. It is omitted from diagnostics because it may contain secrets.
+pub struct ResponseBody {
+    bytes: Vec<u8>,
+    pub truncated: bool,
+}
+
+impl ResponseBody {
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+impl fmt::Debug for ResponseBody {
+    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        out.debug_struct("ResponseBody")
+            .field("length", &self.bytes.len())
+            .field("truncated", &self.truncated)
+            .finish()
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("invalid Aruna client configuration or job identifier")]
     Configuration,
     #[error("Aruna request failed; submission or cancellation may have been accepted")]
-    Transport,
+    Transport(#[source] reqwest::Error),
     #[error("Aruna response exceeds the size limit")]
     BodyLimit,
-    #[error("Aruna answered HTTP {0}")]
-    Status(u16),
+    #[error("Aruna answered HTTP {code}")]
+    Status { code: u16, body: ResponseBody },
     #[error("Aruna returned an invalid jobs response")]
-    Response,
+    Response(#[source] serde_json::Error),
 }
 
 #[derive(Clone)]
@@ -270,9 +294,30 @@ impl Client {
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(body);
         }
-        let mut response = request.send().await.map_err(|_| Error::Transport)?;
-        if !accepted.contains(&response.status().as_u16()) {
-            return Err(Error::Status(response.status().as_u16()));
+        let mut response = request
+            .send()
+            .await
+            .map_err(|error| Error::Transport(error.without_url()))?;
+        let code = response.status().as_u16();
+        if !accepted.contains(&code) {
+            let mut bytes = Vec::new();
+            let mut truncated = false;
+            while let Some(chunk) = response
+                .chunk()
+                .await
+                .map_err(|error| Error::Transport(error.without_url()))?
+            {
+                let length = chunk.len().min(MAX_ERROR_BODY - bytes.len());
+                bytes.extend_from_slice(&chunk[..length]);
+                if length < chunk.len() {
+                    truncated = true;
+                    break;
+                }
+            }
+            return Err(Error::Status {
+                code,
+                body: ResponseBody { bytes, truncated },
+            });
         }
         if response
             .content_length()
@@ -281,13 +326,17 @@ impl Client {
             return Err(Error::BodyLimit);
         }
         let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(|_| Error::Transport)? {
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|error| Error::Transport(error.without_url()))?
+        {
             if chunk.len() > MAX_BODY - bytes.len() {
                 return Err(Error::BodyLimit);
             }
             bytes.extend_from_slice(&chunk);
         }
-        serde_json::from_slice(&bytes).map_err(|_| Error::Response)
+        serde_json::from_slice(&bytes).map_err(Error::Response)
     }
 }
 

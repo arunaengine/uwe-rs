@@ -6,10 +6,38 @@ use std::io::{BufRead, Read, Write};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use aruna_executor::client::{Client, Error, Family, Input, InputMode, Output, Status, Submit};
+use aruna_executor::client::{
+    Client, Error, ExecutionState, Family, Input, InputMode, JobKind, JobState, LogicalState,
+    Output, Status, Submit,
+};
 use serde_json::{Value, json};
 
 const ID: &str = "01JJRSTVWXYZ0123456789ABCD";
+
+#[test]
+fn states_preserve_unknown_wire_values() {
+    let mut body = status();
+    body["kind"] = json!("future_kind");
+    body["state"] = json!("future_job_state");
+    body["family"]["logical_state"] = json!("future_logical_state");
+    body["family"]["execution_list"][0]["state"] = json!("future_execution_state");
+    let found: Status = serde_json::from_value(body).unwrap();
+    assert_eq!(found.kind, JobKind::Unknown("future_kind".into()));
+    assert_eq!(found.state, JobState::Unknown("future_job_state".into()));
+    let family = found.family.unwrap();
+    assert_eq!(
+        family.logical_state,
+        LogicalState::Unknown("future_logical_state".into())
+    );
+    assert_eq!(
+        family.execution_list[0].state,
+        ExecutionState::Unknown("future_execution_state".into())
+    );
+    assert_eq!(
+        serde_json::to_value(found.state).unwrap(),
+        json!("future_job_state")
+    );
+}
 
 fn server(status: u16, body: String, headers: &str) -> (Client, JoinHandle<String>) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -140,7 +168,7 @@ async fn partial_status_and_cancel_late_success_remain_structured_evidence() {
             client.status(ID).await
         }
         .unwrap();
-        assert_eq!(found.state, state);
+        assert_eq!(found.state.as_str(), state);
         assert!(found.cancel_requested && found.locally_exhausted);
         if !cancel {
             let family = found.family.unwrap();
@@ -175,7 +203,8 @@ async fn rejects_redirects_conflicts_oversized_bodies_and_unsafe_endpoints() {
             "Location: https://other.example/\r\n",
         );
         let error = client.status(ID).await.unwrap_err();
-        assert!(matches!(error, Error::Status(found) if found == code));
+        assert!(matches!(&error, Error::Status { code: found, body }
+            if *found == code && body.as_bytes() == b"fixture-secret" && !body.truncated));
         assert!(!format!("{error:?} {error}").contains("fixture-secret"));
         worker.join().unwrap();
     }
@@ -198,4 +227,34 @@ async fn rejects_redirects_conflicts_oversized_bodies_and_unsafe_endpoints() {
         client.status("../other").await,
         Err(Error::Configuration)
     ));
+}
+
+#[tokio::test]
+async fn errors_retain_bounded_bodies_and_sources() {
+    use std::error::Error as _;
+    let (client, worker) = server(500, "x".repeat(16_384), "");
+    let Error::Status { code, body } = client.status(ID).await.unwrap_err() else {
+        panic!("expected an HTTP error");
+    };
+    assert_eq!(code, 500);
+    assert_eq!(body.as_bytes().len(), 8192);
+    assert!(body.truncated);
+    worker.join().unwrap();
+
+    let (client, worker) = server(200, "not JSON".into(), "");
+    let error = client.status(ID).await.unwrap_err();
+    assert!(matches!(error, Error::Response(_)));
+    assert!(error.source().is_some());
+    worker.join().unwrap();
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    drop(listener);
+    let error = Client::new(&endpoint, None)
+        .unwrap()
+        .status(ID)
+        .await
+        .unwrap_err();
+    assert!(matches!(error, Error::Transport(_)));
+    assert!(error.source().is_some());
 }

@@ -115,3 +115,46 @@ fn rejects_unsupported_retry_controls_and_invalid_limits() {
         }
     }
 }
+
+#[test]
+fn empty_container_sets_and_resource_overflows_fail_without_panicking() {
+    let empty = start_error("  templates:\n  - name: main\n    containerSet: {containers: []}\n");
+    assert!(empty.message.contains("at least one container"), "{empty}");
+    for resource in [
+        "memory: 16Ei",
+        "memory: -1",
+        "cpu: .inf",
+        "nvidia.com/gpu: -1",
+        "cpu: invalid",
+    ] {
+        let error = start_error(&format!(
+            "  templates:\n  - name: main\n    container: {{image: alpine, resources: {{requests: {{{resource}}}}}}}\n"
+        ));
+        assert!(error.message.contains("resource"), "{error}");
+    }
+    for resource in [
+        "memory: 8Ei",
+        "ephemeral-storage: 8Ei",
+        "nvidia.com/gpu: 4294967295",
+    ] {
+        let error = start_error(&format!(
+            "  templates:\n  - name: main\n    containerSet:\n      containers:\n      - {{name: main, image: alpine, resources: {{requests: {{{resource}}}}}}}\n      - {{name: other, image: alpine, resources: {{requests: {{{resource}}}}}}}\n"
+        ));
+        assert!(error.message.contains("sum overflows"), "{error}");
+    }
+    let error = start_error(
+        "  templates:\n  - name: main\n    container: {image: alpine, resources: {requests: {hugepages-2Mi: 2Mi}}}\n",
+    );
+    assert!(error.unsupported, "{error}");
+}
+
+#[test]
+fn differing_resource_requests_and_limits_cannot_be_collapsed() {
+    let error = start_error(
+        "  templates:\n  - name: main\n    container: {image: alpine, resources: {requests: {memory: 1Gi}, limits: {memory: 2Gi}}}\n",
+    );
+    assert!(
+        error.unsupported && error.message.contains("requests and limits"),
+        "{error}"
+    );
+}

@@ -502,7 +502,15 @@ pub fn task(
     let network = match network {
         Some((Dynamic::Value(allowed), _)) => *allowed,
         Some((Dynamic::Expression(expression), _)) => {
-            evaluator.evaluate(expression, vars)?.is_truthy()
+            match evaluator.evaluate(expression, vars)? {
+                Value::Bool(allowed) => allowed,
+                other => {
+                    return Err(format!(
+                        "`networkAccess` must give a boolean, not {}",
+                        other.to_json()
+                    ));
+                }
+            }
         }
         None => false,
     };
@@ -514,7 +522,15 @@ pub fn task(
     let reuse = match reuse {
         Some((Dynamic::Value(enabled), _)) => *enabled,
         Some((Dynamic::Expression(expression), _)) => {
-            evaluator.evaluate(expression, vars)?.is_truthy()
+            match evaluator.evaluate(expression, vars)? {
+                Value::Bool(enabled) => enabled,
+                other => {
+                    return Err(format!(
+                        "`enableReuse` must give a boolean, not {}",
+                        other.to_json()
+                    ));
+                }
+            }
         }
         None => true,
     };

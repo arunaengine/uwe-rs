@@ -37,3 +37,9 @@ fn other_paths_give_lists() {
     assert_eq!(path("$.employees[?(@.age>42 && @.age<44)].name"), "[a]");
     assert_eq!(path("$.employees[?(@.name == 'b')].age"), "[30]");
 }
+
+#[test]
+fn large_slice_steps_do_not_overflow() {
+    assert_eq!(path("$.employees[1::9223372036854775807].name"), "[b]");
+    assert_eq!(path("$.employees[1::-9223372036854775808].name"), "[b]");
+}

@@ -158,3 +158,20 @@ fn differing_resource_requests_and_limits_cannot_be_collapsed() {
         "{error}"
     );
 }
+
+#[test]
+fn unsupported_node_deadlines_and_retry_delays_are_not_task_limits() {
+    for spec in [
+        "  templates:\n  - name: main\n    timeout: 5s\n    container: {image: alpine}\n",
+        "  templates:\n  - name: main\n    activeDeadlineSeconds: 5\n    initContainers: [{name: init, image: alpine}]\n    container: {image: alpine}\n",
+        "  templates:\n  - name: main\n    containerSet:\n      retryStrategy: {retries: 2, duration: 5s}\n      containers: [{name: main, image: alpine}]\n",
+    ] {
+        assert!(start_error(spec).unsupported);
+    }
+    for count in ["0", "-1", "invalid"] {
+        let error = start_error(&format!(
+            "  templates:\n  - name: main\n    containerSet:\n      retryStrategy: {{retries: {count}}}\n      containers: [{{name: main, image: alpine}}]\n"
+        ));
+        assert!(error.message.contains("retries"), "{error}");
+    }
+}

@@ -161,7 +161,7 @@ impl Run {
             // of them mounts, and the task asks for the sum of their resources, as Argo does.
             container_order(&set.containers).map_err(Failure::error)?;
             let main = main_container(&set.containers);
-            let attempts = retry_attempts(set.retry_strategy.as_ref());
+            let attempts = retry_attempts(set.retry_strategy.as_ref())?;
             let positions =
                 std::iter::once(main).chain((0..set.containers.len()).filter(|&at| at != main));
             let mut task = base(&set.containers[main].image, None)?;
@@ -674,12 +674,21 @@ fn shell_script(command: &[String]) -> Option<String> {
 
 /// How often each container of a set runs its command at most while it fails: the `retries`
 /// of the set's `retryStrategy`, which Argo's executor takes as the number of tries, else once.
-fn retry_attempts(strategy: Option<&Node>) -> u32 {
+fn retry_attempts(strategy: Option<&Node>) -> Result<u32> {
     let retries = strategy
         .and_then(|strategy| strategy.get("retries"))
         .map(scalar_text)
-        .and_then(|text| text.trim().parse::<u32>().ok());
-    retries.unwrap_or(1).max(1)
+        .map(|text| {
+            text.trim()
+                .parse::<u32>()
+                .ok()
+                .filter(|count| *count > 0)
+                .ok_or_else(|| {
+                    Failure::error("containerSet.retryStrategy.retries must be a positive integer")
+                })
+        })
+        .transpose()?;
+    Ok(retries.unwrap_or(1))
 }
 
 pub(crate) fn resource_error(message: String) -> Failure {

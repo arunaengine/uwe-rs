@@ -870,8 +870,18 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus changes <run>
        iunctus repeat <run> [-executor <executor>] [-store <folder or address>] [options]
        iunctus lock-environment <conda environment file> [-platform <name>] [-output <file>]
+       iunctus version
+       iunctus help [command]
 
 options:
+  -help                               lists the options of this command
+  -version, --version                 prints the crate version
+  -v, -verbose                        enables debug logging on stderr; IUNCTUS_LOG sets the
+                                      filter otherwise (default: warn)
+  -quiet                              suppresses operational logging
+  -machine-retries <n>                retries a task after a machine failure (default: 2)
+  -machine-retry-delay-ms <n>          base retry delay in milliseconds (default: 1000),
+                                      doubled with jitter and capped at one minute
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
   -executor <executor>                simulator (the default) writes TES task documents
                                       and makes up the outputs; local runs containers on
@@ -909,13 +919,13 @@ options:
   -keep-going                         after a task failed, runs every task that does not
                                       depend on it, then fails; without it no more tasks
                                       start, as each language's engine does
-  -profile <names>, -c <file>         Nextflow profiles and config files
+  -profile <names>, -c <file>         Nextflow or Snakemake profiles and config files
   -params-file <file>, -inputs <file> a params file, or a CWL job file; as with cwltool,
                                       `run tool.cwl job.yml` takes job.yml as the job file
   -entry <name>                       the entry workflow or target
   -configfile <file>                  a Snakemake config file
   --config <name>=<value>...          Snakemake config values
-  --<param> <value>                   a workflow parameter
+  --<param> <value>                   a workflow parameter; Snakemake uses --config name=value
   -resume [<run>]                     continues a run, by default the last one of the workflow,
                                       without running its finished tasks again
   -no-cache                           takes no result from the cache and keeps none there:

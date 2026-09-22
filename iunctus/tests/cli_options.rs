@@ -32,6 +32,7 @@ fn help_and_version_do_not_load_configuration() {
         let help = String::from_utf8_lossy(&output.stdout);
         assert!(help.contains("usage: iunctus run"));
         assert!(help.contains("-executor"));
+        assert!(help.contains("-profile <a,b>"));
         assert!(!help.contains("-remove"));
     }
     for flag in ["version", "-version", "--version"] {

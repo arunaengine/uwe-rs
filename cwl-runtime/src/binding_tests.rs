@@ -135,5 +135,5 @@ fn quotes_for_the_shell_as_python_does() {
     assert_eq!(shell_quote("plain-arg_1.txt"), "plain-arg_1.txt");
     assert_eq!(shell_quote(""), "''");
     assert_eq!(shell_quote("a b"), "'a b'");
-    assert_eq!(shell_quote("it's"), "'it'\"'\"'s'");
+    assert_eq!(shell_quote("it's"), "'it'\\''s'");
 }

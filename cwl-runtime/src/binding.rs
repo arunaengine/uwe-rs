@@ -433,7 +433,7 @@ pub fn text(value: &Value) -> Result<String, String> {
     })
 }
 
-/// Quotes an argument for `/bin/sh` as Python's `shlex.quote` does.
+/// Quotes an argument for `/bin/sh`, leaving simple words unquoted.
 pub fn shell_quote(text: &str) -> String {
     if text.is_empty() {
         return "''".into();
@@ -442,7 +442,7 @@ pub fn shell_quote(text: &str) -> String {
     if text.chars().all(safe) {
         return text.to_owned();
     }
-    format!("'{}'", text.replace('\'', "'\"'\"'"))
+    executor::wrapper::quote(text)
 }
 
 #[cfg(test)]

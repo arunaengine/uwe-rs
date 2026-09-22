@@ -5,7 +5,6 @@
 # `runtime` records a native runtime failure; `timeout` records the harness time limit.
 # For `invalid` and `missing`, run_test_workflows_oracle.txt holds the evidence: the error of
 # `snakemake --dry-run` (Snakemake 9.27.0) with the same launch, which oracle.py records.
-catalog/3d-omics__hg_genotype	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
 catalog/AToL-Bioinformatics__genome-launcher-workflow	missing	Needs the Python package yaml_manifest, which is neither in its repository nor on PyPI.
 catalog/Addimator__compare_meth	missing	Reads /projects/koesterlab/benchmark-methylation/data_analysis_jochen/compare_meth/config/sample.tsv, a file on its authors' machines.
 catalog/Albinam1__bioinformatics_school	invalid	Has a rule whose output, log and benchmark files do not name the same wildcards.
@@ -30,7 +29,6 @@ catalog/JeremyTournayre__Pipeline-Holoruminant-Meta	invalid	Reads the config key
 catalog/JoseFcoMH__af3_screening	unsupported (decision 2)	Its profile sets jobs, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/JoyceS13__BEP_pipeline	invalid	Has Snakefile code that Snakemake cannot parse.
 catalog/KonstantinBurkin__cbai	missing	Needs input data that is not in its repository.
-catalog/LinhHo__module_area_potentials	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/MPUSP__snakemake-bacterial-riboseq	unsupported (decision 11)	Runs a command in onsuccess, which is refused because lifecycle callbacks cannot publish a container task.
 catalog/MPUSP__snakemake-ont-basecalling	unsupported (decision 2)	Its profile sets jobs, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/MarieRiisgaard__snakemake_usearch_primertrim_and_subset	missing	Reads .test/nanopore_run_xyz123/fastq_pass, which is not in its repository.
@@ -48,7 +46,6 @@ catalog/SarahSaadain__pastForward	missing	Needs environment variables that are n
 catalog/SilasK__Metagenome-Profile	missing	Reads samples.csv, which is not in its repository.
 catalog/SilasK__Metagenome-QC	invalid	Reads the config key 'database_dir', which its config does not have.
 catalog/SilasK__Snakebread	missing	Needs a sample table samples.csv or samples.tsv, which is not in its repository.
-catalog/StergachisLab__IsoSeq_smk	unsupported (decision 2)	Its profile sets conda-frontend, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/TRON-Bioinformatics__neorasp	unsupported (decision 2)	Its profile sets latency-wait, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/TRON-Bioinformatics__oblx	unsupported (decision 16)	While it is planned, the workflow reads the UniProt release that a checkpoint writes, which the simulator makes empty.
 catalog/Xavster838__assembly_validation	invalid	Calls srcdir(), which Snakemake 8 removed.
@@ -56,9 +53,6 @@ catalog/Xavster838__coreDupGraph	invalid	Calls srcdir(), which Snakemake 8 remov
 catalog/Xavster838__downstream_isoseq_process	invalid	Calls srcdir(), which Snakemake 8 removed.
 catalog/Xavster838__get_and_annotate_locus	invalid	Calls srcdir(), which Snakemake 8 removed.
 catalog/Xavster838__run_NucFreq	invalid	Calls srcdir(), which Snakemake 8 removed.
-catalog/Yegberink__euro_building_heat_supply	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/Yegberink__module_geothermal	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/Yegberink__module_heat_rasters	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/Zilong-Li__array-imputation-workflow	missing	Reads data/chip/megaMergedPlus.autosomes.QCedHg38.nonoverlap.bim, which is not in its repository.
 catalog/abbyevewilliams__map-pipeline	missing	Reads /data/biol-silvereye/ball6625/map-pipeline/config/zborb-samples.txt, a file on its authors' machines.
 catalog/adrisede__Isoseq_smk_min	unsupported (decision 2)	Its profile sets conda-frontend, which the native Snakemake profile subset refuses rather than ignoring.
@@ -67,13 +61,9 @@ catalog/akcorut__kGWASflow	missing	Needs its sample table, which is not in its r
 catalog/ammaraziz__voi	invalid	Reads the config key 'output', which its config does not have.
 catalog/aryazand__proseq_workflow	missing	Reads config/samples.tsv, which is not in its repository.
 catalog/aryazand__rnaseq_to_genome_annotation	missing	Reads config/samples.tsv, which is not in its repository.
-catalog/b-brankovics__bwa-gatk-fasttree-smkwf	unsupported (decision 2)	Its profile sets use-conda, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/b-brankovics__smkwf-STRAf-typing	unsupported (decision 2)	Its profile sets use-conda, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/b-brankovics__smkwf-oligo-screening	unsupported (decision 2)	Its profile sets use-conda, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/bakerwm__snakemake-rnaseq-star	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 catalog/bheimbu__annoSnake	unsupported (decision 7)	Requests shadow mode 'shallow'; isolated task staging currently supports only minimal shadow.
 catalog/boulardlab__3t-seq	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/calliope-project__module_road_transport	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/cbg-ethz__V-pipe	invalid	Imports load_configfile from snakemake.io, which Snakemake 9.27 does not have.
 catalog/cecivale__snakemake-phylo-beast2	unsupported (decision 17)	Its input function explicitly calls the Namedlist __iter__ method, which the native implementation lacks.
 catalog/clami66__AF_server	invalid	Reads workflow.use_env_modules, which Snakemake 9 does not have.
@@ -82,7 +72,6 @@ catalog/crs4__fair-crcc-get-data	invalid	Imports AbstractRemoteProvider from sna
 catalog/daspacio9__pooledpremiumpcrpipeline2	unsupported (decision 17)	Its lifecycle hook reads workflow.dag, which the native Workflow object does not expose.
 catalog/davelunt__mmseqs	invalid	Has Snakefile code that Snakemake cannot parse.
 catalog/dlaehnemann__create-ecdna-testing-data	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
-catalog/dlaehnemann__create-quant-seq-testing-dataset	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
 catalog/dlaehnemann__create-sv-ci-testing-dataset	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
 catalog/dlaehnemann__wgs-mosdepth-maftools-copy-numbers	invalid	Its sample table lacks the column sample_name that the workflow indexes by.
 catalog/drifter089__pypsa-workflow	invalid	Imports load_configfile from snakemake.io, which Snakemake 9.27 does not have.
@@ -92,7 +81,6 @@ catalog/emmaewade__pangenome-workflow	invalid	Reads the config key 'outname', wh
 catalog/epigen__atacseq_pipeline	missing	Reads /path/to/annotation.csv, a placeholder path of its example config.
 catalog/epigen__dea_limma	missing	Reads /path/to/DataSet_dea_limma_annotation.csv, a placeholder path of its example config.
 catalog/epigen__dea_seurat	missing	Reads /path/to/MyData_dea_seurat_annotation.csv, a placeholder path of its example config.
-catalog/epigen__fetch_ngs	unsupported (decision 2)	Its profile sets resources, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/epigen__genome_tracks	missing	Reads /path/to/myData_genome_tracks_annotation.csv, a placeholder path of its example config.
 catalog/epigen__mixscape_seurat	missing	Reads /path/to/mixscape_seurat_annotation.csv, a placeholder path of its example config.
 catalog/epigen__rnaseq_pipeline	missing	Reads /path/to/MyRNAproject_rnaseq_pipeline_annotation.csv, a placeholder path of its example config.
@@ -116,7 +104,6 @@ catalog/juliawiggeshoff__AugusMake	invalid	Has Snakefile code that Snakemake can
 catalog/karltayeb__laplace-bfs	missing	Reads output/single_variable_selection/, which is not in its repository.
 catalog/kevinrue__snakemake-cncb-ensembl-2024	missing	Needs input data that is not in its repository.
 catalog/khanlab__SPIMprep	missing	Reads its samples under /nfs/trident3, a folder of its authors' machines.
-catalog/kircherlab__MPRAsnakeflow	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/knutdrand__bionumpy-benchmarks	missing	Needs an older bionumpy with the module bionumpy.intervals, and its repository does not name the version.
 catalog/koesterlab__rossi-ips-dmr	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
 catalog/lasyaa418__control-of-latent-dynamics	invalid	Imports its folder src as a Python package, which is not on the Python path when Snakemake runs.
@@ -140,22 +127,13 @@ catalog/merfre__MMCAW	missing	Reads ./resources/ONT_mockecoli1_cont1/CN3.1_cont.
 catalog/metagenome-atlas__metagenome-assembly	unsupported (decision 7)	Requests shadow mode 'shallow'; isolated task staging currently supports only minimal shadow.
 catalog/milesroberts-123__poolseq-kmers	unsupported (decision 2)	Its profile sets executor, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/milesroberts-123__slim-sweep-cnn	unsupported (decision 2)	Its profile sets executor, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/modelblocks-org__geospatial_shapes_test_bench	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/modelblocks-org__module_area_potentials	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/modelblocks-org__module_co2stop_cdr	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/modelblocks-org__module_demand_electricity	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/modelblocks-org__module_euro_building_heat	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/modelblocks-org__module_euro_gas_grid	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/modelblocks-org__module_geo_boundaries	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/modelblocks-org__module_hydropower	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/modelblocks-org__module_powerplants	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/moiexpositoalonsolab__grenepipe	unsupported (decision 2)	Its profile sets local-cores, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/monagrland__MB_Pipeline	invalid	Its config does not match the workflow's own config schema.
 catalog/mrvollger__sd-divergence	invalid	Calls srcdir(), which Snakemake 8 removed.
 catalog/mukherjeelab__CLIPs4U	invalid	Reads the config key three_prime_adapter, which its config does not have.
 catalog/mynameisdidit__UTS_Bioinformatika_SV-Callers	unsupported (decision 19)	Its validator derives a class from yatiml.Loader, and decision 19 says that classes defined in workflow code cannot be used by a package that runs in the Python container.
 catalog/nate-d-olson__giab-stvar-curation-table	invalid	Reads the config key 'liftover', which its config does not have.
-catalog/ncbench__ncbench-workflow	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
 catalog/ncherric__Iliad	invalid	Gives the runtime 03:00:00, which Snakemake cannot read as minutes.
 catalog/niekwit__atac-seq	missing	Needs FASTQ files that are not in its repository.
 catalog/niekwit__chip-seq	missing	Needs FASTQ files that are not in its repository.
@@ -171,7 +149,6 @@ catalog/niekwit__rna-seq-star-rmats	missing	Needs input data that is not in its 
 catalog/niekwit__rna-seq-star-tetranscripts	missing	Needs FASTQ files that are not in its repository.
 catalog/niekwit__smallRNA-seq	unsupported (decision 11)	Runs a command in onsuccess, which is refused because lifecycle callbacks cannot publish a container task.
 catalog/nikostr__dna-seq-deepvariant-glnexus-variant-calling	invalid	For the single-end unit B-2, fastp_se makes the trimmed reads and fastp_pe, first by the ruleorder, the report, so two jobs make results/qc/fastp/B-2.html, which Snakemake 9.27 rejects as ambiguous (after the warning that the oracle line shows).
-catalog/nikostr__read-mapping	unsupported (decision 2)	Its profile sets executor, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/nismod__open-gira	missing	Needs the Python package open_gira, which is neither in its repository nor on PyPI.
 catalog/nixonlab__HERV_um_mets	missing	Reads resources/mskruns.txt, which is not in its repository.
 catalog/nixonlab__snakemake_rule_library	missing	Includes workflow/rules/common.smk, which is not in its repository.
@@ -180,7 +157,6 @@ catalog/ntnn19__gaptrick-af_unmasked	invalid	Its config does not match the workf
 catalog/odcambc__dumpling	unsupported (decision 2)	Its profile sets resources, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/omidalam__can_vac	invalid	Reads the config key 'ref', which its config does not have.
 catalog/open2c__distiller-sm	unsupported (decision 2)	Its profile sets jobs, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/orthanq__orthanq-hla-quantification	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
 catalog/panguangze__trio_call_phase_pipeline	invalid	Reads the config key 'joint_calling_groups', which its config does not have.
 catalog/plycrsk__rna-seq-star-deseq2	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 catalog/poloarol__snakemake-methylseq	missing	Needs the config file ../config/config.yaml, which is not in its repository.
@@ -202,19 +178,12 @@ catalog/simonmoulds__uk-decadal-flood-prediction	missing	Reads resources/station
 catalog/sims-lab__snakemake-cncb-genetic-demultiplexing	missing	Needs input files that are not in its repository.
 catalog/snakemake-workflows__cellranger-count	missing	Needs environment variables that are not set, which the workflow asks for with envvars.
 catalog/snakemake-workflows__cellranger-multi	missing	Needs environment variables that are not set, which the workflow asks for with envvars.
-catalog/snakemake-workflows__cyrcular-calling	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
 catalog/snakemake-workflows__dna-seq-benchmark	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
 catalog/snakemake-workflows__dna-seq-gatk-variant-calling	unsupported (decision 16)	The simulated run gets past the checkpoint genome_faidx, where Snakemake's dry run stops; after it the workflow calls pandas.read_table with squeeze, which pandas 3 removed.
 catalog/snakemake-workflows__dna-seq-mtb	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
-catalog/snakemake-workflows__dna-seq-short-read-circle-map	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
 catalog/snakemake-workflows__dna-seq-varlociraptor	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
 catalog/snakemake-workflows__microsatellite-instability-detection-with-msisensor-pro	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
-catalog/snakemake-workflows__read-alignment-pangenome	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
 catalog/snakemake-workflows__rna-longseq-de-isoform	missing	Needs the config file config/config.yml, which is not in its repository.
-catalog/snakemake-workflows__rna-seq-kallisto-sleuth	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
-catalog/snakemake-workflows__rna-seq-star-deseq2	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
-catalog/snakemake-workflows__rna-seq-xengsort	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
-catalog/snakemake-workflows__star-arriba-fusion-calling	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
 catalog/sneuensc__mapache	invalid	Imports Wildcards from snakemake.io, which Snakemake 9.27 does not have.
 catalog/solida-core__astra	invalid	Its sample table is an empty file.
 catalog/solida-core__dima	invalid	Its config lacks the section paths that its rules read.
@@ -233,11 +202,8 @@ catalog/thomasbtf__sars-cov-2-wbe	missing	Needs environment variables that are n
 catalog/tmweiskittel__serpent-methylation-pipeline-cloud	unsupported (decision 11)	Runs a command in onsuccess, which is refused because lifecycle callbacks cannot publish a container task.
 catalog/tmweiskittel__tmw_align_emseq	unsupported (decision 16)	While it is planned, the workflow reads the sample sheet that a checkpoint downloads, which the simulator makes empty.
 catalog/trickovicmatija__kingfisher_workflow	missing	Needs the config file ../config/default_config.yaml, which is not in its repository.
-catalog/tud-mchen6__module_gh2_prod	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/varlociraptor__varlociraptor-methylation-evaluation	unsupported (decision 12)	Requests cache keys that omit software identity, while the native task cache includes the software environment.
 catalog/vkpat__short-read-mapping-and-QC-snakemake-pipeline	missing	Needs the config file config.yaml, which is not in its repository.
 catalog/vollgerlab__DSA-phasing	unsupported (decision 2)	Its profile sets rerun-incomplete, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/westerdijk-wm__snakemake-mlsa-ani	unsupported (decision 2)	Its profile sets use-conda, which the native Snakemake profile subset refuses rather than ignoring.
 catalog/wharvey31__denovo_sv_validation	invalid	The shell command of rule make_multi_fa names {ids}, which the rule does not have; it means {wildcards.ids}.
 catalog/ylab-hi__ScanNeo2	missing	Needs sequence files for its samples, which are not in its repository.
 catalog/zavolanlab__mirflowz	missing	Needs the config file workflow/../test/config_lint.yaml, which is not in its repository.
@@ -281,7 +247,6 @@ tests/test_modules_two_names	invalid	Snakemake's own tests expect it to fail.
 tests/test_params_outdated_code	invalid	Its first rule has wildcards, so it has no default target, and no test of Snakemake gives one.
 tests/test_pathvars_cycle	invalid	Snakemake's own tests expect it to fail.
 tests/test_pipe_depend	invalid	Snakemake's own tests expect it to fail.
-tests/test_priority	unsupported (decision 2)	Its profile sets cores, which the native Snakemake profile subset refuses rather than ignoring.
 tests/test_priority_invalid	invalid	Snakemake's own tests expect it to fail.
 tests/test_remote_auto	invalid	Imports AUTO from snakemake.remote, which Snakemake 9.27 does not have.
 tests/test_remote_azure	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
@@ -303,5 +268,4 @@ tests/test_subworkflow_config	invalid	Has Snakefile code that Snakemake cannot p
 tests/test_subworkflows	invalid	Has Snakefile code that Snakemake cannot parse.
 tests/test_tibanna	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_wildcard_annotatedstrings	invalid	Uses unpack() in params, which Snakemake forbids; Snakemake's own test expects this error.
-tests/test_workflow_profile_cli_overwrite	unsupported (decision 2)	Its profile sets cores, which the native Snakemake profile subset refuses rather than ignoring.
 tests/test_xrootd	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.

@@ -587,8 +587,10 @@ pub fn help(command: &str) -> Result<String, String> {
     let target = match command {
         "runs" | "clean" | "check-machine" | "version" => "",
         "page" => " [run]",
-        "compare" => " <run> <run>",
-        "why" | "replay" => " <run> <task>",
+        "compare" => " <run> [run]",
+        "why" => " [run [task]]",
+        "replay" => " <run> <task>",
+        "config" => " [project] [--param value]",
         "origin" => " <file>",
         _ if WORKFLOW.contains(&command) => " <workflow> [targets] [--param value]",
         "lock-environment" => " <environment.yml>",
@@ -598,7 +600,8 @@ pub fn help(command: &str) -> Result<String, String> {
     help.push_str("\n\noptions:\n");
     for (names, commands) in OPTIONS {
         if commands.contains(&command) {
-            help.push_str(&format!("  {}\n", names.replace(',', " | ")));
+            let (flags, value) = names.split_at(names.find(' ').unwrap_or(names.len()));
+            help.push_str(&format!("  {}{value}\n", flags.replace(',', " | ")));
         }
     }
     Ok(help)

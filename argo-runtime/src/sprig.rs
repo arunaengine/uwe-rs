@@ -61,7 +61,21 @@ pub fn call(name: &str, arguments: Vec<Value>) -> Result<Value> {
         "repeat" => {
             arity(2)?;
             let count = usize::try_from(to_int64(&arguments[0])).unwrap_or(0);
-            Value::String(text(1)?.repeat(count))
+            let subject = text(1)?;
+            let length = subject
+                .len()
+                .checked_mul(count)
+                .ok_or_else(|| ExprError::new("sprig.repeat result length overflows"))?;
+            let mut repeated = String::new();
+            repeated
+                .try_reserve_exact(length)
+                .map_err(|_| ExprError::new("sprig.repeat result cannot be allocated"))?;
+            if !subject.is_empty() {
+                for _ in 0..count {
+                    repeated.push_str(&subject);
+                }
+            }
+            Value::String(repeated)
         }
         "substr" => {
             arity(3)?;

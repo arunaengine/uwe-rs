@@ -37,6 +37,21 @@ fn conversions_are_lenient() {
 }
 
 #[test]
+fn repeated_strings_report_unrepresentable_sizes() {
+    for subject in ["a", "abc"] {
+        assert!(call("repeat", vec![Value::Int(i64::MAX), text(subject)]).is_err());
+    }
+    assert_eq!(
+        call("repeat", vec![Value::Int(i64::MAX), text("")]),
+        Ok(text(""))
+    );
+    assert_eq!(
+        call("repeat", vec![Value::Int(3), text("ab")]),
+        Ok(text("ababab"))
+    );
+}
+
+#[test]
 fn strings_and_lists() {
     assert_eq!(
         call("trimSuffix", vec![text(".bed"), text("peaks.bed")]),

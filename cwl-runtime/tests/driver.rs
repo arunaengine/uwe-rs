@@ -84,6 +84,22 @@ fn policy_expressions_require_boolean_results() {
 }
 
 #[test]
+fn secondary_file_required_expressions_require_boolean_results() {
+    for declaration in [
+        "inputs:\n  flag: {type: string, default: 'false'}\n  file:\n    type: File\n    default: {class: File, contents: input}\n    secondaryFiles: [{pattern: .idx, required: '$(inputs.flag)'}]\noutputs: []\n",
+        "inputs: {flag: {type: string, default: 'false'}}\noutputs:\n  file:\n    type: File\n    outputBinding: {glob: out.txt}\n    secondaryFiles: [{pattern: .idx, required: '$(inputs.flag)'}]\n",
+    ] {
+        let tool =
+            format!("cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: echo\n{declaration}");
+        let error = run(&[("main.cwl", &tool)]).expect_err("string required flag must fail");
+        assert!(
+            error.contains("secondaryFiles.required") && error.contains("boolean"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
 fn step_load_contents_applies_to_file_arrays_before_value_from() {
     let root = tempfile::tempdir().expect("folder");
     let file = root.path().join("input.txt");

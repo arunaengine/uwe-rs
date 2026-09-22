@@ -119,14 +119,20 @@ fn select(selector: &Selector, value: &Value, strict: bool, out: &mut Vec<Value>
                     let end = clamp(end.unwrap_or(length));
                     while index < end {
                         out.push(items[index as usize].clone());
-                        index += step;
+                        let Some(next) = index.checked_add(step) else {
+                            break;
+                        };
+                        index = next;
                     }
                 } else {
                     let mut index = start.map_or(length - 1, |start| clamp(start).min(length - 1));
                     let end = end.map_or(-1, clamp);
                     while index > end && index >= 0 {
                         out.push(items[index as usize].clone());
-                        index += step;
+                        let Some(next) = index.checked_add(step) else {
+                            break;
+                        };
+                        index = next;
                     }
                 }
             }

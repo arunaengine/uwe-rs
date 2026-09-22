@@ -65,6 +65,25 @@ fn rejects_negative_time_limits() {
 }
 
 #[test]
+fn policy_expressions_require_boolean_results() {
+    for (class, field) in [
+        ("NetworkAccess", "networkAccess"),
+        ("WorkReuse", "enableReuse"),
+    ] {
+        let tool = format!(
+            "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: echo\n\
+             requirements: [{{class: {class}, {field}: '$(inputs.flag)'}}]\n\
+             inputs: {{flag: {{type: string, default: 'false'}}}}\noutputs: []\n"
+        );
+        let error = run(&[("main.cwl", &tool)]).expect_err("string policy must fail");
+        assert!(
+            error.contains(field) && error.contains("boolean"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
 fn step_load_contents_applies_to_file_arrays_before_value_from() {
     let root = tempfile::tempdir().expect("folder");
     let file = root.path().join("input.txt");

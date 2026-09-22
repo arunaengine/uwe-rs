@@ -219,6 +219,7 @@ fn parameter_schema(parameter: &Parameter) -> Json {
 
 /// Where an artifact comes from, as an address, when it names one.
 fn location(artifact: &Artifact) -> Result<Option<String>> {
+    crate::inputs::check_artifact(artifact)?;
     let text = |node: &Node, key: &str| node.get(key).map(scalar_text).unwrap_or_default();
     if let Some(raw) = &artifact.raw {
         return Ok(Some(data_address(&text(raw, "data"))));
@@ -230,7 +231,10 @@ fn location(artifact: &Artifact) -> Result<Option<String>> {
             return Ok(None);
         }
         let bucket = if bucket.is_empty() {
-            "default-artifact-repository"
+            return Err(Failure::unsupported(format!(
+                "artifact {}: the default artifact repository is not supported; supply an S3 bucket",
+                artifact.name
+            )));
         } else {
             &bucket
         };

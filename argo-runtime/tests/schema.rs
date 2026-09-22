@@ -108,10 +108,8 @@ spec:
       - {name: optional, optional: true}
       - name: azure
         azure: {endpoint: "https://account.blob.core.windows.net/", container: data, blob: in.txt}
-      - name: repository
-        git: {repo: "https://example.org/repository.git", revision: abc123}
       - name: object
-        s3: {key: /inputs/a.txt}
+        s3: {bucket: data, key: /inputs/a.txt}
     container: {image: busybox}
 "#;
     std::fs::write(&file, workflow).expect("writes the workflow");
@@ -129,8 +127,7 @@ spec:
     for (name, value) in [
         ("inline", "data:,a%20b%0A"),
         ("azure", "https://account.blob.core.windows.net/data/in.txt"),
-        ("repository", "https://example.org/repository.git#abc123"),
-        ("object", "s3://default-artifact-repository/inputs/a.txt"),
+        ("object", "s3://data/inputs/a.txt"),
     ] {
         assert_eq!(inputs.schema["properties"][name]["default"], value);
         assert_eq!(inputs.schema["properties"][name]["readOnly"], true);
@@ -154,6 +151,11 @@ fn unsupported_artifact_providers_are_not_advertised() {
     for (kind, location) in [
         ("HDFS", "hdfs: {path: /data/in.txt}"),
         ("OSS", "oss: {bucket: data, key: in.txt}"),
+        (
+            "Git",
+            "git: {repo: 'https://example.org/repository.git', revision: abc123}",
+        ),
+        ("repository", "s3: {key: in.txt}"),
     ] {
         let folder = tempfile::tempdir().expect("a folder");
         let file = folder.path().join("unsupported.yaml");

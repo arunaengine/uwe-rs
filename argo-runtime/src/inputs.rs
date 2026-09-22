@@ -48,6 +48,15 @@ impl Run {
                     value = Some(given.clone());
                     from = None;
                 } else if let Some(given) = &argument.value_from {
+                    if !given.event.is_empty()
+                        || given.supplied.is_some()
+                        || !given.jq_filter.is_empty()
+                    {
+                        return Err(Failure::unsupported(format!(
+                            "input {}: valueFrom event, supplied and jqFilter sources are not supported",
+                            input.name
+                        )));
+                    }
                     if given.config_map_key_ref.is_some() {
                         from = Some(given.clone());
                     } else if !given.supplied.is_none() || !given.expression.is_empty() {
@@ -200,6 +209,7 @@ impl Run {
     }
 
     fn location(&mut self, artifact: &Artifact) -> Result<Option<Location>> {
+        check_artifact(artifact)?;
         let text = |node: &Node, key: &str| node.get(key).map(scalar_text).unwrap_or_default();
         if let Some(raw) = &artifact.raw {
             return Ok(Some(Location::Raw(text(raw, "data"))));
@@ -211,8 +221,10 @@ impl Run {
                 return Ok(None);
             }
             let bucket = if bucket.is_empty() {
-                self.warn("artifacts with only a key use the default artifact repository, here s3://default-artifact-repository".to_owned());
-                "default-artifact-repository".to_owned()
+                return Err(Failure::unsupported(format!(
+                    "artifact {}: the default artifact repository is not supported; supply an S3 bucket",
+                    artifact.name
+                )));
             } else {
                 bucket
             };
@@ -254,6 +266,64 @@ impl Run {
         }
         Ok(Some(Location::Url(url)))
     }
+}
+
+pub(crate) fn check_artifact(artifact: &Artifact) -> Result<()> {
+    if artifact.git.is_some()
+        || artifact.hdfs.is_some()
+        || artifact.oss.is_some()
+        || artifact.plugin.is_some()
+    {
+        return Err(Failure::unsupported(format!(
+            "artifact {}: Git, HDFS, OSS and artifact plugin transfers are not supported",
+            artifact.name
+        )));
+    }
+    if artifact.mode.is_some()
+        || artifact.recurse_mode.is_some()
+        || artifact
+            .archive
+            .as_ref()
+            .is_some_and(|node| node.get("none").is_none())
+        || artifact
+            .archive_logs
+            .as_ref()
+            .is_some_and(|node| node.value != Yaml::Bool(false))
+    {
+        return Err(Failure::unsupported(format!(
+            "artifact {}: mode, recurseMode, archive compression and archiveLogs are not supported",
+            artifact.name
+        )));
+    }
+    let locations: [(_, _, &[&str]); 6] = [
+        ("S3", artifact.s3.as_ref(), &["bucket", "key"]),
+        ("HTTP", artifact.http.as_ref(), &["url"]),
+        ("GCS", artifact.gcs.as_ref(), &["bucket", "key"]),
+        (
+            "Azure",
+            artifact.azure.as_ref(),
+            &["endpoint", "container", "blob"],
+        ),
+        ("Artifactory", artifact.artifactory.as_ref(), &["url"]),
+        ("raw", artifact.raw.as_ref(), &["data"]),
+    ];
+    for (kind, node, supported) in locations {
+        if let Some(Node {
+            value: Yaml::Mapping(fields),
+            ..
+        }) = node
+        {
+            for field in fields {
+                if !supported.contains(&field.key.as_str()) && field.value.value != Yaml::Null {
+                    return Err(Failure::unsupported(format!(
+                        "artifact {}: {kind}.{} is not supported; use the configured storage provider",
+                        artifact.name, field.key
+                    )));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Selects a child of a materialized directory artifact without leaving that directory.

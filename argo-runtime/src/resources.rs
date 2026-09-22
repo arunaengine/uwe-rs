@@ -7,44 +7,97 @@ use argo_parser::Node;
 use workflow_graph::Resources;
 
 /// Resources from Kubernetes requests, or limits where requests say nothing.
-pub(crate) fn resources_of(node: &Node) -> Resources {
+pub(crate) fn resources_of(node: &Node) -> Result<Resources, String> {
+    let argo_parser::Value::Mapping(fields) = &node.value else {
+        return Err("container resources must be a mapping".into());
+    };
+    for field in fields {
+        if !matches!(field.key.as_str(), "limits" | "requests") {
+            return Err(format!(
+                "unsupported: container resource field {} is not supported",
+                field.key
+            ));
+        }
+    }
+    if let (Some(limits), Some(requests)) = (node.get("limits"), node.get("requests")) {
+        for field in [
+            "cpu",
+            "memory",
+            "ephemeral-storage",
+            "nvidia.com/gpu",
+            "amd.com/gpu",
+        ] {
+            if let (Some(limit), Some(request)) = (limits.get(field), requests.get(field)) {
+                let limit = crate::run::scalar_text(limit);
+                let request = crate::run::scalar_text(request);
+                let same = match field {
+                    "cpu" => cpu_cores(&limit) == cpu_cores(&request),
+                    "nvidia.com/gpu" | "amd.com/gpu" => {
+                        limit.parse::<u32>().ok() == request.parse::<u32>().ok()
+                    }
+                    _ => quantity_bytes(&limit) == quantity_bytes(&request),
+                };
+                if !same {
+                    return Err(format!(
+                        "unsupported: differing {field} requests and limits are not supported"
+                    ));
+                }
+            }
+        }
+    }
     let mut resources = Resources::default();
     for part in ["limits", "requests"] {
         let Some(values) = node.get(part) else {
             continue;
         };
-        if let Some(cpu) = values
-            .get("cpu")
-            .map(crate::run::scalar_text)
-            .and_then(|text| cpu_cores(&text))
-        {
-            resources.cpus = Some(cpu);
+        if !matches!(values.value, argo_parser::Value::Mapping(_)) {
+            return Err(format!("container resources {part} must be a mapping"));
         }
-        if let Some(memory) = values
-            .get("memory")
-            .map(crate::run::scalar_text)
-            .and_then(|text| quantity_bytes(&text))
-        {
-            resources.memory_bytes = Some(memory);
+        if let Some(cpu) = values.get("cpu") {
+            resources.cpus = Some(
+                cpu_cores(&crate::run::scalar_text(cpu))
+                    .filter(|cpu| cpu.is_finite() && *cpu >= 0.0)
+                    .ok_or_else(|| {
+                        "container resource cpu must be finite and nonnegative".to_owned()
+                    })?,
+            );
         }
-        if let Some(disk) = values
-            .get("ephemeral-storage")
-            .map(crate::run::scalar_text)
-            .and_then(|text| quantity_bytes(&text))
-        {
-            resources.disk_bytes = Some(disk);
+        if let Some(memory) = values.get("memory") {
+            resources.memory_bytes = Some(
+                quantity_bytes(&crate::run::scalar_text(memory))
+                    .ok_or_else(|| "invalid or overflowing container memory resource".to_owned())?,
+            );
+        }
+        if let Some(disk) = values.get("ephemeral-storage") {
+            resources.disk_bytes = Some(
+                quantity_bytes(&crate::run::scalar_text(disk))
+                    .ok_or_else(|| "invalid or overflowing container disk resource".to_owned())?,
+            );
         }
         for gpu in ["nvidia.com/gpu", "amd.com/gpu"] {
-            if let Some(count) = values
-                .get(gpu)
-                .map(crate::run::scalar_text)
-                .and_then(|text| text.parse().ok())
-            {
-                resources.gpus = Some(count);
+            if let Some(count) = values.get(gpu) {
+                resources.gpus = Some(
+                    crate::run::scalar_text(count)
+                        .parse()
+                        .map_err(|_| format!("invalid container resource {gpu}"))?,
+                );
+            }
+        }
+        if let argo_parser::Value::Mapping(entries) = &values.value {
+            for entry in entries {
+                if !matches!(
+                    entry.key.as_str(),
+                    "cpu" | "memory" | "ephemeral-storage" | "nvidia.com/gpu" | "amd.com/gpu"
+                ) {
+                    return Err(format!(
+                        "unsupported: container resource {} is not supported",
+                        entry.key
+                    ));
+                }
             }
         }
     }
-    resources
+    Ok(resources)
 }
 
 /// CPU cores of a quantity like `500m` or `2`.
@@ -73,15 +126,19 @@ fn quantity_bytes(text: &str) -> Option<u64> {
         ("P", 1e15),
         ("E", 1e18),
     ];
+    let bytes = |number: f64| {
+        (number.is_finite() && number >= 0.0 && number < u64::MAX as f64)
+            .then_some(number.ceil() as u64)
+    };
     for (suffix, factor) in suffixes {
         if let Some(number) = text.strip_suffix(suffix) {
             return number
                 .parse::<f64>()
                 .ok()
-                .map(|number| (number * factor) as u64);
+                .and_then(|number| bytes(number * factor));
         }
     }
-    text.parse::<f64>().ok().map(|number| number as u64)
+    text.parse::<f64>().ok().and_then(bytes)
 }
 
 /// Seconds of a duration like `30s`, `5m`, `1h30m` or a plain number of seconds.
@@ -133,5 +190,17 @@ mod tests {
         assert_eq!(duration_seconds("1h30m"), Some(5400));
         assert_eq!(duration_seconds("45"), Some(45));
         assert_eq!(duration_seconds("x"), None);
+    }
+
+    #[test]
+    fn equivalent_requests_and_limits_keep_their_resource_values() {
+        let node = argo_parser::parse_yaml(
+            "{requests: {cpu: '0.5', memory: 1Gi}, limits: {cpu: 500m, memory: 1024Mi}}",
+        )
+        .expect("resources")
+        .expect("node");
+        let resources = resources_of(&node).expect("equivalent quantities");
+        assert_eq!(resources.cpus, Some(0.5));
+        assert_eq!(resources.memory_bytes, Some(1024 * 1024 * 1024));
     }
 }

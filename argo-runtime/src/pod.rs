@@ -56,20 +56,33 @@ impl Run {
         let time = template
             .active_deadline_seconds
             .as_ref()
-            .and_then(|seconds| seconds.0.trim().parse::<u64>().ok())
+            .map(|seconds| {
+                seconds
+                    .0
+                    .trim()
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|seconds| *seconds > 0)
+                    .ok_or_else(|| {
+                        Failure::error("activeDeadlineSeconds must be a positive integer")
+                    })
+            })
+            .transpose()?
             .or_else(|| {
                 template
                     .timeout
                     .as_ref()
                     .and_then(|timeout| duration_seconds(&timeout.0))
             });
-        let base = |image: &str, container: Option<&Container>| {
+        let base = |image: &str, container: Option<&Container>| -> Result<Task> {
             let mut resources = container
                 .and_then(|container| container.resources.as_ref())
                 .map(resources_of)
+                .transpose()
+                .map_err(resource_error)?
                 .unwrap_or_default();
             resources.time_seconds = time;
-            Task {
+            Ok(Task {
                 id: TaskId(0),
                 name: name.clone(),
                 step: template.name.clone(),
@@ -78,7 +91,7 @@ impl Run {
                 resources,
                 after: inbound.clone(),
                 ..Task::default()
-            }
+            })
         };
         // Init containers run one after the other before the main containers, each as a task
         // of its own on the same volumes, so that the next task gets the files it wrote.
@@ -86,7 +99,7 @@ impl Run {
         let done = self.nodes[index].tasks.clone();
         if done.len() < init.len() {
             let (container, mirror) = &init[done.len()];
-            let mut task = base(&container.image, Some(container));
+            let mut task = base(&container.image, Some(container))?;
             task.name = format!("{name} (init {})", container.name);
             task.inputs.clear();
             fill_container(&mut task, container);
@@ -113,7 +126,7 @@ impl Run {
         let mut tasks: Vec<Task> = Vec::new();
         let mut dependencies: Vec<Vec<usize>> = Vec::new();
         if let Some(container) = &template.container {
-            let mut task = base(&container.image, Some(container));
+            let mut task = base(&container.image, Some(container))?;
             fill_container(&mut task, container);
             task.run_as = Some(self.run_as(template, Some(container)));
             task.environment = self.environment(container, &fields)?;
@@ -121,7 +134,7 @@ impl Run {
             self.mount_volumes(index, first, template, &container.volume_mounts, &mut task)?;
             tasks.push(task);
         } else if let Some(script) = &template.script {
-            let mut task = base(&script.image, Some(script));
+            let mut task = base(&script.image, Some(script))?;
             fill_container(&mut task, script);
             task.run_as = Some(self.run_as(template, Some(script)));
             task.environment = self.environment(script, &fields)?;
@@ -151,7 +164,7 @@ impl Run {
             let attempts = retry_attempts(set.retry_strategy.as_ref());
             let positions =
                 std::iter::once(main).chain((0..set.containers.len()).filter(|&at| at != main));
-            let mut task = base(&set.containers[main].image, None);
+            let mut task = base(&set.containers[main].image, None)?;
             let mut mounts: Vec<Node> = set.volume_mounts.clone();
             for position in positions {
                 let container = &set.containers[position];
@@ -161,7 +174,7 @@ impl Run {
                     task.environment = environment.clone();
                     task.run_as = Some(self.run_as(template, Some(container)));
                 }
-                task.resources = sum(&task.resources, container);
+                task.resources = sum(&task.resources, container)?;
                 let path = |mount: &Node| mount.get("mountPath").map(scalar_text);
                 for mount in &container.volume_mounts {
                     if !mounts.iter().any(|known| path(known) == path(mount)) {
@@ -187,7 +200,7 @@ impl Run {
             self.mount_volumes(index, first, template, &mounts, &mut task)?;
             tasks.push(task);
         } else if let Some(http) = &template.http {
-            let mut task = base(CURL_IMAGE, None);
+            let mut task = base(CURL_IMAGE, None)?;
             let mut secrets = BTreeMap::new();
             for (header, reference) in secret_headers(http) {
                 let what = format!("header {header} of HTTP template {}", template.name);
@@ -669,24 +682,45 @@ fn retry_attempts(strategy: Option<&Node>) -> u32 {
     retries.unwrap_or(1).max(1)
 }
 
+pub(crate) fn resource_error(message: String) -> Failure {
+    match message.strip_prefix("unsupported: ") {
+        Some(message) => Failure::unsupported(message),
+        None => Failure::error(message),
+    }
+}
+
 /// The resources of a pod with one more container: the sum of their requests.
-fn sum(total: &Resources, container: &Container) -> Resources {
+fn sum(total: &Resources, container: &Container) -> Result<Resources> {
     let more = (container.resources.as_ref())
         .map(resources_of)
+        .transpose()
+        .map_err(resource_error)?
         .unwrap_or_default();
-    fn add<T: std::ops::Add<Output = T>>(a: Option<T>, b: Option<T>) -> Option<T> {
-        match (a, b) {
-            (Some(a), Some(b)) => Some(a + b),
-            (a, b) => a.or(b),
-        }
+    let add = |a: Option<u64>, b: Option<u64>| match (a, b) {
+        (Some(a), Some(b)) => a
+            .checked_add(b)
+            .map(Some)
+            .ok_or_else(|| Failure::error("container set resource sum overflows")),
+        (a, b) => Ok(a.or(b)),
+    };
+    let cpus = match (total.cpus, more.cpus) {
+        (Some(a), Some(b)) => Some(a + b),
+        (a, b) => a.or(b),
+    };
+    if cpus.is_some_and(|cpus| !cpus.is_finite()) {
+        return Err(Failure::error("container set cpu resource sum overflows"));
     }
-    Resources {
-        cpus: add(total.cpus, more.cpus),
-        memory_bytes: add(total.memory_bytes, more.memory_bytes),
-        disk_bytes: add(total.disk_bytes, more.disk_bytes),
+    let gpus = add(total.gpus.map(u64::from), more.gpus.map(u64::from))?
+        .map(u32::try_from)
+        .transpose()
+        .map_err(|_| Failure::error("container set gpu resource sum overflows"))?;
+    Ok(Resources {
+        cpus,
+        memory_bytes: add(total.memory_bytes, more.memory_bytes)?,
+        disk_bytes: add(total.disk_bytes, more.disk_bytes)?,
         time_seconds: total.time_seconds,
-        gpus: add(total.gpus, more.gpus),
-    }
+        gpus,
+    })
 }
 
 /// The container of a set whose outcome is the node's: `main`, or the last.
@@ -699,6 +733,9 @@ fn main_container(containers: &[Container]) -> usize {
 
 /// The containers of a container set in an order where dependencies come first.
 fn container_order(containers: &[Container]) -> std::result::Result<Vec<usize>, String> {
+    if containers.is_empty() {
+        return Err("containerSet must contain at least one container".into());
+    }
     let mut order: Vec<usize> = Vec::new();
     while order.len() < containers.len() {
         let next = (0..containers.len()).find(|&position| {

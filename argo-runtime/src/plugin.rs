@@ -194,6 +194,8 @@ impl Run {
                 .resources
                 .as_ref()
                 .map(resources_of)
+                .transpose()
+                .map_err(crate::pod::resource_error)?
                 .unwrap_or_default(),
             after: match self.nodes[index].tasks.last() {
                 Some(&previous) => vec![previous],

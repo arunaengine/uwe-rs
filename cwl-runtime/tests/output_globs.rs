@@ -86,6 +86,58 @@ fn finite_globs_ignore_unrelated_cycles_and_dangling_links() {
 }
 
 #[test]
+fn wildcard_globs_skip_hidden_paths_unless_the_dot_is_explicit() {
+    let root = tempfile::tempdir().expect("folder");
+    let dir = root.path().join("work/dir");
+    std::fs::create_dir_all(dir.join(".hidden")).expect("directory");
+    for name in ["visible.txt", ".hidden.txt", ".hidden/nested.txt"] {
+        std::fs::write(dir.join(name), "output").expect("file");
+    }
+    for (pattern, expected) in [
+        ("dir/*.txt", vec!["visible.txt"]),
+        ("dir/?.txt", vec![]),
+        ("dir/**/*.txt", vec![]),
+        ("dir/.*.txt", vec![".hidden.txt"]),
+        ("dir/.hidden/*.txt", vec!["nested.txt"]),
+        (
+            "dir/{visible,.hidden}.txt",
+            vec![".hidden.txt", "visible.txt"],
+        ),
+    ] {
+        let (mut driver, task) = start(
+            root.path(),
+            pattern,
+            Options {
+                simulated: false,
+                ..Options::default()
+            },
+        );
+        let mut files = vec![directory(&dir.to_string_lossy())];
+        for name in ["visible.txt", ".hidden.txt", ".hidden/nested.txt"] {
+            files.push(OutputFile {
+                path: format!("dir/{name}"),
+                location: dir.join(name).to_string_lossy().into_owned(),
+                ..OutputFile::default()
+            });
+        }
+        driver
+            .complete(Outcome {
+                id: task.id,
+                files,
+                ..Outcome::default()
+            })
+            .expect("outcome");
+        let names: Vec<&str> = driver.outputs().expect("outputs")["out"]
+            .as_list()
+            .expect("files")
+            .iter()
+            .map(|file| file.text("basename").expect("basename"))
+            .collect();
+        assert_eq!(names, expected, "{pattern}");
+    }
+}
+
+#[test]
 fn finite_globs_preserve_directory_aliases() {
     let root = tempfile::tempdir().expect("folder");
     let dir = root.path().join("work/dir");

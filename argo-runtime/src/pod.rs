@@ -599,6 +599,13 @@ fn init_containers(template: &Template) -> Result<Vec<(Container, bool)>> {
                 template.name
             ))
         })?;
+        if let Some(reason) = crate::checks::cluster_only(&Template {
+            name: template.name.clone(),
+            container: Some(container.clone()),
+            ..Template::default()
+        }) {
+            return Err(Failure::unsupported(reason));
+        }
         let mirror = matches!(
             node.get("mirrorVolumeMounts").map(|mirror| &mirror.value),
             Some(Yaml::Bool(true))

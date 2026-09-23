@@ -81,11 +81,18 @@ fn rejects_unsupported_container_lifecycle_controls() {
         "restartPolicy",
         "resizePolicy",
     ] {
-        let error = start_error(&format!(
-            "  templates:\n  - name: main\n    container: {{image: alpine, {field}: {{}}}}\n"
-        ));
-        assert!(error.unsupported, "{field}: {error}");
-        assert!(error.message.contains(field), "{error}");
+        for spec in [
+            format!(
+                "  templates:\n  - name: main\n    container: {{image: alpine, {field}: {{}}}}\n"
+            ),
+            format!(
+                "  templates:\n  - name: main\n    initContainers: [{{name: init, image: alpine, {field}: {{}}}}]\n    container: {{image: alpine}}\n"
+            ),
+        ] {
+            let error = start_error(&spec);
+            assert!(error.unsupported, "{field}: {error}");
+            assert!(error.message.contains(field), "{error}");
+        }
     }
 }
 

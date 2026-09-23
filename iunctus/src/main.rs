@@ -14,60 +14,8 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-mod arguments;
-mod changes;
-mod check;
-mod clean;
-mod conda;
-mod conda_backend;
-mod detect;
-mod failure;
-mod fetched;
-mod inputs;
-mod insight;
-mod kubernetes;
-mod local;
-mod logging;
-mod machine;
-mod nextflow;
-mod order;
-mod page;
-mod preview;
-mod progress;
-mod record;
-mod repeat;
-mod report;
-mod resources;
-mod resume;
-mod revision;
-mod run;
-mod run_backend;
-mod run_driver;
-mod run_support;
-mod runs;
-mod setup;
-mod slurm;
-mod sources;
-mod terminal;
-mod tes;
-mod tracked;
-
-use std::path::Path;
+use iunctus::cli::{self, Failure, HELP};
 use std::process::ExitCode;
-
-use workflow_graph::render::{Format, Options, render};
-use workflow_graph::ExecutionGraph;
-
-use crate::arguments::Arguments;
-use crate::failure::{Failure, failure};
-use crate::repeat::Pinned;
-use crate::run::{Ran, close, execute};
-use crate::run_backend::{executor, network_rule, recorded_workflow};
-use crate::run_driver::{driver, launch, target_and_language};
-use crate::run_support::{
-    cache_directory, finish, run_id, runner_settings, stop_on_interrupt, use_cache_folder,
-};
-use crate::setup::Setup;
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -82,7 +30,7 @@ fn main() -> ExitCode {
     }
     let Some((command, rest)) = arguments.split_first() else {
         eprintln!("{USAGE}");
-        return ExitCode::from(failure::USAGE);
+        return ExitCode::from(cli::USAGE);
     };
     if matches!(command.as_str(), "help" | "-help" | "--help") {
         return exit(match rest {
@@ -90,7 +38,7 @@ fn main() -> ExitCode {
                 println!("{USAGE}");
                 Ok(())
             }
-            [command] => arguments::help(command)
+            [command] => cli::help(command)
                 .map(|text| println!("{text}"))
                 .map_err(Failure::usage),
             _ => Err(Failure::usage("use `iunctus help [command]`")),
@@ -100,13 +48,13 @@ fn main() -> ExitCode {
         println!("iunctus {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
-    let mut arguments = match arguments::parse_command(command, rest) {
+    let mut arguments = match cli::parse_command(command, rest) {
         Ok(arguments) => arguments,
         Err(message) => return exit(Err(Failure::usage(format!("{message}; {HELP}")))),
     };
     if arguments.help {
         return exit(
-            arguments::help(command)
+            cli::help(command)
                 .map(|text| println!("{text}"))
                 .map_err(Failure::usage),
         );
@@ -115,46 +63,16 @@ fn main() -> ExitCode {
         println!("iunctus {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
-    if let Err(failure) = logging::init(&arguments) {
+    if let Err(failure) = cli::init(&arguments) {
         return exit(Err(failure));
     }
     if !matches!(command.as_str(), "help" | "-help" | "--help") {
-        match setup::Defaults::load(&arguments) {
+        match cli::Defaults::load(&arguments) {
             Ok(defaults) => defaults.apply(command, &mut arguments),
             Err(failure) => return exit(Err(failure)),
         }
     }
-    let result = match command.as_str() {
-        "run" => run(&arguments),
-        "graph" => graph(&arguments),
-        "check" => check::command(&arguments),
-        "check-machine" => machine::command(&arguments),
-        "config" => config(&arguments),
-        "runs" => runs::list(&arguments),
-        "export" => runs::export(&arguments),
-        "page" => page::command(&arguments),
-        "why" => runs::why(&arguments),
-        "origin" => runs::origin(&arguments),
-        "inputs" => inputs::command(&arguments),
-        "outputs" => inputs::outputs(&arguments),
-        "clean" => clean::command(&arguments),
-        "check-order" => order::command(&arguments),
-        "changes" => changes::command(&arguments),
-        "repeat" => repeat::command(&arguments),
-        "lock-environment" => conda::command(&arguments),
-        "time" => insight::time::command(&arguments),
-        "compare" => insight::compare::command(&arguments),
-        "replay" => insight::replay::command(&arguments),
-        "telemetry" => insight::telemetry::command(&arguments),
-        "report" => report::command(&arguments),
-        "help" | "-help" | "--help" => {
-            println!("{USAGE}");
-            Ok(())
-        }
-        _ => Err(Failure::usage(format!(
-            "unknown command `{command}`; {HELP}"
-        ))),
-    };
+    let result = cli::command(command, &arguments, USAGE);
     exit(result)
 }
 
@@ -170,92 +88,6 @@ fn exit(result: Result<(), Failure>) -> ExitCode {
         }
     }
 }
-
-/// `iunctus run`: runs the workflow and writes its graph to `-graph` if given. With `-page`,
-/// the page of the run stays open after the run until Ctrl-C.
-fn run(arguments: &Arguments) -> Result<(), Failure> {
-    if arguments.format.is_some() {
-        return Err(Failure::usage(
-            "iunctus: `-format` is an option of `iunctus graph`",
-        ));
-    }
-    let simulated = arguments.executor.as_deref().unwrap_or("simulator") == "simulator";
-    if simulated {
-        println!("iunctus: simulated run selected; use `-executor local` to run tasks for real");
-    }
-    let Ran {
-        execution, page, ..
-    } = execute(arguments, false, &Pinned::default())?;
-    if let Some(file) = &arguments.graph {
-        write_graph(file, &execution.graph, &picture(arguments))?;
-    }
-    if let Some(page) = page {
-        eprintln!("iunctus: the run has ended; the page stays open until you press Ctrl-C");
-        page.serve_until_interrupted();
-    }
-    let result = finish(execution);
-    if simulated {
-        println!("iunctus: simulated run ended; use `-executor local` to run tasks for real");
-    }
-    result
-}
-
-/// `iunctus graph`: runs the workflow, with the simulator unless `-executor` says otherwise,
-/// and prints its graph. What the workflow prints goes to standard error.
-fn graph(arguments: &Arguments) -> Result<(), Failure> {
-    if arguments.page {
-        return Err(Failure::usage(
-            "iunctus: `-page` is an option of `iunctus run`",
-        ));
-    }
-    let options = picture(arguments);
-    let format = match arguments.format.as_deref() {
-        None => Format::default(),
-        Some(name) => Format::parse(name).ok_or_else(|| {
-            Failure::usage(format!(
-                "iunctus: `-format {name}` is a format of `iunctus inputs`; use json, dot, \
-                 summary or svg"
-            ))
-        })?,
-    };
-    let Ran { execution, .. } = execute(arguments, true, &Pinned::default())?;
-    if let Some(file) = &arguments.graph {
-        write_graph(file, &execution.graph, &options)?;
-    }
-    // A failed run still shows the graph so far.
-    print!("{}", render(&execution.graph, &options, format));
-    finish(execution)
-}
-
-/// `iunctus config`: the config of a Nextflow project, by default the launch directory.
-fn config(arguments: &Arguments) -> Result<(), Failure> {
-    let setup = Setup::load(arguments)?;
-    let project = arguments.target.clone().unwrap_or_else(|| ".".into());
-    nextflow::print_config(&launch(arguments, project), &setup.storage)?;
-    Ok(())
-}
-
-/// How to draw the graph: `-view`, `-direction` and `-fold`.
-fn picture(arguments: &Arguments) -> Options {
-    let defaults = Options::default();
-    Options {
-        view: arguments.view.unwrap_or(defaults.view),
-        direction: arguments.direction.unwrap_or(defaults.direction),
-        fold: arguments.fold.unwrap_or(defaults.fold),
-        ..defaults
-    }
-}
-
-/// Writes the graph in the format that the file name asks for: DOT for `.dot`, SVG for
-/// `.svg`, a summary for `.txt`, else JSON.
-fn write_graph(file: &Path, graph: &ExecutionGraph, options: &Options) -> Result<(), Failure> {
-    let text = render(graph, options, Format::of_file(file));
-    std::fs::write(file, text)
-        .map_err(|error| failure(format!("iunctus: cannot write {}: {error}", file.display())))
-}
-
-/// What an error of the command line points to.
-const HELP: &str = "`iunctus help` lists the commands and their options";
 
 const USAGE: &str = "\
 usage: iunctus run <workflow file or directory> [<targets>] [options]

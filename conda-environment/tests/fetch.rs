@@ -81,7 +81,7 @@ fn packages_are_streamed_verified_reused_and_repaired() {
         .map(|byte| format!("{byte:02x}"))
         .collect();
     let repodata = json!({"packages": {"foo-1.0-0.conda": {
-        "name":"foo", "version":"1.0", "build":"0", "sha256":digest
+        "name":"foo", "version":"1.0", "build":"0", "build_number":0, "subdir":"linux-64", "sha256":digest
     }}})
     .to_string();
     fetch_repodata(&environment, folder.path(), "linux-64", |url, out| {

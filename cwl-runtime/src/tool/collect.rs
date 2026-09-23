@@ -12,7 +12,7 @@ use cwl_parser::model::{
     Class, Dynamic, Expression, LoadListing, OutputBinding, OutputParameter, SecondaryFile, Type,
     short_name,
 };
-use workflow_graph::simulator::glob_matches;
+use workflow_graph::simulator::glob_matches as shared_glob_matches;
 use workflow_graph::{Files, Outcome, OutputFile};
 
 use super::outputs::{classes, globs};
@@ -918,6 +918,47 @@ fn reads_self(expression: &Expression) -> bool {
         | cwl_parser::model::Part::Javascript(code)
         | cwl_parser::model::Part::Function(code) => code.contains("self"),
     })
+}
+
+fn glob_matches(pattern: &str, path: &str) -> bool {
+    if !shared_glob_matches(pattern, path) {
+        return false;
+    }
+    if path.split('/').all(|part| !part.starts_with('.')) {
+        return true;
+    }
+    if let Some(open) = pattern.find('{')
+        && let Some(close) = pattern[open..].find('}')
+    {
+        let close = open + close;
+        return pattern[open + 1..close].split(',').any(|choice| {
+            glob_matches(
+                &format!("{}{}{}", &pattern[..open], choice, &pattern[close + 1..]),
+                path,
+            )
+        });
+    }
+    fn visible(pattern: &[&str], path: &[&str]) -> bool {
+        match (pattern.split_first(), path.split_first()) {
+            (None, None) => true,
+            (Some((&"**", rest)), _) => {
+                visible(rest, path)
+                    || path.split_first().is_some_and(|(part, tail)| {
+                        !part.starts_with('.') && visible(pattern, tail)
+                    })
+            }
+            (Some((part, rest)), Some((name, tail))) => {
+                (!name.starts_with('.') || part.starts_with('.'))
+                    && shared_glob_matches(part, name)
+                    && visible(rest, tail)
+            }
+            _ => false,
+        }
+    }
+    visible(
+        &pattern.split('/').collect::<Vec<_>>(),
+        &path.split('/').collect::<Vec<_>>(),
+    )
 }
 
 /// Whether the glob can match a descendant of this path.

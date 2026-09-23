@@ -31,6 +31,10 @@ pub use version::{Version, VersionSpec};
 /// Why an environment cannot be locked.
 #[derive(Debug, thiserror::Error)]
 pub enum LockError {
+    #[error("pip requirements cannot be locked; Conda preparation refuses pip sections")]
+    Pip,
+    #[error("Conda solver: {0}")]
+    Solver(String),
     #[error(
         "the repodata of {} is not in the folder of repodata; locking needs it, and getting it \
          needs the network: {}",
@@ -98,8 +102,8 @@ pub fn platform() -> String {
 }
 
 /// Locks an environment for a platform with the repodata in `folder`.
-/// This bounded legacy search assumes common Linux virtual package names are present,
-/// without checking their versions or builds. Target compatibility remains unknown.
+/// No virtual packages are inferred. Dependencies on target capabilities cannot be satisfied
+/// unless they are supplied through `lock_with_virtual`. Target compatibility remains unknown.
 /// Use [`lock_with_virtual`] to check authoritative target capabilities instead.
 pub fn lock(environment: &Environment, folder: &Path, platform: &str) -> Result<Lock, LockError> {
     lock_inner(environment, folder, platform, None)
@@ -122,6 +126,9 @@ fn lock_inner(
     platform: &str,
     capabilities: Option<&[VirtualPackage]>,
 ) -> Result<Lock, LockError> {
+    if !environment.pip.is_empty() {
+        return Err(LockError::Pip);
+    }
     let mut virtual_packages = capabilities.map(<[VirtualPackage]>::to_vec);
     if let Some(packages) = &mut virtual_packages {
         packages.sort_by(|a, b| a.name.cmp(&b.name));
@@ -170,7 +177,7 @@ fn lock_inner(
             .map(ToString::to_string)
             .collect(),
         pip: environment.pip.clone(),
-        packages: records.into_iter().map(Package::of).collect(),
+        packages: records.iter().map(Package::of).collect(),
         virtual_packages,
     })
 }

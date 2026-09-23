@@ -1,227 +1,205 @@
-//! Chooses one package for each name that an environment needs: a search that takes the
-//! newest package of the first channel that has the name, adds what it depends on, and goes
-//! back to the next choice when a later package cannot fit. It is no full solver like conda's:
-//! it gives up after a number of tries and says so, rather than search for long.
+//! Conda dependency resolution through rattler's resolvo backend.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::HashMap;
+use rattler_conda_types::{
+    Flag, GenericVirtualPackage, Matches, ParseMatchSpecOptions, RepoDataRecord, RepodataRevision,
+    StringMatcher,
+};
+use rattler_solve::{ChannelPriority, SolveError, SolverImpl, SolverTask};
+use sha2::{Digest as _, Sha256};
 
-use crate::repodata::{Index, Record};
-use crate::spec::MatchSpec;
-use crate::{LockError, SpecError};
+use crate::{Index, LockError, MatchSpec, Record, SpecError};
 
-/// How many packages the search may try before it gives up.
-const TRIES: usize = 200_000;
-
-/// Virtual packages that stand for what the machine has, like `__glibc`: a container of a
-/// Linux image has them. Others, like `__cuda`, it lacks.
-const PRESENT: &[&str] = &["__unix", "__linux", "__glibc", "__archspec"];
-
-/// A point where the search chose among packages, to go back to.
-struct Choice<'a> {
-    /// The place of the spec in the queue.
-    spec: usize,
-    candidates: Vec<&'a Record>,
-    /// The candidate chosen now.
-    at: usize,
-    /// The length of the queue before the chosen package added what it depends on.
-    queue: usize,
-}
-
-/// What the search goes through: the specs to fit, in order, and the packages chosen so far.
-struct Search<'a> {
-    index: &'a Index,
-    queue: Vec<MatchSpec>,
-    chosen: HashMap<String, &'a Record>,
-    /// Each point of the queue: a choice, or a spec that a chosen package fit already.
-    trail: Vec<Option<Choice<'a>>>,
-    tries: usize,
-    /// `None` retains the legacy name-only assumptions.
-    virtual_records: Option<&'a [Record]>,
-}
-
-/// The packages that fit every spec and everything that they depend on, sorted by name.
-pub(crate) fn solve<'a>(
-    index: &'a Index,
+pub(crate) fn solve(
+    index: &Index,
     specs: &[MatchSpec],
-    virtual_records: Option<&'a [Record]>,
-) -> Result<Vec<&'a Record>, LockError> {
-    let mut search = Search {
-        index,
-        queue: specs.to_vec(),
-        chosen: virtual_records
-            .unwrap_or_default()
-            .iter()
-            .map(|record| (record.name.clone(), record))
-            .collect(),
-        trail: Vec::new(),
-        tries: 0,
-        virtual_records,
-    };
-    // The first spec that no package can fit at all names the cause better than a search.
+    virtual_records: Option<&[Record]>,
+) -> Result<Vec<Record>, LockError> {
+    let virtual_packages = virtual_records
+        .unwrap_or_default()
+        .iter()
+        .map(|record| {
+            Ok(GenericVirtualPackage {
+                name: record.name.parse().map_err(|_| SpecError {
+                    text: record.name.clone(),
+                    reason: "invalid virtual package name",
+                })?,
+                version: record
+                    .version()
+                    .ok_or_else(|| SpecError {
+                        text: record.version.clone(),
+                        reason: "invalid virtual package version",
+                    })?
+                    .0,
+                build_string: record.build.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>, LockError>>()?;
+    resolve(index.available(), specs, virtual_packages, &index.channels)?
+        .into_iter()
+        .map(|native| {
+            let channel = index
+                .channels
+                .iter()
+                .find(|channel| {
+                    native
+                        .channel
+                        .as_deref()
+                        .is_some_and(|url| url.trim_end_matches('/') == crate::base(channel))
+                })
+                .cloned()
+                .unwrap_or_default();
+            Record::from_native(native, channel)
+                .map_err(|error| LockError::Solver(error.to_string()))
+        })
+        .collect()
+}
+
+pub(crate) fn resolve(
+    available: Vec<Vec<&RepoDataRecord>>,
+    specs: &[MatchSpec],
+    virtual_packages: Vec<GenericVirtualPackage>,
+    channels: &[String],
+) -> Result<Vec<RepoDataRecord>, LockError> {
     for spec in specs {
-        let available = if spec.name.starts_with("__") {
-            match virtual_records {
-                Some(records) => records.iter().any(|record| spec.matches(record)),
-                None => present(&spec.name) || !candidates(index, spec).is_empty(),
-            }
+        let found = if spec.name.starts_with("__") {
+            virtual_packages
+                .iter()
+                .any(|package| spec.native.matches(package))
         } else {
-            !candidates(index, spec).is_empty()
+            available.iter().flatten().any(|record| {
+                spec.native.matches(*record)
+                    && spec.native.channel.as_ref().is_none_or(|channel| {
+                        record.channel.as_deref().is_some_and(|url| {
+                            url.trim_end_matches('/')
+                                == channel.base_url.as_str().trim_end_matches('/')
+                        })
+                    })
+                    && spec
+                        .native
+                        .subdir
+                        .as_ref()
+                        .is_none_or(|subdir| subdir == &record.package_record.subdir)
+                    && spec
+                        .native
+                        .file_name
+                        .as_ref()
+                        .is_none_or(|file| file == &record.identifier.to_file_name())
+            })
         };
-        if !available {
+        if !found {
             return Err(LockError::NoPackage {
                 spec: spec.to_string(),
-                channels: index.channels.clone(),
+                channels: channels.to_vec(),
             });
         }
     }
-    search.run(specs)?;
-    let mut records: Vec<&Record> = search
-        .chosen
-        .into_values()
-        .filter(|record| !record.name.starts_with("__"))
+    // Rattler matches these fields only for the first root channel spec. Encode them
+    // as variant flags so dependencies and optional constraints keep their qualifiers.
+    let prepared = available
+        .iter()
+        .map(|bucket| {
+            bucket
+                .iter()
+                .map(|record| {
+                    let mut prepared = (*record).clone();
+                    for (kind, value) in [
+                        (
+                            "channel",
+                            record
+                                .channel
+                                .as_deref()
+                                .unwrap_or_default()
+                                .trim_end_matches('/')
+                                .to_owned(),
+                        ),
+                        ("subdir", record.package_record.subdir.clone()),
+                        ("file", record.identifier.to_file_name()),
+                    ] {
+                        prepared
+                            .package_record
+                            .flags
+                            .push(Flag::new_unchecked(qualifier(kind, &value)));
+                    }
+                    for dependency in prepared
+                        .package_record
+                        .depends
+                        .iter_mut()
+                        .chain(&mut prepared.package_record.constrains)
+                    {
+                        if dependency.contains("::") || dependency.contains('[') {
+                            let parsed = rattler_conda_types::MatchSpec::from_str(
+                                dependency,
+                                ParseMatchSpecOptions::lenient()
+                                    .with_repodata_revision(RepodataRevision::V3),
+                            )
+                            .map_err(|error| LockError::Solver(error.to_string()))?;
+                            *dependency = qualified(parsed).to_string();
+                        }
+                    }
+                    Ok(prepared)
+                })
+                .collect::<Result<Vec<_>, LockError>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut task: SolverTask<_> = prepared.iter().map(|bucket| bucket.iter()).collect();
+    task.specs = specs
+        .iter()
+        .map(|spec| qualified(spec.native.clone()))
         .collect();
-    records.sort_by(|a, b| a.name.cmp(&b.name));
+    task.virtual_packages = virtual_packages;
+    task.channel_priority = ChannelPriority::Flexible;
+    let mut records = rattler_solve::resolvo::Solver
+        .solve(task)
+        .map_err(|error| match error {
+            SolveError::Unsolvable(_) => LockError::Conflict {
+                specs: specs.iter().map(ToString::to_string).collect(),
+            },
+            other => LockError::Solver(other.to_string()),
+        })?
+        .records;
+    records = records
+        .into_iter()
+        .map(|selected| {
+            available
+                .iter()
+                .flatten()
+                .find(|original| original.url == selected.url)
+                .map(|original| (**original).clone())
+                .expect("solver returned an available record")
+        })
+        .collect();
+    records.sort_by(|a, b| a.package_record.name.cmp(&b.package_record.name));
     Ok(records)
 }
 
-/// Whether a virtual package is on the machine.
-fn present(name: &str) -> bool {
-    name.starts_with("__") && PRESENT.contains(&name)
+fn qualifier(kind: &str, value: &str) -> String {
+    let digest = Sha256::digest(value.as_bytes());
+    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("iunctus-{kind}-{hex}")
 }
 
-/// The packages that could fit a spec, newest first.
-fn candidates<'a>(index: &'a Index, spec: &MatchSpec) -> Vec<&'a Record> {
-    (index
-        .candidates(&spec.name, spec.channel.as_deref())
-        .into_iter())
-    .filter(|record| spec.matches(record))
-    .collect()
+fn qualified(mut spec: rattler_conda_types::MatchSpec) -> rattler_conda_types::MatchSpec {
+    for (kind, value) in [
+        (
+            "channel",
+            spec.channel
+                .take()
+                .map(|channel| channel.base_url.as_str().trim_end_matches('/').to_owned()),
+        ),
+        ("subdir", spec.subdir.take()),
+        ("file", spec.file_name.take()),
+    ] {
+        if let Some(value) = value {
+            spec.flags
+                .get_or_insert_default()
+                .push(StringMatcher::Exact(qualifier(kind, &value)));
+        }
+    }
+    spec
 }
 
-impl<'a> Search<'a> {
-    fn run(&mut self, specs: &[MatchSpec]) -> Result<(), LockError> {
-        let mut next = 0;
-        while next < self.queue.len() {
-            let spec = self.queue[next].clone();
-            let step = match self.chosen.get(&spec.name) {
-                _ if spec.name.starts_with("__") && self.virtual_records.is_none() => {
-                    present(&spec.name).then_some(None)
-                }
-                Some(record) => spec.matches(record).then_some(None),
-                None if spec.name.starts_with("__") => None,
-                None => self.choose(next, &spec)?,
-            };
-            match step {
-                Some(point) => {
-                    self.trail.push(point);
-                    next += 1;
-                }
-                None => next = self.back(specs)?,
-            }
-        }
-        Ok(())
-    }
-
-    /// Chooses the first package that fits a spec and the packages chosen so far; `None`
-    /// when none fits.
-    fn choose(
-        &mut self,
-        at: usize,
-        spec: &MatchSpec,
-    ) -> Result<Option<Option<Choice<'a>>>, LockError> {
-        let mut choice = Choice {
-            spec: at,
-            candidates: candidates(self.index, spec),
-            at: 0,
-            queue: self.queue.len(),
-        };
-        match self.take(&mut choice)? {
-            true => Ok(Some(Some(choice))),
-            false => Ok(None),
-        }
-    }
-
-    /// Takes the next candidate of a choice that fits, from `choice.at` on.
-    fn take(&mut self, choice: &mut Choice<'a>) -> Result<bool, LockError> {
-        while choice.at < choice.candidates.len() {
-            self.tries += 1;
-            if self.tries > TRIES {
-                return Err(LockError::TooComplex { tries: TRIES });
-            }
-            let record = choice.candidates[choice.at];
-            if self.fits(record)? {
-                self.chosen.insert(record.name.clone(), record);
-                for depends in &record.depends {
-                    let depends =
-                        MatchSpec::parse(depends).map_err(|error| LockError::Package {
-                            package: format!("{}-{}-{}", record.name, record.version, record.build),
-                            error,
-                        })?;
-                    self.queue.push(depends);
-                }
-                return Ok(true);
-            }
-            choice.at += 1;
-        }
-        Ok(false)
-    }
-
-    /// Whether a package fits the packages chosen so far: what they constrain, and what it
-    /// constrains.
-    fn fits(&self, record: &Record) -> Result<bool, LockError> {
-        for chosen in self.chosen.values() {
-            for text in &chosen.constrains {
-                let spec = MatchSpec::parse(text).map_err(|error| LockError::Package {
-                    package: format!("{}-{}-{}", chosen.name, chosen.version, chosen.build),
-                    error,
-                })?;
-                if spec.name == record.name && !spec.matches(record) {
-                    return Ok(false);
-                }
-            }
-        }
-        for text in &record.constrains {
-            let spec = MatchSpec::parse(text).map_err(|error| LockError::Package {
-                package: format!("{}-{}-{}", record.name, record.version, record.build),
-                error,
-            })?;
-            if self
-                .chosen
-                .get(&spec.name)
-                .is_some_and(|chosen| !spec.matches(chosen))
-            {
-                return Ok(false);
-            }
-        }
-        Ok(true)
-    }
-
-    /// Goes back to the last choice that has another candidate, takes it, and returns where
-    /// the search goes on.
-    fn back(&mut self, specs: &[MatchSpec]) -> Result<usize, LockError> {
-        while let Some(point) = self.trail.pop() {
-            let Some(mut choice) = point else {
-                continue;
-            };
-            let name = &self.queue[choice.spec].name;
-            self.chosen.remove(name);
-            self.queue.truncate(choice.queue);
-            choice.at += 1;
-            if self.take(&mut choice)? {
-                let next = choice.spec + 1;
-                self.trail.push(Some(choice));
-                return Ok(next);
-            }
-        }
-        Err(LockError::Conflict {
-            specs: specs.iter().map(ToString::to_string).collect(),
-        })
-    }
-}
-
-/// Keeps [`SpecError`] in the errors of this module.
 impl From<SpecError> for LockError {
     fn from(error: SpecError) -> Self {
         LockError::Spec(error)

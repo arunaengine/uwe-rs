@@ -82,7 +82,12 @@ fn channels(folder: &Path) {
 
 fn locked(folder: &Path, text: &str) -> Result<Vec<String>, LockError> {
     let environment = Environment::parse(text).expect("an environment");
-    let lock = lock(&environment, folder, "linux-64")?;
+    let capabilities = [VirtualPackage {
+        name: "__glibc".into(),
+        version: "2.17".into(),
+        build: "0".into(),
+    }];
+    let lock = lock_with_virtual(&environment, folder, "linux-64", &capabilities)?;
     Ok((lock.packages.iter())
         .map(|package| format!("{}::{}={}", package.channel, package.name, package.version))
         .collect())
@@ -174,7 +179,13 @@ fn a_lock_names_its_packages_by_address_and_digest() {
     channels(folder.path());
     let environment =
         Environment::parse(&format!("{CHANNELS}dependencies:\n  - libzlib\n")).expect("parses");
-    let lock = lock(&environment, folder.path(), "linux-64").expect("a lock");
+    let capabilities = [VirtualPackage {
+        name: "__glibc".into(),
+        version: "2.17".into(),
+        build: "0".into(),
+    }];
+    let lock =
+        lock_with_virtual(&environment, folder.path(), "linux-64", &capabilities).expect("a lock");
     let package = &lock.packages[0];
     assert_eq!(
         package.url,
@@ -186,7 +197,8 @@ fn a_lock_names_its_packages_by_address_and_digest() {
         "# platform: linux-64\n@EXPLICIT\nhttps://conda.anaconda.org/conda-forge/linux-64/\
          libzlib-1.3.1-hb9d3cd8_2.tar.bz2#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
     );
-    let again = conda_environment::lock(&environment, folder.path(), "linux-64").expect("a lock");
+    let again =
+        lock_with_virtual(&environment, folder.path(), "linux-64", &capabilities).expect("a lock");
     assert_eq!(lock.digest(), again.digest());
     assert!(lock.digest().starts_with("sha256:"));
 }
@@ -342,7 +354,7 @@ fn virtual_glibc_versions_drive_dependency_backtracking() {
         lock_with_virtual(&environment, folder.path(), "linux-64", &[]),
         Err(LockError::Conflict { .. })
     ));
-    assert!(lock(&environment, folder.path(), "linux-64").is_ok());
+    assert!(lock(&environment, folder.path(), "linux-64").is_err());
 }
 
 #[test]
@@ -469,4 +481,63 @@ fn virtual_lock_identity_distinguishes_known_capabilities_from_legacy_unknown() 
         lock_with_virtual(&environment, folder.path(), "linux-64", &capabilities),
         Err(LockError::Spec(_))
     ));
+}
+
+#[test]
+fn flexible_channel_priority_finds_a_valid_lower_channel_package() {
+    let folder = tempfile::tempdir().unwrap();
+    write(
+        folder.path(),
+        "A",
+        "linux-64",
+        vec![package("foo", "2", "0", &["missing"])],
+    );
+    write(
+        folder.path(),
+        "B",
+        "linux-64",
+        vec![package("foo", "1", "0", &[])],
+    );
+    for channel in ["A", "B"] {
+        write(folder.path(), channel, "noarch", vec![]);
+    }
+    assert_eq!(
+        locked(folder.path(), "channels: [A, B]\ndependencies: [foo]\n").unwrap(),
+        ["B::foo=1"]
+    );
+    assert!(locked(folder.path(), "channels: [A, B]\ndependencies: [A::foo]\n").is_err());
+}
+
+#[test]
+fn pip_requirements_are_refused_before_loading_repodata() {
+    let environment =
+        Environment::parse("dependencies:\n  - pip:\n    - requests==2.32\n").unwrap();
+    assert!(matches!(
+        lock(&environment, Path::new("missing"), "linux-64"),
+        Err(LockError::Pip)
+    ));
+}
+
+#[test]
+fn explicit_subdirectory_and_filename_constraints_are_enforced() {
+    let folder = tempfile::tempdir().unwrap();
+    write(
+        folder.path(),
+        "A",
+        "linux-64",
+        vec![package("foo", "2", "0", &[])],
+    );
+    write(
+        folder.path(),
+        "A",
+        "noarch",
+        vec![package("foo", "1", "0", &[])],
+    );
+    for spec in ["A/noarch::foo", "foo[fn='foo-1-0.tar.bz2']"] {
+        let environment =
+            Environment::parse(&format!("channels: [A]\ndependencies:\n  - {spec}\n")).unwrap();
+        let locked = lock(&environment, folder.path(), "linux-64").unwrap();
+        assert_eq!(locked.packages[0].version, "1");
+        assert_eq!(locked.packages[0].subdir, "noarch");
+    }
 }

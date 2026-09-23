@@ -190,14 +190,20 @@ impl Index {
         })
     }
 
-    /// The packages of a name, from the first channel that has it, or from the channel named.
-    pub(crate) fn candidates(&self, name: &str, channel: Option<&str>) -> Vec<&Record> {
-        let Some(records) = self.by_name.get(name) else {
-            return Vec::new();
-        };
-        let wanted = channel.or_else(|| records.first().map(|record| record.channel.as_str()));
-        (records.iter())
-            .filter(|record| Some(record.channel.as_str()) == wanted)
+    pub(crate) fn available(&self) -> Vec<Vec<&rattler_conda_types::RepoDataRecord>> {
+        self.channels
+            .iter()
+            .map(|channel| {
+                let mut records: Vec<_> = self
+                    .by_name
+                    .values()
+                    .flatten()
+                    .filter(|record| &record.channel == channel)
+                    .filter_map(|record| record.native.as_deref())
+                    .collect();
+                records.sort_by(|a, b| a.identifier.cmp(&b.identifier));
+                records
+            })
             .collect()
     }
 }

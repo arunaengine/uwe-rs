@@ -40,6 +40,7 @@ mod report;
 mod resources;
 mod resume;
 mod revision;
+mod run_driver;
 mod run_support;
 mod runs;
 mod setup;
@@ -49,21 +50,21 @@ mod terminal;
 mod tes;
 mod tracked;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
 
 use run_database::Recorder;
 use run_page::Server;
 use workflow_graph::render::{Format, Options, render};
-use workflow_graph::{
-    CancellationToken, Driver, DriverError, Engine, Execution, ExecutionGraph, Executor, Language,
-    Launch, Order, RunOptions, SIMULATION, Simulator,
-};
+use workflow_graph::{Engine, Execution, ExecutionGraph, Executor, Order, RunOptions, Simulator};
 
 use crate::arguments::Arguments;
-use crate::failure::{Failure, INTERRUPTED, failure};
+use crate::failure::{Failure, failure};
 use crate::repeat::Pinned;
-use crate::run_support::{cache_directory, run_id, runner_settings, use_cache_folder};
+use crate::run_driver::{driver, launch, target_and_language};
+use crate::run_support::{
+    cache_directory, finish, run_id, runner_settings, stop_on_interrupt, use_cache_folder,
+};
 use crate::setup::Setup;
 
 fn main() -> ExitCode {
@@ -222,52 +223,6 @@ fn graph(arguments: &Arguments) -> Result<(), Failure> {
     // A failed run still shows the graph so far.
     print!("{}", render(&execution.graph, &options, format));
     finish(execution)
-}
-
-/// Ends a command with its run: the error of a failed run comes first, so that it is the first
-/// line on standard error, then the note of a simulated run.
-fn finish(execution: Execution) -> Result<(), Failure> {
-    let mut notes = simulation_notes(&execution.graph);
-    if let Some(error) = &execution.failure_hook_error {
-        notes.insert(
-            0,
-            format!("iunctus: error while ending the failed workflow: {error}"),
-        );
-    }
-    match execution.into_result() {
-        Ok(_) => {
-            for note in notes {
-                eprintln!("{note}");
-            }
-            Ok(())
-        }
-        Err(error) => {
-            let mut failure = Failure::from(error);
-            failure.after = notes;
-            Err(failure)
-        }
-    }
-}
-
-/// What a simulated run says on standard error, which keeps standard output free for the
-/// graph: that it is a simulation, and how many points of its graph are marked.
-fn simulation_notes(graph: &ExecutionGraph) -> Vec<String> {
-    // A run that asked for no task, like one that stopped while it loaded, simulated nothing.
-    if !graph.is_simulated() || graph.nodes.is_empty() {
-        return Vec::new();
-    }
-    let mut notes = vec![format!("iunctus: {SIMULATION}")];
-    notes.extend(graph.cache_note().map(|note| format!("iunctus: {note}")));
-    match graph.marked().count() {
-        0 => {}
-        1 => notes.push(
-            "iunctus: the graph marks 1 point where real data can add or remove tasks.".into(),
-        ),
-        count => notes.push(format!(
-            "iunctus: the graph marks {count} points where real data can add or remove tasks."
-        )),
-    }
-    notes
 }
 
 /// Runs the target with its language's driver and the chosen executor, and records the run
@@ -467,109 +422,6 @@ struct Ran {
 fn close(recorder: Recorder) {
     if let Err(error) = recorder.close() {
         tracing::warn!("iunctus: the run database did not record the whole run: {error}");
-    }
-}
-
-/// A token that fires on Ctrl-C or SIGTERM, so that the run stops its tasks cleanly, as a
-/// SLURM job or a service manager stops a program with SIGTERM. A second one ends iunctus at
-/// once.
-fn stop_on_interrupt() -> CancellationToken {
-    let token = CancellationToken::new();
-    let stop = token.clone();
-    std::thread::spawn(move || {
-        let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        else {
-            return;
-        };
-        runtime.block_on(async {
-            use tokio::signal::unix::{SignalKind, signal};
-            let mut terminate = signal(SignalKind::terminate()).ok();
-            let mut asked = async || {
-                let terminated = async {
-                    match terminate.as_mut() {
-                        Some(terminate) => terminate.recv().await,
-                        None => std::future::pending().await,
-                    }
-                };
-                tokio::select! {
-                    interrupted = tokio::signal::ctrl_c() => interrupted.is_ok(),
-                    _ = terminated => true,
-                }
-            };
-            if asked().await && !stop.is_cancelled() {
-                eprintln!("iunctus: stopping the running tasks; press Ctrl-C again to quit now");
-                stop.cancel();
-            }
-            if asked().await {
-                std::process::exit(INTERRUPTED.into());
-            }
-        });
-    });
-    token
-}
-
-/// The workflow of a command and its language: `-lang`, else what the target tells.
-fn target_and_language(arguments: &Arguments) -> Result<(PathBuf, Language), Failure> {
-    let Some(target) = &arguments.target else {
-        return Err(Failure::usage(
-            "iunctus: name a workflow file or a project directory to run",
-        ));
-    };
-    let language = match arguments.language {
-        Some(language) => language,
-        None => {
-            detect::language(target).map_err(|message| failure(format!("iunctus: {message}")))?
-        }
-    };
-    Ok((target.clone(), language))
-}
-
-/// The driver of a language.
-fn driver(
-    language: Language,
-    launch: &Launch,
-    run: &str,
-    quiet: bool,
-    arguments: &Arguments,
-    setup: &Setup,
-    cancel: &CancellationToken,
-) -> Result<Box<dyn Driver>, DriverError> {
-    match language {
-        Language::Nextflow => nextflow::driver(launch, run, quiet, arguments, setup),
-        Language::Snakemake => {
-            snakemake_runtime::driver_with(launch, snakemake(arguments, setup, cancel))
-        }
-        Language::Cwl => {
-            let downloads = cache_directory().join("downloads");
-            let options = cwl_runtime::Options {
-                javascript: cwl_runtime::JavaScriptSettings::new(setup.engine(), cancel.clone()),
-                ..cwl_runtime::Options::default()
-            };
-            cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)
-        }
-        Language::Argo => argo_runtime::driver(launch),
-    }
-}
-
-/// The settings of Snakemake runs: the Python container of decision 19, with the engine of
-/// the local executor, which keeps what uv downloads and installs in the cache, and the
-/// storage providers.
-fn snakemake(
-    arguments: &Arguments,
-    setup: &Setup,
-    cancel: &CancellationToken,
-) -> snakemake_runtime::Settings {
-    snakemake_runtime::Settings {
-        python: Some(snakemake_runtime::PythonContainers {
-            engine: setup.engine(),
-            image: arguments.python_image.clone(),
-            cache: cache_directory().join("python"),
-            show_output: true,
-        }),
-        storage: setup.storage.clone(),
-        cancel: cancel.clone(),
     }
 }
 
@@ -807,25 +659,6 @@ fn offline_possible(arguments: &Arguments, setup: &Setup) -> Result<(), Failure>
     )))
 }
 
-/// What the command line asks to run, in the terms all languages share.
-fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
-    Launch {
-        target,
-        params: arguments.params.clone(),
-        inputs: arguments.inputs.clone(),
-        profiles: arguments.profiles.clone().unwrap_or_default(),
-        configs: arguments.configs.clone(),
-        targets: arguments.targets.clone(),
-        scratch: cache_directory().join("scratch"),
-        output_dir: arguments.output_dir.clone(),
-        stub: arguments.stub,
-        // The simulator makes up the outputs of tasks, so its runs also assume that the
-        // source files of the workflow exist, as the graph needs them rather than their content.
-        simulated: arguments.executor.as_deref().unwrap_or("simulator") == "simulator",
-        keep_going: arguments.keep_going,
-    }
-}
-
 /// How to draw the graph: `-view`, `-direction` and `-fold`.
 fn picture(arguments: &Arguments) -> Options {
     let defaults = Options::default();
@@ -970,6 +803,7 @@ options:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use workflow_graph::{DriverError, Launch};
 
     #[test]
     #[ignore = "needs Docker and the cached debian:stable-slim image"]

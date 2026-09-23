@@ -139,3 +139,95 @@ pub(crate) fn stop_on_interrupt() -> CancellationToken {
     });
     token
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::failure;
+    use workflow_graph::{DriverError, Engine, Launch};
+
+    #[test]
+    #[ignore = "needs Docker and the cached debian:stable-slim image"]
+    fn restricted_argo_host_inputs_are_readable_as_the_image_user() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("private.txt");
+        std::fs::write(&source, "private input\n").unwrap();
+        std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o600)).unwrap();
+        for uid in [0, 65534] {
+            let target = root.path().join("workflow.yaml");
+            std::fs::write(&target, format!(
+                "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {{name: read}}\nspec:\n\
+                 \x20 entrypoint: read\n  volumes:\n  - name: source\n    hostPath: {{path: '{}', type: File}}\n\
+                 \x20 templates:\n  - name: read\n    container:\n      image: debian:stable-slim\n\
+                 \x20     command: [sh, -c]\n      args: ['cat /data/private.txt > /tmp/read.txt']\n\
+                 \x20     securityContext: {{runAsUser: {uid}, runAsGroup: {uid}}}\n\
+                 \x20     volumeMounts: [{{name: source, mountPath: /data/private.txt, readOnly: true}}]\n\
+                 \x20   outputs:\n      parameters: [{{name: value, valueFrom: {{path: /tmp/read.txt}}}}]\n",
+                source.display(),
+            )).unwrap();
+            let run = format!("permissions-{uid}");
+            let store = content_store::Store::local(&root.path().join("store")).unwrap();
+            let runtime = workflow_graph::runtime().unwrap();
+            let engine = runtime
+                .block_on(executor::ContainerEngine::named(Some("docker")))
+                .unwrap();
+            let backend = executor::LocalContainer::new(
+                engine,
+                root.path().join("scratch"),
+                executor::Pool::new(2, 1 << 30),
+            );
+            let settings = task_runner::Settings {
+                downloads: root.path().join("downloads"),
+                import_inputs: false,
+                storage: storage::Storage::default(),
+                digests: None,
+            };
+            let mut executor = task_runner::RunnerExecutor::new(
+                task_runner::Runner::new(store, backend, &run, settings),
+                None,
+            );
+            let launch = Launch {
+                target,
+                scratch: root.path().join("planning"),
+                ..Launch::default()
+            };
+            let mut driver = argo_runtime::driver(&launch).unwrap();
+            let execution = Engine::new(&mut executor).run("permissions", driver.as_mut());
+            assert!(
+                execution.error.is_none(),
+                "uid {uid}: {:?}",
+                execution.error
+            );
+            assert_eq!(execution.graph.nodes.len(), 1);
+            assert_eq!(execution.graph.nodes[0].exit_code, Some(0));
+            assert_eq!(std::fs::read_to_string(&source).unwrap(), "private input\n");
+            assert_eq!(
+                std::fs::metadata(&source).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+    }
+
+    #[test]
+    fn failure_hook_diagnostic_preserves_the_original_exit_code() {
+        let execution = Execution {
+            graph: ExecutionGraph::default(),
+            error: Some(workflow_graph::ExecuteError::Machine {
+                task: "task".into(),
+                message: "original machine failure".into(),
+            }),
+            failure_hook_error: Some(DriverError::unsupported("failure hook problem")),
+        };
+        let failure = finish(execution).expect_err("failed execution");
+        assert_eq!(failure.code, failure::SETUP);
+        assert!(failure.message.contains("original machine failure"));
+        assert!(
+            failure
+                .after
+                .iter()
+                .any(|note| note.contains("failure hook problem"))
+        );
+    }
+}

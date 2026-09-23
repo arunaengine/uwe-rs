@@ -211,7 +211,7 @@ fn what_cannot_be_locked_says_why() {
 }
 
 #[test]
-fn unsupported_package_constraints_are_reported() {
+fn bracket_package_constraints_are_enforced() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let mut user = package("numpy-user", "1.0", "0", &["numpy"]);
     user.1["constrains"] = json!(["numpy[version='>=1.2']"]);
@@ -219,19 +219,26 @@ fn unsupported_package_constraints_are_reported() {
         folder.path(),
         "conda-forge",
         "linux-64",
-        vec![user, package("numpy", "1.2", "0", &[])],
+        vec![
+            user,
+            package("numpy", "1.2", "0", &[]),
+            package("numpy", "1.1", "0", &[]),
+        ],
     );
     write(folder.path(), "conda-forge", "noarch", vec![]);
     for dependencies in ["  - numpy-user\n", "  - numpy\n  - numpy-user\n"] {
-        let error = locked(
+        let packages = locked(
             folder.path(),
             &format!("channels:\n  - conda-forge\ndependencies:\n{dependencies}"),
         )
-        .expect_err("the unsupported constraint must not disappear");
-        assert!(matches!(error, LockError::Package { .. }), "{error}");
+        .expect("a bracket constraint is supported");
+        assert!(packages.contains(&"conda-forge::numpy=1.2".into()));
         assert!(
-            error.to_string().contains("numpy[version='>=1.2']"),
-            "{error}"
+            locked(
+                folder.path(),
+                "channels: [conda-forge]\ndependencies: [numpy-user, numpy=1.1]\n"
+            )
+            .is_err()
         );
     }
 }

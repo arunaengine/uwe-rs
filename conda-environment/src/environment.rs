@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use argo_parser::{Node, Value, parse_yaml};
+use saphyr::{LoadableYamlNode, MarkedYaml as Node, Scalar, YamlData as Value};
 
 use crate::spec::{MatchSpec, SpecError};
 
@@ -31,36 +31,42 @@ pub enum EnvironmentError {
 
 impl Environment {
     pub fn parse(text: &str) -> Result<Environment, EnvironmentError> {
-        let root = parse_yaml(text).map_err(|error| EnvironmentError::Syntax {
-            line: error.position.line,
-            message: error.message,
+        let documents = Node::load_from_str(text).map_err(|error| EnvironmentError::Syntax {
+            line: error.marker().line() as u32,
+            message: error.info().to_owned(),
         })?;
-        let Some(root) = root.filter(|root| matches!(root.value, Value::Mapping(_))) else {
+        let Some(root) = documents
+            .first()
+            .filter(|root| matches!(root.data, Value::Mapping(_)))
+        else {
             return Err(shape(
                 1,
                 "the file holds no mapping of `channels` and `dependencies`",
             ));
         };
         let mut environment = Environment {
-            name: root.get("name").and_then(scalar),
+            name: root.data.as_mapping_get("name").and_then(scalar),
             channels: Vec::new(),
             dependencies: Vec::new(),
             pip: Vec::new(),
         };
-        if let Some(channels) = root.get("channels") {
+        if let Some(channels) = root.data.as_mapping_get("channels") {
             for channel in items(channels, "channels")? {
                 let Some(name) = scalar(channel) else {
-                    return Err(shape(channel.position.line, "a channel is no name"));
+                    return Err(shape(
+                        channel.span.start.line() as u32,
+                        "a channel is no name",
+                    ));
                 };
                 environment.channels.push(name);
             }
         }
-        let Some(dependencies) = root.get("dependencies") else {
+        let Some(dependencies) = root.data.as_mapping_get("dependencies") else {
             return Ok(environment);
         };
         for dependency in items(dependencies, "dependencies")? {
-            let line = dependency.position.line;
-            if let Some(pip) = dependency.get("pip") {
+            let line = dependency.span.start.line() as u32;
+            if let Some(pip) = dependency.data.as_mapping_get("pip") {
                 for package in items(pip, "pip")? {
                     environment.pip.extend(scalar(package));
                 }
@@ -78,26 +84,34 @@ impl Environment {
 }
 
 /// The items of a sequence; an empty value has none, and a single text is one item.
-fn items<'a>(node: &'a Node, key: &str) -> Result<&'a [Node], EnvironmentError> {
-    match &node.value {
+fn items<'a, 'input>(
+    node: &'a Node<'input>,
+    key: &str,
+) -> Result<&'a [Node<'input>], EnvironmentError> {
+    match &node.data {
         Value::Sequence(items) => Ok(items),
-        Value::Null => Ok(&[]),
-        Value::String(_) => Ok(std::slice::from_ref(node)),
+        Value::Value(Scalar::Null) => Ok(&[]),
+        Value::Value(Scalar::String(_)) => Ok(std::slice::from_ref(node)),
         _ => Err(shape(
-            node.position.line,
-            &format!("`{key}` is {}, not a list", node.describe()),
+            node.span.start.line() as u32,
+            &format!(
+                "`{key}` is {}, not a list",
+                match node.data {
+                    Value::Mapping(_) => "a mapping",
+                    _ => "a scalar",
+                }
+            ),
         )),
     }
 }
 
 /// A scalar as text, like a version that YAML read as a number.
 fn scalar(node: &Node) -> Option<String> {
-    match &node.value {
-        Value::String(text) => Some(text.clone()),
-        Value::Integer(number) => Some(number.to_string()),
-        Value::Unsigned(number) => Some(number.to_string()),
-        Value::Float(number) => Some(number.to_string()),
-        Value::Bool(flag) => Some(flag.to_string()),
+    match &node.data {
+        Value::Value(Scalar::String(text)) => Some(text.to_string()),
+        Value::Value(Scalar::Integer(number)) => Some(number.to_string()),
+        Value::Value(Scalar::FloatingPoint(number)) => Some(number.to_string()),
+        Value::Value(Scalar::Boolean(flag)) => Some(flag.to_string()),
         _ => None,
     }
 }
@@ -133,7 +147,7 @@ mod tests {
 
     #[test]
     fn broken_environments_name_their_line() {
-        let error = Environment::parse("dependencies:\n  - samtools=1.1\n  - bad name!\n");
+        let error = Environment::parse("dependencies:\n  - samtools=1.1\n  - b:c=1\n");
         let error = error.expect_err("an error").to_string();
         assert!(error.starts_with("line 3:"), "{error}");
         let error = Environment::parse("- a\n- b\n")

@@ -1,30 +1,25 @@
-//! Match specs: what an environment or a package asks for, like `samtools=1.17`,
-//! `bioconda::fastqc=0.12.1=hdfd78af_0`, `python >=3.8,<3.9.0a0` or `numpy 1.21.* py39*`.
-//!
-//! In the form of environment files, `name=1.8` asks for a version that starts with `1.8`,
-//! `name==1.8` for exactly `1.8`, and `name=1.8=build` for exactly that version and build. In
-//! the form of the dependencies of packages, `name 1.8` asks for exactly `1.8`.
+//! Conda match specs backed by rattler, including bracket constraints.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::fmt;
 
+use rattler_conda_types::{Matches, PackageRecord, ParseMatchSpecOptions};
+
 use crate::Record;
-use crate::version::{Version, VersionSpec};
+use crate::version::VersionSpec;
 
 /// What a match spec asks for.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MatchSpec {
-    /// The channel that must have the package, like `bioconda` of `bioconda::fastqc`.
     pub channel: Option<String>,
     pub name: String,
     pub version: VersionSpec,
-    /// A pattern of the build string, where `*` stands for any text.
     pub build: Option<String>,
     text: String,
+    pub(crate) native: rattler_conda_types::MatchSpec,
 }
 
-/// A match spec that cannot be read.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("`{text}` is no match spec of a conda package: {reason}")]
 pub struct SpecError {
@@ -33,78 +28,75 @@ pub struct SpecError {
 }
 
 impl MatchSpec {
-    pub fn parse(text: &str) -> Result<MatchSpec, SpecError> {
+    pub fn parse(text: &str) -> Result<Self, SpecError> {
         let failed = |reason| SpecError {
             text: text.to_owned(),
             reason,
         };
-        let trimmed = text.split('#').next().unwrap_or_default().trim();
-        if trimmed.contains('[') {
-            return Err(failed("the form with brackets is not supported yet"));
+        let native =
+            rattler_conda_types::MatchSpec::from_str(text, ParseMatchSpecOptions::lenient())
+                .map_err(|_| failed("invalid Conda match spec"))?;
+        if native.namespace.is_some() {
+            return Err(failed("Conda namespaces are unsupported"));
         }
-        let (channel, rest) = match trimmed.split_once("::") {
-            // A channel may name its platform too, like `conda-forge/linux-64::zlib`.
-            Some((channel, rest)) => {
-                let channel = channel.split('/').next().unwrap_or(channel);
-                (Some(channel.to_owned()), rest)
-            }
-            None => (None, trimmed),
-        };
-        // As conda does, spaces around operators and commas count for nothing, so that
-        // `bcftools >= 1.19, <2` is `bcftools>=1.19,<2`.
-        let rest = tight(rest);
-        let end = rest
-            .find(|c: char| !name_character(c))
-            .unwrap_or(rest.len());
-        let (name, rest) = rest.split_at(end);
-        if name.is_empty() {
-            return Err(failed("its name"));
-        }
-        let rest = rest.trim();
-        let (version, build) = match rest.chars().next() {
-            None => (VersionSpec::any(), None),
-            // The form of environment files: `=1.8`, `==1.8`, `=1.8=build`, `>=1.2,<2`,
-            // with a build after a space too.
-            Some('=' | '<' | '>' | '!' | '~') => {
-                let (version, build) = match rest.split_once(char::is_whitespace) {
-                    Some((version, build)) => (version, Some(build.trim())),
-                    None => (rest, None),
-                };
-                operator_form(version, build).ok_or_else(|| failed("its version"))?
-            }
-            // The form of the dependencies of packages: `name 1.8 build`.
-            Some(first) if first.is_whitespace() || first.is_ascii_alphanumeric() => {
-                let mut words = rest.split_whitespace();
-                let version = words.next().unwrap_or_default();
-                let build = words.next();
-                if words.next().is_some() {
-                    return Err(failed("it has more than a name, a version and a build"));
-                }
-                let spec =
-                    VersionSpec::parse(version, true).ok_or_else(|| failed("its version"))?;
-                (spec, build)
-            }
-            Some(_) => return Err(failed("its name")),
-        };
-        Ok(MatchSpec {
-            channel,
-            name: name.to_ascii_lowercase(),
-            version,
-            build: build.filter(|build| *build != "*").map(str::to_owned),
-            text: trimmed.to_owned(),
+        let name = native.name.as_exact().ok_or_else(|| failed("its name"))?;
+        Ok(Self {
+            channel: native.channel.as_ref().map(|channel| {
+                channel
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| channel.base_url.as_str().trim_end_matches('/').to_owned())
+            }),
+            name: name.as_normalized().to_owned(),
+            version: VersionSpec(
+                native
+                    .version
+                    .clone()
+                    .unwrap_or(rattler_conda_types::VersionSpec::Any),
+            ),
+            build: native.build.as_ref().map(ToString::to_string),
+            text: text.trim().to_owned(),
+            native,
         })
     }
 
-    /// Whether a package has the channel, name, version and build that this spec asks for.
     pub fn matches(&self, record: &Record) -> bool {
-        let version = match &record.parsed {
-            Some(version) => self.version.matches(version),
-            None => Version::parse(&record.version).is_some_and(|v| self.version.matches(&v)),
+        let (Some(version), Ok(name)) = (record.version(), record.name.parse()) else {
+            return false;
         };
-        record.name == self.name
-            && (self.channel.as_deref()).is_none_or(|channel| channel == record.channel)
-            && version
-            && (self.build.as_deref()).is_none_or(|pattern| glob(pattern, &record.build))
+        let mut package = PackageRecord::new(name, version.0, record.build.clone());
+        package.build_number = record.build_number;
+        package.subdir.clone_from(&record.subdir);
+        let mut spec = self.native.clone();
+        let digest = |bytes: &[u8]| {
+            bytes
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        };
+        let hashes = spec
+            .sha256
+            .as_ref()
+            .is_none_or(|hash| record.sha256.as_deref() == Some(digest(hash).as_str()))
+            && spec
+                .md5
+                .as_ref()
+                .is_none_or(|hash| record.md5.as_deref() == Some(digest(hash).as_str()));
+        spec.sha256 = None;
+        spec.md5 = None;
+        hashes
+            && spec.matches(&package)
+            && spec.channel.as_ref().is_none_or(|channel| {
+                channel.base_url.as_str().trim_end_matches('/') == crate::base(&record.channel)
+            })
+            && spec
+                .subdir
+                .as_ref()
+                .is_none_or(|subdir| subdir == &record.subdir)
+            && spec
+                .file_name
+                .as_ref()
+                .is_none_or(|file| file == &record.file)
     }
 }
 
@@ -112,72 +104,6 @@ impl fmt::Display for MatchSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.text)
     }
-}
-
-/// Whether a character belongs to the name of a package.
-fn name_character(c: char) -> bool {
-    c.is_ascii_alphanumeric() || "_.-".contains(c)
-}
-
-/// The text without spaces around the characters of operators and commas.
-fn tight(text: &str) -> String {
-    let operator = |c: char| "=<>!~,|".contains(c);
-    let characters: Vec<char> = text.trim().chars().collect();
-    let mut tight = String::with_capacity(text.len());
-    for (index, c) in characters.iter().enumerate() {
-        if c.is_whitespace() {
-            let before = tight.chars().last().is_some_and(operator);
-            let after = (characters[index + 1..].iter())
-                .find(|next| !next.is_whitespace())
-                .is_some_and(|next| operator(*next));
-            if before || after {
-                continue;
-            }
-        }
-        tight.push(*c);
-    }
-    tight
-}
-
-/// The version and build of the form of environment files, after the name: `=1.8` for the
-/// versions that start with it, `==1.8` for exactly it, `=1.8=build` for exactly that version
-/// and build, and constraints like `>=1.2,<2`; a build may follow after a space.
-fn operator_form<'a>(
-    version: &'a str,
-    build: Option<&'a str>,
-) -> Option<(VersionSpec, Option<&'a str>)> {
-    let build = build.map(|build| build.trim_start_matches('='));
-    if let Some(exact) = version.strip_prefix("==") {
-        return Some((VersionSpec::parse(exact, true)?, build));
-    }
-    let Some(rest) = version.strip_prefix('=') else {
-        return Some((VersionSpec::parse(version, false)?, build));
-    };
-    match rest.split_once('=') {
-        // With a build, the version is exact.
-        Some((version, own)) => Some((VersionSpec::parse(version, true)?, Some(own))),
-        None => Some((VersionSpec::parse(rest, build.is_some())?, build)),
-    }
-}
-
-/// Whether a text matches a pattern in which `*` stands for any text.
-pub(crate) fn glob(pattern: &str, text: &str) -> bool {
-    let mut parts = pattern.split('*');
-    let first = parts.next().unwrap_or_default();
-    let Some(mut rest) = text.strip_prefix(first) else {
-        return false;
-    };
-    let parts: Vec<&str> = parts.collect();
-    let Some((last, middle)) = parts.split_last() else {
-        return rest.is_empty();
-    };
-    for part in middle {
-        match rest.find(part) {
-            Some(at) => rest = &rest[at + part.len()..],
-            None => return false,
-        }
-    }
-    rest.ends_with(last)
 }
 
 #[cfg(test)]
@@ -235,18 +161,21 @@ mod tests {
     }
 
     #[test]
+    fn bracket_specs_preserve_version_and_build_constraints() {
+        let numpy = spec("numpy[version='>=1.20',build=py*]");
+        assert!(numpy.matches(&record("numpy", "1.21", "py39_0")));
+        assert!(!numpy.matches(&record("numpy", "1.19", "py39_0")));
+        assert!(!numpy.matches(&record("numpy", "1.21", "other")));
+        let zlib = spec("conda-forge/linux-64::zlib");
+        assert_eq!(zlib.channel.as_deref(), Some("conda-forge"));
+        assert_eq!(zlib.native.subdir.as_deref(), Some("linux-64"));
+        assert!(MatchSpec::parse("https://example.org/custom/linux-64::zlib").is_ok());
+    }
+
+    #[test]
     fn what_is_no_match_spec() {
-        for text in [
-            "",
-            "name[version='1.0']",
-            "a b c d",
-            "bad name!",
-            "x=>=<1",
-            "b:c=1",
-        ] {
+        for text in ["", "x=>=<1", "b:c=1", "numpy[unknown=1]"] {
             assert!(MatchSpec::parse(text).is_err(), "{text}");
         }
-        assert!(glob("py3*_0", "py39_0"));
-        assert!(!glob("py3*_0", "py39_1"));
     }
 }

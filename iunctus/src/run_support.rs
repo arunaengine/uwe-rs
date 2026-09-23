@@ -2,7 +2,9 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use crate::failure::{Failure, INTERRUPTED};
 use std::path::PathBuf;
+use workflow_graph::{CancellationToken, Execution, ExecutionGraph, SIMULATION};
 
 /// How the task runner treats the inputs of tasks: remote files are downloaded once into the
 /// cache folder, and the digests of local files are kept there, so that a file that did not
@@ -51,4 +53,89 @@ pub(crate) fn run_id() -> String {
         .map(|elapsed| elapsed.as_millis())
         .unwrap_or_default();
     format!("{now:x}-{:x}", std::process::id())
+}
+/// Ends a command with its run: the error of a failed run comes first, so that it is the first
+/// line on standard error, then the note of a simulated run.
+pub(crate) fn finish(execution: Execution) -> Result<(), Failure> {
+    let mut notes = simulation_notes(&execution.graph);
+    if let Some(error) = &execution.failure_hook_error {
+        notes.insert(
+            0,
+            format!("iunctus: error while ending the failed workflow: {error}"),
+        );
+    }
+    match execution.into_result() {
+        Ok(_) => {
+            for note in notes {
+                eprintln!("{note}");
+            }
+            Ok(())
+        }
+        Err(error) => {
+            let mut failure = Failure::from(error);
+            failure.after = notes;
+            Err(failure)
+        }
+    }
+}
+
+/// What a simulated run says on standard error, which keeps standard output free for the
+/// graph: that it is a simulation, and how many points of its graph are marked.
+fn simulation_notes(graph: &ExecutionGraph) -> Vec<String> {
+    // A run that asked for no task, like one that stopped while it loaded, simulated nothing.
+    if !graph.is_simulated() || graph.nodes.is_empty() {
+        return Vec::new();
+    }
+    let mut notes = vec![format!("iunctus: {SIMULATION}")];
+    notes.extend(graph.cache_note().map(|note| format!("iunctus: {note}")));
+    match graph.marked().count() {
+        0 => {}
+        1 => notes.push(
+            "iunctus: the graph marks 1 point where real data can add or remove tasks.".into(),
+        ),
+        count => notes.push(format!(
+            "iunctus: the graph marks {count} points where real data can add or remove tasks."
+        )),
+    }
+    notes
+}
+
+/// A token that fires on Ctrl-C or SIGTERM, so that the run stops its tasks cleanly, as a
+/// SLURM job or a service manager stops a program with SIGTERM. A second one ends iunctus at
+/// once.
+pub(crate) fn stop_on_interrupt() -> CancellationToken {
+    let token = CancellationToken::new();
+    let stop = token.clone();
+    std::thread::spawn(move || {
+        let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        else {
+            return;
+        };
+        runtime.block_on(async {
+            use tokio::signal::unix::{SignalKind, signal};
+            let mut terminate = signal(SignalKind::terminate()).ok();
+            let mut asked = async || {
+                let terminated = async {
+                    match terminate.as_mut() {
+                        Some(terminate) => terminate.recv().await,
+                        None => std::future::pending().await,
+                    }
+                };
+                tokio::select! {
+                    interrupted = tokio::signal::ctrl_c() => interrupted.is_ok(),
+                    _ = terminated => true,
+                }
+            };
+            if asked().await && !stop.is_cancelled() {
+                eprintln!("iunctus: stopping the running tasks; press Ctrl-C again to quit now");
+                stop.cancel();
+            }
+            if asked().await {
+                std::process::exit(INTERRUPTED.into());
+            }
+        });
+    });
+    token
 }

@@ -18,14 +18,20 @@ fn package(name: &str, version: &str, build: &str, depends: &[&str]) -> (String,
         "build": build,
         "build_number": 0,
         "depends": depends,
-        "md5": format!("md5-of-{name}-{version}"),
-        "sha256": format!("sha256-of-{name}-{version}"),
+        "md5": "a".repeat(32),
+        "sha256": "b".repeat(64),
     });
     (file, record)
 }
 
 fn write(folder: &Path, channel: &str, subdir: &str, packages: Vec<(String, Value)>) {
-    let packages: serde_json::Map<String, Value> = packages.into_iter().collect();
+    let packages: serde_json::Map<String, Value> = packages
+        .into_iter()
+        .map(|(file, mut record)| {
+            record["subdir"] = json!(subdir);
+            (file, record)
+        })
+        .collect();
     let path = folder.join(channel).join(subdir);
     std::fs::create_dir_all(&path).expect("makes the folder");
     let repodata = json!({"info": {"subdir": subdir}, "packages": packages});
@@ -174,11 +180,11 @@ fn a_lock_names_its_packages_by_address_and_digest() {
         package.url,
         "https://conda.anaconda.org/conda-forge/linux-64/libzlib-1.3.1-hb9d3cd8_2.tar.bz2"
     );
-    assert_eq!(package.sha256.as_deref(), Some("sha256-of-libzlib-1.3.1"));
+    assert_eq!(package.sha256.as_deref(), Some("b".repeat(64).as_str()));
     assert_eq!(
         lock.explicit(),
         "# platform: linux-64\n@EXPLICIT\nhttps://conda.anaconda.org/conda-forge/linux-64/\
-         libzlib-1.3.1-hb9d3cd8_2.tar.bz2#md5-of-libzlib-1.3.1\n"
+         libzlib-1.3.1-hb9d3cd8_2.tar.bz2#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
     );
     let again = conda_environment::lock(&environment, folder.path(), "linux-64").expect("a lock");
     assert_eq!(lock.digest(), again.digest());

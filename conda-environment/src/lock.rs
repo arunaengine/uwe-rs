@@ -64,12 +64,18 @@ impl Package {
             channel: record.channel.clone(),
             subdir: record.subdir.clone(),
             file: record.file.clone(),
-            url: format!(
-                "{}/{}/{}",
-                base(&record.channel),
-                record.subdir,
-                record.file
-            ),
+            url: record
+                .native
+                .as_ref()
+                .map(|native| native.url.to_string())
+                .unwrap_or_else(|| {
+                    format!(
+                        "{}/{}/{}",
+                        base(&record.channel),
+                        record.subdir,
+                        record.file
+                    )
+                }),
             sha256: record.sha256.clone(),
             md5: record.md5.clone(),
         }

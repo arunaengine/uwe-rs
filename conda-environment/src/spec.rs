@@ -85,7 +85,19 @@ impl MatchSpec {
         spec.sha256 = None;
         spec.md5 = None;
         hashes
-            && spec.matches(&package)
+            && spec.url.as_ref().is_none_or(|url| {
+                record
+                    .native
+                    .as_ref()
+                    .is_some_and(|record| &record.url == url)
+            })
+            && spec.matches(
+                record
+                    .native
+                    .as_ref()
+                    .map(|record| &record.package_record)
+                    .unwrap_or(&package),
+            )
             && spec.channel.as_ref().is_none_or(|channel| {
                 channel.base_url.as_str().trim_end_matches('/') == crate::base(&record.channel)
             })

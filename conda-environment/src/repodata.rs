@@ -4,7 +4,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -41,9 +41,25 @@ pub struct Record {
     pub file: String,
     #[serde(skip)]
     pub(crate) parsed: Option<Version>,
+    #[serde(skip)]
+    pub(crate) native: Option<Box<rattler_conda_types::RepoDataRecord>>,
 }
 
 impl Record {
+    pub(crate) fn from_native(
+        native: rattler_conda_types::RepoDataRecord,
+        channel: String,
+    ) -> Result<Self, serde_json::Error> {
+        let mut record: Self =
+            serde_json::from_value(serde_json::to_value(&native.package_record)?)?;
+        record.channel = channel;
+        record.subdir.clone_from(&native.package_record.subdir);
+        record.file = native.identifier.to_file_name();
+        record.parsed = Version::parse(&record.version);
+        record.native = Some(Box::new(native));
+        Ok(record)
+    }
+
     /// The version, read once when the repodata was loaded.
     pub fn version(&self) -> Option<Version> {
         self.parsed
@@ -52,14 +68,8 @@ impl Record {
     }
 }
 
-/// The repodata file of a channel and platform.
-#[derive(Deserialize)]
-pub(crate) struct Repodata {
-    #[serde(default)]
-    packages: BTreeMap<String, Record>,
-    #[serde(default, rename = "packages.conda")]
-    conda_packages: BTreeMap<String, Record>,
-}
+/// The established repodata schema, shared by offline validation and loading.
+pub(crate) type Repodata = rattler_conda_types::RepoData;
 
 /// The packages of the channels of an environment for a platform, by name, each list in the
 /// order of the channels, then of the newest first.
@@ -132,14 +142,26 @@ impl Index {
                     }
                     Err(error) => return Err(LockError::Io { path, error }),
                 };
-                let repodata: Repodata = serde_json::from_slice(&text)
-                    .map_err(|error| LockError::Repodata { path, error })?;
-                let files = repodata.packages.into_iter().chain(repodata.conda_packages);
-                for (file, mut record) in files {
-                    record.parsed = Version::parse(&record.version);
-                    record.channel = channel.clone();
-                    record.subdir = subdir.to_owned();
-                    record.file = file;
+                let repodata: Repodata =
+                    serde_json::from_slice(&text).map_err(|error| LockError::Repodata {
+                        path: path.clone(),
+                        error,
+                    })?;
+                let source = rattler_conda_types::Channel::from_str(
+                    crate::base(channel),
+                    &rattler_conda_types::ChannelConfig::default_with_root_dir(folder.to_owned()),
+                )
+                .map_err(|error| LockError::Io {
+                    path: path.clone(),
+                    error: io::Error::other(error),
+                })?;
+                for native in repodata.into_repo_data_records(&source) {
+                    let record = Record::from_native(native, channel.clone()).map_err(|error| {
+                        LockError::Repodata {
+                            path: path.clone(),
+                            error,
+                        }
+                    })?;
                     by_name.entry(record.name.clone()).or_default().push(record);
                 }
             }

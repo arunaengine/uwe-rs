@@ -45,9 +45,25 @@ iunctus help
 
 Storage needs no setup for public files. A config file, `~/.config/iunctus/config.toml`, names the storage providers of private buckets and servers, each with its own endpoint and credentials, and where the cache store lives, also as a folder of this machine in front of a store that several machines share; see [the config file and storage providers](design/storage.md).
 
+Snakemake runs accept target controls on `run`, `graph`, `check` and `check-order`. Give a rule name or a concrete output file, separate multiple names with commas, or repeat the option:
+
+- `-until <rules,files>` runs only the selected jobs and their dependencies, including the selected jobs themselves. It excludes downstream jobs and independent siblings.
+- `-omit-from <rules,files>` removes the selected jobs and everything downstream, keeping their dependencies and independent branches.
+- `-forcerun <rules,files>` reruns the selected jobs and everything downstream, even when their outputs are up to date. Dependencies run when needed.
+- `-forceall` reruns every job needed for the selected targets, within any `-until` and `-omit-from` limits.
+
+These controls follow Snakemake 9 target selection: rules with wildcards select matching jobs already in the target graph; rules without wildcards and files given to `-until` or `-forcerun` also become targets. Files given to `-omit-from` do not add targets. Other workflow languages reject these options with exit code 33. Snakemake's double-dash flags and `-R`/`-F` aliases are rejected with guidance to the corresponding iunctus options.
+
+```sh
+iunctus run Snakefile -until align
+iunctus run Snakefile -omit-from report
+iunctus run Snakefile -resume -forcerun align,results/sample.bam
+iunctus graph Snakefile -forceall -format json
+```
+
 `iunctus inputs` describes the inputs of any workflow, in every language, as one JSON Schema: values, files and directories with their formats, and sample sheets as tables with typed columns; `-format text` gives the inputs as help. Every run checks its values against the schema before any task starts, with the same messages in every language, and warns where the schema and the inputs that the code reads differ (decision 24). `iunctus outputs` describes the outputs of a workflow the same way, from what it declares, so that one workflow can feed another; see [the inputs of a workflow](design/inputs.md).
 
-Every run records itself in the run database. `iunctus runs` lists the runs, `-resume` continues one without running its finished tasks again, `iunctus run -page` and `iunctus page` show runs live on a web page, and `iunctus export` writes the RO-Crate of a run with its provenance. See [runs](design/runs.md).
+Every run records itself in the run database. `iunctus runs` lists the runs, `-resume` continues one without running its finished tasks again, `iunctus run -page` and `iunctus page` show runs live on a web page, and `iunctus export` writes the RO-Crate of a run with its provenance. Forced Snakemake jobs bypass both task-cache reuse and finished-task reuse from `-resume`; independent jobs retain normal reuse. Resume is an option of `run` and `graph`, rather than a separate `iunctus resume` command. See [runs](design/runs.md).
 
 Every error has the same form, `iunctus: <where>: <what went wrong>; <what to do>`, in every language and executor, and the exit code tells its kind: 1 for the workflow, 2 for the command line, 3 for the machine or its config, 33 for a feature that iunctus does not support. `iunctus check` reports at once everything that would stop a real run of a workflow, without running a task, and `iunctus check-machine` what is ready on this machine and what is missing. See [errors, exit codes and checks](design/checks.md).
 

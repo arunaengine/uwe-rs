@@ -48,10 +48,18 @@ pub(crate) fn cache_directory() -> PathBuf {
 
 /// A run id from the clock and the process id.
 pub(crate) fn run_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static LAST: AtomicU64 = AtomicU64::new(0);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis())
+        .map(|elapsed| elapsed.as_millis() as u64)
         .unwrap_or_default();
+    let previous = LAST
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |previous| {
+            Some(now.max(previous.saturating_add(1)))
+        })
+        .expect("the update always succeeds");
+    let now = now.max(previous.saturating_add(1));
     format!("{now:x}-{:x}", std::process::id())
 }
 /// Ends a command with its run: the error of a failed run comes first, so that it is the first

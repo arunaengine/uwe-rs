@@ -27,6 +27,7 @@ run-database.workspace = true
 run-page.workspace = true
 run-telemetry.workspace = true
 rustix = { workspace = true, features = ["fs", "pipe", "stdio", "termios"] }
+serde.workspace = true
 serde_json.workspace = true
 snakemake-runtime.workspace = true
 storage.workspace = true

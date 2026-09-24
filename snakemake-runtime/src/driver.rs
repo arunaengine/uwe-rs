@@ -68,6 +68,7 @@ pub struct Session {
     planner: Option<Planner>,
     roots: Vec<usize>,
     needrun: HashMap<usize, bool>,
+    forced: HashSet<usize>,
     tasks: HashMap<usize, TaskId>,
     jobs_of_tasks: HashMap<TaskId, usize>,
     /// The tasks of service jobs with the jobs that use them, which run as one task: each
@@ -183,6 +184,7 @@ impl Session {
             planner: None,
             roots: Vec::new(),
             needrun: HashMap::new(),
+            forced: HashSet::new(),
             tasks: HashMap::new(),
             jobs_of_tasks: HashMap::new(),
             groups: HashMap::new(),
@@ -362,26 +364,24 @@ impl Session {
             .as_mut()
             .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         planner.reset();
-        let mut roots = Vec::new();
-        for target in &targets {
-            let is_rule = planner.rules.iter().any(|rule| rule.name == *target);
-            let root = if is_rule {
-                Some(planner.plan_rule(&mut self.interpreter, target))
-            } else {
-                planner
-                    .plan_target_file(&mut self.interpreter, target)
-                    .transpose()
-            };
-            match root {
-                Some(Ok(job)) => roots.push(job),
-                Some(Err(error)) => return Err(self.error(&error)),
-                None => {}
-            }
-        }
-        self.kept = (targets.iter())
-            .filter(|target| !planner.rules.iter().any(|rule| rule.name == **target))
-            .cloned()
-            .collect();
+        planner.forcerun = self.launch.forcerun.clone();
+        planner.forceall = self.launch.forceall;
+        let roots = match planner.plan_targets(
+            &mut self.interpreter,
+            &targets,
+            &self.launch.until,
+            &self.launch.omit_from,
+        ) {
+            Ok(roots) => roots,
+            Err(error) => return Err(self.error(&error)),
+        };
+        self.kept = (targets
+            .iter()
+            .chain(&self.launch.until)
+            .chain(&self.launch.forcerun))
+        .filter(|target| !planner.rules.iter().any(|rule| rule.name == **target))
+        .cloned()
+        .collect();
         for root in &roots {
             let job = &planner.jobs[*root];
             if job.output_files().is_empty() {
@@ -389,6 +389,7 @@ impl Session {
             }
         }
         self.needrun = planner.needrun(&self.interpreter, &roots);
+        self.forced = planner.forced_jobs(&roots);
         self.order = planner.ordered_jobs(&roots);
         self.prepared.clear();
         if !self.launch.simulated {
@@ -669,6 +670,9 @@ impl Session {
                 task
             };
             let mut task = task;
+            if self.forced.contains(&job) {
+                task.reuse = workflow_graph::Reuse::Denied;
+            }
             // A job whose input function looked into a checkpoint's outputs runs after it,
             // even when it reads none of its files.
             let planner = self.planner.as_ref().ok_or_else(|| {
@@ -1315,7 +1319,11 @@ impl Session {
         }
         let mut task =
             crate::services::combine(&members, services, id).map_err(DriverError::new)?;
-        if retry.is_some() {
+        if retry.is_some()
+            || declared
+                .iter()
+                .any(|(member, _)| self.forced.contains(member))
+        {
             task.reuse = workflow_graph::Reuse::Denied;
         }
         for (member, _) in &declared {

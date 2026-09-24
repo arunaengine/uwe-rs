@@ -34,6 +34,16 @@ pub(crate) fn driver(
     setup: &Setup,
     cancel: &CancellationToken,
 ) -> Result<Box<dyn Driver>, DriverError> {
+    if language != Language::Snakemake
+        && (!launch.until.is_empty()
+            || !launch.omit_from.is_empty()
+            || !launch.forcerun.is_empty()
+            || launch.forceall)
+    {
+        return Err(DriverError::unsupported(
+            "-until, -omit-from, -forcerun and -forceall require a Snakemake workflow",
+        ));
+    }
     match language {
         Language::Nextflow => nextflow::driver(launch, run, quiet, arguments, setup),
         Language::Snakemake => {
@@ -80,6 +90,10 @@ pub(crate) fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
         profiles: arguments.profiles.clone().unwrap_or_default(),
         configs: arguments.configs.clone(),
         targets: arguments.targets.clone(),
+        until: arguments.until.clone(),
+        omit_from: arguments.omit_from.clone(),
+        forcerun: arguments.forcerun.clone(),
+        forceall: arguments.forceall,
         scratch: cache_directory().join("scratch"),
         output_dir: arguments.output_dir.clone(),
         stub: arguments.stub,

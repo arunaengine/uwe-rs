@@ -126,6 +126,8 @@ pub struct Planner {
     stack: Vec<(usize, Wildcards)>,
     matchers: Vec<Vec<Rc<Matcher>>>,
     pub assume_inputs: bool,
+    pub forcerun: Vec<String>,
+    pub forceall: bool,
     /// The directory outputs that jobs of this run made, by their absolute paths.
     pub made_folders: Vec<PathBuf>,
 }
@@ -154,6 +156,8 @@ impl Planner {
             stack: Vec::new(),
             matchers,
             assume_inputs,
+            forcerun: Vec::new(),
+            forceall: false,
             made_folders: Vec::new(),
         }
     }
@@ -188,6 +192,95 @@ impl Planner {
             }
         }
         order
+    }
+
+    fn matches_targets(&self, job: usize, targets: &[String]) -> bool {
+        let entry = &self.jobs[job];
+        targets.iter().any(
+            |target| match self.rules.iter().position(|rule| rule.name == *target) {
+                Some(rule) => entry.rule == rule,
+                None => entry
+                    .output
+                    .values
+                    .iter()
+                    .any(|value| value.as_str() == Some(target)),
+            },
+        )
+    }
+
+    /// Snakemake 9 adds concrete until/force targets before selecting until jobs and
+    /// deleting omit-from jobs. Wildcard rule selectors match jobs already in the DAG.
+    pub fn plan_targets(
+        &mut self,
+        interpreter: &mut Interpreter,
+        targets: &[String],
+        until: &[String],
+        omit_from: &[String],
+    ) -> Result<Vec<usize>, Error> {
+        let mut roots = Vec::new();
+        let extras: Vec<String> = until.iter().chain(&self.forcerun).cloned().collect();
+        for (target, extra) in targets
+            .iter()
+            .map(|target| (target, false))
+            .chain(extras.iter().map(|target| (target, true)))
+        {
+            let rule = self.rules.iter().find(|rule| rule.name == *target);
+            if extra && rule.is_some_and(Rule::has_wildcards) {
+                continue;
+            }
+            let root = if rule.is_some() {
+                Some(self.plan_rule(interpreter, target)?)
+            } else {
+                self.plan_target_file(interpreter, target)?
+            };
+            if let Some(root) = root {
+                roots.push(root);
+            }
+        }
+        if !until.is_empty() {
+            roots = self
+                .ordered_jobs(&roots)
+                .into_iter()
+                .filter(|job| self.matches_targets(*job, until))
+                .collect();
+        }
+        if !omit_from.is_empty() {
+            let mut omitted = HashSet::new();
+            let order = self.ordered_jobs(&roots);
+            for job in &order {
+                if self.matches_targets(*job, omit_from)
+                    || self.jobs[*job]
+                        .dependencies
+                        .iter()
+                        .any(|(_, dependency)| omitted.contains(dependency))
+                {
+                    omitted.insert(*job);
+                }
+            }
+            // Dependencies of deleted jobs remain targets, including independent siblings.
+            roots = order
+                .into_iter()
+                .filter(|job| !omitted.contains(job))
+                .collect();
+        }
+        Ok(roots)
+    }
+
+    /// Forced jobs and their downstream jobs must bypass task caches and resume history.
+    pub fn forced_jobs(&self, roots: &[usize]) -> HashSet<usize> {
+        let mut forced = HashSet::new();
+        for job in self.ordered_jobs(roots) {
+            if self.forceall
+                || self.matches_targets(job, &self.forcerun)
+                || self.jobs[job]
+                    .dependencies
+                    .iter()
+                    .any(|(_, dependency)| forced.contains(dependency))
+            {
+                forced.insert(job);
+            }
+        }
+        forced
     }
 
     /// The input files that the jobs of the roots assume exist.
@@ -692,7 +785,7 @@ impl Planner {
         if !visiting.insert(job) {
             return false;
         }
-        let mut needed = false;
+        let mut needed = self.forceall || self.matches_targets(job, &self.forcerun);
         for (_, dependency) in &self.jobs[job].dependencies {
             needed |= self.visit_needrun(interpreter, *dependency, result, visiting);
         }
@@ -957,4 +1050,161 @@ fn input_function_error(error: Error, rule: &Rule, wildcards: &Wildcards) -> Err
     let mut wrapped = crate::workflow::workflow_error(message);
     wrapped.location = error.location;
     wrapped
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn workflow() -> (tempfile::TempDir, Interpreter, Planner) {
+        let folder = tempfile::tempdir().unwrap();
+        let interpreter =
+            Interpreter::new(Rc::new(python_evaluator::LocalHost::new(folder.path())));
+        let globals = interpreter.new_globals("test", None);
+        let rules = [
+            ("all", vec!["b.x", "b.y", "side"], vec![]),
+            ("seed", vec![], vec!["a.{sample}"]),
+            ("branch", vec!["a.{sample}"], vec!["b.{sample}"]),
+            ("side", vec![], vec!["side"]),
+            ("extra", vec![], vec!["extra.txt"]),
+        ]
+        .into_iter()
+        .map(|(name, input, output)| {
+            let mut rule = Rule::new(
+                name.into(),
+                folder.path().into(),
+                "Snakefile".into(),
+                1,
+                globals.clone(),
+            );
+            rule.input.values = input.into_iter().map(Value::str).collect();
+            rule.output.values = output.into_iter().map(Value::str).collect();
+            rule
+        })
+        .collect();
+        (folder, interpreter, Planner::new(rules, Vec::new(), false))
+    }
+
+    fn names(planner: &Planner, jobs: impl IntoIterator<Item = usize>) -> Vec<String> {
+        let mut names: Vec<_> = jobs
+            .into_iter()
+            .map(|job| {
+                let entry = &planner.jobs[job];
+                format!(
+                    "{}{}",
+                    planner.rules[entry.rule].name,
+                    entry
+                        .wildcards
+                        .get("sample")
+                        .map(|sample| format!(".{sample}"))
+                        .unwrap_or_default()
+                )
+            })
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn until_keeps_matching_jobs_and_dependencies_without_siblings() {
+        for (target, expected) in [
+            ("branch", vec!["branch.x", "branch.y", "seed.x", "seed.y"]),
+            ("b.x", vec!["branch.x", "seed.x"]),
+            ("extra", vec!["extra"]),
+            ("extra.txt", vec!["extra"]),
+        ] {
+            let (_folder, mut interpreter, mut planner) = workflow();
+            let roots = planner
+                .plan_targets(&mut interpreter, &["all".into()], &[target.into()], &[])
+                .unwrap();
+            assert_eq!(names(&planner, planner.ordered_jobs(&roots)), expected);
+        }
+    }
+
+    #[test]
+    fn omit_from_keeps_ancestors_and_independent_siblings() {
+        for (target, expected) in [
+            ("branch", vec!["seed.x", "seed.y", "side"]),
+            ("a.x", vec!["branch.y", "seed.y", "side"]),
+            (
+                "not-in-the-dag",
+                vec!["all", "branch.x", "branch.y", "seed.x", "seed.y", "side"],
+            ),
+        ] {
+            let (_folder, mut interpreter, mut planner) = workflow();
+            let roots = planner
+                .plan_targets(&mut interpreter, &["all".into()], &[], &[target.into()])
+                .unwrap();
+            assert_eq!(names(&planner, planner.ordered_jobs(&roots)), expected);
+        }
+    }
+
+    #[test]
+    fn forcerun_selects_rules_or_files_and_propagates_downstream() {
+        for (target, expected) in [
+            (
+                "seed",
+                vec!["all", "branch.x", "branch.y", "seed.x", "seed.y"],
+            ),
+            ("b.x", vec!["all", "branch.x"]),
+            ("extra", vec!["extra"]),
+        ] {
+            let (folder, mut interpreter, mut planner) = workflow();
+            for output in ["a.x", "a.y", "b.x", "b.y", "side", "extra.txt"] {
+                std::fs::write(folder.path().join(output), "current").unwrap();
+            }
+            planner.forcerun = vec![target.into()];
+            let roots = planner
+                .plan_targets(&mut interpreter, &["all".into()], &[], &[])
+                .unwrap();
+            let forced = planner.forced_jobs(&roots);
+            assert_eq!(names(&planner, forced.iter().copied()), expected);
+            let needrun = planner.needrun(&interpreter, &roots);
+            assert!(forced.iter().all(|job| needrun[job]));
+            assert!(
+                !needrun.iter().any(|(job, needed)| *needed
+                    && planner.rules[planner.jobs[*job].rule].name == "side")
+            );
+        }
+    }
+
+    #[test]
+    fn forceall_reruns_only_jobs_needed_for_selected_targets() {
+        let (folder, mut interpreter, mut planner) = workflow();
+        for output in ["a.x", "b.x"] {
+            std::fs::write(folder.path().join(output), "current").unwrap();
+        }
+        planner.forceall = true;
+        let roots = planner
+            .plan_targets(&mut interpreter, &["b.x".into()], &[], &[])
+            .unwrap();
+        assert_eq!(
+            names(&planner, planner.forced_jobs(&roots)),
+            ["branch.x", "seed.x"]
+        );
+        assert!(
+            planner
+                .needrun(&interpreter, &roots)
+                .values()
+                .all(|needed| *needed)
+        );
+    }
+
+    #[test]
+    fn until_and_omit_from_limit_forced_jobs_together() {
+        let (_folder, mut interpreter, mut planner) = workflow();
+        planner.forceall = true;
+        let roots = planner
+            .plan_targets(
+                &mut interpreter,
+                &["all".into()],
+                &["branch".into()],
+                &["a.x".into()],
+            )
+            .unwrap();
+        assert_eq!(
+            names(&planner, planner.forced_jobs(&roots)),
+            ["branch.y", "seed.y"]
+        );
+    }
 }

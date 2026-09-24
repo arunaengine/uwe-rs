@@ -38,6 +38,14 @@ pub struct Arguments {
     pub inputs: Option<PathBuf>,
     /// `-entry name` and the arguments after the target, like Snakemake targets.
     pub targets: Vec<String>,
+    /// `-until`: Snakemake rules or files to run up to.
+    pub until: Vec<String>,
+    /// `-omit-from`: Snakemake rules or files to omit with their downstream jobs.
+    pub omit_from: Vec<String>,
+    /// `-forcerun`: Snakemake rules or files to rerun with their downstream jobs.
+    pub forcerun: Vec<String>,
+    /// `-forceall`: rerun every job needed for the Snakemake targets.
+    pub forceall: bool,
     /// `-executor simulator|local|tes|slurm|kubernetes`; `None` for the default.
     pub executor: Option<String>,
     /// `-graph file`: where to write the execution graph.

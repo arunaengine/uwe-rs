@@ -1,10 +1,10 @@
-# Manifest of conda-environment, Conda environment files and their locks from local repodata.
+# Manifest of conda-environment, Conda environments, locks and cached channel acquisition.
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
 name = "conda-environment"
-description = "Conda environment files, match specs, the order of conda versions, and locks from the repodata of a local folder"
+description = "Conda environment files, rattler match specs, resolvo locks and cached HTTPS acquisition"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

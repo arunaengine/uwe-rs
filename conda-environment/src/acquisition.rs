@@ -99,10 +99,7 @@ impl Acquisition {
                     .dependencies
                     .iter()
                     .filter(|spec| !spec.name.starts_with("__"))
-                    .map(|spec| rattler_conda_types::MatchSpec {
-                        name: spec.native.name.clone(),
-                        ..Default::default()
-                    }),
+                    .map(|spec| spec.native.clone()),
             )
             .recursive(true)
             .channel_notices(false)

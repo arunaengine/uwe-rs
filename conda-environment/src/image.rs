@@ -142,6 +142,10 @@ impl ImagePreparation {
         })
     }
 
+    pub fn lock(&self) -> &Lock {
+        &self.lock
+    }
+
     pub fn digest(&self) -> &str {
         &self.digest
     }

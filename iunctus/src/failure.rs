@@ -29,12 +29,21 @@ pub const INTERRUPTED: u8 = 130;
 const PREFIX: &str = "iunctus: ";
 
 /// Why a command failed, and its exit code.
+#[derive(Debug)]
 pub struct Failure {
     pub message: String,
     pub code: u8,
     /// Lines for standard error after the message, like the note of a simulated run.
     pub after: Vec<String>,
 }
+
+impl std::fmt::Display for Failure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.lines().join("\n"))
+    }
+}
+
+impl std::error::Error for Failure {}
 
 impl Failure {
     /// The workflow failed or cannot run.

@@ -201,6 +201,7 @@ pub fn admit(
 }
 
 /// Admits and executes a configured driver and executor without an observer.
+/// This is blocking; call outside Tokio. Use `RunRequest::run` for async embedding.
 pub fn execute(
     workflow: &str,
     driver: &mut dyn Driver,
@@ -225,6 +226,7 @@ pub fn execute(
 }
 
 /// Admits and executes while forwarding engine events to `observer`.
+/// This is blocking; call outside Tokio. Use `RunRequest::run` for async embedding.
 pub fn execute_with(
     workflow: &str,
     driver: &mut dyn Driver,

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use crate::application::{self, Description, Policy};
 use crate::arguments::Arguments;
 use crate::repeat::Pinned;
 use crate::setup::Setup;
@@ -12,18 +13,114 @@ use crate::{
 };
 use run_database::Recorder;
 use run_page::Server;
-use workflow_graph::{Engine, Execution, Order, RunOptions};
+use workflow_graph::{CancellationToken, Engine, Execution, Order, RunOptions};
+
+/// A workflow submission. `settings` uses the same configuration as `iunctus run`.
+/// Strict admission checks typed JSON without CLI coercion or simulated assumptions.
+pub struct RunRequest {
+    pub settings: crate::RunSettings,
+    pub policy: Policy,
+    /// Supplies execution setup without loading its config files or applying global defaults.
+    /// The optional local viewer still reads its own page configuration.
+    pub setup: Option<Setup>,
+}
+
+impl RunRequest {
+    /// Selects a workflow with strict admission. Set `settings.inputs` to its JSON input file.
+    pub fn new(target: impl Into<std::path::PathBuf>) -> Self {
+        Self {
+            settings: Arguments {
+                target: Some(target.into()),
+                ..Arguments::default()
+            },
+            policy: Policy::Strict,
+            setup: None,
+        }
+    }
+
+    /// Runs safely inside Tokio. Drivers and the blocking engine stay on the worker thread.
+    /// Dropping this future requests cancellation; the worker continues cleanup and recording.
+    /// Await completion after cancelling the token to observe the final result.
+    pub async fn run(self, cancel: CancellationToken) -> Result<Run, Failure> {
+        let cancel = cancel.child_token();
+        let _stop = cancel.clone().drop_guard();
+        tokio::task::spawn_blocking(move || self.run_blocking(cancel))
+            .await
+            .map_err(|error| Failure::setup(format!("iunctus: run worker failed: {error}")))?
+    }
+
+    /// Blocking equivalent of `run`. Call outside an async runtime.
+    /// Workflow failures are retained in `Run::execution`, together with the partial graph.
+    pub fn run_blocking(mut self, cancel: CancellationToken) -> Result<Run, Failure> {
+        if self.setup.is_none() {
+            crate::setup::Defaults::load(&self.settings)?.apply("run", &mut self.settings);
+        }
+        execute_with(
+            &self.settings,
+            true,
+            &Pinned::default(),
+            cancel.child_token(),
+            Some(self.policy),
+            self.setup,
+        )
+    }
+
+    /// Builds and describes the configured driver without starting tasks or recording a run.
+    /// Native planning can still read files and use configured container helpers.
+    pub async fn describe(mut self, cancel: CancellationToken) -> Result<Description, Failure> {
+        let cancel = cancel.child_token();
+        let _stop = cancel.clone().drop_guard();
+        tokio::task::spawn_blocking(move || {
+            if self.setup.is_none() {
+                crate::setup::Defaults::load(&self.settings)?.apply("run", &mut self.settings);
+            }
+            let setup = match self.setup {
+                Some(setup) => setup,
+                None => Setup::load(&self.settings)?,
+            };
+            let (target, language) = target_and_language(&self.settings)?;
+            let launch = launch(&self.settings, target);
+            let mut driver = driver(
+                language,
+                &launch,
+                &run_id(),
+                true,
+                &self.settings,
+                &setup,
+                &cancel,
+            )?;
+            application::describe(driver.as_mut()).map_err(|error| failure(error.to_string()))
+        })
+        .await
+        .map_err(|error| Failure::setup(format!("iunctus: discovery worker failed: {error}")))?
+    }
+}
 
 /// Runs the target with its language's driver and the chosen executor, and records the run
 /// in the run database. `quiet` keeps standard output free for the graph. With `-page`, the
 /// page of the run serves from the start; the result holds it.
 pub(crate) fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, Failure> {
+    execute_with(arguments, quiet, pinned, stop_on_interrupt(), None, None)
+}
+
+fn execute_with(
+    arguments: &Arguments,
+    quiet: bool,
+    pinned: &Pinned,
+    interrupt: CancellationToken,
+    admission: Option<Policy>,
+    setup: Option<Setup>,
+) -> Result<Run, Failure> {
+    let _stop = interrupt.clone().drop_guard();
     let (target, language) = target_and_language(arguments)?;
     let target = &target;
     let launch = launch(arguments, target.clone());
     let run = run_id();
     let name = arguments.executor.as_deref().unwrap_or("simulator");
-    let setup = Setup::load(arguments)?;
+    let setup = match setup {
+        Some(setup) => setup,
+        None => Setup::load(arguments)?,
+    };
     for file in &pinned.files {
         setup.storage.pin(file.clone());
     }
@@ -35,9 +132,8 @@ pub(crate) fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Re
     let verbose = !quiet && !(shown && terminal::possible());
     let runtime =
         workflow_graph::runtime().map_err(|error| failure(format!("iunctus: {error}")))?;
-    let interrupt = stop_on_interrupt();
-    let _stop = interrupt.clone().drop_guard();
     let sources = runtime.block_on(sources::collect(target, arguments));
+    let invocation = admission.map(|_| record::run_arguments(arguments));
     let started = record::Started {
         id: &run,
         target,
@@ -47,6 +143,7 @@ pub(crate) fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Re
         store: real.then_some(store.as_str()),
         sources: &sources,
         repeats: pinned.repeats.as_deref(),
+        invocation: invocation.as_deref(),
     };
     // Read before this run is in the database.
     let measured = resources::measured(arguments);
@@ -72,7 +169,27 @@ pub(crate) fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Re
         let mut driver = driver(
             language, &launch, &run, quiet, arguments, &setup, &interrupt,
         )?;
-        if let Some(inputs) = inputs::check(driver.as_mut(), started.simulated, quiet)? {
+        let inputs = match admission {
+            Some(policy) => {
+                let inputs = driver.inputs()?;
+                let admission = application::validate_json(
+                    Description {
+                        language,
+                        inputs,
+                        outputs: None,
+                    },
+                    started.simulated,
+                    policy,
+                )
+                .map_err(|error| failure(error.to_string()))?;
+                if let Some(inputs) = &admission.inputs {
+                    driver.use_inputs(inputs.values.clone())?;
+                }
+                admission.inputs
+            }
+            None => inputs::check(driver.as_mut(), started.simulated, quiet)?,
+        };
+        if let Some(inputs) = inputs {
             recorder.inputs(&inputs.schema, &inputs.values);
         }
         // A workflow whose outputs cannot be described still runs.
@@ -201,11 +318,14 @@ pub(crate) fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Re
 
 /// A run that ended: what the engine did, the page that serves it, and its id in the run
 /// database.
-pub(crate) struct Ran {
-    pub(crate) execution: Execution,
-    pub(crate) page: Option<Server>,
-    pub(crate) id: String,
+pub struct Run {
+    pub execution: Execution,
+    /// Optional local viewer requested in the settings; the host owns its lifetime.
+    pub page: Option<Server>,
+    pub id: String,
 }
+
+pub(crate) type Ran = Run;
 
 /// Ends the record of a run. A run goes on when the database fails; it only says so.
 pub(crate) fn close(recorder: Recorder) {

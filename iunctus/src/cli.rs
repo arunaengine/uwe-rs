@@ -8,10 +8,10 @@ pub use crate::logging::init;
 use crate::repeat::Pinned;
 pub use crate::setup::Defaults;
 use crate::setup::Setup;
-use crate::{arguments, execute, failure, finish, launch, nextflow, run::Ran};
 use crate::{
     changes, check, clean, conda, inputs, insight, machine, order, page, repeat, report, runs,
 };
+use crate::{execute, failure, finish, launch, nextflow, run::Ran};
 use std::path::Path;
 use workflow_graph::ExecutionGraph;
 use workflow_graph::render::{Format, Options, render};

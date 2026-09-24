@@ -32,6 +32,8 @@ pub struct Started<'a> {
     pub sources: &'a Sources,
     /// The run that this one repeats.
     pub repeats: Option<&'a str>,
+    /// Explicit invocation for an embedded run; CLI runs retain their original arguments.
+    pub invocation: Option<&'a [String]>,
 }
 
 /// Opens the run database and starts the record of a run. With `-resume`, the run joins the
@@ -60,7 +62,9 @@ pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure>
         workflow,
         language: run.language,
         revision: revision::revision(run.target),
-        arguments: if run.repeats.is_some() {
+        arguments: if let Some(invocation) = run.invocation {
+            invocation.to_vec()
+        } else if run.repeats.is_some() {
             run_arguments(arguments)
         } else {
             std::env::args().skip(1).collect()

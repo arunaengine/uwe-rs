@@ -54,6 +54,28 @@ fn decodes_steps_and_dags() {
 }
 
 #[test]
+fn decodes_garbage_collection_and_current_resource_fields() {
+    let (spec, unknown) = decode::<WorkflowSpec>(&node(
+        "podGC: {strategy: OnPodCompletion}\nartifactGC: {strategy: OnWorkflowCompletion}\nvolumeClaimGC: {strategy: OnWorkflowSuccess}\nresourceClaims: [{name: device, resourceClaimName: device}]\ntemplates:\n- name: main\n  container: {image: alpine, restartPolicyRules: []}\n  outputs:\n    artifacts: [{name: result, path: /out, artifactGC: {strategy: Never}}]\n",
+    ))
+    .expect("decodes");
+    assert!(unknown.is_empty(), "{unknown:?}");
+    assert!(spec.pod_gc.is_some());
+    assert!(spec.artifact_gc.is_some());
+    assert!(spec.volume_claim_gc.is_some());
+    assert!(spec.resource_claims.is_some());
+    assert!(spec.templates[0].outputs.artifacts[0].artifact_gc.is_some());
+    assert!(
+        spec.templates[0]
+            .container
+            .as_ref()
+            .unwrap()
+            .restart_policy_rules
+            .is_some()
+    );
+}
+
+#[test]
 fn normalizes_removed_fields() {
     let mut document = node(
         "kind: CronWorkflow\nspec:\n  schedule: '* * * * *'\n  workflowSpec:\n    synchronization:\n      mutex: {name: m}\n",

@@ -140,6 +140,7 @@ pub struct WorkflowSpec {
     pub workflow_metadata: Option<Node>,
     pub affinity: Option<Node>,
     pub archive_logs: Option<Node>,
+    #[serde(rename = "artifactGC")]
     pub artifact_gc: Option<Node>,
     pub artifact_repository_ref: Option<Node>,
     pub automount_service_account_token: Option<Node>,
@@ -153,11 +154,13 @@ pub struct WorkflowSpec {
     pub metrics: Option<Node>,
     pub node_selector: Option<Node>,
     pub pod_disruption_budget: Option<Node>,
+    #[serde(rename = "podGC")]
     pub pod_gc: Option<Node>,
     pub pod_metadata: Option<Node>,
     pub pod_priority_class_name: Option<Node>,
     pub pod_resources: Option<Node>,
     pub pod_spec_patch: Option<Node>,
+    pub resource_claims: Option<Node>,
     pub scheduler_name: Option<Node>,
     pub security_context: Option<Node>,
     pub shutdown: Option<Node>,
@@ -165,6 +168,7 @@ pub struct WorkflowSpec {
     pub synchronization: Option<Node>,
     pub tolerations: Option<Node>,
     pub ttl_strategy: Option<Node>,
+    #[serde(rename = "volumeClaimGC")]
     pub volume_claim_gc: Option<Node>,
 }
 
@@ -327,6 +331,7 @@ pub struct Artifact {
     pub mode: Option<Node>,
     pub archive: Option<Node>,
     pub archive_logs: Option<Node>,
+    #[serde(rename = "artifactGC")]
     pub artifact_gc: Option<Node>,
     pub deleted: Option<Node>,
     pub recurse_mode: Option<Node>,
@@ -461,6 +466,7 @@ pub struct Container {
     pub readiness_probe: Option<Node>,
     pub resize_policy: Option<Node>,
     pub restart_policy: Option<Node>,
+    pub restart_policy_rules: Option<Node>,
     pub security_context: Option<Node>,
     pub startup_probe: Option<Node>,
     pub stdin: Option<Node>,

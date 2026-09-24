@@ -239,6 +239,7 @@ impl<'a> Check<'a> {
             ),
             ("podSpecPatch", spec.pod_spec_patch.is_some()),
             ("podResources", spec.pod_resources.is_some()),
+            ("resourceClaims", spec.resource_claims.is_some()),
             (
                 "shutdown",
                 spec.shutdown

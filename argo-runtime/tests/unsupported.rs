@@ -27,6 +27,7 @@ fn rejects_unsupported_workflow_controls() {
         "artifactRepositoryRef: {configMap: artifacts}",
         "podSpecPatch: '{}'",
         "podResources: {}",
+        "resourceClaims: []",
         "shutdown: Stop",
         "suspend: true",
     ] {
@@ -79,6 +80,7 @@ fn rejects_unsupported_container_lifecycle_controls() {
         "readinessProbe",
         "startupProbe",
         "restartPolicy",
+        "restartPolicyRules",
         "resizePolicy",
     ] {
         for spec in [

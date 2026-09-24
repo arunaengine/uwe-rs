@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use sha2::{Digest as _, Sha256};
 
-use crate::repodata::component;
+use crate::repodata::{component, valid_channel};
 use crate::{Environment, Lock, base, channels, repodata_path};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -24,11 +24,7 @@ pub fn fetch_repodata(
     mut fetch: impl FnMut(&str, &mut dyn Write) -> io::Result<()>,
 ) -> io::Result<()> {
     let channels = channels(&environment.channels);
-    if !component(platform)
-        || channels
-            .iter()
-            .any(|channel| !channel.split('/').all(component))
-    {
+    if !component(platform) || channels.iter().any(|channel| !valid_channel(channel)) {
         return Err(io::Error::other(
             "invalid Conda channel or platform cache path",
         ));
@@ -61,19 +57,7 @@ pub fn fetch_packages(
 ) -> io::Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
     for package in &lock.packages {
-        let digest = package
-            .sha256
-            .as_deref()
-            .filter(|digest| {
-                digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
-            })
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("package {} needs a valid SHA-256 digest", package.name),
-                )
-            })?
-            .to_ascii_lowercase();
+        let digest = package_digest(package)?;
         let path = folder.join(&digest);
         if verify(&path, &digest).is_err() {
             publish(
@@ -87,7 +71,21 @@ pub fn fetch_packages(
     Ok(paths)
 }
 
-fn verify(path: &Path, expected: &str) -> io::Result<()> {
+pub(crate) fn package_digest(package: &crate::Package) -> io::Result<String> {
+    package
+        .sha256
+        .as_deref()
+        .filter(|digest| digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .map(str::to_ascii_lowercase)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("package {} needs a valid SHA-256 digest", package.name),
+            )
+        })
+}
+
+pub(crate) fn verify(path: &Path, expected: &str) -> io::Result<()> {
     let mut file = File::open(path)?;
     let mut digest = Sha256::new();
     let mut buffer = [0; 64 * 1024];

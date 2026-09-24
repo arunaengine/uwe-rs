@@ -9,6 +9,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
 
 use crate::LockError;
 use crate::version::Version;
@@ -80,6 +81,14 @@ pub struct Index {
 
 /// Where the repodata of a channel and platform is kept.
 pub fn repodata_path(folder: &Path, channel: &str, subdir: &str) -> PathBuf {
+    let channel = if channel.starts_with("https://") {
+        Sha256::digest(crate::base(channel).as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    } else {
+        channel.to_owned()
+    };
     folder.join(channel).join(subdir).join("repodata.json")
 }
 
@@ -90,6 +99,21 @@ pub(crate) fn component(name: &str) -> bool {
         && name
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"_.-".contains(&byte))
+}
+
+/// Named channels or HTTPS channel URLs with no credentials, query or fragment.
+pub fn valid_channel(channel: &str) -> bool {
+    if channel.starts_with("https://") {
+        reqwest::Url::parse(channel).is_ok_and(|url| {
+            url.host_str().is_some()
+                && url.username().is_empty()
+                && url.password().is_none()
+                && url.query().is_none()
+                && url.fragment().is_none()
+        })
+    } else {
+        channel.split('/').all(component)
+    }
 }
 
 /// The channels that a name of an environment file stands for: `defaults` is the main and R
@@ -116,10 +140,8 @@ impl Index {
     /// folder lacks is an error that names every missing file. Channel and platform paths are
     /// lexically contained in the folder; the caller controls any symlinks below that folder.
     pub fn load(folder: &Path, channels: &[String], platform: &str) -> Result<Index, LockError> {
-        if !component(platform)
-            || channels
-                .iter()
-                .any(|channel| !channel.split('/').all(component))
+        if platform.parse::<rattler_conda_types::Subdir>().is_err()
+            || channels.iter().any(|channel| !valid_channel(channel))
         {
             return Err(LockError::Io {
                 path: folder.to_owned(),

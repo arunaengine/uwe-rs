@@ -2,7 +2,7 @@
 
 Decision 12 says that a Conda environment is locked for the platform of the task and then built
 into a container image. No Conda installation on the host takes part. This page says what
-iunctus does today without network, what needs prepared inputs, and how images are reused.
+iunctus does today: offline locking, cached HTTPS acquisition, container builds and image reuse.
 
 The code is in `conda-environment` and `executor`. `iunctus lock-environment` writes a lock;
 the local workflow executor can also prepare and reuse images for Snakemake Conda rules.
@@ -17,21 +17,24 @@ the local workflow executor can also prepare and reuse images for Snakemake Cond
   channel, a version and a build) and ranges like `python>=3.8,<3.9`. The dependencies of
   packages write `python >=3.8,<3.9.0a0`, `libzlib 1.2.13` (exactly this version) and
   `python_abi 3.8.* *_cp38` (a pattern of the build). Spaces around operators count for
-  nothing, as in conda. The form with brackets, like `numpy[version='>=1.20']`, is not read yet.
+  nothing, as in Conda. Bracket specs, including `numpy[version='>=1.20',build=py*]`, are
+  parsed by `rattler_conda_types`. Channel, subdirectory and filename constraints are kept.
 - **The order of versions.** Versions compare as conda's `VersionOrder` does: an epoch
   (`1!2.0`), components split at `.` and `_`, numbers as numbers, `dev` before any other text,
   `post` after any number, and a local part after `+`. So `1.1a1 < 1.1 = 1.1.0 < 1.1.0post1`.
-- **The lock.** A small resolver chooses one package for each name from the repodata in a
-  local folder (see below). The lock is JSON: the platform, the channels, the match specs, the
-  `pip` packages, and each package with its channel, file, address, SHA-256 and MD5. Its
-  digest names the environment.
+- **The lock.** `rattler_solve` uses resolvo to choose compatible packages from channel
+  metadata. The lock is JSON: the platform, channels, match specs, target virtual packages
+  when supplied, and each package with its channel, file, address, SHA-256 and MD5. Its digest
+  names the environment. Nonempty `pip:` requirements are refused before solving.
 - **The explicit list.** A lock can be written as conda's explicit list: `@EXPLICIT`, then the
   address of each package with its MD5. Conda and micromamba install such a list without
   solving again.
 
-In the Snakemake test workflows, 2032 of 2053 environment files read. The others are broken
-YAML (tabs, a list instead of a mapping), templates, or match specs that conda rejects too,
-like `bioconda:bismark` with one colon or `dedup ==0.12.8-0`. Two use the form with brackets.
+The local Snakemake corpus has 2053 environment files. With rattler parsing, 2037 read and
+16 are rejected. The five newly accepted files use version spellings supported by rattler,
+including versions with hyphens and a comparison with a trailing wildcard. The remaining
+rejections are malformed YAML, templates, unsupported extras, and namespace syntax such as
+`bioconda:bismark`. Pip requirements are parsed for a clear lock-time refusal.
 
 ## The folder of repodata
 
@@ -46,52 +49,62 @@ The resolver reads the repodata of each channel and platform from the cache fold
 channel serves, like `https://conda.anaconda.org/conda-forge/linux-64/repodata.json`, or
 `https://repo.anaconda.com/pkgs/main/linux-64/repodata.json` for Anaconda's own channels.
 
-iunctus does not download repodata yet. When a file is missing, `iunctus lock-environment`
-exits with 3 (the machine is not ready) and names each missing file with its address and the
-place where it belongs. Downloading it needs the network; so does anything that uses the
-packages themselves.
+With `[conda] offline = false`, `rattler_repodata_gateway` fetches requested package names
+and their dependency closure over HTTPS. It supports sharded and zstd repodata with fallback
+to ordinary repodata, and keeps metadata under `<repodata>/gateway/`. Cloned acquisition
+handles share one HTTP client and serialize requests. Package downloads also use this
+client, verify SHA-256 before atomic publication, and reuse verified cached bytes. Connect
+and request deadlines are 30 and 300 seconds; an individual package is limited to 4 GiB.
+
+With `offline = true` (the default), prepared JSON files remain supported. If a prepared file
+is missing, configured workflows and lock commands can use previously cached gateway
+metadata, including stale metadata, without downloading. Packages must already be cached
+for a cold build. The unconfigured lock command remains offline and reports missing JSON
+files with their addresses and cache paths.
 
 Channel names work as in conda: `defaults` stands for `pkgs/main` and `pkgs/r`, and
 `nodefaults` for none. An environment file without channels gets `conda-forge`, as Miniforge
-has it. A channel may be named with its platform, like `conda-forge/linux-64::zlib`.
+has it. HTTPS channel URLs are supported; their local JSON folder uses the SHA-256 of the
+normalized channel URL. Credentials, query strings and fragments in channel URLs are
+unsupported. A match spec may name a subdirectory, like `conda-forge/linux-64::zlib`.
 
 ## The resolver
 
-The resolver is no full solver like conda's or libsolv. It is a search with going back:
+`rattler_solve` uses the resolvo SAT solver with flexible channel priority. Higher-priority
+channels are preferred, with lower-priority candidates available when required for a valid
+solution. Dependencies, optional constraints, versions and builds use rattler types. There
+is no 200000-attempt search limit. A small variant-flag adapter preserves channel,
+subdirectory and filename qualifiers that the upstream matcher otherwise omits in package
+constraints. It returns the original records after solving.
 
-1. It takes the specs of the environment file in their order.
-2. For each spec it takes the newest package that fits, from the first channel that has the
-   name at all (strict channel priority). Among equal versions, the higher build number wins,
-   then the newer timestamp. A `.conda` file wins over a `.tar.bz2` file of the same package.
-3. The package's dependencies join the end of the queue. A name that is chosen already must
-   fit every later spec of that name.
-4. What a package constrains (`constrains` in the repodata) limits the other packages, both
-   ways.
-5. When no package fits, the search goes back to the last choice that has another candidate.
-6. It gives up after 200000 tries and says so, rather than search for long.
+Virtual packages describe the container target. `lock_with_virtual` and configured
+preparation use explicit target capabilities; an omitted package is absent. The unconfigured
+lock command has no virtual packages and cannot satisfy dependencies on them. It keeps
+unknown target compatibility in its lock metadata. Host detection from
+`rattler_virtual_packages` is deliberately not used to infer container capabilities.
 
-The legacy lock command assumes common Linux virtual packages are present without checking
-their versions. Image preparation uses `lock_with_virtual` with explicit target capabilities;
-an omitted virtual package is absent. Driver-host capabilities are not inferred.
-
-A package that no channel has for a spec is named at once. When the packages exist but cannot
-be installed together, the error lists the specs of the environment. Both exit with 1.
-
-The resolver can choose other packages than conda would, when several answers fit. The lock
-makes this harmless: the lock, not the environment file, decides what the image holds.
+A spec with no candidate is reported as missing; incompatible requirements produce a
+conflict. A valid resolvo solution can differ from a previous greedy solution. The exact
+package URLs and digests in the resulting lock define the image contents.
 
 ## `iunctus lock-environment`
 
 ```
 iunctus lock-environment <conda environment file> [-platform <name>] [-output <file>]
+    [-iunctus-config <file>]
 ```
 
 - `-platform` is the conda platform, like `linux-64` or `linux-aarch64`. The default is Linux
-  on the processor of this machine, as containers here run Linux.
+  on the processor of this machine when no Conda target is configured. With a `[conda]`
+  configuration, the platform comes from that target and an explicit override must match it.
 - Without `-output`, the lock goes to standard output as JSON. With `-output`, it goes to that
   file; a name that ends in `.txt` gets the explicit list. The command then prints the number
   of packages and the digest of the environment.
-- The legacy lock does not pin `pip` packages. The image preparation path refuses such locks.
+- A configured lock uses the exact target capabilities and acquisition policy below. Without
+  configuration it reads only local JSON and infers no virtual packages.
+- Pip requirements are refused in both lock and preparation paths. A separate Python
+  dependency resolver and wheel installation path would be needed; they are outside this
+  Conda implementation.
 
 ## Building and reusing images for local workflows
 
@@ -108,7 +121,7 @@ The local executor follows decision 12 and decision 26 (one binary, no host inst
   store. A compatible local image can be registered; a missing local image can be restored.
 - Packages are checked only for a cold build. A later workflow can reuse the image after
   package-cache eviction. Current environment YAML and repodata remain necessary to resolve
-  the exact preparation identity.
+  the exact preparation identity. Online metadata uses the gateway cache policy.
 - Local Snakemake rules with only `conda:` get the prepared image before task cache lookup.
   Included rules resolve the YAML from the declaring rule's folder. Preparation is cancellable;
   path-only historical image pins and frozen Conda repeats cannot bypass current preparation.
@@ -120,7 +133,7 @@ Configure the local path explicitly in the existing iunctus TOML file:
 base = "registry/micromamba@sha256:<selected-platform-manifest>"
 platform = "linux/amd64"
 installer = "micromamba"
-offline = true
+offline = false # true for prepared JSON or cached gateway metadata only
 capabilities = "/srv/iunctus/conda/target.json"
 repodata = "/srv/iunctus/conda/repodata"
 packages = "/srv/iunctus/conda/packages"
@@ -131,8 +144,9 @@ Micromamba. The capability JSON has exactly `base`, `platform` and `virtual_pack
 package has `name`, `version` and `build`. Its base/platform must match the configuration.
 These are trusted operator inputs obtained from the target container or deployment metadata.
 
-Repodata lives at `<repodata>/<channel>/<conda-platform>/repodata.json` and the channel's
-`noarch/repodata.json`. Package files live at `<packages>/<SHA-256 hex>`. Source reads and
+Prepared JSON lives at `<repodata>/<channel>/<conda-platform>/repodata.json` and the channel's
+`noarch/repodata.json`. Online metadata uses `<repodata>/gateway/`. Package files live at
+`<packages>/<SHA-256 hex>` and are acquired only before a cold image build. Source reads and
 contexts have finite byte limits. The cold path inspects the exact base manifest and platform
 before building, with network disabled, one CPU and 1 GiB memory. Hot reuse does not require
 the base or package files. Classic builder availability is required; BuildKit support remains open.
@@ -145,10 +159,14 @@ completed-image receipt and native output.
 
 ## Limits
 
-- No download of repodata or packages yet; see above.
-- Workflow preparation currently supports local YAML and the local executor only. Remote
-  executors, remote environment sources and named host environments are unsupported.
-- The form of match specs with brackets is not read.
-- `pip` packages are not pinned.
-- The resolver is a search with a limit, not a full solver. A large environment with many
-  conflicts can need more tries than it allows.
+- Workflow preparation supports local YAML and the local executor only. Remote executors,
+  remote environment sources and named host environments are unsupported.
+- Pip requirements and Conda namespace syntax are refused. No host Conda, mamba or uv program
+  is invoked. Micromamba remains inside the pinned container build base.
+- Target capability discovery still relies on the existing operator-provided, target-bound
+  JSON design. Classic builder support is required; BuildKit remains unsupported.
+- Offline gateway queries require the needed metadata to have been cached previously.
+  Missing metadata or packages fail clearly. Prepared JSON keeps the existing 256 MiB source
+  limit; online queries avoid loading complete channels into the engine's package index.
+- The ignored HTTPS smoke test locks and verifies tzdata and then reproduces the same lock
+  and package bytes offline. It does not qualify a live container build or remote executor.

@@ -68,7 +68,13 @@ impl Environment {
             let line = dependency.span.start.line() as u32;
             if let Some(pip) = dependency.data.as_mapping_get("pip") {
                 for package in items(pip, "pip")? {
-                    environment.pip.extend(scalar(package));
+                    let requirement = scalar(package).ok_or_else(|| {
+                        shape(
+                            package.span.start.line() as u32,
+                            "a pip requirement is no text",
+                        )
+                    })?;
+                    environment.pip.push(requirement);
                 }
                 continue;
             }
@@ -158,5 +164,8 @@ mod tests {
         assert!(error.to_string().contains("not a list"), "{error}");
         let single = Environment::parse("channels: conda-forge\n").expect("an environment");
         assert_eq!(single.channels, ["conda-forge"]);
+        assert!(
+            Environment::parse("dependencies:\n  - pip:\n    - {invalid: requirement}\n").is_err()
+        );
     }
 }

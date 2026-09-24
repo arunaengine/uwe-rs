@@ -14,11 +14,11 @@ fn repodata(cache: &Path) {
         "packages": {
             "libzlib-1.3.1-hb9d3cd8_2.tar.bz2": {
                 "name": "libzlib", "version": "1.3.1", "build": "hb9d3cd8_2",
-                "depends": ["__glibc >=2.17"], "md5": "0123", "sha256": "abcd"
+                "build_number":0, "subdir":"linux-64", "depends": [], "md5": "a".repeat(32), "sha256": "b".repeat(64)
             },
             "zlib-1.3.1-hb9d3cd8_2.tar.bz2": {
                 "name": "zlib", "version": "1.3.1", "build": "hb9d3cd8_2",
-                "depends": ["libzlib 1.3.1 hb9d3cd8_2"], "md5": "4567", "sha256": "ef01"
+                "build_number":0, "subdir":"linux-64", "depends": ["libzlib 1.3.1 hb9d3cd8_2"], "md5": "c".repeat(32), "sha256": "d".repeat(64)
             }
         }
     });
@@ -78,7 +78,9 @@ fn an_environment_file_gets_its_lock_from_the_repodata_in_the_cache() {
         "{explicit}"
     );
     assert!(
-        explicit.contains("conda-forge/linux-64/zlib-1.3.1-hb9d3cd8_2.tar.bz2#4567"),
+        explicit.contains(
+            "conda-forge/linux-64/zlib-1.3.1-hb9d3cd8_2.tar.bz2#cccccccccccccccccccccccccccccccc"
+        ),
         "{explicit}"
     );
     // A package that no channel has is the environment's mistake.
@@ -110,7 +112,7 @@ fn configuration(
 }
 
 #[test]
-fn conda_configuration_rejects_online_installers_and_unbound_capabilities() {
+fn conda_configuration_rejects_unsupported_installers_and_unbound_capabilities() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path();
     let base = format!("mamba@sha256:{}", "a".repeat(64));
@@ -130,7 +132,6 @@ fn conda_configuration_rejects_online_installers_and_unbound_capabilities() {
     let original = std::fs::read_to_string(&config).unwrap();
     std::fs::write(root.join("main.nf"), "workflow {}\n").unwrap();
     for (from, to, expected) in [
-        ("offline = true", "offline = false", "online preparation"),
         (
             "installer = \"micromamba\"",
             "installer = \"conda\"",
@@ -155,6 +156,77 @@ fn conda_configuration_rejects_online_installers_and_unbound_capabilities() {
         assert_eq!(output.status.code(), Some(3), "{error}");
         assert!(error.contains(expected), "{error}");
     }
+    std::fs::write(
+        &config,
+        original.replace("offline = true", "offline = false"),
+    )
+    .unwrap();
+    let output = common::command()
+        .args(["graph", "main.nf", "-iunctus-config"])
+        .arg(&config)
+        .current_dir(root)
+        .env("XDG_CACHE_HOME", root.join("cache"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn configured_locks_use_container_target_capabilities_and_refuse_pip() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let cache = root.join("cache");
+    repodata(&cache);
+    let repodata = cache.join("iunctus/conda");
+    let path = repodata.join("conda-forge/linux-64/repodata.json");
+    let mut metadata: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    metadata["packages"]["libzlib-1.3.1-hb9d3cd8_2.tar.bz2"]["depends"] =
+        serde_json::json!(["__glibc >=2.17"]);
+    std::fs::write(path, metadata.to_string()).unwrap();
+    let base = format!("mamba@sha256:{}", "a".repeat(64));
+    let capabilities = root.join("target.json");
+    let config = configuration(
+        root,
+        &base,
+        &capabilities,
+        &repodata,
+        &root.join("packages"),
+    );
+    std::fs::write(root.join("env.yaml"), "dependencies: [zlib]\n").unwrap();
+    for (version, code) in [("2.17", 0), ("2.16", 1)] {
+        std::fs::write(
+            &capabilities,
+            serde_json::json!({"base":base,"platform":"linux/amd64",
+            "virtual_packages":[{"name":"__glibc","version":version,"build":"0"}]})
+            .to_string(),
+        )
+        .unwrap();
+        let (actual, output, error) = lock(
+            root,
+            &["env.yaml", "-iunctus-config", config.to_str().unwrap()],
+        );
+        assert_eq!(actual, code, "{error}");
+        if code == 0 {
+            let lock: serde_json::Value = serde_json::from_str(&output).unwrap();
+            assert_eq!(lock["virtual_packages"][0]["version"], version);
+        }
+    }
+    std::fs::write(
+        root.join("env.yaml"),
+        "dependencies:\n  - pip:\n    - requests==2.32\n",
+    )
+    .unwrap();
+    let (code, _, error) = lock(
+        root,
+        &["env.yaml", "-iunctus-config", config.to_str().unwrap()],
+    );
+    assert_eq!(code, 1);
+    assert!(error.contains("pip"), "{error}");
 }
 
 #[test]

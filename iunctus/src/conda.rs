@@ -1,5 +1,5 @@
-//! `iunctus lock-environment <file>`: the lock of a conda environment file, made without
-//! network from the repodata in `<cache>/conda/`. See docs/design/conda.md.
+//! `iunctus lock-environment <file>`: offline locks or configured cached HTTPS acquisition
+//! for an explicit container target. See docs/design/conda.md.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -16,7 +16,7 @@ use crate::failure::{Failure, failure};
 /// The channel of an environment file that names none, as Miniforge has it.
 const DEFAULT_CHANNEL: &str = "conda-forge";
 
-/// Operator-supplied, offline preparation inputs for one exact target base and platform.
+/// Preparation inputs for one exact target base and platform.
 #[derive(Clone, Debug)]
 pub struct Config {
     pub base: String,
@@ -24,6 +24,8 @@ pub struct Config {
     pub capabilities: Vec<VirtualPackage>,
     pub repodata: PathBuf,
     pub packages: PathBuf,
+    pub offline: bool,
+    pub acquisition: conda_environment::Acquisition,
 }
 
 impl Config {
@@ -40,9 +42,7 @@ impl Config {
             "repodata",
             "packages",
         ])?;
-        if table.flag("offline")? != Some(true) {
-            return Err(table.invalid("offline", "must be true; online preparation is unsupported"));
-        }
+        let offline = table.flag("offline")?.unwrap_or(true);
         if table.text("installer")?.as_deref() != Some("micromamba") {
             return Err(table.invalid(
                 "installer",
@@ -114,12 +114,17 @@ impl Config {
                 );
             }
         }
+        let repodata = path("repodata")?;
+        let acquisition = conda_environment::Acquisition::new(&repodata, offline)
+            .map_err(|error| table.invalid("repodata", error.to_string()))?;
         let configured = Self {
             base,
             platform,
             capabilities,
-            repodata: path("repodata")?,
+            repodata,
             packages: path("packages")?,
+            offline,
+            acquisition,
         };
         let lock = Lock {
             format: conda_environment::FORMAT,
@@ -156,44 +161,8 @@ impl Config {
 
     /// Resolves current source bytes; paths and historical image mappings are never cache keys.
     pub fn preparation(&self, source: &str) -> io::Result<ImagePreparation> {
-        if source.contains("://")
-            || !matches!(
-                Path::new(source).extension().and_then(|s| s.to_str()),
-                Some("yaml" | "yml")
-            )
-        {
-            return Err(io::Error::other(
-                "Conda preparation supports local YAML files only; remote files and named host environments are unsupported",
-            ));
-        }
-        let bytes = bounded_bytes(Path::new(source), 1024 * 1024)?;
-        let text = std::str::from_utf8(&bytes).map_err(io::Error::other)?;
-        let mut environment = Environment::parse(text).map_err(io::Error::other)?;
-        if !environment.pip.is_empty() {
-            return Err(io::Error::other(
-                "Conda image preparation does not support unpinned pip requirements",
-            ));
-        }
-        if environment.channels.is_empty() {
-            environment.channels.push(DEFAULT_CHANNEL.into());
-        }
+        let environment = Self::environment(source)?;
         let channels = conda_environment::channels(&environment.channels);
-        if channels.len() > 16
-            || channels.iter().any(|channel| {
-                channel.split('/').any(|part| {
-                    part.is_empty()
-                        || part == "."
-                        || part == ".."
-                        || !part
-                            .bytes()
-                            .all(|byte| byte.is_ascii_alphanumeric() || b"_.-".contains(&byte))
-                })
-            })
-        {
-            return Err(io::Error::other(
-                "unsupported Conda channel name or more than 16 channels",
-            ));
-        }
         let snapshot = tempfile::tempdir()?;
         let mut remaining = 256 * 1024 * 1024;
         let platform = self.conda_platform()?;
@@ -215,6 +184,54 @@ impl Config {
         )
         .map_err(io::Error::other)?;
         ImagePreparation::new(&lock, &self.base, &self.platform, &self.capabilities)
+    }
+    pub async fn acquire_preparation(&self, source: &str) -> io::Result<ImagePreparation> {
+        let environment = Self::environment(source)?;
+        let lock = self
+            .acquisition
+            .lock(
+                &environment,
+                self.conda_platform()?,
+                Some(&self.capabilities),
+            )
+            .await
+            .map_err(io::Error::other)?;
+        ImagePreparation::new(&lock, &self.base, &self.platform, &self.capabilities)
+    }
+
+    fn environment(source: &str) -> io::Result<Environment> {
+        if source.contains("://")
+            || !matches!(
+                Path::new(source).extension().and_then(|s| s.to_str()),
+                Some("yaml" | "yml")
+            )
+        {
+            return Err(io::Error::other(
+                "Conda preparation supports local YAML files only; remote files and named host environments are unsupported",
+            ));
+        }
+        let bytes = bounded_bytes(Path::new(source), 1024 * 1024)?;
+        let text = std::str::from_utf8(&bytes).map_err(io::Error::other)?;
+        let mut environment = Environment::parse(text).map_err(io::Error::other)?;
+        if !environment.pip.is_empty() {
+            return Err(io::Error::other(
+                "Conda image preparation refuses pip sections because pip requirements cannot be locked",
+            ));
+        }
+        if environment.channels.is_empty() {
+            environment.channels.push(DEFAULT_CHANNEL.into());
+        }
+        let channels = conda_environment::channels(&environment.channels);
+        if channels.len() > 16
+            || channels
+                .iter()
+                .any(|channel| !conda_environment::valid_channel(channel))
+        {
+            return Err(io::Error::other(
+                "unsupported Conda channel name or more than 16 channels",
+            ));
+        }
+        Ok(environment)
     }
 }
 
@@ -252,18 +269,59 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     if environment.channels.is_empty() {
         environment.channels.push(DEFAULT_CHANNEL.into());
     }
-    let platform = (arguments.platform.clone()).unwrap_or_else(conda_environment::platform);
+    let configuration = ConfigFile::load(arguments.config_file.as_deref())
+        .map_err(|error| Failure::setup(error.to_string()))?;
+    let configured =
+        Config::read(&configuration).map_err(|error| Failure::setup(error.to_string()))?;
+    let platform = arguments.platform.clone().unwrap_or_else(|| {
+        configured
+            .as_ref()
+            .and_then(|config| config.conda_platform().ok())
+            .map(str::to_owned)
+            .unwrap_or_else(conda_environment::platform)
+    });
     let folder = repodata_folder();
-    let lock = conda_environment::lock(&environment, &folder, &platform)
-        .map_err(|error| locked(file, error))?;
-    if !lock.pip.is_empty() {
-        tracing::warn!(
-            "iunctus: {}: the lock does not pin the {} packages of pip; pip installs them when \
-             the image is built",
-            file.display(),
-            lock.pip.len()
-        );
-    }
+    let lock = if let Some(config) = configured {
+        if config
+            .conda_platform()
+            .map_err(|error| failure(error.to_string()))?
+            != platform
+        {
+            return Err(failure(
+                "the lock platform must match the configured Conda target",
+            ));
+        }
+        let source = file
+            .to_str()
+            .ok_or_else(|| failure("Conda source path must be UTF-8"))?;
+        let preparation = std::thread::scope(|scope| {
+            scope
+                .spawn(|| {
+                    let runtime = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()?;
+                    runtime.block_on(async {
+                        if config.offline {
+                            match config.preparation(source) {
+                                Ok(preparation) => return Ok(preparation),
+                                Err(error) if error.kind() != io::ErrorKind::NotFound => {
+                                    return Err(error);
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                        config.acquire_preparation(source).await
+                    })
+                })
+                .join()
+        })
+        .map_err(|_| failure("Conda lock worker failed"))?
+        .map_err(|error| failure(error.to_string()))?;
+        preparation.lock().clone()
+    } else {
+        conda_environment::lock(&environment, &folder, &platform)
+            .map_err(|error| locked(file, error))?
+    };
     let Some(output) = &arguments.output else {
         println!("{}", json(&lock));
         return Ok(());
@@ -304,9 +362,10 @@ fn json(lock: &Lock) -> String {
 fn locked(file: &Path, error: LockError) -> Failure {
     let message = format!("iunctus: {}: {error}", file.display());
     match error {
-        LockError::MissingRepodata { .. } | LockError::Io { .. } | LockError::Repodata { .. } => {
-            Failure::setup(message)
-        }
+        LockError::MissingRepodata { .. }
+        | LockError::Io { .. }
+        | LockError::Repodata { .. }
+        | LockError::Acquisition(_) => Failure::setup(message),
         _ => failure(message),
     }
 }
@@ -344,6 +403,8 @@ mod tests {
             capabilities: vec![],
             repodata: root.join("repodata"),
             packages: root.join("missing-packages"),
+            offline: true,
+            acquisition: conda_environment::Acquisition::new(&root.join("repodata"), true).unwrap(),
         };
         let channel = config.repodata.join("conda-forge");
         for subdir in ["linux-64", "noarch"] {
@@ -351,8 +412,8 @@ mod tests {
         }
         std::fs::write(channel.join("noarch/repodata.json"), "{}").unwrap();
         let mut records = json!({"packages": {
-            "foo-1-0.conda": {"name":"foo", "version":"1", "build":"0", "sha256":"b".repeat(64)},
-            "foo-2-0.conda": {"name":"foo", "version":"2", "build":"0", "sha256":"c".repeat(64)}
+            "foo-1-0.conda": {"name":"foo", "version":"1", "build":"0", "build_number":0, "subdir":"linux-64", "sha256":"b".repeat(64)},
+            "foo-2-0.conda": {"name":"foo", "version":"2", "build":"0", "build_number":0, "subdir":"linux-64", "sha256":"c".repeat(64)}
         }});
         let repodata = channel.join("linux-64/repodata.json");
         std::fs::write(&repodata, records.to_string()).unwrap();

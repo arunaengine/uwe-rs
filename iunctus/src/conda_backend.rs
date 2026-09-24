@@ -27,7 +27,7 @@ impl Backend for Local {
             return self.backend.pin(image).await;
         };
         let config = self.config.clone().ok_or_else(|| ExecutorError::Unsupported(
-            "Conda rules require explicit offline [conda] configuration with a pinned micromamba base, target capabilities, repodata and packages".into(),
+            "Conda rules require explicit [conda] configuration with a pinned micromamba base, target capabilities, repodata and packages".into(),
         ))?;
         let source = source.to_owned();
         let cancel = CancellationToken::new();
@@ -42,19 +42,34 @@ impl Backend for Local {
                     .await
                     .map_err(|error| failed(error.to_string()))?,
             );
-            let retained = permit.clone();
             let packages = config.packages.clone();
-            let preparation = tokio::time::timeout(
-                Duration::from_secs(60),
-                tokio::task::spawn_blocking(move || {
-                    let _permit = retained;
-                    config.preparation(&source)
-                }),
-            )
+            let acquisition = config.acquisition.clone();
+            let preparation = tokio::time::timeout(Duration::from_secs(300), async {
+                if config.offline {
+                    let retained = permit.clone();
+                    let local = config.clone();
+                    let source = source.clone();
+                    let prepared = tokio::task::spawn_blocking(move || {
+                        let _permit = retained;
+                        local.preparation(&source)
+                    })
+                    .await
+                    .map_err(|error| failed(error.to_string()))?;
+                    match prepared {
+                        Ok(preparation) => return Ok(preparation),
+                        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                            return Err(failed(error.to_string()));
+                        }
+                        Err(_) => {}
+                    }
+                }
+                config
+                    .acquire_preparation(&source)
+                    .await
+                    .map_err(|error| failed(error.to_string()))
+            })
             .await
-            .map_err(|_| failed("source preparation exceeded 60 seconds".into()))?
-            .map_err(|error| failed(error.to_string()))?
-            .map_err(|error| failed(error.to_string()))?;
+            .map_err(|_| failed("source preparation exceeded 300 seconds".into()))??;
             let limits = CacheLimits {
                 build: BuildLimits {
                     context_bytes: 256 << 20,
@@ -84,16 +99,22 @@ impl Backend for Local {
                 },
                 limits,
                 &cancel,
-                || executor::conda::require_base(engine, &preparation),
+                || async {
+                    executor::conda::require_base(engine, &preparation).await?;
+                    acquisition
+                        .fetch_packages(preparation.lock(), &packages)
+                        .await?;
+                    Ok(())
+                },
             )
             .await
             .map_err(|error| failed(error.to_string()))?;
             drop(permit);
             Ok(Some(receipt.image_id().to_owned()))
         };
-        tokio::time::timeout(Duration::from_secs(960), work)
+        tokio::time::timeout(Duration::from_secs(1200), work)
             .await
-            .map_err(|_| failed("preparation exceeded 960 seconds".into()))?
+            .map_err(|_| failed("preparation exceeded 1200 seconds".into()))?
     }
 
     async fn run(

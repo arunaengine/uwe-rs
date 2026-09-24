@@ -198,6 +198,19 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
             "-quiet" => parsed.quiet = true,
             "-stub" | "-stub-run" => parsed.stub = true,
             "-keep-going" => parsed.keep_going = true,
+            "-forceall" => parsed.forceall = true,
+            "-until" | "-omit-from" | "-forcerun" => {
+                let names = value()?;
+                if names.starts_with('-') || names.split(',').any(str::is_empty) {
+                    return Err(format!("the option `{argument}` needs rules or files"));
+                }
+                let targets = match argument.as_str() {
+                    "-until" => &mut parsed.until,
+                    "-omit-from" => &mut parsed.omit_from,
+                    _ => &mut parsed.forcerun,
+                };
+                targets.extend(names.split(',').map(str::to_owned));
+            }
             "-store" => {
                 let place = value()?;
                 parsed.store = Some(match storage::address::scheme(&place) {
@@ -509,6 +522,19 @@ const OPTIONS: &[(&str, &[&str])] = &[
     ("--config <name=value>", WORKFLOW),
     ("-stub,-stub-run", &["run", "graph", "check", "check-order"]),
     ("-keep-going", &["run", "graph", "check-order"]),
+    (
+        "-until <rules,files>",
+        &["run", "graph", "check", "check-order"],
+    ),
+    (
+        "-omit-from <rules,files>",
+        &["run", "graph", "check", "check-order"],
+    ),
+    (
+        "-forcerun <rules,files>",
+        &["run", "graph", "check", "check-order"],
+    ),
+    ("-forceall", &["run", "graph", "check", "check-order"]),
     ("-executor <simulator|local|tes|slurm|kubernetes>", BACKEND),
     (
         "-store <folder|address>",
@@ -625,6 +651,8 @@ fn engine_option(option: &str, language: Option<Language>) -> Option<&'static st
         "-with-report" => "use `-report file`",
         "-with-dag" => "use `-graph file`",
         "-with-trace" | "-with-timeline" => "use `-report file` or `iunctus telemetry`",
+        "-R" => "use `-forcerun rules,files` for a Snakemake workflow",
+        "-F" => "use `-forceall` for a Snakemake workflow",
         "-j" | "-n" => {
             "use `-max-pending n` for concurrency or `-executor simulator` for a dry run"
         }
@@ -644,6 +672,10 @@ fn engine_option(option: &str, language: Option<Language>) -> Option<&'static st
             }
             "--directory" => "launch iunctus from the desired working directory",
             "--snakefile" => "give the Snakefile as the workflow argument",
+            "--until" => "use `-until rules,files`",
+            "--omit-from" => "use `-omit-from rules,files`",
+            "--forcerun" => "use `-forcerun rules,files`",
+            "--forceall" => "use `-forceall`",
             _ => return None,
         },
         _ => return None,
@@ -758,6 +790,56 @@ mod tests {
         assert_eq!(parsed.machine_retry_delay_ms, Some(250));
         for pair in [["-machine-retries", "-1"], ["-machine-retry-delay-ms", "0"]] {
             assert!(parse(&pair.map(str::to_owned)).is_err());
+        }
+    }
+
+    #[test]
+    fn snakemake_target_controls_take_lists_and_apply_only_to_planning_commands() {
+        let words = [
+            "Snakefile",
+            "-until",
+            "a,b.txt",
+            "-until",
+            "c",
+            "-omit-from",
+            "d",
+            "-forcerun",
+            "e,f.txt",
+            "-forceall",
+        ]
+        .map(str::to_owned);
+        for command in ["run", "graph", "check", "check-order"] {
+            let parsed = parse_command(command, &words).unwrap();
+            assert_eq!(parsed.until, ["a", "b.txt", "c"]);
+            assert_eq!(parsed.omit_from, ["d"]);
+            assert_eq!(parsed.forcerun, ["e", "f.txt"]);
+            assert!(parsed.forceall);
+            assert!(parsed.targets.is_empty());
+        }
+        for command in ["inputs", "outputs", "config", "repeat", "runs"] {
+            assert!(
+                parse_command(command, &words)
+                    .unwrap_err()
+                    .contains("does not apply")
+            );
+        }
+        for option in ["-until", "-omit-from", "-forcerun"] {
+            for value in [None, Some("-forceall"), Some("a,"), Some("")] {
+                let mut words = vec!["Snakefile".into(), option.into()];
+                words.extend(value.map(str::to_owned));
+                assert!(parse(&words).unwrap_err().contains("needs"));
+            }
+        }
+        for (option, replacement) in [
+            ("--until", "-until"),
+            ("--omit-from", "-omit-from"),
+            ("--forcerun", "-forcerun"),
+            ("-R", "-forcerun"),
+            ("--forceall", "-forceall"),
+            ("-F", "-forceall"),
+        ] {
+            let error = parse(&["Snakefile".into(), option.into()]).unwrap_err();
+            assert!(error.contains(&format!("use `{replacement}")), "{error}");
         }
     }
 

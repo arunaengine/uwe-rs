@@ -97,3 +97,34 @@ async fn simultaneous_embedded_runs_have_distinct_receipts() {
     let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
     assert_eq!(database.runs(10).unwrap().len(), 2);
 }
+
+#[tokio::test]
+async fn embedded_snakemake_runs_record_target_controls() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(
+        root.path().join("Snakefile"),
+        "rule make:\n    output: 'out'\n    shell: 'touch {output}'\n",
+    )
+    .unwrap();
+    let mut request = RunRequest::new(root.path());
+    request.policy = iunctus::application::Policy::Relaxed;
+    request.settings.executor = Some("simulator".into());
+    request.settings.database = Some(root.path().join("runs.sqlite"));
+    request.settings.until = vec!["out".into()];
+    request.settings.omit_from = vec!["absent".into()];
+    request.settings.forcerun = vec!["make".into()];
+    request.settings.forceall = true;
+    request.setup = Some(Setup::default());
+    let run = request.run(CancellationToken::new()).await.unwrap();
+    assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+    let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
+    let recorded = database.run(&run.id).unwrap().unwrap();
+    for pair in [
+        ["-until", "out"],
+        ["-omit-from", "absent"],
+        ["-forcerun", "make"],
+    ] {
+        assert!(recorded.arguments.windows(2).any(|words| words == pair));
+    }
+    assert!(recorded.arguments.iter().any(|word| word == "-forceall"));
+}

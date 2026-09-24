@@ -82,3 +82,103 @@ fn logging_respects_filters() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("invalid IUNCTUS_LOG"));
     assert!(output.stdout.is_empty());
 }
+
+#[test]
+fn snakemake_target_controls_select_jobs_and_forcing_bypasses_resume() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        r#"
+rule all:
+    input: "last.txt", "side"
+rule first:
+    output: "first.txt"
+    shell: "touch {output}"
+rule last:
+    input: "first.txt"
+    output: "last.txt"
+    shell: "cp {input} {output}"
+rule side:
+    output: "side"
+    shell: "touch {output}"
+"#,
+    )
+    .unwrap();
+    let run = |options: &[&str]| {
+        let output = common::command()
+            .args(["graph", "Snakefile", "-format", "json"])
+            .args(options)
+            .current_dir(folder.path())
+            .env("XDG_CACHE_HOME", folder.path().join("cache"))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice::<workflow_graph::ExecutionGraph>(&output.stdout).unwrap()
+    };
+    let names = |graph: &workflow_graph::ExecutionGraph| {
+        let mut names: Vec<_> = graph
+            .nodes
+            .iter()
+            .map(|node| node.task.step.as_str())
+            .collect();
+        names.sort();
+        names.into_iter().map(str::to_owned).collect::<Vec<_>>()
+    };
+    for selector in ["first", "first.txt"] {
+        assert_eq!(names(&run(&["-until", selector])), ["first"]);
+    }
+    assert_eq!(names(&run(&["-omit-from", "last"])), ["first", "side"]);
+    let original = run(&[]);
+    let resumed = run(&["-resume"]);
+    assert_eq!(resumed.reused(), original.nodes.len());
+    let forced = run(&["-resume", "-forcerun", "first"]);
+    assert_eq!(names(&forced), ["all", "first", "last", "side"]);
+    for node in &forced.nodes {
+        assert_eq!(node.reused, node.task.step == "side");
+        assert_eq!(
+            node.task.reuse,
+            if node.task.step == "side" {
+                workflow_graph::Reuse::Allowed
+            } else {
+                workflow_graph::Reuse::Denied
+            }
+        );
+    }
+    let all = run(&["-resume", "-forceall"]);
+    assert_eq!(all.reused(), 0);
+    assert!(
+        all.nodes
+            .iter()
+            .all(|node| node.task.reuse == workflow_graph::Reuse::Denied)
+    );
+
+    for language in ["nextflow", "cwl", "argo"] {
+        for options in [
+            vec!["-until", "first"],
+            vec!["-omit-from", "first"],
+            vec!["-forcerun", "first"],
+            vec!["-forceall"],
+        ] {
+            let output = common::command()
+                .args(["run", "Snakefile", "-lang", language])
+                .args(options)
+                .current_dir(folder.path())
+                .env("XDG_CACHE_HOME", folder.path().join("cache"))
+                .output()
+                .unwrap();
+            assert_eq!(
+                output.status.code(),
+                Some(33),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                String::from_utf8_lossy(&output.stderr).contains("require a Snakemake workflow")
+            );
+        }
+    }
+}

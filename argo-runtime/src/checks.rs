@@ -199,6 +199,10 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
             ("readinessProbe", container.readiness_probe.is_some()),
             ("startupProbe", container.startup_probe.is_some()),
             ("restartPolicy", container.restart_policy.is_some()),
+            (
+                "restartPolicyRules",
+                container.restart_policy_rules.is_some(),
+            ),
             ("resizePolicy", container.resize_policy.is_some()),
         ] {
             if present {

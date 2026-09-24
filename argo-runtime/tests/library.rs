@@ -19,6 +19,8 @@ spec:
     container:
       image: busybox
       imag: typo
+      outputs: {}
+    templateRef: {name: other, template: main}
 "#;
     std::fs::write(&file, workflow).expect("writes the workflow");
     let launch = Launch {
@@ -44,6 +46,29 @@ spec:
         "{}",
         error.message
     );
+    assert!(
+        error
+            .message
+            .contains("spec.templates[0].container.outputs")
+    );
+    assert!(error.message.contains("spec.templates[0].templateRef"));
+}
+
+#[test]
+fn garbage_collection_fields_are_accepted_without_kubernetes() {
+    let directory = tempfile::tempdir().expect("a folder");
+    let target = directory.path().join("workflow.yaml");
+    std::fs::write(
+        &target,
+        "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {name: gc}\nspec:\n  entrypoint: main\n  podGC: {strategy: OnPodCompletion}\n  artifactGC: {strategy: OnWorkflowCompletion}\n  volumeClaimGC: {strategy: OnWorkflowSuccess}\n  templates:\n  - name: main\n    container: {image: alpine}\n    outputs:\n      artifacts: [{name: result, path: /out, artifactGC: {strategy: Never}}]\n",
+    )
+    .expect("writes the workflow");
+    let mut driver = argo_runtime::driver(&Launch {
+        target,
+        ..Launch::default()
+    })
+    .expect("driver");
+    driver.start().expect("garbage collection is a no-op");
 }
 
 #[test]

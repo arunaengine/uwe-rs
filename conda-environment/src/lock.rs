@@ -85,6 +85,11 @@ impl Package {
 /// Where a channel serves its packages: Anaconda's own channels at repo.anaconda.com, the
 /// others at conda.anaconda.org.
 pub fn base(channel: &str) -> String {
+    if let Ok(url) = reqwest::Url::parse(channel)
+        && url.scheme() == "https"
+    {
+        return url.as_str().trim_end_matches('/').to_owned();
+    }
     match channel.strip_prefix("pkgs/") {
         Some(_) => format!("https://repo.anaconda.com/{channel}"),
         None => format!("https://conda.anaconda.org/{channel}"),

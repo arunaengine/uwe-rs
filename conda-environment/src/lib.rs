@@ -7,6 +7,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod acquisition;
 mod cache;
 mod environment;
 mod fetch;
@@ -19,12 +20,13 @@ mod version;
 
 use std::path::{Path, PathBuf};
 
+pub use acquisition::Acquisition;
 pub use cache::{CachedImage, IMAGE_CACHE_NAMESPACE, ImageBuild, ImageBuildClaim, ImageCache};
 pub use environment::{Environment, EnvironmentError};
 pub use fetch::{fetch_packages, fetch_repodata};
 pub use image::{BuiltImage, CompletedImage, IMAGE_RECEIPT_FORMAT, ImagePreparation};
 pub use lock::{FORMAT, Lock, Package, VirtualPackage, base};
-pub use repodata::{Index, Record, channels, repodata_path};
+pub use repodata::{Index, Record, channels, repodata_path, valid_channel};
 pub use spec::{MatchSpec, SpecError};
 pub use version::{Version, VersionSpec};
 
@@ -33,6 +35,8 @@ pub use version::{Version, VersionSpec};
 pub enum LockError {
     #[error("pip requirements cannot be locked; Conda preparation refuses pip sections")]
     Pip,
+    #[error("Conda acquisition: {0}")]
+    Acquisition(String),
     #[error("Conda solver: {0}")]
     Solver(String),
     #[error(
@@ -129,26 +133,7 @@ fn lock_inner(
     if !environment.pip.is_empty() {
         return Err(LockError::Pip);
     }
-    let mut virtual_packages = capabilities.map(<[VirtualPackage]>::to_vec);
-    if let Some(packages) = &mut virtual_packages {
-        packages.sort_by(|a, b| a.name.cmp(&b.name));
-        for (at, package) in packages.iter().enumerate() {
-            let valid_name = package.name.starts_with("__")
-                && MatchSpec::parse(&package.name).is_ok_and(|spec| spec.name == package.name);
-            if !valid_name || Version::parse(&package.version).is_none() {
-                return Err(LockError::Spec(SpecError {
-                    text: format!("{} {} {}", package.name, package.version, package.build),
-                    reason: "invalid virtual package name or version",
-                }));
-            }
-            if at > 0 && packages[at - 1].name == package.name {
-                return Err(LockError::Spec(SpecError {
-                    text: package.name.clone(),
-                    reason: "duplicate virtual package name",
-                }));
-            }
-        }
-    }
+    let virtual_packages = validate_capabilities(capabilities)?;
     let virtual_records: Option<Vec<Record>> = virtual_packages.as_ref().map(|packages| {
         packages
             .iter()
@@ -180,4 +165,30 @@ fn lock_inner(
         packages: records.iter().map(Package::of).collect(),
         virtual_packages,
     })
+}
+
+pub(crate) fn validate_capabilities(
+    capabilities: Option<&[VirtualPackage]>,
+) -> Result<Option<Vec<VirtualPackage>>, LockError> {
+    let mut virtual_packages = capabilities.map(<[VirtualPackage]>::to_vec);
+    if let Some(packages) = &mut virtual_packages {
+        packages.sort_by(|a, b| a.name.cmp(&b.name));
+        for (at, package) in packages.iter().enumerate() {
+            let valid_name = package.name.starts_with("__")
+                && MatchSpec::parse(&package.name).is_ok_and(|spec| spec.name == package.name);
+            if !valid_name || Version::parse(&package.version).is_none() {
+                return Err(LockError::Spec(SpecError {
+                    text: format!("{} {} {}", package.name, package.version, package.build),
+                    reason: "invalid virtual package name or version",
+                }));
+            }
+            if at > 0 && packages[at - 1].name == package.name {
+                return Err(LockError::Spec(SpecError {
+                    text: package.name.clone(),
+                    reason: "duplicate virtual package name",
+                }));
+            }
+        }
+    }
+    Ok(virtual_packages)
 }

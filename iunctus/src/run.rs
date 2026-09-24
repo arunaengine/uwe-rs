@@ -133,7 +133,22 @@ fn execute_with(
     let runtime =
         workflow_graph::runtime().map_err(|error| failure(format!("iunctus: {error}")))?;
     let sources = runtime.block_on(sources::collect(target, arguments));
-    let invocation = admission.map(|_| record::run_arguments(arguments));
+    let invocation = admission.map(|_| {
+        let mut words = record::run_arguments(arguments);
+        for (option, targets) in [
+            ("-until", &arguments.until),
+            ("-omit-from", &arguments.omit_from),
+            ("-forcerun", &arguments.forcerun),
+        ] {
+            for target in targets {
+                words.extend([option.into(), target.clone()]);
+            }
+        }
+        if arguments.forceall {
+            words.push("-forceall".into());
+        }
+        words
+    });
     let started = record::Started {
         id: &run,
         target,

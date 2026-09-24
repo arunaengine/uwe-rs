@@ -28,6 +28,14 @@ pub struct Launch {
     /// Targets or an entry point: Snakemake target files or rules, the Nextflow `-entry`
     /// workflow, the Argo entrypoint.
     pub targets: Vec<String>,
+    /// Snakemake rules or files to run up to, including their dependencies.
+    pub until: Vec<String>,
+    /// Snakemake rules or files to omit, together with everything downstream.
+    pub omit_from: Vec<String>,
+    /// Snakemake rules or files to rerun, together with everything downstream.
+    pub forcerun: Vec<String>,
+    /// Rerun every Snakemake job needed for the selected targets.
+    pub forceall: bool,
     /// Where the run keeps files of its own, like downloads.
     pub scratch: PathBuf,
     /// Where the results go of languages that have no place of their own for them, from

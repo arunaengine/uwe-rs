@@ -2552,6 +2552,7 @@ dependencies = [
  "run-page",
  "run-telemetry",
  "rustix 1.1.5",
+ "serde",
  "serde_json",
  "slurm-executor",
  "snakemake-runtime",

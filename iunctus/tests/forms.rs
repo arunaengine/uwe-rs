@@ -66,6 +66,42 @@ fn form_keeps_original_schema_and_effective_values() {
 }
 
 #[test]
+fn typed_responses_round_trip_without_changing_wire_bytes() {
+    let form = forms::describe(&mut Described(inputs()), Policy::Strict).expect("a form");
+    let shown = form.response();
+    let bytes = serde_json::to_vec(&shown).unwrap();
+    assert_eq!(bytes, serde_json::to_vec(&form.json()).unwrap());
+    assert_eq!(
+        serde_json::from_slice::<forms::FormResponse>(&bytes).unwrap(),
+        shown
+    );
+    for values in [json!({"count": 2}), json!({"count": "wrong", "a/b~": []})] {
+        let response = form.validate_response(values.clone());
+        let bytes = serde_json::to_vec(&response).unwrap();
+        assert_eq!(bytes, serde_json::to_vec(&form.validate(values)).unwrap());
+        assert_eq!(
+            serde_json::from_slice::<forms::ValidationResponse>(&bytes).unwrap(),
+            response
+        );
+    }
+    let unavailable = forms::ValidationResponse::Unavailable(forms::UnavailableResponse {
+        accepted: false,
+        error: "input.unavailable".into(),
+        message: "unavailable".into(),
+        version: forms::FORMAT,
+    });
+    let bytes = serde_json::to_vec(&unavailable).unwrap();
+    assert_eq!(
+        bytes,
+        br#"{"accepted":false,"error":"input.unavailable","message":"unavailable","version":1}"#
+    );
+    assert_eq!(
+        serde_json::from_slice::<forms::ValidationResponse>(&bytes).unwrap(),
+        unavailable
+    );
+}
+
+#[test]
 fn posted_values_get_field_errors_without_coercion_or_default_insertion() {
     let form = forms::describe(&mut Described(inputs()), Policy::Strict).expect("a form");
     let values = json!({"count": "2", "a/b~": []});

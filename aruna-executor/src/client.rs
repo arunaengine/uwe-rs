@@ -15,7 +15,7 @@ pub use crate::states::{ExecutionState, JobKind, JobState, LogicalState};
 const MAX_BODY: usize = 1024 * 1024;
 const MAX_ERROR_BODY: usize = 8 * 1024;
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Submit {
     pub group_id: String,
     pub image: String,
@@ -35,7 +35,7 @@ pub struct Submit {
     pub idempotency_key: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Input {
     pub bucket: String,
     pub key: String,
@@ -45,13 +45,13 @@ pub struct Input {
     pub mode: InputMode,
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InputMode {
     ExactReference,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Output {
     pub bucket: String,
     pub dest_key: String,

@@ -25,3 +25,4 @@ content-store.workspace = true
 storage.workspace = true
 task-runner.workspace = true
 tempfile.workspace = true
+workflow-graph.workspace = true

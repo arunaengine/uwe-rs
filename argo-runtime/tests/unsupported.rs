@@ -158,14 +158,16 @@ fn empty_container_sets_and_resource_overflows_fail_without_panicking() {
 }
 
 #[test]
-fn differing_resource_requests_and_limits_cannot_be_collapsed() {
-    let error = start_error(
-        "  templates:\n  - name: main\n    container: {image: alpine, resources: {requests: {memory: 1Gi}, limits: {memory: 2Gi}}}\n",
-    );
-    assert!(
-        error.unsupported && error.message.contains("requests and limits"),
-        "{error}"
-    );
+fn resource_requests_cannot_exceed_their_limits() {
+    for (request, limit) in [("memory: 2Gi", "memory: 1Gi"), ("cpu: 2", "cpu: 1")] {
+        let error = start_error(&format!(
+            "  templates:\n  - name: main\n    container: {{image: alpine, resources: {{requests: {{{request}}}, limits: {{{limit}}}}}}}\n",
+        ));
+        assert!(
+            !error.unsupported && error.message.contains("request must not exceed"),
+            "{error}"
+        );
+    }
 }
 
 #[test]

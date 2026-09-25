@@ -910,6 +910,27 @@ fn placeholders_for_missing_parameters() {
 }
 
 #[test]
+fn resource_limits_take_precedence_over_requests() {
+    for (resources, cpus, memory) in [
+        (
+            "requests: {cpu: 500m, memory: 1Gi}, limits: {cpu: 2, memory: 2Gi}",
+            2.0,
+            2 << 30,
+        ),
+        ("requests: {cpu: 500m, memory: 1Gi}", 0.5, 1 << 30),
+        ("limits: {cpu: 2, memory: 2Gi}", 2.0, 2 << 30),
+        ("requests: {cpu: 500m}, limits: {memory: 2Gi}", 0.5, 2 << 30),
+    ] {
+        let ran = run(&workflow(&format!(
+            "  - name: main\n    container: {{image: alpine, resources: {{{resources}}}}}\n",
+        )));
+        ran.succeeded();
+        assert_eq!(ran.tasks()[0].resources.cpus, Some(cpus));
+        assert_eq!(ran.tasks()[0].resources.memory_bytes, Some(memory));
+    }
+}
+
+#[test]
 fn leaf_kinds_become_tasks() {
     let ran = run(&workflow(
         r#"

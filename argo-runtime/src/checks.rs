@@ -154,7 +154,6 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
     }
     for (field, present) in [
         ("synchronization", template.synchronization.is_some()),
-        ("memoize", template.memoize.is_some()),
         ("suspend", template.suspend.is_some()),
         ("podSpecPatch", template.pod_spec_patch.is_some()),
         ("podResources", template.pod_resources.is_some()),

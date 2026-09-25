@@ -46,7 +46,6 @@ fn rejects_unsupported_workflow_controls() {
 fn rejects_unsupported_template_controls_and_defaults() {
     for field in [
         "synchronization: {mutexes: [{name: lock}]}",
-        "memoize: {key: cache, cache: {configMap: {name: cache}}}",
         "podSpecPatch: '{}'",
         "podResources: {}",
         "resourceClaims: []",

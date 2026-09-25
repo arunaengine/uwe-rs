@@ -21,6 +21,17 @@ pub(crate) fn target_and_language(arguments: &Arguments) -> Result<(PathBuf, Lan
             detect::language(target).map_err(|message| failure(format!("iunctus: {message}")))?
         }
     };
+    if language != Language::Snakemake
+        && (!arguments.until.is_empty()
+            || !arguments.omit_from.is_empty()
+            || !arguments.forcerun.is_empty()
+            || arguments.forceall)
+    {
+        return Err(DriverError::unsupported(
+            "-until, -omit-from, -forcerun and -forceall require a Snakemake workflow",
+        )
+        .into());
+    }
     Ok((target.clone(), language))
 }
 
@@ -34,16 +45,6 @@ pub(crate) fn driver(
     setup: &Setup,
     cancel: &CancellationToken,
 ) -> Result<Box<dyn Driver>, DriverError> {
-    if language != Language::Snakemake
-        && (!launch.until.is_empty()
-            || !launch.omit_from.is_empty()
-            || !launch.forcerun.is_empty()
-            || launch.forceall)
-    {
-        return Err(DriverError::unsupported(
-            "-until, -omit-from, -forcerun and -forceall require a Snakemake workflow",
-        ));
-    }
     match language {
         Language::Nextflow => nextflow::driver(launch, run, quiet, arguments, setup),
         Language::Snakemake => {

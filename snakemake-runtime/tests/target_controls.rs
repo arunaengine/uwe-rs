@@ -45,8 +45,8 @@ fn forced_jobs_bypass_reuse_and_selected_temporary_files_are_delivered() {
         let launch = Launch {
             target: folder.path().into(),
             scratch: folder.path().join("scratch"),
-            until: vec!["b.x".into()],
-            forcerun: vec!["b.x".into()],
+            until: vec!["./b.x".into()],
+            forcerun: vec!["unused/../b.x".into()],
             forceall,
             simulated: true,
             ..Launch::default()

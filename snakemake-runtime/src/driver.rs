@@ -364,24 +364,36 @@ impl Session {
             .as_mut()
             .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         planner.reset();
-        planner.forcerun = self.launch.forcerun.clone();
-        planner.forceall = self.launch.forceall;
-        let roots = match planner.plan_targets(
-            &mut self.interpreter,
-            &targets,
+        let [until, omit_from, forcerun] = [
             &self.launch.until,
             &self.launch.omit_from,
-        ) {
+            &self.launch.forcerun,
+        ]
+        .map(|targets| {
+            targets
+                .iter()
+                .map(|target| {
+                    if planner.rules.iter().any(|rule| rule.name == *target)
+                        || Path::new(target).is_absolute()
+                    {
+                        target.clone()
+                    } else {
+                        crate::functions::normpath(target)
+                    }
+                })
+                .collect::<Vec<_>>()
+        });
+        planner.forcerun = forcerun;
+        planner.forceall = self.launch.forceall;
+        let roots = match planner.plan_targets(&mut self.interpreter, &targets, &until, &omit_from)
+        {
             Ok(roots) => roots,
             Err(error) => return Err(self.error(&error)),
         };
-        self.kept = (targets
-            .iter()
-            .chain(&self.launch.until)
-            .chain(&self.launch.forcerun))
-        .filter(|target| !planner.rules.iter().any(|rule| rule.name == **target))
-        .cloned()
-        .collect();
+        self.kept = (targets.iter().chain(&until).chain(&planner.forcerun))
+            .filter(|target| !planner.rules.iter().any(|rule| rule.name == **target))
+            .cloned()
+            .collect();
         for root in &roots {
             let job = &planner.jobs[*root];
             if job.output_files().is_empty() {

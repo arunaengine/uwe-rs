@@ -128,14 +128,18 @@ rule side:
         names.sort();
         names.into_iter().map(str::to_owned).collect::<Vec<_>>()
     };
-    for selector in ["first", "first.txt"] {
+    for selector in ["first", "first.txt", "./first.txt", "unused/../first.txt"] {
         assert_eq!(names(&run(&["-until", selector])), ["first"]);
     }
     assert_eq!(names(&run(&["-omit-from", "last"])), ["first", "side"]);
+    assert_eq!(
+        names(&run(&["-omit-from", "./last.txt"])),
+        ["first", "side"]
+    );
     let original = run(&[]);
     let resumed = run(&["-resume"]);
     assert_eq!(resumed.reused(), original.nodes.len());
-    let forced = run(&["-resume", "-forcerun", "first"]);
+    let forced = run(&["-resume", "-forcerun", "./first.txt"]);
     assert_eq!(names(&forced), ["all", "first", "last", "side"]);
     for node in &forced.nodes {
         assert_eq!(node.reused, node.task.step == "side");
@@ -164,7 +168,14 @@ rule side:
             vec!["-forceall"],
         ] {
             let output = common::command()
-                .args(["run", "Snakefile", "-lang", language])
+                .args([
+                    "run",
+                    "Snakefile",
+                    "-lang",
+                    language,
+                    "-resume",
+                    "missing-run",
+                ])
                 .args(options)
                 .current_dir(folder.path())
                 .env("XDG_CACHE_HOME", folder.path().join("cache"))

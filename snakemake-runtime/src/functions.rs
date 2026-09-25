@@ -506,7 +506,7 @@ pub fn glob_wildcards(interpreter: &mut Interpreter, args: Args) -> Result<Value
 }
 
 /// `os.path.normpath`.
-fn normpath(path: &str) -> String {
+pub(crate) fn normpath(path: &str) -> String {
     let absolute = path.starts_with('/');
     let mut parts: Vec<&str> = Vec::new();
     for part in path.split('/') {

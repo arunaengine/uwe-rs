@@ -6,7 +6,8 @@
 use argo_parser::Node;
 use workflow_graph::Resources;
 
-/// Resources from Kubernetes requests, or limits where requests say nothing.
+/// Resources from Kubernetes limits, or requests where limits say nothing. The shared task
+/// model uses these values for both reservation and the container cap.
 pub(crate) fn resources_of(node: &Node) -> Result<Resources, String> {
     let argo_parser::Value::Mapping(fields) = &node.value else {
         return Err("container resources must be a mapping".into());
@@ -31,13 +32,23 @@ pub(crate) fn resources_of(node: &Node) -> Result<Resources, String> {
                 let limit = crate::run::scalar_text(limit);
                 let request = crate::run::scalar_text(request);
                 let same = match field {
-                    "cpu" => cpu_cores(&limit) == cpu_cores(&request),
+                    "cpu" => cpu_cores(&request)
+                        .zip(cpu_cores(&limit))
+                        .is_none_or(|(request, limit)| request <= limit),
+                    "memory" => quantity_bytes(&request)
+                        .zip(quantity_bytes(&limit))
+                        .is_none_or(|(request, limit)| request <= limit),
                     "nvidia.com/gpu" | "amd.com/gpu" => {
                         limit.parse::<u32>().ok() == request.parse::<u32>().ok()
                     }
                     _ => quantity_bytes(&limit) == quantity_bytes(&request),
                 };
                 if !same {
+                    if matches!(field, "cpu" | "memory") {
+                        return Err(format!(
+                            "container resource {field} request must not exceed its limit"
+                        ));
+                    }
                     return Err(format!(
                         "unsupported: differing {field} requests and limits are not supported"
                     ));
@@ -46,7 +57,7 @@ pub(crate) fn resources_of(node: &Node) -> Result<Resources, String> {
         }
     }
     let mut resources = Resources::default();
-    for part in ["limits", "requests"] {
+    for part in ["requests", "limits"] {
         let Some(values) = node.get(part) else {
             continue;
         };

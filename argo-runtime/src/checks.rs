@@ -172,15 +172,6 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
                         && template.script.is_none()
                         && template.container_set.is_none())),
         ),
-        (
-            "containerSet.retryStrategy.duration",
-            template
-                .container_set
-                .as_ref()
-                .and_then(|set| set.retry_strategy.as_ref())
-                .and_then(|strategy| strategy.get("duration"))
-                .is_some(),
-        ),
     ] {
         if present {
             return Some(format!("template {name}: `{field}` is not supported"));

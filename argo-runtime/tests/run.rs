@@ -781,6 +781,26 @@ fn exit_handlers_see_the_status() {
 }
 
 #[test]
+fn retry_delays_and_host_affinity_preserve_attempts_and_results() {
+    for spec in [
+        "  retryStrategy: {limit: 1, backoff: {duration: 5s, factor: 2, cap: 1m}, affinity: {nodeAntiAffinity: {}}}\n  templates:\n  - name: main\n    container: {image: alpine}\n",
+        "  templates:\n  - name: main\n    retryStrategy: {limit: 1, backoff: {duration: 5s, factor: 2, cap: 1m}, affinity: {nodeAntiAffinity: {}}}\n    container: {image: alpine}\n",
+    ] {
+        let ran = run_with(
+            &format!(
+                "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {{name: retries}}\nspec:\n  entrypoint: main\n{spec}"
+            ),
+            Setup {
+                exit: vec![("main", vec![1, 0])],
+                ..Setup::default()
+            },
+        );
+        ran.succeeded();
+        assert_eq!(ran.tasks().len(), 2);
+    }
+}
+
+#[test]
 fn invalid_retry_and_lifecycle_hook_expressions_fail_loudly() {
     let retried = run_with(
         &workflow(
@@ -920,7 +940,11 @@ fn memoization_settings_do_not_prevent_native_task_execution() {
         ));
         ran.succeeded();
         assert_eq!(ran.tasks().len(), 1);
-        assert!(ran.warnings.iter().any(|warning| warning.contains("native content-addressed cache")));
+        assert!(
+            ran.warnings
+                .iter()
+                .any(|warning| warning.contains("native content-addressed cache"))
+        );
     }
 }
 
@@ -1012,7 +1036,7 @@ const CONTAINER_SET: &str = r#"
   - name: set
     volumes: [{name: workspace, emptyDir: {}}]
     containerSet:
-      retryStrategy: {retries: "3"}
+      retryStrategy: {retries: "3", duration: 5s}
       volumeMounts: [{name: workspace, mountPath: /workspace}]
       containers:
       - name: a

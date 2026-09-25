@@ -15,12 +15,15 @@ use crate::run::{Call, Failure, Processed, Result, Run};
 use crate::tags::{Variables, replace_node};
 
 pub(crate) fn check_strategy(strategy: &argo_parser::model::RetryStrategy) -> Result<()> {
-    if strategy.backoff.is_some()
-        || strategy.affinity.is_some()
+    if strategy
+        .backoff
+        .as_ref()
+        .and_then(|backoff| backoff.get("maxDuration"))
+        .is_some_and(|duration| !crate::run::scalar_text(duration).is_empty())
         || strategy.retry_policy == "OnTransientError"
     {
         return Err(Failure::unsupported(
-            "retryStrategy backoff, affinity and OnTransientError are not supported",
+            "retryStrategy backoff.maxDuration and OnTransientError are not supported",
         ));
     }
     if !matches!(

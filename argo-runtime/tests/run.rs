@@ -910,6 +910,21 @@ fn placeholders_for_missing_parameters() {
 }
 
 #[test]
+fn memoization_settings_do_not_prevent_native_task_execution() {
+    for spec in [
+        "  templates:\n  - name: main\n    memoize: {key: cache, cache: {configMap: {name: cache}}}\n    container: {image: alpine}\n",
+        "  templateDefaults:\n    memoize: {key: cache, cache: {configMap: {name: cache}}}\n  templates:\n  - name: main\n    container: {image: alpine}\n",
+    ] {
+        let ran = run(&format!(
+            "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {{name: memoized}}\nspec:\n  entrypoint: main\n{spec}",
+        ));
+        ran.succeeded();
+        assert_eq!(ran.tasks().len(), 1);
+        assert!(ran.warnings.iter().any(|warning| warning.contains("native content-addressed cache")));
+    }
+}
+
+#[test]
 fn resource_limits_take_precedence_over_requests() {
     for (resources, cpus, memory) in [
         (

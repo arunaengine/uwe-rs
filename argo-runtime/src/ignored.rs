@@ -64,7 +64,10 @@ impl Run {
             }
         }
         for (field, what) in [
-            ("memoize", "memoize is left out: every task runs"),
+            (
+                "memoize",
+                "memoize is left out: tasks use the native content-addressed cache",
+            ),
             (
                 "synchronization",
                 "synchronization is left out: one run holds no locks",

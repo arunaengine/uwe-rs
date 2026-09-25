@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod application;
+pub mod aruna;
 pub mod forms;
 
 mod arguments;

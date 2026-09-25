@@ -114,6 +114,8 @@ pub(crate) fn run_arguments(arguments: &Arguments) -> Vec<String> {
         };
     }
     text!(language => "-lang", store => "-store", executor => "-executor",
+        aruna_server => "-aruna-server", aruna_group => "-aruna-group",
+        aruna_bucket => "-aruna-bucket", aruna_scope => "-aruna-scope",
         tes_server => "-tes-server", slurm_container => "-slurm-container",
         slurm_options => "-slurm-options", kubernetes_namespace => "-kubernetes-namespace",
         default_image => "-default-image", python_image => "-python-image",
@@ -216,6 +218,29 @@ fn resumed(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn aruna_settings_are_recorded_and_can_be_overridden_for_repeat() {
+        let given = Arguments {
+            target: Some("main.nf".into()),
+            executor: Some("aruna".into()),
+            aruna_server: Some("https://aruna.example/api/v1".into()),
+            aruna_group: Some("group".into()),
+            aruna_bucket: Some("results".into()),
+            aruna_scope: Some("caller".into()),
+            ..Arguments::default()
+        };
+        let recorded = crate::arguments::parse_command("run", &run_arguments(&given)[1..]).unwrap();
+        let mut repeated = Arguments::default();
+        crate::repeat::chosen_here(&mut repeated, &given);
+        for found in [recorded, repeated] {
+            assert_eq!(found.executor, given.executor);
+            assert_eq!(found.aruna_server, given.aruna_server);
+            assert_eq!(found.aruna_group, given.aruna_group);
+            assert_eq!(found.aruna_bucket, given.aruna_bucket);
+            assert_eq!(found.aruna_scope, given.aruna_scope);
+        }
+    }
 
     #[test]
     fn effective_repeat_options_roundtrip() {

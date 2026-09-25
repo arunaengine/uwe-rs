@@ -2544,6 +2544,7 @@ name = "iunctus"
 version = "0.1.0"
 dependencies = [
  "argo-runtime",
+ "aruna-executor",
  "conda-environment",
  "config-file",
  "content-store",

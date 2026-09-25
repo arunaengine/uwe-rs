@@ -6,8 +6,8 @@ use crate::arguments::Arguments;
 use crate::repeat::Pinned;
 use crate::setup::Setup;
 use crate::{
-    Failure, cache_directory, failure, kubernetes, local, preview, resources, runner_settings,
-    runs, slurm, tes,
+    Failure, aruna, cache_directory, failure, kubernetes, local, preview, resources,
+    runner_settings, runs, slurm, tes,
 };
 use workflow_graph::{Executor, Simulator};
 
@@ -64,6 +64,7 @@ pub(crate) fn offline_possible(arguments: &Arguments, setup: &Setup) -> Result<(
         .unwrap_or("apptainer");
     let why = match arguments.executor.as_deref() {
         Some("tes") => "a TES server has no setting that cuts a task off the network",
+        Some("aruna") => "the Aruna jobs contract has no setting that cuts a task off the network",
         Some("kubernetes") => {
             "the Kubernetes executor makes no network policy that cuts a task off the network"
         }
@@ -148,6 +149,10 @@ pub(crate) fn executor(
                 .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
+        "aruna" => {
+            let executor = aruna::executor(arguments, setup, &scratch, run)?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
         "slurm" => {
             let default_image = arguments.default_image.clone();
             let settings = &setup.executors;
@@ -188,7 +193,7 @@ pub(crate) fn executor(
         }
         other => Err(Failure::usage(format!(
             "iunctus: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm` or \
-             `kubernetes`"
+             `kubernetes` or `aruna`"
         ))),
     }
 }

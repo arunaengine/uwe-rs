@@ -819,6 +819,8 @@ impl Collector<'_> {
                     Some(Dynamic::Expression(expression)) => {
                         match self.evaluate(expression, &this)? {
                             Value::Bool(required) => required,
+                            // An optional boolean input that is not given, as cwltool reads it.
+                            Value::Null => false,
                             other => {
                                 return Err(format!(
                                     "secondaryFiles.required must give a boolean, not {}",

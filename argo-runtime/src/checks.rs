@@ -104,6 +104,20 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
         .artifacts
         .iter()
         .chain(&template.outputs.artifacts)
+        .chain(
+            template
+                .steps
+                .iter()
+                .flatten()
+                .flat_map(|step| &step.arguments.artifacts),
+        )
+        .chain(
+            template
+                .dag
+                .iter()
+                .flat_map(|dag| &dag.tasks)
+                .flat_map(|task| &task.arguments.artifacts),
+        )
     {
         if let Err(failure) = crate::inputs::check_artifact(artifact) {
             return Some(failure.message);

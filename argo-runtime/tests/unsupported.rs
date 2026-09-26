@@ -199,6 +199,18 @@ fn external_parameter_sources_cannot_turn_into_defaults_or_placeholders() {
 
 #[test]
 fn unsupported_artifact_transfer_options_are_refused() {
+    for call in [
+        "    steps:\n    - - name: use\n        template: work\n        arguments: {artifacts: [{name: input, s3: {bucket: data, key: input, endpoint: other.example.org}}]}\n",
+        "    dag:\n      tasks:\n      - name: use\n        template: work\n        arguments: {artifacts: [{name: input, s3: {bucket: data, key: input, endpoint: other.example.org}}]}\n",
+    ] {
+        let error = start_error(&format!(
+            "  templates:\n  - name: main\n{call}  - name: work\n    inputs: {{artifacts: [{{name: input, path: /in}}]}}\n    container: {{image: alpine}}\n",
+        ));
+        assert!(
+            error.unsupported && error.message.contains("S3.endpoint"),
+            "{error}"
+        );
+    }
     for artifact in [
         "git: {repo: 'https://example.org/repository.git'}",
         "s3: {key: input.txt}",

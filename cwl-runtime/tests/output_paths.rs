@@ -253,3 +253,78 @@ fn initial_workdir_directory_arrays_keep_collected_copies() {
         }
     }
 }
+
+#[test]
+fn record_output_eval_accepts_outdir_paths_and_rejects_escapes() {
+    for simulated in [true, false] {
+        for suffix in ["", "/..", "/%2e%2e", "-other"] {
+            let prefix = if suffix.contains('%') { "file://" } else { "" };
+            let folder = tempfile::tempdir().expect("folder");
+            let root = folder.path();
+            std::fs::write(
+                root.join("main.cwl"),
+                format!(
+                    "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: 'true'\n\
+                     requirements: {{InlineJavascriptRequirement: {{}}}}\ninputs: []\n\
+                     outputs:\n  references:\n    type:\n      type: record\n      name: References\n      \
+                     fields: {{genome: File, annotation: File}}\n    outputBinding:\n      \
+                     outputEval: '$({{genome: {{class: \"File\", path: \"{prefix}\" + runtime.outdir + \"{suffix}/genome.fa\"}}, \
+                     annotation: {{class: \"File\", path: \"{prefix}\" + runtime.outdir + \"{suffix}/annotation.gtf\"}}}})'\n"
+                ),
+            )
+            .expect("tool");
+            let mut driver = CwlDriver::new(
+                &Launch {
+                    target: root.join("main.cwl"),
+                    scratch: root.join("scratch"),
+                    ..Launch::default()
+                },
+                Options {
+                    simulated,
+                    ..Options::default()
+                },
+            )
+            .expect("driver");
+            let task = driver.start().expect("starts").remove(0);
+            let mut files = Vec::new();
+            let work = root.join("work");
+            if !simulated {
+                std::fs::create_dir(&work).expect("work directory");
+                for name in ["genome.fa", "annotation.gtf"] {
+                    let path = work.join(name);
+                    std::fs::write(&path, "record output").expect("file");
+                    files.push(OutputFile {
+                        path: name.into(),
+                        location: path.to_string_lossy().into_owned(),
+                        ..OutputFile::default()
+                    });
+                }
+            }
+            driver
+                .complete(Outcome {
+                    id: task.id,
+                    files,
+                    ..Outcome::default()
+                })
+                .expect("records outcome");
+            if !suffix.is_empty() {
+                let error = driver.finish().expect_err("rejects escape").message;
+                assert!(error.contains("outside the task's"), "{error}");
+                continue;
+            }
+            driver.finish().expect("collects record output");
+            let record = &driver.outputs().expect("outputs")["references"];
+            for (field, name) in [("genome", "genome.fa"), ("annotation", "annotation.gtf")] {
+                let file = record.get(field).expect("field");
+                assert_eq!(file.text("basename"), Some(name));
+                let expected = if simulated {
+                    format!("_:{name}")
+                } else {
+                    cwl_parser::iri::file_url(&work.join(name))
+                };
+                assert_eq!(file.text("location"), Some(expected.as_str()));
+                assert!(file.get("checksum").is_some());
+            }
+        }
+    }
+}

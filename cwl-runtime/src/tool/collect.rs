@@ -320,7 +320,8 @@ impl Collector<'_> {
                     mapped = self
                         .workdir
                         .as_ref()
-                        .map(|base| join_location(base, relative));
+                        .map(|base| join_location(base, relative))
+                        .or_else(|| self.access.assume_present.then(|| format!("_:{relative}")));
                 }
             } else {
                 let candidate = location_of(&absolute);

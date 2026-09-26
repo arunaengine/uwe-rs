@@ -79,6 +79,9 @@ pub fn prepare(job: Job<'_>, directory: &Path) -> Result<PathBuf, ExecutorError>
     }
     for input in &job.staging.inputs {
         let target = wrapper::quote(&inside(work, &input.path));
+        if input.copy {
+            start.push_str(&format!("chmod -R u+w {target}\n"));
+        }
         if input.executable {
             start.push_str(&format!("chmod u+x {target}\n"));
         }

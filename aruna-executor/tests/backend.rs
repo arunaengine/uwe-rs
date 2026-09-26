@@ -64,6 +64,29 @@ impl Objects for Memory {
     }
 }
 
+struct CancelRead {
+    memory: Memory,
+    cancel: CancellationToken,
+}
+
+impl Objects for CancelRead {
+    fn write<'a>(
+        &'a self,
+        group: &'a str,
+        key: &'a str,
+        file: &'a std::path::Path,
+    ) -> Transfer<'a, Reference> {
+        self.memory.write(group, key, file)
+    }
+
+    fn read<'a>(&'a self, object: &'a Object, maximum: u64) -> Transfer<'a, Vec<u8>> {
+        Box::pin(async move {
+            self.cancel.cancel();
+            self.memory.read(object, maximum).await
+        })
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Case {
     Success,
@@ -496,4 +519,53 @@ async fn complete_family_results_and_logs_reach_the_content_store() {
         b"fixture stderr"
     );
     assert_eq!(memory.reads.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn cancellation_during_collection_retains_success_without_returning_outputs() {
+    let root = tempfile::tempdir().unwrap();
+    let bytes = result(0);
+    let cancel = CancellationToken::new();
+    let server = server(Case::Success, bytes.len() as u64, cancel.clone());
+    let mut backend = backend(
+        &server,
+        root.path(),
+        Arc::new(Memory {
+            result: bytes.clone(),
+            writes: AtomicUsize::new(0),
+            reads: AtomicUsize::new(0),
+        }),
+    );
+    backend.objects = Arc::new(CancelRead {
+        memory: Memory {
+            result: bytes,
+            writes: AtomicUsize::new(0),
+            reads: AtomicUsize::new(0),
+        },
+        cancel: cancel.clone(),
+    });
+    let error = backend
+        .run(
+            Job {
+                name: "collection",
+                spec: &spec(),
+                staging: &Staging::default(),
+                placement: &Placement::default(),
+            },
+            &cancel,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(error, ExecutorError::Cancelled));
+    assert!(!backend.scratch.join("attempts/collection").exists());
+    let path = std::fs::read_dir(backend.scratch.join("journals"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path()
+        .join("request.json");
+    let journal: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    assert_eq!(journal["terminal"], "succeeded");
+    assert_eq!(journal["cancel_pending"], true);
 }

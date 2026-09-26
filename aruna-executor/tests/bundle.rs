@@ -64,6 +64,7 @@ fn snapshots_include_inputs_stdin_and_a_result_bundle_command() {
     assert_eq!(entries["control/stdin"], b"input");
     let start = std::str::from_utf8(&entries["start.sh"]).unwrap();
     assert!(start.contains("chmod u+x '/iunctus/work/nested'"));
+    assert!(start.contains("chmod -R u+w '/iunctus/work/nested'"));
     assert!(start.contains("mkdir -p '/iunctus/work/empty'"));
     assert!(start.contains("tar -chf /iunctus/result.tar -C /iunctus control outbox"));
     let mut inplace = staging.clone();

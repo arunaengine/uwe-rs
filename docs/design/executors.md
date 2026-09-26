@@ -58,6 +58,13 @@ minutes = 60
 [executor.kubernetes]
 kubeconfig = "/home/me/kind.kubeconfig"    # like -kubeconfig
 namespace = "iunctus"                # like -kubernetes-namespace
+
+[executor.aruna]
+server = "https://aruna.example/api/v1" # like -aruna-server, including the API prefix
+token = { environment = "ARUNA_TOKEN" } # or IUNCTUS_ARUNA_TOKEN; literal tokens are refused
+group = "authorized-group-id"          # like -aruna-group
+bucket = "authorized-results"          # like -aruna-bucket
+scope = "caller-stable-scope"           # like -aruna-scope; change for fresh remote work
 ```
 
 ## 2. Local containers
@@ -219,3 +226,14 @@ TES servers decide the user and the permissions of their containers themselves; 
 
 **Tested.** Docker as root on this machine: `executor/tests/local.rs` checks that a container of the user has no capabilities and `NoNewPrivs`, that root of an Argo container has only `CHOWN`, that a step writes `/result.txt` and `/data` as root in `/` with `HOME=/root`, that a step of user 4242 starts in its `workingDir` and its files come back to the user, and that the containers of a set do the same. Rootless Podman and rootless Docker are not set up on this machine; the settings that iunctus sends for them are tested as data (`executor::access`, `slurm-executor` script tests). Apptainer 1.4.5 without setuid on the BCF cluster, in a SLURM job (`-slurm-container apptainer`): an Argo step of `alpine` ran as the user (`Uid` of the user, `CapEff` and `CapPrm` 0, `NoNewPrivs` 1), started in `/`, and wrote `/tmp` and `/result.txt`; its artifacts and the scratch folder belong to the user. Rootless Podman is not installed on the nodes of that cluster, so it is not tested.
 
+## 7. Aruna native jobs
+
+`-executor aruna` selects `ArunaBackend` through the same task runner. Its server, group, result bucket and caller scope use the settings above or their CLI options. An embedding host supplies `Setup.aruna_objects`, an authenticated immutable object writer/reader. The standalone CLI reports the missing transfer adapter before submission because the modeled jobs API defines no upload/download routes.
+
+Each task uses one exact-reference input tar object and one result tar object made inside the container. The latter carries the existing wrapper's exit code, logs, output inventory and file/directory outbox. The runner collects them into the configured content store. Both bundles are bounded to 256 MiB; result extraction refuses links, devices and escaping paths. Images need `sh`, `tar` and the normal wrapper tools. These programs run inside the image; the host launches no helper executable.
+
+The adapter maps image, CPUs, memory, walltime and executor constraint into the existing submit contract. It refuses offline tasks, container sets, user overrides, in-place host mutations, GPUs, disk requests, queues, preemptible placement and unknown backend parameters. Container permissions and platform scheduling remain server contracts to confirm.
+
+Durable caller-scoped cache-key idempotency freezes the submit document and input version. Identical resubmits poll and collect the same canonical job. Changed sizing under that identity fails; change `scope` for new remote work, including forced or reproducibility runs. Polling waits for complete family evidence. Cancellation reconciles beyond 202, keeps late-success evidence and retains unresolved journals. Hosts must replay interrupted keys and preserve their staging objects and journals; unrelated journals are not scanned on admission.
+
+Fake-server lifecycle and content-store checks pass. Real object APIs, endpoint authorization, bundle capture, complete family verdicts, cancellation, durable replay retention and resource enforcement require confirmation against the real service. See the [embedding boundary](embedding.md#aruna-execution-boundary).

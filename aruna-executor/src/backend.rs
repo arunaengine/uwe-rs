@@ -251,7 +251,14 @@ impl Backend for ArunaBackend {
                 ));
             }
         };
-        let bytes = self.objects.read(object, MAX_BUNDLE).await?;
+        let bytes = tokio::select! {
+            result = self.objects.read(object, MAX_BUNDLE) => result?,
+            () = cancel.cancelled() => {
+                journal.cancel_pending = true;
+                save(&record, &journal)?;
+                return Err(ExecutorError::Cancelled);
+            }
+        };
         if bytes.len() as u64 != object.size || bytes.len() as u64 > MAX_BUNDLE {
             return Err(unresolved(
                 "result bundle size disagrees with its immutable object",
@@ -264,6 +271,13 @@ impl Backend for ArunaBackend {
         let result = tokio::task::spawn_blocking(move || collect(&bytes, &directory))
             .await
             .map_err(|error| std::io::Error::other(error.to_string()))?;
+        let result = if cancel.is_cancelled() {
+            journal.cancel_pending = true;
+            save(&record, &journal)?;
+            Err(ExecutorError::Cancelled)
+        } else {
+            result
+        };
         if result.is_err() {
             let _ = std::fs::remove_dir_all(&root);
         }

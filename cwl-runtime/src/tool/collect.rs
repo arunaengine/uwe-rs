@@ -290,6 +290,14 @@ impl Collector<'_> {
         for (staged, (original, directory)) in &self.pending.staged {
             if (absolute == *staged || (*directory && absolute.starts_with(&format!("{staged}/"))))
                 && staged.len() >= longest
+                && !self.outcome.files.iter().any(|file| {
+                    absolute
+                        == format!(
+                            "{}/{}",
+                            self.pending.outdir,
+                            file.path.trim_end_matches('/')
+                        )
+                })
             {
                 longest = staged.len();
                 mapped = Some(join_location(

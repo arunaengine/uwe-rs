@@ -237,6 +237,49 @@ fn read_fixture(fixture: &Path) -> BTreeMap<String, String> {
         .collect()
 }
 
+fn failed_document_keys(relative: &str, text: &str) -> Vec<String> {
+    let indices: Vec<usize> = argo_parser::parse_documents(text)
+        .unwrap_or_default()
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| {
+            node.get("apiVersion")
+                .and_then(argo_parser::Node::as_str)
+                .is_some_and(|api| api.starts_with("argoproj.io/"))
+                && matches!(
+                    node.get("kind").and_then(argo_parser::Node::as_str),
+                    Some(
+                        "Workflow"
+                            | "WorkflowTemplate"
+                            | "ClusterWorkflowTemplate"
+                            | "CronWorkflow"
+                    )
+                )
+        })
+        .map(|(index, _)| index)
+        .collect();
+    if indices.len() <= 1 {
+        return vec![relative.to_owned()];
+    }
+    indices
+        .into_iter()
+        .map(|index| format!("{relative}#{index}"))
+        .collect()
+}
+
+#[test]
+fn failed_files_keep_each_existing_workflow_document_key() {
+    let text = "apiVersion: argoproj.io/v1alpha1\nkind: CronWorkflow\nspec: {}\n---\napiVersion: v1\nkind: ConfigMap\n---\napiVersion: argoproj.io/v1alpha1\nkind: WorkflowTemplate\nspec: {entrypoints: invalid}\n";
+    assert_eq!(
+        failed_document_keys("workflow.yaml", text),
+        ["workflow.yaml#0", "workflow.yaml#2"]
+    );
+    assert_eq!(
+        failed_document_keys("workflow.yaml", "invalid: ["),
+        ["workflow.yaml"]
+    );
+}
+
 fn run_test_workflows() {
     let root =
         PathBuf::from(std::env::var("ARGO_TEST_WORKFLOWS").expect("ARGO_TEST_WORKFLOWS is set"));
@@ -282,12 +325,14 @@ fn run_test_workflows() {
                     // A file that does not load counts when it looks like it holds Argo documents.
                     let text = std::fs::read_to_string(&file).unwrap_or_default();
                     if text.contains("apiVersion: argoproj.io/") {
-                        total += 1;
                         let message = one_line(&error, &root.to_string_lossy());
                         if workflows.verbose {
                             println!("{relative} 1 {message}");
                         }
-                        outcomes.insert(relative.clone(), format!("1 {message}"));
+                        for key in failed_document_keys(&relative, &text) {
+                            total += 1;
+                            outcomes.insert(key, format!("1 {message}"));
+                        }
                     }
                     continue;
                 }

@@ -96,7 +96,7 @@ fn locked(folder: &Path, text: &str) -> Result<Vec<String>, LockError> {
 const CHANNELS: &str = "channels:\n  - conda-forge\n  - bioconda\n";
 
 #[test]
-fn repodata_load_rejects_paths_outside_its_folder() {
+fn rejects_repodata_escape() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     for channel in ["../outside", "/outside", "pkgs//main"] {
         let error = Index::load(folder.path(), &[channel.to_owned()], "linux-64")
@@ -127,7 +127,7 @@ fn repodata_load_rejects_paths_outside_its_folder() {
 }
 
 #[test]
-fn repodata_load_accepts_compound_channel_paths() {
+fn accepts_compound_channels() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     write(
         folder.path(),
@@ -141,7 +141,7 @@ fn repodata_load_accepts_compound_channel_paths() {
 }
 
 #[test]
-fn environments_get_the_newest_packages_that_fit() {
+fn selects_newest_packages() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     channels(folder.path());
     let packages = locked(
@@ -174,7 +174,7 @@ fn environments_get_the_newest_packages_that_fit() {
 }
 
 #[test]
-fn a_lock_names_its_packages_by_address_and_digest() {
+fn binds_package_digests() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     channels(folder.path());
     let environment =
@@ -204,7 +204,7 @@ fn a_lock_names_its_packages_by_address_and_digest() {
 }
 
 #[test]
-fn what_cannot_be_locked_says_why() {
+fn explains_lock_failures() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     channels(folder.path());
     let error = locked(
@@ -229,7 +229,7 @@ fn what_cannot_be_locked_says_why() {
 }
 
 #[test]
-fn bracket_package_constraints_are_enforced() {
+fn enforces_bracket_constraints() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let mut user = package("numpy-user", "1.0", "0", &["numpy"]);
     user.1["constrains"] = json!(["numpy[version='>=1.2']"]);
@@ -262,7 +262,7 @@ fn bracket_package_constraints_are_enforced() {
 }
 
 #[test]
-fn negated_wildcard_constraints_exclude_matching_versions() {
+fn excludes_negated_versions() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let mut user = package("numpy-user", "1.0", "0", &["numpy"]);
     user.1["constrains"] = json!(["numpy !=1.2.*"]);
@@ -293,7 +293,7 @@ fn negated_wildcard_constraints_exclude_matching_versions() {
 }
 
 #[test]
-fn channel_requirements_apply_to_selected_packages_and_constraints() {
+fn enforces_channel_requirements() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let mut user = package("foo-user", "1.0", "0", &["foo"]);
     user.1["constrains"] = json!(["B::foo"]);
@@ -327,7 +327,7 @@ fn channel_requirements_apply_to_selected_packages_and_constraints() {
 }
 
 #[test]
-fn virtual_glibc_versions_drive_dependency_backtracking() {
+fn backtracks_virtual_dependencies() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     channels(folder.path());
     let environment = Environment::parse(&format!("{CHANNELS}dependencies:\n  - libzlib\n"))
@@ -358,7 +358,7 @@ fn virtual_glibc_versions_drive_dependency_backtracking() {
 }
 
 #[test]
-fn virtual_archspec_build_and_cuda_presence_are_authoritative() {
+fn enforces_virtual_capabilities() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     write(
         folder.path(),
@@ -408,7 +408,7 @@ fn virtual_archspec_build_and_cuda_presence_are_authoritative() {
 }
 
 #[test]
-fn virtual_constraints_check_provided_capabilities_without_requiring_absent_ones() {
+fn checks_provided_capabilities() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let mut newer = package("user", "2.0", "0", &[]);
     newer.1["constrains"] = json!(["__glibc >=2.28", "__cuda >=12"]);
@@ -441,7 +441,7 @@ fn virtual_constraints_check_provided_capabilities_without_requiring_absent_ones
 }
 
 #[test]
-fn virtual_lock_identity_distinguishes_known_capabilities_from_legacy_unknown() {
+fn distinguishes_capability_identity() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     channels(folder.path());
     let environment = Environment::parse(&format!("{CHANNELS}dependencies:\n  - pinned\n"))
@@ -484,7 +484,7 @@ fn virtual_lock_identity_distinguishes_known_capabilities_from_legacy_unknown() 
 }
 
 #[test]
-fn flexible_channel_priority_finds_a_valid_lower_channel_package() {
+fn permits_lower_channels() {
     let folder = tempfile::tempdir().unwrap();
     write(
         folder.path(),
@@ -509,7 +509,7 @@ fn flexible_channel_priority_finds_a_valid_lower_channel_package() {
 }
 
 #[test]
-fn pip_requirements_are_refused_before_loading_repodata() {
+fn rejects_pip_requirements() {
     let environment =
         Environment::parse("dependencies:\n  - pip:\n    - requests==2.32\n").unwrap();
     assert!(matches!(
@@ -519,7 +519,7 @@ fn pip_requirements_are_refused_before_loading_repodata() {
 }
 
 #[test]
-fn explicit_subdirectory_and_filename_constraints_are_enforced() {
+fn enforces_package_location() {
     let folder = tempfile::tempdir().unwrap();
     write(
         folder.path(),

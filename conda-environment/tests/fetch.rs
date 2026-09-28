@@ -9,7 +9,7 @@ use serde_json::json;
 use sha2::{Digest as _, Sha256};
 
 #[test]
-fn repodata_transport_uses_expanded_channels_and_preserves_prior_bytes_on_failure() {
+fn preserves_failed_downloads() {
     let folder = tempfile::tempdir().expect("a cache");
     let environment = Environment::parse("channels:\n  - defaults\ndependencies:\n  - foo\n")
         .expect("an environment");
@@ -70,7 +70,7 @@ fn repodata_transport_uses_expanded_channels_and_preserves_prior_bytes_on_failur
 }
 
 #[test]
-fn packages_are_streamed_verified_reused_and_repaired() {
+fn repairs_cached_packages() {
     let folder = tempfile::tempdir().expect("repodata");
     let cache = tempfile::tempdir().expect("package cache");
     let environment =

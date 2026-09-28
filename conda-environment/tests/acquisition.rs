@@ -34,7 +34,7 @@ fn fixture(bytes: &[u8]) -> Lock {
 }
 
 #[test]
-fn https_channels_have_contained_cache_paths() {
+fn contains_channel_paths() {
     let root = std::path::Path::new("/cache");
     let first = repodata_path(root, "https://example.org/channel", "linux-64");
     assert!(first.starts_with(root));
@@ -58,7 +58,7 @@ fn https_channels_have_contained_cache_paths() {
 }
 
 #[tokio::test]
-async fn cached_packages_are_verified_without_network() {
+async fn verifies_cached_packages() {
     let cache = tempfile::tempdir().unwrap();
     let bytes = b"verified package bytes";
     let lock = fixture(bytes);
@@ -93,7 +93,7 @@ async fn cached_packages_are_verified_without_network() {
 
 #[tokio::test]
 #[ignore = "requires HTTPS access to conda-forge; serial repodata and package smoke test"]
-async fn https_repodata_packages_and_offline_cache_reuse() {
+async fn reuses_offline_acquisitions() {
     let cache = tempfile::tempdir().unwrap();
     let acquisition = Acquisition::new(cache.path(), false).unwrap();
     let environment =

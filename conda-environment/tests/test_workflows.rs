@@ -33,7 +33,7 @@ fn environment_files(folder: &Path, found: &mut Vec<PathBuf>) -> std::io::Result
 
 #[test]
 #[ignore = "needs the Snakemake test workflows"]
-fn the_environments_of_the_snakemake_test_workflows_read() {
+fn reads_workflow_environments() {
     let folder = std::env::var_os("SNAKEMAKE_TEST_WORKFLOWS")
         .map(PathBuf::from)
         .or_else(|| {

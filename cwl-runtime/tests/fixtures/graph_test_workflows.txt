@@ -302,7 +302,7 @@ conformance/v1.1/tests/initialworkdir-glob-fullpath.cwl ok 1
 conformance/v1.1/tests/initialworkdirrequirement-docker-out.cwl ok 1
 conformance/v1.1/tests/inline-js.cwl ok 1
 conformance/v1.1/tests/inp_update_wf.cwl ok 2
-conformance/v1.1/tests/inpdir_update_wf.cwl ok 2
+conformance/v1.1/tests/inpdir_update_wf.cwl unsupported: step2: in-place Directory updates are not supported
 conformance/v1.1/tests/io-any-1.cwl ok 1
 conformance/v1.1/tests/io-any-wf-1.cwl ok 1
 conformance/v1.1/tests/io-file-default-wf.cwl ok 1
@@ -419,7 +419,7 @@ conformance/v1.1/tests/timelimit4.cwl ok 1
 conformance/v1.1/tests/timelimit5.cwl ok 0
 conformance/v1.1/tests/tmap-tool.cwl ok 1
 conformance/v1.1/tests/touch.cwl ok 1
-conformance/v1.1/tests/updatedir_inplace.cwl ok 1
+conformance/v1.1/tests/updatedir_inplace.cwl unsupported: updatedir_inplace: in-place Directory updates are not supported
 conformance/v1.1/tests/updateval_inplace.cwl ok 1
 conformance/v1.1/tests/valueFrom-constant.cwl ok 1
 conformance/v1.1/tests/vf-concat.cwl ok 1
@@ -575,7 +575,7 @@ conformance/v1.2/tests/initialworkdir-glob-fullpath.cwl ok 1
 conformance/v1.2/tests/initialworkdirrequirement-docker-out.cwl ok 1
 conformance/v1.2/tests/inline-js.cwl ok 1
 conformance/v1.2/tests/inp_update_wf.cwl ok 2
-conformance/v1.2/tests/inpdir_update_wf.cwl ok 2
+conformance/v1.2/tests/inpdir_update_wf.cwl unsupported: step2: in-place Directory updates are not supported
 conformance/v1.2/tests/io-any-1.cwl ok 1
 conformance/v1.2/tests/io-any-wf-1.cwl ok 1
 conformance/v1.2/tests/io-file-default-wf.cwl ok 1
@@ -765,7 +765,7 @@ conformance/v1.2/tests/timelimit4.cwl ok 1
 conformance/v1.2/tests/timelimit5.cwl ok 0
 conformance/v1.2/tests/tmap-tool.cwl ok 1
 conformance/v1.2/tests/touch.cwl ok 1
-conformance/v1.2/tests/updatedir_inplace.cwl ok 1
+conformance/v1.2/tests/updatedir_inplace.cwl unsupported: updatedir_inplace: in-place Directory updates are not supported
 conformance/v1.2/tests/updateval_inplace.cwl ok 1
 conformance/v1.2/tests/valueFrom-constant.cwl ok 1
 conformance/v1.2/tests/vf-concat.cwl ok 1
@@ -3860,7 +3860,7 @@ realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tool
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/samtools_view_filter.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/snpEff_build_ann.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/snpSift_extract.cwl ok 1
-realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/variation_PE.cwl ok 32
+realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/variation_PE.cwl fail: snpsift_extract[0]: the input `extractFields` is of type string[]?, but its value is the string "CHROM POS ID REF ALT FILTER"
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/GATK/GATK-ApplyBQSR.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/GATK/GATK-BaseRecalibrator.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/GATK/GATK-CNNScoreVariants.cwl ok 1

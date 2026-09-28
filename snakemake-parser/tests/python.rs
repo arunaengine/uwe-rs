@@ -111,7 +111,7 @@ fn errors_carry_positions() {
 }
 
 #[test]
-fn an_equals_sign_in_a_condition_reads_as_cpython_words_it() {
+fn rejects_conditional_assignment() {
     // Snakemake's test_issue1256, whose SyntaxError is at line 9, as Python 3 puts it.
     let source = "rule all:\n    input:\n        'done.txt',\n\nrule trim:\n    output:\n        \
                   done.txt,\n    run:\n        if 1 = 2:\n            print('foo')\n";

@@ -1,8 +1,8 @@
-# Why each CWL document that fails in graph_test_workflows.txt cannot run, and how cwltool
-# fails on it, recorded by graph_evidence.py with cwltool 3.3.20260925135507. Each block
+# Why each CWL document that fails in graph_test_workflows.txt cannot run, and what cwltool
+# reports, recorded by graph_evidence.py with cwltool 3.3.20260925135507. Each block
 # gives the documents, then `=`, the kind (`invalid`, `missing` or `unsupported (decision
 # N)`) and why in one plain sentence, then what cwltool was asked (`$`) and the first lines
-# of its error (`>`).
+# of its result (`>`).
 
 conformance/v1.0/v1.0/v1.0/fail-unspecified-input.cwl
 conformance/v1.1/tests/fail-unspecified-input.cwl
@@ -305,3 +305,19 @@ realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/
 $ cwltool --no-container realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/gatk_sortvcf.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Missing required secondary file 'calls.vcf.tbi' from file object: {
+
+conformance/v1.1/tests/inpdir_update_wf.cwl
+conformance/v1.1/tests/updatedir_inplace.cwl
+conformance/v1.2/tests/inpdir_update_wf.cwl
+conformance/v1.2/tests/updatedir_inplace.cwl
+= unsupported (decision 2): in-place Directory updates are not supported, as recorded in docs/support.md
+$ cwltool --validate --skip-schemas conformance/v1.2/tests/updatedir_inplace.cwl
+> conformance/v1.2/tests/updatedir_inplace.cwl is valid CWL.
+
+realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/variation_PE.cwl
+= invalid: the snpsift_extract tool gives its string[]? input extractFields a string default
+$ cwltool --no-container realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/snpSift_extract.cwl <job>
+> ERROR Workflow error, try again with --debug for more information:
+> Invalid job input record:
+> <tmp>/job.json:1:1: the 'extractFields' field is not valid because
+> value is a DoubleQuotedScalarString, expected null or array of <string>

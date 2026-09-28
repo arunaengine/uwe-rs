@@ -1,8 +1,8 @@
 #!/usr/bin/env -S uv run -q --with cwltool==3.3.20260925135507 python3
-# Records how cwltool fails on the CWL documents that fail in graph_test_workflows.txt, into
+# Records cwltool evidence for the CWL documents that fail in graph_test_workflows.txt, into
 # graph_evidence.txt next to this script. The graph test-workflows test checks that every
-# document that fails there is listed here, so a document may only fail when cwltool fails on it
-# too.
+# document that fails there is listed here. Invalid documents fail in cwltool too; intentional
+# unsupported features are recorded with cwltool validation.
 #
 # Run it from the repository root: cwl-runtime/tests/fixtures/graph_evidence.py
 # It reads the test workflows of `just cwl-test-workflows` (CWL_TEST_WORKFLOWS) and the data
@@ -48,8 +48,9 @@ def directory(path):
 # `run` runs cwltool on a document with a job (a path in the test workflows, or values whose
 # files are made empty); `collect` loads a tool with cwltool and collects one output from an
 # empty output directory, as after a run that made nothing; `evaluate` evaluates one expression
-# of a document with cwltool's evaluator, for steps of workflows that cwltool will not run. The
-# kind of a case is `invalid` (the documents are broken) unless it gives `kind`: `missing` or
+# of a document with cwltool's evaluator, for steps of workflows that cwltool will not run.
+# `validate` checks a document whose feature iunctus intentionally leaves unsupported.
+# The kind of a case is `invalid` (the documents are broken) unless it gives `kind`: `missing` or
 # `unsupported (decision N)`.
 CASES = [
     {
@@ -432,6 +433,25 @@ CASES = [
         },
         "documents": [SOMATIC + "sub_workflows/kfdrc_lancet_sub_wf.cwl"],
     },
+    {
+        "kind": "unsupported (decision 2)",
+        "why": "in-place Directory updates are not supported, as recorded in docs/support.md",
+        "validate": "conformance/v1.2/tests/updatedir_inplace.cwl",
+        "documents": [
+            "conformance/v1.1/tests/inpdir_update_wf.cwl",
+            "conformance/v1.1/tests/updatedir_inplace.cwl",
+            "conformance/v1.2/tests/inpdir_update_wf.cwl",
+            "conformance/v1.2/tests/updatedir_inplace.cwl",
+        ],
+    },
+    {
+        "why": "the snpsift_extract tool gives its string[]? input extractFields a string default",
+        "run": "realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/snpSift_extract.cwl",
+        "job": {"input_vcf": file("calls.vcf")},
+        "documents": [
+            "realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/variation_PE.cwl"
+        ],
+    },
 ]
 
 
@@ -607,17 +627,24 @@ def main():
         sys.exit("cwltool needs Node.js for JavaScript")
     os.chdir(TEST_WORKFLOWS)
     lines = [
-        "# Why each CWL document that fails in graph_test_workflows.txt cannot run, and how cwltool",
-        "# fails on it, recorded by graph_evidence.py with cwltool 3.3.20260925135507. Each block",
+        "# Why each CWL document that fails in graph_test_workflows.txt cannot run, and what cwltool",
+        "# reports, recorded by graph_evidence.py with cwltool 3.3.20260925135507. Each block",
         "# gives the documents, then `=`, the kind (`invalid`, `missing` or `unsupported (decision",
         "# N)`) and why in one plain sentence, then what cwltool was asked (`$`) and the first lines",
-        "# of its error (`>`).",
+        "# of its result (`>`).",
     ]
     for case in CASES:
         with tempfile.TemporaryDirectory() as folder:
             work = Path(folder)
             if "run" in case:
                 shown, output = run(case, work)
+            elif "validate" in case:
+                shown = ["cwltool --validate --skip-schemas", case["validate"]]
+                result = subprocess.run(
+                    ["cwltool", "--validate", "--skip-schemas", str(document(case["validate"], work))],
+                    capture_output=True, text=True, timeout=600,
+                )
+                output = clean(result.stderr + result.stdout, work)
             elif "collect" in case:
                 shown, output = collect(case, work)
             else:

@@ -72,7 +72,7 @@ fn data(html: &str) -> Value {
 }
 
 #[test]
-fn the_report_is_one_file_with_the_page_and_the_data_of_the_run() {
+fn embeds_report_data() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let database = record(directory.path());
     assert_eq!(report(&database, "no-such-run").expect("reads"), None);

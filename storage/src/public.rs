@@ -137,7 +137,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn listings_give_keys_and_prefixes() {
+    fn lists_object_prefixes() {
         let text = "<ListBucketResult><Contents><Key>a/b.csv</Key></Contents>\
                     <CommonPrefixes><Prefix>a/c&amp;d/</Prefix></CommonPrefixes></ListBucketResult>";
         assert_eq!(elements(text, "Key"), ["a/b.csv"]);

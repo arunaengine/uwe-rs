@@ -215,7 +215,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn addresses_name_server_port_and_path() {
+    fn parses_server_address() {
         let found = parts("ftp://ftp.ebi.ac.uk/pub/a%20b.txt").expect("an address");
         assert_eq!(
             (found.host.as_str(), found.port, found.path.as_str()),

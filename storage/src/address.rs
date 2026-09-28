@@ -183,7 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn object_locations_separate_encoded_keys_and_versions() {
+    fn preserves_object_selectors() {
         let selected = object_location("s3://bucket/a%3Fb%2525?versionId=v%2F1")
             .expect("supported selector")
             .expect("an object location");
@@ -202,7 +202,7 @@ mod tests {
     }
 
     #[test]
-    fn passwords_are_hidden_in_messages() {
+    fn redacts_address_passwords() {
         assert_eq!(
             redacted("ftp://me:pass@host/a:b"),
             "ftp://me:[secret]@host/a:b"
@@ -213,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn prefixes_end_at_names() {
+    fn prefixes_match_boundaries() {
         assert!(serves("s3://lab", "s3://lab/a.txt"));
         assert!(serves("s3://lab", "s3://lab"));
         assert!(!serves("s3://lab", "s3://lab-data/a.txt"));
@@ -224,7 +224,7 @@ mod tests {
     }
 
     #[test]
-    fn public_files_have_web_addresses() {
+    fn resolves_web_addresses() {
         assert_eq!(
             public_url("s3://ngi-igenomes/test-data/x.zip").as_deref(),
             Some("https://ngi-igenomes.s3.amazonaws.com/test-data/x.zip")

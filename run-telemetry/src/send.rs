@@ -215,7 +215,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_trickling_collector_cannot_extend_the_total_deadline() {
+    async fn enforces_total_deadline() {
         let endpoint = collector(true, "200 OK", 0, 0);
         let requests = [Request {
             resource_spans: Vec::new(),
@@ -237,7 +237,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn oversized_responses_are_bounded_without_waiting_for_their_end() {
+    async fn bounds_collector_responses() {
         let requests = [Request {
             resource_spans: Vec::new(),
         }];
@@ -262,7 +262,7 @@ mod tests {
     }
 
     #[test]
-    fn traces_go_below_the_base_address() {
+    fn appends_traces_path() {
         assert_eq!(
             traces_address("http://localhost:4318"),
             "http://localhost:4318/v1/traces"
@@ -275,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn partial_successes_name_rejected_spans() {
+    fn reports_rejected_spans() {
         assert_eq!(rejected(""), 0);
         assert_eq!(rejected("{}"), 0);
         assert_eq!(rejected(r#"{"partialSuccess":{"rejectedSpans":"3"}}"#), 3);

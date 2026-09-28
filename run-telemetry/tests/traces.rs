@@ -87,7 +87,7 @@ fn text<'a>(span: &'a Span, key: &str) -> Option<&'a Value> {
 }
 
 #[test]
-fn a_run_is_a_trace_of_its_tasks_and_attempts() {
+fn traces_task_attempts() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     record(&path);
@@ -165,7 +165,7 @@ fn requests_of(database: &Database, run: &str) -> Option<Vec<Request>> {
 }
 
 #[test]
-fn written_traces_redact_url_passwords_without_changing_private_records() {
+fn redacts_trace_passwords() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     let private = "https://user:password@host/path";
@@ -244,7 +244,7 @@ fn written_traces_redact_url_passwords_without_changing_private_records() {
 }
 
 #[test]
-fn traces_go_to_an_otlp_endpoint_with_their_headers() {
+fn sends_configured_headers() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     record(&path);

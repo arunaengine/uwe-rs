@@ -352,7 +352,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ids_are_hex_of_their_size_and_stay_the_same() {
+    fn ids_stay_stable() {
         let ids = Ids::of("1a0f-2b");
         assert_eq!(ids.trace.len(), 32);
         assert_eq!(ids.run_span().len(), 16);
@@ -362,7 +362,7 @@ mod tests {
     }
 
     #[test]
-    fn times_are_nanoseconds_as_text() {
+    fn encodes_nanosecond_text() {
         assert_eq!(nanoseconds(1_700_000_000_123), "1700000000123000000");
         assert_eq!(nanoseconds(-5), "0");
     }

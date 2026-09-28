@@ -265,7 +265,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn lists_and_removes_objects() {
+    async fn lists_removes_objects() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let store = Store::local(root.path()).expect("a store");
         let digest = store.put_content("data".into()).await.expect("stores");
@@ -302,7 +302,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn marks_the_last_use_of_an_entry() {
+    async fn marks_entry_use() {
         let store = Store::memory().expect("a store");
         let key = Digest::sha256(b"key");
         store

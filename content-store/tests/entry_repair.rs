@@ -31,7 +31,7 @@ async fn repair(store: &Store) {
 }
 
 #[tokio::test]
-async fn stale_entries_are_repaired_without_deleting_successors() {
+async fn repair_preserves_successors() {
     let root = tempfile::tempdir().unwrap();
     for shared in [
         Store::memory().unwrap(),
@@ -45,7 +45,7 @@ async fn stale_entries_are_repaired_without_deleting_successors() {
 }
 
 #[tokio::test]
-async fn local_eviction_does_not_invalidate_shared_entry() {
+async fn eviction_preserves_shared() {
     let root = tempfile::tempdir().unwrap();
     let store =
         Store::layered(Store::local(root.path()).unwrap(), Store::memory().unwrap()).unwrap();
@@ -61,7 +61,7 @@ async fn local_eviction_does_not_invalidate_shared_entry() {
 }
 
 #[tokio::test]
-async fn mismatched_front_does_not_invalidate_shared_repair() {
+async fn ignores_mismatched_front() {
     let root = tempfile::tempdir().unwrap();
     let shared = Store::memory().unwrap();
     let store = Store::layered(Store::local(root.path()).unwrap(), shared.clone()).unwrap();
@@ -85,7 +85,7 @@ async fn mismatched_front_does_not_invalidate_shared_repair() {
 }
 
 #[tokio::test]
-async fn shared_repair_works_without_a_front_copy() {
+async fn repairs_shared_only() {
     let root = tempfile::tempdir().unwrap();
     let shared = Store::memory().unwrap();
     let key = Digest::sha256(b"uncached task");
@@ -114,7 +114,7 @@ async fn shared_repair_works_without_a_front_copy() {
 }
 
 #[tokio::test]
-async fn nonconditional_remote_recovery_fails_without_deleting_entry() {
+async fn requires_conditional_recovery() {
     let root = tempfile::tempdir().unwrap();
     let operator = opendal::Operator::new(
         opendal::services::Fs::default().root(root.path().to_str().unwrap()),
@@ -136,7 +136,7 @@ async fn nonconditional_remote_recovery_fails_without_deleting_entry() {
 }
 
 #[tokio::test]
-async fn local_file_identity_retains_an_identical_byte_successor() {
+async fn preserves_identical_successors() {
     let root = tempfile::tempdir().unwrap();
     let store = Store::local(root.path()).unwrap();
     let key = Digest::sha256(b"local entry");

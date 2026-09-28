@@ -7,7 +7,7 @@ use content_store::{Store, StoreError, layout};
 use task_model::Digest;
 
 #[tokio::test]
-async fn bounded_content_preserves_targets_and_does_not_cache_oversized_bytes() {
+async fn rejects_oversized_content() {
     let front = tempfile::tempdir().unwrap();
     let shared = Store::memory().unwrap();
     let digest = shared
@@ -36,7 +36,7 @@ async fn bounded_content_preserves_targets_and_does_not_cache_oversized_bytes() 
 }
 
 #[tokio::test]
-async fn bounded_content_still_verifies_digest_and_accepts_empty_bytes() {
+async fn verifies_bounded_content() {
     let folder = tempfile::tempdir().unwrap();
     let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
     let store = Store::remote(operator.clone(), "s3://shared/cache").unwrap();
@@ -60,7 +60,7 @@ async fn bounded_content_still_verifies_digest_and_accepts_empty_bytes() {
 }
 
 #[tokio::test]
-async fn materializes_remote_content_larger_than_one_part() {
+async fn materializes_multiple_parts() {
     let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
     let store = Store::remote(operator, "s3://shared/cache").unwrap();
     let content: Vec<u8> = (0..9 * 1024 * 1024).map(|i| (i % 251) as u8).collect();
@@ -79,7 +79,7 @@ async fn materializes_remote_content_larger_than_one_part() {
 }
 
 #[tokio::test]
-async fn local_and_shared_content_are_materialized_and_shared_content_is_cached() {
+async fn materializes_caches_shared() {
     let folder = tempfile::tempdir().unwrap();
     for shared in [
         Store::memory().unwrap(),
@@ -109,7 +109,7 @@ async fn local_and_shared_content_are_materialized_and_shared_content_is_cached(
 }
 
 #[tokio::test]
-async fn corrupt_content_preserves_targets_and_leaves_no_temporary_files() {
+async fn corruption_preserves_target() {
     let folder = tempfile::tempdir().unwrap();
     let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
     let store = Store::remote(operator.clone(), "s3://shared/cache").unwrap();
@@ -133,7 +133,7 @@ async fn corrupt_content_preserves_targets_and_leaves_no_temporary_files() {
 }
 
 #[tokio::test]
-async fn corrupt_shared_content_is_not_cached() {
+async fn rejects_corrupt_shared() {
     let folder = tempfile::tempdir().unwrap();
     let shared_folder = tempfile::tempdir().unwrap();
     let shared = Store::local(shared_folder.path()).unwrap();
@@ -154,7 +154,7 @@ async fn corrupt_shared_content_is_not_cached() {
 }
 
 #[tokio::test]
-async fn corrupt_local_content_does_not_fall_back_to_a_healthy_shared_copy() {
+async fn rejects_corrupt_local() {
     let folder = tempfile::tempdir().unwrap();
     let shared = Store::memory().unwrap();
     let store = Store::layered(Store::local(folder.path()).unwrap(), shared).unwrap();
@@ -173,7 +173,7 @@ async fn corrupt_local_content_does_not_fall_back_to_a_healthy_shared_copy() {
 }
 
 #[tokio::test]
-async fn missing_content_preserves_an_existing_target() {
+async fn missing_preserves_target() {
     let folder = tempfile::tempdir().unwrap();
     let target = folder.path().join("target");
     std::fs::write(&target, b"old").unwrap();
@@ -189,7 +189,7 @@ async fn missing_content_preserves_an_existing_target() {
 }
 
 #[tokio::test]
-async fn failed_publication_preserves_target_and_cleans_temporary_file() {
+async fn publication_preserves_target() {
     let folder = tempfile::tempdir().unwrap();
     let target = folder.path().join("target");
     std::fs::create_dir(&target).unwrap();
@@ -202,7 +202,7 @@ async fn failed_publication_preserves_target_and_cleans_temporary_file() {
 }
 
 #[tokio::test]
-async fn empty_content_can_be_materialized() {
+async fn materializes_empty_content() {
     let folder = tempfile::tempdir().unwrap();
     let target = folder.path().join("target");
     let store = Store::memory().unwrap();
@@ -212,7 +212,7 @@ async fn empty_content_can_be_materialized() {
 }
 
 #[tokio::test]
-async fn concurrent_materializations_use_separate_temporary_files() {
+async fn isolates_concurrent_temporaries() {
     let folder = tempfile::tempdir().unwrap();
     let store = Store::memory().unwrap();
     let digest = store

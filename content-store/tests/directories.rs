@@ -7,7 +7,7 @@ use content_store::{Store, layout};
 use task_model::{Digest, Tree, TreeEntry};
 
 #[tokio::test]
-async fn descriptors_preserve_empty_and_link_manifests_without_touching_user_members() {
+async fn preserves_directory_descriptors() {
     let folder = tempfile::tempdir().unwrap();
     let local = Store::local(folder.path()).unwrap();
     let shared = Store::memory().unwrap();
@@ -58,7 +58,7 @@ async fn descriptors_preserve_empty_and_link_manifests_without_touching_user_mem
 }
 
 #[tokio::test]
-async fn legacy_locations_have_no_descriptor_and_corrupt_descriptors_fail_explicitly() {
+async fn rejects_corrupt_descriptors() {
     let folder = tempfile::tempdir().unwrap();
     let store = Store::local(folder.path()).unwrap();
     let location = "runs/run/task/1/work/directory";
@@ -71,7 +71,7 @@ async fn legacy_locations_have_no_descriptor_and_corrupt_descriptors_fail_explic
 }
 
 #[tokio::test]
-async fn concurrent_layered_downloads_publish_complete_files_without_leftover_parts() {
+async fn publishes_complete_downloads() {
     let folder = tempfile::tempdir().unwrap();
     let shared = Store::memory().unwrap();
     let body = Bytes::from(vec![b'x'; 1024 * 1024]);
@@ -103,7 +103,7 @@ async fn concurrent_layered_downloads_publish_complete_files_without_leftover_pa
 }
 
 #[tokio::test]
-async fn child_first_hydration_returns_the_complete_manifest_without_replacing_user_members() {
+async fn hydrates_complete_manifest() {
     use std::os::unix::fs::PermissionsExt;
     let folder = tempfile::tempdir().unwrap();
     let shared = Store::memory().unwrap();
@@ -178,7 +178,7 @@ async fn child_first_hydration_returns_the_complete_manifest_without_replacing_u
 }
 
 #[tokio::test]
-async fn failed_member_transfer_does_not_publish_a_directory_and_retry_is_complete() {
+async fn retries_failed_members() {
     let folder = tempfile::tempdir().unwrap();
     let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
     let shared = Store::remote(operator.clone(), "s3://shared/cache").unwrap();
@@ -235,7 +235,7 @@ async fn failed_member_transfer_does_not_publish_a_directory_and_retry_is_comple
 }
 
 #[tokio::test]
-async fn concurrent_directory_readers_only_receive_the_same_complete_tree() {
+async fn shares_complete_trees() {
     let folder = tempfile::tempdir().unwrap();
     let shared = Store::memory().unwrap();
     let content = Bytes::from(vec![b'x'; 1024 * 1024]);
@@ -296,7 +296,7 @@ async fn concurrent_directory_readers_only_receive_the_same_complete_tree() {
 }
 
 #[tokio::test]
-async fn manifests_reject_outside_links_cycles_conflicting_paths_and_unlisted_members() {
+async fn rejects_invalid_manifests() {
     let folder = tempfile::tempdir().unwrap();
     let shared = Store::memory().unwrap();
     let store = Store::layered(Store::local(folder.path()).unwrap(), shared.clone()).unwrap();
@@ -341,7 +341,7 @@ async fn manifests_reject_outside_links_cycles_conflicting_paths_and_unlisted_me
 }
 
 #[tokio::test]
-async fn legacy_child_first_remote_and_local_directories_are_also_copied_privately() {
+async fn copies_legacy_directories() {
     for local_shared in [false, true] {
         let folder = tempfile::tempdir().unwrap();
         let shared_folder = tempfile::tempdir().unwrap();
@@ -509,7 +509,7 @@ mod authority {
     }
 
     #[tokio::test]
-    async fn existing_regular_files_need_no_shared_access_while_offline() {
+    async fn offline_reads_local() {
         let folder = tempfile::tempdir().unwrap();
         let front = Store::local(folder.path()).unwrap();
         let digest = front
@@ -539,7 +539,7 @@ mod authority {
     }
 
     #[tokio::test]
-    async fn absent_or_failed_authoritative_trees_never_accept_a_partial_front_root() {
+    async fn rejects_partial_fronts() {
         for (fail_list, folder_error) in [
             (false, ErrorKind::NotFound),
             (false, ErrorKind::Unexpected),

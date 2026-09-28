@@ -107,7 +107,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn failed_copies_and_moves_clean_owned_temporaries_and_preserve_previous_data() {
+    async fn failure_preserves_data() {
         let folder = tempfile::tempdir().unwrap();
         let missing = folder.path().join("missing");
         let target = folder.path().join("target");
@@ -126,7 +126,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn copies_and_symlink_moves_preserve_source_permissions() {
+    async fn preserves_source_permissions() {
         let folder = tempfile::tempdir().unwrap();
         let source = folder.path().join("source");
         std::fs::write(&source, b"executable").unwrap();
@@ -148,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    fn dropping_a_queued_copy_does_not_abandon_its_temporary_owner() {
+    fn owns_cancelled_copy() {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .max_blocking_threads(1)

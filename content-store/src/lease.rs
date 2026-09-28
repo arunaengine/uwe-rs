@@ -703,7 +703,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn conditional_lease_reads_refresh_versions_without_ignoring_real_loss() {
+    async fn refreshes_lease_versions() {
         for failures in [0, 1, 3] {
             let (lease, service, _stopped) = conditional_lease(
                 "owner",
@@ -752,7 +752,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn one_holder_at_a_time_in_a_local_store() {
+    async fn excludes_local_holders() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let store = Store::local(root.path()).expect("a store");
         let holder = Holder::new("run1", "P-1");
@@ -775,7 +775,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_object_lease_that_ended_is_taken_over() {
+    async fn reclaims_expired_leases() {
         let store = Store::memory().expect("a store");
         let holder = Holder::new("run1", "P-1");
         let first = store.try_lease("tasks/default/ab", &holder).await;

@@ -487,7 +487,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn failed_download_publication_cleans_its_owned_temporary_file() {
+    async fn cleans_failed_publication() {
         let operator = Operator::new(opendal::services::Memory::default()).unwrap();
         operator
             .write("content", Bytes::from_static(b"new"))
@@ -503,7 +503,7 @@ mod tests {
     }
 
     #[test]
-    fn cancelled_private_transfer_cleans_its_tree_while_a_file_write_is_queued() {
+    fn cancellation_cleans_tree() {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .max_blocking_threads(1)

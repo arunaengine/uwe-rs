@@ -94,7 +94,7 @@ fn ignores_input_order() {
 }
 
 #[test]
-fn normalized_input_overlays_include_their_order_in_the_key() {
+fn overlay_order_counts() {
     for (parent, child) in [
         ("x", "./x"),
         ("d", "d/x"),
@@ -122,7 +122,7 @@ fn normalized_input_overlays_include_their_order_in_the_key() {
 }
 
 #[test]
-fn disjoint_normalized_destinations_preserve_the_format_two_key() {
+fn disjoint_preserves_encoding() {
     for paths in [["d", "d-other/x"], ["/d", "d/x"], ["./a", "b//x"]] {
         let mut spec = fastqc();
         spec.inputs = paths.iter().map(|path| input(path, path)).collect();
@@ -205,7 +205,7 @@ fn rejects_invalid_specs() {
 }
 
 #[test]
-fn checks_environment_names_before_execution() {
+fn rejects_environment_names() {
     for name in ["", "1_NAME", "BAD-NAME", "NAME=value\nprintf injected"] {
         let mut spec = fastqc();
         spec.environment
@@ -266,7 +266,7 @@ fn with_containers() -> TaskSpec {
 }
 
 #[test]
-fn containers_count_and_are_checked() {
+fn validates_container_specs() {
     let base = with_containers().cache_key().expect("valid specification");
     assert_ne!(Some(&base), fastqc().cache_key().ok().as_ref());
     let changes: Vec<fn(&mut TaskSpec)> = vec![

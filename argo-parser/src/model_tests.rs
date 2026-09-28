@@ -12,7 +12,7 @@ fn node(text: &str) -> Node {
 }
 
 #[test]
-fn any_strings_take_numbers_and_booleans() {
+fn coerces_scalar_strings() {
     let source = "name: t\ninputs:\n  parameters:\n  - {name: a, value: 1}\n  - {name: b, default: false}\n  - {name: c, value: 1.0, enum: [0.5, x, 2]}\n";
     let (template, unknown) = decode::<Template>(&node(source)).expect("decodes");
     assert!(unknown.is_empty());
@@ -29,7 +29,7 @@ fn any_strings_take_numbers_and_booleans() {
 }
 
 #[test]
-fn floats_print_like_go_json() {
+fn floats_match_go() {
     assert_eq!(json_float(1.0), "1");
     assert_eq!(json_float(0.25), "0.25");
     assert_eq!(json_float(1e21), "1e+21");
@@ -38,7 +38,7 @@ fn floats_print_like_go_json() {
 }
 
 #[test]
-fn decodes_steps_and_dags() {
+fn decodes_template_graphs() {
     let source = "entrypoint: main\ntemplates:\n- name: main\n  steps:\n  - - name: a\n      template: t\n      withItems: [1, {k: v}]\n    - name: b\n      templateRef: {name: lib, template: x, clusterScope: true}\n- name: d\n  dag:\n    failFast: false\n    tasks:\n    - {name: c, template: t, depends: a.Succeeded, continueOn: {failed: true}}\n";
     let (spec, unknown) = decode::<WorkflowSpec>(&node(source)).expect("decodes");
     assert!(unknown.is_empty(), "{unknown:?}");
@@ -54,7 +54,7 @@ fn decodes_steps_and_dags() {
 }
 
 #[test]
-fn decodes_garbage_collection_and_current_resource_fields() {
+fn decodes_resource_fields() {
     let (spec, unknown) = decode::<WorkflowSpec>(&node(
         "podGC: {strategy: OnPodCompletion}\nartifactGC: {strategy: OnWorkflowCompletion}\nvolumeClaimGC: {strategy: OnWorkflowSuccess}\nresourceClaims: [{name: device, resourceClaimName: device}]\ntemplates:\n- name: main\n  container: {image: alpine, restartPolicyRules: []}\n  outputs:\n    artifacts: [{name: result, path: /out, artifactGC: {strategy: Never}}]\n",
     ))
@@ -94,7 +94,7 @@ fn normalizes_removed_fields() {
 }
 
 #[test]
-fn decodes_workflow_level_executor_plugins() {
+fn decodes_executor_plugins() {
     let source = "entrypoint: main\nexecutorPlugins:\n- metadata: {name: hello}\n  spec:\n    sidecar:\n      automountServiceAccountToken: true\n      container:\n        name: hello-executor-plugin\n        image: python:alpine\n        command: [python, -c]\n        args: [serve]\n        ports: [{containerPort: 4355}]\n";
     let (spec, unknown) = decode::<WorkflowSpec>(&node(source)).expect("decodes");
     assert!(unknown.is_empty(), "{unknown:?}");
@@ -138,7 +138,7 @@ fn decodes_leaf_templates() {
 }
 
 #[test]
-fn normalizes_cron_workflows_and_template_locks() {
+fn normalizes_cron_locks() {
     let mut document = node(
         "kind: CronWorkflow\nspec:\n  schedule: '0 * * * *'\n  schedules: ['5 * * * *']\n  workflowSpec:\n    entrypoint: main\n    templates:\n    - name: main\n      synchronization: {semaphore: {configMapKeyRef: {name: c, key: k}}}\n      container: {image: alpine}\n",
     );

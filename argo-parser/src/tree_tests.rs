@@ -98,7 +98,7 @@ fn expands_aliases() {
 }
 
 #[test]
-fn explicit_keys_win_over_merged_keys() {
+fn explicit_keys_win() {
     let value = |text: &str| {
         let node = document(text);
         node.get("merged")
@@ -160,7 +160,7 @@ fn reads_all_documents() {
 }
 
 #[test]
-fn reads_quoted_scalars_indented_like_their_key() {
+fn reads_indented_quotes() {
     let text = "a:\n  args: [\"\n  echo {{x}};\n  echo \\\"done\\\"\n  \"]\n  b: 'x\n  y'\n";
     let node = parse_yaml(text)
         .expect("go-yaml reads it")

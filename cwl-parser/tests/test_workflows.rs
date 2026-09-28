@@ -185,7 +185,7 @@ fn normalize(path: &Path) -> PathBuf {
 }
 
 #[test]
-fn every_rejected_document_has_a_record_with_its_kind() {
+fn rejections_have_records() {
     let reasons = records::reasons(REJECTED);
     assert!(reasons.len() > 200, "{} records", reasons.len());
 }

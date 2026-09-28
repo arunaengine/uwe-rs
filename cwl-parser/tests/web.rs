@@ -56,7 +56,7 @@ fn reads_web_addresses() {
 }
 
 #[test]
-fn loads_run_targets_from_the_web() {
+fn loads_web_targets() {
     let address = serve(TOOL, 1, None);
     let folder = tempfile::tempdir().expect("a temporary folder");
     let workflow = folder.path().join("workflow.cwl");
@@ -76,7 +76,7 @@ fn loads_run_targets_from_the_web() {
 }
 
 #[test]
-fn the_providers_of_the_config_file_serve_documents() {
+fn providers_serve_documents() {
     let address = serve(TOOL, 2, Some("t0k3n"));
     let text = format!(
         "[storage.docs]\ntype = \"https\"\nprefixes = [\"{address}/\"]\ntoken = \"t0k3n\"\n"

@@ -33,7 +33,7 @@ fn error(inputs: &str, links: &str, step: &str) -> Option<String> {
 }
 
 #[test]
-fn rejects_sources_of_other_types() {
+fn rejects_incompatible_sources() {
     assert!(!loads("x: File", "s: x", ""));
     assert!(!loads("x: int", "l: x", ""));
     assert!(!loads(
@@ -44,7 +44,7 @@ fn rejects_sources_of_other_types() {
 }
 
 #[test]
-fn accepts_enums_whatever_their_symbols_and_optional_sources() {
+fn accepts_enum_sources() {
     assert!(loads(
         "x: {type: {type: enum, symbols: [a, b]}}",
         "e: x",
@@ -55,7 +55,7 @@ fn accepts_enums_whatever_their_symbols_and_optional_sources() {
 }
 
 #[test]
-fn merges_only_sources_written_as_lists() {
+fn merges_list_sources() {
     assert!(!loads(
         "x: File",
         "fs: {source: x, linkMerge: merge_nested}",
@@ -69,13 +69,13 @@ fn merges_only_sources_written_as_lists() {
 }
 
 #[test]
-fn wraps_scattered_inputs_in_arrays() {
+fn wraps_scatter_arrays() {
     assert!(loads("x: File[]", "f: x", "scatter: f"));
     assert!(!loads("x: File", "f: x", "scatter: f"));
 }
 
 #[test]
-fn applies_pick_value_before_the_check() {
+fn pick_precedes_typecheck() {
     let strings = "x: string\n  y: string";
     let message = error(strings, "s: {source: [x, y], pickValue: all_non_null}", "");
     assert!(

@@ -158,7 +158,7 @@ fn rejects_complex_keys() {
 }
 
 #[test]
-fn accepts_quoted_scalars_that_end_at_the_indentation_of_their_key() {
+fn accepts_indented_quotes() {
     let text = "steps:\n    a:\n        valueFrom: '${\n            return 1;\n        }'\n";
     let node = parse(text);
     let step = node.get("steps").and_then(|steps| steps.get("a"));
@@ -170,7 +170,7 @@ fn accepts_quoted_scalars_that_end_at_the_indentation_of_their_key() {
 }
 
 #[test]
-fn accepts_a_lone_dash_in_flow_lists() {
+fn accepts_flow_dash() {
     let node = parse("arguments: [odgi, build, -o, -, -t]\n");
     let arguments = node
         .get("arguments")

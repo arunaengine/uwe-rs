@@ -93,7 +93,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn url_authorities_leave_queries_fragments_and_ordinary_addresses_intact() {
+    fn redacts_authorities_only() {
         for (private, public) in [
             (
                 "ftp://user:password@host/file",
@@ -120,7 +120,7 @@ mod tests {
     }
 
     #[test]
-    fn separate_payloads_keep_readable_addresses_and_matching_producer_identities() {
+    fn preserves_public_identity() {
         use std::collections::BTreeMap;
         let first = "ftp://user:first-password@host/file";
         let second = "ftp://user:second-password@host/file";

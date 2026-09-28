@@ -86,7 +86,7 @@ mod tests {
     }
 
     #[test]
-    fn ids_do_not_change_the_fingerprint_but_inputs_do() {
+    fn fingerprints_ignore_ids() {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let file = directory.path().join("in.txt");
         std::fs::write(&file, "one").expect("writes the input");

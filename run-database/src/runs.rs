@@ -334,7 +334,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn process_stat_handles_parentheses_and_zombies() {
+    fn parses_process_state() {
         let fields = std::iter::once("S")
             .chain(std::iter::repeat_n("0", 18))
             .chain(std::iter::once("1234"))

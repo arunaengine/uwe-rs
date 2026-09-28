@@ -121,7 +121,7 @@ fn input_schema() -> serde_json::Value {
 }
 
 #[test]
-fn a_run_is_read_back_with_its_logs_and_events() {
+fn reads_run_evidence() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("cache/runs.sqlite");
     record(&path, directory.path()).expect("records the run");
@@ -178,7 +178,7 @@ fn a_run_is_read_back_with_its_logs_and_events() {
 }
 
 #[test]
-fn where_the_results_went_is_read_back_with_their_tasks() {
+fn reads_result_locations() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     record(&path, directory.path()).expect("records the run");
@@ -199,7 +199,7 @@ fn where_the_results_went_is_read_back_with_their_tasks() {
 }
 
 #[test]
-fn tasks_are_read_back_with_their_files_and_edges() {
+fn reads_task_graph() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     record(&path, directory.path()).expect("records the run");
@@ -292,7 +292,7 @@ fn tasks_are_read_back_with_their_files_and_edges() {
 }
 
 #[test]
-fn a_resumed_run_joins_the_lineage_and_finds_finished_tasks() {
+fn resumes_completed_lineage() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     record(&path, directory.path()).expect("records the run");
@@ -336,7 +336,7 @@ fn a_resumed_run_joins_the_lineage_and_finds_finished_tasks() {
 }
 
 #[test]
-fn directory_inputs_are_not_reused_after_a_child_changes() {
+fn rejects_changed_directories() {
     let directory = tempfile::tempdir().expect("a directory");
     let path = directory.path().join("runs.sqlite");
     let source = directory.path().join("inputs");
@@ -373,7 +373,7 @@ fn directory_inputs_are_not_reused_after_a_child_changes() {
 }
 
 #[test]
-fn reused_outcomes_preserve_known_input_and_output_identity() {
+fn preserves_reused_identity() {
     let directory = tempfile::tempdir().expect("a directory");
     let path = directory.path().join("runs.sqlite");
     let task = task(1, "READ", vec![input(&directory.path().join("input"))]);
@@ -418,7 +418,7 @@ fn reused_outcomes_preserve_known_input_and_output_identity() {
 }
 
 #[test]
-fn rejected_exit_zero_attempts_keep_process_evidence_but_are_not_reused() {
+fn rejects_unaccepted_reuse() {
     let directory = tempfile::tempdir().expect("a directory");
     let path = directory.path().join("runs.sqlite");
     let task = task(1, "DECLINED", Vec::new());
@@ -467,7 +467,7 @@ fn rejected_exit_zero_attempts_keep_process_evidence_but_are_not_reused() {
 }
 
 #[test]
-fn validations_gate_reuse_and_stale_decisions_preserve_the_latest_state() {
+fn validation_gates_reuse() {
     let directory = tempfile::tempdir().expect("a directory");
     let path = directory.path().join("runs.sqlite");
     let approved = task(1, "APPROVED", Vec::new());
@@ -574,7 +574,7 @@ fn validations_gate_reuse_and_stale_decisions_preserve_the_latest_state() {
 }
 
 #[test]
-fn a_database_of_version_1_gets_the_inputs_of_runs() {
+fn migrates_run_inputs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     drop(Database::open(&path).expect("creates"));
@@ -614,7 +614,7 @@ fn a_database_of_version_1_gets_the_inputs_of_runs() {
 
 #[cfg(target_os = "linux")]
 #[test]
-fn private_process_identity_distinguishes_pid_reuse_and_protects_foreign_runs() {
+fn distinguishes_process_ownership() {
     let root = tempfile::tempdir().expect("a directory");
     let path = root.path().join("runs.sqlite");
     Database::open(&path)
@@ -706,7 +706,7 @@ fn private_process_identity_distinguishes_pid_reuse_and_protects_foreign_runs() 
 }
 
 #[test]
-fn version_six_legacy_rows_migrate_without_guessing_local_pid_ownership() {
+fn migrates_legacy_ownership() {
     let root = tempfile::tempdir().expect("a directory");
     let path = root.path().join("runs.sqlite");
     Database::open(&path)
@@ -737,7 +737,7 @@ fn version_six_legacy_rows_migrate_without_guessing_local_pid_ownership() {
 }
 
 #[test]
-fn version_seven_attempts_keep_raw_evidence_and_unknown_acceptance() {
+fn migrates_attempt_acceptance() {
     let root = tempfile::tempdir().expect("a directory");
     let path = root.path().join("runs.sqlite");
     let task = task(1, "LEGACY", Vec::new());
@@ -784,7 +784,7 @@ fn version_seven_attempts_keep_raw_evidence_and_unknown_acceptance() {
 }
 
 #[test]
-fn a_database_of_a_newer_version_is_refused() {
+fn rejects_newer_versions() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     let database = Database::open(&path).expect("creates");
@@ -800,7 +800,7 @@ fn a_database_of_a_newer_version_is_refused() {
 }
 
 #[test]
-fn runs_that_open_a_new_database_at_once_share_its_tables() {
+fn shares_concurrent_tables() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     for round in 0..20 {
         let path = directory.path().join(format!("runs-{round}.sqlite"));
@@ -821,7 +821,7 @@ fn runs_that_open_a_new_database_at_once_share_its_tables() {
 }
 
 #[test]
-fn runs_that_record_at_the_same_time_record_everything() {
+fn records_concurrent_runs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     Database::open(&path).expect("creates");
@@ -856,7 +856,7 @@ fn runs_that_record_at_the_same_time_record_everything() {
 }
 
 #[test]
-fn why_a_task_ran_again_names_what_changed() {
+fn explains_rerun_causes() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     let data = directory.path().join("data.txt");
@@ -915,7 +915,7 @@ fn why_a_task_ran_again_names_what_changed() {
 }
 
 #[test]
-fn clean_up_learns_what_runs_refer_to() {
+fn finds_retained_references() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     record(&path, directory.path()).expect("records");
@@ -967,7 +967,7 @@ fn clean_up_learns_what_runs_refer_to() {
 }
 
 #[test]
-fn real_runs_tell_the_digests_of_their_images() {
+fn records_image_digests() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     let pinned = |run: &str, simulated: bool, image: &str| {
@@ -999,7 +999,7 @@ fn real_runs_tell_the_digests_of_their_images() {
 }
 
 #[test]
-fn the_longest_chain_after_each_step_comes_from_earlier_runs() {
+fn reads_historical_chains() {
     use std::time::{Duration, UNIX_EPOCH};
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");

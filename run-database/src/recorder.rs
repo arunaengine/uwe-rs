@@ -752,7 +752,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_sources_of_a_run_take_one_commit() {
+    fn commits_sources_atomically() {
         let folder = tempfile::tempdir().expect("a folder");
         let path = folder.path().join("runs.sqlite");
         let start = RunStart {
@@ -791,7 +791,7 @@ mod tests {
     }
 
     #[test]
-    fn long_texts_keep_their_end() {
+    fn retains_text_tails() {
         assert_eq!(tail("short"), "short");
         let long = format!("{}é{}", "a".repeat(LOG_LIMIT), "end");
         let kept = tail(&long);
@@ -803,7 +803,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_actions_rollback_without_losing_completed_actions() {
+    fn rolls_back_failures() {
         for (fails_event, failure) in [(true, "ABORT"), (false, "ABORT"), (true, "ROLLBACK")] {
             let folder = tempfile::tempdir().expect("a folder");
             let path = folder.path().join("runs.sqlite");

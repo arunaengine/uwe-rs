@@ -372,7 +372,7 @@ mod tests {
     }
 
     #[test]
-    fn the_path_follows_the_task_that_ended_last() {
+    fn follows_latest_end() {
         // A (0-10) and B (0-30) feed C, which the workflow asks for when B ends and which
         // waits 5 for a free slot.
         let mut c = task(3, "C", 32, (37, 50), &[1, 2]);
@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn a_task_asked_for_late_follows_the_end_that_made_the_workflow_ask() {
+    fn follows_request_trigger() {
         // D reads nothing of C, but the workflow asked for it only when C ended.
         let mut d = task(4, "D", 21, (21, 25), &[]);
         d.trigger = Some(3);
@@ -417,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn a_task_that_waits_for_one_asked_for_before_follows_it() {
+    fn follows_waited_task() {
         // G was asked for at once but comes after F.
         let tasks = [
             task(6, "F", 0, (0, 40), &[]),
@@ -431,7 +431,7 @@ mod tests {
     }
 
     #[test]
-    fn steps_add_up_what_their_tasks_used() {
+    fn sums_step_usage() {
         let mut a = task(1, "ALIGN", 0, (0, 10), &[]);
         a.attempts[0].cpu_usec = Some(4_000);
         a.attempts[0].memory_peak = Some(100);
@@ -453,14 +453,14 @@ mod tests {
     }
 
     #[test]
-    fn a_run_without_tasks_spent_its_time_before_them() {
+    fn attributes_empty_runtime() {
         let spent = spent(&[], 5, 9);
         assert!(spent.critical_path.is_empty());
         assert_eq!((spent.before, spent.after, spent.busy), (4, 0, 0));
     }
 
     #[test]
-    fn intervals_that_overlap_count_once() {
+    fn counts_overlap_once() {
         assert_eq!(union(vec![(0, 5), (3, 8), (10, 12)]), 10);
         assert_eq!(union(Vec::new()), 0);
     }

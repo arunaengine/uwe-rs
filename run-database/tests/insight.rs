@@ -85,7 +85,7 @@ fn attempt(recorder: &mut Recorder, task: &Task, edges: &[Edge], outcome: &Outco
 }
 
 #[test]
-fn the_time_of_a_run_follows_the_chain_that_ended_last() {
+fn follows_critical_chain() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     let mut recorder = Database::open(&path)
@@ -129,7 +129,7 @@ fn the_time_of_a_run_follows_the_chain_that_ended_last() {
 }
 
 #[test]
-fn a_task_asked_for_again_keeps_its_record() {
+fn preserves_repeated_requests() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     let mut recorder = Database::open(&path)
@@ -196,7 +196,7 @@ fn record_run(path: &Path, run: RunStart, tasks: &[(Task, &str, bool)]) {
 }
 
 #[test]
-fn two_runs_compare_task_by_task() {
+fn compares_task_content() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     let with_image = |mut task: Task, image: &str| {
@@ -291,7 +291,7 @@ fn two_runs_compare_task_by_task() {
 }
 
 #[test]
-fn a_run_is_compared_with_the_run_before_it() {
+fn compares_previous_run() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     record_run(&path, start("run-a"), &[(task(1, "PREP"), "a", false)]);
@@ -305,7 +305,7 @@ fn a_run_is_compared_with_the_run_before_it() {
 }
 
 #[test]
-fn a_replay_is_its_own_run_that_resume_leaves_out() {
+fn excludes_replay_resume() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     let tagged = task(1, "SORT");
@@ -358,7 +358,7 @@ fn a_replay_is_its_own_run_that_resume_leaves_out() {
 }
 
 #[test]
-fn inputs_that_tasks_made_are_compared_by_their_tasks() {
+fn compares_producer_identity() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     // Two simulated runs: USE reads the file that MAKE made in its own run, at another place,
@@ -411,7 +411,7 @@ fn inputs_that_tasks_made_are_compared_by_their_tasks() {
 }
 
 #[test]
-fn the_measures_of_earlier_runs_come_by_step() {
+fn reads_step_measures() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     let mut recorder = Database::open(&path)

@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn as_many_short_tasks_run_together_as_fit_into_one_start_up() {
+    fn groups_short_tasks() {
         let ran = |milliseconds, overhead| Measured {
             milliseconds,
             overhead,
@@ -155,13 +155,13 @@ mod tests {
     }
 
     #[test]
-    fn nothing_measured_keeps_what_the_task_asks_for() {
+    fn unmeasured_preserves_requests() {
         let placement = asked(4, Some(6 * GIB));
         assert_eq!(right_sized(&placement, Some(10), &[]), placement);
     }
 
     #[test]
-    fn memory_and_cpus_come_down_to_what_was_used_with_a_margin() {
+    fn adds_resource_margins() {
         // 400 MiB at most, 1.5 CPUs busy on average.
         let measured = [task(None, 400 * MIB, 15, 10), task(None, 300 * MIB, 5, 10)];
         let sized = right_sized(&asked(4, Some(6 * GIB)), None, &measured);
@@ -170,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn never_more_than_the_task_asks_for() {
+    fn respects_requested_limits() {
         let measured = [task(None, 4 * GIB, 80, 10)];
         let sized = right_sized(&asked(2, Some(GIB)), None, &measured);
         assert_eq!((sized.cpus, sized.memory_bytes), (2, Some(GIB)));
@@ -180,13 +180,13 @@ mod tests {
     }
 
     #[test]
-    fn small_peaks_get_the_least_memory() {
+    fn enforces_memory_floor() {
         let sized = right_sized(&asked(1, Some(GIB)), None, &[task(None, MIB, 1, 10)]);
         assert_eq!(sized.memory_bytes, Some(LEAST_MEMORY));
     }
 
     #[test]
-    fn memory_follows_the_size_of_the_input() {
+    fn memory_scales_inputs() {
         let measured = [
             task(Some(100 * MIB), 200 * MIB, 1, 1),
             task(Some(1000 * MIB), 800 * MIB, 1, 1),

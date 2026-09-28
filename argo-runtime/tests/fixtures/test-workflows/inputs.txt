@@ -2,13 +2,13 @@
 # its schema, of a check of a simulated run, and of the parameters that its templates read and
 # its schema does not declare or the other way round; or the exit code and the first error.
 # A tab ends the path, which may hold spaces.
-(outputs)	outputs: 153 of 1347 workflows have outputs, 297 outputs, 123 files
+(outputs)	outputs: 152 of 1322 workflows have outputs, 295 outputs, 123 files
 Hybrid-Argo-Workflows/Examples/QC-Alignment-WF.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 Hybrid-Argo-Workflows/Examples/clean-up-wf.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 Hybrid-Argo-Workflows/Examples/katib-workflow.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 Hybrid-Argo-Workflows/Examples/scheduler-workflow.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 Hybrid-Argo-Workflows/Examples/variations-workflow.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-Hybrid-Argo-Workflows/slurm-job-workflow-template.yaml	ok: 10 inputs, 1 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+Hybrid-Argo-Workflows/slurm-job-workflow-template.yaml	33 artifact input-artifact: the default artifact repository is not supported; supply an S3 bucket
 SIM-PIPE/examples/fake-file-process/fail/fake-file-process-fail.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 SIM-PIPE/examples/fake-file-process/fake-file-process.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 SIM-PIPE/examples/hello-world/hello-world.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -22,7 +22,6 @@ SIM-PIPE/examples/sleeper/sleeper.yaml	ok: 0 inputs, 0 required, 0 files, 0 tabl
 SIM-PIPE/simulator/config/hello-world.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-hub/examples/ci-simple/versions/0.0.1/workflowTemplate.yaml	ok: 12 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
 argo-hub/examples/failure-notification/versions/0.0.1/workflowTemplate.yaml	ok: 1 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-hub/examples/jira-sonar/versions/0.0.1/workflowTemplate.yaml	ok: 38 inputs, 8 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
 argo-hub/examples/post-promotion-starter/versions/0.0.1/workflowTemplate.yaml	ok: 6 inputs, 6 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-hub/examples/post-promotion-starter/versions/0.0.2/workflowTemplate.yaml	ok: 9 inputs, 5 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-hub/examples/starter-manual-sync/versions/0.0.1/workflowTemplate.yaml	ok: 3 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -51,12 +50,11 @@ argo-workflow-examples/process-data/aggregation-createfile.yaml	ok: 0 inputs, 0 
 argo-workflow-examples/process-data/aggregation-parallel.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflow-examples/process-data/aggregation-template.yaml	ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows-catalog/templates/argocd-sync-and-wait/manifests.yaml	ok: 6 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows-catalog/templates/distro/manifests.yaml	ok: 17 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
 argo-workflows-catalog/templates/distro/tests/run-task.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows-catalog/templates/go-build/manifests.yaml	ok: 3 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows-catalog/templates/hello-world/manifests.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows-catalog/templates/hello-world/tests/run-task.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows-catalog/templates/jenkins-pipeline/manifests.yaml	ok: 6 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+argo-workflows-catalog/templates/jenkins-pipeline/manifests.yaml	ok: 6 inputs, 1 required, 2 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 0 declared not read
 argo-workflows-catalog/templates/jenkins-pipeline/tests/run-task.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows-catalog/templates/sendmail/manifests.yaml	ok: 5 inputs, 5 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows-catalog/templates/sendmail/tests/send-email.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -64,8 +62,6 @@ argo-workflows-catalog/templates/slack-workflow-notifications/manifests.yaml#1	o
 argo-workflows-catalog/templates/slack-workflow-notifications/tests/run-task.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows-catalog/templates/terraform-basic/manifests.yaml	ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows-ci-example/bootstrap/workflow-templates/common/deploy-resources.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
-argo-workflows-ci-example/bootstrap/workflow-templates/minio/ci-rollouts-s3.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 7 read not declared, 0 declared not read
-argo-workflows-ci-example/bootstrap/workflow-templates/minio/ci-workflow-s3.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 7 read not declared, 0 declared not read
 argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-kaniko-s3 copy.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 0 declared not read
 argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-s3.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 0 declared not read
 argo-workflows-ci-example/bootstrap/workflow-templates/minio/git-checkout-pr-s3.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
@@ -78,10 +74,10 @@ argo-workflows-ci-example/bootstrap/workflow-templates/nfs/deploy-application.ym
 argo-workflows-ci-example/bootstrap/workflow-templates/nfs/git-checkout-pr.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
 argo-workflows-ci-example/bootstrap/workflow-templates/nfs/html-modifier.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 argo-workflows-ci-example/rollouts-workflow-2.yml	ok: 7 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows-ci-example/rollouts-workflow-s3-2.yml	ok: 7 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows-ci-example/rollouts-workflow-s3.yml	ok: 7 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+argo-workflows-ci-example/rollouts-workflow-s3-2.yml	1 couldn't find workflow template "ci-rollouts-s3"
+argo-workflows-ci-example/rollouts-workflow-s3.yml	1 couldn't find workflow template "ci-rollouts-s3"
 argo-workflows-ci-example/rollouts-workflow.yml	ok: 7 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows-ci-example/workflow-s3.yml	ok: 7 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+argo-workflows-ci-example/workflow-s3.yml	1 couldn't find workflow template "ci-workflow-s3"
 argo-workflows-ci-example/workflow.yml	ok: 7 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows-guide/templates/script.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows-hello-executor-plugin/hello-example-workflow.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -182,13 +178,13 @@ argo-workflows/examples/http-success-condition.yaml	ok: 0 inputs, 0 required, 0 
 argo-workflows/examples/image-pull-secrets.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/influxdb-ci.yaml	ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/init-container.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/examples/input-artifact-azure.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/examples/input-artifact-gcs.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/examples/input-artifact-git.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/examples/input-artifact-http.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/examples/input-artifact-oss.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+argo-workflows/examples/input-artifact-azure.yaml	33 artifact my-art: Azure.accountKeySecret is not supported; use the configured storage provider
+argo-workflows/examples/input-artifact-gcs.yaml	33 artifact my-art: GCS.serviceAccountKeySecret is not supported; use the configured storage provider
+argo-workflows/examples/input-artifact-git.yaml	33 artifact argo-source: Git, HDFS, OSS and artifact plugin transfers are not supported
+argo-workflows/examples/input-artifact-http.yaml	33 artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
+argo-workflows/examples/input-artifact-oss.yaml	33 artifact my-art: Git, HDFS, OSS and artifact plugin transfers are not supported
 argo-workflows/examples/input-artifact-raw.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/examples/input-artifact-s3.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+argo-workflows/examples/input-artifact-s3.yaml	33 artifact my-art: S3.endpoint is not supported; use the configured storage provider
 argo-workflows/examples/intermediate-parameters.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/k8s-jobs.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/k8s-orchestration.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -283,7 +279,7 @@ argo-workflows/examples/variables-showcase.yaml	ok: 3 inputs, 0 required, 1 file
 argo-workflows/examples/volumes-emptydir.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/volumes-existing.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/volumes-pvc.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/examples/webhdfs-input-output-artifacts.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+argo-workflows/examples/webhdfs-input-output-artifacts.yaml	33 artifact my-art: HTTP.auth is not supported; use the configured storage provider
 argo-workflows/examples/withsequence-nested-result.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/work-avoidance.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/workflow-event-binding/event-consumer-workflowtemplate.yaml	ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
@@ -292,7 +288,7 @@ argo-workflows/examples/workflow-level-executor-plugin.yaml	ok: 0 inputs, 0 requ
 argo-workflows/examples/workflow-of-workflows.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/workflow-template/dag.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/workflow-template/hello-world.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/examples/workflow-template/input-artifacts.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+argo-workflows/examples/workflow-template/input-artifacts.yaml	33 artifact input-file: S3.endpoint is not supported; use the configured storage provider
 argo-workflows/examples/workflow-template/retry-with-steps.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/workflow-template/steps.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/workflow-template/templates.yaml#0	ok: 1 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -306,7 +302,6 @@ argo-workflows/test/e2e/benchmarks/multiple-ref-main-workflowtemplate.yaml	ok: 0
 argo-workflows/test/e2e/cron/basic-update-template.yaml	ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/cron/basic-update.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/cron/basic.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/test/e2e/cron/cron-and-malformed-template.yaml#0	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/cron/cron-backfill-template.yaml	ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/cron/cron-daily-job.yaml	ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/cron/cron-workflow-with-labels.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -328,7 +323,7 @@ argo-workflows/test/e2e/expectedfailures/failed-artifact-save.yaml	ok: 0 inputs,
 argo-workflows/test/e2e/expectedfailures/failed-retries.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/expectedfailures/failed-step-event.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/expectedfailures/failed-step.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/test/e2e/expectedfailures/input-artifact-not-optional.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+argo-workflows/test/e2e/expectedfailures/input-artifact-not-optional.yaml	33 artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
 argo-workflows/test/e2e/expectedfailures/large-workflow.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/expectedfailures/misreference-template-name.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/expectedfailures/oom-kill.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -391,8 +386,8 @@ argo-workflows/test/e2e/functional/global-parameters.yaml	ok: 1 inputs, 0 requir
 argo-workflows/test/e2e/functional/hello-world.json	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/functional/hello-world.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/functional/init-container.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/test/e2e/functional/input-artifact-http.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/test/e2e/functional/input-artifact-optional.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+argo-workflows/test/e2e/functional/input-artifact-http.yaml	33 artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
+argo-workflows/test/e2e/functional/input-artifact-optional.yaml	33 artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
 argo-workflows/test/e2e/functional/input-artifact-raw.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/functional/json-argument.yaml	ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/functional/k8s-jobs.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -420,7 +415,7 @@ argo-workflows/test/e2e/functional/parallelism-limit.yaml	ok: 0 inputs, 0 requir
 argo-workflows/test/e2e/functional/parallelism-nested.yaml	ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/functional/param-aggregation-fromoutputs.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/functional/param-aggregation.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/test/e2e/functional/param-sub-with-artifacts.yaml	ok: 2 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+argo-workflows/test/e2e/functional/param-sub-with-artifacts.yaml	33 artifact foo-artifact: mode, recurseMode, archive compression and archiveLogs are not supported
 argo-workflows/test/e2e/functional/parameter-aggregation-dag-with-retry.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/functional/parameter-aggregation-dag.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/functional/parameter-aggregation-script.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -467,7 +462,6 @@ argo-workflows/test/e2e/functional/volumes-pvc.yaml	ok: 0 inputs, 0 required, 0 
 argo-workflows/test/e2e/functional/workflow-exit-handler-sleep.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/functional/workflow_level_host_aliases.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/functional/workflow_template_level_host_aliases.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/test/e2e/lintfail/disallow-unknown.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/lintfail/invalid-spec.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/smoke/artifact-passing.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/smoke/basic-2.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -555,13 +549,13 @@ argo-workflows/test/e2e/testdata/exit-handler-parameterized-global-artifacts.yam
 argo-workflows/test/e2e/testdata/global-artifact-passing-plugin.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/testdata/global-artifact-passing.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/testdata/http-outputs.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/test/e2e/testdata/http/artifactory-artifact.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/test/e2e/testdata/http/basic-auth-artifact-http.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/test/e2e/testdata/http/clientcert-auth-artifact-http.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+argo-workflows/test/e2e/testdata/http/artifactory-artifact.yaml	33 artifact my-art: Artifactory.usernameSecret is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/http/basic-auth-artifact-http.yaml	33 artifact my-art: HTTP.auth is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/http/clientcert-auth-artifact-http.yaml	33 artifact my-art: HTTP.auth is not supported; use the configured storage provider
 argo-workflows/test/e2e/testdata/http/input-artifact-http.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/test/e2e/testdata/http/oauth-artifact-http.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+argo-workflows/test/e2e/testdata/http/oauth-artifact-http.yaml	33 artifact my-art: HTTP.auth is not supported; use the configured storage provider
 argo-workflows/test/e2e/testdata/http/output-artifact-http.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/test/e2e/testdata/input-artifacts.yaml	ok: 2 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+argo-workflows/test/e2e/testdata/input-artifacts.yaml	33 artifact my-s3-artifact: S3.endpoint is not supported; use the configured storage provider
 argo-workflows/test/e2e/testdata/input-on-mount-plugin-workflow.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/testdata/input-on-mount-workflow.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/testdata/json-variables.yaml	ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -662,7 +656,6 @@ distributed-ml-patterns/code/project/basics/argo-dag-diamond.yaml	ok: 0 inputs, 
 distributed-ml-patterns/code/project/basics/argo-hello-world.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 distributed-ml-patterns/code/project/basics/argo-resource-template.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 distributed-ml-patterns/code/project/basics/argo-script-template.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-distributed-ml-patterns/code/project/code/workflow.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 gennext-workflows/chore/update_existing_run_with_exomedepth.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 gennext-workflows/plans/test-fusion-inspector-acu2.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 gennext-workflows/tasks/base_tasks/annotsv.yaml	ok: 5 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -671,7 +664,6 @@ gennext-workflows/tasks/base_tasks/filter-msisensor-pro.yaml	ok: 5 inputs, 4 req
 gennext-workflows/tasks/base_tasks/indelible.yaml	ok: 5 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
 gennext-workflows/tasks/base_tasks/manta.yaml	ok: 8 inputs, 4 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 gennext-workflows/tasks/base_tasks/msisensor-pro.yaml	ok: 5 inputs, 4 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-gennext-workflows/tasks/base_tasks/split-caller.yaml	ok: 3 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
 gennext-workflows/tasks/bed_split.yaml	ok: 3 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 gennext-workflows/tasks/bed_split_v1.yaml	ok: 4 inputs, 4 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 gennext-workflows/tasks/check-file-path.yaml	ok: 5 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -698,7 +690,6 @@ gennext-workflows/workflows/ces-workflow.yaml	ok: 12 inputs, 11 required, 0 file
 gennext-workflows/workflows/germline/germline-tps-gpu-workflow.yaml	ok: 11 inputs, 10 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 gennext-workflows/workflows/germline/germline-wes-gpu-workflow.yaml	ok: 11 inputs, 10 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 gennext-workflows/workflows/germline/germline-wgs-gpu-workflow.yaml	ok: 11 inputs, 10 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-gennext-workflows/workflows/haplotypecaller-wrapper-workflow.yaml	ok: 6 inputs, 6 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 gennext-workflows/workflows/per-sample-cnv-analysis.yaml	ok: 8 inputs, 7 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 gennext-workflows/workflows/per-sample-cnv-cohort-analysis.yaml	ok: 16 inputs, 14 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
 gennext-workflows/workflows/per-sample-germline.yaml	ok: 14 inputs, 14 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 2 declared not read
@@ -895,13 +886,13 @@ hera/examples/workflows/upstream/http-success-condition.yaml	ok: 0 inputs, 0 req
 hera/examples/workflows/upstream/image-pull-secrets.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 hera/examples/workflows/upstream/influxdb-ci.yaml	ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 hera/examples/workflows/upstream/init-container.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-hera/examples/workflows/upstream/input-artifact-azure.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-hera/examples/workflows/upstream/input-artifact-gcs.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-hera/examples/workflows/upstream/input-artifact-git.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-hera/examples/workflows/upstream/input-artifact-http.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-hera/examples/workflows/upstream/input-artifact-oss.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+hera/examples/workflows/upstream/input-artifact-azure.yaml	33 artifact my-art: Azure.accountKeySecret is not supported; use the configured storage provider
+hera/examples/workflows/upstream/input-artifact-gcs.yaml	33 artifact my-art: GCS.serviceAccountKeySecret is not supported; use the configured storage provider
+hera/examples/workflows/upstream/input-artifact-git.yaml	33 artifact argo-source: Git, HDFS, OSS and artifact plugin transfers are not supported
+hera/examples/workflows/upstream/input-artifact-http.yaml	33 artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
+hera/examples/workflows/upstream/input-artifact-oss.yaml	33 artifact my-art: Git, HDFS, OSS and artifact plugin transfers are not supported
 hera/examples/workflows/upstream/input-artifact-raw.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-hera/examples/workflows/upstream/input-artifact-s3.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+hera/examples/workflows/upstream/input-artifact-s3.yaml	33 artifact my-art: S3.endpoint is not supported; use the configured storage provider
 hera/examples/workflows/upstream/intermediate-parameters.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 hera/examples/workflows/upstream/k8s-jobs.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 hera/examples/workflows/upstream/k8s-orchestration.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -992,7 +983,7 @@ hera/examples/workflows/upstream/title-and-description-with-markdown.yaml	ok: 0 
 hera/examples/workflows/upstream/volumes-emptydir.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 hera/examples/workflows/upstream/volumes-existing.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 hera/examples/workflows/upstream/volumes-pvc.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-hera/examples/workflows/upstream/webhdfs-input-output-artifacts.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+hera/examples/workflows/upstream/webhdfs-input-output-artifacts.yaml	33 artifact my-art: HTTP.headers is not supported; use the configured storage provider
 hera/examples/workflows/upstream/withsequence-nested-result.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 hera/examples/workflows/upstream/work-avoidance.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 hera/examples/workflows/upstream/workflow-event-binding--event-consumer-workflowtemplate.yaml	ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
@@ -1177,17 +1168,13 @@ regulation-workflows/workflow-templates/alignment/.deprecated/delete-alignment-t
 regulation-workflows/workflow-templates/alignment/.deprecated/get-rfs-alignments-tasks.yaml	ok: 14 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/alignment/.deprecated/merge-run-alignments.yaml	ok: 3 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/alignment/.deprecated/rfs-alignments.yaml	ok: 3 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/alignment/.experimental/rfs-alignment-v3.yaml	ok: 4 inputs, 2 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 3 declared not read
+regulation-workflows/workflow-templates/alignment/.experimental/rfs-alignment-v3.yaml	ok: 4 inputs, 3 required, 1 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 3 declared not read
 regulation-workflows/workflow-templates/alignment/alignment-tasks.yaml	ok: 13 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/alignment/compute-get-rfs-alignment-tasks-url-v-0.1.yaml	ok: 13 inputs, 13 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/alignment/rfs-alignment.yaml	ok: 10 inputs, 9 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/alignment/run-alignment-pe.yaml	ok: 16 inputs, 15 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 2 declared not read
-regulation-workflows/workflow-templates/alignment/run-alignment-se.yaml	ok: 13 inputs, 12 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
-regulation-workflows/workflow-templates/bowtie2/.deprecated/bowtie2-pe-cmd-pvc-callable.yaml	ok: 8 inputs, 7 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/bowtie2/.deprecated/bowtie2-se-cmd-pvc-callable.yaml	ok: 7 inputs, 6 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/bowtie2/bowtie2-pe-cmd-pvc-callable-v-0.1.yaml	ok: 8 inputs, 7 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/bowtie2/bowtie2-se-cmd-pvc-callable-v-0.1.yaml	ok: 7 inputs, 6 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/bowtie2/build/build-index-v-0.1.yaml	ok: 5 inputs, 4 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/alignment/rfs-alignment.yaml	ok: 10 inputs, 10 required, 1 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/alignment/run-alignment-pe.yaml	ok: 16 inputs, 16 required, 1 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 2 declared not read
+regulation-workflows/workflow-templates/alignment/run-alignment-se.yaml	ok: 13 inputs, 13 required, 1 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 1 declared not read
+regulation-workflows/workflow-templates/bowtie2/build/build-index-v-0.1.yaml	33 artifact reference_in: the default artifact repository is not supported; supply an S3 bucket
 regulation-workflows/workflow-templates/export-peak/bed-to-bigbed-v-0.1.yaml	ok: 6 inputs, 6 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/export-peak/export-peak-tasks.yaml	ok: 13 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/fastp/.deprecated/fastp-se-cmd-pvc-callable.yaml	ok: 3 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -1203,33 +1190,32 @@ regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exis
 regulation-workflows/workflow-templates/helpers/.deprecated/compress-tgz-pvc-callable_v1.yaml	ok: 4 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable.yaml	ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable_v2.yaml	ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata.yaml	ok: 3 inputs, 2 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata.yaml	33 artifact input-file: the default artifact repository is not supported; supply an S3 bucket
 regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml	ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name-v2.yaml	ok: 2 inputs, 1 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name-v2.yaml	ok: 2 inputs, 2 required, 1 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml	ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/.deprecated/copy-from-pvc-to-s3-object.yaml	ok: 5 inputs, 5 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-object-to-pvc.yaml	ok: 3 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-prefix-objects-to-pvc.yaml	ok: 3 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/cp-s3-object-to-s3.yaml	ok: 5 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml	ok: 3 inputs, 2 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml	33 artifact kubeconfig: Git, HDFS, OSS and artifact plugin transfers are not supported
 regulation-workflows/workflow-templates/helpers/.deprecated/decompress-tgz-pvc-callable.yaml	ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/decompress-tgz-pvc-callable_v2.yaml	ok: 3 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/delete-file-from-pvc.yaml	ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml	ok: 3 inputs, 2 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/.deprecated/expose-payload-fields-as-params.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml	33 artifact kubeconfig: Git, HDFS, OSS and artifact plugin transfers are not supported
+regulation-workflows/workflow-templates/helpers/.deprecated/expose-payload-fields-as-params.yaml	ok: 1 inputs, 1 required, 1 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/get-from-reg-pipelines-api.yaml	ok: 1 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api-v1_1.yaml	ok: 1 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api-v2.yaml	ok: 1 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api.yaml	ok: 1 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/.deprecated/get-task-payload-by-index.yaml	ok: 2 inputs, 1 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/.deprecated/get-wf-task-payload-by-index.yaml	ok: 2 inputs, 1 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/helpers/.deprecated/get-task-payload-by-index.yaml	ok: 2 inputs, 2 required, 1 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/helpers/.deprecated/get-wf-task-payload-by-index.yaml	ok: 2 inputs, 2 required, 1 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/pvc-to-pvc-copy.yaml	ok: 6 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml	ok: 3 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker-v2.yaml	ok: 2 inputs, 1 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker-v2.yaml	ok: 2 inputs, 2 required, 1 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml	ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.deprecated/validate-expected-number-of-files-in-dir.yaml	ok: 3 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/.experimental/commit-rdr-changes.yaml	ok: 5 inputs, 2 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/.experimental/create-nfs-pvc-kubectl.yaml	ok: 3 inputs, 2 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/helpers/.experimental/commit-rdr-changes.yaml	33 artifact rdr-repo: Git, HDFS, OSS and artifact plugin transfers are not supported
+regulation-workflows/workflow-templates/helpers/.experimental/create-nfs-pvc-kubectl.yaml	33 artifact kubeconfig: Git, HDFS, OSS and artifact plugin transfers are not supported
 regulation-workflows/workflow-templates/helpers/.experimental/delete-request-from-reg-pipelines-api.yaml	ok: 1 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.experimental/delete-s3-object.yaml	ok: 1 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/.experimental/delete-task-marker.yaml	ok: 3 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -1242,11 +1228,10 @@ regulation-workflows/workflow-templates/helpers/check-if-s3-objects-exist-v-0.1.
 regulation-workflows/workflow-templates/helpers/check-s3-object-exists-v-0.1.yaml	ok: 3 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/compress-tgz-pvc-callable-v-0.1.yaml	ok: 4 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/compute-file-metadata-pvc-callable-v-0.1.yaml	ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/compute-file-metadata-v-0.1.yaml	ok: 3 inputs, 2 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/helpers/compute-file-metadata-v-0.1.yaml	33 artifact input-file: the default artifact repository is not supported; supply an S3 bucket
 regulation-workflows/workflow-templates/helpers/compute-pvc-size-v-0.1.yaml	ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.1.yaml	ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.2.yaml	ok: 2 inputs, 1 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/copy-from-pvc-to-s3-object-v-0.1.yaml	ok: 5 inputs, 5 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.2.yaml	ok: 2 inputs, 2 required, 1 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/copy-pvc-to-pvc-v-0.1.yaml	ok: 6 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/copy-s3-object-to-pvc-v-0.1.yaml	ok: 3 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/copy-s3-prefix-objects-to-pvc-v-0.1.yaml	ok: 3 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -1256,13 +1241,13 @@ regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.
 regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.2.yaml	ok: 3 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/delete-file-from-pvc-v-0.1.yaml	ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml	ok: 1 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/expose-payload-fields-as-params-v-0.1.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/helpers/expose-payload-fields-as-params-v-0.1.yaml	ok: 1 inputs, 1 required, 1 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.1.yaml	ok: 1 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.2.yaml	ok: 1 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/get-wf-task-payload-by-index-v-0.1.yaml	ok: 2 inputs, 1 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/helpers/get-wf-task-payload-by-index-v-0.1.yaml	ok: 2 inputs, 2 required, 1 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/resolve-work-avoidance-v-0.1.yaml	ok: 3 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.1.yaml	ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.2.yaml	ok: 2 inputs, 1 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.2.yaml	ok: 2 inputs, 2 required, 1 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/helpers/validate-expected-number-of-files-in-dir-v-0.1.yaml	ok: 3 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/masked-regions/masked-regions-identification-v-0.1.yaml	ok: 3 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/motif-mapping/motif-mapping-tasks.yaml	ok: 11 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
@@ -1279,7 +1264,7 @@ regulation-workflows/workflow-templates/peak-calling/.deprecated/genrich-control
 regulation-workflows/workflow-templates/peak-calling/.deprecated/get-genrich-values-tasks.yaml	ok: 22 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
 regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks-ad-hoc.yaml	ok: 15 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks.yaml	ok: 13 inputs, 4 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/peak-calling/chip-seq-genrich-values-cmd.yaml	ok: 12 inputs, 11 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+regulation-workflows/workflow-templates/peak-calling/chip-seq-genrich-values-cmd.yaml	33 artifact masked-regions-file: the default artifact repository is not supported; supply an S3 bucket
 regulation-workflows/workflow-templates/peak-calling/chip-seq-peaks-v-0.2.yaml	ok: 5 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/peak-calling/controls/.deprecated/controls-peak-calling-for-mask-file-with-pileups.yaml	ok: 4 inputs, 4 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/peak-calling/controls/control-peak-calling-for-mask-file.yaml	ok: 3 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -1288,8 +1273,7 @@ regulation-workflows/workflow-templates/peak-calling/delete-task-markers.yaml	ok
 regulation-workflows/workflow-templates/peak-calling/genrich-tasks.yaml	ok: 21 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/peak-calling/genrich-values-cmd.yaml	ok: 13 inputs, 13 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.1.yaml	ok: 5 inputs, 5 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.2.yaml	ok: 4 inputs, 4 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-regulation-workflows/workflow-templates/peak-calling/open-chromatin-genrich-values-cmd.yaml	ok: 11 inputs, 10 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+regulation-workflows/workflow-templates/peak-calling/open-chromatin-genrich-values-cmd.yaml	33 artifact masked-regions-file: the default artifact repository is not supported; supply an S3 bucket
 regulation-workflows/workflow-templates/peak-calling/open-chromatin-peaks-v-0.2.yaml	ok: 4 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/peak-calling/peak-calling-tasks.yaml	ok: 22 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 regulation-workflows/workflow-templates/samtools/.deprecated/samtools-quickcheck-cmd-pvc-callable.yaml	ok: 3 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -1316,7 +1300,6 @@ talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_templ
 talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/doubler-assertion.yaml	ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/doubler-template.yaml	ok: 1 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/git-checkout-template.yaml	ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-talk-demos/argocon-demos/2023-artifact-management-at-scale/ci-workflow-s3.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 7 read not declared, 0 declared not read
 talk-demos/argocon-demos/2023-artifact-management-at-scale/fan-out-fan-in.yaml	ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/nfs-workflow.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/s3-workflow.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -1324,11 +1307,10 @@ talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-arg
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/container-build.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/cpd-certification.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/deploy-application.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/get-git.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/git-checkout.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/run-unit-tests.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/update-jira.yml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/argo-workflow.yaml	ok: 6 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 0 declared not read
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/argo-workflow.yaml	ok: 6 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
 talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/create-and-setup-vcluster-workflow/create.yaml	ok: 4 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/demonstrating-argo-workflows-and-vcluster-at-scale/lots-of-hellos-workflow.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 talk-demos/argocon-demos/2023-streamlining-big-data-workflows-with-memoization-and-work-avoidance/workflow/example.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -1347,9 +1329,5 @@ talk-demos/oss-2022/scala/workflows/spark-template-jvm.yaml	ok: 31 inputs, 4 req
 talk-demos/oss-2022/scala/workflows/workflow-scala-with-template.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 talk-demos/oss-2022/scala/workflows/workflow-scala.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflows/examples/inspection-batch-with-failure.yaml	ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-workflows/examples/inspection-batch-with-output-gathering.yaml	ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflows/examples/inspection-batch.yaml	ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-workflows/examples/inspection.yaml	ok: 12 inputs, 4 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-workflows/examples/resource-validate.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-workflows/templates/inspection-build-template.yaml	ok: 5 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflows/templates/inspection-run-template.yaml	ok: 9 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read

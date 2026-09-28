@@ -134,7 +134,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn values_take_the_json_form_of_otlp() {
+    fn encodes_otlp_values() {
         let values = [
             KeyValue::text("a", "x"),
             KeyValue::integer("b", 5),

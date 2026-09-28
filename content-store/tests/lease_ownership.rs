@@ -5,7 +5,7 @@
 use content_store::{Holder, Store, StoreError, layout};
 
 #[tokio::test]
-async fn detached_local_lease_reports_loss_and_cleanup_preserves_replacement_holder() {
+async fn detachment_preserves_successor() {
     let root = tempfile::tempdir().unwrap();
     let store = Store::local(root.path()).unwrap();
     let first = store
@@ -31,7 +31,7 @@ async fn detached_local_lease_reports_loss_and_cleanup_preserves_replacement_hol
 }
 
 #[tokio::test]
-async fn memory_expiry_is_loss_and_old_drop_cannot_remove_successor() {
+async fn expiry_preserves_successor() {
     // Memory is a process-local exception, not evidence of distributed conditional I/O.
     let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
     let store = Store::remote(operator.clone(), "s3://display-name-only").unwrap();
@@ -64,7 +64,7 @@ async fn memory_expiry_is_loss_and_old_drop_cannot_remove_successor() {
 }
 
 #[tokio::test]
-async fn memory_expired_takeover_has_one_winner_with_process_local_serialization() {
+async fn serializes_memory_takeover() {
     let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
     let store = Store::remote(operator.clone(), "memory://test").unwrap();
     let old = store
@@ -100,7 +100,7 @@ async fn memory_expired_takeover_has_one_winner_with_process_local_serialization
 }
 
 #[tokio::test]
-async fn remote_service_without_conditional_mutations_fails_closed() {
+async fn requires_conditional_mutations() {
     let root = tempfile::tempdir().unwrap();
     let operator = opendal::Operator::new(
         opendal::services::Fs::default().root(root.path().to_str().unwrap()),
@@ -115,7 +115,7 @@ async fn remote_service_without_conditional_mutations_fails_closed() {
 }
 
 #[tokio::test]
-async fn local_front_with_a_shared_object_lease_has_no_local_cleanup_authority() {
+async fn front_lacks_authority() {
     let root = tempfile::tempdir().unwrap();
     let store =
         Store::layered(Store::local(root.path()).unwrap(), Store::memory().unwrap()).unwrap();
@@ -129,7 +129,7 @@ async fn local_front_with_a_shared_object_lease_has_no_local_cleanup_authority()
 }
 
 #[tokio::test]
-async fn memory_cleanup_racing_takeover_preserves_the_new_holder() {
+async fn cleanup_preserves_successor() {
     let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
     let store = Store::remote(operator.clone(), "memory://test").unwrap();
     let old = store

@@ -895,7 +895,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn errors_of_the_service_are_in_plain_words() {
+    fn explains_service_errors() {
         let error = opendal::Error::new(ErrorKind::NotFound, "cas/sha256/ab/cd")
             .with_operation("read")
             .with_context("service", "s3");

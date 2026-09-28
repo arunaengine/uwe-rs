@@ -71,7 +71,7 @@ async fn memory_contract() {
 }
 
 #[tokio::test]
-async fn remote_stores_name_their_objects_by_address() {
+async fn names_remote_objects() {
     let operator = opendal::Operator::new(opendal::services::Memory::default()).expect("memory");
     let store = Store::remote(operator, "s3://cache/iunctus/").expect("a store");
     check_contract(&store).await;
@@ -132,7 +132,7 @@ async fn uploads_large_files() {
 }
 
 #[tokio::test]
-async fn refuses_changed_bytes_under_an_earlier_digest() {
+async fn rejects_digest_changes() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("input");
     std::fs::write(&file, b"before").unwrap();
@@ -155,7 +155,7 @@ async fn refuses_changed_bytes_under_an_earlier_digest() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn stores_the_same_content_at_the_same_time() {
+async fn stores_concurrent_content() {
     let root = tempfile::tempdir().expect("temporary directory");
     let store = Store::local(root.path()).expect("local store");
     let writes = (0..16).map(|_| {

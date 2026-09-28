@@ -167,7 +167,7 @@ impl oio::Delete for ConditionalDelete {
 }
 
 #[tokio::test]
-async fn remote_read_refreshes_its_token_and_invalidation_preserves_a_newer_version() {
+async fn invalidation_preserves_versions() {
     let inner = Operator::new(opendal::services::Memory::default()).unwrap();
     let key = Digest::sha256(b"remote entry");
     let location = layout::entry("", &key).unwrap();
@@ -197,7 +197,7 @@ async fn remote_read_refreshes_its_token_and_invalidation_preserves_a_newer_vers
 }
 
 #[tokio::test]
-async fn healthy_front_needs_no_shared_access_but_stale_recovery_reports_the_outage() {
+async fn reports_shared_outage() {
     let root = tempfile::tempdir().unwrap();
     let front = Store::local(root.path()).unwrap();
     let key = Digest::sha256(b"offline entry");

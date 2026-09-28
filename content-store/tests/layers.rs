@@ -20,7 +20,7 @@ fn layered(folder: &std::path::Path, shared: &Store) -> Store {
 }
 
 #[tokio::test]
-async fn new_objects_go_to_both_layers() {
+async fn writes_both_layers() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let shared = shared();
     let store = layered(folder.path(), &shared);
@@ -59,7 +59,7 @@ async fn new_objects_go_to_both_layers() {
 }
 
 #[tokio::test]
-async fn reads_take_what_the_folder_lacks_from_the_shared_store_and_keep_it() {
+async fn caches_shared_downloads() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let shared = shared();
     // Another machine stored these in the shared store only.
@@ -111,7 +111,7 @@ async fn reads_take_what_the_folder_lacks_from_the_shared_store_and_keep_it() {
 }
 
 #[tokio::test]
-async fn leases_live_in_the_shared_store() {
+async fn leases_use_shared() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let shared = shared();
     let store = layered(folder.path(), &shared);
@@ -132,7 +132,7 @@ async fn leases_live_in_the_shared_store() {
 }
 
 #[test]
-fn only_a_folder_stands_in_front() {
+fn requires_folder_front() {
     let error = Store::layered(shared(), shared()).expect_err("an object store in front");
     assert!(error.to_string().contains("folder"), "{error}");
 }

@@ -291,7 +291,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn directory_links_keep_their_spelling_and_tree_digest() {
+    fn preserves_directory_identity() {
         let root = tempfile::tempdir().expect("a directory");
         let source = root.path().join("input");
         std::fs::create_dir_all(source.join("nested")).expect("creates tree");
@@ -327,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn recorded_digest_rejects_replacements_without_publishing_them() {
+    fn rejects_replaced_content() {
         let root = tempfile::tempdir().expect("a directory");
         let source = root.path().join("input");
         std::fs::create_dir_all(&source).expect("creates input tree");
@@ -379,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn files_are_copied_once_by_digest() {
+    fn copies_unique_digests() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let source = root.path().join("source");
         std::fs::create_dir_all(source.join("inner/empty")).expect("makes folders");

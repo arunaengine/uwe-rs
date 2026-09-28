@@ -211,7 +211,7 @@ fn entity<'a>(metadata: &'a Value, id: &str) -> &'a Value {
 }
 
 #[test]
-fn a_simulated_run_becomes_a_provenance_run_crate() {
+fn exports_simulated_provenance() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let database = record(directory.path());
     let workflow = directory.path().join("main.nf");
@@ -346,7 +346,7 @@ fn a_simulated_run_becomes_a_provenance_run_crate() {
 }
 
 #[test]
-fn historical_workflow_exports_after_checkout_deletion_and_rejects_wrong_kept_bytes() {
+fn exports_historical_workflows() {
     let root = tempfile::tempdir().expect("a directory");
     let database = record(root.path());
     let kept = root.path().join("kept.nf");
@@ -377,7 +377,7 @@ fn historical_workflow_exports_after_checkout_deletion_and_rejects_wrong_kept_by
 }
 
 #[test]
-fn changed_inputs_export_only_kept_historical_bytes_or_record_unavailability() {
+fn preserves_historical_inputs() {
     let root = tempfile::tempdir().expect("a directory");
     let database = record(root.path());
     let workflow = root.path().join("main.nf");
@@ -423,7 +423,7 @@ fn changed_inputs_export_only_kept_historical_bytes_or_record_unavailability() {
 }
 
 #[test]
-fn crate_metadata_hides_url_passwords_while_private_replay_keeps_them() {
+fn redacts_metadata_passwords() {
     let root = tempfile::tempdir().expect("a directory");
     let address = "ftp://user:sentinel-private-password@host?email=a:b@c#fragment@x";
     let database = record_with_address(root.path(), Some(address));

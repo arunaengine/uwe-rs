@@ -145,7 +145,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_site_file_is_in_etc_unless_the_variable_says_otherwise() {
+    fn resolves_site_file() {
         assert_eq!(
             site_file_named(None),
             Some(PathBuf::from("/etc/iunctus/config.toml"))

@@ -53,7 +53,7 @@ fn settings_have_types() {
 }
 
 #[test]
-fn later_files_win_key_by_key() {
+fn later_keys_win() {
     let folder = tempfile::tempdir().expect("a folder");
     let site = write(
         folder.path(),
@@ -104,7 +104,7 @@ fn later_files_win_key_by_key() {
 }
 
 #[test]
-fn secrets_come_from_the_file_or_the_environment() {
+fn resolves_secret_sources() {
     let config = parse(
         "[web]\ntoken = \"written-secret\"\nkey = { environment = \"PATH\" }\n\
          gone = { environment = \"IUNCTUS_TEST_VARIABLE_THAT_IS_NOT_SET\" }\n",
@@ -134,7 +134,7 @@ fn secrets_come_from_the_file_or_the_environment() {
 }
 
 #[test]
-fn errors_name_the_file_and_the_line() {
+fn errors_include_locations() {
     let syntax = parse("[storage.lab]\ntype = \"s3\nregion = 1\n").expect_err("broken");
     assert!(
         syntax.to_string().starts_with("/site/config.toml:2: "),
@@ -188,7 +188,7 @@ fn errors_name_the_file_and_the_line() {
 }
 
 #[test]
-fn a_named_file_must_exist() {
+fn requires_named_file() {
     let folder = tempfile::tempdir().expect("a folder");
     let missing = folder.path().join("missing.toml");
     let error = ConfigFile::read(std::slice::from_ref(&missing)).expect_err("no such file");

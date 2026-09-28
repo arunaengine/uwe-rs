@@ -90,7 +90,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn files_of_shared_file_systems_get_the_rollback_journal() {
+    fn shared_uses_rollback() {
         assert!(shared(0x6969), "NFS");
         assert!(shared(0x00c3_6400), "CephFS");
         assert!(!shared(0xef53), "ext4");
@@ -100,7 +100,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_parents_use_the_closest_observable_file_system() {
+    fn inspects_existing_parent() {
         let folder = Path::new("/shared/new/deep");
         assert_eq!(
             journal_at(folder, |path| (path == Path::new("/shared"))
@@ -129,7 +129,7 @@ mod tests {
     /// Runs of several processes record into one database with the rollback journal, as on a
     /// file system that cluster nodes share: none of them fails with "database is locked".
     #[test]
-    fn runs_record_at_once_with_the_rollback_journal() {
+    fn records_concurrent_transactions() {
         let directory = tempfile::tempdir().expect("a directory");
         let path = directory.path().join("runs.sqlite");
         let runs: Vec<_> = (0..4)

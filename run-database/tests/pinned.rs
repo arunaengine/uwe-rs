@@ -111,7 +111,7 @@ fn record(path: &Path) {
 }
 
 #[test]
-fn a_run_keeps_what_pins_it() {
+fn retains_run_pins() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     record(&path);
@@ -159,7 +159,7 @@ fn a_run_keeps_what_pins_it() {
 }
 
 #[test]
-fn a_database_of_version_3_gets_what_pins_runs() {
+fn migrates_run_pins() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     drop(Database::open(&path).expect("creates"));

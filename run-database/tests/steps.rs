@@ -85,7 +85,7 @@ fn record(path: &Path, folder: &Path, run: &str, tasks: &[Planned]) {
 }
 
 #[test]
-fn steps_differ_by_how_their_tasks_are_made_what_they_read_and_what_they_made() {
+fn compares_step_content() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let (path, folder) = (directory.path().join("runs.sqlite"), directory.path());
     let output = |run: &str, id: u64| {

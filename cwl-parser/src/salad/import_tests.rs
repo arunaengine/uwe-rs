@@ -102,7 +102,7 @@ fn rejects_import_cycles() {
 }
 
 #[test]
-fn rejects_active_fragment_cycles_but_allows_repeated_imports() {
+fn rejects_fragment_cycles() {
     for text in [
         "types: [{name: loop, child: {$import: '#loop'}}]\n",
         "types: [{name: first, child: {$import: '#second'}}, \

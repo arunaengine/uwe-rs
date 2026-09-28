@@ -73,7 +73,7 @@ mod tests {
     /// The order of the conda documentation (conda.models.version), where each version is at
     /// most the next one; `0.4.1.rc` and `0.4.1.RC` are equal, as case does not count.
     #[test]
-    fn versions_follow_the_order_of_conda() {
+    fn follows_conda_order() {
         let ordered = [
             "0.4",
             "0.4.0",
@@ -118,7 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn specs_allow_ranges_prefixes_and_alternatives() {
+    fn matches_version_constraints() {
         let spec = |text: &str, exact| VersionSpec::parse(text, exact).expect("a spec");
         assert!(spec(">=1.2,<2", false).matches(&version("1.9.9")));
         assert!(!spec(">=1.2,<2", false).matches(&version("2.0")));

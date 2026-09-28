@@ -137,7 +137,7 @@ mod tests {
     }
 
     #[test]
-    fn the_forms_of_environment_files() {
+    fn parses_environment_forms() {
         let fastqc = spec("bioconda::fastqc=0.12.1=hdfd78af_0");
         assert_eq!(fastqc.channel.as_deref(), Some("bioconda"));
         assert!(fastqc.matches(&record("fastqc", "0.12.1", "hdfd78af_0")));
@@ -158,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn the_form_of_the_dependencies_of_packages() {
+    fn parses_dependency_specs() {
         let python = spec("python >=3.8,<3.9.0a0");
         assert!(python.matches(&record("python", "3.8.18", "h955ad1f_0")));
         assert!(!python.matches(&record("python", "3.9.0", "0")));
@@ -173,7 +173,7 @@ mod tests {
     }
 
     #[test]
-    fn bracket_specs_preserve_version_and_build_constraints() {
+    fn preserves_bracket_constraints() {
         let numpy = spec("numpy[version='>=1.20',build=py*]");
         assert!(numpy.matches(&record("numpy", "1.21", "py39_0")));
         assert!(!numpy.matches(&record("numpy", "1.19", "py39_0")));
@@ -185,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn what_is_no_match_spec() {
+    fn rejects_invalid_specs() {
         for text in ["", "x=>=<1", "b:c=1", "numpy[unknown=1]"] {
             assert!(MatchSpec::parse(text).is_err(), "{text}");
         }

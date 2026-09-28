@@ -64,7 +64,7 @@ fn built(preparation: &ImagePreparation) -> BuiltImage {
 }
 
 #[test]
-fn tar_context_is_deterministic_offline_and_verified() {
+fn verifies_deterministic_context() {
     let cache = tempfile::tempdir().expect("package cache");
     let mut locked = locked();
     let mut second_package = locked.packages[0].clone();
@@ -150,7 +150,7 @@ fn tar_context_is_deterministic_offline_and_verified() {
 }
 
 #[test]
-fn identity_binds_lock_base_platform_recipe_and_target_capabilities() {
+fn binds_preparation_identity() {
     let mut locked = locked();
     let first =
         ImagePreparation::new(&locked, &base(), "linux/amd64", &capabilities()).expect("first");
@@ -182,7 +182,7 @@ fn identity_binds_lock_base_platform_recipe_and_target_capabilities() {
 }
 
 #[test]
-fn completed_receipts_bind_inspected_image_provenance_and_distinct_digests() {
+fn binds_receipt_provenance() {
     let preparation =
         ImagePreparation::new(&locked(), &base(), "linux/amd64", &capabilities()).unwrap();
     let receipt = preparation
@@ -206,7 +206,7 @@ fn completed_receipts_bind_inspected_image_provenance_and_distinct_digests() {
 }
 
 #[test]
-fn completed_receipts_reject_mismatched_preparation_evidence() {
+fn rejects_mismatched_evidence() {
     let preparation =
         ImagePreparation::new(&locked(), &base(), "linux/amd64", &capabilities()).unwrap();
     for field in ["preparation", "base", "recipe", "platform"] {
@@ -223,7 +223,7 @@ fn completed_receipts_reject_mismatched_preparation_evidence() {
 }
 
 #[test]
-fn completed_receipts_require_canonical_digest_spelling_and_reference_agreement() {
+fn requires_canonical_digests() {
     let preparation =
         ImagePreparation::new(&locked(), &base(), "linux/amd64", &capabilities()).unwrap();
     for field in ["image", "manifest", "archive"] {
@@ -257,7 +257,7 @@ fn completed_receipts_require_canonical_digest_spelling_and_reference_agreement(
 }
 
 #[test]
-fn completed_receipts_are_strict_and_round_trip_deterministically() {
+fn preserves_receipt_encoding() {
     let preparation =
         ImagePreparation::new(&locked(), &base(), "linux/amd64", &capabilities()).unwrap();
     let receipt = preparation.completed(built(&preparation)).unwrap();
@@ -277,7 +277,7 @@ fn completed_receipts_are_strict_and_round_trip_deterministically() {
 }
 
 #[test]
-fn unsafe_or_unknown_preparation_is_refused_before_context() {
+fn rejects_unsafe_preparation() {
     let locked = locked();
     for reference in [
         "mambaorg/micromamba:latest".to_owned(),

@@ -56,7 +56,7 @@ fn holder(name: &str) -> Holder {
 }
 
 #[tokio::test]
-async fn concurrent_builders_have_one_owner() {
+async fn admits_one_builder() {
     let folder = tempfile::tempdir().unwrap();
     let cache = ImageCache::new(Store::local(folder.path()).unwrap());
     let preparation = preparation('a');
@@ -84,7 +84,7 @@ async fn concurrent_builders_have_one_owner() {
 }
 
 #[tokio::test]
-async fn malformed_stale_and_archive_missing_entries_are_removed_by_observed_version() {
+async fn invalidates_observed_entries() {
     let store = Store::memory().unwrap();
     let cache = ImageCache::new(store.clone());
     let current = preparation('a');
@@ -125,7 +125,7 @@ async fn malformed_stale_and_archive_missing_entries_are_removed_by_observed_ver
 }
 
 #[tokio::test]
-async fn stale_observation_does_not_remove_a_replacement() {
+async fn preserves_replacement_entries() {
     let folder = tempfile::tempdir().unwrap();
     let store = Store::local(folder.path()).unwrap();
     let cache = ImageCache::new(store.clone());
@@ -154,7 +154,7 @@ async fn stale_observation_does_not_remove_a_replacement() {
 }
 
 #[tokio::test]
-async fn an_unpublished_or_failed_build_leaves_the_cache_claimable() {
+async fn releases_unpublished_claims() {
     let folder = tempfile::tempdir().unwrap();
     let store = Store::local(folder.path()).unwrap();
     let cache = ImageCache::new(store);
@@ -178,7 +178,7 @@ async fn an_unpublished_or_failed_build_leaves_the_cache_claimable() {
 }
 
 #[tokio::test]
-async fn publication_requires_its_archive_and_returns_the_stored_winner() {
+async fn requires_publication_archive() {
     let store = Store::memory().unwrap();
     let cache = ImageCache::new(store.clone());
     let preparation = preparation('a');
@@ -233,7 +233,7 @@ async fn publication_requires_its_archive_and_returns_the_stored_winner() {
 }
 
 #[tokio::test]
-async fn foreign_claims_and_observations_are_rejected() {
+async fn rejects_foreign_claims() {
     let first = ImageCache::new(Store::memory().unwrap());
     let second = ImageCache::new(Store::memory().unwrap());
     let preparation = preparation('a');
@@ -278,7 +278,7 @@ async fn foreign_claims_and_observations_are_rejected() {
 }
 
 #[tokio::test]
-async fn layered_caches_read_the_shared_winner_over_stale_fronts() {
+async fn prefers_shared_winner() {
     let shared = Store::memory().unwrap();
     let preparation = preparation('a');
     let cache_key = key(&preparation);

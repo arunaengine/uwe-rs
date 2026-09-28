@@ -134,7 +134,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn environments_give_their_channels_packages_and_pip_packages() {
+    fn parses_environment_dependencies() {
         let text = "name: qc\nchannels:\n  - conda-forge\n  - bioconda\n  - nodefaults\n\
                     dependencies:\n  - bioconda::fastqc=0.12.1\n  - python>=3.9\n  - pip\n  \
                     - pip:\n      - yatiml==0.7\nprefix: /home/me/envs/qc\n";
@@ -152,7 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn broken_environments_name_their_line() {
+    fn reports_environment_lines() {
         let error = Environment::parse("dependencies:\n  - samtools=1.1\n  - b:c=1\n");
         let error = error.expect_err("an error").to_string();
         assert!(error.starts_with("line 3:"), "{error}");

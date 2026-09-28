@@ -162,7 +162,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_end_of_a_long_log_starts_at_a_character() {
+    fn truncates_at_character() {
         let text = format!("{}é{}", "a".repeat(10), "b".repeat(LOG_TAIL - 1));
         let mut log = Some(Log {
             digest: String::new(),
@@ -177,7 +177,7 @@ mod tests {
     }
 
     #[test]
-    fn no_script_of_the_page_ends_its_element() {
+    fn escapes_script_endings() {
         let all = [
             assets::SCRIPT,
             assets::GRAPH_SCRIPT,

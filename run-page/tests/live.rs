@@ -57,7 +57,7 @@ fn record(folder: &Path, count: u64, finished: bool) -> std::path::PathBuf {
 }
 
 #[test]
-fn completed_backlogs_send_every_task_before_stream_completion() {
+fn completes_entire_backlog() {
     let root = tempfile::tempdir().unwrap();
     let server = Server::start(&Settings::new(record(root.path(), 4000, true))).unwrap();
     let client = reqwest::blocking::Client::builder()
@@ -91,7 +91,7 @@ fn completed_backlogs_send_every_task_before_stream_completion() {
 }
 
 #[test]
-fn stopping_the_server_closes_an_active_sse_connection() {
+fn shutdown_closes_stream() {
     let root = tempfile::tempdir().unwrap();
     let server = Server::start(&Settings::new(record(root.path(), 1, false))).unwrap();
     let response = reqwest::blocking::Client::builder()

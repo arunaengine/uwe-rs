@@ -5,7 +5,7 @@
 use run_page::{PageError, Server, Settings};
 
 #[test]
-fn non_loopback_requires_a_token_before_binding() {
+fn requires_remote_token() {
     let mut settings = Settings::new("unused.sqlite".into());
     settings.address = "0.0.0.0".parse().unwrap();
     assert!(matches!(
@@ -15,7 +15,7 @@ fn non_loopback_requires_a_token_before_binding() {
 }
 
 #[test]
-fn bearer_and_browser_cookie_protect_all_routes() {
+fn authenticates_all_routes() {
     let root = tempfile::tempdir().unwrap();
     let mut settings = Settings::new(root.path().join("runs.sqlite"));
     settings.token = Some("test-token".into());

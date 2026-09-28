@@ -79,7 +79,7 @@ fn get(url: &str) -> (u16, String) {
 }
 
 #[test]
-fn the_page_tells_where_the_time_went() {
+fn shows_run_timings() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let server = Server::start(&Settings::new(record(directory.path()))).expect("starts");
     let url = server.url().to_owned();
@@ -105,7 +105,7 @@ fn the_page_tells_where_the_time_went() {
 }
 
 #[test]
-fn the_page_compares_two_runs() {
+fn compares_two_runs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = record(directory.path());
     record_run(&path, "run-2");
@@ -132,7 +132,7 @@ fn the_page_compares_two_runs() {
 }
 
 #[test]
-fn the_panel_of_a_task_lists_its_replays() {
+fn lists_task_replays() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = record(directory.path());
     let mut recorder = Database::open(&path)

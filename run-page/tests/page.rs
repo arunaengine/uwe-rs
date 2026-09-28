@@ -116,7 +116,7 @@ fn get_json(url: &str) -> Value {
 }
 
 #[test]
-fn the_page_shows_runs_tasks_logs_and_files() {
+fn shows_run_details() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let database = record(directory.path());
     let server = Server::start(&Settings::new(database)).expect("starts");
@@ -209,7 +209,7 @@ fn the_page_shows_runs_tasks_logs_and_files() {
 }
 
 #[test]
-fn the_graph_folds_large_steps_and_shows_the_states_of_the_database() {
+fn folds_large_steps() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     let start = RunStart {
@@ -280,7 +280,7 @@ fn the_graph_folds_large_steps_and_shows_the_states_of_the_database() {
 }
 
 #[test]
-fn a_running_run_updates_the_page_live() {
+fn updates_running_page() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     let start = RunStart {
@@ -358,7 +358,7 @@ fn a_running_run_updates_the_page_live() {
 }
 
 #[test]
-fn public_details_reports_events_and_errors_hide_url_passwords_without_changing_replay() {
+fn redacts_public_passwords() {
     let root = tempfile::tempdir().expect("a directory");
     let address = "ftp://user:sentinel-private-password@[::1]:21?email=a:b@c#fragment@x";
     let path = record_with_address(root.path(), Some(address));

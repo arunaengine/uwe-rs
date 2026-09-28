@@ -48,7 +48,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn references_are_split_like_docker_does() {
+    fn splits_docker_references() {
         let image = ImageReference::parse("quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0");
         assert_eq!(image.registry, "quay.io");
         assert_eq!(image.name, "biocontainers/fastqc");

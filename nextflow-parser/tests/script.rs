@@ -240,7 +240,7 @@ fn legacy_classes() {
 }
 
 #[test]
-fn double_quoted_strings_drop_invalid_escapes() {
+fn drops_invalid_escapes() {
     // As the official lexer's error recovery does, `\|` disappears without an error.
     let items = parse("x = \"a\\|b\"\ny = \"\"\"c ${x} \\q\"\"\"\n");
     let texts: Vec<String> = items.iter().map(|item| format!("{item:?}")).collect();

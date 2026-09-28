@@ -25,7 +25,7 @@ fn parse(source: &str) -> (Vec<Item>, Vec<String>) {
 }
 
 #[test]
-fn unsupported_inheritance_reports_a_load_error() {
+fn rejects_unsupported_inheritance() {
     for declaration in [
         "class Child extends Parent {}",
         "class Child implements Runnable {}",
@@ -55,7 +55,7 @@ fn expression(source: &str) -> (ExpressionKind, Vec<String>) {
 }
 
 #[test]
-fn line_break_after_a_dot() {
+fn accepts_dotted_continuation() {
     let (kind, legacy) = expression("ch.join(other).\n    map { it }\n");
     assert!(matches!(kind, ExpressionKind::MethodCall { name, .. } if name.text == "map"));
     assert_eq!(legacy, ["Expected a property name"]);
@@ -76,7 +76,7 @@ fn java_lambda() {
 }
 
 #[test]
-fn assignment_in_a_conditional() {
+fn accepts_conditional_assignment() {
     let source = "meta.single ? reads1 = reads : reads.each { reads1 << it }\n";
     let (kind, legacy) = expression(source);
     let ExpressionKind::Ternary { then, .. } = kind else {
@@ -87,7 +87,7 @@ fn assignment_in_a_conditional() {
 }
 
 #[test]
-fn slashy_string_with_interpolation() {
+fn interpolates_slashy_strings() {
     let (kind, legacy) = expression("logo ? /--cl-config 'logo: \"${logo}\"' \\/x/ : ''\n");
     let ExpressionKind::Ternary { then, .. } = kind else {
         panic!("a conditional");
@@ -146,7 +146,7 @@ fn preview_output_syntax() {
 }
 
 #[test]
-fn several_variables_in_one_declaration() {
+fn declares_multiple_variables() {
     let (items, legacy) = parse("def a = [], b\nprintln(a)\n");
     let Item::Statement(statement) = &items[0] else {
         panic!("a statement");
@@ -171,7 +171,7 @@ fn several_variables_in_one_declaration() {
 
 /// Legacy syntax: a `when:` section of several lines, whose last line is the condition.
 #[test]
-fn when_sections_of_several_lines() {
+fn accepts_multiline_when() {
     let source = "process P {\n    input:\n    val x\n    when:\n    x != null\n    x > 1\n    script:\n    \"echo\"\n}\n";
     let parsed = nextflow_parser::parse_script(source);
     assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
@@ -187,7 +187,7 @@ fn when_sections_of_several_lines() {
 
 /// An include inside an `if`, which Nextflow's strict parser rejects with this message.
 #[test]
-fn include_inside_an_if() {
+fn accepts_conditional_include() {
     let (items, legacy) = parse("if (x) {\n    include { A as C } from './a'\n}\n");
     let [Item::Statement(statement)] = items.as_slice() else {
         panic!("one statement: {items:?}");
@@ -204,7 +204,7 @@ fn include_inside_an_if() {
 /// The inputs and outputs of DSL1 processes are Groovy command chains: `file 'x' into a, b`
 /// calls `into(a, b)` on the result of `file('x')`.
 #[test]
-fn command_chains_of_dsl1_processes() {
+fn accepts_dsl1_chains() {
     let (kind, legacy) = expression("file 'x.txt' optional true into ch_a, ch_b\n");
     let ExpressionKind::MethodCall {
         target: Some(target),
@@ -231,7 +231,7 @@ fn command_chains_of_dsl1_processes() {
 /// The legacy parser takes the sections of a process in any order, like `when:` before
 /// `input:` in nf-core/mnaseseq, and empty sections, like the `input:` of nf-core/exoseq.
 #[test]
-fn process_sections_in_any_order() {
+fn accepts_section_reordering() {
     let (items, legacy) = parse(
         "process P {\n    when:\n    true\n    input:\n    val x\n    script:\n    'true'\n}\n",
     );
@@ -313,7 +313,7 @@ fn include_params() {
 /// The publish statements of Nextflow 24.10, like `ch >> 'name'`, in a named workflow, as
 /// nf-core/references has; Nextflow 24.10.1, the release it names, runs it.
 #[test]
-fn preview_publish_sections_of_named_workflows() {
+fn parses_workflow_publish() {
     let parsed = nextflow_parser::parse_script(
         "workflow W {\n    main:\n    ch = channel.of(1)\n    publish:\n    ch >> 'reference'\n}\n",
     );
@@ -368,7 +368,7 @@ fn statements_in_interpolations() {
 /// `assert condition, message`, as the Polygenic Score Catalog Calculator writes it; Nextflow
 /// 26.04.6 runs it like `assert condition : message`.
 #[test]
-fn asserts_with_a_comma() {
+fn accepts_assert_messages() {
     let parsed = nextflow_parser::parse_script("assert 1 == 1, 'bad'\n");
     assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
     let Item::Statement(statement) = &parsed.tree.items[0] else {

@@ -249,7 +249,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn known_files_need_no_request() {
+    fn known_avoids_requests() {
         let downloads = tempfile::tempdir().expect("a temporary directory");
         let (copied, found, folder) = ("https://a/copied", "https://a/found", "s3://b/folder");
         let storage = Storage::default();
@@ -281,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn copies_keep_the_names_of_earlier_runs() {
+    fn preserves_historical_names() {
         // The SHA-256 of the public web address, as `iunctus/src/remote.rs` named copies.
         let name = |text: &str| -> String {
             Sha256::digest(text.as_bytes())

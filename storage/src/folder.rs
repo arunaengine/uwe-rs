@@ -179,7 +179,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn renamed_source_keeps_the_copied_handles_version() {
+    fn copies_observed_version() {
         let folder = tempfile::tempdir().unwrap();
         let path = folder.path().join("source");
         std::fs::write(&path, b"old").unwrap();

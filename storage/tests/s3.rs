@@ -37,7 +37,7 @@ fn right() -> Storage {
 
 #[tokio::test]
 #[ignore = "needs two S3 servers: just storage-test"]
-async fn inputs_and_store_live_on_two_providers() {
+async fn separates_input_store() {
     let storage = right();
     let folder = tempfile::tempdir().expect("a folder");
     let local = folder.path().join("a.csv");
@@ -87,7 +87,7 @@ async fn inputs_and_store_live_on_two_providers() {
 
 #[tokio::test]
 #[ignore = "needs two S3 servers: just storage-test"]
-async fn a_wrong_secret_never_shows() {
+async fn redacts_wrong_secret() {
     let storage = two_providers("\"wrong-secret-7788\"");
     let error = storage
         .stat("s3://inputs/samples/a.csv")

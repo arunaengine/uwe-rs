@@ -70,7 +70,7 @@ fn s3_put_server(version: Option<&str>) -> (String, std::sync::mpsc::Receiver<(S
 }
 
 #[test]
-fn settings_name_providers_and_the_store() {
+fn parses_provider_settings() {
     let settings = Settings::from_config(&config(
         "[store]\nlocation = \"s3://cache/iunctus\"\n\
          [storage.lab]\ntype = \"s3\"\nprefixes = [\"s3://lab-data/\", \"s3://cache/\"]\n\
@@ -106,7 +106,7 @@ fn settings_name_providers_and_the_store() {
 }
 
 #[test]
-fn wrong_settings_name_the_line() {
+fn locates_settings_errors() {
     let file = "/home/me/.config/iunctus/config.toml";
     assert_eq!(
         settings_error("[storage.a]\nprefixes = [\"s3://a/\"]\n"),
@@ -175,7 +175,7 @@ fn wrong_settings_name_the_line() {
 }
 
 #[tokio::test]
-async fn the_longest_prefix_wins() {
+async fn longest_prefix_wins() {
     let root = tempfile::tempdir().expect("a folder");
     let (all, deep) = (root.path().join("all"), root.path().join("deep"));
     std::fs::create_dir_all(all.join("bucket/deep")).unwrap();
@@ -214,7 +214,7 @@ async fn the_longest_prefix_wins() {
 }
 
 #[tokio::test]
-async fn folders_read_list_and_write() {
+async fn supports_folder_operations() {
     let root = tempfile::tempdir().expect("a folder");
     let mirror = root.path().join("mirror");
     std::fs::create_dir_all(mirror.join("data/sub")).unwrap();
@@ -270,7 +270,7 @@ async fn folders_read_list_and_write() {
 }
 
 #[tokio::test]
-async fn web_providers_send_their_credentials() {
+async fn sends_provider_credentials() {
     let server = WebServer::start(
         &[("/private/samples.csv", "id,reads\na,1\n")],
         Some(("Authorization", "Bearer token-7431")),
@@ -319,7 +319,7 @@ async fn web_providers_send_their_credentials() {
 }
 
 #[tokio::test]
-async fn headers_and_passwords_are_sent_too() {
+async fn sends_configured_credentials() {
     let header = WebServer::start(&[("/a", "a")], Some(("X-Api-Key", "key-1")));
     let basic = WebServer::start(
         &[("/b", "b")],
@@ -340,7 +340,7 @@ async fn headers_and_passwords_are_sent_too() {
 }
 
 #[tokio::test]
-async fn files_are_downloaded_once() {
+async fn downloads_files_once() {
     let server = WebServer::start(&[("/data/reads.fq", "ACGT")], None);
     let address = format!("{}/data/reads.fq", server.address);
     let downloads = tempfile::tempdir().expect("a folder");
@@ -364,7 +364,7 @@ async fn files_are_downloaded_once() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn tasks_that_read_a_file_at_once_share_one_download() {
+async fn shares_concurrent_downloads() {
     let body = "ACGT".repeat(1 << 18);
     let server = WebServer::start(&[("/reads.fq", &body)], None);
     let address = format!("{}/reads.fq", server.address);
@@ -380,7 +380,7 @@ async fn tasks_that_read_a_file_at_once_share_one_download() {
 }
 
 #[tokio::test]
-async fn stopped_downloads_restart_without_reusing_unversioned_bytes() {
+async fn restarts_unversioned_downloads() {
     let server = WebServer::start(&[("/big", "BBBBCCCC")], None);
     let address = format!("{}/big", server.address);
     let downloads = tempfile::tempdir().expect("a folder");
@@ -401,7 +401,7 @@ async fn stopped_downloads_restart_without_reusing_unversioned_bytes() {
 }
 
 #[test]
-fn drivers_wait_for_requests() {
+fn waits_for_requests() {
     let server = WebServer::start(&[("/a.txt", "text")], None);
     let downloads = tempfile::tempdir().expect("a folder");
     let blocking = Storage::default().blocking();
@@ -422,7 +422,7 @@ fn drivers_wait_for_requests() {
 }
 
 #[tokio::test]
-async fn ftp_servers_serve_inputs() {
+async fn reads_ftp_inputs() {
     let server = FtpServer::start(
         &[
             ("/pub/data/a.txt", "alpha"),
@@ -484,7 +484,7 @@ async fn ftp_servers_serve_inputs() {
 }
 
 #[tokio::test]
-async fn ftp_servers_without_a_provider_are_read_as_nextflow_reads_them() {
+async fn reads_builtin_ftp() {
     // Without a provider, iunctus logs in as `anonymous`, as public servers ask.
     let public = FtpServer::start(&[("/pub/a.txt", "alpha")], "anonymous", "anonymous@");
     let file = format!("{}/pub/a.txt", public.address);
@@ -520,7 +520,7 @@ fn shape(found: Option<Metadata>) -> Option<(bool, u64)> {
 }
 
 #[tokio::test]
-async fn remote_files_that_a_process_reads_are_noted_and_can_be_pinned() {
+async fn records_remote_reads() {
     let server = WebServer::start(&[("/a.csv", "id\n1\n")], None);
     let downloads = tempfile::tempdir().expect("a folder of downloads");
     let address = format!("{}/a.csv", server.address);
@@ -564,7 +564,7 @@ async fn remote_files_that_a_process_reads_are_noted_and_can_be_pinned() {
 }
 
 #[tokio::test]
-async fn distinct_storage_instances_can_download_the_same_target_concurrently() {
+async fn isolates_storage_downloads() {
     let body = "ACGT".repeat(1 << 18);
     let server = common::WebServer::start(&[("/data", &body)], None);
     let target = format!("{}/data", server.address);
@@ -581,7 +581,7 @@ async fn distinct_storage_instances_can_download_the_same_target_concurrently() 
 }
 
 #[tokio::test]
-async fn concurrent_folder_uploads_publish_one_complete_source() {
+async fn publishes_complete_uploads() {
     let root = tempfile::tempdir().unwrap();
     let destination = root.path().join("mirror");
     let storage = storage(&format!(
@@ -607,7 +607,7 @@ async fn concurrent_folder_uploads_publish_one_complete_source() {
 }
 
 #[tokio::test]
-async fn failed_download_preserves_the_destination_and_cleans_its_temporary_file() {
+async fn preserves_failed_destination() {
     let server = common::WebServer::start(&[], None);
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("old");
@@ -623,7 +623,7 @@ async fn failed_download_preserves_the_destination_and_cleans_its_temporary_file
 }
 
 #[tokio::test]
-async fn a_whole_http_download_rejects_an_unsolicited_partial_response() {
+async fn rejects_unsolicited_ranges() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = format!("http://{}/data", listener.local_addr().unwrap());
     std::thread::spawn(move || {
@@ -651,7 +651,7 @@ async fn a_whole_http_download_rejects_an_unsolicited_partial_response() {
 }
 
 #[tokio::test]
-async fn changing_object_version_between_ranges_cannot_publish_a_hybrid() {
+async fn rejects_mixed_versions() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let endpoint = format!("http://{}", listener.local_addr().unwrap());
     let versions = Arc::new(Mutex::new(Vec::new()));
@@ -710,7 +710,7 @@ async fn changing_object_version_between_ranges_cannot_publish_a_hybrid() {
 }
 
 #[tokio::test]
-async fn cancelled_download_keeps_old_destination_and_removes_its_private_file() {
+async fn cleans_cancelled_downloads() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = format!("http://{}/data", listener.local_addr().unwrap());
     let (ready, waiting) = tokio::sync::oneshot::channel();
@@ -750,7 +750,7 @@ async fn cancelled_download_keeps_old_destination_and_removes_its_private_file()
 }
 
 #[tokio::test]
-async fn object_download_without_a_strong_version_fails_before_reading_ranges() {
+async fn requires_strong_version() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let endpoint = format!("http://{}", listener.local_addr().unwrap());
     std::thread::spawn(move || {
@@ -786,7 +786,7 @@ async fn object_download_without_a_strong_version_fails_before_reading_ranges() 
 }
 
 #[tokio::test]
-async fn versioned_object_locations_keep_encoded_keys_and_exact_selectors() {
+async fn preserves_versioned_locations() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let endpoint = format!("http://{}", listener.local_addr().unwrap());
     let requests = Arc::new(Mutex::new(Vec::new()));
@@ -858,7 +858,7 @@ async fn versioned_object_locations_keep_encoded_keys_and_exact_selectors() {
 }
 
 #[tokio::test]
-async fn upload_receipts_come_from_the_completed_write_without_a_head_request() {
+async fn receipts_follow_writes() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source");
     std::fs::write(&source, b"data").unwrap();
@@ -914,7 +914,7 @@ async fn upload_receipts_come_from_the_completed_write_without_a_head_request() 
 }
 
 #[tokio::test]
-async fn completed_downloads_are_isolated_by_provider_and_ignore_legacy_copies() {
+async fn isolates_provider_cache() {
     let roots = [tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap()];
     let downloads = tempfile::tempdir().unwrap();
     let address = "s3://bucket/data";
@@ -960,7 +960,7 @@ async fn completed_downloads_are_isolated_by_provider_and_ignore_legacy_copies()
 }
 
 #[tokio::test]
-async fn builtin_downloads_ignore_unverifiable_legacy_completed_caches() {
+async fn rejects_unverifiable_cache() {
     let server = WebServer::start(&[("/data", "fresh")], None);
     let address = format!("{}/data", server.address);
     let downloads = tempfile::tempdir().unwrap();
@@ -978,7 +978,7 @@ async fn builtin_downloads_ignore_unverifiable_legacy_completed_caches() {
 }
 
 #[test]
-fn namespace_identity_tracks_routing_but_excludes_secrets_without_reading_them() {
+fn identity_excludes_secrets() {
     let configured = |endpoint, secret| {
         storage(&format!(
             "[storage.remote]\ntype='s3'\nprefixes='s3://bucket/'\nendpoint='{endpoint}'\nregion='us-east-1'\naccess_key_id='key'\nsecret_access_key={secret}"
@@ -1016,7 +1016,7 @@ fn namespace_identity_tracks_routing_but_excludes_secrets_without_reading_them()
 }
 
 #[tokio::test]
-async fn concurrent_versions_publish_one_immutable_content_and_version_bundle() {
+async fn publishes_immutable_versions() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = format!("http://{}/data", listener.local_addr().unwrap());
     let barrier = Arc::new(std::sync::Barrier::new(2));
@@ -1093,7 +1093,7 @@ async fn concurrent_versions_publish_one_immutable_content_and_version_bundle() 
 }
 
 #[tokio::test]
-async fn a_folder_provider_keeps_distinct_addresses_that_public_web_would_alias() {
+async fn preserves_folder_addresses() {
     let root = tempfile::tempdir().unwrap();
     let downloads = tempfile::tempdir().unwrap();
     let configured = storage(&format!(

@@ -159,7 +159,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn digests_are_remembered_while_the_copy_stays_the_same() {
+    async fn remembers_unchanged_digests() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let copy = folder.path().join("copy");
         std::fs::write(&copy, "abc").expect("writes");
@@ -183,7 +183,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn passwords_of_addresses_are_never_noted() {
+    async fn omits_journal_passwords() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let copy = folder.path().join("copy");
         std::fs::write(&copy, "abc").expect("writes");
@@ -198,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn a_journal_keeps_each_address_once() {
+    fn journals_unique_addresses() {
         let journal = Journal::default();
         let fetched = |digest: &str| Fetched {
             address: "https://x/a".into(),

@@ -260,14 +260,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_process_has_one_client() {
+    fn shares_process_client() {
         let first = http_client().expect("a client");
         let second = http_client().expect("a client");
         assert!(std::ptr::eq(first, second));
     }
 
     #[test]
-    fn queued_cancelled_copies_and_opens_never_recreate_private_paths() {
+    fn cancellation_cleans_paths() {
         use std::future::Future;
         for operation in 0..3 {
             let runtime = tokio::runtime::Builder::new_current_thread()

@@ -131,7 +131,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn secrets_are_hidden_in_messages() {
+    fn redacts_error_secrets() {
         let secrets = ["s3cr3t".to_owned(), String::new()];
         assert_eq!(
             redact("signature s3cr3t does not match s3cr3t", &secrets),

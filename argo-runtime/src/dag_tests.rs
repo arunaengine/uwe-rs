@@ -31,7 +31,7 @@ fn bare_names_expand() {
 }
 
 #[test]
-fn dependencies_honour_continue_on() {
+fn honours_continue_dependencies() {
     let mut a = task("a", "", &[]);
     a.continue_on = Some(ContinueOn {
         error: false,

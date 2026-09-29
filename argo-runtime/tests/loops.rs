@@ -51,7 +51,7 @@ fn fanout(dag: bool) -> String {
 }
 
 #[test]
-fn real_fanout_rejects_unknown_lists_but_accepts_empty_json() {
+fn rejects_unknown_fanout() {
     let folder = tempfile::tempdir().unwrap();
     for dag in [false, true] {
         for text in ["  ", "{{missing}}", "placeholder_items"] {
@@ -87,7 +87,7 @@ fn real_fanout_rejects_unknown_lists_but_accepts_empty_json() {
 }
 
 #[test]
-fn real_empty_items_do_not_hide_unresolved_fields() {
+fn empty_preserves_validation() {
     let folder = tempfile::tempdir().unwrap();
     let spec = fanout(false).replace("{{item}}", "{{item.missing}}");
     for simulated in [false, true] {
@@ -115,7 +115,7 @@ fn real_empty_items_do_not_hide_unresolved_fields() {
 }
 
 #[test]
-fn skipped_and_omitted_references_keep_their_existing_behavior() {
+fn preserves_skipped_references() {
     let folder = tempfile::tempdir().unwrap();
     for (calls, source) in [
         (
@@ -154,7 +154,7 @@ fn skipped_and_omitted_references_keep_their_existing_behavior() {
 }
 
 #[test]
-fn empty_real_outputs_do_not_suppress_expression_errors() {
+fn propagates_empty_errors() {
     let folder = tempfile::tempdir().unwrap();
     let spec = r#"  entrypoint: main
   templates:
@@ -184,7 +184,7 @@ fn empty_real_outputs_do_not_suppress_expression_errors() {
 }
 
 #[test]
-fn both_parameter_aggregate_forms_preserve_string_values() {
+fn preserves_aggregate_strings() {
     let folder = tempfile::tempdir().unwrap();
     for (calls, prefix) in [
         (

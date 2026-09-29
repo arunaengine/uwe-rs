@@ -5,7 +5,7 @@
 use workflow_graph::Launch;
 
 #[test]
-fn unknown_typed_fields_fail_driver_admission_with_their_location() {
+fn rejects_unknown_fields() {
     let directory = tempfile::tempdir().expect("a folder");
     let file = directory.path().join("workflow.yaml");
     let workflow = r#"apiVersion: argoproj.io/v1alpha1
@@ -55,7 +55,7 @@ spec:
 }
 
 #[test]
-fn garbage_collection_fields_are_accepted_without_kubernetes() {
+fn accepts_collection_fields() {
     let directory = tempfile::tempdir().expect("a folder");
     let target = directory.path().join("workflow.yaml");
     std::fs::write(
@@ -72,7 +72,7 @@ fn garbage_collection_fields_are_accepted_without_kubernetes() {
 }
 
 #[test]
-fn metadata_and_raw_kubernetes_payloads_remain_extensible() {
+fn allows_extensible_payloads() {
     let directory = tempfile::tempdir().expect("a folder");
     let file = directory.path().join("workflow.yaml");
     let workflow = r#"apiVersion: argoproj.io/v1alpha1

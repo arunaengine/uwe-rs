@@ -38,7 +38,7 @@ fn response(folder: &std::path::Path, task: &Task, headers: &str) -> Outcome {
 }
 
 #[test]
-fn literal_and_binary_bodies_use_stdin_and_headers_use_the_final_response() {
+fn preserves_http_bodies() {
     let folder = tempfile::tempdir().unwrap();
     for (body, prefix, timeout) in [
         (
@@ -87,7 +87,7 @@ fn literal_and_binary_bodies_use_stdin_and_headers_use_the_final_response() {
 }
 
 #[test]
-fn invalid_http_fields_are_refused_before_emission_and_missing_status_fails() {
+fn rejects_invalid_http() {
     let folder = tempfile::tempdir().unwrap();
     for field in [
         "bodyFrom: {path: /body}",
@@ -127,7 +127,7 @@ fn invalid_http_fields_are_refused_before_emission_and_missing_status_fails() {
 }
 
 #[test]
-fn downstream_scope_reads_recorded_start_and_finish_times() {
+fn records_scope_times() {
     let folder = tempfile::tempdir().unwrap();
     let spec = r#"  entrypoint: main
   templates:
@@ -164,7 +164,7 @@ fn downstream_scope_reads_recorded_start_and_finish_times() {
 }
 
 #[test]
-fn lifecycle_hooks_read_current_status_and_completed_results() {
+fn hooks_read_results() {
     let folder = tempfile::tempdir().unwrap();
     let spec = r#"  entrypoint: main
   hooks:

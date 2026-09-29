@@ -250,7 +250,7 @@ fn workflow(templates: &str) -> String {
 }
 
 #[test]
-fn steps_run_in_groups() {
+fn groups_workflow_steps() {
     let ran = run(&workflow(
         r#"
   - name: main
@@ -288,7 +288,7 @@ fn steps_run_in_groups() {
 }
 
 #[test]
-fn loops_expand_items_params_and_sequences() {
+fn expands_argo_loops() {
     let ran = run_with(
         &workflow(
             r#"
@@ -359,7 +359,7 @@ fn loops_expand_items_params_and_sequences() {
 }
 
 #[test]
-fn when_decides_with_outputs() {
+fn conditions_read_outputs() {
     let coinflip = r#"
   - name: main
     steps:
@@ -401,7 +401,7 @@ fn when_decides_with_outputs() {
 }
 
 #[test]
-fn recursion_ends_by_outputs_and_depth_limit_fails_loudly() {
+fn bounds_recursive_calls() {
     let recursive = r#"
   - name: main
     steps:
@@ -439,7 +439,7 @@ fn recursion_ends_by_outputs_and_depth_limit_fails_loudly() {
 }
 
 #[test]
-fn dag_depends_on_results() {
+fn dag_requires_results() {
     let dag = r#"
   - name: main
     dag:
@@ -485,7 +485,7 @@ fn dag_depends_on_results() {
 }
 
 #[test]
-fn failed_tasks_let_the_other_branches_of_a_dag_run() {
+fn failure_preserves_branches() {
     let dag = r#"
   - name: fail
     container: {image: busybox, command: ["false"]}
@@ -523,7 +523,7 @@ fn failed_tasks_let_the_other_branches_of_a_dag_run() {
 }
 
 #[test]
-fn continue_on_and_retries() {
+fn retries_continue_failures() {
     let steps = r#"
   - name: main
     steps:
@@ -565,7 +565,7 @@ fn continue_on_and_retries() {
 }
 
 #[test]
-fn outputs_pass_parameters_and_artifacts() {
+fn passes_template_outputs() {
     let ran = run_with(
         &workflow(
             r#"
@@ -650,7 +650,7 @@ fn outputs_pass_parameters_and_artifacts() {
 }
 
 #[test]
-fn templates_of_other_documents() {
+fn loads_external_templates() {
     let library = r#"
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
@@ -732,7 +732,7 @@ spec:
 }
 
 #[test]
-fn exit_handlers_see_the_status() {
+fn handlers_read_status() {
     let ran = run_with(
         &format!(
             "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata:\n  name: exits\nspec:\n  entrypoint: main\n  onExit: exit\n  templates:\n{}{PRINT}",
@@ -781,7 +781,7 @@ fn exit_handlers_see_the_status() {
 }
 
 #[test]
-fn retry_delays_and_host_affinity_preserve_attempts_and_results() {
+fn preserves_retry_results() {
     for spec in [
         "  retryStrategy: {limit: 1, backoff: {duration: 5s, factor: 2, cap: 1m}, affinity: {nodeAntiAffinity: {}}}\n  templates:\n  - name: main\n    container: {image: alpine}\n",
         "  templates:\n  - name: main\n    retryStrategy: {limit: 1, backoff: {duration: 5s, factor: 2, cap: 1m}, affinity: {nodeAntiAffinity: {}}}\n    container: {image: alpine}\n",
@@ -801,7 +801,7 @@ fn retry_delays_and_host_affinity_preserve_attempts_and_results() {
 }
 
 #[test]
-fn invalid_retry_and_lifecycle_hook_expressions_fail_loudly() {
+fn rejects_invalid_hooks() {
     let retried = run_with(
         &workflow(
             "  - name: main\n    retryStrategy: {limit: 1, expression: 'missing.name'}\n    container: {image: alpine}\n",
@@ -835,7 +835,7 @@ fn invalid_retry_and_lifecycle_hook_expressions_fail_loudly() {
 }
 
 #[test]
-fn workflow_retry_limits_resolve_parameters_instead_of_becoming_unlimited() {
+fn resolves_retry_limits() {
     let ran = run_with(
         "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {name: retries}\nspec:\n  entrypoint: main\n  arguments: {parameters: [{name: limit, value: '0'}]}\n  retryStrategy: {limit: '{{workflow.parameters.limit}}'}\n  templates:\n  - name: main\n    container: {image: alpine}\n",
         Setup {
@@ -848,7 +848,7 @@ fn workflow_retry_limits_resolve_parameters_instead_of_becoming_unlimited() {
 }
 
 #[test]
-fn generated_names_do_not_depend_on_the_location() {
+fn names_ignore_location() {
     // Each run writes the workflow into a new temporary directory.
     let names: Vec<String> = (0..2)
         .map(|_| run(&workflow(PRINT_STEP)).tasks()[0].name.clone())
@@ -866,7 +866,7 @@ const PRINT_STEP: &str = r#"
 "#;
 
 #[test]
-fn placeholders_for_missing_parameters() {
+fn supplies_missing_placeholders() {
     let ran = run(&workflow(
         r#"
   - name: main
@@ -930,7 +930,7 @@ fn placeholders_for_missing_parameters() {
 }
 
 #[test]
-fn memoization_settings_do_not_prevent_native_task_execution() {
+fn memoization_preserves_execution() {
     for spec in [
         "  templates:\n  - name: main\n    memoize: {key: cache, cache: {configMap: {name: cache}}}\n    container: {image: alpine}\n",
         "  templateDefaults:\n    memoize: {key: cache, cache: {configMap: {name: cache}}}\n  templates:\n  - name: main\n    container: {image: alpine}\n",
@@ -949,7 +949,7 @@ fn memoization_settings_do_not_prevent_native_task_execution() {
 }
 
 #[test]
-fn resource_limits_take_precedence_over_requests() {
+fn limits_override_requests() {
     for (resources, cpus, memory) in [
         (
             "requests: {cpu: 500m, memory: 1Gi}, limits: {cpu: 2, memory: 2Gi}",
@@ -970,7 +970,7 @@ fn resource_limits_take_precedence_over_requests() {
 }
 
 #[test]
-fn leaf_kinds_become_tasks() {
+fn lowers_leaf_tasks() {
     let ran = run(&workflow(
         r#"
   - name: main
@@ -1054,7 +1054,7 @@ const CONTAINER_SET: &str = r#"
 "#;
 
 #[test]
-fn a_container_set_is_one_task_of_its_containers() {
+fn groups_container_set() {
     let setup = Setup {
         files: vec![("/workspace/message", vec!["a\nb\n"])],
         ..Setup::default()
@@ -1090,7 +1090,7 @@ fn a_container_set_is_one_task_of_its_containers() {
 }
 
 #[test]
-fn a_container_set_fails_with_the_first_container_that_failed() {
+fn selects_set_failure() {
     let setup = Setup {
         containers: vec![("set", vec![("b", 2)])],
         ..Setup::default()
@@ -1105,7 +1105,7 @@ fn a_container_set_fails_with_the_first_container_that_failed() {
 }
 
 #[test]
-fn tasks_may_change_their_artifacts_and_the_files_of_volumes() {
+fn permits_artifact_updates() {
     let text = r#"apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata: {generateName: test-}
@@ -1142,7 +1142,7 @@ spec:
 }
 
 #[test]
-fn kubernetes_fields_are_left_out_with_a_warning() {
+fn warns_kubernetes_fields() {
     let ran = run(&workflow(
         "  - name: main\n    nodeSelector: {disk: ssd}\n    container: {image: alpine, securityContext: {runAsUser: 1000, privileged: true}}\n",
     ));
@@ -1164,7 +1164,7 @@ fn kubernetes_fields_are_left_out_with_a_warning() {
 }
 
 #[test]
-fn containers_run_as_their_image_or_the_user_of_their_security_context() {
+fn respects_container_identity() {
     let ran = run(r#"apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
@@ -1233,7 +1233,7 @@ fn plugin_config_map(name: &'static str, image: &str) -> &'static str {
 }
 
 #[test]
-fn plugin_templates_call_executor_plugins() {
+fn calls_executor_plugins() {
     // Workflow-level plugins; a simulated run does not know the reply.
     let plugins = "  executorPlugins:\n  - metadata: {name: hello}\n    spec:\n      sidecar:\n        container: {name: hello, image: python:alpine, command: [python, -c], args: [serve], ports: [{containerPort: 4356}]}\n";
     let ran = run(&plugin_workflow(plugins));
@@ -1316,7 +1316,7 @@ fn with_documents(documents: &str, templates: &str) -> String {
 }
 
 #[test]
-fn volumes_share_files_between_steps() {
+fn shares_volume_files() {
     let text = r#"
   - name: main
     steps:
@@ -1396,7 +1396,7 @@ fn real() -> Setup {
 }
 
 #[test]
-fn parameters_read_config_maps_of_the_loaded_documents() {
+fn reads_parameter_maps() {
     let templates = r#"
   - name: main
     steps:
@@ -1433,7 +1433,7 @@ fn parameters_read_config_maps_of_the_loaded_documents() {
 }
 
 #[test]
-fn environments_read_config_maps_and_keep_secrets_out() {
+fn resolves_environment_secrets() {
     let templates = r#"
   - name: main
     container:
@@ -1459,7 +1459,7 @@ fn environments_read_config_maps_and_keep_secrets_out() {
 }
 
 #[test]
-fn config_maps_and_secrets_become_files() {
+fn materializes_map_files() {
     let templates = r#"
   - name: main
     volumes:
@@ -1487,7 +1487,7 @@ fn config_maps_and_secrets_become_files() {
 }
 
 #[test]
-fn claims_become_volumes_and_cluster_templates_stop_the_run() {
+fn rejects_cluster_claims() {
     let claim = r#"
   - name: main
     steps:
@@ -1536,7 +1536,7 @@ fn claims_become_volumes_and_cluster_templates_stop_the_run() {
 }
 
 #[test]
-fn init_containers_run_before_the_main_task_on_the_same_files() {
+fn orders_init_containers() {
     let templates = r#"
   - name: main
     steps:
@@ -1622,7 +1622,7 @@ spec:
 "#;
 
 #[test]
-fn workflows_start_other_workflows_in_the_same_run() {
+fn starts_child_workflows() {
     let templates = r#"
   - name: main
     steps:
@@ -1726,7 +1726,7 @@ spec:
 }
 
 #[test]
-fn host_paths_are_written_back_in_a_real_run() {
+fn writes_host_paths() {
     let host = tempfile::tempdir().expect("a temporary directory");
     let templates = format!(
         r#"
@@ -1755,7 +1755,7 @@ fn host_paths_are_written_back_in_a_real_run() {
 }
 
 #[test]
-fn a_simulated_run_takes_the_default_of_an_empty_output() {
+fn defaults_empty_outputs() {
     let templates = r#"
   - name: main
     steps:
@@ -1779,7 +1779,7 @@ fn a_simulated_run_takes_the_default_of_an_empty_output() {
 }
 
 #[test]
-fn a_command_replaces_the_entrypoint_and_args_alone_run_through_it() {
+fn replaces_command_entrypoint() {
     let ran = run(&workflow(
         r#"
   - name: main

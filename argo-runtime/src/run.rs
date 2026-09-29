@@ -1267,7 +1267,7 @@ mod files_tests {
     }
 
     #[test]
-    fn outputs_of_a_store_elsewhere_are_read_through_the_files_of_the_run() {
+    fn reads_remote_outputs() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         std::fs::write(folder.path().join("result"), "42\n").expect("writes");
         let files = Elsewhere(folder.path().to_owned());
@@ -1279,7 +1279,7 @@ mod files_tests {
     }
 
     #[test]
-    fn retry_duration_uses_all_outcomes_in_either_completion_order() {
+    fn counts_retry_duration() {
         use super::*;
         let node = argo_parser::parse_yaml(
             r#"apiVersion: argoproj.io/v1alpha1

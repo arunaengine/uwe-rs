@@ -37,7 +37,7 @@ fn conversions_are_lenient() {
 }
 
 #[test]
-fn repeated_strings_report_unrepresentable_sizes() {
+fn rejects_unrepresentable_repeats() {
     for subject in ["a", "abc"] {
         assert!(call("repeat", vec![Value::Int(i64::MAX), text(subject)]).is_err());
     }

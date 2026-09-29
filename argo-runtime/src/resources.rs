@@ -204,7 +204,7 @@ mod tests {
     }
 
     #[test]
-    fn equivalent_requests_and_limits_keep_their_resource_values() {
+    fn preserves_equivalent_resources() {
         let node = argo_parser::parse_yaml(
             "{requests: {cpu: '0.5', memory: 1Gi}, limits: {cpu: 500m, memory: 1024Mi}}",
         )

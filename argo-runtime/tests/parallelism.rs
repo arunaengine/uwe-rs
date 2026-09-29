@@ -34,7 +34,7 @@ fn complete(run: &mut dyn Driver, task: Task) -> Vec<Task> {
 }
 
 #[test]
-fn nested_limits_count_invocations_and_refill_in_both_completion_orders() {
+fn bounds_nested_invocations() {
     bounded(|| {
         let folder = tempfile::tempdir().unwrap();
         let spec = r#"  entrypoint: main
@@ -109,7 +109,7 @@ fn nested_limits_count_invocations_and_refill_in_both_completion_orders() {
 }
 
 #[test]
-fn workflow_and_step_hooks_share_leaf_admission() {
+fn hooks_share_admission() {
     bounded(|| {
         let folder = tempfile::tempdir().unwrap();
         let spec = r#"  entrypoint: main
@@ -146,7 +146,7 @@ fn workflow_and_step_hooks_share_leaf_admission() {
 }
 
 #[test]
-fn child_resource_call_holds_the_enclosing_template_allowance() {
+fn children_hold_allowance() {
     bounded(|| {
         let folder = tempfile::tempdir().unwrap();
         let spec = r#"  entrypoint: main
@@ -224,7 +224,7 @@ fn child_resource_call_holds_the_enclosing_template_allowance() {
 }
 
 #[test]
-fn loops_refill_without_changing_skipped_omitted_or_empty_behavior() {
+fn preserves_loop_states() {
     bounded(|| {
         let folder = tempfile::tempdir().unwrap();
         let spec = r#"  entrypoint: main
@@ -262,7 +262,7 @@ fn loops_refill_without_changing_skipped_omitted_or_empty_behavior() {
 }
 
 #[test]
-fn serialized_volume_updates_reach_the_next_admitted_writer() {
+fn propagates_volume_updates() {
     bounded(|| {
         let folder = tempfile::tempdir().unwrap();
         let spec = r#"  entrypoint: main

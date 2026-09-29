@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use super::{Value, go_float, go_quote};
 
 #[test]
-fn floats_print_like_go() {
+fn formats_go_floats() {
     assert_eq!(go_float(4.0), "4");
     assert_eq!(go_float(0.5), "0.5");
     assert_eq!(go_float(123456.0), "123456");
@@ -20,7 +20,7 @@ fn floats_print_like_go() {
 }
 
 #[test]
-fn collections_print_like_go() {
+fn formats_go_collections() {
     let map: BTreeMap<String, Value> = [
         ("b".to_owned(), Value::Int(2)),
         ("a".to_owned(), Value::string("x")),
@@ -33,7 +33,7 @@ fn collections_print_like_go() {
 }
 
 #[test]
-fn json_escapes_like_go() {
+fn escapes_go_json() {
     let escaped = Value::string("a<b>&\"\n").to_json();
     let backslash = '\\';
     assert_eq!(
@@ -57,7 +57,7 @@ fn quotes_like_go() {
 }
 
 #[test]
-fn json_numbers_are_floats() {
+fn uses_float_numbers() {
     let value = Value::parse_json(r#"{"n": 3, "l": [1, "x"]}"#).expect("JSON");
     let Value::Map(map) = value else {
         panic!("a map");

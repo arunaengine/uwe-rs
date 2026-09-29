@@ -195,7 +195,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn verdicts_follow_the_status_and_the_condition() {
+    fn evaluates_status_conditions() {
         let mut http = HttpTemplate::default();
         assert!(matches!(http_verdict(&http, "", "", ""), Verdict::Unknown));
         assert!(matches!(

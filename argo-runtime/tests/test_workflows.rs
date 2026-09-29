@@ -58,7 +58,7 @@ const CONFIGS: &[(&str, &str)] = &[
 
 #[test]
 #[ignore = "needs the Argo test workflows from `just argo-test-workflows`; run it with `just argo-test-workflows-test`"]
-fn runs_the_test_workflows() {
+fn runs_workflow_fixtures() {
     // Recursive workflows nest templates 100 levels deep before the depth limit stops them,
     // which needs more stack than a test thread has.
     std::thread::Builder::new()
@@ -179,7 +179,7 @@ fn one_line(message: &str, root: &str) -> String {
 }
 
 #[test]
-fn records_name_a_kind_and_their_evidence() {
+fn records_provide_evidence() {
     let text = "# a comment\n\na.yaml\n= invalid: it calls template x, which it does not define\n$ argo lint --offline a.yaml\n> template name 'x' undefined\n\nb.yaml\n= unsupported (decision 18): template y is a data template\n";
     let found = records(text);
     assert_eq!(
@@ -268,7 +268,7 @@ fn failed_document_keys(relative: &str, text: &str) -> Vec<String> {
 }
 
 #[test]
-fn failed_files_keep_each_existing_workflow_document_key() {
+fn preserves_document_keys() {
     let text = "apiVersion: argoproj.io/v1alpha1\nkind: CronWorkflow\nspec: {}\n---\napiVersion: v1\nkind: ConfigMap\n---\napiVersion: argoproj.io/v1alpha1\nkind: WorkflowTemplate\nspec: {entrypoints: invalid}\n";
     assert_eq!(
         failed_document_keys("workflow.yaml", text),

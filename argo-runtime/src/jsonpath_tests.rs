@@ -20,7 +20,7 @@ fn path(text: &str) -> String {
 }
 
 #[test]
-fn definite_paths_give_values() {
+fn selects_definite_values() {
     assert_eq!(path("$.samples[0].files.bam.name"), "x.bam");
     assert_eq!(path("$['samples'][0]['files'].bam.name"), "x.bam");
     assert_eq!(path("$.employees[-1].age"), "30");
@@ -30,7 +30,7 @@ fn definite_paths_give_values() {
 }
 
 #[test]
-fn other_paths_give_lists() {
+fn selects_path_lists() {
     assert_eq!(path("$.employees[*].name"), "[a b]");
     assert_eq!(path("$.employees[0:1].name"), "[a]");
     assert_eq!(path("$..name"), "[a b x.bam]");
@@ -39,7 +39,7 @@ fn other_paths_give_lists() {
 }
 
 #[test]
-fn large_slice_steps_do_not_overflow() {
+fn bounds_slice_steps() {
     assert_eq!(path("$.employees[1::9223372036854775807].name"), "[b]");
     assert_eq!(path("$.employees[1::-9223372036854775808].name"), "[b]");
 }

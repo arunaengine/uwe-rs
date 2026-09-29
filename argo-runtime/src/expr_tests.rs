@@ -112,7 +112,7 @@ fn reads_argo_variables() {
 }
 
 #[test]
-fn unknown_names_fail_and_missing_keys_are_nil() {
+fn rejects_unknown_names() {
     let variables = environment(&[("inputs.parameters.a", "1")]);
     assert!(evaluate("tasks.x.outputs.result", variables.environment()).is_err());
     assert_eq!(

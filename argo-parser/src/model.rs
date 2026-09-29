@@ -117,7 +117,8 @@ pub struct ObjectMeta {
     pub managed_fields: Option<Node>,
     pub self_link: Option<Node>,
     pub deletion_timestamp: Option<Node>,
-    pub deletion_grace_period_seconds: Option<Node>,
+    #[serde(rename = "deletionGracePeriodSeconds")]
+    pub deletion_grace_seconds: Option<Node>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -143,7 +144,8 @@ pub struct WorkflowSpec {
     #[serde(rename = "artifactGC")]
     pub artifact_gc: Option<Node>,
     pub artifact_repository_ref: Option<Node>,
-    pub automount_service_account_token: Option<Node>,
+    #[serde(rename = "automountServiceAccountToken")]
+    pub automount_account_token: Option<Node>,
     pub dns_config: Option<Node>,
     pub dns_policy: Option<Node>,
     pub executor: Option<Node>,
@@ -157,7 +159,8 @@ pub struct WorkflowSpec {
     #[serde(rename = "podGC")]
     pub pod_gc: Option<Node>,
     pub pod_metadata: Option<Node>,
-    pub pod_priority_class_name: Option<Node>,
+    #[serde(rename = "podPriorityClassName")]
+    pub pod_priority_class: Option<Node>,
     pub pod_resources: Option<Node>,
     pub pod_spec_patch: Option<Node>,
     pub resource_claims: Option<Node>,
@@ -180,8 +183,10 @@ pub struct CronWorkflowSpec {
     pub timezone: Option<Node>,
     pub concurrency_policy: Option<Node>,
     pub starting_deadline_seconds: Option<Node>,
-    pub successful_jobs_history_limit: Option<Node>,
-    pub failed_jobs_history_limit: Option<Node>,
+    #[serde(rename = "successfulJobsHistoryLimit")]
+    pub successful_history_limit: Option<Node>,
+    #[serde(rename = "failedJobsHistoryLimit")]
+    pub failed_history_limit: Option<Node>,
     pub suspend: Option<Node>,
     pub workflow_metadata: Option<Node>,
     pub stop_strategy: Option<Node>,
@@ -214,7 +219,8 @@ pub struct ExecutorPluginSpec {
 #[serde(default, rename_all = "camelCase")]
 pub struct Sidecar {
     pub container: Container,
-    pub automount_service_account_token: bool,
+    #[serde(rename = "automountServiceAccountToken")]
+    pub automount_account_token: bool,
 }
 
 /// A template: a leaf that does work, a pause, or steps or a DAG that call other templates.
@@ -247,7 +253,8 @@ pub struct Template {
     pub annotations: Option<Node>,
     pub archive_location: Option<Node>,
     pub affinity: Option<Node>,
-    pub automount_service_account_token: Option<Node>,
+    #[serde(rename = "automountServiceAccountToken")]
+    pub automount_account_token: Option<Node>,
     pub executor: Option<Node>,
     pub host_aliases: Option<Node>,
     pub memoize: Option<Node>,

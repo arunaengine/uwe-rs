@@ -53,7 +53,7 @@ fn output(driver: &mut CwlDriver, task: &Task, root: &Path, value: serde_json::V
 }
 
 #[test]
-fn output_json_returns_staged_files_and_unlisted_directory_children() {
+fn reads_staged_children() {
     for directory in [false, true] {
         let folder = tempfile::tempdir().expect("folder");
         let root = folder.path();
@@ -108,7 +108,7 @@ fn output_json_returns_staged_files_and_unlisted_directory_children() {
 }
 
 #[test]
-fn output_json_rejects_unrelated_and_parent_locations_before_reading() {
+fn rejects_unrelated_locations() {
     for location in [
         "../unrelated.txt",
         "%2e%2e/unrelated.txt",
@@ -141,7 +141,7 @@ fn output_json_rejects_unrelated_and_parent_locations_before_reading() {
 }
 
 #[test]
-fn missing_output_json_preserves_the_read_error() {
+fn preserves_json_errors() {
     let folder = tempfile::tempdir().expect("folder");
     let source = folder.path().join("input.txt");
     std::fs::write(&source, "input").expect("input");
@@ -173,7 +173,7 @@ fn missing_output_json_preserves_the_read_error() {
 }
 
 #[test]
-fn initial_workdir_directory_arrays_keep_collected_copies() {
+fn copies_directory_arrays() {
     for version in ["v1.1", "v1.2"] {
         let folder = tempfile::tempdir().expect("folder");
         let root = folder.path();
@@ -255,7 +255,7 @@ fn initial_workdir_directory_arrays_keep_collected_copies() {
 }
 
 #[test]
-fn record_output_eval_accepts_outdir_paths_and_rejects_escapes() {
+fn rejects_record_escapes() {
     for simulated in [true, false] {
         for suffix in ["", "/..", "/%2e%2e", "-other"] {
             let prefix = if suffix.contains('%') { "file://" } else { "" };

@@ -42,7 +42,7 @@ fn setting<'a>(types: &'a Types, evaluator: &'a Evaluator, assumed: &'a [String]
 }
 
 #[test]
-fn optional_inputs_of_the_top_process_get_placeholders_when_asked() {
+fn supplies_requested_placeholders() {
     let tool = process(
         "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\noutputs: []\n\
          inputs:\n  extra: File?\n  flag: boolean\n",
@@ -69,7 +69,7 @@ fn optional_inputs_of_the_top_process_get_placeholders_when_asked() {
 }
 
 #[test]
-fn load_contents_applies_to_file_array_items() {
+fn loads_array_contents() {
     let folder = tempfile::tempdir().expect("folder");
     let file = folder.path().join("input.txt");
     std::fs::write(&file, "array contents").expect("input file");
@@ -94,7 +94,7 @@ fn load_contents_applies_to_file_array_items() {
 }
 
 #[test]
-fn broken_defaults_of_the_top_process_give_way_to_placeholders() {
+fn replaces_broken_defaults() {
     let tool = process(
         "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\noutputs: []\n\
          inputs:\n  given:\n    type: File\n    default: {class: File}\n",
@@ -120,7 +120,7 @@ fn broken_defaults_of_the_top_process_give_way_to_placeholders() {
 }
 
 #[test]
-fn values_of_the_wrong_type_are_named_briefly() {
+fn names_invalid_types() {
     let tool = process(
         "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\noutputs: []\n\
          inputs:\n  database: string\n",
@@ -166,7 +166,7 @@ fn formats(regular: Option<&str>, item: &str) -> Map {
 }
 
 #[test]
-fn checks_file_formats_as_cwltool_does_without_an_ontology() {
+fn checks_cwl_formats() {
     let tool = process(FORMATS);
     let (types, evaluator) = (Types::default(), Evaluator::default());
     let assumed = [BASE.to_owned()];
@@ -207,7 +207,7 @@ const INDEXED: &str = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: ca
     outputs: []\ninputs:\n  reference: {type: File, secondaryFiles: [.fai]}\n";
 
 #[test]
-fn a_file_on_disk_needs_its_secondary_files_on_disk() {
+fn requires_secondary_files() {
     let tool = process(INDEXED);
     let folder = tempfile::tempdir().expect("a temporary folder");
     let fasta = folder.path().join("genome.fa");
@@ -231,7 +231,7 @@ fn a_file_on_disk_needs_its_secondary_files_on_disk() {
 }
 
 #[test]
-fn inside_a_workflow_only_assumed_files_get_secondary_files() {
+fn assumed_adds_secondaries() {
     let tool = process(INDEXED);
     let job = |url: &str| match Value::parse(&format!(
         "{{reference: {{class: File, location: '{url}'}}}}"
@@ -260,7 +260,7 @@ fn inside_a_workflow_only_assumed_files_get_secondary_files() {
 }
 
 #[test]
-fn placeholder_strings_that_reach_an_enum_give_way_to_a_symbol() {
+fn selects_enum_symbols() {
     let tool = process(
         "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: run\noutputs: []\n\
          inputs:\n  mode: {type: {type: enum, symbols: [growth, dosage]}}\n",

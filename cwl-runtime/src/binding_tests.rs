@@ -48,7 +48,7 @@ fn command_line(tool: &str, job: &str) -> Vec<String> {
 const HEAD: &str = "cwlVersion: v1.2\nclass: CommandLineTool\noutputs: []\n";
 
 #[test]
-fn sorts_by_position_then_name() {
+fn orders_binding_positions() {
     let tool = format!(
         "{HEAD}inputs:\n  b: {{type: int, inputBinding: {{position: 1, prefix: -b}}}}\n  \
          a: {{type: int, inputBinding: {{position: 1, prefix: -a}}}}\n  \
@@ -61,7 +61,7 @@ fn sorts_by_position_then_name() {
 }
 
 #[test]
-fn binds_arrays_with_nested_prefixes_and_separators() {
+fn binds_prefixed_arrays() {
     let tool = format!(
         "{HEAD}inputs:\n  reads:\n    type: {{type: array, items: string, inputBinding: {{prefix: -Y}}}}\n    \
          inputBinding: {{position: 2, prefix: -X}}\n  \
@@ -80,7 +80,7 @@ fn binds_arrays_with_nested_prefixes_and_separators() {
 }
 
 #[test]
-fn binds_record_fields_in_their_own_order() {
+fn orders_record_bindings() {
     let tool = format!(
         "{HEAD}inputs:\n  r:\n    type:\n      type: record\n      fields:\n        \
          z: {{type: int, inputBinding: {{position: 1, prefix: -z}}}}\n        \
@@ -95,7 +95,7 @@ fn binds_record_fields_in_their_own_order() {
 }
 
 #[test]
-fn picks_the_union_member_that_fits() {
+fn selects_matching_union() {
     let tool = format!(
         "{HEAD}inputs:\n  u:\n    type: ['null', int, {{type: array, items: string, inputBinding: {{prefix: -s}}}}]\n    \
          inputBinding: {{prefix: -u}}\n"
@@ -108,7 +108,7 @@ fn picks_the_union_member_that_fits() {
 }
 
 #[test]
-fn writes_files_by_path_and_numbers_as_python_does() {
+fn formats_python_arguments() {
     let tool = format!(
         "{HEAD}inputs:\n  f: {{type: File, inputBinding: {{}}}}\n  \
          x: {{type: double, inputBinding: {{position: 1}}}}\n"
@@ -131,7 +131,7 @@ fn writes_files_by_path_and_numbers_as_python_does() {
 }
 
 #[test]
-fn quotes_for_the_shell_as_python_does() {
+fn quotes_shell_arguments() {
     assert_eq!(shell_quote("plain-arg_1.txt"), "plain-arg_1.txt");
     assert_eq!(shell_quote(""), "''");
     assert_eq!(shell_quote("a b"), "'a b'");

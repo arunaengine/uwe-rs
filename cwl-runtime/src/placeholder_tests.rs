@@ -17,7 +17,7 @@ fn locations(value: &Value) -> Vec<&str> {
 }
 
 #[test]
-fn arrays_get_two_items_with_their_own_names() {
+fn names_array_placeholders() {
     let array = Type::Array(Box::new(ArraySchema {
         items: Type::File,
         name: None,
@@ -37,7 +37,7 @@ fn arrays_get_two_items_with_their_own_names() {
 }
 
 #[test]
-fn directories_hold_a_folder_with_a_file_and_a_file() {
+fn builds_directory_placeholders() {
     let genome = value(
         &Types::default(),
         &Type::Directory,
@@ -59,7 +59,7 @@ fn directories_hold_a_folder_with_a_file_and_a_file() {
 }
 
 #[test]
-fn record_fields_get_the_format_they_declare() {
+fn preserves_record_formats() {
     let field = RecordField {
         name: "reads".into(),
         value_type: Type::File,
@@ -95,7 +95,7 @@ fn record_fields_get_the_format_they_declare() {
 }
 
 #[test]
-fn files_of_simulated_tasks_placeholders_and_absent_data_are_fake() {
+fn marks_simulated_files() {
     let file = |location: &str| {
         let mut map = Map::new();
         map.insert("class".into(), Value::string("File"));

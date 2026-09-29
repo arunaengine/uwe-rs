@@ -7,7 +7,7 @@ use crate::expression::{Evaluator, Variables};
 use cwl_parser::model::Expression;
 
 #[test]
-fn streamed_literals_preserve_javascript_numbers_keys_and_escaping() {
+fn preserves_javascript_literals() {
     let mut value = Value::parse("{z: [1, 1.25, 'text'], a: null}").expect("value");
     let Value::Map(map) = &mut value else {
         panic!("map")
@@ -28,7 +28,7 @@ fn streamed_literals_preserve_javascript_numbers_keys_and_escaping() {
 }
 
 #[test]
-fn cancelled_javascript_cannot_become_a_shell_literal_but_references_remain_local() {
+fn cancellation_preserves_references() {
     let evaluator = Evaluator::default();
     evaluator.settings.cancel.cancel();
     let inputs = Value::parse("{value: 42}").expect("inputs");
@@ -47,7 +47,7 @@ fn cancelled_javascript_cannot_become_a_shell_literal_but_references_remain_loca
 }
 
 #[test]
-fn engine_cancellation_rebinds_the_helper_without_changing_its_image_or_engine() {
+fn rebinds_cancelled_helper() {
     let mut settings =
         JavaScriptSettings::new("configured-engine".into(), CancellationToken::new());
     settings.image = "configured-image".into();
@@ -62,7 +62,7 @@ fn engine_cancellation_rebinds_the_helper_without_changing_its_image_or_engine()
 }
 
 #[test]
-fn oversized_and_deep_requests_fail_before_helper_start_without_literal_fallback() {
+fn bounds_helper_requests() {
     for value in [Value::String("x".repeat(FRAME_LIMIT)), {
         let mut value = Value::Null;
         for _ in 0..NESTING_LIMIT + 2 {
@@ -99,7 +99,7 @@ fn oversized_and_deep_requests_fail_before_helper_start_without_literal_fallback
 }
 
 #[test]
-fn response_nesting_and_frames_are_checked_before_value_parse() {
+fn bounds_response_parsing() {
     let deep = format!(
         "{}null{}",
         "[".repeat(NESTING_LIMIT + 1),

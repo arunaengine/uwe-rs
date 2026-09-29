@@ -28,7 +28,7 @@ fn eval(evaluator: &Evaluator, text: &str) -> Result<Value, String> {
 }
 
 #[test]
-fn evaluates_parameter_references_without_javascript() {
+fn evaluates_parameter_references() {
     let plain = Evaluator::default();
     assert_eq!(eval(&plain, "$(inputs.file.size)"), Ok(Value::Integer(3)));
     assert_eq!(eval(&plain, "$(inputs.list.length)"), Ok(Value::Integer(3)));
@@ -55,7 +55,7 @@ fn evaluates_parameter_references_without_javascript() {
 }
 
 #[test]
-fn interpolates_values_as_sorted_json() {
+fn interpolates_sorted_json() {
     let plain = Evaluator::default();
     assert_eq!(
         eval(&plain, "$(runtime.outdir)/$(inputs.file.basename)"),
@@ -80,7 +80,7 @@ fn interpolates_values_as_sorted_json() {
 }
 
 #[test]
-fn falls_back_to_javascript_when_it_is_enabled() {
+fn uses_enabled_javascript() {
     let javascript = Evaluator::with_javascript(vec!["function f(x) { return x + 1; }".into()]);
     assert_eq!(
         eval(&javascript, "$(f(inputs.list.length))"),
@@ -104,7 +104,7 @@ fn falls_back_to_javascript_when_it_is_enabled() {
 }
 
 #[test]
-fn keeps_white_space_around_dirent_entries() {
+fn preserves_dirent_whitespace() {
     let plain = Evaluator::default();
     let expression = Expression::parse("$(inputs.list)\n", false).expect("an expression");
     let inputs = inputs();
@@ -124,7 +124,7 @@ fn keeps_white_space_around_dirent_entries() {
 }
 
 #[test]
-fn keeps_shell_variables_without_the_javascript_requirement() {
+fn preserves_shell_variables() {
     let plain = Evaluator::default();
     assert_eq!(
         eval(&plain, "OUT=${HOME}/out; echo ${@:2}"),

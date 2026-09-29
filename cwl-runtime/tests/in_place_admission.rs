@@ -87,7 +87,7 @@ fn written(root: &Path, task: &Task, content: &str) -> Outcome {
 }
 
 #[test]
-fn writers_refresh_deferred_contents_value_from_when_and_staging() {
+fn refreshes_deferred_inputs() {
     for remote in [false, true] {
         let root = tempfile::tempdir().expect("folder");
         let main = workflow(
@@ -138,7 +138,7 @@ fn writers_refresh_deferred_contents_value_from_when_and_staging() {
 }
 
 #[test]
-fn local_file_aliases_follow_the_updated_version() {
+fn refreshes_file_aliases() {
     for hard_link in [false, true] {
         let root = tempfile::tempdir().expect("folder");
         let original = root.path().join("data.txt");
@@ -169,7 +169,7 @@ fn local_file_aliases_follow_the_updated_version() {
 }
 
 #[test]
-fn ordinary_readers_run_together_and_writers_wait_for_both_completion_orders() {
+fn writers_wait_readers() {
     for reverse in [false, true] {
         let root = tempfile::tempdir().expect("folder");
         let main = workflow(
@@ -214,7 +214,7 @@ fn ordinary_readers_run_together_and_writers_wait_for_both_completion_orders() {
 }
 
 #[test]
-fn nested_and_scattered_writers_share_the_refreshed_input_without_deadlock() {
+fn writers_share_inputs() {
     for scattered in [false, true] {
         let root = tempfile::tempdir().expect("folder");
         let main = if scattered {
@@ -255,7 +255,7 @@ fn nested_and_scattered_writers_share_the_refreshed_input_without_deadlock() {
 }
 
 #[test]
-fn failed_writers_release_queued_independent_work_when_keep_going_is_set() {
+fn failure_releases_work() {
     let root = tempfile::tempdir().expect("folder");
     let main = workflow(
         &format!(
@@ -291,7 +291,7 @@ fn failed_writers_release_queued_independent_work_when_keep_going_is_set() {
 }
 
 #[test]
-fn preparation_failures_do_not_strand_later_independent_readers() {
+fn preparation_releases_readers() {
     for keep_going in [false, true] {
         for writer_fails in [false, true] {
             let root = tempfile::tempdir().expect("folder");
@@ -375,7 +375,7 @@ fn preparation_failures_do_not_strand_later_independent_readers() {
 }
 
 #[test]
-fn stop_policy_does_not_resume_preparation_when_other_readers_finish() {
+fn stop_prevents_preparation() {
     let root = tempfile::tempdir().expect("folder");
     let bad = WRITER.replace(
         "arguments: [$(inputs.f.contents), $(inputs.f.size)]",

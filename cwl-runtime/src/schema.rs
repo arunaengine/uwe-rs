@@ -422,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn literal_files_become_data_addresses() {
+    fn encodes_literal_addresses() {
         assert_eq!(data_address("a b\n"), "data:,a%20b%0A");
     }
 }

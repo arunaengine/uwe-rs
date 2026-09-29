@@ -30,7 +30,7 @@ outputs:
 "#;
 
 #[test]
-fn a_tool_describes_its_inputs_and_outputs() {
+fn describes_tool_inputs() {
     let folder = tempfile::tempdir().expect("a folder");
     let tool = folder.path().join("count.cwl");
     std::fs::write(&tool, TOOL).expect("writes the tool");
@@ -77,7 +77,7 @@ fn a_tool_describes_its_inputs_and_outputs() {
 }
 
 #[test]
-fn nested_record_files_keep_formats_and_secondary_files() {
+fn preserves_nested_files() {
     let folder = tempfile::tempdir().expect("a folder");
     let tool = folder.path().join("record.cwl");
     let source = r#"cwlVersion: v1.2
@@ -142,7 +142,7 @@ outputs: []
 }
 
 #[test]
-fn long_defaults_keep_every_i64_exact() {
+fn preserves_long_defaults() {
     let folder = tempfile::tempdir().expect("a folder");
     let tool = folder.path().join("longs.cwl");
     let source = r#"cwlVersion: v1.2
@@ -187,7 +187,7 @@ outputs: []
 }
 
 #[test]
-fn integers_outside_cwl_long_bounds_are_an_error() {
+fn rejects_integer_overflow() {
     for digits in ["9223372036854775808", "-9223372036854775809"] {
         let folder = tempfile::tempdir().expect("a folder");
         let tool = folder.path().join("outside.cwl");

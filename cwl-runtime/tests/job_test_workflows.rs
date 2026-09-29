@@ -106,7 +106,7 @@ fn clean(message: &str, root: &Path) -> String {
 
 #[test]
 #[ignore = "needs the CWL test workflows from `just cwl-test-workflows`; run it with `just cwl-job-test-workflows-test`"]
-fn documents_run_with_their_job_files_as_recorded() {
+fn matches_recorded_jobs() {
     let root =
         PathBuf::from(std::env::var("CWL_TEST_WORKFLOWS").expect("CWL_TEST_WORKFLOWS is set"));
     let fixture =
@@ -220,7 +220,7 @@ fn documents_run_with_their_job_files_as_recorded() {
 }
 
 #[test]
-fn every_record_names_its_kind_and_shows_evidence() {
+fn records_provide_evidence() {
     let reasons = records::reasons(EVIDENCE);
     assert!(reasons.len() > 50, "{} records", reasons.len());
 }

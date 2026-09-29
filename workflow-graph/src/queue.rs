@@ -50,7 +50,7 @@ mod tests {
     }
 
     #[test]
-    fn a_task_waits_for_the_tasks_it_is_after() {
+    fn waits_preceding_tasks() {
         let mut queue = Queue::default();
         queue.push(task(1, &[]));
         queue.push(task(2, &[1]));

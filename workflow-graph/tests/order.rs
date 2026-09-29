@@ -72,7 +72,7 @@ fn task(id: u64, after: &[u64]) -> Task {
 }
 
 #[test]
-fn after_is_an_order_edge() {
+fn after_orders_tasks() {
     let mut driver = Script {
         first: vec![task(1, &[]), task(2, &[1])],
         ..Script::default()
@@ -87,7 +87,7 @@ fn after_is_an_order_edge() {
 }
 
 #[test]
-fn after_names_only_tasks_asked_for_before() {
+fn requires_prior_tasks() {
     let cases: [(Vec<Task>, u64, u64); 3] = [
         // A task that never comes.
         (vec![task(1, &[9])], 1, 9),
@@ -137,7 +137,7 @@ fn fan_out() -> Script {
 }
 
 #[test]
-fn the_default_options_run_tasks_as_asked() {
+fn defaults_preserve_requests() {
     let (started, heard) = run(fan_out(), 1, Order::AsAsked);
     assert_eq!(started, ids(&[1, 2, 3, 4, 5, 6, 7]));
     assert_eq!(heard, started);
@@ -147,7 +147,7 @@ fn the_default_options_run_tasks_as_asked() {
 }
 
 #[test]
-fn pending_tasks_finish_in_reverse() {
+fn finishes_reverse_order() {
     let (started, heard) = run(fan_out(), 3, Order::Reversed);
     assert_eq!(started, ids(&[1, 2, 3, 4, 5, 6, 7]));
     // 1, 2 and 3 are pending; 3 finishes, 4 starts and finishes, then 5; then 2, which asks
@@ -156,7 +156,7 @@ fn pending_tasks_finish_in_reverse() {
 }
 
 #[test]
-fn shuffled_orders_repeat_with_their_seed() {
+fn repeats_shuffled_orders() {
     let (_, first) = run(fan_out(), 4, Order::Shuffled { seed: 7 });
     let (_, again) = run(fan_out(), 4, Order::Shuffled { seed: 7 });
     assert_eq!(first, again);
@@ -170,7 +170,7 @@ fn shuffled_orders_repeat_with_their_seed() {
 }
 
 #[test]
-fn pending_tasks_keep_the_after_rule() {
+fn pending_preserves_after() {
     let driver = Script {
         first: vec![task(1, &[]), task(2, &[1]), task(3, &[])],
         ..Script::default()

@@ -63,7 +63,7 @@ fn task(id: u64, after: &[u64]) -> Task {
 }
 
 #[test]
-fn planning_receives_engine_cancellation_before_start() {
+fn planning_receives_cancellation() {
     #[derive(Default)]
     struct Planning {
         cancel: Option<CancellationToken>,
@@ -161,7 +161,7 @@ fn options(max_pending: usize, order: Order) -> RunOptions {
 }
 
 #[test]
-fn attempts_run_at_the_same_time_and_end_in_their_order() {
+fn orders_concurrent_attempts() {
     let mut driver = Tasks {
         first: (1..=4).map(|id| task(id, &[])).collect(),
         ..Tasks::default()
@@ -186,7 +186,7 @@ fn attempts_run_at_the_same_time_and_end_in_their_order() {
 }
 
 #[test]
-fn deterministic_orders_do_not_depend_on_when_attempts_end() {
+fn orders_ignore_completion() {
     let mut driver = Tasks {
         first: (1..=3).map(|id| task(id, &[])).collect(),
         ..Tasks::default()
@@ -203,7 +203,7 @@ fn deterministic_orders_do_not_depend_on_when_attempts_end() {
 }
 
 #[test]
-fn the_engine_runs_a_task_again_after_the_machine_failed() {
+fn retries_machine_failures() {
     let mut driver = Tasks {
         first: vec![task(1, &[])],
         ..Tasks::default()
@@ -245,7 +245,7 @@ fn the_engine_runs_a_task_again_after_the_machine_failed() {
 }
 
 #[test]
-fn machine_retry_backoff_is_cancellable() {
+fn cancels_retry_backoff() {
     let token = CancellationToken::new();
     let stop = token.clone();
     std::thread::spawn(move || {
@@ -273,7 +273,7 @@ fn machine_retry_backoff_is_cancellable() {
 }
 
 #[test]
-fn a_driver_retries_a_failed_task_and_the_tasks_after_it_wait() {
+fn retry_blocks_dependents() {
     let mut driver = Tasks {
         first: vec![task(1, &[]), task(2, &[1])],
         retries: 1,
@@ -296,7 +296,7 @@ fn a_driver_retries_a_failed_task_and_the_tasks_after_it_wait() {
 }
 
 #[test]
-fn a_driver_retries_output_collection_after_exit_zero_and_dependents_wait() {
+fn collection_blocks_dependents() {
     let mut driver = Tasks {
         first: vec![task(1, &[]), task(2, &[1])],
         retries: 1,
@@ -352,7 +352,7 @@ impl Driver for Requests {
 }
 
 #[test]
-fn completion_retries_preserve_duplicate_gates() {
+fn retry_preserves_gates() {
     let cases = [
         (
             "initial duplicate",
@@ -409,7 +409,7 @@ fn completion_retries_preserve_duplicate_gates() {
 }
 
 #[test]
-fn an_unrelated_completion_can_still_retry_a_previously_failed_task() {
+fn retries_prior_failures() {
     let mut driver = Requests {
         first: vec![task(1, &[]), task(2, &[])],
         next: HashMap::from([(TaskId(2), vec![task(1, &[])])]),
@@ -438,7 +438,7 @@ fn an_unrelated_completion_can_still_retry_a_previously_failed_task() {
 }
 
 #[test]
-fn a_cancelled_run_stops_its_attempts() {
+fn cancellation_stops_attempts() {
     let mut driver = Tasks {
         first: vec![task(1, &[]), task(2, &[])],
         ..Tasks::default()
@@ -546,7 +546,7 @@ impl Executor for Turns {
 }
 
 #[test]
-fn a_draining_run_lets_running_tasks_end_and_starts_no_other() {
+fn draining_finishes_running() {
     // Task 1 fails while task 2 runs and task 3 waits for its turn; task 4 waits in the queue,
     // since at most three tasks are pending.
     let mut driver = Draining {
@@ -589,7 +589,7 @@ impl Executor for Synchronous {
 }
 
 #[test]
-fn cancellation_stops_synchronous_admission_and_outcomes() {
+fn cancels_synchronous_admission() {
     for pre_cancelled in [true, false] {
         let cancel = CancellationToken::new();
         if pre_cancelled {
@@ -626,7 +626,7 @@ fn cancellation_stops_synchronous_admission_and_outcomes() {
 }
 
 #[test]
-fn cancellation_during_finish_prevents_success() {
+fn cancellation_prevents_success() {
     let cancel = CancellationToken::new();
     let mut driver = Tasks {
         cancel_on_finish: Some(cancel.clone()),
@@ -643,7 +643,7 @@ fn cancellation_during_finish_prevents_success() {
 }
 
 #[test]
-fn a_panicking_future_records_a_bounded_terminal_failure() {
+fn bounds_panic_failure() {
     struct Panics;
     impl Executor for Panics {
         fn run(&mut self, _attempt: Attempt) -> Running {
@@ -675,7 +675,7 @@ fn a_panicking_future_records_a_bounded_terminal_failure() {
 }
 
 #[test]
-fn machine_failures_do_not_retry_while_draining() {
+fn draining_skips_retries() {
     struct Failures(Vec<TaskId>);
     impl Executor for Failures {
         fn run(&mut self, attempt: Attempt) -> Running {
@@ -711,7 +711,7 @@ fn machine_failures_do_not_retry_while_draining() {
 }
 
 #[test]
-fn failure_hooks_run_once_after_cleanup_and_preserve_the_cause() {
+fn preserves_failure_cause() {
     struct Hook {
         calls: usize,
         events: Arc<Mutex<Vec<String>>>,

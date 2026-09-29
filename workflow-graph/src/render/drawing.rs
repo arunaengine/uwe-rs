@@ -553,7 +553,7 @@ mod tests {
     }
 
     #[test]
-    fn steps_with_many_tasks_are_one_box() {
+    fn folds_large_steps() {
         let mut graph = fan_out();
         graph.nodes[3].exit_code = Some(1);
         graph.nodes[4].exit_code = None;
@@ -592,7 +592,7 @@ mod tests {
     }
 
     #[test]
-    fn graphs_count_what_came_from_the_cache() {
+    fn counts_cached_tasks() {
         let mut graph = fan_out();
         for node in &mut graph.nodes[..6] {
             node.reused = true;
@@ -668,7 +668,7 @@ mod tests {
     }
 
     #[test]
-    fn a_wide_graph_folds_steps_with_few_tasks_too() {
+    fn folds_wide_graphs() {
         // Three steps of four tasks stand in a row of 12: every task has its box.
         let narrow = parallel_steps(3, 4).drawing(&Options::default());
         assert_eq!(narrow.shapes.len(), 14);
@@ -696,7 +696,7 @@ mod tests {
     }
 
     #[test]
-    fn many_lines_into_one_box_are_one_line_with_a_count() {
+    fn counts_merged_edges() {
         // Twenty tasks of an open step read by one task: one thick line, nineteen hidden.
         let graph = parallel_steps(1, 20);
         let open = Options {
@@ -722,7 +722,7 @@ mod tests {
     }
 
     #[test]
-    fn the_view_of_steps_has_a_box_per_step() {
+    fn boxes_each_step() {
         let options = Options {
             view: View::Steps,
             ..Options::default()
@@ -744,7 +744,7 @@ mod tests {
     }
 
     #[test]
-    fn known_states_win_and_open_points_follow_their_box() {
+    fn preserves_known_states() {
         let mut graph = fan_out();
         graph.simulate();
         let read = Marker::new(MarkerKind::Content, "the workflow read 3.txt");
@@ -772,7 +772,7 @@ mod tests {
     }
 
     #[test]
-    fn qualified_names_keep_their_last_parts() {
+    fn shortens_qualified_names() {
         let name = "NFCORE_RNASEQ:RNASEQ:FASTQ_QC:FQ_LINT (WT_REP1)";
         assert_eq!(last_parts(name, 1), "FQ_LINT (WT_REP1)");
         assert_eq!(
@@ -783,7 +783,7 @@ mod tests {
     }
 
     #[test]
-    fn long_names_keep_their_end() {
+    fn preserves_name_suffix() {
         assert_eq!(shorten("FASTQC (a)"), "FASTQC (a)");
         let long = "NFCORE_RNASEQ:RNASEQ:FASTQ_FASTQC_UMITOOLS_TRIMGALORE:FASTQC";
         let short = shorten(long);

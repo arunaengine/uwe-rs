@@ -128,7 +128,7 @@ impl Observer for Notes {
 }
 
 #[test]
-fn observers_hear_each_step() {
+fn observes_each_step() {
     let mut notes = Notes::default();
     let mut executor = Succeed;
     let mut driver = Chain::default();
@@ -149,7 +149,7 @@ fn observers_hear_each_step() {
 }
 
 #[test]
-fn observers_hear_the_end_of_a_failed_run() {
+fn observes_failed_end() {
     let mut notes = Notes::default();
     let mut driver = Chain {
         fail_at_finish: true,
@@ -179,7 +179,7 @@ impl Executor for Real {
 }
 
 #[test]
-fn real_executors_deliver_what_drivers_ask_for() {
+fn delivers_requested_files() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let made = folder.path().join("out.txt");
     std::fs::write(&made, "made\n").expect("writes");
@@ -212,7 +212,7 @@ fn real_executors_deliver_what_drivers_ask_for() {
 }
 
 #[test]
-fn failed_copies_are_not_acknowledged_and_acknowledgement_errors_propagate() {
+fn propagates_copy_failures() {
     let folder = tempfile::tempdir().unwrap();
     let made = folder.path().join("out.txt");
     let mut driver = Chain {

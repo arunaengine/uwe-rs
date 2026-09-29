@@ -101,7 +101,7 @@ impl Observer for Recorded {
 }
 
 #[test]
-fn exit_zero_is_settled_only_after_native_validation_even_when_completion_fails() {
+fn validation_gates_settlement() {
     for (accepted, fail) in [(true, false), (false, false), (false, true)] {
         let trace = Trace::default();
         let mut driver = Checked {

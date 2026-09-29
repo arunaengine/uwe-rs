@@ -416,7 +416,7 @@ mod tests {
     }
 
     #[test]
-    fn lines_join_and_keep_their_here_documents() {
+    fn joins_shell_lines() {
         let lines = logical_lines("cat <<-END > a.txt\n\tx\nEND\necho a \\\n  b");
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].bodies, ["x\n"]);
@@ -424,7 +424,7 @@ mod tests {
     }
 
     #[test]
-    fn words_quotes_and_redirects() {
+    fn parses_shell_words() {
         let tokens = tokens("echo 'a b' \"$x\"y $(date) 2>&1 >> out.txt; true");
         assert_eq!(
             tokens,

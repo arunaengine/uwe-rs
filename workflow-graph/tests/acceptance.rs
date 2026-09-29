@@ -38,7 +38,7 @@ impl Executor for Defaults {
 }
 
 #[tokio::test]
-async fn success_without_explicit_acceptance_is_rejected_and_settlement_defaults_to_no_op() {
+async fn requires_explicit_acceptance() {
     let mut defaults = Defaults;
     let driver: &mut dyn Driver = &mut defaults;
     driver
@@ -109,7 +109,7 @@ impl Executor for Explicit {
 }
 
 #[tokio::test]
-async fn decisions_and_owned_settlement_futures_keep_both_identity_components() {
+async fn settlement_preserves_identity() {
     let first = (TaskId(7), 1);
     let retry = (TaskId(7), 2);
     let other = (TaskId(8), 2);

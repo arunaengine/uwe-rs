@@ -75,7 +75,7 @@ impl Driver for Toy {
 }
 
 #[test]
-fn the_graph_links_tasks_by_their_files() {
+fn links_task_files() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let mut executor = Simulator::new(directory.path());
     let graph = execute("toy", &mut Toy::default(), &mut executor)
@@ -107,7 +107,7 @@ fn the_graph_links_tasks_by_their_files() {
 }
 
 #[test]
-fn a_simulated_task_of_several_containers_shows_each() {
+fn shows_simulated_containers() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let simulator = Simulator::new(directory.path());
     let container = |name: &str, image: &str| workflow_graph::Container {
@@ -144,7 +144,7 @@ impl Executor for Reusing {
 }
 
 #[test]
-fn the_graph_notes_the_tasks_that_reused_an_earlier_result() {
+fn records_reused_tasks() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let mut executor = Reusing(Simulator::new(directory.path()));
     let graph = execute("toy", &mut Toy::default(), &mut executor)
@@ -161,7 +161,7 @@ fn the_graph_notes_the_tasks_that_reused_an_earlier_result() {
 }
 
 #[test]
-fn globs_match_like_a_shell() {
+fn matches_shell_globs() {
     assert!(glob_matches("*.txt", "a.txt"));
     assert!(!glob_matches("*.txt", "d/a.txt"));
     assert!(glob_matches("**/*.txt", "d/e/a.txt"));
@@ -173,7 +173,7 @@ fn globs_match_like_a_shell() {
 }
 
 #[test]
-fn simulated_outputs_stay_inside_the_work_directory() {
+fn confines_simulated_outputs() {
     let directory = tempfile::tempdir().unwrap();
     let simulator = Simulator::new(directory.path().join("sim"));
     for (index, output) in ["../../../escaped.txt", "dir/../../../../escaped.txt"]
@@ -201,7 +201,7 @@ fn simulated_outputs_stay_inside_the_work_directory() {
 }
 
 #[test]
-fn simulated_writes_do_not_follow_existing_symlinks() {
+fn rejects_existing_symlinks() {
     let directory = tempfile::tempdir().unwrap();
     let simulator = Simulator::new(directory.path().join("sim"));
     let outside = directory.path().join("outside");
@@ -228,7 +228,7 @@ fn simulated_writes_do_not_follow_existing_symlinks() {
 }
 
 #[test]
-fn simulated_tasks_make_the_files_that_the_script_names() {
+fn makes_script_files() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "touch s_1.fq s_2.fq\nmkdir -p db\ntouch db/x.txt\ncp in.txt copy.txt\n\
                   echo v > versions.yml";
@@ -323,7 +323,7 @@ fn simulated_tasks_make_the_files_that_the_script_names() {
 }
 
 #[test]
-fn simulated_tasks_write_the_text_of_stub_scripts() {
+fn writes_stub_text() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "cat <<-END > s.flagstat\n900 + 0 mapped (90.00% : N/A)\nEND\n\
                   touch s.lf.{drp,drs}\necho '' | gzip > s.fq.gz\ntouch versions.yml";
@@ -375,7 +375,7 @@ fn simulated_tasks_write_the_text_of_stub_scripts() {
 }
 
 #[test]
-fn simulated_tasks_of_commands_without_a_script_make_the_files_the_arguments_name() {
+fn makes_argument_files() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let command = [
         "abra",
@@ -405,7 +405,7 @@ fn simulated_tasks_of_commands_without_a_script_make_the_files_the_arguments_nam
 /// A script that surely fails, like one that gzips a file onto its input, ends so: the simulator
 /// gives the exit status and message of the command, and no files.
 #[test]
-fn simulated_tasks_of_scripts_that_fail_give_the_failure() {
+fn reports_script_failures() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let task = Task {
         id: TaskId(4),
@@ -435,7 +435,7 @@ fn simulated_tasks_of_scripts_that_fail_give_the_failure() {
 /// tool that match its pattern, as the tool would name it, and is a directory when the pattern
 /// ends with `/`. A folder argument like `res/` names no file.
 #[test]
-fn simulated_tasks_name_the_outputs_of_tools_after_their_arguments() {
+fn infers_tool_outputs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let task = Task {
         id: TaskId(5),
@@ -565,7 +565,7 @@ impl Observer for Marks {
 }
 
 #[test]
-fn notes_of_the_driver_mark_the_tasks_whose_outputs_they_concern() {
+fn marks_output_tasks() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let mut executor = Simulator::new(directory.path());
     let mut marks = Marks::default();

@@ -31,26 +31,19 @@ pub struct TaskSpec {
     pub outputs: Vec<OutputRule>,
     /// The digest of the text that the task reads on standard input.
     pub stdin: Option<Digest>,
-    /// The containers of a task that runs several at once in one place, like the containers of
-    /// an Argo container set: they share the work directory, the inputs and the outputs. Empty
-    /// for a task of one container, which the fields above describe. Otherwise the first is
-    /// the main container: the fields above repeat its image, arguments, work directory and
-    /// environment, it reads the standard input, its standard output is the task's, and it
-    /// collects the outputs. An empty list is left out of the encoding, so that the keys of
-    /// tasks of one container stay the same.
+    /// Containers sharing work, inputs and outputs; the first owns stdin, stdout and outputs.
+    /// Its image, arguments, workdir and environment are repeated above.
+    /// Empty means one container and is omitted to preserve existing cache keys.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub containers: Vec<ContainerSpec>,
-    /// Whether `arguments` replace the entrypoint of the image, as the `command` of a
-    /// container of Kubernetes does, instead of running through it, as the arguments of
-    /// `docker run` do. False is left out of the encoding, so that the keys of other tasks
-    /// stay the same.
+    /// Whether `arguments` replace the image entrypoint, like Kubernetes `command`,
+    /// rather than run through it, like `docker run` arguments.
+    /// False is omitted to preserve existing cache keys.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub replaces_entrypoint: bool,
-    /// Whether the containers run as Kubernetes runs them: as the user of the image, or the
-    /// user and group that `RunAs` names, in the working directory of the image, or in
-    /// `workdir`, which is then only where the command starts and not where the work
-    /// directory is. Left out of the encoding when `None`, the container then runs as the
-    /// user who runs iunctus, in the work directory.
+    /// Kubernetes identity: the image user or `RunAs`, in the image directory or `workdir`.
+    /// Here `workdir` selects the command's starting directory, not the task's work directory.
+    /// Omitted when `None`: runs as the iunctus user in the task's work directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_as: Option<RunAs>,
 }

@@ -31,10 +31,9 @@ pub struct Measured {
 /// The most tasks that one container runs one after another.
 pub const MOST_TOGETHER: usize = 100;
 
-/// How many tasks of a step one container may run, one after another: as many as fit into the
-/// time that the executor spent on the least of them besides the tool, so that a group ends at
-/// most about one start-up later than a task alone, and at most [`MOST_TOGETHER`]. 1 for a step
-/// whose tasks are not short, or that has no such measures.
+/// Sequential tasks that fit within the least measured startup overhead, at most
+/// [`MOST_TOGETHER`]; 1 without short tasks or measurements.
+/// See `docs/design/efficiency.md`, section 2.
 pub fn per_container(measured: &[Measured]) -> usize {
     let least = measured.iter().filter_map(|task| task.overhead).min();
     let Some(least) = least else {
@@ -45,19 +44,9 @@ pub fn per_container(measured: &[Measured]) -> usize {
     (fit as usize).clamp(1, MOST_TOGETHER)
 }
 
-/// The placement of a task with the CPUs and memory that the tasks of its step used in earlier
-/// runs (`measured`), where that is less than it asks for:
-///
-/// - Memory: the peak of the earlier task with the smallest input that is at least as large as
-///   this one's (`input_bytes`). When this input is larger than all earlier ones, the peak of
-///   the largest grows in step with the input, and it is never less than any earlier peak.
-///   Without sizes, the highest peak. A quarter more goes on top, and at least
-///   [`LEAST_MEMORY`].
-/// - CPUs: the most CPUs that an earlier task kept busy on average, a tenth more, rounded up.
-///
-/// Neither ever goes above what the task asks for, which is the most that its workflow allows.
-/// A task that asks for no memory keeps none: a limit could stop a task that its workflow
-/// never limited.
+/// Lowers requested resources to measured usage with margins, without exceeding requests.
+/// Unspecified memory stays unlimited; memory has a [`LEAST_MEMORY`] floor.
+/// See `docs/design/efficiency.md`, section 1, for input scaling and CPU margins.
 pub fn right_sized(
     asked: &Placement,
     input_bytes: Option<u64>,

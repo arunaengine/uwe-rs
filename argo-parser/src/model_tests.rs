@@ -100,7 +100,7 @@ fn decodes_executor_plugins() {
     assert!(unknown.is_empty(), "{unknown:?}");
     let plugin = &spec.executor_plugins[0];
     assert_eq!(plugin.metadata.name, "hello");
-    assert!(plugin.spec.sidecar.automount_service_account_token);
+    assert!(plugin.spec.sidecar.automount_account_token);
     let container = &plugin.spec.sidecar.container;
     assert_eq!(container.image, "python:alpine");
     assert_eq!(container.command, ["python", "-c"]);

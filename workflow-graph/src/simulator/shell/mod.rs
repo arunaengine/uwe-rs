@@ -567,7 +567,7 @@ mod tests {
     }
 
     #[test]
-    fn stubs_make_their_files() {
+    fn makes_stub_files() {
         let script = "touch s.lf.{drp,drs}\nmkdir -p db\ntouch db/x.txt\n\
                       echo \"\" | gzip > s.fq.gz\nprintf 'a\\tb\\n' > t.tsv\n\
                       cat <<-END_PANELS > panels.txt\nv1\nv2\nEND_PANELS\n\
@@ -603,7 +603,7 @@ mod tests {
     }
 
     #[test]
-    fn tools_make_a_simulation_incomplete() {
+    fn tools_mark_incomplete() {
         let simulation = simulate("samtools sort -o x.bam in.bam\ntouch done.txt", &["in.bam"]);
         assert!(!simulation.complete);
         assert_eq!(files(&simulation), [("done.txt", Some(""))]);
@@ -618,7 +618,7 @@ mod tests {
     /// As gzip, which does not replace a file without `-f`: the script ends there, as the
     /// PORECHOP stub of nf-core/methylong does in Nextflow 26.04.6.
     #[test]
-    fn gzip_fails_on_a_file_that_exists() {
+    fn gzip_rejects_existing() {
         let script = "touch s.fastq\ngzip s.fastq\ntouch after.txt";
         let simulation = simulate(script, &["s.fastq.gz"]);
         let failure = simulation.failure.expect("a failure");
@@ -634,7 +634,7 @@ mod tests {
 
     /// As bash, a redirect to a word that brace expansion makes several of fails.
     #[test]
-    fn redirects_to_several_words_fail() {
+    fn rejects_ambiguous_redirects() {
         let simulation = simulate("echo '' | gzip > s_{1..2}.fq.gz\ntouch after.txt", &[]);
         let failure = simulation.failure.expect("a failure");
         assert_eq!(failure.status, 1);
@@ -642,7 +642,7 @@ mod tests {
     }
 
     #[test]
-    fn if_statements_follow_the_commands_whose_condition_holds() {
+    fn follows_conditional_commands() {
         let script = "if [ \"false\" == true ]; then\n    touch s.fq.gz\nelse\n    \
                       touch s_1.fq.gz\n    cat <<-END > s_2.txt\n    two\n    END\nfi\n\
                       if [ -f s_1.fq.gz ]; then touch found.txt; elif [ x ]; then touch no.txt; fi";

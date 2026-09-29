@@ -85,20 +85,20 @@ fn assert_no_overlap(sizes: &[Size], layout: &Layout) {
 }
 
 #[test]
-fn nodes_do_not_overlap() {
+fn separates_layout_nodes() {
     let (sizes, edges) = pipeline(6, 8);
     let layout = lay(&sizes, &edges);
     assert_no_overlap(&sizes, &layout);
 }
 
 #[test]
-fn the_same_graph_gives_the_same_layout() {
+fn layout_stays_deterministic() {
     let (sizes, edges) = pipeline(9, 6);
     assert_eq!(lay(&sizes, &edges), lay(&sizes, &edges));
 }
 
 #[test]
-fn edges_go_down_through_their_layers() {
+fn edges_follow_layers() {
     // 0 -> 1 -> 2 -> 3, and 0 -> 3 passes layers 1 and 2.
     let sizes = sizes(4);
     let edges = [(0, 1), (1, 2), (2, 3), (0, 3)];
@@ -113,7 +113,7 @@ fn edges_go_down_through_their_layers() {
 }
 
 #[test]
-fn nodes_with_more_successors_than_predecessors_sit_above_their_first_successor() {
+fn aligns_branched_successors() {
     // 0 -> 1 -> 2 -> 3 -> 4; 1 -> 5 -> 4: node 5, one in and one out, stays below node 1, while
     // node 6, which feeds 3 and 4, moves down to just above 3.
     let edges = [
@@ -131,14 +131,14 @@ fn nodes_with_more_successors_than_predecessors_sit_above_their_first_successor(
 }
 
 #[test]
-fn nodes_without_predecessors_sit_above_their_first_successor() {
+fn aligns_root_successors() {
     // 0 -> 2 -> 3 -> 4, and 1 -> 4: node 1 moves down to layer 2.
     let layout = lay(&sizes(5), &[(0, 2), (2, 3), (3, 4), (1, 4)]);
     assert_eq!(layout.layers, [0, 2, 1, 2, 3]);
 }
 
 #[test]
-fn a_chain_given_backwards_is_drawn_from_the_top() {
+fn orders_reversed_chain() {
     // 2 -> 1 -> 0: node 2 comes first in the depth-first order, so every edge points down.
     let layout = lay(&sizes(3), &[(2, 1), (1, 0)]);
     assert_eq!(layout.layers, [2, 1, 0]);
@@ -151,7 +151,7 @@ fn a_chain_given_backwards_is_drawn_from_the_top() {
 }
 
 #[test]
-fn only_the_edge_that_closes_a_cycle_points_up() {
+fn reverses_cycle_edge() {
     // 0 -> 1 -> 2 -> 0, and an edge from a node to itself.
     let sizes = sizes(3);
     let layout = lay(&sizes, &[(0, 1), (1, 2), (2, 0), (1, 1)]);
@@ -162,13 +162,13 @@ fn only_the_edge_that_closes_a_cycle_points_up() {
 }
 
 #[test]
-fn depth_first_order_is_topological_without_cycles() {
+fn orders_acyclic_topology() {
     assert_eq!(depth_first(4, &[(3, 1), (1, 0), (2, 0)]), [3, 2, 1, 0]);
     assert_eq!(depth_first(3, &[(0, 1), (0, 2)]), [0, 2, 1]);
 }
 
 #[test]
-fn barycenter_sweeps_remove_crossings() {
+fn reduces_barycenter_crossings() {
     // Two chains whose second layers start out crossed: 0 -> 3, 1 -> 2.
     let layout = lay(&sizes(4), &[(0, 3), (1, 2)]);
     let (x0, x1) = (layout.nodes[0].x, layout.nodes[1].x);
@@ -177,7 +177,7 @@ fn barycenter_sweeps_remove_crossings() {
 }
 
 #[test]
-fn large_graphs_stay_fast() {
+fn bounds_large_layout() {
     let (sizes, edges) = pipeline(200, 25);
     let start = std::time::Instant::now();
     let layout = lay(&sizes, &edges);
@@ -187,7 +187,7 @@ fn large_graphs_stay_fast() {
 }
 
 #[test]
-fn long_edges_run_straight() {
+fn straightens_long_edges() {
     // A chain of five nodes, and an edge from the first to the last beside it.
     let sizes = sizes(5);
     let layout = lay(&sizes, &[(0, 1), (1, 2), (2, 3), (3, 4), (0, 4)]);
@@ -201,7 +201,7 @@ fn long_edges_run_straight() {
 }
 
 #[test]
-fn a_layout_to_the_right_is_the_layout_down_turned() {
+fn rotates_right_layout() {
     let (sizes, edges) = pipeline(4, 5);
     let down = lay(&sizes, &edges);
     let right = layout(&Graph {
@@ -229,7 +229,7 @@ fn a_layout_to_the_right_is_the_layout_down_turned() {
 }
 
 #[test]
-fn nodes_beside_others_follow_them_in_their_layer() {
+fn orders_adjacent_nodes() {
     // 0 -> 1 and 3 -> 1 with 2 beside 0, joined by an edge.
     let sizes = sizes(4);
     let graph = Graph {
@@ -268,7 +268,7 @@ fn nodes_beside_others_follow_them_in_their_layer() {
 }
 
 #[test]
-fn nodes_beside_each_other_in_a_circle_are_left_in_layers() {
+fn preserves_adjacent_cycles() {
     let layout = layout(&Graph {
         sizes: sizes(3),
         beside: vec![(0, 1), (1, 0), (2, 2), (2, 9)],
@@ -279,14 +279,14 @@ fn nodes_beside_each_other_in_a_circle_are_left_in_layers() {
 }
 
 #[test]
-fn inversions_count_pairs_out_of_order() {
+fn counts_order_inversions() {
     assert_eq!(inversions(&[0, 1, 2], 3), 0);
     assert_eq!(inversions(&[2, 1, 0], 3), 3);
     assert_eq!(inversions(&[1, 1, 0], 2), 2);
 }
 
 #[test]
-fn isotonic_fits_keep_the_order() {
+fn preserves_isotonic_order() {
     let ones = [1.0; 3];
     assert_eq!(isotonic(&[1.0, 2.0, 3.0], &ones), [1.0, 2.0, 3.0]);
     assert_eq!(isotonic(&[3.0, 1.0, 2.0], &ones), [2.0, 2.0, 2.0]);

@@ -264,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn copies_moves_and_compressions() {
+    fn simulates_file_operations() {
         let script = "echo x > a.txt\ncp a.txt b.txt\nmv b.txt c.txt\ngzip a.txt\ncp in.fa copy.fa";
         let simulation = simulate(script, &["in.fa"]);
         assert!(simulation.complete);

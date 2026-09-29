@@ -137,7 +137,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn relative_paths_climb_to_the_common_folder() {
+    fn finds_common_folder() {
         let path = relative(Path::new("/s/runs/a/out.txt"), Path::new("/home/results/x"));
         assert_eq!(path, PathBuf::from("../../../s/runs/a/out.txt"));
         let path = relative(Path::new("/r/a/b.txt"), Path::new("/r"));
@@ -145,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn deliveries_replace_what_is_there() {
+    fn replaces_delivery_targets() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let stored = folder.path().join("store/out.txt");
         std::fs::create_dir_all(stored.parent().unwrap()).unwrap();

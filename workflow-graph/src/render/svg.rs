@@ -515,7 +515,7 @@ mod tests {
     }
 
     #[test]
-    fn svg_has_the_boxes_lines_title_and_legend() {
+    fn renders_graph_elements() {
         let drawing = drawing();
         let svg = svg(&drawing, Direction::Down);
         assert!(svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\""));
@@ -566,7 +566,7 @@ mod tests {
     }
 
     #[test]
-    fn open_points_sit_beside_their_box_in_either_direction() {
+    fn positions_open_points() {
         let drawing = drawing();
         let down = svg(&drawing, Direction::Down);
         let (step, open) = (center(&down, "s1"), center(&down, "ms1"));

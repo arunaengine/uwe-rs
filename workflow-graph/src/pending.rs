@@ -206,7 +206,7 @@ mod tests {
     use crate::TaskId;
 
     #[test]
-    fn splitmix64_gives_the_reference_numbers() {
+    fn matches_splitmix64_reference() {
         // The first outputs for seed 0 of the reference implementation by Sebastiano Vigna.
         let mut random = SplitMix64(0);
         assert_eq!(random.next(), 0xe220_a839_7b1d_cdaf);
@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn orders_wait_for_the_attempt_they_chose() {
+    fn waits_chosen_attempt() {
         let mut pending = Pending::new(Order::AsAsked);
         pending.start(task(1), 1);
         pending.start(task(2), 1);
@@ -249,7 +249,7 @@ mod tests {
     }
 
     #[test]
-    fn the_finished_order_takes_attempts_as_they_end() {
+    fn orders_finished_attempts() {
         let mut pending = Pending::new(Order::Finished);
         pending.start(task(1), 1);
         pending.start(task(2), 1);
@@ -261,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn cancellation_terminalizes_only_unfinished_attempts() {
+    fn cancels_unfinished_attempts() {
         let mut pending = Pending::new(Order::Finished);
         pending.start(task(1), 1);
         pending.start(task(2), 1);
@@ -379,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn indexed_bookkeeping_preserves_all_orders_through_retries_and_cleanup() {
+    fn preserves_indexed_orders() {
         let orders = [
             Order::AsAsked,
             Order::Reversed,
@@ -445,7 +445,7 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_removal_keeps_start_order_and_ignores_stale_attempts() {
+    fn cleanup_preserves_order() {
         let mut pending = Pending::new(Order::Shuffled { seed: 42 });
         for id in 1..=4 {
             pending.start(task(id), 1);

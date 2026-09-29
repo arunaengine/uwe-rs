@@ -83,7 +83,7 @@ mod tests {
     }
 
     #[test]
-    fn known_words_decide_tests() {
+    fn evaluates_known_conditions() {
         assert_eq!(test("[ false == true ]"), Some(false));
         assert_eq!(test("[ a = a ]"), Some(true));
         assert_eq!(test("[[ a != b ]]"), Some(true));
@@ -96,7 +96,7 @@ mod tests {
     }
 
     #[test]
-    fn other_tests_stay_open() {
+    fn unknown_conditions_open() {
         assert_eq!(test("[ -f in.bam ]"), None);
         assert_eq!(test("[ -s made.txt ]"), None);
         assert_eq!(test("[ -f /etc/hosts ]"), None);

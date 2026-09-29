@@ -485,7 +485,7 @@ mod retry_tests {
     use super::*;
 
     #[test]
-    fn exponential_retry_jitter_stays_within_bounds() {
+    fn bounds_retry_jitter() {
         for attempt in 1..=8 {
             let ceiling = Duration::from_secs((1_u64 << (attempt - 1)).min(60));
             let pause = retry_pause(Duration::from_secs(1), attempt);

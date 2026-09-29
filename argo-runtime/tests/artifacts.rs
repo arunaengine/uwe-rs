@@ -65,7 +65,7 @@ spec:
 }
 
 #[test]
-fn direct_materialized_directory_selects_rendered_subpath() {
+fn selects_directory_subpath() {
     let folder = tempfile::tempdir().unwrap();
     let tree = folder.path().join("tree");
     std::fs::create_dir_all(tree.join("chosen")).unwrap();
@@ -86,7 +86,7 @@ fn direct_materialized_directory_selects_rendered_subpath() {
 }
 
 #[test]
-fn direct_directory_subpath_cannot_escape() {
+fn rejects_subpath_escapes() {
     for (selected, detail) in [
         ("../outside", "invalid subPath"),
         ("/outside", "invalid subPath"),
@@ -108,7 +108,7 @@ fn direct_directory_subpath_cannot_escape() {
 }
 
 #[test]
-fn direct_non_directory_sources_reject_subpath() {
+fn rejects_file_subpaths() {
     for source in [
         "raw: {data: text}",
         "http: {url: 'https://example.org/input?token=x'}",

@@ -40,7 +40,7 @@ spec:
 "#;
 
 #[test]
-fn a_workflow_describes_its_parameters_and_outputs() {
+fn describes_workflow_inputs() {
     let folder = tempfile::tempdir().expect("a folder");
     let file = folder.path().join("greet.yaml");
     std::fs::write(&file, WORKFLOW).expect("writes the workflow");
@@ -83,7 +83,7 @@ fn a_workflow_describes_its_parameters_and_outputs() {
 }
 
 #[test]
-fn effective_template_inputs_match_runtime_artifacts() {
+fn matches_effective_inputs() {
     let folder = tempfile::tempdir().expect("a folder");
     let file = folder.path().join("artifacts.yaml");
     let workflow = r#"apiVersion: argoproj.io/v1alpha1
@@ -147,7 +147,7 @@ spec:
 }
 
 #[test]
-fn unsupported_artifact_providers_are_not_advertised() {
+fn omits_unsupported_providers() {
     for (kind, location) in [
         ("HDFS", "hdfs: {path: /data/in.txt}"),
         ("OSS", "oss: {bucket: data, key: in.txt}"),

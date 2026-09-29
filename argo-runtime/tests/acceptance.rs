@@ -61,7 +61,7 @@ const OUTPUTS: &str = r#"  entrypoint: main
 "#;
 
 #[test]
-fn required_outputs_decide_acceptance_independently_of_continue_on() {
+fn outputs_gate_acceptance() {
     for (paths, accepted) in [
         (Vec::new(), false),
         (vec![("/value", "ok"), ("/file", "bytes")], true),
@@ -80,7 +80,7 @@ fn required_outputs_decide_acceptance_independently_of_continue_on() {
 }
 
 #[test]
-fn retry_attempts_keep_separate_native_verdicts() {
+fn separates_retry_verdicts() {
     let folder = tempfile::tempdir().unwrap();
     let spec = r#"  entrypoint: make
   templates:
@@ -104,7 +104,7 @@ fn retry_attempts_keep_separate_native_verdicts() {
 }
 
 #[test]
-fn http_success_condition_must_pass() {
+fn requires_http_success() {
     let folder = tempfile::tempdir().unwrap();
     let spec = r#"  entrypoint: request
   templates:

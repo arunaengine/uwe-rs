@@ -50,7 +50,7 @@ fn outcome(task: &Task, location: &str, directory: bool) -> Outcome {
 }
 
 #[test]
-fn child_workflows_read_remote_parameters_and_fail_unreadable_outputs() {
+fn reads_child_parameters() {
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(folder.path().join("items"), "[\"a\",\"b\"]").unwrap();
     let spec = r#"  entrypoint: submit
@@ -100,7 +100,7 @@ fn child_workflows_read_remote_parameters_and_fail_unreadable_outputs() {
 }
 
 #[test]
-fn remote_volume_outputs_reach_readers_and_host_paths() {
+fn propagates_remote_volumes() {
     let folder = tempfile::tempdir().unwrap();
     let host = folder.path().join("host");
     let output = folder.path().join("output");
@@ -146,7 +146,7 @@ fn remote_volume_outputs_reach_readers_and_host_paths() {
 }
 
 #[test]
-fn main_completion_does_not_replay_init_volume_writes() {
+fn avoids_init_replay() {
     let folder = tempfile::tempdir().unwrap();
     for (name, content) in [("old", "old"), ("new", "new")] {
         std::fs::create_dir(folder.path().join(name)).unwrap();
@@ -205,7 +205,7 @@ fn main_completion_does_not_replay_init_volume_writes() {
 }
 
 #[test]
-fn host_subpaths_select_the_requested_directory_or_file() {
+fn selects_host_subpaths() {
     let folder = tempfile::tempdir().unwrap();
     let host = folder.path().join("host");
     std::fs::create_dir_all(host.join("selected")).unwrap();
@@ -262,7 +262,7 @@ fn host_subpaths_select_the_requested_directory_or_file() {
 }
 
 #[test]
-fn host_file_without_subpath_keeps_the_original_source() {
+fn preserves_host_source() {
     let folder = tempfile::tempdir().unwrap();
     let host = folder.path().join("host-file");
     std::fs::write(&host, "file bytes").unwrap();
@@ -287,7 +287,7 @@ fn host_file_without_subpath_keeps_the_original_source() {
 
 #[cfg(unix)]
 #[test]
-fn host_writeback_rejects_redirected_destination_symlinks() {
+fn rejects_redirected_writeback() {
     let folder = tempfile::tempdir().unwrap();
     let host = folder.path().join("host");
     let outside = folder.path().join("outside");
@@ -323,7 +323,7 @@ fn host_writeback_rejects_redirected_destination_symlinks() {
 }
 
 #[test]
-fn config_map_selected_keys_are_required_unless_optional() {
+fn requires_selected_keys() {
     let folder = tempfile::tempdir().unwrap();
     for (key, optional) in [("present", false), ("missing", false), ("missing", true)] {
         let spec = format!(

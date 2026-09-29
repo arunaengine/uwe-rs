@@ -9,7 +9,7 @@ fn holds(when: &str) -> bool {
 }
 
 #[test]
-fn bare_words_are_strings() {
+fn parses_bare_strings() {
     assert!(holds("heads == heads"));
     assert!(!holds("tails == heads"));
     assert!(holds("Succeeded != Failed"));
@@ -19,7 +19,7 @@ fn bare_words_are_strings() {
 }
 
 #[test]
-fn numbers_booleans_and_logic() {
+fn evaluates_boolean_logic() {
     assert!(holds("5 > 3"));
     assert!(!holds("3 != 3 && 1 < 2"));
     assert!(holds("false == false"));
@@ -31,7 +31,7 @@ fn numbers_booleans_and_logic() {
 }
 
 #[test]
-fn missing_operands_compare_false() {
+fn missing_compares_false() {
     assert!(!holds(" == heads"));
     assert!(!holds(" != tails"));
     assert!(!holds(" < 10"));

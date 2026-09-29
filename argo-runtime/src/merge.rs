@@ -98,7 +98,7 @@ mod tests {
     }
 
     #[test]
-    fn merges_named_lists_and_maps() {
+    fn merges_named_collections() {
         let base = node(
             "entrypoint: a\narguments:\n  parameters: [{name: p, value: '1'}, {name: q, value: '2'}]\ntemplates: [{name: a, container: {image: i}}]\n",
         );
@@ -127,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn defaults_keep_the_template_type() {
+    fn preserves_template_types() {
         let defaults = node("timeout: 1m\ncontainer: {image: d, env: [{name: A, value: a}]}\n");
         let script = with_defaults(&node("name: s\nscript: {image: s, source: x}\n"), &defaults);
         assert!(script.get("container").is_none());

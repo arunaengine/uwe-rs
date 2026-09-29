@@ -422,7 +422,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parameter_names_in_texts() {
+    fn recognizes_parameter_names() {
         let text = "echo {{workflow.parameters.message}} {{=workflow.parameters['max-count']}} \
                     {{= sprig.upper(workflow.parameters[\"name\"]) }} {{workflow.parameters}}";
         assert_eq!(

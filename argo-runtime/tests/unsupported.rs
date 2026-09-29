@@ -20,7 +20,7 @@ fn start_error(spec: &str) -> DriverError {
 }
 
 #[test]
-fn rejects_unsupported_workflow_controls() {
+fn rejects_workflow_controls() {
     for field in [
         "synchronization: {mutexes: [{name: lock}]}",
         "activeDeadlineSeconds: 5",
@@ -43,7 +43,7 @@ fn rejects_unsupported_workflow_controls() {
 }
 
 #[test]
-fn rejects_unsupported_template_controls_and_defaults() {
+fn rejects_template_controls() {
     for field in [
         "synchronization: {mutexes: [{name: lock}]}",
         "podSpecPatch: '{}'",
@@ -72,7 +72,7 @@ fn rejects_unsupported_template_controls_and_defaults() {
 }
 
 #[test]
-fn rejects_unsupported_container_lifecycle_controls() {
+fn rejects_lifecycle_controls() {
     for field in [
         "lifecycle",
         "livenessProbe",
@@ -98,7 +98,7 @@ fn rejects_unsupported_container_lifecycle_controls() {
 }
 
 #[test]
-fn rejects_unsupported_retry_controls_and_invalid_limits() {
+fn rejects_retry_controls() {
     for strategy in [
         "backoff: {duration: 5s, maxDuration: 30s}",
         "retryPolicy: OnTransientError",
@@ -124,7 +124,7 @@ fn rejects_unsupported_retry_controls_and_invalid_limits() {
 }
 
 #[test]
-fn empty_container_sets_and_resource_overflows_fail_without_panicking() {
+fn rejects_invalid_resources() {
     let empty = start_error("  templates:\n  - name: main\n    containerSet: {containers: []}\n");
     assert!(empty.message.contains("at least one container"), "{empty}");
     for resource in [
@@ -156,7 +156,7 @@ fn empty_container_sets_and_resource_overflows_fail_without_panicking() {
 }
 
 #[test]
-fn resource_requests_cannot_exceed_their_limits() {
+fn requests_respect_limits() {
     for (request, limit) in [("memory: 2Gi", "memory: 1Gi"), ("cpu: 2", "cpu: 1")] {
         let error = start_error(&format!(
             "  templates:\n  - name: main\n    container: {{image: alpine, resources: {{requests: {{{request}}}, limits: {{{limit}}}}}}}\n",
@@ -169,7 +169,7 @@ fn resource_requests_cannot_exceed_their_limits() {
 }
 
 #[test]
-fn unsupported_node_deadlines_are_not_task_limits() {
+fn rejects_node_deadlines() {
     for spec in [
         "  templates:\n  - name: main\n    timeout: 5s\n    container: {image: alpine}\n",
         "  templates:\n  - name: main\n    activeDeadlineSeconds: 5\n    initContainers: [{name: init, image: alpine}]\n    container: {image: alpine}\n",
@@ -185,7 +185,7 @@ fn unsupported_node_deadlines_are_not_task_limits() {
 }
 
 #[test]
-fn external_parameter_sources_cannot_turn_into_defaults_or_placeholders() {
+fn rejects_external_parameters() {
     for source in ["event: body.message", "supplied: {}"] {
         let error = start_error(&format!(
             "  arguments: {{parameters: [{{name: message, valueFrom: {{{source}, default: fallback}}}}]}}\n  templates:\n  - name: main\n    container: {{image: alpine}}\n"
@@ -198,7 +198,7 @@ fn external_parameter_sources_cannot_turn_into_defaults_or_placeholders() {
 }
 
 #[test]
-fn unsupported_artifact_transfer_options_are_refused() {
+fn rejects_transfer_options() {
     for call in [
         "    steps:\n    - - name: use\n        template: work\n        arguments: {artifacts: [{name: input, s3: {bucket: data, key: input, endpoint: other.example.org}}]}\n",
         "    dag:\n      tasks:\n      - name: use\n        template: work\n        arguments: {artifacts: [{name: input, s3: {bucket: data, key: input, endpoint: other.example.org}}]}\n",

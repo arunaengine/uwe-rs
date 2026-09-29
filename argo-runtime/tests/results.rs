@@ -80,7 +80,7 @@ fn delivered(folder: &std::path::Path, results: std::path::PathBuf) -> Vec<std::
 }
 
 #[test]
-fn output_artifacts_go_to_the_results_folder() {
+fn delivers_output_artifacts() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let targets = delivered(folder.path(), folder.path().join("results"));
     assert_eq!(targets, [folder.path().join("results/artifacts/hello")]);

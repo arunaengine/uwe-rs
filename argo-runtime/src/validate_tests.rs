@@ -37,7 +37,7 @@ fn workflow_template(name: &str, templates: &str) -> String {
 const PRINT: &str = "  - name: print\n    inputs: {parameters: [{name: message}]}\n    container: {image: busybox}\n";
 
 #[test]
-fn documents_and_their_entrypoints() {
+fn reads_document_entrypoints() {
     let entry = |templates: &str| {
         format!(
             "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {{generateName: t-}}\nspec:\n  entrypoint: main\n  templates:\n{templates}"
@@ -88,7 +88,7 @@ fn documents_and_their_entrypoints() {
 }
 
 #[test]
-fn calls_supply_the_inputs_of_templates() {
+fn supplies_template_inputs() {
     let missing = workflow(&format!(
         "  - name: main\n    steps:\n    - - {{name: a, template: print}}\n{PRINT}"
     ));
@@ -192,7 +192,7 @@ fn leaf_templates() {
 }
 
 #[test]
-fn templates_that_need_a_cluster_are_unsupported() {
+fn rejects_cluster_templates() {
     let resource = |kind: &str| {
         workflow(&format!(
             "  - name: main\n    steps:\n    - - {{name: make, template: make}}\n  - name: make\n    resource:\n      action: create\n      manifest: |\n        apiVersion: v1\n        kind: {kind}\n        metadata: {{name: x}}\n"

@@ -399,7 +399,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reads_plugin_config_maps() {
+    fn reads_plugin_maps() {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let file = directory.path().join("plugins.yaml");
         let text = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: hello-executor-plugin\n  labels: {workflows.argoproj.io/configmap-type: ExecutorPlugin}\ndata:\n  sidecar.container: 'image: python'\n---\napiVersion: v1\nkind: ConfigMap\nmetadata: {name: settings}\n";
@@ -418,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn template_references_pick_the_copy_that_holds_the_template() {
+    fn selects_template_copy() {
         let directory = tempfile::tempdir().expect("a temporary directory");
         for (file, template) in [("a.yaml", "duo"), ("b.yaml", "solo")] {
             let text = format!(

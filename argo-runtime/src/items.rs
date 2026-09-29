@@ -384,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn sequences_reject_negative_counts_and_overflowing_bounds() {
+    fn rejects_invalid_sequences() {
         for (start, count) in [(0, -1), (i64::MAX, 2)] {
             let sequence = Sequence {
                 start: Some(argo_parser::model::AnyString(start.to_string())),
@@ -405,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    fn items_name_nodes_like_argo() {
+    fn names_argo_items() {
         let map = Value::parse_json(r#"{"os": "debian", "version": 9}"#).expect("JSON");
         let (variables, name) = item_variables("print", 1, &map).expect("an item");
         assert_eq!(name, "print(1:os:debian,version:9)");

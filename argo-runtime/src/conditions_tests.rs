@@ -19,7 +19,7 @@ const SUCCESS: &str = "status.phase == Succeeded";
 const FAILURE: &str = "status.phase in (Failed, Error)";
 
 #[test]
-fn prints_requirements_as_kubernetes_does() {
+fn formats_kubernetes_requirements() {
     let printed: Vec<String> = parse("status.phase in (Failed, Error), !status.x, a.b != c")
         .expect("parses")
         .iter()
@@ -34,7 +34,7 @@ fn prints_requirements_as_kubernetes_does() {
 }
 
 #[test]
-fn judges_a_workflow_by_its_phase() {
+fn judges_workflow_phase() {
     let judged = |phase: &str| judge(SUCCESS, FAILURE, &workflow(phase)).expect("judges");
     assert_eq!(judged("Succeeded"), Verdict::Succeeded);
     assert_eq!(judged("Running"), Verdict::Waiting);

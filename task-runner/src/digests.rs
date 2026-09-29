@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn digests_come_from_the_cache_until_the_file_changes() {
+    fn caches_unchanged_digests() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let cache = open(&folder.path().join("cache/digests.sqlite"));
         let file = folder.path().join("reads.fq");
@@ -260,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn a_file_that_just_changed_is_not_kept() {
+    fn avoids_changed_files() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let mut cache = DigestCache::open(&folder.path().join("digests.sqlite")).expect("opens");
         cache.smallest = 0;
@@ -273,7 +273,7 @@ mod tests {
     }
 
     #[test]
-    fn a_stored_file_is_known_at_once() {
+    fn recognizes_stored_files() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let cache = open(&folder.path().join("digests.sqlite"));
         let file = folder.path().join("output.bam");
@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn small_files_are_read_and_not_kept() {
+    fn reads_small_files() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let mut cache = DigestCache::open(&folder.path().join("digests.sqlite")).expect("opens");
         cache.recent = Duration::ZERO;

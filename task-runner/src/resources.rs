@@ -34,7 +34,7 @@ mod tests {
     use workflow_graph::Input;
 
     #[test]
-    fn retries_keep_what_the_task_asks_for() {
+    fn retries_preserve_requests() {
         let task = Task {
             inputs: vec![Input {
                 content: Some("abc".into()),

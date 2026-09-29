@@ -26,7 +26,7 @@ fn entry(location: &str, digest: Digest, size: u64) -> CacheEntry {
 }
 
 #[tokio::test]
-async fn directory_hits_check_members_bytes_empty_directories_and_link_spelling() {
+async fn validates_directory_hits() {
     let folder = tempfile::tempdir().unwrap();
     let store = Store::local(folder.path()).unwrap();
     let content = store
@@ -92,7 +92,7 @@ async fn directory_hits_check_members_bytes_empty_directories_and_link_spelling(
 }
 
 #[tokio::test]
-async fn remote_directory_hits_validate_children_without_publishing_partial_fronts() {
+async fn validates_shared_trees() {
     let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
     let shared = Store::remote(operator.clone(), "s3://shared/cache").unwrap();
     let content = shared
@@ -128,7 +128,7 @@ async fn remote_directory_hits_validate_children_without_publishing_partial_fron
 }
 
 #[tokio::test]
-async fn implicit_manifest_parents_cannot_be_replaced_by_directory_links() {
+async fn rejects_linked_parents() {
     let folder = tempfile::tempdir().unwrap();
     let store = Store::local(folder.path()).unwrap();
     let content = store
@@ -162,7 +162,7 @@ async fn implicit_manifest_parents_cannot_be_replaced_by_directory_links() {
 }
 
 #[tokio::test]
-async fn retained_import_and_no_cache_manifests_keep_all_content() {
+async fn retains_manifest_content() {
     use task_runner::clean::{Keep, plan, remove};
     let folder = tempfile::tempdir().unwrap();
     let store = Store::local(folder.path()).unwrap();
@@ -221,7 +221,7 @@ async fn retained_import_and_no_cache_manifests_keep_all_content() {
 }
 
 #[tokio::test]
-async fn a_recent_standalone_manifest_keeps_older_file_content() {
+async fn retains_older_members() {
     use task_runner::clean::{Keep, plan};
     let folder = tempfile::tempdir().unwrap();
     let store = Store::local(folder.path()).unwrap();

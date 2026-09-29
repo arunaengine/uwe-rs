@@ -45,7 +45,7 @@ fn set_mode(path: &Path, mode: u32) {
 }
 
 #[test]
-fn snapshot_permissions_under_restrictive_umask() {
+fn preserves_snapshot_permissions() {
     if std::env::var_os("IUNCTUS_SNAPSHOT_UMASK_TEST").is_none() {
         let status = std::process::Command::new("sh")
             .arg("-c")

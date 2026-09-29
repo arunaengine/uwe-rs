@@ -557,7 +557,7 @@ mod tests {
     }
 
     #[test]
-    fn outputs_inside_a_directory_output_share_its_files() {
+    fn shares_directory_outputs() {
         let root = tempfile::tempdir().expect("a temporary directory");
         // Snakemake's test_github_issue3687: `directory('dir1/D')` and `'dir1/D/file.txt'`.
         let finished = finished(root.path(), &[("dir1/D", true), ("dir1/D/file.txt", false)]);
@@ -576,7 +576,7 @@ mod tests {
     }
 
     #[test]
-    fn the_work_directory_is_an_output_that_holds_the_others() {
+    fn adopts_work_directory() {
         let root = tempfile::tempdir().expect("a temporary directory");
         // nf-core's EPANG_PLACE: `path("./.")` and `path "*.epa_info.log"`.
         let finished = finished(root.path(), &[(".", true), ("x.epa_info.log", false)]);
@@ -599,7 +599,7 @@ mod tests {
     }
 
     #[test]
-    fn files_reached_through_links_stay_where_they_are() {
+    fn preserves_link_locations() {
         let root = tempfile::tempdir().expect("a temporary directory");
         // A directory output that is a link to an input, and a file output below a link.
         let input = root.path().join("input");
@@ -619,7 +619,7 @@ mod tests {
     }
 
     #[test]
-    fn links_to_other_outputs_survive_adoption() {
+    fn preserves_output_links() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let finished = finished(root.path(), &[("a", false), ("longlink", false)]);
         let work = finished.root.join("work");
@@ -634,7 +634,7 @@ mod tests {
     }
 
     #[test]
-    fn links_inside_directory_outputs_survive_adoption() {
+    fn preserves_directory_links() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let finished = finished(root.path(), &[("dir", true)]);
         let directory = finished.root.join("work/dir");
@@ -650,7 +650,7 @@ mod tests {
     }
 
     #[test]
-    fn output_links_cannot_read_unstaged_host_files() {
+    fn rejects_unstaged_links() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let finished = finished(root.path(), &[("out", false)]);
         let sentinel = root.path().join("host-only");

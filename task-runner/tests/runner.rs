@@ -205,7 +205,7 @@ fn pinning_runner(root: &Path) -> Runner<ChangingPin> {
 }
 
 #[tokio::test]
-async fn conda_pins_bypass_stale_and_memoized_decisions() {
+async fn refreshes_conda_pins() {
     let root = tempfile::tempdir().unwrap();
     let runner = pinning_runner(root.path());
     let marker = "conda-env:/workflow/environment.yaml";
@@ -227,7 +227,7 @@ async fn conda_pins_bypass_stale_and_memoized_decisions() {
 }
 
 #[tokio::test]
-async fn cancellation_stops_a_blocked_conda_pin() {
+async fn cancels_blocked_pins() {
     use workflow_graph::{Attempt, ExecuteError, Executor};
 
     let root = tempfile::tempdir().unwrap();
@@ -302,7 +302,7 @@ fn reuses_shared_results() {
 }
 
 #[test]
-fn damaged_cache_entries_outputs_and_logs_are_not_reused() {
+fn rejects_damaged_cache() {
     for damaged in ["entry", "output", "content", "log"] {
         let root = tempfile::tempdir().unwrap();
         let runner = runner(root.path(), 0);
@@ -373,7 +373,7 @@ fn damaged_cache_entries_outputs_and_logs_are_not_reused() {
 }
 
 #[test]
-fn preparation_executes_the_copied_bytes_and_retains_them() {
+fn retains_executed_bytes() {
     let root = tempfile::tempdir().unwrap();
     let runner = runner(root.path(), 0);
     let task = task(root.path(), "a");
@@ -397,7 +397,7 @@ fn preparation_executes_the_copied_bytes_and_retains_them() {
 }
 
 #[tokio::test]
-async fn corrupt_literal_content_is_rejected_before_execution() {
+async fn rejects_corrupt_literals() {
     for remote in [false, true] {
         let root = tempfile::tempdir().unwrap();
         let store = if remote {
@@ -444,7 +444,7 @@ async fn corrupt_literal_content_is_rejected_before_execution() {
 }
 
 #[test]
-fn file_identity_tracks_effective_executable_mode() {
+fn tracks_executable_identity() {
     use std::os::unix::fs::PermissionsExt;
     let root = tempfile::tempdir().unwrap();
     let runner = runner(root.path(), 0);
@@ -482,7 +482,7 @@ fn file_identity_tracks_effective_executable_mode() {
 }
 
 #[test]
-fn directory_snapshots_preserve_relative_links_and_cycles() {
+fn preserves_snapshot_links() {
     let root = tempfile::tempdir().unwrap();
     let runner = runner(root.path(), 0);
     let directory = root.path().join("directory");
@@ -539,7 +539,7 @@ fn directory_snapshots_preserve_relative_links_and_cycles() {
 }
 
 #[test]
-fn stored_directory_links_materialize_with_their_original_spelling() {
+fn preserves_stored_links() {
     use task_model::{Tree, TreeEntry};
     let root = tempfile::tempdir().unwrap();
     let runner = runner(root.path(), 0);
@@ -589,7 +589,7 @@ fn stored_directory_links_materialize_with_their_original_spelling() {
 }
 
 #[tokio::test]
-async fn a_result_of_another_machine_comes_through_the_shared_store() {
+async fn retrieves_shared_results() {
     let operator = opendal::Operator::new(opendal::services::Memory::default()).expect("memory");
     let shared = Store::remote(operator, "s3://shared/cache").expect("a store");
     let machine = |root: &Path, run: &str| {
@@ -647,7 +647,7 @@ async fn a_result_of_another_machine_comes_through_the_shared_store() {
 }
 
 #[test]
-fn failures_are_not_cached() {
+fn failures_skip_cache() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 3);
     let first = execute(&runner, &request(&runner, &task(root.path(), "a")));
@@ -657,7 +657,7 @@ fn failures_are_not_cached() {
 }
 
 #[test]
-fn a_missing_input_names_its_file() {
+fn names_missing_input() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);
     let mut task = task(root.path(), "a");
@@ -674,7 +674,7 @@ fn a_missing_input_names_its_file() {
 }
 
 #[test]
-fn directories_travel_as_one_entry() {
+fn stores_directory_entry() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);
     let mut first = task(root.path(), "a");
@@ -740,7 +740,7 @@ fn directories_travel_as_one_entry() {
 }
 
 #[test]
-fn remote_inputs_are_downloaded_once() {
+fn downloads_remote_once() {
     use std::io::{Read, Write};
     // A small server that answers each request with the same text, and counts them.
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
@@ -778,7 +778,7 @@ fn remote_inputs_are_downloaded_once() {
 }
 
 #[tokio::test]
-async fn lookups_validate_shared_artifacts_without_populating_the_front() {
+async fn lookups_avoid_population() {
     let root = tempfile::tempdir().unwrap();
     let front = root.path().join("store");
     let store = Store::layered(Store::local(&front).unwrap(), Store::memory().unwrap()).unwrap();
@@ -828,7 +828,7 @@ async fn lookups_validate_shared_artifacts_without_populating_the_front() {
 }
 
 #[tokio::test]
-async fn layered_directory_inputs_use_complete_snapshots_and_lookups_remain_read_only() {
+async fn stages_complete_snapshots() {
     let root = tempfile::tempdir().unwrap();
     let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
     let shared = Store::remote(operator, "s3://shared/cache").unwrap();
@@ -961,7 +961,7 @@ async fn layered_directory_inputs_use_complete_snapshots_and_lookups_remain_read
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn concurrent_remote_content_staging_publishes_complete_unique_copies() {
+async fn isolates_concurrent_staging() {
     use std::os::unix::fs::PermissionsExt;
     let root = tempfile::tempdir().unwrap();
     let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
@@ -1026,7 +1026,7 @@ async fn concurrent_remote_content_staging_publishes_complete_unique_copies() {
 }
 
 #[test]
-fn outcomes_give_the_stored_files_with_size_and_digest() {
+fn describes_stored_files() {
     use task_runner::RunnerExecutor;
     use workflow_graph::{Attempt, Executor};
     let root = tempfile::tempdir().expect("a temporary directory");
@@ -1050,7 +1050,7 @@ fn outcomes_give_the_stored_files_with_size_and_digest() {
 }
 
 #[test]
-fn grouping_keeps_entrypoints_and_member_deadlines_on_individual_jobs() {
+fn preserves_group_deadlines() {
     use std::sync::Arc;
     use task_runner::RunnerExecutor;
     use workflow_graph::{Attempt, Executor};
@@ -1105,7 +1105,7 @@ fn grouping_keeps_entrypoints_and_member_deadlines_on_individual_jobs() {
 }
 
 #[test]
-fn containers_of_a_task_are_pinned_and_keep_their_logs_in_the_cache() {
+fn caches_container_logs() {
     use task_runner::RunnerExecutor;
     use workflow_graph::{Attempt, Container, Executor};
     let root = tempfile::tempdir().expect("a temporary directory");
@@ -1149,7 +1149,7 @@ fn containers_of_a_task_are_pinned_and_keep_their_logs_in_the_cache() {
 }
 
 #[test]
-fn a_replay_runs_its_task_whatever_the_cache_holds() {
+fn replay_bypasses_cache() {
     use task_runner::RunnerExecutor;
     use workflow_graph::{Attempt, Executor};
     let root = tempfile::tempdir().expect("a temporary directory");
@@ -1169,7 +1169,7 @@ fn a_replay_runs_its_task_whatever_the_cache_holds() {
 }
 
 #[test]
-fn disabled_reuse_neither_reads_nor_writes_cached_results() {
+fn disabled_skips_cache() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);
     let mut disabled = task(root.path(), "a");
@@ -1205,7 +1205,7 @@ fn disabled_reuse_neither_reads_nor_writes_cached_results() {
 }
 
 #[test]
-fn a_task_that_denies_reuse_runs_every_time_and_its_result_is_stored() {
+fn denied_reuse_executes() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);
     let mut denied = task(root.path(), "a");
@@ -1233,7 +1233,7 @@ fn a_task_that_denies_reuse_runs_every_time_and_its_result_is_stored() {
 }
 
 #[test]
-fn results_whose_files_are_gone_run_again() {
+fn missing_outputs_rerun() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);
     let first = execute(&runner, &request(&runner, &task(root.path(), "a")));
@@ -1250,7 +1250,7 @@ fn results_whose_files_are_gone_run_again() {
 }
 
 #[test]
-fn entries_say_how_long_the_task_ran_and_when_it_was_used() {
+fn records_entry_times() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner_of(root.path(), "run1", std::time::Duration::from_millis(30), 0);
     let prepared = request(&runner, &task(root.path(), "a"));
@@ -1273,7 +1273,7 @@ fn entries_say_how_long_the_task_ran_and_when_it_was_used() {
 }
 
 #[test]
-fn the_same_task_at_the_same_moment_runs_once() {
+fn coalesces_concurrent_tasks() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let delay = std::time::Duration::from_millis(300);
     // Two runs on one store, and two tasks of the first run, ask for the same task at once.
@@ -1301,7 +1301,7 @@ fn the_same_task_at_the_same_moment_runs_once() {
 }
 
 #[test]
-fn a_task_that_fails_leaves_its_turn_to_the_next() {
+fn failure_releases_turn() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let delay = std::time::Duration::from_millis(100);
     let failing = runner_of(root.path(), "run1", delay, 3);
@@ -1320,7 +1320,7 @@ fn a_task_that_fails_leaves_its_turn_to_the_next() {
 }
 
 #[test]
-fn a_crashed_holder_frees_its_task_at_once() {
+fn crash_releases_task() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);
     let prepared = request(&runner, &task(root.path(), "a"));
@@ -1364,7 +1364,7 @@ fn a_crashed_holder_frees_its_task_at_once() {
 }
 
 #[test]
-fn waiting_stops_when_the_run_is_cancelled() {
+fn cancels_waiting_run() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let delay = std::time::Duration::from_secs(30);
     let slow = runner_of(root.path(), "run1", delay, 0);
@@ -1399,7 +1399,7 @@ fn waiting_stops_when_the_run_is_cancelled() {
 }
 
 #[test]
-fn a_lookup_finds_stored_results_without_writing_anything() {
+fn lookup_preserves_store() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);
     let mut made = task(root.path(), "a");
@@ -1456,7 +1456,7 @@ fn task_with(root: &Path, id: u64, text: &str) -> Task {
 }
 
 #[test]
-fn clean_up_keeps_what_the_named_runs_need() {
+fn retains_named_runs() {
     use task_runner::clean::{Keep, plan, remove};
     let root = tempfile::tempdir().expect("a temporary directory");
     let old = runner_of(root.path(), "old", std::time::Duration::ZERO, 0);
@@ -1505,7 +1505,7 @@ fn clean_up_keeps_what_the_named_runs_need() {
 }
 
 #[test]
-fn clean_up_keeps_what_was_used_lately_and_what_took_long() {
+fn retains_used_slow() {
     use task_runner::clean::{Keep, plan};
     let root = tempfile::tempdir().expect("a temporary directory");
     let quick = runner_of(root.path(), "quick", std::time::Duration::ZERO, 0);
@@ -1556,7 +1556,7 @@ fn clean_up_keeps_what_was_used_lately_and_what_took_long() {
 }
 
 #[test]
-fn a_stale_cleanup_plan_cannot_remove_a_new_cache_consumers_files() {
+fn rejects_stale_cleanup() {
     use task_runner::clean::{Keep, plan, remove};
     let root = tempfile::tempdir().unwrap();
     let task = task(root.path(), "a");
@@ -1579,7 +1579,7 @@ fn a_stale_cleanup_plan_cannot_remove_a_new_cache_consumers_files() {
 }
 
 #[tokio::test]
-async fn maintenance_blocks_preparation_until_fresh_deletion_finishes() {
+async fn maintenance_blocks_preparation() {
     use task_runner::clean::{Keep, maintenance, plan, remove_guarded};
     let root = tempfile::tempdir().unwrap();
     let task = task(root.path(), "a");
@@ -1628,7 +1628,7 @@ async fn maintenance_blocks_preparation_until_fresh_deletion_finishes() {
 }
 
 #[test]
-fn a_first_run_lease_failure_is_reported_and_retried_before_snapshotting() {
+fn retries_run_lease() {
     let root = tempfile::tempdir().unwrap();
     let runner = runner(root.path(), 0);
     let task = task(root.path(), "a");
@@ -1644,7 +1644,7 @@ fn a_first_run_lease_failure_is_reported_and_retried_before_snapshotting() {
 }
 
 #[tokio::test]
-async fn execution_of_an_external_preparation_waits_for_maintenance_cancellably() {
+async fn cancels_maintenance_wait() {
     let root = tempfile::tempdir().unwrap();
     let task = task(root.path(), "a");
     let original = runner_of(root.path(), "original", std::time::Duration::ZERO, 0);
@@ -1682,7 +1682,7 @@ async fn execution_of_an_external_preparation_waits_for_maintenance_cancellably(
 }
 
 #[tokio::test]
-async fn ordinary_executor_cancels_blocked_preparation_without_resuming_it() {
+async fn cancels_blocked_preparation() {
     use workflow_graph::{Attempt, ExecuteError, Executor};
     let root = tempfile::tempdir().unwrap();
     let task = std::sync::Arc::new(task(root.path(), "a"));
@@ -1713,7 +1713,7 @@ async fn ordinary_executor_cancels_blocked_preparation_without_resuming_it() {
 }
 
 #[test]
-fn the_reproducibility_check_keeps_tools_that_give_other_bytes_from_sharing() {
+fn disables_unstable_sharing() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let zero = std::time::Duration::ZERO;
     let made = task(root.path(), "a");
@@ -1773,7 +1773,7 @@ fn the_reproducibility_check_keeps_tools_that_give_other_bytes_from_sharing() {
 }
 
 #[test]
-fn inputs_changed_in_place_are_named_by_their_path_and_never_cached() {
+fn changed_inputs_uncached() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);
     let project = root.path().join("project");
@@ -1811,7 +1811,7 @@ fn inputs_changed_in_place_are_named_by_their_path_and_never_cached() {
 }
 
 #[test]
-fn images_can_be_pinned_to_given_digests() {
+fn pins_given_digests() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);
     let given = [("debian".to_owned(), "debian@sha256:11".to_owned())].into();

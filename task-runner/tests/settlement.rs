@@ -118,7 +118,7 @@ async fn seed(root: &Path, store: &Store) -> CacheEntry {
 }
 
 #[tokio::test]
-async fn new_results_wait_for_acceptance_and_rejected_attempts_do_not_win() {
+async fn acceptance_gates_publication() {
     let root = tempfile::tempdir().unwrap();
     let store = Store::local(&root.path().join("store")).unwrap();
     let mut executor = executor(root.path(), store.clone(), "run");
@@ -147,7 +147,7 @@ async fn new_results_wait_for_acceptance_and_rejected_attempts_do_not_win() {
 }
 
 #[tokio::test]
-async fn rejected_hit_removes_only_its_observed_version_in_local_and_layered_stores() {
+async fn removes_observed_version() {
     for layered in [false, true] {
         let root = tempfile::tempdir().unwrap();
         let local = Store::local(&root.path().join("store")).unwrap();
@@ -185,7 +185,7 @@ async fn rejected_hit_removes_only_its_observed_version_in_local_and_layered_sto
 }
 
 #[tokio::test]
-async fn reproducibility_settlement_rejects_the_returned_earlier_result() {
+async fn rejects_earlier_result() {
     let root = tempfile::tempdir().unwrap();
     let store = Store::local(&root.path().join("store")).unwrap();
     let earlier = seed(root.path(), &store).await;
@@ -206,7 +206,7 @@ async fn reproducibility_settlement_rejects_the_returned_earlier_result() {
 }
 
 #[tokio::test]
-async fn identical_keys_complete_in_reverse_order_without_holding_build_leases() {
+async fn releases_build_leases() {
     let root = tempfile::tempdir().unwrap();
     let store = Store::local(&root.path().join("store")).unwrap();
     let mut executor = executor(root.path(), store.clone(), "ordered");
@@ -233,7 +233,7 @@ async fn identical_keys_complete_in_reverse_order_without_holding_build_leases()
 }
 
 #[tokio::test]
-async fn settlement_skips_a_contended_build_instead_of_waiting_for_its_outcome() {
+async fn skips_contended_settlement() {
     let root = tempfile::tempdir().unwrap();
     let store = Store::local(&root.path().join("store")).unwrap();
     let mut executor = executor(root.path(), store.clone(), "contended");
@@ -255,7 +255,7 @@ async fn settlement_skips_a_contended_build_instead_of_waiting_for_its_outcome()
 }
 
 #[tokio::test]
-async fn cancellation_executor_drop_and_superseded_approval_do_not_publish() {
+async fn rejects_superseded_publication() {
     let root = tempfile::tempdir().unwrap();
     let store = Store::local(&root.path().join("store")).unwrap();
     let mut cancelled = executor(root.path(), store.clone(), "cancelled");
@@ -294,7 +294,7 @@ async fn cancellation_executor_drop_and_superseded_approval_do_not_publish() {
 }
 
 #[tokio::test]
-async fn terminal_attempts_release_task_payloads_without_pruning_live_settlement() {
+async fn releases_terminal_payloads() {
     let root = tempfile::tempdir().unwrap();
     let store = Store::local(&root.path().join("store")).unwrap();
     let mut executor = executor(root.path(), store, "retention");

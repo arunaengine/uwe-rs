@@ -120,14 +120,14 @@ mod tests {
     }
 
     #[test]
-    fn the_same_bytes_differ_nowhere() {
+    fn accepts_matching_bytes() {
         let earlier = entry(vec![file("a.txt", b"a"), file("b.txt", b"b")]);
         let now = result(0, vec![file("b.txt", b"b"), file("a.txt", b"a")], b"out");
         assert_eq!(verdict(&earlier, &now), Verdict::Same);
     }
 
     #[test]
-    fn other_bytes_missing_files_and_output_are_named() {
+    fn reports_content_differences() {
         let earlier = entry(vec![file("a.txt", b"a"), file("gone.txt", b"g")]);
         let now = result(
             0,
@@ -146,7 +146,7 @@ mod tests {
     }
 
     #[test]
-    fn a_share_chooses_about_that_many_tasks() {
+    fn samples_requested_share() {
         let key = |n: u32| Digest::sha256(&n.to_be_bytes());
         let chosen_of = |share: f64| (0..1000).filter(|n| chosen(share, "run", &key(*n))).count();
         assert_eq!(chosen_of(0.0), 0);
@@ -158,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn a_tool_is_its_image_and_the_last_name_of_its_step() {
+    fn identifies_step_tool() {
         let image = "quay.io/fastqc@sha256:ab";
         assert_eq!(tool(image, "A:B:FASTQC"), tool(image, "C:FASTQC"));
         assert_ne!(tool(image, "FASTQC"), tool(image, "MULTIQC"));

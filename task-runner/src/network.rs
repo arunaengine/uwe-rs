@@ -70,7 +70,7 @@ mod tests {
     }
 
     #[test]
-    fn the_workflow_decides_where_it_says_and_the_run_elsewhere() {
+    fn selects_result_destinations() {
         let open = NetworkRule::default();
         assert!(!open.offline(&task("A", Network::Unstated)));
         assert!(open.offline(&task("A", Network::Denied)));
@@ -86,7 +86,7 @@ mod tests {
     }
 
     #[test]
-    fn stars_stand_for_any_text() {
+    fn stars_match_text() {
         assert!(matches("*", "anything"));
         assert!(matches("a*c", "abbbc"));
         assert!(matches("*QC*", "FASTQC_RAW"));

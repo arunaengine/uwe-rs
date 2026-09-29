@@ -7,7 +7,7 @@ use content_store::Store;
 use task_runner::clean::{Keep, maintenance, plan, remove, remove_guarded};
 
 #[tokio::test]
-async fn local_cleanup_accepts_a_file_lock_and_removes_unretained_content() {
+async fn cleanup_requires_lock() {
     let folder = tempfile::tempdir().unwrap();
     let store = Store::local(folder.path()).unwrap();
     let content = store
@@ -28,7 +28,7 @@ async fn local_cleanup_accepts_a_file_lock_and_removes_unretained_content() {
 }
 
 #[tokio::test]
-async fn remote_and_layered_expiring_authority_refuse_deletion_without_changing_objects() {
+async fn rejects_expiring_authority() {
     for front in [false, true] {
         let shared = Store::memory().unwrap();
         let folder = tempfile::tempdir().unwrap();
@@ -83,7 +83,7 @@ async fn remote_and_layered_expiring_authority_refuse_deletion_without_changing_
 }
 
 #[tokio::test]
-async fn an_empty_remote_plan_still_cannot_authorize_scratch_cleanup() {
+async fn rejects_remote_cleanup() {
     let store = Store::memory().unwrap();
     let planned = plan(&store, &Keep::default()).await.unwrap();
     assert!(planned.is_empty());

@@ -201,3 +201,19 @@ The execution layer runs tasks in parallel, on a local container engine, on GA4G
 4. **Tests on real servers and clusters.** The TES executor is tested against a fake server and Funnel, the SLURM executor against a simulated SLURM, and the Kubernetes executor against a fake Kubernetes API server. Next: TESK for TES, a SLURM cluster in containers, and a `kind` cluster. TES and Kubernetes take the entrypoint and the default command of an image from its registry; SLURM does not yet, so there a task without a command fails, and the entrypoint of the image does not run.
 5. **Remote inputs for TES**: remote inputs should pass through to a TES server as URLs, instead of a download. Downloads from a remote store read whole objects into memory today.
 6. **Argo container sets** share one pod and its volumes. Done: a task may hold several containers (`Task.containers`, `TaskSpec.containers`, `Outcome.containers`), which run at once in one place and share the work directory, the inputs and the outputs. Each runs in a wrapper of its own that waits for the containers it comes after (`executor::containers`). The local executor runs one engine container per image, Kubernetes one pod, SLURM one job, and TES one executor per container, one after the other. Each container keeps its logs and exit code, and every image counts in the cache key ([Argo runtime](argo/runtime.md), section 8.2).
+
+## File descriptions: config-file
+
+### `config-file/src/lib.rs`
+
+The iunctus config file. Settings come from up to three TOML files, merged in this order,
+where a later file wins key by key: the site-wide file, the user's file, and the file that a
+command-line option names. Without any file, every setting has its default. Each value
+remembers its file and line, so that errors say where to look. A secret may be a reference
+to an environment variable instead of the secret itself, so that the file can be shared.
+
+### `config-file/src/secret.rs`
+
+Secrets in config files: a password, a key or a token, written into the file or taken from
+an environment variable (`{ environment = "NAME" }`), so that the file can be shared without
+its secrets. A secret is read only when it is used, and never shows when printed.

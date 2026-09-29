@@ -1,8 +1,4 @@
-//! The iunctus config file. Settings come from up to three TOML files, merged in this order,
-//! where a later file wins key by key: the site-wide file, the user's file, and the file that a
-//! command-line option names. Without any file, every setting has its default. Each value
-//! remembers its file and line, so that errors say where to look. A secret may be a reference
-//! to an environment variable instead of the secret itself, so that the file can be shared.
+//! Loads and merges site, user and named TOML settings while preserving value locations.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

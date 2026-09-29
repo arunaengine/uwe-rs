@@ -113,7 +113,7 @@ fn process_start() -> String {
 }
 
 #[test]
-fn tasks_run_on_the_server_and_give_back_their_outputs() {
+fn returns_server_outputs() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let task = Arc::new(Mutex::new(None));
     let address = serve(task.clone());
@@ -220,7 +220,7 @@ fn tasks_run_on_the_server_and_give_back_their_outputs() {
 }
 
 #[test]
-fn containers_of_a_task_are_executors_in_their_order() {
+fn orders_container_executors() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let task = Arc::new(Mutex::new(None));
     let address = serve(task.clone());
@@ -313,7 +313,7 @@ fn containers_of_a_task_are_executors_in_their_order() {
 }
 
 #[test]
-fn accepted_tasks_survive_transient_reads_and_stop_at_their_time() {
+fn bounds_accepted_tasks() {
     for timed_out in [false, true] {
         let folder = tempfile::tempdir().expect("a folder");
         let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
@@ -416,7 +416,7 @@ fn accepted_tasks_survive_transient_reads_and_stop_at_their_time() {
 }
 
 #[test]
-fn ambiguous_submissions_keep_scratch_and_block_restart() {
+fn retains_ambiguous_submissions() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path().join("scratch/attempt");
     std::fs::create_dir_all(&root).unwrap();
@@ -475,7 +475,7 @@ fn ambiguous_submissions_keep_scratch_and_block_restart() {
 }
 
 #[test]
-fn dropped_attempt_is_recovered_in_the_same_live_coordinator() {
+fn recovers_dropped_attempts() {
     let folder = tempfile::tempdir().unwrap();
     let scratch = folder.path().join("scratch");
     let orphan = scratch.join("orphan");
@@ -519,7 +519,7 @@ fn dropped_attempt_is_recovered_in_the_same_live_coordinator() {
 }
 
 #[test]
-fn active_attempt_is_retained_and_pre_cancel_submits_nothing() {
+fn preserves_active_attempts() {
     let folder = tempfile::tempdir().unwrap();
     let scratch = folder.path().join("scratch");
     let active = scratch.join("active");

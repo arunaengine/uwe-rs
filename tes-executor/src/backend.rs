@@ -623,7 +623,7 @@ mod tests {
     use task_model::{FORMAT, Image, OutputRule, Placement, TaskSpec};
 
     #[test]
-    fn unconfirmed_termination_keeps_the_journal() {
+    fn termination_preserves_journal() {
         let folder = tempfile::tempdir().unwrap();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let server = format!("http://{}", listener.local_addr().unwrap());
@@ -696,7 +696,7 @@ mod tests {
     }
 
     #[test]
-    fn attempts_become_tes_tasks() {
+    fn builds_tes_tasks() {
         let spec = TaskSpec {
             run_as: None,
             format: FORMAT,

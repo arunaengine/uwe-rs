@@ -431,7 +431,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn references_name_registry_repository_and_tag() {
+    fn parses_image_references() {
         let parsed = Reference::parse("debian:stable-slim");
         assert_eq!(parsed.registry, "registry-1.docker.io");
         assert_eq!(parsed.repository, "library/debian");
@@ -512,13 +512,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn addresses_with_a_scheme_are_no_images_of_registries() {
+    async fn rejects_image_schemes() {
         let address = "https://depot.galaxyproject.org/singularity/fastqc:0.12.1--hdfd78af_0";
         assert_eq!(pin(address).await.expect("no request"), None);
     }
 
     #[tokio::test]
-    async fn configs_come_from_the_registry() {
+    async fn fetches_registry_configs() {
         let registry = registry();
         let configs = ImageConfigs::default();
         let reference = format!("{registry}/tool:1");

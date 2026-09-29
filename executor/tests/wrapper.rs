@@ -73,7 +73,7 @@ fn paths(files: &[Collected]) -> Vec<&str> {
 }
 
 #[test]
-fn invalid_environment_never_reaches_or_runs_in_the_wrapper() {
+fn rejects_invalid_environment() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let injected = root.path().join("injected");
     let command = format!("BAD=value\nprintf injected > {} #", injected.display());
@@ -104,7 +104,7 @@ fn invalid_environment_never_reaches_or_runs_in_the_wrapper() {
 }
 
 #[test]
-fn collects_outputs_after_success() {
+fn collects_success_outputs() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let script = "echo \"$GREETING in ${TASK_DIR##*/}\"\necho oops >&2\necho hi > out.txt\n\
                   mkdir -p dir/a && echo b > dir/a/b.txt\necho l > x.log\necho s > .hidden.log\n";
@@ -133,7 +133,7 @@ fn collects_outputs_after_success() {
 }
 
 #[test]
-fn patterns_take_braces_globstar_and_absolute_paths() {
+fn expands_output_patterns() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let elsewhere = root.path().join("elsewhere");
     let script = format!(
@@ -157,7 +157,7 @@ fn patterns_take_braces_globstar_and_absolute_paths() {
 }
 
 #[test]
-fn absolute_symlinks_are_exported_as_their_contents() {
+fn exports_symlink_content() {
     let root = tempfile::tempdir().unwrap();
     let target = root.path().join("target");
     let output = root.path().join("link");
@@ -175,7 +175,7 @@ fn absolute_symlinks_are_exported_as_their_contents() {
 }
 
 #[test]
-fn tasks_get_a_home_folder_they_may_write() {
+fn provides_writable_home() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let script = "echo \"$HOME\" > home.txt\necho x > \"$HOME/.settings\"\n";
     assert_eq!(run(root.path(), &spec(&["home.txt"]), script), 0);
@@ -199,7 +199,7 @@ fn tasks_get_a_home_folder_they_may_write() {
 }
 
 #[test]
-fn keeps_only_the_logs_of_a_failure() {
+fn retains_failure_logs() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let spec = spec(&["out.txt"]);
     assert_eq!(run(root.path(), &spec, "echo hi > out.txt\nexit 3\n"), 0);
@@ -210,7 +210,7 @@ fn keeps_only_the_logs_of_a_failure() {
 }
 
 #[test]
-fn reads_the_standard_input() {
+fn reads_standard_input() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let mut spec = spec(&["got.txt"]);
     spec.stdin = Some(Digest::sha256(b"piped\n"));
@@ -234,7 +234,7 @@ fn manifest_errors() {
 }
 
 #[test]
-fn outputs_go_to_the_outbox_too() {
+fn copies_outbox_outputs() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let work = root.path().join("work");
     let control = root.path().join("control");
@@ -274,7 +274,7 @@ fn outputs_go_to_the_outbox_too() {
 }
 
 #[test]
-fn a_stop_reaches_the_tool_at_once() {
+fn stops_tool_promptly() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let work = root.path().join("work");
     let control = root.path().join("control");
@@ -323,7 +323,7 @@ fn a_stop_reaches_the_tool_at_once() {
 }
 
 #[test]
-fn containers_that_wait_for_one_whose_wrapper_was_killed_go_on() {
+fn continues_killed_dependencies() {
     use task_model::{ContainerSpec, Image};
     let root = tempfile::tempdir().expect("a temporary directory");
     let [work, control, home] = ["work", "control", "home"].map(|name| root.path().join(name));

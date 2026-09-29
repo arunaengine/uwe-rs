@@ -978,7 +978,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accelerator_requests_are_refused_before_local_work() {
+    fn rejects_local_accelerators() {
         let spec = TaskSpec {
             format: task_model::FORMAT,
             namespace: String::new(),
@@ -1037,7 +1037,7 @@ mod tests {
     }
 
     #[test]
-    fn image_groups_partition_the_aggregate_grant_in_generated_configs() {
+    fn partitions_group_resources() {
         let image = Image {
             reference: "debian".into(),
             platform: None,
@@ -1110,7 +1110,7 @@ mod tests {
     }
 
     #[test]
-    fn image_group_limits_preserve_remainders_and_reject_undersized_grants() {
+    fn preserves_resource_remainders() {
         let resources = group_resources(1, Some(3 * LEAST_MEMORY + 2), 3).unwrap();
         assert_eq!(
             resources.iter().map(|(cpus, _)| cpus).sum::<i64>(),
@@ -1136,7 +1136,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_secondary_image_opens_new_shared_control_folders() {
+    async fn opens_shared_controls() {
         use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
         let root = folder.path().join("task");
@@ -1162,7 +1162,7 @@ mod tests {
     }
 
     #[test]
-    fn binds_put_relative_mounts_in_the_work_directory() {
+    fn binds_relative_mounts() {
         let image = Image {
             reference: "debian".into(),
             platform: None,

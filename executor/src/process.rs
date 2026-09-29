@@ -789,7 +789,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cancelled_helpers_do_not_contact_an_engine() {
+    fn cancellation_avoids_engine() {
         let cancel = CancellationToken::new();
         cancel.cancel();
         let spec = ContainerSpec {
@@ -807,7 +807,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reply_waits_cancel_before_ready_lines_and_have_a_deadline() {
+    async fn bounds_cancelled_replies() {
         let cancel = CancellationToken::new();
         let (sender, mut lines) = unbounded_channel();
         sender.send("reply").unwrap();
@@ -829,7 +829,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancelled_creation_removes_a_late_accepted_id() {
+    async fn removes_late_creation() {
         use std::io::{BufRead, BufReader, Read, Write};
         let folder = tempfile::tempdir().unwrap();
         let socket = folder.path().join("engine.sock");
@@ -917,7 +917,7 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_engine_is_a_clear_error() {
+    fn explains_missing_engine() {
         let spec = ContainerSpec {
             engine: "/nowhere/iunctus.sock".into(),
             ..ContainerSpec::default()
@@ -933,14 +933,14 @@ mod tests {
     }
 
     #[test]
-    fn output_splits_into_lines() {
+    fn splits_output_lines() {
         let mut buffer = b"one\ntwo\nthr".to_vec();
         assert_eq!(take_lines(&mut buffer), ["one", "two"]);
         assert_eq!(buffer, b"thr");
     }
 
     #[test]
-    fn bounded_helpers_reject_missing_memory_and_invalid_transport_limits_before_engine_access() {
+    fn rejects_invalid_limits() {
         let limits = ProcessLimits {
             max_frame_bytes: 8,
             reply_capacity: 1,
@@ -980,7 +980,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bounded_frames_reject_oversize_complete_and_fragmented_stdout_and_stderr() {
+    async fn rejects_oversized_frames() {
         for stdout in [false, true] {
             for parts in [
                 vec![b"12345\n".to_vec()],
@@ -1018,7 +1018,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bounded_frames_handle_multiple_lines_and_keep_only_bounded_stderr_bytes() {
+    async fn bounds_buffered_replies() {
         let output = futures_util::stream::iter(vec![
             Ok(LogOutput::StdOut {
                 message: b"one\ntwo\n".to_vec().into(),
@@ -1067,7 +1067,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bounded_frames_reject_non_utf8_and_incomplete_stdout() {
+    async fn rejects_invalid_frames() {
         for message in [vec![0xff, b'\n'], b"incomplete".to_vec()] {
             let output = futures_util::stream::iter(vec![Ok(LogOutput::StdOut {
                 message: message.into(),
@@ -1092,7 +1092,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancellation_unblocks_a_reader_waiting_on_a_full_reply_queue() {
+    async fn cancels_full_queue() {
         let output = futures_util::stream::iter(vec![Ok(LogOutput::StdOut {
             message: b"one\ntwo\n".to_vec().into(),
         })]);

@@ -122,7 +122,7 @@ fn success() -> (String, String) {
 }
 
 #[tokio::test]
-async fn base_inspection_requires_manifest_and_exact_platform_without_pull_or_build() {
+async fn requires_base_identity() {
     for changed in [
         "none",
         "digest",
@@ -166,7 +166,7 @@ async fn base_inspection_requires_manifest_and_exact_platform_without_pull_or_bu
 }
 
 #[tokio::test]
-async fn builds_with_limits_and_inspects_config_identity_and_provenance() {
+async fn verifies_bounded_builds() {
     let folder = tempfile::tempdir().unwrap();
     let preparation = preparation();
     let replies = vec![
@@ -204,7 +204,7 @@ async fn builds_with_limits_and_inspects_config_identity_and_provenance() {
 }
 
 #[tokio::test]
-async fn rejects_wrong_labels_platform_and_inspected_id() {
+async fn rejects_wrong_provenance() {
     for field in ["labels", "platform", "id"] {
         let folder = tempfile::tempdir().unwrap();
         let preparation = preparation();
@@ -236,7 +236,7 @@ async fn rejects_wrong_labels_platform_and_inspected_id() {
 }
 
 #[tokio::test]
-async fn failed_or_unidentified_builds_never_inspect_a_tag() {
+async fn rejects_unidentified_builds() {
     for response in [
         "{\"errorDetail\":{\"message\":\"installation failed\"}}\n",
         "{\"stream\":\"Successfully built deadbeef\\n\"}\n",
@@ -260,7 +260,7 @@ async fn failed_or_unidentified_builds_never_inspect_a_tag() {
 }
 
 #[tokio::test]
-async fn cancellation_and_context_limits_prevent_submission() {
+async fn bounds_build_submission() {
     for cancelled in [true, false] {
         let folder = tempfile::tempdir().unwrap();
         let (engine, server) = fixture(folder.path(), vec![]).await;
@@ -284,7 +284,7 @@ async fn cancellation_and_context_limits_prevent_submission() {
 }
 
 #[tokio::test]
-async fn submitted_builds_can_be_cancelled_or_time_out_without_a_receipt() {
+async fn cancels_submitted_builds() {
     for cancelled in [true, false] {
         let folder = tempfile::tempdir().unwrap();
         let (engine, server) =

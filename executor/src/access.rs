@@ -168,7 +168,7 @@ mod tests {
     }
 
     #[test]
-    fn tasks_of_the_user_run_as_the_user() {
+    fn preserves_task_identity() {
         let access = Access::of((1000, 100), false, None, "nobody");
         assert_eq!(access.user.as_deref(), Some("1000:100"));
         assert!(access.capabilities.is_empty() && access.hand_back.is_none());
@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn tasks_that_run_as_their_image_get_their_files_handed_back() {
+    fn returns_image_outputs() {
         // Root of a rootful engine keeps CHOWN to hand the files back.
         let access = Access::of((1000, 100), false, run_as(None, None), "");
         assert_eq!(access.user, None);
@@ -203,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn open_folders_let_every_user_write() {
+    fn permits_folder_writes() {
         let folder = tempfile::tempdir().expect("a folder");
         let root = folder.path().join("task");
         std::fs::create_dir_all(root.join("work")).expect("folders");

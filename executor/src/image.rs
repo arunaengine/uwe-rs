@@ -195,7 +195,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn inspected_images_must_match_the_requested_platform() {
+    fn requires_requested_platform() {
         let image = ImageInspect {
             os: Some("linux".into()),
             architecture: Some("arm".into()),
@@ -210,7 +210,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_cold_pinned_image_is_pulled_without_changing_its_reference() {
+    async fn pulls_pinned_reference() {
         use std::io::{BufRead, BufReader, Write};
         let folder = tempfile::tempdir().unwrap();
         let socket = folder.path().join("engine.sock");
@@ -288,7 +288,7 @@ mod tests {
     }
 
     #[test]
-    fn answers_of_registries_without_the_image_are_not_retried() {
+    fn avoids_missing_retries() {
         assert!(missing(
             "manifest for debian:nosuchtag not found: manifest unknown: manifest unknown"
         ));
@@ -303,7 +303,7 @@ mod tests {
     }
 
     #[test]
-    fn tasks_run_through_the_entrypoint_or_run_the_default_command() {
+    fn uses_image_command() {
         let words =
             |words: &[&str]| -> Vec<String> { words.iter().map(|w| (*w).to_owned()).collect() };
         let commands = Commands {
@@ -324,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn digests_keep_the_repository() {
+    fn preserves_digest_repository() {
         let digests = [
             "localhost:5000/tool@sha256:cd".to_owned(),
             "docker.io/library/debian@sha256:ab".to_owned(),

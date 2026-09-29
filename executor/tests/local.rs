@@ -114,7 +114,7 @@ fn run_with(
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn runs_a_task_in_a_container() {
+fn runs_container_task() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
     let staged = staging(vec![
@@ -161,7 +161,7 @@ fn runs_a_task_in_a_container() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn tasks_have_a_home_they_may_write() {
+fn provides_writable_home() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
     // The container runs as the current user, whom the image does not know, so its own home
@@ -178,7 +178,7 @@ fn tasks_have_a_home_they_may_write() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn inputs_changed_in_place_keep_the_changes() {
+fn preserves_changed_inputs() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
     let project = root.path().join("project");
@@ -209,7 +209,7 @@ fn inputs_changed_in_place_keep_the_changes() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn paths_may_hold_colons() {
+fn accepts_path_colons() {
     let root = tempfile::tempdir().expect("a temporary directory");
     // As the CWL conformance test colon_in_paths: `docker run -v a:b:c` cannot say this.
     let folder = root.path().join("A:Gln2Cys");
@@ -263,7 +263,7 @@ fn reports_failures() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn runs_in_the_workdir_with_absolute_paths_and_standard_input() {
+fn uses_absolute_workdir() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
     let mut task = spec(Some("debian:stable-slim"), &["here.txt", "/tmp/out/"]);
@@ -303,7 +303,7 @@ fn runs_in_the_workdir_with_absolute_paths_and_standard_input() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn linked_inputs_are_read_only_and_limits_hold() {
+fn enforces_mount_limits() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
     let mut task = spec(Some("debian:stable-slim"), &["out.txt"]);
@@ -378,7 +378,7 @@ fn linked_inputs_are_read_only_and_limits_hold() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn pins_images_to_digests() {
+fn pins_image_digests() {
     let executor = executor(&std::env::temp_dir());
     let runtime = runtime();
     let pinned = runtime
@@ -394,7 +394,7 @@ fn pins_images_to_digests() {
 
 #[test]
 #[ignore = "needs Docker and the images bash:4.4, alpine:latest and argoproj/argosay:v2"]
-fn commands_run_through_the_entrypoint_of_the_image() {
+fn uses_image_entrypoint() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
     // The entrypoint of the bash image runs Bash with options like `-c`, as `docker run` does.
@@ -465,7 +465,7 @@ fn several(containers: Vec<ContainerSpec>, outputs: &[&str]) -> TaskSpec {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim and alpine:latest images"]
-fn containers_of_a_task_share_its_folders_in_their_order() {
+fn shares_ordered_folders() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
     let mut retried = container(
@@ -521,7 +521,7 @@ fn containers_of_a_task_share_its_folders_in_their_order() {
 
 #[test]
 #[ignore = "needs rootless Docker/Podman, cgroup v2 delegation, and IUNCTUS_TEST_NONROOT_IMAGE with USER nobody and Debian tools"]
-fn rootless_image_groups_share_limits_and_recover_secondary_user_outputs() {
+fn recovers_rootless_outputs() {
     use std::os::unix::fs::MetadataExt;
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
@@ -597,7 +597,7 @@ fn rootless_image_groups_share_limits_and_recover_secondary_user_outputs() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn a_container_after_one_that_failed_does_not_run() {
+fn skips_failed_dependencies() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
     let spec = several(
@@ -631,7 +631,7 @@ fn written(finished: &Finished) -> String {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn containers_have_the_least_permissions() {
+fn limits_container_permissions() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
     let mut task = spec(Some("debian:stable-slim"), &["out.txt"]);
@@ -668,7 +668,7 @@ fn containers_have_the_least_permissions() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn tasks_that_run_as_their_image_write_where_its_user_may() {
+fn uses_image_identity() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
     let me = std::os::unix::fs::MetadataExt::uid(&std::fs::metadata(root.path()).unwrap());
@@ -716,7 +716,7 @@ fn tasks_that_run_as_their_image_write_where_its_user_may() {
 
 #[test]
 #[ignore = "needs Docker and the argoproj/argosay:v2 image"]
-fn containers_of_a_set_with_a_command_replace_the_entrypoint() {
+fn replaces_set_entrypoint() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
     let me = std::os::unix::fs::MetadataExt::uid(&std::fs::metadata(root.path()).unwrap());

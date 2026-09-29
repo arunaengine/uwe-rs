@@ -50,7 +50,7 @@ pub fn parse(text: &str) -> Result<Vec<Collected>, ManifestError> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn output_paths_cannot_escape_their_host_root() {
+    fn rejects_escaping_outputs() {
         for path in ["../secret", "a/../../secret", "/a/../secret", "bad\0path"] {
             assert!(super::parse(&format!("file {path}\n")).is_err());
         }

@@ -213,7 +213,7 @@ mod usage_tests {
     use super::*;
 
     #[test]
-    fn usage_comes_from_the_control_folder() {
+    fn reads_control_usage() {
         let root = tempfile::tempdir().expect("a temporary directory");
         std::fs::create_dir_all(root.path().join(CONTROL)).expect("makes the folder");
         assert_eq!(Usage::of(root.path()), None);
@@ -227,7 +227,7 @@ mod usage_tests {
     }
 
     #[test]
-    fn tool_times_come_from_the_control_folder() {
+    fn reads_control_times() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let control = root.path().join(CONTROL);
         std::fs::create_dir_all(&control).expect("makes the folder");

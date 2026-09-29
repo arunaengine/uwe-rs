@@ -204,7 +204,7 @@ mod tests {
     }
 
     #[test]
-    fn absolute_aliases_stay_in_scratch_and_overlays_do_not_write_sources() {
+    fn overlays_preserve_sources() {
         let folder = tempfile::tempdir().unwrap();
         let source = folder.path().join("source");
         std::fs::create_dir(&source).unwrap();
@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn links_and_copies_find_their_places() {
+    fn places_links_copies() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let data = folder.path().join("data");
         std::fs::create_dir(&data).expect("makes a folder");
@@ -345,7 +345,7 @@ mod tests {
     }
 
     #[test]
-    fn copied_directories_are_writable() {
+    fn makes_directories_writable() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let source = folder.path().join("stored");
         std::fs::create_dir_all(source.join("c")).expect("makes the folders");
@@ -375,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn copied_directory_links_keep_relative_targets_and_parent_cycles() {
+    fn preserves_directory_links() {
         let folder = tempfile::tempdir().unwrap();
         let source = folder.path().join("stored");
         std::fs::create_dir_all(source.join("child")).unwrap();
@@ -438,7 +438,7 @@ mod tests {
     }
 
     #[test]
-    fn inputs_at_their_own_paths_share_the_mounts_of_shown_folders() {
+    fn shares_shown_mounts() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let scripts = folder.path().join("scripts");
         std::fs::create_dir(&scripts).expect("makes a folder");
@@ -462,7 +462,7 @@ mod tests {
     }
 
     #[test]
-    fn inputs_changed_in_place_are_mounted_writable_at_their_paths() {
+    fn mounts_changed_writable() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let in_place = |path: &str| Staged {
             path: path.into(),
@@ -487,7 +487,7 @@ mod tests {
     }
 
     #[test]
-    fn folders_inside_others_are_not_shown_twice() {
+    fn omits_nested_mounts() {
         let folders: BTreeSet<PathBuf> = ["/a/b", "/a/b/c", "/a/bc", "/d"]
             .into_iter()
             .map(PathBuf::from)

@@ -162,7 +162,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pods_tell_how_their_jobs_stand() {
+    fn reports_job_states() {
         let pod = |job: &str, status: Value| json!({"metadata": {"labels": {"job-name": job}}, "status": status});
         let list = json!({"items": [
             pod("a", json!({"phase": "Pending"})),

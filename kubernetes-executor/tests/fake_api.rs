@@ -438,7 +438,7 @@ fn placement() -> Placement {
 }
 
 #[tokio::test]
-async fn failed_pod_lists_preserve_the_api_error() {
+async fn preserves_api_errors() {
     let root = tempfile::tempdir().expect("a folder");
     let (kubeconfig, _) = serve(root.path());
     let text = std::fs::read_to_string(&kubeconfig).expect("a kubeconfig");
@@ -456,7 +456,7 @@ async fn failed_pod_lists_preserve_the_api_error() {
 }
 
 #[tokio::test]
-async fn missing_job_reads_as_absent() {
+async fn missing_is_absent() {
     let root = tempfile::tempdir().unwrap();
     let (backend, _) = backend(root.path()).await;
     let result = tokio::time::timeout(
@@ -468,7 +468,7 @@ async fn missing_job_reads_as_absent() {
 }
 
 #[tokio::test]
-async fn offline_tasks_are_rejected_before_submission() {
+async fn rejects_offline_tasks() {
     let root = tempfile::tempdir().expect("a folder");
     let (backend, state) = backend(root.path()).await;
     let spec = spec("debian:stable-slim", "true");
@@ -493,7 +493,7 @@ async fn offline_tasks_are_rejected_before_submission() {
 }
 
 #[tokio::test]
-async fn jobs_run_tasks_and_give_their_outputs() {
+async fn returns_job_outputs() {
     let root = tempfile::tempdir().expect("a folder");
     let (backend, state) = backend(root.path()).await;
     let source = root.path().join("source/in.txt");
@@ -539,7 +539,7 @@ async fn jobs_run_tasks_and_give_their_outputs() {
 }
 
 #[tokio::test]
-async fn commands_run_through_the_entrypoint_of_the_image() {
+async fn uses_image_entrypoint() {
     let root = tempfile::tempdir().expect("a folder");
     let (backend, _) = backend(root.path()).await;
     let spec = spec("with-entrypoint", "echo $FROM_ENTRYPOINT > out.txt");
@@ -557,7 +557,7 @@ async fn commands_run_through_the_entrypoint_of_the_image() {
 }
 
 #[tokio::test]
-async fn selected_platform_binds_metadata_image_and_node() {
+async fn binds_selected_platform() {
     let root = tempfile::tempdir().unwrap();
     let (backend, state) = backend(root.path()).await;
     let config = std::fs::read_to_string(root.path().join("kubeconfig")).unwrap();
@@ -591,7 +591,7 @@ async fn selected_platform_binds_metadata_image_and_node() {
 }
 
 #[tokio::test]
-async fn implicit_image_group_uses_the_explicit_pod_platform() {
+async fn inherits_pod_platform() {
     let root = tempfile::tempdir().unwrap();
     let (backend, state) = backend(root.path()).await;
     let config = std::fs::read_to_string(root.path().join("kubeconfig")).unwrap();
@@ -676,7 +676,7 @@ async fn implicit_image_group_uses_the_explicit_pod_platform() {
 }
 
 #[tokio::test]
-async fn gpu_tasks_reject_multiple_image_groups() {
+async fn rejects_gpu_groups() {
     let root = tempfile::tempdir().unwrap();
     let (backend, state) = backend(root.path()).await;
     let mut spec = spec("debian:stable-slim", "true");
@@ -718,7 +718,7 @@ async fn gpu_tasks_reject_multiple_image_groups() {
 }
 
 #[tokio::test]
-async fn failed_tools_end_their_tasks() {
+async fn reports_tool_failures() {
     let root = tempfile::tempdir().expect("a folder");
     let (backend, _) = backend(root.path()).await;
     let spec = spec("debian:stable-slim", "echo broken >&2; exit 3");
@@ -736,7 +736,7 @@ async fn failed_tools_end_their_tasks() {
 }
 
 #[tokio::test]
-async fn a_container_that_cannot_run_the_wrapper_fails_the_machine_with_its_log() {
+async fn reports_wrapper_failures() {
     let root = tempfile::tempdir().expect("a folder");
     let (backend, _) = backend(root.path()).await;
     let spec = spec("without-shell", "true");
@@ -783,7 +783,7 @@ async fn cancelled_jobs_stop() {
 }
 
 #[tokio::test]
-async fn lost_submission_response_keeps_scratch_and_requires_disposition() {
+async fn retains_ambiguous_submissions() {
     let root = tempfile::tempdir().unwrap();
     let (backend, state) = backend(root.path()).await;
     std::fs::write(root.path().join("server/lose-submit"), "").unwrap();
@@ -822,7 +822,7 @@ async fn lost_submission_response_keeps_scratch_and_requires_disposition() {
 }
 
 #[tokio::test]
-async fn dropped_attempt_is_recovered_before_the_next_submission() {
+async fn recovers_dropped_attempts() {
     let root = tempfile::tempdir().unwrap();
     let (backend, state) = backend(root.path()).await;
     let old_spec = spec("debian:stable-slim", "sleep 30");
@@ -860,7 +860,7 @@ async fn dropped_attempt_is_recovered_before_the_next_submission() {
 }
 
 #[tokio::test]
-async fn admission_keeps_a_legitimate_active_sibling() {
+async fn preserves_active_siblings() {
     let root = tempfile::tempdir().unwrap();
     let (backend, state) = backend(root.path()).await;
     let active_spec = spec("debian:stable-slim", "sleep 1; echo active > out.txt");
@@ -892,7 +892,7 @@ async fn admission_keeps_a_legitimate_active_sibling() {
 }
 
 #[tokio::test]
-async fn pre_cancelled_admission_submits_nothing() {
+async fn cancellation_prevents_submission() {
     let root = tempfile::tempdir().unwrap();
     let (backend, state) = backend(root.path()).await;
     let spec = spec("debian:stable-slim", "true");
@@ -913,7 +913,7 @@ async fn pre_cancelled_admission_submits_nothing() {
 }
 
 #[tokio::test]
-async fn recovery_preserves_changed_identity_and_waits_for_pod_removal() {
+async fn recovery_waits_removal() {
     let root = tempfile::tempdir().unwrap();
     let (backend, state) = backend(root.path()).await;
     let spec = spec("debian:stable-slim", "sleep 30");
@@ -959,7 +959,7 @@ async fn recovery_preserves_changed_identity_and_waits_for_pod_removal() {
 }
 
 #[tokio::test]
-async fn failed_container_keeps_sibling_scratch_until_termination() {
+async fn failure_retains_scratch() {
     let root = tempfile::tempdir().unwrap();
     let (backend, state) = backend(root.path()).await;
     let delay = root.path().join("server/delay-delete");
@@ -1005,7 +1005,7 @@ async fn failed_container_keeps_sibling_scratch_until_termination() {
 }
 
 #[tokio::test]
-async fn a_kubeconfig_that_does_not_exist_is_an_error() {
+async fn rejects_missing_kubeconfig() {
     let root = tempfile::tempdir().expect("a folder");
     let missing = root.path().join("missing.yaml");
     let error = Cluster::connect(&missing, None)
@@ -1015,7 +1015,7 @@ async fn a_kubeconfig_that_does_not_exist_is_an_error() {
 }
 
 #[tokio::test]
-async fn containers_of_a_task_share_one_pod() {
+async fn containers_share_pod() {
     let root = tempfile::tempdir().expect("a folder");
     let (backend, state) = backend(root.path()).await;
     let container = |name: &str, image: &str, script: &str, after: &[&str]| ContainerSpec {

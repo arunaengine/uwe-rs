@@ -690,7 +690,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn termination_deadline_keeps_the_journal() {
+    async fn termination_preserves_journal() {
         let folder = tempfile::tempdir().unwrap();
         let config = folder.path().join("kubeconfig");
         std::fs::write(&config, "apiVersion: v1\nkind: Config\ncurrent-context: test\nclusters:\n- name: test\n  cluster:\n    server: http://127.0.0.1:9\ncontexts:\n- name: test\n  context:\n    cluster: test\n    user: test\nusers:\n- name: test\n  user: {}\n").unwrap();
@@ -708,7 +708,7 @@ mod tests {
     }
 
     #[test]
-    fn containers_end_tasks_or_fail_the_machine() {
+    fn classifies_container_failures() {
         let exited = |status, reason: &str| Ended::Exited(status, reason.to_owned());
         assert_eq!(
             outcome(Some(3), &exited(0, "Completed"), None),

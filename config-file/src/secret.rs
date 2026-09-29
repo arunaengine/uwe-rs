@@ -1,6 +1,4 @@
-//! Secrets in config files: a password, a key or a token, written into the file or taken from
-//! an environment variable (`{ environment = "NAME" }`), so that the file can be shared without
-//! its secrets. A secret is read only when it is used, and never shows when printed.
+//! Resolves written and environment secrets on use while hiding their printed values.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -68,7 +68,7 @@ fn get(config: &Config, path: &[&str]) -> String {
 }
 
 #[test]
-fn include_cycles_fail_and_repeated_includes_still_run() {
+fn rejects_include_cycles() {
     for files in [
         vec![("nextflow.config", "includeConfig './nextflow.config'\n")],
         vec![
@@ -105,7 +105,7 @@ fn call(config: &Config, path: &[&str]) -> String {
 }
 
 #[test]
-fn try_catches_a_failed_include() {
+fn catches_include_failures() {
     let text = "params.base = 'missing'
 try {
     includeConfig \"${params.base}/custom.config\"
@@ -127,7 +127,7 @@ params.after = 1
 }
 
 #[test]
-fn try_without_a_matching_catch_fails() {
+fn rejects_unmatched_catch() {
     let text =
         "try {\n    includeConfig 'missing.config'\n} catch (IllegalStateException e) {\n}\n";
     let (config, _) = load_files(&[("nextflow.config", text)]);
@@ -136,7 +136,7 @@ fn try_without_a_matching_catch_fails() {
 }
 
 #[test]
-fn try_runs_an_include_that_works() {
+fn accepts_successful_include() {
     let text = "try {\n    includeConfig 'custom.config'\n} catch (Exception e) {\n    \
                 params.caught = true\n}\n";
     let (config, _) = load_files(&[
@@ -149,7 +149,7 @@ fn try_runs_an_include_that_works() {
 }
 
 #[test]
-fn if_statements_choose_settings() {
+fn selects_conditional_settings() {
     let config = load_text(
         "params.gpu = true
 params.genome = null
@@ -184,7 +184,7 @@ process {
 }
 
 #[test]
-fn selectors_at_the_top_level() {
+fn accepts_root_selectors() {
     let config = load_text(
         "params.align = true
 if (params.align) {
@@ -263,7 +263,7 @@ process.ext.prefix = { foo(1) }
 }
 
 #[test]
-fn earlier_settings_by_name() {
+fn reads_earlier_settings() {
     let (config, _) = load_files(&[
         (
             "nextflow.config",
@@ -300,7 +300,7 @@ includeConfig 'test.config'
 }
 
 #[test]
-fn functions_of_the_file_and_the_including_files() {
+fn resolves_file_functions() {
     let (config, _) = load_files(&[
         (
             "nextflow.config",
@@ -336,7 +336,7 @@ def twice(value) {
 /// Settings without a value before a setting with one form a chain like `a = b = 5`, and
 /// Nextflow 26.04.6 with the legacy parser sets each of them to 5.
 #[test]
-fn chained_assignments_set_each_setting() {
+fn applies_chained_assignments() {
     let config = load_text("params {\n  a =\n  b =\n  c = 5\n}\nprocess.x = params.y = 'z'\n");
     assert_eq!(get(&config, &["params", "a"]), "5");
     assert_eq!(get(&config, &["params", "b"]), "5");

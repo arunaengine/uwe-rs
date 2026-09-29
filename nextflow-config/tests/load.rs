@@ -47,7 +47,7 @@ fn load_text(text: &str) -> Result<Config, ConfigError> {
 }
 
 #[test]
-fn secret_reads_are_unsupported() {
+fn rejects_secret_reads() {
     for read in [
         "secrets.TOKEN",
         "secrets['TOKEN']",
@@ -60,7 +60,7 @@ fn secret_reads_are_unsupported() {
 }
 
 #[test]
-fn assignments_blocks_and_selectors() {
+fn loads_config_forms() {
     let text = "process {\n    cpus = 2\n    withName: 'FOO' { memory = 1.GB }\n}\n\
                 params.a.b = 1\nprocess.cpus = 4\n";
     let config = load_text(text).unwrap();
@@ -72,7 +72,7 @@ fn assignments_blocks_and_selectors() {
 }
 
 #[test]
-fn explicit_standard_profile_may_be_undeclared() {
+fn accepts_implicit_standard() {
     let directory = tempfile::tempdir().unwrap();
     let file = directory.path().join("nextflow.config");
     std::fs::write(&file, "params.value = 1\n").unwrap();
@@ -93,7 +93,7 @@ fn explicit_standard_profile_may_be_undeclared() {
 /// A block replaces a null setting of its name, as Nextflow 26.04.6 and 21.10.3 do for
 /// `params.x = null` and then `params { x { y = 1 } }`.
 #[test]
-fn blocks_replace_null_settings() {
+fn replaces_null_settings() {
     let config =
         load_text("params.x = null\nparams {\n    x {\n        y = 1\n    }\n}\n").expect("loads");
     assert_eq!(
@@ -104,7 +104,7 @@ fn blocks_replace_null_settings() {
 }
 
 #[test]
-fn writing_below_a_value_is_an_error() {
+fn rejects_scalar_children() {
     let error = load_text("process.ext = 'x'\nprocess.ext.args = 'y'\n").unwrap_err();
     assert!(
         error
@@ -115,14 +115,14 @@ fn writing_below_a_value_is_an_error() {
 }
 
 #[test]
-fn flat_output_equals_the_oracle() {
+fn matches_flat_oracle() {
     let config = load_fixture(&["b", "a"], Value::map([])).unwrap();
     let expected = std::fs::read_to_string(fixture("profiles/oracle.txt")).unwrap();
     assert_eq!(config.flat(), expected);
 }
 
 #[test]
-fn command_line_params_take_the_config_type_inside_the_config_only() {
+fn scopes_parameter_types() {
     let params = Value::map([
         (Value::string("n"), Value::string("7")),
         (Value::string("flag"), Value::string("false")),
@@ -141,7 +141,7 @@ fn command_line_params_take_the_config_type_inside_the_config_only() {
 }
 
 #[test]
-fn unknown_profiles_are_errors() {
+fn rejects_unknown_profiles() {
     let error = load_fixture(&["c"], Value::map([])).unwrap_err();
     assert_eq!(
         error.to_string(),
@@ -150,7 +150,7 @@ fn unknown_profiles_are_errors() {
 }
 
 #[test]
-fn process_selectors_apply_in_order() {
+fn orders_process_selectors() {
     let text = "process {\n    cpus = 1\n    ext.dflt = 'd'\n\
                 withLabel: 'big' { cpus = 4 }\n    withLabel: '!big' { memory = 1.GB }\n\
                 withName: 'OUTER:SUB:BAR' { ext.args = 'full' }\n\
@@ -180,7 +180,7 @@ fn process_selectors_apply_in_order() {
 /// The maps of params, also those in lists, are `nextflow.config.ConfigMap`, as Nextflow
 /// 26.04.6 gives them to scripts; old nf-core schema checks tell them from `LinkedHashMap`.
 #[test]
-fn param_maps_are_config_maps() {
+fn converts_parameter_maps() {
     let config = load_text("params.m = [a: [b: 1], l: [[c: 1]]]\n").expect("loads");
     let class = |path: &[&str]| {
         nextflow_evaluator::value::tree::get(&config.tree, path)

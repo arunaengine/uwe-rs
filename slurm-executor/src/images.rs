@@ -95,7 +95,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_images_pinned_to_their_digest_get_a_file() {
+    fn pinned_shares_file() {
         assert_eq!(
             file_name("quay.io/biocontainers/fastqc@sha256:0ab9").as_deref(),
             Some("sha256-0ab9.sif")
@@ -115,7 +115,7 @@ mod tests {
     }
 
     #[test]
-    fn images_named_by_a_tag_get_a_file_of_their_own() {
+    fn tags_isolate_files() {
         let name = tag_file_name("debian:stable-slim").expect("a file");
         assert!(name.starts_with("tag-") && name.ends_with(".sif"), "{name}");
         assert_eq!(name.len(), "tag-.sif".len() + 32);
@@ -129,7 +129,7 @@ mod tests {
     }
 
     #[test]
-    fn the_pull_moves_a_whole_file_into_place() {
+    fn publishes_whole_image() {
         let script = pull_script(
             "apptainer",
             "debian@sha256:ab",

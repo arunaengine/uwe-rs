@@ -1115,7 +1115,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn vanished_identity_followed_by_active_replacement_is_not_cancelled() {
+    async fn preserves_replacement_identity() {
         use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
         let mut backend = SlurmBackend::new(
@@ -1158,7 +1158,7 @@ esac"#,
     }
 
     #[tokio::test]
-    async fn refused_or_hung_cancellation_keeps_ownership() {
+    async fn cancellation_preserves_ownership() {
         use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
         let mut backend = SlurmBackend::new(
@@ -1199,7 +1199,7 @@ esac"#,
     }
 
     #[tokio::test]
-    async fn selected_platform_pins_even_a_replaced_entrypoint() {
+    async fn pins_selected_platform() {
         use std::io::{BufRead, BufReader, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -1258,7 +1258,7 @@ esac"#,
     }
 
     #[tokio::test]
-    async fn engine_gpu_requests_fail_before_staging() {
+    async fn rejects_engine_gpus() {
         let folder = tempfile::tempdir().unwrap();
         let scratch = folder.path().join("scratch");
         let backend = SlurmBackend::new(
@@ -1299,7 +1299,7 @@ esac"#,
     }
 
     #[test]
-    fn jobs_end_tasks_or_fail_the_machine() {
+    fn classifies_job_failures() {
         let done = |status| Ended::Done(status);
         let stopped = |state: &str| Ended::Stopped(Some(state.to_owned()));
         assert_eq!(outcome(Some(3), &done(0), None), Ok((3, None)));

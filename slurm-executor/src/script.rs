@@ -371,7 +371,7 @@ mod tests {
     };
 
     #[test]
-    fn jobs_ask_for_what_their_tasks_need() {
+    fn requests_task_resources() {
         let spec = spec(None);
         let staging = Staging::default();
         let placement = Placement {
@@ -411,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    fn apptainer_runs_the_wrapper_with_the_folders_of_the_task() {
+    fn apptainer_mounts_folders() {
         let image = spec(None).image.expect("an image");
         let mounts = [Mount {
             source: PathBuf::from("/shared/store/cas"),
@@ -494,7 +494,7 @@ mod tests {
     }
 
     #[test]
-    fn podman_runs_the_wrapper_with_an_init_process_and_the_limits() {
+    fn podman_enforces_limits() {
         let image = spec(None).image.expect("an image");
         let engine = EngineCommand {
             program: "podman".into(),

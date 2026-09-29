@@ -38,7 +38,7 @@ fn directory(location: &str) -> OutputFile {
 }
 
 #[test]
-fn finite_globs_ignore_unrelated_cycles_and_dangling_links() {
+fn finite_ignores_cycles() {
     for (pattern, reported) in [
         ("dir/good.txt", true),
         ("dir/good.txt", false),
@@ -86,7 +86,7 @@ fn finite_globs_ignore_unrelated_cycles_and_dangling_links() {
 }
 
 #[test]
-fn wildcard_globs_skip_hidden_paths_unless_the_dot_is_explicit() {
+fn wildcards_skip_hidden() {
     let root = tempfile::tempdir().expect("folder");
     let dir = root.path().join("work/dir");
     std::fs::create_dir_all(dir.join(".hidden")).expect("directory");
@@ -138,7 +138,7 @@ fn wildcard_globs_skip_hidden_paths_unless_the_dot_is_explicit() {
 }
 
 #[test]
-fn finite_globs_preserve_directory_aliases() {
+fn preserves_glob_aliases() {
     let root = tempfile::tempdir().expect("folder");
     let dir = root.path().join("work/dir");
     std::fs::create_dir_all(dir.join("real")).expect("directory");
@@ -171,7 +171,7 @@ fn finite_globs_preserve_directory_aliases() {
 }
 
 #[test]
-fn finite_globs_can_read_through_ancestor_directory_aliases() {
+fn reads_ancestor_aliases() {
     let root = tempfile::tempdir().expect("folder");
     let dir = root.path().join("work/dir");
     std::fs::create_dir_all(dir.join("a")).expect("directory");
@@ -210,7 +210,7 @@ fn finite_globs_can_read_through_ancestor_directory_aliases() {
 }
 
 #[test]
-fn recursive_output_globs_report_directory_cycles() {
+fn reports_recursive_cycles() {
     let root = tempfile::tempdir().expect("folder");
     let dir = root.path().join("work/dir");
     std::fs::create_dir_all(dir.join("a")).expect("directory");
@@ -239,7 +239,7 @@ fn recursive_output_globs_report_directory_cycles() {
 }
 
 #[test]
-fn remote_output_globs_expand_nested_provider_directories() {
+fn expands_remote_globs() {
     let root = tempfile::tempdir().expect("folder");
     std::fs::create_dir_all(root.path().join("work/dir/sub")).expect("directory");
     std::fs::write(root.path().join("work/dir/sub/a b.txt"), "remote").expect("file");

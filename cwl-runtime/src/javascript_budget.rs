@@ -120,14 +120,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn marker_alone_cannot_authorize_a_host_worker() {
+    fn requires_worker_isolation() {
         assert!(marker_allowed(Some("1"), false).is_err());
         assert!(marker_allowed(None, true).is_err());
         assert!(marker_allowed(Some("1"), true).is_ok());
     }
 
     #[test]
-    fn cgroup_mount_roots_resolve_the_current_process_membership() {
+    fn resolves_cgroup_membership() {
         assert_eq!(
             current_group(
                 "0::/\n",
@@ -152,7 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn unlimited_memory_missing_swap_and_enabled_swap_are_refused() {
+    fn requires_memory_bounds() {
         let group = tempfile::tempdir().expect("group");
         std::fs::write(group.path().join("memory.max"), MEMORY_LIMIT.to_string()).expect("memory");
         assert!(prove_limits(group.path(), true).is_err());

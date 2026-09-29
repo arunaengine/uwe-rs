@@ -33,7 +33,7 @@ fn run(files: &[(&str, &str)]) -> Result<usize, String> {
 }
 
 #[test]
-fn outputs_that_only_cwl_output_json_gives_keep_their_format() {
+fn preserves_json_formats() {
     let make = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: make\ninputs: []\n\
         outputs:\n  made: {type: File, format: 'http://example.com/movies'}\n";
     let take = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: take\n\
@@ -47,7 +47,7 @@ fn outputs_that_only_cwl_output_json_gives_keep_their_format() {
 }
 
 #[test]
-fn placeholder_files_take_the_format_a_tool_asks_for() {
+fn preserves_placeholder_formats() {
     let take = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: take\n\
         inputs:\n  reads: {type: File, format: 'http://example.com/fastq', inputBinding: {}}\n\
         outputs: []\n";
@@ -57,7 +57,7 @@ fn placeholder_files_take_the_format_a_tool_asks_for() {
 }
 
 #[test]
-fn rejects_negative_time_limits() {
+fn rejects_negative_limits() {
     let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: [sleep, '1']\n\
         requirements: {ToolTimeLimit: {timelimit: -1}}\ninputs: []\noutputs: []\n";
     let error = run(&[("main.cwl", tool)]).expect_err("a negative time limit fails");
@@ -65,7 +65,7 @@ fn rejects_negative_time_limits() {
 }
 
 #[test]
-fn policy_expressions_require_boolean_results() {
+fn requires_boolean_policy() {
     for (class, field) in [
         ("NetworkAccess", "networkAccess"),
         ("WorkReuse", "enableReuse"),
@@ -84,7 +84,7 @@ fn policy_expressions_require_boolean_results() {
 }
 
 #[test]
-fn secondary_file_required_expressions_require_boolean_results() {
+fn requires_boolean_secondaries() {
     for declaration in [
         "inputs:\n  flag: {type: string, default: 'false'}\n  file:\n    type: File\n    default: {class: File, contents: input}\n    secondaryFiles: [{pattern: .idx, required: '$(inputs.flag)'}]\noutputs: []\n",
         "inputs: {flag: {type: string, default: 'false'}}\noutputs:\n  file:\n    type: File\n    outputBinding: {glob: out.txt}\n    secondaryFiles: [{pattern: .idx, required: '$(inputs.flag)'}]\n",
@@ -100,7 +100,7 @@ fn secondary_file_required_expressions_require_boolean_results() {
 }
 
 #[test]
-fn step_load_contents_applies_to_file_arrays_before_value_from() {
+fn loads_scattered_contents() {
     let root = tempfile::tempdir().expect("folder");
     let file = root.path().join("input.txt");
     std::fs::write(&file, "step contents").expect("input");
@@ -125,7 +125,7 @@ fn step_load_contents_applies_to_file_arrays_before_value_from() {
 }
 
 #[test]
-fn rejects_invalid_and_overflowing_resource_amounts() {
+fn rejects_invalid_resources() {
     for fields in [
         "ramMin: -1",
         "coresMin: 4, coresMax: 2",
@@ -143,7 +143,7 @@ fn rejects_invalid_and_overflowing_resource_amounts() {
 }
 
 #[test]
-fn rejects_execution_extensions_as_requirements_but_allows_hints() {
+fn rejects_required_extensions() {
     for class in ["Secrets", "ShmSize", "RuntimeConstraints"] {
         for kind in ["requirements", "hints"] {
             let tool = format!(
@@ -162,7 +162,7 @@ fn rejects_execution_extensions_as_requirements_but_allows_hints() {
 }
 
 #[test]
-fn required_cuda_constraints_cannot_be_discarded() {
+fn requires_cuda_constraints() {
     for fields in [
         "cudaVersionMin: '12'",
         "cudaComputeCapability: ['7.0']",
@@ -185,7 +185,7 @@ fn required_cuda_constraints_cannot_be_discarded() {
 }
 
 #[test]
-fn absolute_entry_names_need_docker_as_a_requirement() {
+fn requires_docker_entries() {
     let tool = |docker: &str| {
         format!(
             "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\n{docker}\
@@ -209,7 +209,7 @@ const FILE_WRITER: &str = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand
     outputs: {changed: {type: File, outputBinding: {glob: data.txt}}}\n";
 
 #[test]
-fn file_writers_reject_parent_views_and_preserve_unrelated_directories_and_disabled_updates() {
+fn rejects_writer_conflicts() {
     for (parent, enabled, rejected) in [
         ("file:///source", true, true),
         ("file:///other", true, false),
@@ -234,7 +234,7 @@ fn file_writers_reject_parent_views_and_preserve_unrelated_directories_and_disab
 }
 
 #[test]
-fn later_parent_views_are_rejected_in_outputs_and_initial_workdir() {
+fn rejects_parent_views() {
     let source = tempfile::tempdir().expect("source folder");
     std::fs::write(source.path().join("data.txt"), "seed").expect("source file");
     let location = cwl_parser::iri::file_url(source.path());
@@ -262,7 +262,7 @@ fn later_parent_views_are_rejected_in_outputs_and_initial_workdir() {
 }
 
 #[test]
-fn completed_directory_reader_views_do_not_block_later_file_writers() {
+fn releases_completed_readers() {
     let reader = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: read\n\
         inputs: {view: Directory}\noutputs: []\n";
     let main = "cwlVersion: v1.2\nclass: Workflow\nrequirements:\n  \
@@ -282,7 +282,7 @@ fn completed_directory_reader_views_do_not_block_later_file_writers() {
 }
 
 #[test]
-fn in_place_directory_writes_are_explicitly_unsupported() {
+fn rejects_directory_updates() {
     let tool = FILE_WRITER
         .replace(
             "inputs: {f: File}",
@@ -299,7 +299,7 @@ fn in_place_directory_writes_are_explicitly_unsupported() {
 }
 
 #[test]
-fn outputs_of_abstract_steps_bring_their_secondary_files() {
+fn preserves_abstract_secondaries() {
     let index = "cwlVersion: v1.2\nclass: Operation\ninputs: []\n\
         outputs:\n  indexed: {type: File, secondaryFiles: [.fai]}\n";
     let align = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: align\n\
@@ -317,7 +317,7 @@ fn outputs_of_abstract_steps_bring_their_secondary_files() {
 }
 
 #[test]
-fn simulated_files_of_bare_wildcards_take_the_extension_the_output_suggests() {
+fn infers_wildcard_extensions() {
     let extract = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: extract\ninputs: []\n\
         outputs:\n  fastq_file: {type: File, outputBinding: {glob: '*'}}\n";
     let check = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: check\n\
@@ -336,7 +336,7 @@ fn simulated_files_of_bare_wildcards_take_the_extension_the_output_suggests() {
 }
 
 #[test]
-fn only_a_launch_that_assumes_its_inputs_takes_absent_files_as_present() {
+fn requires_assumed_inputs() {
     let folder = tempfile::tempdir().expect("a temporary folder");
     let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\n\
         inputs:\n  text: {type: File, loadContents: true}\noutputs: []\n";
@@ -371,7 +371,7 @@ fn only_a_launch_that_assumes_its_inputs_takes_absent_files_as_present() {
 }
 
 #[test]
-fn expression_tools_over_absent_data_give_placeholders_for_null_outputs() {
+fn supplies_null_placeholders() {
     let folder = tempfile::tempdir().expect("a temporary folder");
     let pick = "cwlVersion: v1.2\nclass: ExpressionTool\n\
         requirements: {InlineJavascriptRequirement: {}}\n\
@@ -402,7 +402,7 @@ fn expression_tools_over_absent_data_give_placeholders_for_null_outputs() {
 }
 
 #[test]
-fn errors_of_expressions_say_where_the_expression_is() {
+fn locates_expression_errors() {
     let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: sh\n\
         requirements:\n  InlineJavascriptRequirement: {}\n  InitialWorkDirRequirement:\n    \
         listing: [{entryname: run.sh, entry: 'cd ${HOME}'}]\ninputs: []\noutputs: []\n";
@@ -426,7 +426,7 @@ fn errors_of_expressions_say_where_the_expression_is() {
 }
 
 #[test]
-fn a_simulated_run_says_when_a_scatter_needs_real_data() {
+fn marks_unknown_scatter() {
     let folder = tempfile::tempdir().expect("a temporary folder");
     let find = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: find\n\
         inputs: {data: File}\noutputs: {peaks: 'Any[]?'}\n";
@@ -469,7 +469,7 @@ fn a_simulated_run_says_when_a_scatter_needs_real_data() {
 }
 
 #[test]
-fn a_scatter_over_the_files_of_a_glob_marks_the_task_that_made_them() {
+fn marks_scatter_producer() {
     let folder = tempfile::tempdir().expect("a temporary folder");
     let split = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: split\n\
         inputs: []\noutputs: {parts: {type: 'File[]', outputBinding: {glob: 'part_*.txt'}}, \
@@ -558,7 +558,7 @@ fn run_for_real(files: &[(&str, &str)]) -> Result<usize, String> {
 }
 
 #[test]
-fn operations_do_nothing_in_a_real_run() {
+fn operations_skip_execution() {
     let index = |kind: &str| {
         format!("cwlVersion: v1.2\nclass: Operation\ninputs: []\noutputs:\n  indexed: {kind}\n")
     };
@@ -608,7 +608,7 @@ impl workflow_graph::Observer for Targets {
 }
 
 #[test]
-fn real_runs_deliver_the_output_files_to_the_output_folder() {
+fn delivers_real_outputs() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: [touch, out.txt]\n\
                 inputs: []\noutputs:\n  made: {type: File, outputBinding: {glob: out.txt}}\n";
@@ -668,7 +668,7 @@ fn task_of(version: &str, requirements: &str) -> workflow_graph::Task {
 }
 
 #[test]
-fn tools_run_offline_unless_they_ask_for_the_network() {
+fn requires_network_access() {
     assert!(offline("v1.2", ""));
     let asked = "requirements:\n  NetworkAccess:\n    networkAccess: true\n";
     assert!(!offline("v1.2", asked));
@@ -680,7 +680,7 @@ fn tools_run_offline_unless_they_ask_for_the_network() {
 }
 
 #[test]
-fn work_reuse_can_turn_off_the_cache_of_a_tool() {
+fn disables_tool_reuse() {
     use workflow_graph::Reuse;
     assert_eq!(task_of("v1.2", "").reuse, Reuse::Allowed);
     let off = "requirements:\n  WorkReuse:\n    enableReuse: false\n";
@@ -730,7 +730,7 @@ impl Executor for Elsewhere {
 }
 
 #[test]
-fn cwl_output_json_comes_through_the_files_of_a_store_elsewhere() {
+fn reads_remote_json() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: count\ninputs: []\n\
                 outputs:\n  n: int\n";
@@ -836,7 +836,7 @@ fn run_failing(keep_going: bool) -> (String, Vec<String>) {
 }
 
 #[test]
-fn failed_tools_stop_new_steps_unless_the_run_keeps_going() {
+fn failure_stops_admission() {
     // As `cwltool --parallel` with `--on-error stop`, the default: the running step `slow`
     // ends, but `later` never starts.
     let (error, ran) = run_failing(false);
@@ -850,7 +850,7 @@ fn failed_tools_stop_new_steps_unless_the_run_keeps_going() {
 }
 
 #[test]
-fn writable_initial_work_dir_entries_are_copies_of_the_task() {
+fn copies_writable_entries() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(folder.path().join("whale.txt"), "whale\n").expect("writes");
     let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: edit\n\
@@ -884,7 +884,7 @@ fn writable_initial_work_dir_entries_are_copies_of_the_task() {
 }
 
 #[test]
-fn requirements_of_the_input_object_override_those_of_the_tool() {
+fn inputs_override_requirements() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     // As the conformance tests cwl_requirements_*: the tool's own value gives way.
     let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: [printenv, TEST_ENV]\n\
@@ -923,7 +923,7 @@ impl Executor for Patterns {
 }
 
 #[test]
-fn outputs_that_output_eval_makes_keep_the_whole_output_folder() {
+fn retains_evaluated_folder() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     // As the conformance test record_outputeval: an `outputEval` names files by their paths.
     let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: touch\n\
@@ -987,7 +987,7 @@ impl Executor for Making {
 }
 
 #[test]
-fn later_steps_see_what_a_tool_updated_in_place() {
+fn propagates_updated_inputs() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     // As the conformance test modify_file_content.
     let make = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: [touch, value.txt]\n\

@@ -5,7 +5,7 @@
 use super::*;
 
 #[test]
-fn names_scatter_elements_by_index() {
+fn names_scatter_indexes() {
     let names = Names::default()
         .child("align")
         .child("sort")
@@ -15,7 +15,7 @@ fn names_scatter_elements_by_index() {
 }
 
 #[test]
-fn directory_aliases_refresh_separately_held_descendants() {
+fn refreshes_directory_aliases() {
     let root = tempfile::tempdir().expect("folder");
     let original = root.path().join("original");
     let alias = root.path().join("alias");
@@ -53,7 +53,7 @@ fn directory_aliases_refresh_separately_held_descendants() {
 }
 
 #[test]
-fn parent_view_conflicts_cover_canonical_directory_aliases_and_listed_hard_links() {
+fn detects_parent_conflicts() {
     let root = tempfile::tempdir().expect("folder");
     let parent = root.path().join("parent");
     let other = root.path().join("other");

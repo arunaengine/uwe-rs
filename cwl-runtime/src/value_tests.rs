@@ -5,7 +5,7 @@
 use super::*;
 
 #[test]
-fn keeps_large_integers_exact() {
+fn preserves_large_integers() {
     let value = Value::parse("{\"a\": 4200000000000000000000000000000000000000000, \"b\": 4.2}")
         .expect("JSON");
     assert_eq!(
@@ -19,7 +19,7 @@ fn keeps_large_integers_exact() {
 }
 
 #[test]
-fn writes_floats_as_python_and_javascript_do() {
+fn formats_python_floats() {
     assert_eq!(python_float(4.2), "4.2");
     assert_eq!(python_float(100.0), "100.0");
     assert_eq!(python_float(1e-7), "1e-07");
@@ -34,7 +34,7 @@ fn writes_floats_as_python_and_javascript_do() {
 }
 
 #[test]
-fn sorts_keys_and_escapes_like_python() {
+fn sorts_python_keys() {
     let value = Value::parse("{b: [1, 'x'], a: null, c: 'é'}").expect("YAML");
     assert_eq!(
         value.to_python_json(true),
@@ -49,14 +49,14 @@ fn sorts_keys_and_escapes_like_python() {
 }
 
 #[test]
-fn compares_numbers_as_python_does() {
+fn compares_python_numbers() {
     assert!(python_equal(&Value::Integer(1), &Value::Float(1.0)));
     assert!(python_equal(&Value::Bool(true), &Value::Integer(1)));
     assert!(!python_equal(&Value::string("1"), &Value::Integer(1)));
 }
 
 #[test]
-fn summarizes_values_for_messages() {
+fn summarizes_message_values() {
     let summary = |text: &str| Value::parse(text).expect("YAML").summary();
     assert_eq!(
         summary("{class: File, location: 'file:///d/a.vcf'}"),
@@ -80,7 +80,7 @@ fn summarizes_values_for_messages() {
 }
 
 #[test]
-fn output_objects_print_as_python_indents_them_with_exact_integers() {
+fn formats_output_objects() {
     let value = Value::parse(
         "{b: [1, 2], a: {}, c: [], d: 1000000000000000000000000000000000000000000, e: 4.2, \
          f: 1.0e42, g: é}",

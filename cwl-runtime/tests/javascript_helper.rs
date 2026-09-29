@@ -20,7 +20,7 @@ fn evaluate(evaluator: &Evaluator, body: &str) -> Result<Value, String> {
 
 #[test]
 #[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
-fn ordinary_boa_values_and_language_fallback_survive_fresh_worker_contexts() {
+fn preserves_worker_fallback() {
     let evaluator = Evaluator::default();
     let value =
         evaluate(&evaluator, "${leaked = 1; return {b: 2, a: 1, n: 1e21};}").expect("value");
@@ -48,7 +48,7 @@ fn ordinary_boa_values_and_language_fallback_survive_fresh_worker_contexts() {
 
 #[tokio::test]
 #[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
-async fn tokio_callers_can_evaluate_and_drop_the_helper_inside_an_async_task() {
+async fn supports_async_callers() {
     tokio::spawn(async {
         let evaluator = Evaluator::default();
         assert_eq!(
@@ -63,7 +63,7 @@ async fn tokio_callers_can_evaluate_and_drop_the_helper_inside_an_async_task() {
 
 #[test]
 #[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
-fn native_parse_builtins_and_loop_free_work_fail_under_the_hard_boundary() {
+fn bounds_native_work() {
     for body in [
         "${function f(n) {return n ? f(n-1) + f(n-1) : 1;} return f(55);}".to_owned(),
         "${return 'x'.repeat(300000000);}".to_owned(),
@@ -88,7 +88,7 @@ fn native_parse_builtins_and_loop_free_work_fail_under_the_hard_boundary() {
 
 #[test]
 #[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
-fn oversized_and_deep_results_are_resource_failures_without_literal_fallback() {
+fn rejects_unbounded_results() {
     for body in [
         "${return 'x'.repeat(20 << 20);}",
         "${var x=null; for(var i=0;i<80;i++) x=[x]; return x;}",
@@ -111,7 +111,7 @@ fn oversized_and_deep_results_are_resource_failures_without_literal_fallback() {
 
 #[test]
 #[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
-fn cancellation_stops_an_active_worker_including_cleanup_grace() {
+fn cancellation_cleans_worker() {
     let evaluator = Evaluator::default();
     assert_eq!(evaluate(&evaluator, "${return 1;}"), Ok(Value::Integer(1)));
     let cancel = evaluator.settings.cancel.clone();
@@ -131,7 +131,7 @@ fn cancellation_stops_an_active_worker_including_cleanup_grace() {
 
 #[test]
 #[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
-fn engine_cancellation_reaches_default_driver_planning_after_helper_warmup() {
+fn cancels_driver_planning() {
     use workflow_graph::{
         Attempt, CancellationToken, Engine, Executor, Launch, Running, Simulator,
     };

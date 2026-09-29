@@ -781,7 +781,7 @@ fn split(line: &str) -> Option<Vec<String>> {
 
 #[test]
 #[ignore = "needs the CWL test workflows from `just cwl-test-workflows`; run it with `just cwl-conformance-test`"]
-fn conformance_tests_run_as_recorded() {
+fn matches_recorded_conformance() {
     let test_workflows =
         PathBuf::from(std::env::var("CWL_TEST_WORKFLOWS").expect("CWL_TEST_WORKFLOWS is set"));
     // The suites with their data files, from `just cwl-conformance-data`, in one folder.

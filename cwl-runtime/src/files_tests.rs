@@ -5,7 +5,7 @@
 use super::*;
 
 #[test]
-fn splits_extensions_as_python_does() {
+fn splits_python_extensions() {
     assert_eq!(split_extension("a.tar.gz"), ("a.tar", ".gz"));
     assert_eq!(split_extension(".bashrc"), (".bashrc", ""));
     assert_eq!(split_extension("a."), ("a", "."));
@@ -21,7 +21,7 @@ fn substitutes_secondary_patterns() {
 }
 
 #[test]
-fn normalizes_files_and_literals() {
+fn normalizes_file_literals() {
     let mut value = Value::parse(
         "[{class: File, location: 'file:///data/a%20b.fastq.gz'}, \
          {class: File, basename: x.txt, contents: hi}]",
@@ -41,7 +41,7 @@ fn normalizes_files_and_literals() {
 }
 
 #[test]
-fn resolves_locations_against_the_job() {
+fn resolves_job_locations() {
     let mut value = Value::parse("{f: {class: File, path: sub/x.txt}}").expect("YAML");
     resolve_locations(&mut value, "file:///work/job.yml");
     let file = value.get("f").expect("f");
@@ -63,7 +63,7 @@ fn resolves_locations_against_the_job() {
 }
 
 #[test]
-fn absent_files_count_as_empty_in_a_simulated_run() {
+fn simulates_absent_files() {
     let mut file = Value::parse("{class: File, location: 'file:///nowhere/x'}").expect("YAML");
     let map = file.as_map_mut().expect("a map");
     let simulated = Access {
@@ -80,7 +80,7 @@ fn absent_files_count_as_empty_in_a_simulated_run() {
 }
 
 #[test]
-fn checksums_sparse_files_in_bounded_chunks() {
+fn checksums_bounded_chunks() {
     let folder = tempfile::tempdir().expect("a folder");
     let path = folder.path().join("large.bin");
     std::fs::File::create(&path)
@@ -152,7 +152,7 @@ fn serve() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
 }
 
 #[test]
-fn contents_and_sizes_of_files_at_addresses_come_through_the_storage_providers() {
+fn reads_provider_content() {
     use std::sync::atomic::Ordering;
     let (server, requests) = serve();
     let text = format!(
@@ -220,7 +220,7 @@ fn contents_and_sizes_of_files_at_addresses_come_through_the_storage_providers()
 }
 
 #[test]
-fn remote_directory_listings_match_local_shallow_and_deep_listings() {
+fn matches_remote_listings() {
     let root = tempfile::tempdir().expect("provider folder");
     let directory = root.path().join("data");
     std::fs::create_dir_all(directory.join("sub")).expect("subdirectory");
@@ -290,7 +290,7 @@ fn remote_directory_listings_match_local_shallow_and_deep_listings() {
 }
 
 #[test]
-fn requested_local_listings_report_missing_directories() {
+fn reports_missing_directories() {
     let root = tempfile::tempdir().expect("folder");
     let location = iri::file_url(&root.path().join("missing"));
     let mut directory =
@@ -303,7 +303,7 @@ fn requested_local_listings_report_missing_directories() {
 }
 
 #[test]
-fn deep_directory_listings_detect_ancestor_cycles_and_keep_sibling_aliases() {
+fn detects_listing_cycles() {
     let root = tempfile::tempdir().expect("folder");
     std::fs::create_dir(root.path().join("real")).expect("directory");
     std::fs::write(root.path().join("real/file.txt"), "bytes").expect("file");

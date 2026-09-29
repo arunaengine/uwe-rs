@@ -12,7 +12,7 @@ fn values(text: &str) -> Vec<Value> {
 }
 
 #[test]
-fn picks_values_as_cwltool_does() {
+fn picks_cwl_values() {
     let list = Value::List(values("[null, 1, null, 2]"));
     assert_eq!(
         pick(Some(PickValue::FirstNonNull), list.clone(), "#x"),

@@ -66,7 +66,7 @@ fn failure(root: &Path, error: &workflow_graph::DriverError) -> String {
 
 #[test]
 #[ignore = "needs the CWL test workflows from `just cwl-test-workflows`; run it with `just inputs-test-workflows-test`"]
-fn documents_describe_their_inputs() {
+fn describes_document_inputs() {
     let root =
         PathBuf::from(std::env::var("CWL_TEST_WORKFLOWS").expect("CWL_TEST_WORKFLOWS is set"));
     let documents: Vec<&str> = DOCUMENTS

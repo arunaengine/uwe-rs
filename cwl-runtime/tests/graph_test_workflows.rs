@@ -260,7 +260,7 @@ fn normalize(path: &Path) -> PathBuf {
 
 #[test]
 #[ignore = "needs the CWL test workflows from `just cwl-test-workflows`; run it with `just cwl-graph-test-workflows-test`"]
-fn test_workflows_build_graphs_as_recorded() {
+fn matches_recorded_graphs() {
     let root =
         PathBuf::from(std::env::var("CWL_TEST_WORKFLOWS").expect("CWL_TEST_WORKFLOWS is set"));
     let fixture =
@@ -373,7 +373,7 @@ fn test_workflows_build_graphs_as_recorded() {
 }
 
 #[test]
-fn every_record_names_its_kind_and_shows_evidence() {
+fn records_provide_evidence() {
     let reasons = records::reasons(EVIDENCE);
     assert!(reasons.len() > 50, "{} records", reasons.len());
     let block =

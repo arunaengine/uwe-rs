@@ -7,7 +7,7 @@ use super::*;
 use cwl_parser::model::Dirent;
 
 #[test]
-fn dirents_of_file_lists_stage_each_file_and_empty_lists_nothing() {
+fn stages_dirent_lists() {
     let dirent = |entry: &str| Dirent {
         entryname: None,
         entry: Expression::parse(entry, false).expect("an expression"),

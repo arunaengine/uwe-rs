@@ -224,7 +224,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn files_go_to_the_folder_under_their_basenames() {
+    fn delivers_output_basenames() {
         let text = "{out: {class: File, location: 'file:///s/runs/a/work/x.txt', basename: \
                     x.txt, secondaryFiles: [{class: File, location: 'file:///s/runs/a/work/x.txt.idx'}]}, \
                     dir: {class: Directory, location: 'file:///s/runs/b/work/d', listing: \
@@ -255,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn literals_are_written_to_the_folder() {
+    fn writes_output_literals() {
         // The conformance tests exprtool_file_literal and exprtool_directory_literal.
         let folder = tempfile::tempdir().expect("a temporary directory");
         let text = "{lit: {class: File, basename: a_file, contents: 'Hello', location: '_:1'}, \
@@ -279,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    fn escaping_basenames_and_symlink_destinations_leave_sentinels_unchanged() {
+    fn rejects_delivery_escapes() {
         let root = tempfile::tempdir().expect("temporary directory");
         let out = root.path().join("out");
         std::fs::create_dir(&out).expect("output folder");
@@ -314,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn colliding_outputs_keep_their_secondary_files_together() {
+    fn groups_colliding_secondaries() {
         let root = tempfile::tempdir().expect("temporary directory");
         let text = "{out: [{class: File, basename: result.txt, contents: first, secondaryFiles: [{class: File, basename: result.txt.idx, contents: first-index}]}, {class: File, basename: result.txt, contents: second, secondaryFiles: [{class: File, basename: result.txt.idx, contents: second-index}]}]}";
         let Value::Map(mut outputs) = Value::parse(text).expect("YAML") else {
@@ -342,7 +342,7 @@ mod tests {
     }
 
     #[test]
-    fn literal_write_errors_fail_delivery() {
+    fn propagates_literal_errors() {
         let root = tempfile::tempdir().expect("temporary directory");
         let out = root.path().join("file");
         std::fs::write(&out, "existing").expect("file");

@@ -19,7 +19,7 @@ fn run(library: &[&str], body: &str) -> Result<Value, String> {
 }
 
 #[test]
-fn evaluates_expressions_on_the_inputs() {
+fn evaluates_input_expressions() {
     let value = run(&[], "return inputs.s.split(',').concat([inputs.n * 2]);").expect("runs");
     assert_eq!(value.to_json(), "[\"a\",\"b\",6]");
     let value = run(
@@ -35,14 +35,14 @@ fn evaluates_expressions_on_the_inputs() {
 }
 
 #[test]
-fn defines_the_expression_library_first() {
+fn defines_library_first() {
     let library = ["function twice(x) { return 2 * x; }", "var base = 10;"];
     let value = run(&library, "return twice(inputs.n) + base;").expect("runs");
     assert_eq!(value, Value::Integer(16));
 }
 
 #[test]
-fn turns_undefined_into_null_and_keeps_big_numbers_as_floats() {
+fn normalizes_javascript_values() {
     assert_eq!(run(&[], "return undefined;").expect("runs"), Value::Null);
     assert_eq!(
         run(&[], "return inputs.missing;").expect("runs"),
@@ -56,7 +56,7 @@ fn turns_undefined_into_null_and_keeps_big_numbers_as_floats() {
 }
 
 #[test]
-fn runs_in_sloppy_mode_and_reports_errors() {
+fn reports_sloppy_errors() {
     assert_eq!(
         run(&[], "undeclared = 1; return undeclared;").expect("runs"),
         Value::Integer(1)
@@ -78,7 +78,7 @@ fn drops_console_output() {
 }
 
 #[test]
-fn total_vm_budget_stops_many_individually_short_loops() {
+fn bounds_total_work() {
     let mut context = Context::default();
     context.runtime_limits_mut().set_loop_iteration_limit(100);
     let error = bounded_eval(
@@ -93,7 +93,7 @@ fn total_vm_budget_stops_many_individually_short_loops() {
 }
 
 #[test]
-fn vm_budget_stops_infinite_work_and_later_evaluations_still_succeed() {
+fn recovers_exhausted_vm() {
     let mut context = Context::default();
     let error = bounded_eval(
         "while (true) {}",
@@ -111,7 +111,7 @@ fn vm_budget_stops_infinite_work_and_later_evaluations_still_succeed() {
 }
 
 #[test]
-fn vm_slices_preserve_bounded_ordinary_loop_results() {
+fn preserves_sliced_results() {
     let mut context = Context::default();
     let result = bounded_eval(
         "var total = 0; for (var i = 0; i < 1000; i++) total += i; total",
@@ -124,7 +124,7 @@ fn vm_slices_preserve_bounded_ordinary_loop_results() {
 }
 
 #[test]
-fn cooperative_deadline_stops_execution_between_vm_slices() {
+fn enforces_cooperative_deadline() {
     let mut context = Context::default();
     let error = bounded_eval(
         "while (true) {}",
@@ -137,7 +137,7 @@ fn cooperative_deadline_stops_execution_between_vm_slices() {
 }
 
 #[test]
-fn expired_deadlines_do_not_start_the_vm() {
+fn rejects_expired_vm() {
     let mut context = Context::default();
     let error = bounded_eval(
         "throw new Error('VM started')",

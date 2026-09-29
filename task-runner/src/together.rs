@@ -467,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn a_group_places_each_task_in_its_own_folder() {
+    fn isolates_group_folders() {
         let (first, _) = member("r-A-1-1", "out.txt");
         let (second, _) = member("r-A-2-1", "out.txt");
         let members = [first, second];
@@ -502,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    fn tasks_with_absolute_paths_run_alone() {
+    fn isolates_absolute_tasks() {
         let (mut task, _) = member("r-A-1-1", "out.txt");
         task.spec.replaces_entrypoint = true;
         task.placement.time_seconds = None;
@@ -522,7 +522,7 @@ mod tests {
     }
 
     #[test]
-    fn commands_that_replace_the_entrypoint_form_groups_of_their_own() {
+    fn separates_replaced_entrypoints() {
         let (first, _) = member("r-A-1-1", "out.txt");
         let (mut second, _) = member("r-A-2-1", "out.txt");
         assert_eq!(key(&first.job()), key(&second.job()));

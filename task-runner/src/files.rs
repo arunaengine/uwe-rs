@@ -108,7 +108,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn file_directory_reads_leave_source_members_untouched() {
+    fn directory_reads_preserve() {
         use std::os::unix::fs::MetadataExt;
         let root = tempfile::tempdir().unwrap();
         let directory = root.path().join("tree");
@@ -140,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn deliveries_go_to_and_come_from_addresses() {
+    fn delivers_remote_addresses() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let files = StorageFiles::new(&folders(root.path()), root.path().join("downloads"));
         let made = root.path().join("made");

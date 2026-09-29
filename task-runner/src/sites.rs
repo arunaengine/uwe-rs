@@ -143,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn tasks_go_to_the_site_near_most_of_their_inputs() {
+    fn selects_nearest_site() {
         let rule = rule();
         assert_eq!(
             rule.site(&task(&["s3://hh/a", "s3://hd/b", "s3://hd/c"])),
@@ -185,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn each_task_runs_on_the_backend_of_its_site() {
+    fn uses_site_backend() {
         let sites = Sites {
             default: Named::default(),
             sites: [("hamburg".to_owned(), Named::default())].into(),

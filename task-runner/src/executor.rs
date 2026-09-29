@@ -453,7 +453,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn unsupported_backends_do_not_retry_as_machine_failures() {
+    fn rejects_unsupported_backends() {
         let error = RunnerError::Executor(ExecutorError::Unsupported("feature".into()));
         assert!(matches!(
             failure(&task(Some("debian"), &["true"]), error),
@@ -472,7 +472,7 @@ mod tests {
     }
 
     #[test]
-    fn tasks_without_a_command_or_an_image_do_nothing() {
+    fn empty_tasks_skip() {
         assert!(checked(&task(None, &[]), None).expect("checked").is_none());
         // An image without a command runs the image's default command.
         let runs = checked(&task(Some("debian"), &[]), None).expect("checked");
@@ -480,7 +480,7 @@ mod tests {
     }
 
     #[test]
-    fn tasks_need_an_image_or_the_default_one() {
+    fn requires_task_image() {
         let error = checked(&task(None, &["true"]), None).unwrap_err();
         assert!(
             error.to_string().contains("names no container image"),

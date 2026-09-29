@@ -67,7 +67,7 @@ fn task() -> Task {
 }
 
 #[tokio::test]
-async fn a_detached_run_lease_blocks_cached_results_and_later_admission() {
+async fn detachment_blocks_admission() {
     let root = tempfile::tempdir().unwrap();
     let store = Store::local(&root.path().join("store")).unwrap();
     let runner = runner(root.path(), store.clone());
@@ -109,7 +109,7 @@ async fn a_detached_run_lease_blocks_cached_results_and_later_admission() {
 }
 
 #[tokio::test]
-async fn lost_authority_and_user_cancellation_reject_late_success_after_cleanup() {
+async fn rejects_late_success() {
     for case in [
         "local-task",
         "memory-expiry",

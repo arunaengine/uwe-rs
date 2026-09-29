@@ -183,7 +183,7 @@ mod tests {
     use workflow_graph::{Resources, TaskId};
 
     #[test]
-    fn requests_share_results_when_the_image_is_pinned() {
+    fn pinned_shares_results() {
         let task = Task {
             id: TaskId(12),
             name: "P (1)".into(),
@@ -231,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn offline_policy_has_a_separate_reusable_cache_identity() {
+    fn separates_offline_identity() {
         let task = Task {
             command: vec!["true".into()],
             ..Task::default()
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn identities_come_from_the_step_and_the_id() {
+    fn identifies_step_tasks() {
         let task = |step: &str, id: u64| Task {
             id: TaskId(id),
             step: step.into(),

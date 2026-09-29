@@ -8,7 +8,7 @@ use task_model::{Tree, TreeEntry};
 use task_runner::clean::{Keep, plan, remove};
 
 #[tokio::test]
-async fn named_runs_bare_locations_and_tree_digests_keep_directory_closure() {
+async fn retains_directory_closure() {
     for selected in 0..3 {
         let folder = tempfile::tempdir().unwrap();
         let store = Store::local(folder.path()).unwrap();

@@ -111,7 +111,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn recursive_applicators_preserve_coercion() {
+    fn coerces_recursive_applicators() {
         let schema = json!({
             "allOf": [{"$ref": "#"}],
             "properties": {"count": {"type": "integer"}}
@@ -125,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn recursive_objects_prepare_each_value() {
+    fn prepares_recursive_values() {
         let schema = json!({
             "properties": {"count": {"type": "integer"}, "child": {"$ref": "#"}}
         });

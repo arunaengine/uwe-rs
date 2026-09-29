@@ -175,7 +175,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn draft_7_of_nf_validation() {
+    fn upgrades_validation_draft() {
         let schema = json!({
             "$schema": "http://json-schema.org/draft-07/schema",
             "definitions": {"io": {"properties": {"input": {"type": "string"}}}},
@@ -192,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn parts_that_are_no_schema_are_left_out() {
+    fn excludes_nonschema_parts() {
         let schema = json!({
             "properties": {
                 "name": {"type": "string"},

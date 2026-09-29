@@ -26,7 +26,7 @@ fn messages(problems: &[Problem]) -> Vec<(Severity, &str)> {
 }
 
 #[test]
-fn required_types_and_enums() {
+fn checks_value_constraints() {
     let schema = json!({
         "$schema": input_schema::DRAFT,
         "type": "object",
@@ -61,7 +61,7 @@ fn required_types_and_enums() {
 }
 
 #[test]
-fn texts_from_the_command_line_read_as_numbers_and_booleans() {
+fn coerces_cli_values() {
     let schema = json!({
         "type": "object",
         "properties": {
@@ -76,7 +76,7 @@ fn texts_from_the_command_line_read_as_numbers_and_booleans() {
 }
 
 #[test]
-fn detailed_validation_has_normalized_values_and_json_pointers() {
+fn returns_normalized_diagnostics() {
     let schema = json!({
         "type": "object",
         "required": ["missing/name~"],
@@ -140,7 +140,7 @@ fn detailed_validation_has_normalized_values_and_json_pointers() {
 }
 
 #[test]
-fn detailed_validation_keeps_nested_choice_branches() {
+fn preserves_choice_branches() {
     let schema = json!({
         "properties": {
             "choice": {
@@ -239,7 +239,7 @@ fn files_and_directories() {
 }
 
 #[test]
-fn made_up_values_are_warnings_in_simulated_runs() {
+fn warns_simulated_values() {
     let schema =
         json!({"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}});
     let mut given = inputs(schema, json!({}), Path::new("/"));
@@ -256,7 +256,7 @@ fn made_up_values_are_warnings_in_simulated_runs() {
 }
 
 #[test]
-fn an_advisory_schema_only_warns() {
+fn warns_advisory_failures() {
     let schema = json!({"type": "object", "required": ["name"], "properties": {"threads": {"type": "integer"}}});
     let mut given = inputs(schema, json!({"threads": "many"}), Path::new("/"));
     given.advisory = true;
@@ -270,7 +270,7 @@ fn an_advisory_schema_only_warns() {
 }
 
 #[test]
-fn ignored_inputs_count_but_are_not_checked() {
+fn counts_ignored_inputs() {
     let schema = json!({
         "type": "object",
         "required": ["data", "model"],
@@ -288,7 +288,7 @@ fn ignored_inputs_count_but_are_not_checked() {
 }
 
 #[test]
-fn groups_of_nf_schema_are_checked() {
+fn checks_schema_groups() {
     let schema = json!({
         "$defs": {"io": {"type": "object", "required": ["input"], "properties": {"input": {"type": "string"}, "max_cpus": {"type": "integer"}}}},
         "allOf": [{"$ref": "#/$defs/io"}]
@@ -307,7 +307,7 @@ fn groups_of_nf_schema_are_checked() {
 }
 
 #[test]
-fn choices_say_what_each_one_lacks() {
+fn explains_choice_failures() {
     let schema = json!({
         "type": "object",
         "anyOf": [
@@ -329,7 +329,7 @@ fn choices_say_what_each_one_lacks() {
 }
 
 #[test]
-fn simulated_alternatives_keep_missing_paths_as_warnings() {
+fn warns_missing_alternatives() {
     let folder = tempfile::tempdir().expect("a folder");
     for keyword in ["anyOf", "oneOf"] {
         let schema = json!({"properties": {"input": {keyword: [

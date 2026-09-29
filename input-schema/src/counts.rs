@@ -181,7 +181,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn counts_of_a_schema() {
+    fn counts_schema_inputs() {
         let inputs = Inputs {
             schema: json!({
                 "type": "object",

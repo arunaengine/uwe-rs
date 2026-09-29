@@ -154,7 +154,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn names_are_dns_labels() {
+    fn names_are_labels() {
         assert_eq!(
             job_name("1a0f-49038-UPPER-1-1"),
             "iunctus-1a0f-49038-upper-1-1"
@@ -172,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn jobs_run_the_wrapper_as_the_user_with_the_folders_of_the_task() {
+    fn jobs_mount_folders() {
         let image = Image {
             reference: "debian@sha256:ab".into(),
             platform: None,

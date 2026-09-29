@@ -1,7 +1,4 @@
-//! Checks the loader against `cwltool --validate` on the CWL test workflows from
-//! `just cwl-test-workflows`: the documents of `fixtures/test-workflows/rejected.txt`, whose
-//! records say why they cannot run, must fail to load, and all others must load, including
-//! those of `differences.txt`, which cwltool rejects for the reason given there.
+//! Checks CWL fixture loading against recorded cwltool validation results.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

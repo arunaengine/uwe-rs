@@ -490,3 +490,31 @@ Testing and tooling
 ### Gaps
 - The effort numbers are my estimates. They are anchored on commonwl's size and history and on cwltool's size. They are not measured.
 - I did not measure how often real-world CWL (WorkflowHub or Dockstore) uses JavaScript, InitialWorkDir or `$graph` packing. That data would sharpen the priorities.
+
+## File descriptions: cwl-parser
+
+### `cwl-parser/src/model/typecheck.rs`
+
+Checks that each source of a workflow fits its sink, as cwltool's static checker does
+before a run: types are compared by name and shape, after `pickValue`, `linkMerge` and
+scatter. Only mismatches that cwltool reports as errors fail; its warnings pass.
+
+### `cwl-parser/tests/records/mod.rs`
+
+The records of the CWL test workflows that cannot run: those that cwltool and the loader
+reject, in `cwl-parser/tests/fixtures/test-workflows/rejected.txt`, and those whose graph or
+example job fails, in `graph_evidence.txt` and `job_evidence.txt` of
+`cwl-runtime/tests/fixtures`. A record is a block of lines between empty lines: the
+workflows it is about, one per line, then `= <kind>: <why>` with one plain sentence, then
+the evidence that the reference tool, cwltool, fails the same way: `$` the command, and `>`
+the lines of its output. The kind is `invalid` (the workflow itself is broken), `missing`
+(it needs something that is not public or not in its repository), or
+`unsupported (decision N)` (iunctus leaves the feature out on purpose, as decision N of
+docs/decisions.md says).
+
+### `cwl-parser/tests/test_workflows.rs`
+
+Checks the loader against `cwltool --validate` on the CWL test workflows from
+`just cwl-test-workflows`: the documents of `fixtures/test-workflows/rejected.txt`, whose
+records say why they cannot run, must fail to load, and all others must load, including
+those of `differences.txt`, which cwltool rejects for the reason given there.

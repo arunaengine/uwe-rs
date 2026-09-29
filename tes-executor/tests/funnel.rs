@@ -56,7 +56,7 @@ fn runtime() -> tokio::runtime::Runtime {
 
 #[test]
 #[ignore = "needs a Funnel server; run with `just tes-test`"]
-fn funnel_runs_tasks_and_gives_back_their_outputs() {
+fn funnel_returns_outputs() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let source = folder.path().join("in.txt");
     std::fs::write(&source, "hello\n").expect("writes the input");
@@ -125,7 +125,7 @@ fn funnel_cancels_tasks() {
 
 #[test]
 #[ignore = "needs a Funnel server and the alpine:latest image; run with `just tes-test`"]
-fn funnel_runs_the_containers_of_a_task_one_after_the_other() {
+fn funnel_orders_containers() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let container = |name: &str, image: &str, script: &str, after: &[&str]| ContainerSpec {
         replaces_entrypoint: false,

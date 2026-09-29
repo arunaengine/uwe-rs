@@ -240,7 +240,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tasks_are_written_with_the_names_of_the_specification() {
+    fn preserves_specification_names() {
         let task = Task {
             name: "a".into(),
             inputs: vec![Input {

@@ -1,6 +1,4 @@
-//! Checks that each source of a workflow fits its sink, as cwltool's static checker does
-//! before a run: types are compared by name and shape, after `pickValue`, `linkMerge` and
-//! scatter. Only mismatches that cwltool reports as errors fail; its warnings pass.
+//! Checks workflow source and sink types after value picking, merging and scatter.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

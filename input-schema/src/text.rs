@@ -144,7 +144,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn recursive_array_help_is_finite() {
+    fn bounds_recursive_help() {
         let schema = json!({
             "properties": {"tree": {"$ref": "#/$defs/tree"}},
             "$defs": {"tree": {"type": "array", "items": {"$ref": "#/$defs/tree"}}}

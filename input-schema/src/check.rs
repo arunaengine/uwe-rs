@@ -412,7 +412,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn names_of_nested_inputs() {
+    fn reports_nested_names() {
         assert_eq!(input_name("/samples/0/fastq_1"), "samples[0].fastq_1");
         assert_eq!(input_name("/a~1b"), "a/b");
         assert_eq!(input_name(""), "");

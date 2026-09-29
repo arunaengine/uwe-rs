@@ -15,7 +15,7 @@ fn inputs(schema: Json, values: Json) -> Inputs {
 }
 
 #[test]
-fn typed_json_rejects_numeric_and_boolean_strings_without_changing_them() {
+fn rejects_typed_strings() {
     let given = inputs(
         json!({
             "type": "object",
@@ -48,7 +48,7 @@ fn typed_json_rejects_numeric_and_boolean_strings_without_changing_them() {
 }
 
 #[test]
-fn nested_union_diagnostics_keep_submitted_values_and_branch_paths() {
+fn preserves_union_diagnostics() {
     let given = inputs(
         json!({
             "type": "object",
@@ -76,7 +76,7 @@ fn nested_union_diagnostics_keep_submitted_values_and_branch_paths() {
 }
 
 #[test]
-fn typed_json_preserves_i64_bounds_and_leaves_defaults_absent() {
+fn preserves_typed_values() {
     let given = inputs(
         json!({
             "type": "object",
@@ -98,7 +98,7 @@ fn typed_json_preserves_i64_bounds_and_leaves_defaults_absent() {
 }
 
 #[test]
-fn typed_json_keeps_detailed_required_and_choice_errors() {
+fn preserves_typed_diagnostics() {
     let given = inputs(
         json!({
             "type": "object",

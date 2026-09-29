@@ -73,7 +73,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn groups_come_first_then_own_properties() {
+    fn orders_group_properties() {
         let schema = json!({
             "$defs": {
                 "io": {

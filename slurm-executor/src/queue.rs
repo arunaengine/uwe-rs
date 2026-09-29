@@ -441,7 +441,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn single_job_confirmation_keeps_completing_and_active_array_members() {
+    async fn preserves_array_members() {
         use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
         let tool = folder.path().join("squeue");
@@ -462,7 +462,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tool_deadlines_and_cancelled_reads_kill_the_process() {
+    async fn deadlines_kill_tools() {
         let folder = tempfile::tempdir().unwrap();
         for grace in [Duration::from_millis(100), Duration::from_secs(5)] {
             let pid_file = folder.path().join(format!("{}.pid", grace.as_millis()));
@@ -492,7 +492,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hung_poll_does_not_hold_admission_or_removal_lock() {
+    async fn poll_releases_lock() {
         use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
         let tool = folder.path().join("squeue");
@@ -525,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn squeue_lines_give_the_states_of_jobs() {
+    fn parses_squeue_states() {
         let states = states("12 RUNNING\n13 OUT_OF_MEMORY\n\n");
         assert_eq!(states.get("12").map(String::as_str), Some("RUNNING"));
         assert_eq!(states.get("13").map(String::as_str), Some("OUT_OF_MEMORY"));
@@ -533,7 +533,7 @@ mod tests {
     }
 
     #[test]
-    fn json_gives_the_states_of_jobs_of_old_and_new_versions() {
+    fn parses_versioned_json() {
         // SLURM 22.05 writes a word, 23.02 and later a list of words.
         let answer = serde_json::json!({"jobs": [
             {"job_id": 12, "job_state": "RUNNING"},

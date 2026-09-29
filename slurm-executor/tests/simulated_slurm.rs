@@ -246,7 +246,7 @@ fn placement() -> Placement {
 }
 
 #[tokio::test]
-async fn singularity_rejects_offline_tasks_before_staging() {
+async fn rejects_offline_singularity() {
     let root = tempfile::tempdir().expect("a folder");
     let backend = SlurmBackend::new(
         root.path().join("scratch"),
@@ -273,7 +273,7 @@ async fn singularity_rejects_offline_tasks_before_staging() {
 }
 
 #[tokio::test]
-async fn jobs_run_tasks_and_give_their_outputs() {
+async fn returns_job_outputs() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     let backend = backend(
@@ -301,7 +301,7 @@ async fn jobs_run_tasks_and_give_their_outputs() {
 }
 
 #[tokio::test]
-async fn an_image_pinned_to_its_digest_is_pulled_once_for_all_its_jobs() {
+async fn pulls_pinned_once() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     let mut backend = backend(
@@ -356,7 +356,7 @@ async fn an_image_pinned_to_its_digest_is_pulled_once_for_all_its_jobs() {
 }
 
 #[tokio::test]
-async fn an_image_named_by_a_tag_is_pulled_once_per_run() {
+async fn pulls_tagged_once() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     let apptainer = || Container::Apptainer(text(&bin.join("apptainer")));
@@ -391,7 +391,7 @@ async fn an_image_named_by_a_tag_is_pulled_once_per_run() {
 }
 
 #[tokio::test]
-async fn jobs_pull_images_through_the_web_proxy() {
+async fn pulls_through_proxy() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     let mut backend = backend(
@@ -416,7 +416,7 @@ async fn jobs_pull_images_through_the_web_proxy() {
 }
 
 #[tokio::test]
-async fn a_node_that_does_not_see_the_folders_is_left_out() {
+async fn excludes_invisible_nodes() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     std::fs::write(bin.join("broken"), "").expect("breaks the next job");
@@ -457,7 +457,7 @@ async fn a_node_that_does_not_see_the_folders_is_left_out() {
 }
 
 #[tokio::test]
-async fn a_task_ends_at_its_time_to_the_second() {
+async fn enforces_task_deadline() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     let backend = backend(
@@ -493,7 +493,7 @@ async fn a_task_ends_at_its_time_to_the_second() {
 }
 
 #[tokio::test]
-async fn clusters_that_write_json_are_read_as_json() {
+async fn reads_cluster_json() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     std::fs::write(bin.join("json"), "").expect("turns on JSON");
@@ -522,7 +522,7 @@ async fn clusters_that_write_json_are_read_as_json() {
 }
 
 #[tokio::test]
-async fn failed_tools_end_their_tasks() {
+async fn reports_tool_failures() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     let backend = backend(
@@ -545,7 +545,7 @@ async fn failed_tools_end_their_tasks() {
 }
 
 #[tokio::test]
-async fn a_runtime_that_cannot_start_the_image_fails_the_machine() {
+async fn reports_runtime_failures() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), BROKEN_APPTAINER);
     let backend = backend(
@@ -576,7 +576,7 @@ async fn a_runtime_that_cannot_start_the_image_fails_the_machine() {
 }
 
 #[tokio::test]
-async fn tasks_of_an_image_that_cannot_be_pulled_share_a_few_tries_and_fail() {
+async fn bounds_shared_pulls() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), BROKEN_APPTAINER);
     let mut backend = backend(
@@ -630,7 +630,7 @@ async fn tasks_of_an_image_that_cannot_be_pulled_share_a_few_tries_and_fail() {
 }
 
 #[tokio::test]
-async fn a_node_waits_for_the_whole_wrapper_of_its_task() {
+async fn waits_wrapper_completion() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     let backend = backend(
@@ -659,7 +659,7 @@ async fn a_node_waits_for_the_whole_wrapper_of_its_task() {
 }
 
 #[tokio::test]
-async fn the_record_of_a_task_that_shows_late_is_waited_for() {
+async fn waits_late_records() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), LATE_APPTAINER);
     let backend = backend(
@@ -718,7 +718,7 @@ async fn cancelled_jobs_stop() {
 }
 
 #[tokio::test]
-async fn ambiguous_submission_retains_scratch_and_blocks_resubmission() {
+async fn retains_ambiguous_submissions() {
     let root = tempfile::tempdir().unwrap();
     let bin = cluster(root.path(), APPTAINER);
     std::fs::write(bin.join("missing-response"), "").unwrap();
@@ -762,7 +762,7 @@ async fn ambiguous_submission_retains_scratch_and_blocks_resubmission() {
 }
 
 #[tokio::test]
-async fn library_admission_allows_a_proven_active_local_owner() {
+async fn admits_active_owner() {
     let root = tempfile::tempdir().unwrap();
     let bin = cluster(root.path(), APPTAINER);
     let container = Container::Apptainer(text(&bin.join("apptainer")));
@@ -801,7 +801,7 @@ async fn library_admission_allows_a_proven_active_local_owner() {
 }
 
 #[tokio::test]
-async fn dropped_library_attempt_recovers_before_new_admission() {
+async fn recovers_dropped_attempts() {
     let root = tempfile::tempdir().unwrap();
     let bin = cluster(root.path(), APPTAINER);
     let container = Container::Apptainer(text(&bin.join("apptainer")));
@@ -850,7 +850,7 @@ async fn dropped_library_attempt_recovers_before_new_admission() {
 }
 
 #[tokio::test]
-async fn reused_scheduler_identity_and_changed_configuration_preserve_journals() {
+async fn preserves_changed_identity() {
     let root = tempfile::tempdir().unwrap();
     let bin = cluster(root.path(), APPTAINER);
     let container = Container::Apptainer(text(&bin.join("apptainer")));
@@ -909,7 +909,7 @@ async fn reused_scheduler_identity_and_changed_configuration_preserve_journals()
 }
 
 #[tokio::test]
-async fn completing_job_keeps_ownership_after_the_exit_marker() {
+async fn completing_retains_ownership() {
     let root = tempfile::tempdir().unwrap();
     let bin = cluster(root.path(), APPTAINER);
     let completing = bin.join("completing");
@@ -955,7 +955,7 @@ async fn completing_job_keeps_ownership_after_the_exit_marker() {
 }
 
 #[tokio::test]
-async fn unresolved_image_pull_is_kept_and_shared_without_another_submit() {
+async fn retains_unresolved_pulls() {
     let root = tempfile::tempdir().unwrap();
     let bin = cluster(root.path(), APPTAINER);
     std::fs::write(bin.join("missing-response"), "").unwrap();
@@ -1005,7 +1005,7 @@ async fn unresolved_image_pull_is_kept_and_shared_without_another_submit() {
 
 #[tokio::test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-async fn docker_runs_the_task_in_its_container() {
+async fn docker_runs_container() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     let engine = EngineCommand::docker("docker");
@@ -1026,7 +1026,7 @@ async fn docker_runs_the_task_in_its_container() {
 }
 
 #[tokio::test]
-async fn images_of_registries_run_the_command_through_their_entrypoint() {
+async fn uses_registry_entrypoint() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     let backend = backend(
@@ -1066,7 +1066,7 @@ async fn images_of_registries_run_the_command_through_their_entrypoint() {
 }
 
 #[tokio::test]
-async fn the_config_of_a_pinned_image_is_asked_of_its_registry_once() {
+async fn inspects_pinned_once() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     let container = Container::Apptainer(text(&bin.join("apptainer")));
@@ -1134,7 +1134,7 @@ fn several(first: &str) -> TaskSpec {
 }
 
 #[tokio::test]
-async fn containers_of_a_task_run_in_one_job() {
+async fn containers_share_job() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     let backend = backend(
@@ -1178,7 +1178,7 @@ async fn containers_of_a_task_run_in_one_job() {
 }
 
 #[tokio::test]
-async fn containers_that_wait_for_a_container_that_died_go_on() {
+async fn continues_failed_dependencies() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     let backend = backend(
@@ -1215,7 +1215,7 @@ async fn containers_that_wait_for_a_container_that_died_go_on() {
 
 #[tokio::test]
 #[ignore = "needs Docker and the debian:stable-slim and alpine:latest images"]
-async fn docker_runs_containers_of_a_task_in_their_images() {
+async fn docker_groups_images() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     let engine = EngineCommand::docker("docker");

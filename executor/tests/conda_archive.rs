@@ -169,7 +169,7 @@ fn loaded() -> Reply {
 }
 
 #[tokio::test]
-async fn saves_verified_bytes_imports_missing_id_and_reuses_existing_id() {
+async fn reuses_verified_archives() {
     let folder = tempfile::tempdir().unwrap();
     let prepared = preparation();
     let store = Store::memory().unwrap();
@@ -216,7 +216,7 @@ async fn saves_verified_bytes_imports_missing_id_and_reuses_existing_id() {
 }
 
 #[tokio::test]
-async fn corrupt_or_oversized_stored_bytes_never_reach_import() {
+async fn rejects_invalid_archives() {
     for corrupt in [true, false] {
         let folder = tempfile::tempdir().unwrap();
         let store = Store::local(&folder.path().join("store")).unwrap();
@@ -254,7 +254,7 @@ async fn corrupt_or_oversized_stored_bytes_never_reach_import() {
 }
 
 #[tokio::test]
-async fn engine_errors_do_not_import_and_loaded_provenance_must_match() {
+async fn verifies_loaded_provenance() {
     for fault in ["engine", "labels", "platform", "id", "load"] {
         let folder = tempfile::tempdir().unwrap();
         let prepared = preparation();
@@ -299,7 +299,7 @@ async fn engine_errors_do_not_import_and_loaded_provenance_must_match() {
 }
 
 #[tokio::test]
-async fn export_and_import_progress_obey_limits() {
+async fn bounds_archive_transfers() {
     for export in [true, false] {
         let folder = tempfile::tempdir().unwrap();
         let prepared = preparation();
@@ -338,7 +338,7 @@ async fn export_and_import_progress_obey_limits() {
 }
 
 #[tokio::test]
-async fn restore_obeys_cancellation_and_deadline() {
+async fn bounds_cancelled_restore() {
     for cancelled in [true, false] {
         let folder = tempfile::tempdir().unwrap();
         let replies = if cancelled {

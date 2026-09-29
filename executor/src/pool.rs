@@ -185,7 +185,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn tasks_wait_for_their_share() {
+    async fn waits_resource_share() {
         let pool = Pool::new(4, 8 * 1024 * MIB);
         let first = pool.share(3, Some(2 * 1024 * MIB), 0).await;
         assert_eq!((first.cpus, first.memory), (3, Some(2 * 1024 * MIB)));
@@ -200,7 +200,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tasks_with_more_after_them_take_their_share_first() {
+    async fn prioritizes_longer_chains() {
         let pool = std::sync::Arc::new(Pool::new(1, 1024 * MIB));
         let first = pool.share(1, None, 0).await;
         let order = std::sync::Arc::new(Mutex::new(Vec::new()));
@@ -227,7 +227,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_held_pool_lets_waiting_tasks_give_up() {
+    async fn cancels_waiting_tasks() {
         let pool = Pool::new(1, 1024 * MIB);
         let timeout = std::time::Duration::from_millis(20);
         assert!(tokio::time::timeout(timeout, pool.held()).await.is_err());

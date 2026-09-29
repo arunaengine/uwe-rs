@@ -53,7 +53,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn braces_expand_as_in_bash() {
+    fn expands_bash_braces() {
         let expand = |pattern: &str| expand_braces(pattern).join(" ");
         assert_eq!(expand("*.{html,zip}"), "*.html *.zip");
         assert_eq!(expand("{a,b}{1,2}"), "a1 a2 b1 b2");

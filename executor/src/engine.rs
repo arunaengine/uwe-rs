@@ -232,7 +232,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn users_keep_their_files() {
+    fn preserves_user_files() {
         let mut engine = EngineCommand::docker("docker");
         assert_eq!(engine.user_options(1000, 100), ["--user", "1000:100"]);
         engine.rootless = true;
@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_engine_says_how_to_turn_it_on() {
+    fn explains_missing_engine() {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -263,7 +263,7 @@ mod tests {
     }
 
     #[test]
-    fn a_socket_that_the_user_may_not_use_says_so() {
+    fn explains_denied_socket() {
         let sockets = ["/var/run/docker.sock".to_owned()];
         let failed = ["/var/run/docker.sock: Permission denied".to_owned()];
         let text = missing(None, &sockets, &failed);

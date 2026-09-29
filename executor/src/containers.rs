@@ -415,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    fn containers_of_an_image_form_a_group() {
+    fn groups_same_images() {
         let spec = spec(&[
             ("main", "a", &["b"]),
             ("b", "b", &[]),
@@ -428,7 +428,7 @@ mod tests {
     }
 
     #[test]
-    fn a_sequence_puts_the_main_container_after_those_it_does_not_come_before() {
+    fn orders_main_container() {
         let spec = spec(&[
             ("main", "a", &["b"]),
             ("b", "a", &[]),
@@ -439,7 +439,7 @@ mod tests {
     }
 
     #[test]
-    fn wrappers_wait_retry_and_record_in_their_own_folders() {
+    fn isolates_container_wrappers() {
         let spec = spec(&[
             ("main", "a", &["b"]),
             ("b", "a", &[]),
@@ -481,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_environment_never_reaches_a_container_wrapper() {
+    fn rejects_invalid_environment() {
         let mut spec = spec(&[("main", "a", &[]), ("other", "a", &[])]);
         let command = "BAD=value\nprintf injected";
         spec.containers[1]
@@ -501,7 +501,7 @@ mod tests {
     }
 
     #[test]
-    fn the_task_fails_with_the_main_container_or_the_first_that_failed() {
+    fn selects_container_failure() {
         let spec = spec(&[("main", "a", &[]), ("b", "a", &[]), ("c", "a", &[])]);
         let folder = tempfile::tempdir().expect("a folder");
         let control = folder.path();

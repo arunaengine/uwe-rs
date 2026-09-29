@@ -20,7 +20,7 @@ fn spec(name: &str, script: &str) -> ContainerSpec {
 
 #[test]
 #[ignore = "needs Docker or Podman and the debian:stable-slim image"]
-fn containers_answer_lines_until_their_input_closes() {
+fn exchanges_container_lines() {
     let script = "echo ready >&2; while read line; do echo \"got $line\"; done";
     let mut process = ContainerProcess::start(&spec("answers", script)).expect("starts");
     assert_eq!(process.exchange("a").expect("a reply"), "got a");
@@ -30,7 +30,7 @@ fn containers_answer_lines_until_their_input_closes() {
 
 #[test]
 #[ignore = "needs Docker or Podman and the debian:stable-slim image"]
-fn a_name_conflict_does_not_remove_the_existing_container() {
+fn preserves_conflicting_container() {
     let settings = spec("conflict", "while read line; do echo \"got $line\"; done");
     let mut first = ContainerProcess::start(&settings).expect("starts");
     assert!(ContainerProcess::start(&settings).is_err());
@@ -42,7 +42,7 @@ fn a_name_conflict_does_not_remove_the_existing_container() {
 
 #[test]
 #[ignore = "needs Docker or Podman and the debian:stable-slim image"]
-fn a_container_that_ends_says_what_it_wrote() {
+fn reports_container_output() {
     let mut process =
         ContainerProcess::start(&spec("ends", "read line; echo gone >&2; exit 3")).expect("starts");
     let error = process.exchange("a").expect_err("no reply");
@@ -52,7 +52,7 @@ fn a_container_that_ends_says_what_it_wrote() {
 
 #[test]
 #[ignore = "needs Docker or Podman and the debian:stable-slim image"]
-fn containers_run_to_their_end() {
+fn waits_container_completion() {
     run_to_end(&spec("done", "true")).expect("runs");
     let error = run_to_end(&spec("fails", "echo broken >&2; exit 2")).expect_err("fails");
     assert!(error.to_string().contains("broken"), "{error}");
@@ -60,7 +60,7 @@ fn containers_run_to_their_end() {
 
 #[test]
 #[ignore = "needs Docker or Podman and the debian:stable-slim image"]
-fn a_cancelled_hanging_exchange_removes_its_helper() {
+fn cancellation_removes_helper() {
     let settings = spec("hanging-cancel", "read line; sleep 300");
     let cancel = executor::CancellationToken::new();
     let mut process = ContainerProcess::start_cancellable(&settings, &cancel).expect("starts");
@@ -95,7 +95,7 @@ fn a_cancelled_hanging_exchange_removes_its_helper() {
 
 #[test]
 #[ignore = "needs Docker/Podman and a Python helper image with packaging or pip vendored packaging"]
-fn package_helpers_validate_transitive_pins_and_constrain_later_installs() {
+fn constrains_package_installs() {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
     let folder = tempfile::tempdir().unwrap();
     for (name, body) in [

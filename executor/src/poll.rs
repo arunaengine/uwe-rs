@@ -96,7 +96,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn cancellation_and_expiry_interrupt_polling() {
+    async fn interrupts_cancelled_polling() {
         let cancel = CancellationToken::new();
         cancel.cancel();
         assert_eq!(
@@ -115,7 +115,7 @@ mod tests {
     }
 
     #[test]
-    fn successful_reads_reset_the_trouble_grace() {
+    fn resets_trouble_grace() {
         let mut poll = Poll::new(Duration::from_secs(5));
         assert!(poll.troubled(true, Duration::ZERO));
         assert!(!poll.troubled(false, Duration::ZERO));
@@ -123,7 +123,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn termination_retries_and_enforces_the_total_deadline() {
+    async fn bounds_termination_retries() {
         let mut calls = 0;
         let answer = until_stopped(Duration::from_secs(1), Duration::from_millis(1), || {
             calls += 1;

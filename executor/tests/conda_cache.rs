@@ -171,7 +171,7 @@ async fn engine(
 }
 
 #[tokio::test]
-async fn deterministic_local_reuse_publishes_and_next_workflow_skips_build() {
+async fn reuses_prepared_images() {
     let folder = tempfile::tempdir().unwrap();
     let p = preparation();
     let bad = (format!("sha256:{}/json", "a".repeat(64)), 200, "{}".into());
@@ -212,7 +212,7 @@ async fn deterministic_local_reuse_publishes_and_next_workflow_skips_build() {
 }
 
 #[tokio::test]
-async fn cold_cache_builds_once_and_publishes_verified_archive() {
+async fn publishes_verified_archive() {
     let folder = tempfile::tempdir().unwrap();
     let p = preparation();
     let build = (
@@ -265,7 +265,7 @@ async fn cold_cache_builds_once_and_publishes_verified_archive() {
 }
 
 #[tokio::test]
-async fn a_shared_archive_restores_without_preparing_prerequisites() {
+async fn restores_shared_archive() {
     let folder = tempfile::tempdir().unwrap();
     let p = preparation();
     let store = Store::local(&folder.path().join("cache")).unwrap();
@@ -318,7 +318,7 @@ async fn a_shared_archive_restores_without_preparing_prerequisites() {
 }
 
 #[tokio::test]
-async fn cold_missing_denied_broken_or_wrong_platform_base_stops_before_build() {
+async fn requires_valid_base() {
     for status in [404, 403, 500, 200] {
         let folder = tempfile::tempdir().unwrap();
         let p = preparation();
@@ -359,7 +359,7 @@ async fn cold_missing_denied_broken_or_wrong_platform_base_stops_before_build() 
 }
 
 #[tokio::test]
-async fn cold_preparation_obeys_total_timeout_cancellation_and_lease_ownership() {
+async fn bounds_owned_preparation() {
     for stop in ["timeout", "cancel", "lease"] {
         let folder = tempfile::tempdir().unwrap();
         let p = preparation();
@@ -414,7 +414,7 @@ async fn cold_preparation_obeys_total_timeout_cancellation_and_lease_ownership()
 }
 
 #[tokio::test]
-async fn only_proven_invalid_observations_are_removed() {
+async fn removes_invalid_observations() {
     for invalid in [true, false] {
         let folder = tempfile::tempdir().unwrap();
         let p = preparation();
@@ -458,7 +458,7 @@ async fn only_proven_invalid_observations_are_removed() {
 }
 
 #[tokio::test]
-async fn busy_ownership_and_cancelled_operations_are_bounded() {
+async fn bounds_busy_ownership() {
     let folder = tempfile::tempdir().unwrap();
     let p = preparation();
     let store = Store::local(&folder.path().join("cache")).unwrap();
@@ -503,7 +503,7 @@ async fn busy_ownership_and_cancelled_operations_are_bounded() {
 }
 
 #[tokio::test]
-async fn already_corrupt_archive_content_cannot_be_published() {
+async fn rejects_corrupt_publication() {
     let folder = tempfile::tempdir().unwrap();
     let p = preparation();
     let store = Store::local(&folder.path().join("cache")).unwrap();
@@ -539,7 +539,7 @@ async fn already_corrupt_archive_content_cannot_be_published() {
 }
 
 #[tokio::test]
-async fn local_candidate_limit_stops_before_inspection_or_build() {
+async fn bounds_local_candidates() {
     let folder = tempfile::tempdir().unwrap();
     let p = preparation();
     let store = Store::local(&folder.path().join("cache")).unwrap();

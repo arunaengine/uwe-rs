@@ -62,7 +62,7 @@ pub struct OutputParameter {
     /// Only for workflows: the resolved identifiers of the sources.
     pub output_source: Vec<String>,
     /// Whether `outputSource` is written as a list, which cwltool's type checker merges.
-    pub output_source_is_list: bool,
+    pub output_is_list: bool,
     pub link_merge: Option<LinkMerge>,
     pub pick_value: Option<PickValue>,
     pub extensions: Vec<Entry>,
@@ -152,7 +152,7 @@ pub fn read_output_parameter(
         format,
         binding: None,
         output_source: Vec::new(),
-        output_source_is_list: false,
+        output_is_list: false,
         link_merge: None,
         pick_value: None,
         extensions: Vec::new(),
@@ -170,7 +170,7 @@ pub fn read_output_parameter(
         Kind::Workflow => {
             if let Some(source) = record.optional("outputSource") {
                 parameter.output_source = record::texts(source)?;
-                parameter.output_source_is_list = source.as_list().is_some();
+                parameter.output_is_list = source.as_list().is_some();
             }
             parameter.link_merge = record.optional("linkMerge").map(read_merge).transpose()?;
             parameter.pick_value = record

@@ -328,3 +328,46 @@ would ask the server for, with the end of each log. It needs no server and no ne
 can be copied anywhere and opened from the disk. `report.js` answers the requests of the
 page's scripts from the data, and adds a timeline, the resources of each task and where the
 results went.
+
+## File descriptions: run-crate
+
+### `run-crate/src/data.rs`
+
+The data files of a crate. Each distinct file or directory of the run is copied once into
+`data/`, named by its SHA-256 digest, as CWLProv and runcrate name them. A copy, not a link,
+so that nothing done to the crate can change the store.
+
+### `run-crate/src/formal.rs`
+
+The inputs of the workflow in the crate (decision 24): the JSON Schema of the run is a file
+of the crate, and each input at its top is a Bioschemas `FormalParameter` of the workflow,
+which the parameters of the run name as their `exampleOfWork`.
+
+### `run-crate/src/lib.rs`
+
+Exports a run of the run database as a Workflow Run RO-Crate of the Provenance Run Crate
+profile 0.5 (decision 25): the workflow and its language, the inputs and outputs of the run
+with their SHA-256 digests, and each task as an action with its command, container image,
+inputs, outputs, start and end. So the crate holds the provenance graph of the run, in the
+same form for all four languages. A crate of a simulated run says so in its description, in
+the description of every task, and in a `simulated` property of the crate.
+
+### `run-crate/src/metadata.rs`
+
+The entities of `ro-crate-metadata.json`: the workflow with its steps and tools, the engine
+run, the workflow run, one action per task, the container images, the parameters, the
+inputs of the workflow and the files. The shapes follow the example crates of the
+Provenance Run Crate profile 0.5.
+
+### `run-crate/src/pinned.rs`
+
+What pins the run in the crate: the files of its workflow and of its command line as the run
+had them, the remote files it read with their digests and the time it read them, and the
+JSON Schema of the outputs of the workflow, with a formal parameter per output.
+
+### `run-crate/tests/export.rs`
+
+Exports a small simulated run and compares its crate with the fixture crate in
+`tests/fixtures/simulated/`, which the Provenance Run Crate validator checked
+(`tests/fixtures/validate.sh` writes the fixture again and records the validator's report in
+`tests/fixtures/validation.txt`).

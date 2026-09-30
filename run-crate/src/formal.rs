@@ -1,6 +1,4 @@
-//! The inputs of the workflow in the crate (decision 24): the JSON Schema of the run is a file
-//! of the crate, and each input at its top is a Bioschemas `FormalParameter` of the workflow,
-//! which the parameters of the run name as their `exampleOfWork`.
+//! Describes workflow inputs as Bioschemas formal parameters in an exported crate.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

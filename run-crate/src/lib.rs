@@ -1,9 +1,4 @@
-//! Exports a run of the run database as a Workflow Run RO-Crate of the Provenance Run Crate
-//! profile 0.5 (decision 25): the workflow and its language, the inputs and outputs of the run
-//! with their SHA-256 digests, and each task as an action with its command, container image,
-//! inputs, outputs, start and end. So the crate holds the provenance graph of the run, in the
-//! same form for all four languages. A crate of a simulated run says so in its description, in
-//! the description of every task, and in a `simulated` property of the crate.
+//! Exports recorded runs as Workflow Run RO-Crates with task and file provenance.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

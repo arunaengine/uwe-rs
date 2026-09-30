@@ -1,6 +1,4 @@
-//! Sending traces to an OTLP HTTP endpoint, like an OpenTelemetry Collector or a tracing
-//! backend that takes OTLP: each export request as `POST <endpoint>/v1/traces` with JSON, one
-//! after the other, with the headers of the config file, like a token.
+//! Posts trace export requests to configured OTLP HTTP endpoints with their headers.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

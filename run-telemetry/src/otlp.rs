@@ -1,6 +1,4 @@
-//! The shapes of the OTLP JSON format of traces: an export request holds the spans of one
-//! resource, iunctus, in one scope. Following the JSON form of the OTLP protocol, ids are hex
-//! text, 64-bit numbers and times are decimal text, and enums are numbers.
+//! Defines the OTLP JSON shapes for trace resources, spans, events and values.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

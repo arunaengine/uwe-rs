@@ -268,3 +268,36 @@ headers = { authorization = { environment = "OTLP_AUTHORIZATION" } }
 - `run-telemetry/tests/traces.rs`: the spans, parents, attributes, markers and events of a recorded run, requests of a given size, JSON lines, and sending to a receiver that answers with a partial success or refuses; unit tests cover the JSON form of values, ids, times and addresses.
 - `run-page/tests/page.rs`: the page and its scripts, the JSON, a download, a log and the stream of a finished run; the graph down and to the right, a folded step with the states of the database, an open step, and `fold=0`.
 - `iunctus/tests/runs.rs`: `iunctus runs`, `-resume` with nothing changed and with a changed input, `iunctus why` on the tasks that ran again, `iunctus origin`, `iunctus export`, and a real run that may not resume a simulated one. Unit tests cover the new options, the Git revision and the main file of a project.
+
+## File descriptions: run-telemetry
+
+### `run-telemetry/src/lib.rs`
+
+OpenTelemetry traces of runs: a run of the run database as a trace, with the run as the
+root span, each task as a span below it and each attempt below its task, with their
+attributes, markers and events, in the OTLP JSON format. The traces go to a file of JSON
+lines, one export request per line, as the file exporter of OpenTelemetry writes them and
+the `otlpjsonfile` receiver of the OpenTelemetry Collector reads them, and to an OTLP HTTP
+endpoint that the config file names. No OpenTelemetry library is needed: the format is
+plain JSON.
+
+### `run-telemetry/src/otlp.rs`
+
+The shapes of the OTLP JSON format of traces: an export request holds the spans of one
+resource, iunctus, in one scope. Following the JSON form of the OTLP protocol, ids are hex
+text, 64-bit numbers and times are decimal text, and enums are numbers.
+
+### `run-telemetry/src/send.rs`
+
+Sending traces to an OTLP HTTP endpoint, like an OpenTelemetry Collector or a tracing
+backend that takes OTLP: each export request as `POST <endpoint>/v1/traces` with JSON, one
+after the other, with the headers of the config file, like a token.
+
+### `run-telemetry/src/spans.rs`
+
+The spans of a run from the run database: the run as the root span, each task as a span
+from the moment the workflow asked for it until its last attempt ended, and each attempt as
+a span below its task. Their attributes come from the database; the events of the engine
+(`requested`, `started`, `finished`, `reused`, `marked`, `ended`) become events of the span
+they concern, and each marker an event with its kind and reason. Ids are made from the run
+id, so that the same run always gives the same trace.

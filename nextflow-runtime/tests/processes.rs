@@ -80,7 +80,7 @@ fn run(source: &str, options: &Options) -> Result<(Vec<TaskRequest>, String), St
 const DOUBLE: &str = "process DOUBLE {\n    input:\n    val x\n    output:\n    val y\n    script:\n    y = x * 2\n    \"echo ${x}\"\n}\n";
 
 #[test]
-fn unsupported_active_directives_fail_before_a_task_is_requested() {
+fn rejects_active_directives() {
     for (name, value) in [
         ("beforeScript", "'touch required'"),
         ("afterScript", "'touch done'"),
@@ -118,14 +118,14 @@ fn unsupported_active_directives_fail_before_a_task_is_requested() {
 }
 
 #[test]
-fn inactive_directives_preserve_task_execution() {
+fn accepts_inactive_directives() {
     let source = "process P {\n beforeScript ''\n afterScript ''\n fair false\n maxErrors(-1)\n storeDir ''\n maxForks null\n containerOptions ''\n clusterOptions ''\n queue ''\n module []\n arch null\n stageOutMode 'copy'\n secret []\n executor null\n script:\n 'true'\n}\nworkflow { P() }";
     let (tasks, _) = run(source, &Options::default()).expect("inactive directives");
     assert_eq!(tasks.len(), 1);
 }
 
 #[test]
-fn inactive_config_directives_preserve_task_execution() {
+fn accepts_inactive_config() {
     let source = "process P {\n script:\n 'true'\n}\nworkflow { P() }";
     let options = Options {
         config: config(
@@ -138,7 +138,7 @@ fn inactive_config_directives_preserve_task_execution() {
 }
 
 #[test]
-fn environment_directives_are_refused_only_when_enabled() {
+fn rejects_enabled_environment() {
     for name in ["conda", "spack"] {
         let source = format!(
             "process P {{\n {name} 'environment.yml'\n script:\n 'true'\n}}\nworkflow {{ P() }}"
@@ -158,7 +158,7 @@ fn environment_directives_are_refused_only_when_enabled() {
 }
 
 #[test]
-fn quoted_unlimited_max_errors_from_config_stays_inactive() {
+fn accepts_unlimited_errors() {
     // nf-core `conf/base.config` sets `maxErrors = '-1'` as a string.
     let source = "process P {\n script:\n 'true'\n}\nworkflow { P() }";
     let options = Options {
@@ -170,7 +170,7 @@ fn quoted_unlimited_max_errors_from_config_stays_inactive() {
 }
 
 #[test]
-fn closed_input_stops_a_process_with_an_unbound_input_in_both_orders() {
+fn stops_closed_process() {
     for inputs in [
         "channel.empty(), channel.value()",
         "channel.value(), channel.empty()",
@@ -185,7 +185,7 @@ fn closed_input_stops_a_process_with_an_unbound_input_in_both_orders() {
 }
 
 #[test]
-fn a_task_per_value() {
+fn creates_value_tasks() {
     let source = format!("{DOUBLE}workflow {{\n    channel.of(1, 2, 3) | DOUBLE | view\n}}");
     let (tasks, printed) = run(&source, &Options::default()).expect("runs");
     let names: Vec<&str> = tasks.iter().map(|task| task.name.as_str()).collect();
@@ -195,7 +195,7 @@ fn a_task_per_value() {
 }
 
 #[test]
-fn tuple_environment_and_stdin_are_preserved_per_round() {
+fn preserves_round_inputs() {
     let source = "process P {\n    input:\n    tuple env('SAMPLE'), stdin\n    script:\n    'cat'\n}\n\
                   workflow {\n    P(channel.of(['one', 'first\\n'], ['two', 'second\\n']))\n}\n";
     let (tasks, _) = run(source, &Options::default()).expect("runs");
@@ -268,7 +268,7 @@ fn config(text: &str) -> nextflow_config::Config {
 }
 
 #[test]
-fn config_settings_reach_the_task() {
+fn applies_task_config() {
     let source = format!(
         "{GUNZIP}\nworkflow {{\n    GUNZIP(channel.of([[id: 'S1'], file('/data/sample.fastq.gz')]))\n}}"
     );
@@ -296,7 +296,7 @@ fn config_settings_reach_the_task() {
 /// A tag of the config that fails names the task by its index, as Nextflow's
 /// `TaskRun.getName` ignores the error.
 #[test]
-fn tags_that_fail_are_left_out() {
+fn excludes_failed_tags() {
     let source = format!("{DOUBLE}workflow {{\n    DOUBLE(channel.of(1, 2))\n}}");
     let text = "process {\n    withName: 'DOUBLE' {\n        tag = { \"${meta.id}\" }\n    }\n}\n";
     let options = Options {
@@ -312,7 +312,7 @@ fn tags_that_fail_are_left_out() {
 /// Nextflow's legacy config parser takes for a config block: the closure gives null, as
 /// Nextflow 26.04.6 prints for nf-core/metaboigniter's `ext.prefix = { ${meta.id} }`.
 #[test]
-fn config_blocks_in_config_closures_give_null() {
+fn evaluates_config_blocks() {
     let source = "process P {\n    input:\n    val meta\n    output:\n    val x\n    script:\n    \
                   x = \"${task.ext.prefix}\"\n    'true'\n}\n\
                   workflow {\n    P([id: 'a']).view()\n}";
@@ -326,7 +326,7 @@ fn config_blocks_in_config_closures_give_null() {
 }
 
 #[test]
-fn workflow_metadata_and_completion_handlers() {
+fn exposes_workflow_metadata() {
     let source = format!(
         "{DOUBLE}workflow {{\n    DOUBLE(channel.of(1, 2))\n    \
          println \"${{workflow.toMap().runName}} ${{workflow.profile}} ${{workflow.manifest.name}} ${{launchDir}} ${{projectDir}}\"\n    \
@@ -341,7 +341,7 @@ fn workflow_metadata_and_completion_handlers() {
 }
 
 #[test]
-fn topic_channels_collect_process_outputs() {
+fn collects_topic_outputs() {
     let process = "process P {\n    input:\n    val x\n    output:\n    val y, topic: 'vers'\n    script:\n    y = \"A${x}\"\n    'true'\n}\n";
     let source = format!(
         "{process}workflow {{\n    P(channel.of(1, 2))\n    channel.topic('vers').toList().view()\n    \
@@ -354,7 +354,7 @@ fn topic_channels_collect_process_outputs() {
 }
 
 #[test]
-fn text_paths_are_input_files() {
+fn resolves_text_inputs() {
     let process =
         "process P {\n    input:\n    path x\n    output:\n    val x\n    script:\n    'true'\n}\n";
     let source = format!("{process}workflow {{\n    P('https://host/data/a.txt').view()\n}}");
@@ -372,7 +372,7 @@ fn text_paths_are_input_files() {
 /// The legacy `file` qualifier writes each value that is not a path into a file `input.N`, as
 /// with Nextflow 26.04.6 and the legacy parser.
 #[test]
-fn file_inputs_write_values_into_files() {
+fn writes_value_inputs() {
     let process = "process P {\n    input:\n    path a\n    file x\n    output:\n    val x\n    \
                    script:\n    'true'\n}\n";
     let source = format!("{process}workflow {{\n    P('https://host/a.txt', 'Tcell').view()\n}}");
@@ -385,7 +385,7 @@ fn file_inputs_write_values_into_files() {
 }
 
 #[test]
-fn staged_names_expand_wildcards() {
+fn expands_staged_wildcards() {
     let staged = |pattern: &str, files: &str| {
         let process = format!(
             "process P {{\n    input:\n    path x, stageAs: '{pattern}'\n    script:\n    'true'\n}}\n"
@@ -411,7 +411,7 @@ fn staged_names_expand_wildcards() {
 /// A staged input iterates the parts of its staged name, as the stub of CAT_CAT reads them:
 /// Nextflow 26.04.6 gives `[[1, a.txt], [b.txt]]`.
 #[test]
-fn staged_inputs_iterate_their_names() {
+fn iterates_staged_inputs() {
     let process = "process P {\n    input:\n    path x, stageAs: '?/*'\n    path y\n    script:\n    \
                    println([x.collect { it.toString() }, y.collect { it.toString() }])\n    \
                    'true'\n}\n";
@@ -422,7 +422,7 @@ fn staged_inputs_iterate_their_names() {
 
 /// A staged name may use a `val` input declared after it, as atacseq's IGV process does.
 #[test]
-fn staged_names_read_later_values() {
+fn reads_later_values() {
     let source = "process P {\n    input:\n    path(\"${dir}/*\")\n    val dir\n    script:\n    \
                   'true'\n}\nworkflow {\n    P([file('/d/a.txt'), file('/d/b.txt')], 'bigwig')\n}";
     let (tasks, _) = run(source, &Options::default()).expect("runs");
@@ -435,7 +435,7 @@ fn staged_names_read_later_values() {
 }
 
 #[test]
-fn typed_params_take_their_types_and_defaults() {
+fn applies_typed_defaults() {
     let source = "params {\n    input: String? = null\n    n: Integer = 3\n    flag: Boolean\n    outdir: String\n}\n\
                   workflow {\n    println \"${params.input} ${params.n + 1} ${params.flag} ${params.outdir}\"\n}";
     let with = |text: &str| Options {
@@ -449,7 +449,7 @@ fn typed_params_take_their_types_and_defaults() {
 }
 
 #[test]
-fn one_file_is_a_path_unless_the_arity_allows_more() {
+fn shapes_path_arity() {
     let class = |input: &str, files: &str| {
         let process = format!(
             "process P {{\n    input:\n    {input}\n    output:\n    val y\n    script:\n    y = x instanceof Path\n    'true'\n}}\n"
@@ -465,7 +465,7 @@ fn one_file_is_a_path_unless_the_arity_allows_more() {
 }
 
 #[test]
-fn output_arity_enforces_bounds_and_singleton_shape() {
+fn enforces_output_arity() {
     let collect = |arity: &str, count: usize| -> Result<String, String> {
         let source = format!(
             "process P {{\n output:\n path '*.txt', arity: '{arity}'\n script:\n 'true'\n}}\nworkflow {{\n P().map {{ it instanceof Path ? 'path' : \"list:${{it.size()}}\" }}.view()\n}}\n"
@@ -529,7 +529,7 @@ fn output_arity_enforces_bounds_and_singleton_shape() {
 }
 
 #[test]
-fn tuples_of_another_size_are_errors() {
+fn rejects_tuple_sizes() {
     let process = "process P {\n    input:\n    tuple val(a), val(b)\n    script:\n    'true'\n}\n";
     let source = format!(
         "{process}workflow W {{\n    P(channel.of([1, 2, 3]))\n}}\nworkflow {{\n    W()\n}}"
@@ -546,7 +546,7 @@ fn tuples_of_another_size_are_errors() {
 }
 
 #[test]
-fn a_staged_file_iterates_as_itself() {
+fn iterates_staged_file() {
     let process = "process P {\n    input:\n    path reads\n    output:\n    val y\n    script:\n    y = \"${reads[0]} ${reads.join(',')} ${reads.collectMany { [it] }}\"\n    'true'\n}\n";
     let source = format!(
         "{process}workflow {{\n    P([file('/d/a.txt')]).view()\n    println file('/x/y/a.txt')[1]\n}}"
@@ -556,14 +556,14 @@ fn a_staged_file_iterates_as_itself() {
 }
 
 #[test]
-fn closure_arguments_give_their_result() {
+fn evaluates_closure_arguments() {
     let source = format!("{DOUBLE}workflow {{\n    DOUBLE {{ channel.of(4) }}.view()\n}}");
     let (_, printed) = run(&source, &Options::default()).expect("runs");
     assert_eq!(printed, "8\n");
 }
 
 #[test]
-fn manifest_settings_are_text_and_null_has_methods() {
+fn coerces_manifest_settings() {
     let source = "workflow {\n    println([null.equals(null), null.toString(), workflow.manifest.doi, \
                   workflow.manifest.doi.tokenize(','), workflow.manifest.mainScript, workflow.manifest.version])\n}";
     let options = Options {
@@ -578,7 +578,7 @@ fn manifest_settings_are_text_and_null_has_methods() {
 }
 
 #[test]
-fn missing_outputs_and_failures() {
+fn reports_output_failures() {
     let process = "process P {\n    input:\n    val x\n    output:\n    path 'out.txt'\n    script:\n    'x'\n}\n";
     let parsed_source = format!("{process}workflow {{\n    P(1)\n}}");
     let parsed = parse_script(&parsed_source);
@@ -610,7 +610,7 @@ fn missing_outputs_and_failures() {
 }
 
 #[test]
-fn a_return_in_a_workflow_leaves_its_assigned_emits_missing() {
+fn excludes_unreturned_emits() {
     let workflow = "workflow W {\n    take:\n    x\n\n    main:\n    if (true) {\n        return\n    \
                     }\n    y = x.map { v -> v * 2 }\n\n    emit:\n    EMITS\n}\n";
     // Nextflow 26.04.6 fails so; an emit that names a variable is still found.
@@ -642,7 +642,7 @@ fn a_return_in_a_workflow_leaves_its_assigned_emits_missing() {
 /// A workflow that emits the outputs of a call emits their one channel, as Nextflow's
 /// `collectOutputs` does, so that operators take it as a channel.
 #[test]
-fn emits_of_call_outputs_are_their_channel() {
+fn resolves_call_emits() {
     let source = "process P {\n    output:\n    val 'hi'\n    script:\n    'true'\n}\n\
                   workflow W {\n    main:\n    P()\n    emit:\n    P.out\n}\n\
                   workflow {\n    W()\n    W.out.concat(channel.of(1)).view()\n}";
@@ -654,7 +654,7 @@ fn emits_of_call_outputs_are_their_channel() {
 /// Nextflow 26.04.6, which says "No such variable: outformat", or for a `val` output "Missing
 /// value declared as output parameter: outformat".
 #[test]
-fn stub_runs_leave_the_variables_of_scripts_unset() {
+fn excludes_stub_variables() {
     let source = "process P {\n    input:\n    val x\n    output:\n    path(\"*.${outformat}\")\n    \
                   script:\n    outformat = 'fastq'\n    \"touch a.${outformat}\"\n    stub:\n    \
                   \"touch a.fastq\"\n}\nworkflow {\n    P(channel.of(1))\n}";
@@ -682,7 +682,7 @@ fn stub_runs_leave_the_variables_of_scripts_unset() {
 /// `each` inputs start a task for each combination of their values with the other inputs, as
 /// Nextflow's `ForwardClosure` does; a queue channel gives all its values.
 #[test]
-fn each_inputs_start_a_task_for_each_value() {
+fn expands_each_inputs() {
     let process = |name: &str| {
         format!(
             "process {name} {{\n    input:\n    val x\n    each y\n    script:\n    \
@@ -710,7 +710,7 @@ fn each_inputs_start_a_task_for_each_value() {
 }
 
 #[test]
-fn large_process_rounds_and_each_products_bound_outstanding_requests() {
+fn bounds_process_requests() {
     for (inputs, expected) in [("val x\n", 2000), ("each x\n each y\n", 2500)] {
         let each = expected == 2500;
         let arguments = if each {
@@ -763,7 +763,7 @@ fn large_process_rounds_and_each_products_bound_outstanding_requests() {
 /// A `path` output with a closure takes its value when the task runs, and a list gives a
 /// pattern for each element, as nf-core/metaboigniter names its outputs after `meta.id`.
 #[test]
-fn path_outputs_take_closures_and_lists() {
+fn evaluates_path_outputs() {
     let source = "process P {\n    input:\n    val ids\n    output:\n    \
                   path({ ids.collect { 'out/' + it + '.xml' } })\n    script:\n    'true'\n}\n\
                   workflow {\n    P(['a', 'b']).view { files -> files*.name }\n}";
@@ -776,7 +776,7 @@ fn path_outputs_take_closures_and_lists() {
 /// nf-core/quantms, cutandrun and ssds. Nextflow 21.10 and 23.04, the releases they name,
 /// read it so; Nextflow 26.04.6 fails on it (decision 14).
 #[test]
-fn option_calls_on_outputs() {
+fn applies_output_options() {
     let source = "process P {\n    output:\n    path '*.pdf' optional true\n    path 'a.txt'\n    \
                   script:\n    'true'\n}\nworkflow {\n    P()\n}\n";
     let (tasks, _) = run(source, &Options::default()).expect("runs");
@@ -806,7 +806,7 @@ fn texts_of_channels() {
 /// Legacy syntax: directives inside `if` statements apply under their conditions, like the
 /// `container` of nf-core modules that depends on `workflow.containerEngine`.
 #[test]
-fn directives_inside_if_statements() {
+fn evaluates_conditional_directives() {
     let source = "process P {\n    if (1 > 2) {\n        container 'a'\n    } else {\n        container 'b'\n        \
                   if (true) { cpus 2 }\n    }\n    script:\n    'true'\n}\nworkflow {\n    P()\n}\n";
     let (tasks, _) = run(source, &Options::default()).expect("runs");
@@ -824,7 +824,7 @@ fn directives_inside_if_statements() {
 /// A `set` at the top of a script assigns a variable of the script, which the workflow reads,
 /// as in Nextflow 26.04.6 with the legacy parser.
 #[test]
-fn a_set_at_the_top_assigns_a_script_variable() {
+fn assigns_script_channels() {
     let source = "Channel.of(2).map { it * 2 }.set { ch_b }\nworkflow {\n    ch_b.view()\n}";
     let (_, printed) = run(source, &Options::default()).expect("runs");
     assert_eq!(printed, "4\n");
@@ -833,7 +833,7 @@ fn a_set_at_the_top_assigns_a_script_variable() {
 /// A `set` in an `if` of the script also assigns a variable of the script, as in the
 /// TronFlow alignment pipeline, which Nextflow 26.04.6 runs.
 #[test]
-fn a_set_in_a_block_of_the_script_assigns_a_script_variable() {
+fn assigns_block_channels() {
     let source = "if (true) {\n    Channel.of(3).set { ch_b }\n} else {\n    Channel.of(4).set { ch_b }\n}\n\
                   workflow {\n    ch_b.view()\n}";
     let (_, printed) = run(source, &Options::default()).expect("runs");
@@ -843,7 +843,7 @@ fn a_set_in_a_block_of_the_script_assigns_a_script_variable() {
 /// An error of a completion handler is logged and the run still succeeds, as in Nextflow
 /// 26.04.6, which prints "Failed to invoke `workflow.onComplete` event handler".
 #[test]
-fn completion_handlers_that_fail_are_logged() {
+fn logs_completion_failures() {
     let source = "workflow {\n    workflow.onComplete { println('first'); NfcoreTemplate.summary(workflow) }\n    \
                   workflow.onComplete { println('second') }\n    channel.of(1).view()\n}";
     let (_, printed) = run(source, &Options::default()).expect("runs");
@@ -861,7 +861,7 @@ fn completion_handlers_that_fail_are_logged() {
 /// Completion handlers read the value of a value channel with `getVal()`, as in Nextflow
 /// 26.04.6.
 #[test]
-fn completion_handlers_read_value_channels() {
+fn reads_completion_channels() {
     let source = "workflow {\n    def reports = channel.of(1, 2).toList()\n    \
                   workflow.onComplete { println(\"reports ${reports.getVal()} ${reports.val.size()}\") }\n}";
     let (_, printed) = run(source, &Options::default()).expect("runs");
@@ -871,7 +871,7 @@ fn completion_handlers_read_value_channels() {
 /// Legacy syntax: a directive after `when:` belongs to the guard, where it gives null, so
 /// the process runs no task, as with Nextflow 26.04.6 for nf-core/ddamsproteomics.
 #[test]
-fn directives_after_when_make_the_guard_null() {
+fn nulls_later_guard() {
     let source = "process P {\n    when: true\n\n    publishDir 'out'\n\n    input:\n    val x\n\n    \
                   script:\n    'true'\n}\nworkflow {\n    P(channel.of(1))\n}\n";
     let (tasks, _) = run(source, &Options::default()).expect("runs");
@@ -881,7 +881,7 @@ fn directives_after_when_make_the_guard_null() {
 /// A `shell:` section interpolates `!{expression}` and keeps `$` for the shell. Nextflow
 /// 26.04.6 with the legacy parser writes `echo 1 $HOME 2 !x \n` for this process.
 #[test]
-fn shell_sections_interpolate_placeholders() {
+fn interpolates_shell_placeholders() {
     let source = "process P {\n    input:\n    val x\n    output:\n    stdout\n    shell:\n    \
                   '''\n    echo !{x} $HOME !{x +\n    1} !x \\\\n\n    '''\n}\n\
                   workflow {\n    P(channel.of(1))\n}\n";
@@ -892,7 +892,7 @@ fn shell_sections_interpolate_placeholders() {
 /// Legacy syntax: a workflow may emit several channels without names, which its caller reads
 /// by position, and have its sections in any order, as Nextflow 26.04.6 runs them.
 #[test]
-fn unnamed_emits_and_sections_in_any_order() {
+fn accepts_reordered_sections() {
     let source = "workflow A {\n    take:\n    x\n    emit:\n    x.map { it + 1 }\n    x.map { it + 2 }\n    \
                   main:\n    println('main')\n}\n\
                   workflow B { main: println('b') }\n\
@@ -928,7 +928,7 @@ fn void_functions() {
 /// Legacy syntax: an empty `when:` section and a slashy string among the inputs, which
 /// Nextflow 26.04.6 ignores, running the shell script `echo 1`.
 #[test]
-fn empty_when_and_strings_among_inputs() {
+fn accepts_empty_guards() {
     let source = "process P {\n    input:\n    val x\n    /tuple val(a), path(\"\") /\n    output:\n    stdout\n    \
                   when:\n\n    shell:\n    '''\n    echo !{x}\n    '''\n}\nworkflow {\n    P(1)\n}\n";
     let (tasks, _) = run(source, &Options::default()).expect("runs");
@@ -938,7 +938,7 @@ fn empty_when_and_strings_among_inputs() {
 /// As in Nextflow 26.04.6, an empty script or one with comments only does nothing, and a
 /// script with named workflows only fails.
 #[test]
-fn scripts_without_an_entry_workflow() {
+fn executes_entryless_scripts() {
     let (tasks, printed) = run("// a placeholder\n", &Options::default()).expect("runs");
     assert!(tasks.is_empty() && printed.is_empty());
     let error = run(
@@ -952,7 +952,7 @@ fn scripts_without_an_entry_workflow() {
 /// Legacy syntax: a `def` before the first section of a process declares a variable that the
 /// script reads, as Nextflow 26.04.6 runs pipeface's `mosdepth`.
 #[test]
-fn declarations_before_the_sections_of_a_process() {
+fn accepts_process_declarations() {
     let source = "process P {\n    def sw = 'mosdepth'\n    input:\n    val x\n    output:\n    stdout\n    \
                   script:\n    \"echo ${sw} ${x}\"\n}\nworkflow {\n    P(1)\n}\n";
     let (tasks, _) = run(source, &Options::default()).expect("runs");
@@ -962,7 +962,7 @@ fn declarations_before_the_sections_of_a_process() {
 /// Legacy syntax: `===` and `!==` test identity, and Groovy's `String.valueOf` and
 /// `plus(index, element)`; Nextflow 26.04.6 prints `[true, true, false, null, 5, [1, 9, 2]]`.
 #[test]
-fn identity_value_of_and_insertion() {
+fn preserves_value_identity() {
     let source = "workflow {\n    def m = [a: 1]\n    \
                   println([m !== [a: 1], m === m, [1] === [1], String.valueOf(null), String.valueOf(5), [1, 2].plus(1, 9)])\n}\n";
     let (_, printed) = run(source, &Options::default()).expect("runs");
@@ -973,7 +973,7 @@ fn identity_value_of_and_insertion() {
 /// the run, as in pathogensurveillance and taxodactyl; Nextflow 26.04.6 prints
 /// `[1234567, 12.5, -3, 15]`.
 #[test]
-fn number_and_date_formats() {
+fn formats_scalar_values() {
     let source = "workflow {\n    def nf = java.text.NumberFormat.getInstance(Locale.US)\n    \
                   def f = java.time.format.DateTimeFormatter.ofPattern('yyyyMMdd HHmmss').withZone(java.time.ZoneId.systemDefault())\n    \
                   println([nf.parse('1,234,567').intValue(), nf.parse('12.5x'), nf.parse('-3'), f.format(workflow.start).size()])\n}\n";
@@ -984,7 +984,7 @@ fn number_and_date_formats() {
 /// Legacy syntax: the statements of a workflow before `emit:` are its main block, as in
 /// assemblyeval; Nextflow 26.04.6 prints `2`.
 #[test]
-fn workflow_statements_before_the_first_label() {
+fn executes_unlabelled_statements() {
     let source = "workflow W {\n    x = channel.of(1)\n    y = x.map { it + 1 }\n    emit:\n    y\n    z = x\n}\n\
                   workflow {\n    W().y.view()\n}\n";
     let (_, printed) = run(source, &Options::default()).expect("runs");
@@ -994,7 +994,7 @@ fn workflow_statements_before_the_first_label() {
 /// Legacy syntax: modifiers like `public static` before a function of the script, and
 /// `final` declarations; Nextflow 26.04.6 prints `[5, true]`.
 #[test]
-fn modifiers_and_final_declarations() {
+fn accepts_final_declarations() {
     let source = "public static boolean hasExt(String s, String[] extn) {\n    return extn.any { s.endsWith(it) }\n}\n\
                   workflow {\n    final x = 5\n    println([x, hasExt('a.txt', ['.txt'] as String[])])\n}\n";
     let (_, printed) = run(source, &Options::default()).expect("runs");
@@ -1014,7 +1014,7 @@ fn repeated_script_sections() {
 /// `.value` of a plain value that a workflow emits gives the value while the workflow is
 /// built, as in spatialvpt's `report_only.value`; Nextflow 26.04.6 prints `false` and `no`.
 #[test]
-fn value_of_an_emitted_plain_value() {
+fn reads_plain_emits() {
     let source = "workflow W {\n    take:\n    flag\n    main:\n    println(flag)\n    emit:\n    flag = flag\n}\n\
                   workflow {\n    W(false)\n    def f = W.out.flag\n    if (f.value) { println('yes') } else { println('no') }\n}\n";
     let (_, printed) = run(source, &Options::default()).expect("runs");
@@ -1024,7 +1024,7 @@ fn value_of_an_emitted_plain_value() {
 /// Legacy syntax: an emit assignment sets its variable, which later emits read, as in
 /// metabiomx's CHECK_INPUT; Nextflow 26.04.6 prints `2`.
 #[test]
-fn emits_read_earlier_emits() {
+fn resolves_earlier_emits() {
     let source = "workflow W {\n    main:\n    ch = channel.of(1, 2)\n    emit:\n    meta = ch\n    n = meta.count()\n}\n\
                   workflow {\n    W().n.view()\n}\n";
     let (_, printed) = run(source, &Options::default()).expect("runs");

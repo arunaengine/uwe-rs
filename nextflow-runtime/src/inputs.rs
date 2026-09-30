@@ -480,7 +480,7 @@ mod tests {
     }
 
     #[test]
-    fn referenced_sample_sheet_errors_name_the_file() {
+    fn reports_samplesheet_source() {
         let project = tempfile::tempdir().expect("a folder");
         let assets = project.path().join("assets");
         std::fs::create_dir(&assets).expect("makes assets");
@@ -519,7 +519,7 @@ mod tests {
     }
 
     #[test]
-    fn valid_referenced_sample_sheet_keeps_its_reference_scope() {
+    fn preserves_reference_scope() {
         let project = tempfile::tempdir().expect("a folder");
         let assets = project.path().join("assets");
         std::fs::create_dir(&assets).expect("makes assets");
@@ -549,7 +549,7 @@ mod tests {
     }
 
     #[test]
-    fn the_summary_of_the_plugin_reads_every_param_of_the_schema() {
+    fn summarizes_schema_parameters() {
         let project = tempfile::tempdir().expect("a folder");
         let schema = serde_json::json!({
             "properties": {"input": {"type": "string"}, "config_profile_name": {"type": "string"}}
@@ -568,7 +568,7 @@ mod tests {
     }
 
     #[test]
-    fn another_pipeline_in_a_folder_of_the_project_is_not_read() {
+    fn excludes_nested_pipelines() {
         let project = tempfile::tempdir().expect("a folder");
         let other = project.path().join("nf-core-demo");
         std::fs::create_dir(&other).expect("makes the folder");
@@ -585,7 +585,7 @@ mod tests {
     }
 
     #[test]
-    fn params_in_scripts_and_configs() {
+    fn combines_parameter_sources() {
         let script = r#"
             params.declared = 'x'
             // params.commented
@@ -606,7 +606,7 @@ mod tests {
     }
 
     #[test]
-    fn values_are_cleaned_as_nf_schema_does() {
+    fn normalizes_schema_values() {
         let params = json!({"input": null, "skip": false, "name": "", "zero": 0, "list": [], "map": {"a": null, "b": 1}});
         assert_eq!(cleaned(params), Some(json!({"zero": 0, "map": {"b": 1}})));
     }

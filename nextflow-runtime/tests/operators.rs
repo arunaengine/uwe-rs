@@ -33,7 +33,7 @@ impl Host for Simulated {
 }
 
 #[test]
-fn csv_without_its_header_fails_unless_simulated() {
+fn rejects_missing_header() {
     let body = "channel.of('').splitCsv(header: true).view()\n\
                 channel.of('\\n').splitCsv(header: true, by: 2).view()";
     let error = run(body).unwrap_err();
@@ -62,7 +62,7 @@ fn lines(body: &str) -> Vec<String> {
 }
 
 #[test]
-fn subscribe_error_callbacks_handle_exceptions_and_stop_the_subscription() {
+fn stops_failed_subscription() {
     assert_eq!(
         lines(
             "channel.of(1, 2).subscribe(onNext: { throw new IllegalArgumentException('broken') }, onError: { error -> println error.message }, onComplete: { println 'wrong' })"
@@ -77,7 +77,7 @@ fn subscribe_error_callbacks_handle_exceptions_and_stop_the_subscription() {
 }
 
 #[test]
-fn subscribe_error_handler_failures_and_unsupported_features_propagate() {
+fn propagates_subscription_errors() {
     for (body, diagnostic) in [
         (
             "channel.of(1).subscribe(onNext: { throw new IllegalArgumentException('broken') }, onError: { throw new IllegalStateException('handler failed') })",
@@ -129,7 +129,7 @@ fn factories() {
 /// A missing file of `fromPath` with `checkIfExists` fails when the factory starts, after
 /// the workflow body ran, as in Nextflow 26.04.6.
 #[test]
-fn missing_files_fail_when_the_factory_starts() {
+fn rejects_missing_files() {
     let source = "workflow {\n    channel.fromPath('/nonexistent/x.fa', checkIfExists: true)\n    \
                   println('after')\n}";
     let parsed = parse_script(source);
@@ -173,7 +173,7 @@ fn buffers() {
 
 /// A property of a value channel is a value channel of the property, as in Nextflow 26.04.6.
 #[test]
-fn properties_of_value_channels() {
+fn exposes_channel_properties() {
     assert_eq!(
         lines(
             "channel.of(file('/a/WARNING_x.txt')).first().baseName.tokenize('_').flatten().first()\
@@ -198,7 +198,7 @@ fn casts_of_values() {
 
 /// Legacy `exit 1, "message"` ends the run with the message, as Nextflow's `exit` logs it.
 #[test]
-fn exit_ends_the_run() {
+fn exits_workflow_run() {
     assert_eq!(
         run("exit 1, 'bad samplesheet'").unwrap_err(),
         "AbortOperationException: bad samplesheet"
@@ -211,7 +211,7 @@ fn exit_ends_the_run() {
 }
 
 #[test]
-fn values_one_at_a_time() {
+fn emits_sequential_values() {
     assert_eq!(
         lines("channel.of(1, 2, 3).map { v -> v * 2 }.view()"),
         ["2", "4", "6"]
@@ -305,7 +305,7 @@ fn pipes_and_waiting() {
 }
 
 #[test]
-fn tap_in_a_chain_assigns_the_channel() {
+fn assigns_tapped_channels() {
     let mut printed = lines(
         "channel.of(1, 2).map { v -> v * 2 }.tap { doubled }.map { v -> v + 1 }.view()\n\
          doubled.view { v -> \"d${v}\" }",
@@ -340,7 +340,7 @@ fn group_tuple() {
 }
 
 #[test]
-fn group_tuple_preserves_sort_keys_comparators_and_named_modes() {
+fn preserves_group_sorting() {
     let source = "channel.of(['k', 3], ['k', 1], ['k', 2])";
     for sort in ["true", "'true'", "'natural'"] {
         assert_eq!(
@@ -384,7 +384,7 @@ fn group_tuple_preserves_sort_keys_comparators_and_named_modes() {
 }
 
 #[test]
-fn comparator_results_are_finite_numbers_converted_to_native_int() {
+fn converts_comparator_results() {
     for result in [
         "'not-a-number'",
         "null",
@@ -423,7 +423,7 @@ fn comparator_results_are_finite_numbers_converted_to_native_int() {
 }
 
 #[test]
-fn join_combine_and_cross() {
+fn combines_channel_values() {
     let left = "channel.of(['a', 1], ['b', 2], ['a', 3], ['c', 4])";
     let right = "channel.of(['a', 'x'], ['a', 'y'], ['b', 'z'], ['d', 'w'])";
     assert_eq!(
@@ -486,7 +486,7 @@ fn join_combine_and_cross() {
 }
 
 #[test]
-fn join_integrity_checks_matched_and_pending_keys() {
+fn checks_join_integrity() {
     for body in [
         "channel.of(['a', 1], ['a', 2]).join(channel.of(['a', 3]), failOnDuplicate: true).view()",
         "channel.of(['a', 1]).join(channel.of(['a', 2], ['a', 3]), failOnDuplicate: true).view()",
@@ -515,7 +515,7 @@ fn join_integrity_checks_matched_and_pending_keys() {
 }
 
 #[test]
-fn merge_stops_with_closed_and_unbound_inputs_in_both_orders() {
+fn stops_closed_merge() {
     for body in [
         "channel.empty().merge(channel.value()).ifEmpty('empty').view()",
         "channel.value().merge(channel.empty()).ifEmpty('empty').view()",
@@ -525,7 +525,7 @@ fn merge_stops_with_closed_and_unbound_inputs_in_both_orders() {
 }
 
 #[test]
-fn branch_multi_map_concat_and_merge() {
+fn routes_channel_branches() {
     assert_eq!(
         lines(
             "def result = channel.of(1, 2, 3, 4).branch { v ->\n    small: v < 2\n    big: v > 2\n        return v * 10\n}\n\
@@ -550,7 +550,7 @@ fn branch_multi_map_concat_and_merge() {
 }
 
 #[test]
-fn filtering_and_reducing_operators() {
+fn reduces_filtered_channels() {
     let source = "channel.of(1, 1, 2, 2, 1)";
     assert_eq!(lines(&format!("{source}.unique().view()")), ["1", "2"]);
     assert_eq!(
@@ -582,7 +582,7 @@ fn filtering_and_reducing_operators() {
 }
 
 #[test]
-fn from_and_from_path() {
+fn creates_source_channels() {
     assert_eq!(lines("channel.from(1, 2).view()"), ["1", "2"]);
     assert_eq!(lines("channel.from([3, 4]).view()"), ["3", "4"]);
     let directory = tempfile::tempdir().expect("a temporary directory");
@@ -640,7 +640,7 @@ fn from_file_pairs() {
 }
 
 #[test]
-fn collect_file_writes_files_at_the_end() {
+fn finalizes_collected_files() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let d = directory.path().display();
     assert_eq!(
@@ -670,7 +670,7 @@ fn collect_file_writes_files_at_the_end() {
 }
 
 #[test]
-fn collect_file_sorting_preserves_original_values_and_stable_keys() {
+fn preserves_collection_sorting() {
     let directory = tempfile::tempdir().unwrap();
     let d = directory.path().display();
     let collect = |source: &str, sort: &str| {
@@ -713,7 +713,7 @@ fn collect_file_sorting_preserves_original_values_and_stable_keys() {
 }
 
 #[test]
-fn hash_sorting_is_explicitly_unsupported_until_native_hashing_exists() {
+fn rejects_hash_sorting() {
     for operator in ["groupTuple", "collectFile"] {
         let source = if operator == "groupTuple" {
             "channel.of(['k', 1])"
@@ -750,7 +750,7 @@ fn lambdas_with_parameters() {
 /// A local closure with the name of an operator is called, as nf-core/references calls its
 /// `def reduce = { ... }`; Nextflow 24.10.1, the release it names, runs it.
 #[test]
-fn local_closures_with_operator_names() {
+fn preserves_local_operators() {
     assert_eq!(
         lines("def reduce = { m -> m + 1 }\nchannel.of(1).map { reduce(it) }.view()"),
         ["2"]
@@ -759,7 +759,7 @@ fn local_closures_with_operator_names() {
 
 /// The records of a large CSV text go out in batches, in order, with their tuple.
 #[test]
-fn large_csv_texts_split_in_order() {
+fn orders_csv_splits() {
     assert_eq!(
         lines(
             "channel.of(['k', 'n\\n' + (1..25000).join('\\n')])\
@@ -819,7 +819,7 @@ fn splitters() {
 }
 
 #[test]
-fn split_json_emits_elements_and_entries() {
+fn splits_json_elements() {
     // Nextflow 26.04.6 prints these.
     let document =
         r#"{"a": {"x": 1, "y": [1, -2, 1.5, 1e3, 12345678901]}, "b": [ {"k": "v"}, 7 ]}"#;
@@ -858,7 +858,7 @@ fn split_json_emits_elements_and_entries() {
 }
 
 #[test]
-fn set_in_a_pipe_binds_all_outputs() {
+fn binds_piped_outputs() {
     assert_eq!(
         lines(
             "channel.of(1, 2) | branch { v ->\n    small: v < 2\n    big: true\n} | set { ch }\n\
@@ -869,7 +869,7 @@ fn set_in_a_pipe_binds_all_outputs() {
 }
 
 #[test]
-fn chains_declare_before_their_arguments_and_pipes_call_functions() {
+fn declares_operator_chains() {
     let source = "def twice(ch) {\n    ch.map { v -> v * 2 }\n}\n\
                   workflow {\n    channel.of(1, 2).tap { t }.combine(t).map { a, b -> a + b }.toSortedList().view()\n    \
                   channel.of(3) | twice | view\n}";
@@ -884,7 +884,7 @@ fn chains_declare_before_their_arguments_and_pipes_call_functions() {
 }
 
 #[test]
-fn published_outputs_are_read_to_the_end() {
+fn drains_published_outputs() {
     let source = "workflow {\n    main:\n    ch = channel.of(1, 2).map { v -> v * 2 }\n    ch.view()\n\n    \
                   publish:\n    doubled = ch\n}\n\noutput {\n    doubled {\n        path '.'\n    }\n}\n";
     let parsed = parse_script(source);
@@ -897,7 +897,7 @@ fn published_outputs_are_read_to_the_end() {
 }
 
 #[test]
-fn splitter_records_and_closures() {
+fn transforms_splitter_records() {
     assert_eq!(
         lines(
             "channel.of(\">s1 first seq\\nACGT\\nGG\\n>s2\\nTT\\n\").splitFasta(record: [id: true, header: true, \
@@ -929,7 +929,7 @@ fn splitter_records_and_closures() {
 }
 
 #[test]
-fn methods_of_value_channels_act_on_the_value() {
+fn dispatches_channel_methods() {
     assert_eq!(
         lines(
             "def a = channel.of(1, 2, 3).collect()\n\
@@ -947,7 +947,7 @@ fn methods_of_value_channels_act_on_the_value() {
 }
 
 #[test]
-fn collate_and_small_library_methods() {
+fn dispatches_library_operators() {
     assert_eq!(
         lines("channel.of(1, 2, 3, 4, 5).collate(2).view()"),
         ["[1, 2]", "[3, 4]", "[5]"]
@@ -967,7 +967,7 @@ fn collate_and_small_library_methods() {
 }
 
 #[test]
-fn group_keys_give_the_group_size() {
+fn resolves_group_sizes() {
     assert_eq!(
         lines(
             "channel.of([groupKey([id: 'a'], 2), 1], [groupKey([id: 'b'], 3), 2], [groupKey([id: 'a'], 2), 3])\n\
@@ -980,7 +980,7 @@ fn group_keys_give_the_group_size() {
 }
 
 #[test]
-fn splitters_read_gzip_files() {
+fn splits_gzip_files() {
     use std::io::Write;
     let directory = tempfile::tempdir().expect("a temporary directory");
     let gz = directory.path().join("rows.csv.gz");
@@ -999,7 +999,7 @@ fn splitters_read_gzip_files() {
 /// The split methods of paths give the records of a file, or with `file:` chunk files, named
 /// as Nextflow 26.04.6 names them: `seqs.1.fa` in a folder, else after the path.
 #[test]
-fn paths_split_into_records_and_files() {
+fn splits_path_records() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let fasta = directory.path().join("seqs.fa");
     std::fs::write(&fasta, ">a\nAC\n>b\nGT\n").expect("writes the file");

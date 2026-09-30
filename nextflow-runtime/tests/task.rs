@@ -44,7 +44,7 @@ fn request(eval: &[&str], env: &[&str], container: Option<&str>) -> TaskRequest 
 }
 
 #[test]
-fn captures_env_and_eval_outputs() {
+fn captures_task_outputs() {
     let request = request(&["echo \"v'1\"", "echo bad >&2; exit 2"], &["FOO"], None);
     let script = command_script(&request);
     assert!(script.starts_with(&request.script));
@@ -66,13 +66,13 @@ fn captures_env_and_eval_outputs() {
 }
 
 #[test]
-fn scripts_without_captures_stay_as_they_are() {
+fn preserves_uncaptured_scripts() {
     let request = request(&[], &[], None);
     assert_eq!(command_script(&request), request.script);
 }
 
 #[test]
-fn cache_false_disables_task_reuse() {
+fn disables_task_reuse() {
     let mut request = request(&[], &[], None);
     for (value, expected) in [
         (Value::Boolean(false), workflow_graph::Reuse::Disabled),
@@ -88,7 +88,7 @@ fn cache_false_disables_task_reuse() {
 }
 
 #[test]
-fn retries_force_fresh_results_without_enabling_disabled_cache() {
+fn forces_fresh_retries() {
     let mut request = request(&[], &[], None);
     request.attempt = 2;
     for made in [None, Some(Vec::new())] {
@@ -110,7 +110,7 @@ fn retries_force_fresh_results_without_enabling_disabled_cache() {
 }
 
 #[test]
-fn input_environment_and_stdin_reach_container_tasks() {
+fn forwards_container_inputs() {
     let mut request = request(&[], &[], None);
     request.input_environment = vec![("SAMPLE".into(), Value::string("round one"))];
     request.stdin = Some(Value::string("first\nsecond\n"));
@@ -165,7 +165,7 @@ fn container_tasks() {
 }
 
 #[test]
-fn valid_resource_values_reach_container_tasks() {
+fn forwards_valid_resources() {
     let mut request = request(&[], &[], None);
     request.directives.extend([
         TaskDirective {
@@ -194,7 +194,7 @@ fn valid_resource_values_reach_container_tasks() {
 }
 
 #[test]
-fn invalid_resource_values_fail_task_construction() {
+fn rejects_invalid_resources() {
     for (name, value) in [
         ("cpus", "many"),
         ("memory", "lots"),
@@ -217,7 +217,7 @@ fn invalid_resource_values_fail_task_construction() {
 }
 
 #[test]
-fn invalid_numeric_resources_fail_before_publication() {
+fn rejects_numeric_resources() {
     let too_large = Number::parse_integer("18446744073709551616").unwrap();
     for (name, value, detail) in [
         ("cpus", Value::integer(-1), "cannot be negative"),
@@ -258,7 +258,7 @@ fn invalid_numeric_resources_fail_before_publication() {
 }
 
 #[test]
-fn fractional_cpus_keep_nextflows_java_integer_conversion() {
+fn converts_fractional_cpus() {
     for (text, value) in [
         ("0", Value::integer(0)),
         (
@@ -281,7 +281,7 @@ fn fractional_cpus_keep_nextflows_java_integer_conversion() {
 }
 
 #[test]
-fn outcomes_carry_env_and_eval_values() {
+fn returns_captured_values() {
     let request = request(&["echo v"], &["FOO"], None);
     let directory = tempfile::tempdir().expect("a temporary directory");
     let file = |name: &str, text: &str| {
@@ -372,7 +372,7 @@ impl workflow_graph::Files for Elsewhere {
 }
 
 #[test]
-fn values_come_through_the_files_of_a_store_elsewhere() {
+fn reads_stored_values() {
     let request = request(&[], &["FOO"], None);
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("env"), "FOO=remote\n/FOO/\n").expect("writes");

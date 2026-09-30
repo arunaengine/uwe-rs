@@ -59,7 +59,7 @@ fn module(source: &str) -> Rc<nextflow_evaluator::lowered::Module> {
 }
 
 #[test]
-fn overlapping_runs_keep_collect_split_and_path_split_bytes() {
+fn isolates_run_scratch() {
     let directory = tempfile::tempdir().unwrap();
     let input = directory.path().join("source.txt");
     let source = format!(
@@ -117,7 +117,7 @@ fn overlapping_runs_keep_collect_split_and_path_split_bytes() {
 }
 
 #[test]
-fn explicit_destinations_bypass_operator_reservation() {
+fn bypasses_explicit_reservation() {
     let directory = tempfile::tempdir().unwrap();
     let output = directory.path().join("explicit");
     std::fs::create_dir(&output).unwrap();
@@ -157,7 +157,7 @@ fn explicit_destinations_bypass_operator_reservation() {
 }
 
 #[test]
-fn reservation_errors_propagate_without_fallback() {
+fn propagates_reservation_errors() {
     let directory = tempfile::tempdir().unwrap();
     let not_a_directory = directory.path().join("file");
     std::fs::write(&not_a_directory, "preserved").unwrap();
@@ -188,7 +188,7 @@ fn reservation_errors_propagate_without_fallback() {
 }
 
 #[test]
-fn custom_storage_reservation_and_writes_stay_with_the_host() {
+fn forwards_host_storage() {
     struct Virtual {
         allocations: usize,
         files: Vec<(String, Vec<u8>)>,
@@ -239,7 +239,7 @@ fn custom_storage_reservation_and_writes_stay_with_the_host() {
 }
 
 #[test]
-fn driver_forwards_custom_reservation_and_keeps_staging_inputs() {
+fn forwards_driver_reservation() {
     let directory = tempfile::tempdir().unwrap();
     let source = "process P {\n input:\n path x\n script:\n 'true'\n}\nworkflow {\n P(channel.of('driver').collectFile(sort: false))\n}\n";
     std::fs::write(directory.path().join("main.nf"), source).unwrap();

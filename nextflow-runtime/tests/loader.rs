@@ -23,7 +23,7 @@ fn write(root: &Path, name: &str, text: &str) {
 }
 
 #[test]
-fn includes_link_to_their_scripts() {
+fn links_included_scripts() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(root.path(), "lib.nf", "def twice(x) { x * 2 }\n");
     write(
@@ -103,7 +103,7 @@ fn bad_includes() {
 /// Nextflow's strict parser checks the number of arguments of calls when it loads a script;
 /// the legacy parser does not, and a call only fails when it runs (decision 14).
 #[test]
-fn calls_need_as_many_arguments_as_inputs_when_they_run() {
+fn requires_input_arguments() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(
         root.path(),
@@ -130,7 +130,7 @@ fn calls_need_as_many_arguments_as_inputs_when_they_run() {
 }
 
 #[test]
-fn plugin_includes_call_the_plugin() {
+fn calls_included_plugins() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(
         root.path(),
@@ -171,7 +171,7 @@ fn plugin_includes_call_the_plugin() {
 }
 
 #[test]
-fn plugin_factories_make_channels() {
+fn creates_plugin_channels() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let dir = root.path().display();
     write(
@@ -207,7 +207,7 @@ fn plugin_factories_make_channels() {
 }
 
 #[test]
-fn plugin_scripts_port_plugin_functions() {
+fn loads_plugin_scripts() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(
         root.path(),
@@ -250,7 +250,7 @@ fn plugin_scripts_port_plugin_functions() {
 }
 
 #[test]
-fn process_templates_render_with_task_variables() {
+fn renders_task_templates() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(
         root.path(),

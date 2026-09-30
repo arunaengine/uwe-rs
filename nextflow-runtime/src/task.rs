@@ -234,7 +234,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn images_get_the_registry_of_the_engine() {
+    fn resolves_engine_registry() {
         let quay = Some("quay.io");
         assert_eq!(
             with_registry("biocontainers/fastqc:0.12.1", quay),

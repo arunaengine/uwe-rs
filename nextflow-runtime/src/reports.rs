@@ -481,7 +481,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn measured_usage_fills_cpu_memory_and_io() {
+    fn reports_measured_usage() {
         let row = Row {
             number: 1,
             task: Task::default(),
@@ -508,7 +508,7 @@ mod tests {
     }
 
     #[test]
-    fn durations_and_sizes_read_as_in_nextflow() {
+    fn parses_report_units() {
         let cases = [
             (850, "850ms"),
             (3400, "3.4s"),

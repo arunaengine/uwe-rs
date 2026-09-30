@@ -240,7 +240,7 @@ mod tests {
     }
 
     #[test]
-    fn paths_are_checked_at_roots_references_and_array_items() {
+    fn checks_nested_paths() {
         let directory = tempfile::tempdir().unwrap();
         std::fs::write(directory.path().join("file.txt"), b"data").unwrap();
         std::fs::create_dir(directory.path().join("folder")).unwrap();

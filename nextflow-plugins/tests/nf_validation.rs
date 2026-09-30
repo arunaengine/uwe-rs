@@ -61,7 +61,7 @@ fn run(name: &str, params: Value, arguments: Vec<Value>) -> Result<String, Error
 }
 
 #[test]
-fn parameters_are_validated_as_nf_validation_does() {
+fn validates_legacy_parameters() {
     assert!(run("validateParameters", params(&[]), vec![]).is_ok());
     let bad = params(&[
         ("n", Value::string("x")),
@@ -90,7 +90,7 @@ fn parameters_are_validated_as_nf_validation_does() {
 }
 
 #[test]
-fn summaries_put_the_core_options_first() {
+fn orders_core_options() {
     let text = |name: &str, value: &str| (Value::string(name), Value::string(value));
     let properties = Value::map([
         text("runName", "thirsty_knuth"),
@@ -152,7 +152,7 @@ fn summaries_put_the_core_options_first() {
 }
 
 #[test]
-fn samplesheets_become_rows_with_meta_maps() {
+fn converts_samplesheet_rows() {
     let dir = directory();
     let rows = run("fromSamplesheet", params(&[]), vec![Value::string("input")]).unwrap();
     assert_eq!(
@@ -175,7 +175,7 @@ fn samplesheets_become_rows_with_meta_maps() {
 /// `exists` only checks values whose format is a path, as nf-validation 1.1.3 with Nextflow
 /// 26.04.6 reports only `other` for this samplesheet.
 #[test]
-fn exists_needs_a_path_format() {
+fn requires_path_format() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let dir = directory.path();
     std::fs::write(

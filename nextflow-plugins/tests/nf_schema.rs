@@ -51,7 +51,7 @@ fn to_list_in(directory: &Path, sheet: &str, schema: &str) -> Result<String, Err
 }
 
 #[test]
-fn referenced_rows_meta_paths_and_defaults_are_converted() {
+fn converts_referenced_rows() {
     let directory = tempfile::tempdir().unwrap();
     std::fs::write(
         directory.path().join("sheet.csv"),
@@ -88,7 +88,7 @@ fn referenced_rows_meta_paths_and_defaults_are_converted() {
 }
 
 #[test]
-fn unsupported_or_broken_sample_references_fail_explicitly() {
+fn rejects_sample_references() {
     let directory = tempfile::tempdir().unwrap();
     std::fs::write(directory.path().join("sheet.csv"), "value\nx\n").unwrap();
     for (reference, definitions, expected) in [
@@ -116,7 +116,7 @@ fn unsupported_or_broken_sample_references_fail_explicitly() {
 }
 
 #[test]
-fn structural_compositions_fail_and_literal_ids_remain_data() {
+fn rejects_structural_compositions() {
     let directory = tempfile::tempdir().unwrap();
     std::fs::write(directory.path().join("sheet.json"), r#"[{"sample":"S1"}]"#).unwrap();
     std::fs::write(
@@ -223,7 +223,7 @@ fn invalid_samplesheets_fail() {
 }
 
 #[test]
-fn values_are_validated_against_a_schema() {
+fn validates_schema_values() {
     let directory = directory();
     let mut host = Fixtures(directory.clone());
     let config = Config::default();
@@ -306,7 +306,7 @@ fn params_call_in(
 }
 
 #[test]
-fn parameters_are_validated_as_nf_schema_does() {
+fn validates_schema_parameters() {
     let error = params_call(
         "validateParameters",
         params(&[("outdir", "res"), ("n", "7")]),
@@ -359,7 +359,7 @@ fn parameters_are_validated_as_nf_schema_does() {
 /// With `validation.lenientMode`, a `string` param also takes a number, as nf-schema's
 /// `LenientTypeEvaluator` allows.
 #[test]
-fn lenient_mode_takes_numbers_for_strings() {
+fn coerces_lenient_strings() {
     let params = || {
         Value::map([
             (Value::string("outdir"), Value::integer(7)),
@@ -388,7 +388,7 @@ fn lenient_mode_takes_numbers_for_strings() {
 }
 
 #[test]
-fn summaries_show_what_differs_from_the_defaults() {
+fn summarizes_changed_defaults() {
     let text = |name: &str, value: &str| (Value::string(name), Value::string(value));
     let properties = Value::map([
         text("runName", "magical_mahavira"),
@@ -441,7 +441,7 @@ fn summaries_show_what_differs_from_the_defaults() {
 }
 
 #[test]
-fn ignored_parameters_that_the_schema_knows_are_validated() {
+fn validates_known_parameters() {
     let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/params")
         .to_string_lossy()
@@ -475,7 +475,7 @@ fn ignored_parameters_that_the_schema_knows_are_validated() {
 /// All params are checked, also when the groups of the schema are below `defs`, which
 /// nf-schema does not take for groups, as Nextflow 26.04.6 runs nf-synteny.
 #[test]
-fn params_outside_the_groups_are_checked() {
+fn checks_ungrouped_parameters() {
     let options = Value::map([(
         Value::string("parameters_schema"),
         Value::string("schema_defs.json"),

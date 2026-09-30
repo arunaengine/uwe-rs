@@ -34,7 +34,7 @@ fn kind_list(kind: ListKind, items: Vec<Value>) -> Value {
 }
 
 #[test]
-fn numbers_compare_by_value() {
+fn compares_number_values() {
     assert!(equal(&n("1"), &n("1L")));
     assert!(equal(&n("1"), &n("1.0")));
     assert!(equal(&n("1.0"), &n("1.00")));
@@ -62,7 +62,7 @@ fn mixed_classes() {
 }
 
 #[test]
-fn collections_compare_their_elements() {
+fn compares_collection_elements() {
     let list = |items: Vec<Value>| Value::list(items);
     assert!(equal(
         &list(vec![n("1"), n("2")]),

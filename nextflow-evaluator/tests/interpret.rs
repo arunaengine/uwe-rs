@@ -40,7 +40,7 @@ fn fails(source: &str) -> String {
 }
 
 #[test]
-fn last_statement_is_the_result() {
+fn returns_last_statement() {
     assert_eq!(
         run("def f() { g(0) }\ndef g(x) { if( x ) { 'yes' } else { 'no' } }"),
         "no"
@@ -58,7 +58,7 @@ fn last_statement_is_the_result() {
 }
 
 #[test]
-fn typed_parameters_and_returns_keep_supported_conversions() {
+fn converts_typed_calls() {
     assert_eq!(
         run("def wide(x: Long) { x.getClass().getSimpleName() }\n\
              def text() -> String { return 5 }\n\
@@ -82,7 +82,7 @@ fn typed_parameters_and_returns_keep_supported_conversions() {
 }
 
 #[test]
-fn script_numeric_overloads_use_specificity_in_both_orders() {
+fn selects_script_overloads() {
     for methods in [
         "def pick(x: Long) { 'long' }\ndef pick(x: Integer) { 'integer' }",
         "def pick(x: Integer) { 'integer' }\ndef pick(x: Long) { 'long' }",
@@ -109,7 +109,7 @@ fn script_numeric_overloads_use_specificity_in_both_orders() {
 }
 
 #[test]
-fn typed_locals_convert_initialization_assignments_and_captured_writes() {
+fn converts_typed_locals() {
     for declaration in ["def text: String", "String text"] {
         assert_eq!(
             run(&format!("def f() {{ {declaration} = 5\n text + 1 }}")),
@@ -142,7 +142,7 @@ fn typed_locals_convert_initialization_assignments_and_captured_writes() {
 }
 
 #[test]
-fn typed_reassignments_preserve_numeric_overload_identity() {
+fn preserves_overload_identity() {
     assert_eq!(
         run(
             "def pick(x: Long) { 'long' }\ndef pick(x: Integer) { 'integer' }\n\
@@ -155,7 +155,7 @@ fn typed_reassignments_preserve_numeric_overload_identity() {
 }
 
 #[test]
-fn typed_loop_and_module_variables_preserve_scalar_types() {
+fn preserves_variable_types() {
     assert_eq!(
         run(
             "def f() { def result = []\n for (String item in [5, 6]) { result << item + 1 }\n\
@@ -181,7 +181,7 @@ fn typed_loop_and_module_variables_preserve_scalar_types() {
 }
 
 #[test]
-fn closures_share_captured_variables() {
+fn shares_captured_variables() {
     let source = "def f() {\n def n = 10\n def c = { v -> v + n }\n n = 20\n c.call(1)\n}";
     assert_eq!(run(source), "21");
     let source = "def f() {\n def total = 0\n def add = { v -> total += v }\n add.call(2)\n add.call(3)\n total\n}";

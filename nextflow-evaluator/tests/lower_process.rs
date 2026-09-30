@@ -168,7 +168,7 @@ fn legacy_syntax() {
 }
 
 #[test]
-fn closures_may_declare_again_what_a_binding_holds() {
+fn permits_binding_shadowing() {
     let source = "workflow W {\n    take:\n    fasta\n    main:\n    \
                   fasta.map { meta, fasta -> fasta }\n    \
                   out = fasta\n    out.map { out -> out }\n}\n";

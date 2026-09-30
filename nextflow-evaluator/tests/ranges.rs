@@ -69,7 +69,7 @@ fn text() {
 }
 
 #[test]
-fn inclusive_ranges_stop_at_numeric_limits() {
+fn bounds_inclusive_ranges() {
     assert_eq!(value("(2147483647..2147483647).size()"), "1");
     assert_eq!(value("(2147483646..2147483647).size()"), "2");
     assert_eq!(value("(-2147483647..Integer.MIN_VALUE).size()"), "2");

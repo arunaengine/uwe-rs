@@ -88,7 +88,7 @@ fn groovy_division() {
 }
 
 #[test]
-fn exact_and_rounded_division() {
+fn divides_decimal_values() {
     assert_eq!(decimal("1").divide_exact(&decimal("3")), Ok(None));
     let exact = decimal("1.00")
         .divide_exact(&decimal("4"))
@@ -102,7 +102,7 @@ fn exact_and_rounded_division() {
 }
 
 #[test]
-fn remainder_keeps_the_sign_of_the_dividend() {
+fn preserves_remainder_sign() {
     let remainder = |left: &str, right: &str| {
         decimal(left)
             .remainder(&decimal(right))
@@ -117,7 +117,7 @@ fn remainder_keeps_the_sign_of_the_dividend() {
 }
 
 #[test]
-fn rounding_comparing_and_converting() {
+fn converts_decimal_values() {
     assert_eq!(decimal("2.5").set_scale_half_up(0).to_string(), "3");
     assert_eq!(decimal("-2.5").set_scale_half_up(0).to_string(), "-3");
     assert_eq!(decimal("2.4").set_scale_half_up(0).to_string(), "2");

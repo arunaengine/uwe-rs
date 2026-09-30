@@ -33,7 +33,7 @@ const VALUES: &str = "def m = [a: 1, b: 2.5, c: 'x\"y\\n/', d: null, e: [1, 'two
      w: 12345678901234567890, x: 1.0]\n";
 
 #[test]
-fn to_json_and_pretty_print() {
+fn formats_json_values() {
     assert_eq!(
         eval(&format!("{VALUES}groovy.json.JsonOutput.toJson(m)")).unwrap(),
         r#"{"a":1,"b":2.5,"c":"x\"y\n/","d":null,"e":[1,"two",true],"f":{"g":1.0,"h":{},"i":[]},"h":3,"l":1.5,"u":"\u00fc\t\u0001","v":1.0E20,"w":12345678901234567890,"x":1.0}"#
@@ -82,7 +82,7 @@ fn builder() {
 
 /// Empty text, as stubs leave JSON reports, fails as in Groovy.
 #[test]
-fn slurper_of_empty_text() {
+fn rejects_empty_json() {
     assert_eq!(
         eval("new groovy.json.JsonSlurper().parseText('')").unwrap_err(),
         "IllegalArgumentException: Text must not be null or empty"

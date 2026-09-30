@@ -22,7 +22,7 @@ fn lower(source: &str) -> Result<Module, Vec<String>> {
 }
 
 #[test]
-fn workflows_call_processes_and_emit() {
+fn lowers_workflow_calls() {
     let source = format!(
         "{PROCESS}workflow W {{\n    take:\n    x\n    main:\n    P(x)\n    if( x ) {{\n        P.out.set {{ y }}\n    }}\n    emit:\n    out = y\n    x\n}}"
     );
@@ -39,7 +39,7 @@ fn workflows_call_processes_and_emit() {
 }
 
 #[test]
-fn dataflow_calls_belong_in_workflows() {
+fn requires_workflow_dataflow() {
     let errors = lower(&format!("{PROCESS}def f() {{ P(1) }}")).unwrap_err();
     assert_eq!(
         errors,

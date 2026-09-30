@@ -40,7 +40,7 @@ fn value(body: &str) -> String {
 }
 
 #[test]
-fn remote_paths_print_without_scheme() {
+fn formats_remote_paths() {
     let s3 = "def s = file('s3://bucket/dir/x.txt')\n[s.toString(), s.toUriString(), s.name, s.parent, s.scheme]";
     assert_eq!(
         value(s3),
@@ -69,7 +69,7 @@ fn uris_resolve_references() {
 }
 
 #[test]
-fn relative_files_keep_their_text() {
+fn preserves_relative_files() {
     // Groovy 4.0.31 prints this.
     let files = "def f = new File('a/b.txt')\n[f, f.isAbsolute(), new File('/x').isAbsolute(), \
                  f.name, f.toPath().isAbsolute(), new File('/x/y').toPath().fileName.isAbsolute(), \
@@ -81,7 +81,7 @@ fn relative_files_keep_their_text() {
 }
 
 #[test]
-fn local_paths_and_names() {
+fn resolves_local_paths() {
     let names =
         "def l = file('rel/../x.tar.gz')\n[l, l.baseName, l.simpleName, l.extension, l.name]";
     assert_eq!(value(names), "[/launch/x.tar.gz, x.tar, x, gz, x.tar.gz]");
@@ -134,7 +134,7 @@ fn invalid_patterns() {
 }
 
 #[test]
-fn writing_copying_and_deleting_files() {
+fn mutates_host_files() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let dir = directory.path().display();
     let body = format!(
@@ -151,7 +151,7 @@ fn writing_copying_and_deleting_files() {
 /// handlers write reports and read the logo; Groovy 4 gives
 /// `[done, 'abc\n', 4, YWJjCg==, YW|Jj|Cg|==]`.
 #[test]
-fn writers_and_bytes_of_files() {
+fn writes_file_bytes() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let dir = directory.path().display();
     let body = format!(
@@ -165,7 +165,7 @@ fn writers_and_bytes_of_files() {
 }
 
 #[test]
-fn directories_are_made_and_files_copied_into_them() {
+fn copies_directory_files() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let dir = directory.path().display();
     let body = format!(
@@ -193,7 +193,7 @@ fn paths_match_globs() {
 }
 
 #[test]
-fn file_names_as_paths() {
+fn converts_file_paths() {
     assert_eq!(
         value("def f = file('/x/y/z.txt').fileName\n[f.name, f, f.getClass().getSimpleName()]"),
         "[z.txt, z.txt, UnixPath]"
@@ -201,7 +201,7 @@ fn file_names_as_paths() {
 }
 
 #[test]
-fn csv_files_split_into_records() {
+fn splits_csv_files() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let dir = directory.path().display();
     let body = format!(
@@ -218,7 +218,7 @@ fn csv_files_split_into_records() {
 }
 
 #[test]
-fn input_streams_read_bytes() {
+fn reads_stream_bytes() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let dir = directory.path().display();
     let body = format!(
@@ -230,7 +230,7 @@ fn input_streams_read_bytes() {
 }
 
 #[test]
-fn paths_below_files_do_not_exist() {
+fn rejects_file_children() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let dir = directory.path().display();
     let body = format!(
@@ -241,7 +241,7 @@ fn paths_below_files_do_not_exist() {
 }
 
 #[test]
-fn file_sizes_and_json_files() {
+fn reads_file_metadata() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let dir = directory.path().display();
     let body = format!(
@@ -253,7 +253,7 @@ fn file_sizes_and_json_files() {
 }
 
 #[test]
-fn globs_match_like_java_globs() {
+fn matches_java_globs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let d = directory.path().display();
     for file in [
@@ -286,7 +286,7 @@ fn globs_match_like_java_globs() {
 }
 
 #[test]
-fn glob_propagates_recursive_listing_failure() {
+fn propagates_glob_failures() {
     struct FailingListing;
 
     impl Host for FailingListing {
@@ -313,7 +313,7 @@ fn glob_propagates_recursive_listing_failure() {
 }
 
 #[test]
-fn glob_with_absent_local_prefix_has_no_matches() {
+fn excludes_absent_prefixes() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let pattern = format!("{}/absent/*.fq", directory.path().display());
     assert!(
@@ -324,7 +324,7 @@ fn glob_with_absent_local_prefix_has_no_matches() {
 }
 
 #[test]
-fn output_globs_have_choices_and_classes() {
+fn matches_output_globs() {
     use nextflow_evaluator::interpreter::glob::matches;
     assert!(matches("*.{mzML,mgf}", "run.mgf"));
     assert!(matches("out_[ab].txt", "out_b.txt"));
@@ -334,7 +334,7 @@ fn output_globs_have_choices_and_classes() {
 
 /// `new Yaml().load(new FileReader(name))` reads the file, as TreeVal reads its input YAML.
 #[test]
-fn yaml_loads_a_file_reader() {
+fn reads_yaml_files() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let dir = directory.path().display();
     let body = format!(
@@ -346,7 +346,7 @@ fn yaml_loads_a_file_reader() {
 }
 
 #[test]
-fn yaml_anchors_aliases_and_merge_keys() {
+fn resolves_yaml_aliases() {
     let text = "base: &base\n  a: 1\n  b: two\nmore: &more\n  <<: *base\n  c: 3\ns: &s hello\n\
                 use:\n  x: 0\n  <<: [*more, {d: 4, a: 9}]\n  b: over\n  '<<': quoted\nref: *s\n";
     let body = format!("new org.yaml.snakeyaml.Yaml().load({text:?})");
@@ -358,7 +358,7 @@ fn yaml_anchors_aliases_and_merge_keys() {
 }
 
 #[test]
-fn yaml_slurper_reads_decimals() {
+fn reads_yaml_decimals() {
     assert_eq!(
         value(
             "def y = new groovy.yaml.YamlSlurper().parseText('a: 2.50\\nn: 3\\nl: [x, 1.5]')\n\
@@ -369,7 +369,7 @@ fn yaml_slurper_reads_decimals() {
 }
 
 #[test]
-fn yaml_load_and_dump() {
+fn preserves_yaml_values() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let file = directory.path().join("v.yml");
     std::fs::write(&file, "\"P:GUNZIP\":\n    gunzip: 1.13\n    other: 2.0.1\n").unwrap();
@@ -387,7 +387,7 @@ fn yaml_load_and_dump() {
 }
 
 #[test]
-fn yaml_dump_writes_nested_sequences_and_maps_as_snakeyaml() {
+fn formats_nested_yaml() {
     assert_eq!(
         value(
             "new org.yaml.snakeyaml.Yaml().dumpAsMap([versions: [[process: 'P', tools: [samtools: '1.20']], [process: 'Q', tools: [bwa: '0.7.17']]]])"
@@ -401,7 +401,7 @@ fn yaml_dump_writes_nested_sequences_and_maps_as_snakeyaml() {
 }
 
 #[test]
-fn yaml_dump_preserves_multiline_text_and_trailing_newlines() {
+fn preserves_yaml_text() {
     for (text, expected) in [
         ("first\nsecond", "text: |-\n  first\n  second\n"),
         ("first\nsecond\n", "text: |\n  first\n  second\n"),
@@ -423,7 +423,7 @@ fn yaml_dump_preserves_multiline_text_and_trailing_newlines() {
 }
 
 #[test]
-fn uris_have_their_parts() {
+fn parses_uri_parts() {
     assert_eq!(
         value(
             "def u = new URI('https://user@example.org:8080/a/b.txt?x=1#top')\n\
@@ -445,7 +445,7 @@ fn uris_have_their_parts() {
 }
 
 #[test]
-fn streams_readers_and_gzip() {
+fn reads_compressed_streams() {
     use std::io::Write;
     let directory = tempfile::tempdir().expect("a temporary directory");
     let plain = directory.path().join("x.txt");
@@ -465,7 +465,7 @@ fn streams_readers_and_gzip() {
 }
 
 #[test]
-fn regex_classes_and_file_walks() {
+fn dispatches_class_methods() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     for file in ["x.txt", "a/y.txt", "a/b/z.txt"] {
         let path = directory.path().join(file);
@@ -492,7 +492,7 @@ fn regex_classes_and_file_walks() {
 /// staged name, and the base name, simple name and extension of its last part: Nextflow
 /// 26.04.6 gives `input1/a.fastq.gz a.fastq a gz`.
 #[test]
-fn staged_names_in_folders() {
+fn preserves_staged_names() {
     let path = nextflow_evaluator::value::PathValue {
         path: "/data/a.fastq.gz".into(),
         staged: Some("input1/a.fastq.gz".into()),
@@ -524,7 +524,7 @@ fn try_with_resources() {
 /// `getAbsolutePath()` of a `java.io.File` gives the text of its absolute path, as nf-synteny
 /// uses it; Groovy gives `/tmp/a.fa` and the launch directory with `a.fa` for these.
 #[test]
-fn absolute_paths_of_files() {
+fn resolves_absolute_files() {
     let body = "[new File('/tmp/a.fa').getAbsolutePath(), new File('a.fa').getAbsolutePath().endsWith('/a.fa'), \
                 new File('a.fa').getAbsolutePath() instanceof String]";
     assert_eq!(value(body), "[/tmp/a.fa, true, true]");

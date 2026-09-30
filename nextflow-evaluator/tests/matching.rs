@@ -66,7 +66,7 @@ fn matcher_results() {
 }
 
 #[test]
-fn matchers_iterate_their_matches() {
+fn iterates_regex_matches() {
     assert_eq!(
         value(
             "[('-o out.fa --x' =~ /-o(?:utput)?\\s(.*)\\s?/).findAll(), \
@@ -79,7 +79,7 @@ fn matchers_iterate_their_matches() {
 }
 
 #[test]
-fn full_matches_and_patterns() {
+fn matches_full_patterns() {
     assert_eq!(
         value("['ABC' ==~ /(?i)abc/, 'abc' ==~ /b/, null ==~ /x/]"),
         "[true, false, false]"

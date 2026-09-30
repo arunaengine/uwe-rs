@@ -15,7 +15,7 @@ fn decimal(text: &str) -> (&'static str, String) {
 }
 
 #[test]
-fn integer_literals_take_the_narrowest_class() {
+fn narrows_integer_literals() {
     let cases = [
         ("1", "Integer", "1"),
         ("2147483647", "Integer", "2147483647"),
@@ -72,7 +72,7 @@ fn decimal_literals() {
 }
 
 #[test]
-fn double_text_follows_java() {
+fn formats_java_doubles() {
     let cases = [
         (1.0, "1.0"),
         (100.0, "100.0"),

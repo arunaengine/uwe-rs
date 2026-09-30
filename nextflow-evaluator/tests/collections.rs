@@ -44,7 +44,7 @@ fn combinations() {
 }
 
 #[test]
-fn index_values_and_lists_of_indexes() {
+fn selects_index_values() {
     assert_eq!(
         value(
             "def files = ['a.txt', 'b.bed', 'c.bed']\n\
@@ -57,7 +57,7 @@ fn index_values_and_lists_of_indexes() {
 }
 
 #[test]
-fn null_iterates_as_nothing() {
+fn iterates_null_empty() {
     assert_eq!(
         value(
             "def n = null\n\
@@ -74,7 +74,7 @@ fn null_iterates_as_nothing() {
 }
 
 #[test]
-fn hash_sets_keep_the_order_of_java_tables() {
+fn orders_java_sets() {
     assert_eq!(
         value(
             "def s = new HashSet()\n\
@@ -88,7 +88,7 @@ fn hash_sets_keep_the_order_of_java_tables() {
 }
 
 #[test]
-fn grep_and_sort_without_change() {
+fn preserves_filtered_collections() {
     assert_eq!(
         value(
             "[[1, null, 'x', '', 0].grep(), ['ab', 'cd'].grep(~/a.*/), ['ab', null].grep { it != null }]"
@@ -258,7 +258,7 @@ fn list_properties() {
 }
 
 #[test]
-fn more_collection_and_path_methods() {
+fn dispatches_collection_methods() {
     assert_eq!(
         value(
             "def m = [a: 1, b: 2, c: 3]\ndef l = [3, 1, 3]\n\
@@ -280,7 +280,7 @@ fn collection_classes() {
 /// A list indexed with a name gives that property of each element that is not null, as
 /// Groovy's `getAt(String)` does; Nextflow 26.04.6 prints these.
 #[test]
-fn lists_indexed_with_names() {
+fn indexes_list_names() {
     let list = "def l = [[id: 1, c: 2], null, [id: 3]]";
     assert_eq!(value(&format!("{list}\nl['id']")), "[1, 3]");
     assert_eq!(value(&format!("{list}\nl['c']")), "[2, null]");
@@ -289,7 +289,7 @@ fn lists_indexed_with_names() {
 
 /// Several indexes give the element at each, as Groovy's `getAt(Collection)`.
 #[test]
-fn lists_indexed_with_several_indexes() {
+fn selects_list_indexes() {
     assert_eq!(value("[10, 11, 12, 13][0, 2, 3]"), "[10, 12, 13]");
     assert_eq!(value("[10, 11, 12, 13][0, 1..2]"), "[10, 11, 12]");
 }
@@ -297,7 +297,7 @@ fn lists_indexed_with_several_indexes() {
 /// A method that Groovy does not have for a list fails with Groovy's message, as Nextflow
 /// 26.04.6 gives it.
 #[test]
-fn methods_that_lists_lack() {
+fn rejects_list_methods() {
     assert_eq!(
         eval("['a.b', 'c.d'].tokenize('.')").unwrap_err(),
         "MissingMethodException: No signature of method: java.util.ArrayList.tokenize() is \
@@ -308,7 +308,7 @@ fn methods_that_lists_lack() {
 /// Array classes like `Object[]` and `isAssignableFrom`, as the `isCollectionOrArray` of older
 /// nf-core pipelines uses them; Nextflow 26.04.6 with the legacy parser gives these.
 #[test]
-fn array_classes_and_assignable_classes() {
+fn matches_array_classes() {
     let check = "def f = { x -> [Collection, Object[]].any { it.isAssignableFrom(x.getClass()) } }";
     assert_eq!(value(&format!("{check}\nf.call([1])")), "true");
     assert_eq!(value(&format!("{check}\nf.call('x')")), "false");
@@ -317,7 +317,7 @@ fn array_classes_and_assignable_classes() {
 /// Legacy syntax: `*items` in a list and `*: map` in a map put their elements in; Nextflow
 /// 26.04.6 prints `[1, 2, 3]` and `[a:1, b:2]`.
 #[test]
-fn spread_elements_and_entries() {
+fn spreads_collection_entries() {
     assert_eq!(
         value("def b = [2, 3]\ndef m = [a: 1]\n[[1, *b], [*:m, b: 2]]"),
         "[[1, 2, 3], [a:1, b:2]]"

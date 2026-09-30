@@ -65,7 +65,7 @@ fn declarations_and_assignments() {
 }
 
 #[test]
-fn closures_capture_enclosing_variables() {
+fn captures_enclosing_variables() {
     let source = "def f() {\n    def a = 1\n    def b = 2\n    return { x -> { b + a + x } }\n}";
     let module = lower(source).expect("lowers");
     let function = &module.functions[0];
@@ -90,7 +90,7 @@ fn closures_capture_enclosing_variables() {
 }
 
 #[test]
-fn nested_gstrings_stay_gstrings() {
+fn preserves_nested_gstrings() {
     let module = lower("def f(v) { \"a${ \"b${v}\" }\" }").expect("lowers");
     let StatementKind::Expression(outer) = &module.functions[0].body[0].kind else {
         panic!("expression statement")
@@ -117,7 +117,7 @@ fn nested_gstrings_stay_gstrings() {
 }
 
 #[test]
-fn unsupported_items_fail_loudly() {
+fn rejects_unsupported_items() {
     assert_eq!(
         errors("enum Color {\n    RED\n}"),
         ["1:1: This script item is not supported yet"]

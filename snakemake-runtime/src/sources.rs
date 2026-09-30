@@ -176,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn sources_give_way_to_the_files_of_the_job() {
+    fn prioritizes_job_files() {
         let sources = sources(&[
             "scripts/a.py",
             "results/.gitkeep",

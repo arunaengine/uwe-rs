@@ -180,7 +180,7 @@ mod tests {
     use super::{TAG, with_preamble};
 
     #[test]
-    fn the_preamble_replaces_an_earlier_one_as_the_first_cell() {
+    fn replaces_notebook_preamble() {
         let notebook = json!({
             "cells": [
                 {"cell_type": "code", "metadata": {"tags": [TAG]}, "source": "old"},

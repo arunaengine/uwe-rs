@@ -31,7 +31,7 @@ rule side:
 "#;
 
 #[test]
-fn forced_jobs_bypass_reuse_and_selected_temporary_files_are_delivered() {
+fn bypasses_forced_reuse() {
     for forceall in [false, true] {
         let folder = tempfile::tempdir().unwrap();
         std::fs::write(
@@ -71,7 +71,7 @@ fn forced_jobs_bypass_reuse_and_selected_temporary_files_are_delivered() {
 }
 
 #[test]
-fn a_forced_checkpoint_replans_from_new_outputs_and_respects_until() {
+fn replans_forced_checkpoints() {
     use workflow_graph::{Outcome, OutputFile};
     for until in [false, true] {
         let folder = tempfile::tempdir().unwrap();
@@ -140,7 +140,7 @@ checkpoint pick:
 }
 
 #[test]
-fn a_service_group_with_a_forced_consumer_bypasses_reuse() {
+fn bypasses_group_reuse() {
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(
         folder.path().join("Snakefile"),

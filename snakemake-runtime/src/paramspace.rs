@@ -325,7 +325,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn patterns_fill_one_place_per_column() {
+    fn fills_column_patterns() {
         let parts = ["a~1".to_owned(), "b~2".to_owned(), "c~3".to_owned()];
         assert_eq!(fill("{}/{}_{}", &parts), "a~1/b~2_c~3");
         assert_eq!(fill("{}", &parts[..1]), "a~1");

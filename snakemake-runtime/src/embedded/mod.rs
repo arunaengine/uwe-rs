@@ -273,13 +273,13 @@ mod tests {
     use super::{json_string, shebang};
 
     #[test]
-    fn texts_are_written_as_python_json_writes_them() {
+    fn matches_json_encoding() {
         assert_eq!(json_string("a\"b\\\n"), r#""a\"b\\\n""#);
         assert_eq!(json_string("é😀"), "\"\\u00e9\\ud83d\\ude00\"");
     }
 
     #[test]
-    fn shebang_lines_are_split_off() {
+    fn separates_shebang_lines() {
         assert_eq!(shebang("#!/bin/bash\necho\n"), ("#!/bin/bash\n", "echo\n"));
         assert_eq!(shebang("#![allow(x)]\n"), ("", "#![allow(x)]\n"));
         assert_eq!(shebang("echo\n"), ("", "echo\n"));

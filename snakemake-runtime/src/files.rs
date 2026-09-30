@@ -284,7 +284,7 @@ mod tests {
     }
 
     #[test]
-    fn outputs_of_a_store_elsewhere_are_read_through_the_files_of_the_run() {
+    fn reads_stored_outputs() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         std::fs::write(folder.path().join("counts.txt"), "3\n").expect("writes");
         let storage = storage::Storage::default();
@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn writes_of_a_real_run_reach_the_disk() {
+    fn persists_run_writes() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let storage = storage::Storage::default();
         let mirrors = Rc::new(Mirrors::new(folder.path().join("downloads"), &storage));
@@ -325,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn directory_outputs_elsewhere_are_listed_through_the_files_of_the_run() {
+    fn lists_stored_directories() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         std::fs::create_dir_all(folder.path().join("checkpoint/nested")).expect("makes folders");
         std::fs::write(folder.path().join("checkpoint/counts.txt"), "3\n").expect("writes");
@@ -358,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    fn a_file_that_a_directory_output_lacks_is_not_made() {
+    fn preserves_missing_files() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let made = folder.path().join("made");
         std::fs::create_dir(&made).expect("makes the folder");

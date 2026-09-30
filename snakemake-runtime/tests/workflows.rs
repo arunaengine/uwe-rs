@@ -82,7 +82,7 @@ fn describe(fixture: &Path) -> String {
 }
 
 #[test]
-fn workflows_give_the_expected_graphs() {
+fn matches_workflow_graphs() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/workflows");
     let mut folders: Vec<_> = std::fs::read_dir(&root)
         .expect("reads the fixtures")

@@ -219,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    fn tracked_files_come_from_the_index_of_every_version() {
+    fn reads_repository_indexes() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let top = root.path();
         git(top, &["init", "-q"]);
@@ -253,7 +253,7 @@ mod tests {
     }
 
     #[test]
-    fn repositories_with_sha256_names_are_read_too() {
+    fn reads_sha256_repositories() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let top = root.path();
         git(top, &["init", "-q", "--object-format=sha256"]);
@@ -264,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn submodules_add_their_files_and_folders_outside_git_have_none() {
+    fn lists_submodule_files() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let top = root.path();
         git(top, &["init", "-q"]);

@@ -13,7 +13,7 @@ rule all:
 "#;
 
 #[test]
-fn config_values_merge_into_config_files() {
+fn merges_config_values() {
     let scratch = tempfile::tempdir().expect("a temporary directory");
     let folder = scratch.path().join("workflow");
     std::fs::create_dir_all(&folder).expect("makes the folder");
@@ -66,7 +66,7 @@ names:
 "#;
 
 #[test]
-fn config_files_render_their_yte_templates() {
+fn renders_config_templates() {
     let scratch = tempfile::tempdir().expect("a temporary directory");
     let folder = scratch.path().join("workflow");
     std::fs::create_dir_all(&folder).expect("makes the folder");
@@ -95,7 +95,7 @@ fn config_files_render_their_yte_templates() {
 }
 
 #[test]
-fn mapping_lookup_matches_character_classes() {
+fn matches_mapping_classes() {
     let folder = tempfile::tempdir().expect("a folder");
     std::fs::write(
         folder.path().join("Snakefile"),

@@ -51,7 +51,7 @@ impl Executor for Failing {
 }
 
 #[test]
-fn hooks_wait_for_execution_and_success_runs_once() {
+fn awaits_success_hooks() {
     let folder = tempfile::tempdir().expect("a folder");
     std::fs::write(folder.path().join("Snakefile"), HOOKS).expect("a Snakefile");
     let launch = Launch {
@@ -73,7 +73,7 @@ fn hooks_wait_for_execution_and_success_runs_once() {
 }
 
 #[test]
-fn module_hooks_wait_for_explicit_calls_and_included_hooks_register() {
+fn registers_called_hooks() {
     let folder = tempfile::tempdir().expect("a folder");
     std::fs::write(
         folder.path().join("module.smk"),
@@ -104,7 +104,7 @@ fn module_hooks_wait_for_explicit_calls_and_included_hooks_register() {
 }
 
 #[test]
-fn job_and_executor_failures_run_only_the_error_hook() {
+fn selects_error_hooks() {
     for machine in [false, true] {
         let folder = tempfile::tempdir().expect("a folder");
         std::fs::write(folder.path().join("Snakefile"), HOOKS).expect("a Snakefile");
@@ -129,7 +129,7 @@ fn job_and_executor_failures_run_only_the_error_hook() {
 }
 
 #[test]
-fn executor_failure_during_a_planning_command_ends_the_worker() {
+fn stops_failed_worker() {
     let folder = tempfile::tempdir().expect("a folder");
     std::fs::write(
         folder.path().join("Snakefile"),
@@ -155,7 +155,7 @@ fn executor_failure_during_a_planning_command_ends_the_worker() {
 }
 
 #[test]
-fn up_to_date_workflows_and_planning_errors_run_no_hooks() {
+fn skips_unexecuted_hooks() {
     for input in ["", "    input: 'missing'\n"] {
         let folder = tempfile::tempdir().expect("a folder");
         std::fs::write(folder.path().join("out"), "existing").expect("an output");
@@ -178,7 +178,7 @@ fn up_to_date_workflows_and_planning_errors_run_no_hooks() {
 }
 
 #[test]
-fn hook_commands_are_refused_without_publishing_container_tasks() {
+fn rejects_hook_commands() {
     for hook in ["onstart", "onsuccess", "onerror"] {
         let folder = tempfile::tempdir().expect("a folder");
         std::fs::write(

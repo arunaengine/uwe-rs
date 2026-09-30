@@ -367,7 +367,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn helper_names_are_unique_across_starters_and_preparations() {
+    fn isolates_helper_names() {
         let names: std::collections::HashSet<_> = (0..1000)
             .flat_map(|_| [container_name("helper"), container_name("prepare")])
             .collect();
@@ -375,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn cancelled_starters_do_not_touch_cache_or_engine() {
+    fn rejects_cancelled_starters() {
         let folder = tempfile::tempdir().unwrap();
         let cache = folder.path().join("cache");
         let cancel = CancellationToken::new();
@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn cancellation_interrupts_environment_lock_wait() {
+    fn cancels_environment_wait() {
         let folder = tempfile::tempdir().unwrap();
         std::fs::create_dir(folder.path().join("environments")).unwrap();
         let key = fingerprint(&[DEFAULT_IMAGE, PREPARE, "", ""]);
@@ -436,7 +436,7 @@ mod tests {
     }
 
     #[test]
-    fn transitive_constraints_select_distinct_cached_environments_and_reach_helpers() {
+    fn forwards_transitive_constraints() {
         let folder = tempfile::tempdir().unwrap();
         let starter = ContainerStarter::new(
             PythonContainers {
@@ -479,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn folders_inside_others_are_not_mounted_again() {
+    fn avoids_nested_mounts() {
         let folders = outermost(vec![
             PathBuf::from("/w/project/.test"),
             PathBuf::from("/w/project"),

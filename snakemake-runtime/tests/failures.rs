@@ -114,7 +114,7 @@ fn run(keep_going: bool) -> (String, Vec<String>, Vec<String>) {
 }
 
 #[test]
-fn running_jobs_end_after_a_failure_and_no_job_starts() {
+fn drains_failed_runs() {
     let (error, ran, delivered) = run(false);
     assert_eq!(error, "Error in rule fail: the task ended with exit code 3");
     assert_eq!(ran, ["fail", "slow"]);
@@ -122,7 +122,7 @@ fn running_jobs_end_after_a_failure_and_no_job_starts() {
 }
 
 #[test]
-fn a_run_that_keeps_going_runs_the_jobs_that_do_not_depend_on_the_failure() {
+fn continues_independent_jobs() {
     let (error, ran, delivered) = run(true);
     assert_eq!(error, "Error in rule fail: the task ended with exit code 3");
     assert_eq!(ran, ["fail", "slow", "later"]);

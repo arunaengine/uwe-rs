@@ -58,7 +58,7 @@ impl Executor for Made {
 }
 
 #[test]
-fn a_service_runs_with_the_jobs_that_use_it_in_one_task() {
+fn executes_service_groups() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let workdir = folder.path().join("workflow");
     std::fs::create_dir(&workdir).expect("makes the folder");
@@ -112,7 +112,7 @@ rule second:
 "#;
 
 #[test]
-fn ordered_service_groups_retry_exit_missing_and_integrity_failures() {
+fn retries_service_groups() {
     for failure in ["exit", "missing", "empty", "bridge"] {
         let folder = tempfile::tempdir().unwrap();
         let bridge = failure == "bridge";
@@ -212,7 +212,7 @@ rule bridge:
 
 #[test]
 #[ignore = "needs a container engine; set IUNCTUS_CONTAINER_TESTS=1 and run with --ignored"]
-fn ordered_consumers_execute_with_the_service_alive_in_a_real_container() {
+fn orders_live_consumers() {
     use std::os::unix::fs::MetadataExt;
 
     assert_eq!(std::env::var("IUNCTUS_CONTAINER_TESTS").as_deref(), Ok("1"));

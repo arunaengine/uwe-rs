@@ -11,7 +11,7 @@ use snakemake_runtime::{ContainerStarter, PythonContainers};
 
 #[test]
 #[ignore = "needs a container engine and network; set IUNCTUS_CONTAINER_TESTS=1 and run with --ignored"]
-fn packages_run_in_a_container() {
+fn executes_container_packages() {
     assert_eq!(
         std::env::var("IUNCTUS_CONTAINER_TESTS").as_deref(),
         Ok("1"),

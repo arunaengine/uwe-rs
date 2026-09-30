@@ -146,7 +146,7 @@ mod tests {
     }
 
     #[test]
-    fn tables_have_snakemakes_columns() {
+    fn matches_benchmark_columns() {
         let text = text(&outcome(), "bench.tsv");
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(
@@ -160,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn json_lines_have_sorted_keys() {
+    fn sorts_benchmark_keys() {
         let text = text(&outcome(), "bench.jsonl");
         assert!(
             text.starts_with("{\"cpu_time\": 1862.75, \"h:m:s\": \"1:02:05\", "),

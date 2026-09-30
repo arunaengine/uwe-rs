@@ -198,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn a_service_and_its_users_run_as_one_task() {
+    fn groups_service_tasks() {
         let service = task(
             "a",
             "ln -s /dev/random foo.socket; sleep 10000",
@@ -238,7 +238,7 @@ mod tests {
     }
 
     #[test]
-    fn a_service_needs_the_image_of_its_users() {
+    fn requires_service_image() {
         let service = task("a", "true", &[], &["s"]);
         let mut user = task("b", "true", &["s"], &[]);
         user.image = Some("other".into());
@@ -247,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn group_deadlines_cover_consumer_paths_and_the_service_budget() {
+    fn covers_group_deadlines() {
         let mut server = task("server", "true", &[], &["socket"]);
         server.resources.time_seconds = Some(15);
         let mut first = task("first", "true", &["socket"], &["first"]);

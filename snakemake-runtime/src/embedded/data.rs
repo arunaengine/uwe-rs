@@ -369,14 +369,14 @@ mod tests {
     use super::{Data, Named, complex_repr};
 
     #[test]
-    fn complex_numbers_show_as_python_shows_them() {
+    fn formats_complex_numbers() {
         assert_eq!(complex_repr(1.0, 2.0), "(1+2j)");
         assert_eq!(complex_repr(0.0, 2.0), "2j");
         assert_eq!(complex_repr(1.5, -2.0), "(1.5-2j)");
     }
 
     #[test]
-    fn named_lists_give_their_items_as_snakemake_does() {
+    fn serializes_named_lists() {
         let named = Named {
             kind: "InputFiles".into(),
             values: vec![Data::str("a"), Data::str("b"), Data::str("c")],

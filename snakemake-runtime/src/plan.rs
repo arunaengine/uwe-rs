@@ -1106,7 +1106,7 @@ mod tests {
     }
 
     #[test]
-    fn until_keeps_matching_jobs_and_dependencies_without_siblings() {
+    fn limits_until_jobs() {
         for (target, expected) in [
             ("branch", vec!["branch.x", "branch.y", "seed.x", "seed.y"]),
             ("b.x", vec!["branch.x", "seed.x"]),
@@ -1122,7 +1122,7 @@ mod tests {
     }
 
     #[test]
-    fn omit_from_keeps_ancestors_and_independent_siblings() {
+    fn preserves_omitted_ancestors() {
         for (target, expected) in [
             ("branch", vec!["seed.x", "seed.y", "side"]),
             ("a.x", vec!["branch.y", "seed.y", "side"]),
@@ -1140,7 +1140,7 @@ mod tests {
     }
 
     #[test]
-    fn forcerun_selects_rules_or_files_and_propagates_downstream() {
+    fn propagates_forced_jobs() {
         for (target, expected) in [
             (
                 "seed",
@@ -1169,7 +1169,7 @@ mod tests {
     }
 
     #[test]
-    fn forceall_reruns_only_jobs_needed_for_selected_targets() {
+    fn limits_forced_targets() {
         let (folder, mut interpreter, mut planner) = workflow();
         for output in ["a.x", "b.x"] {
             std::fs::write(folder.path().join(output), "current").unwrap();
@@ -1191,7 +1191,7 @@ mod tests {
     }
 
     #[test]
-    fn until_and_omit_from_limit_forced_jobs_together() {
+    fn limits_forced_jobs() {
         let (_folder, mut interpreter, mut planner) = workflow();
         planner.forceall = true;
         let roots = planner

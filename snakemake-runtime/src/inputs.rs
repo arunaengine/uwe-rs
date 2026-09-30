@@ -433,7 +433,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tables_attach_to_the_config_value_that_names_them() {
+    fn attaches_config_tables() {
         let folder = tempfile::tempdir().expect("a folder");
         std::fs::write(
             folder.path().join("samples.tsv"),
@@ -457,7 +457,7 @@ mod tests {
     }
 
     #[test]
-    fn paths_are_marked_where_the_schema_does_not_say() {
+    fn infers_unspecified_paths() {
         let folder = tempfile::tempdir().expect("a folder");
         std::fs::write(folder.path().join("genome.fa"), ">a\n").expect("a file");
         std::fs::create_dir(folder.path().join("data")).expect("a folder");

@@ -5,7 +5,7 @@
 use workflow_graph::{Files, Launch, LocalFiles, Outcome, OutputFile};
 
 #[test]
-fn unused_custom_and_cyclic_params_are_uncomparable_without_repr_side_effects() {
+fn rejects_uncomparable_params() {
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(folder.path().join("Snakefile"), r#"
 seen = []

@@ -5,7 +5,7 @@
 use workflow_graph::{Launch, Outcome};
 
 #[test]
-fn profile_retry_aliases_apply_unless_the_rule_overrides_them() {
+fn applies_retry_aliases() {
     for setting in ["retries", "restart-times"] {
         for explicit in ["", "    retries: 0\n", "    retries: None\n"] {
             let folder = tempfile::tempdir().expect("a folder");
@@ -47,7 +47,7 @@ fn profile_retry_aliases_apply_unless_the_rule_overrides_them() {
 }
 
 #[test]
-fn profile_settings_are_diagnosed_or_explicitly_ignored() {
+fn diagnoses_profile_settings() {
     for (settings, unsupported) in [
         ("notemp: true\n", true),
         ("no-hooks: true\n", true),
@@ -79,7 +79,7 @@ fn profile_settings_are_diagnosed_or_explicitly_ignored() {
 }
 
 #[test]
-fn profile_settings_that_only_choose_how_jobs_run_are_ignored() {
+fn ignores_execution_settings() {
     let folder = tempfile::tempdir().expect("a folder");
     let profile = folder.path().join("profiles/default");
     std::fs::create_dir_all(&profile).expect("a profile folder");

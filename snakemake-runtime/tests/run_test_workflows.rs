@@ -417,7 +417,7 @@ fn check_records(outcomes: &[(String, String)]) -> Vec<String> {
 }
 
 #[test]
-fn recorded_outcomes_agree_with_rejections() {
+fn matches_recorded_rejections() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/run_test_workflows.txt");
     let text = std::fs::read_to_string(path).expect("the recorded outcomes");
     let outcomes: Vec<_> = text
@@ -432,7 +432,7 @@ fn recorded_outcomes_agree_with_rejections() {
 
 #[test]
 #[ignore = "needs the Snakemake test workflows; run `just snakemake-run-test-workflows-test`"]
-fn workflows_run_as_recorded() {
+fn matches_recorded_workflows() {
     let test_workflows = PathBuf::from(
         std::env::var("SNAKEMAKE_TEST_WORKFLOWS").expect("SNAKEMAKE_TEST_WORKFLOWS is set"),
     );

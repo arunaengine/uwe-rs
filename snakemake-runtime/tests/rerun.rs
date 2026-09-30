@@ -67,14 +67,14 @@ fn steps(input_age: u64, record: Option<&str>) -> Vec<String> {
 }
 
 #[test]
-fn newer_inputs_run_their_jobs_again() {
+fn reruns_newer_inputs() {
     // Snakemake 9.27 runs `copy` again for an input newer than its output, not `keep`.
     assert_eq!(steps(10, None), ["all", "copy"]);
     assert_eq!(steps(1000, None), ["all"]);
 }
 
 #[test]
-fn newer_inputs_with_the_recorded_checksum_do_not() {
+fn reuses_identical_inputs() {
     // SHA-256 of "x\n", as Snakemake 9.27 records it for the input of `copy.txt`.
     let digest = "73cb3858a687a8494ca3323053016282f3dad39d42cf62ca4e79dda2aac7d9ac";
     let same = format!(r#"{{"input_checksums": {{"in.txt": "{digest}"}}}}"#);
@@ -99,7 +99,7 @@ rule a:
 "#;
 
 #[test]
-fn update_outputs_are_copies_and_before_update_inputs_need_no_job() {
+fn copies_update_outputs() {
     let scratch = tempfile::tempdir().expect("a temporary directory");
     let folder = scratch.path().join("workflow");
     std::fs::create_dir_all(&folder).expect("makes the folder");
@@ -157,7 +157,7 @@ fn update_outputs_are_copies_and_before_update_inputs_need_no_job() {
 }
 
 #[test]
-fn before_update_inputs_with_the_same_basename_keep_distinct_bytes() {
+fn isolates_update_inputs() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     for (path, content) in [("a/data.txt", "first\n"), ("b/data.txt", "second\n")] {
         let path = folder.path().join(path);
@@ -204,7 +204,7 @@ rule copy:
 }
 
 #[test]
-fn a_changed_checkpoint_reruns_before_its_previous_outputs_are_read() {
+fn reruns_changed_checkpoints() {
     use workflow_graph::{Driver, Files, LocalFiles, Outcome, OutputFile, Task};
 
     let folder = tempfile::tempdir().expect("a temporary directory");

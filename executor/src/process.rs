@@ -685,11 +685,11 @@ fn create(spec: &ContainerSpec, engine: &ContainerEngine, remove: bool) -> Conta
 /// Runs the container of the spec to its end, and removes it; an error has the last lines
 /// that it wrote to standard error.
 pub fn run_to_end(spec: &ContainerSpec) -> Result<(), ProcessError> {
-    run_to_end_cancellable(spec, &CancellationToken::new())
+    run_cancellable(spec, &CancellationToken::new())
 }
 
 /// Runs with cancellation and a ten-minute execution deadline.
-pub fn run_to_end_cancellable(
+pub fn run_cancellable(
     spec: &ContainerSpec,
     cancel: &CancellationToken,
 ) -> Result<(), ProcessError> {
@@ -801,7 +801,7 @@ mod tests {
             Err(ProcessError::Cancelled)
         ));
         assert!(matches!(
-            run_to_end_cancellable(&spec, &cancel),
+            run_cancellable(&spec, &cancel),
             Err(ProcessError::Cancelled)
         ));
     }

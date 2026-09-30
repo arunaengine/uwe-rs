@@ -32,7 +32,7 @@ output {
 "#;
 
 #[test]
-fn a_pipeline_without_a_schema_file_declares_its_params_and_outputs() {
+fn infers_pipeline_schema() {
     let folder = tempfile::tempdir().expect("a folder");
     std::fs::write(folder.path().join("main.nf"), SCRIPT).expect("writes the script");
     std::fs::write(
@@ -83,7 +83,7 @@ fn a_pipeline_without_a_schema_file_declares_its_params_and_outputs() {
 }
 
 #[test]
-fn a_schema_file_keeps_its_groups_and_embeds_its_sample_sheet() {
+fn embeds_samplesheet_schema() {
     let folder = tempfile::tempdir().expect("a folder");
     std::fs::create_dir(folder.path().join("assets")).expect("a folder");
     std::fs::write(

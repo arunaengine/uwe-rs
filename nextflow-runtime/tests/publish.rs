@@ -55,7 +55,7 @@ process {
 "#;
 
 #[test]
-fn unsupported_publish_options_are_refused_in_processes_and_config() {
+fn rejects_publish_options() {
     for (option, diagnostic) in [
         ("mode: 'move'", "publish mode `move`"),
         ("failOnError: false", "publishDir option `failOnError`"),
@@ -100,7 +100,7 @@ fn unsupported_publish_options_are_refused_in_processes_and_config() {
 }
 
 #[test]
-fn default_publish_options_and_disabled_rules_are_accepted() {
+fn accepts_disabled_publish() {
     for options in [
         "mode: 'copy', failOnError: true, contentType: false, tags: [:]",
         "mode: 'copy', failOnError: 'TRUE'",
@@ -133,7 +133,7 @@ impl Observer for Deliveries {
 }
 
 #[test]
-fn outputs_go_where_publish_dir_says() {
+fn publishes_directed_outputs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), PIPELINE).expect("writes the script");
     std::fs::write(directory.path().join("nextflow.config"), CONFIG).expect("writes the config");
@@ -192,7 +192,7 @@ impl workflow_graph::Executor for WithInputs {
 }
 
 #[test]
-fn globs_leave_out_the_staged_inputs() {
+fn excludes_staged_inputs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = r#"
 process TAKE {
@@ -290,7 +290,7 @@ impl workflow_graph::Executor for Maker {
 }
 
 #[test]
-fn workflow_outputs_go_below_the_output_directory() {
+fn publishes_workflow_outputs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), OUTPUTS).expect("writes the script");
     let results = directory.path().join("results");
@@ -324,7 +324,7 @@ fn workflow_outputs_go_below_the_output_directory() {
 }
 
 #[test]
-fn the_work_directory_as_an_output_is_not_published() {
+fn excludes_work_directory() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     // nf-core's EPANG_PLACE with the default publishDir of nf-core pipelines: Nextflow gives
     // the work directory the empty name, which saveAs turns down.

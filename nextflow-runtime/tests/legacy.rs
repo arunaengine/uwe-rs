@@ -22,7 +22,7 @@ fn write(root: &Path, name: &str, text: &str) {
 }
 
 #[test]
-fn statements_next_to_declarations_run_when_the_script_loads() {
+fn executes_module_statements() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(
         root.path(),
@@ -67,7 +67,7 @@ workflow SHOW {
 /// An include inside an `if` takes effect when its branch runs, as with Nextflow 26.04.6 and
 /// the legacy parser, which prints `B` for this script.
 #[test]
-fn includes_inside_if_statements_take_effect_when_they_run() {
+fn evaluates_conditional_includes() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(
         root.path(),
@@ -100,7 +100,7 @@ workflow {
 /// sets a param that nothing set before, as with Nextflow 26.04.6 and the legacy parser,
 /// which prints `b 1` for this script.
 #[test]
-fn params_assignments_run_in_order_with_the_statements() {
+fn orders_parameter_assignments() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(
         root.path(),
@@ -130,7 +130,7 @@ workflow {
 /// violations are those of everit 1.14.1, which
 /// `nextflow-evaluator/tests/fixtures/oracle/org_json/schema.groovy` prints.
 #[test]
-fn lib_classes_validate_with_org_json_and_everit() {
+fn validates_library_classes() {
     let root = tempfile::tempdir().expect("a temporary directory");
     std::fs::create_dir(root.path().join("lib")).expect("creates lib");
     write(
@@ -207,7 +207,7 @@ workflow {
 /// an assignment among the directives sets a variable, not the directive. Checked with
 /// Nextflow 26.04.6 and `NXF_SYNTAX_PARSER=v1`.
 #[test]
-fn process_sections_set_variables() {
+fn binds_process_sections() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(
         root.path(),
@@ -233,7 +233,7 @@ fn process_sections_set_variables() {
 /// Legacy includes may name the project directory in the source and break the line
 /// before `as`.
 #[test]
-fn includes_read_the_project_directory() {
+fn resolves_project_includes() {
     let root = tempfile::tempdir().expect("a temporary directory");
     std::fs::create_dir(root.path().join("modules")).expect("creates modules");
     write(
@@ -257,7 +257,7 @@ fn includes_read_the_project_directory() {
 /// A legacy include source may add strings to a script variable that holds the project
 /// directory, as in ProGFASTAGen, which Nextflow 26.04.6 runs.
 #[test]
-fn includes_add_strings_to_a_directory_variable() {
+fn resolves_directory_expressions() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(
         root.path(),
@@ -316,7 +316,7 @@ fn includes_inside_workflows() {
 /// MGnify pipelines, names that file, and a directory with a slash at the end, as in pacvar,
 /// its `main.nf`, as Nextflow's `realModulePath` finds them.
 #[test]
-fn includes_of_groovy_files() {
+fn includes_groovy_files() {
     let root = tempfile::tempdir().expect("a temporary directory");
     std::fs::create_dir(root.path().join("lib")).expect("creates lib");
     std::fs::create_dir(root.path().join("sub")).expect("creates sub");
@@ -348,7 +348,7 @@ fn includes_of_groovy_files() {
 /// Earth Biogenome Project's lib/MapExtended.groovy, which reaches no maps, and `deepMerge` is
 /// Nextflow's own; Nextflow 26.04.6 prints `[x:1, n:[p:1, q:3, r:4], z:null, y:2]`.
 #[test]
-fn evaluate_runs_a_groovy_script() {
+fn evaluates_groovy_scripts() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(
         root.path(),
@@ -376,7 +376,7 @@ fn evaluate_runs_a_groovy_script() {
 /// A class that a script defines, which closures of the script use, as
 /// multiplesequencealign's `Utils` in a subworkflow script.
 #[test]
-fn script_classes_serve_their_script() {
+fn binds_script_classes() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(
         root.path(),
@@ -396,7 +396,7 @@ fn script_classes_serve_their_script() {
 /// the including script with the given ones added, as Nextflow 26.04.6 prints
 /// `m loaded 5`, `m loaded 6`, `5 hi`, `6 hi` and `null` for these scripts.
 #[test]
-fn includes_with_params_load_the_script_again() {
+fn reloads_parameterized_includes() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(
         root.path(),

@@ -106,7 +106,7 @@ process {
 "#;
 
 #[test]
-fn failed_tasks_run_again_with_more_memory() {
+fn retries_increased_memory() {
     let (error, ran) = run(RETRY, &[("FIRST", 1, 137), ("FIRST", 2, 137)]);
     assert_eq!(error, None);
     let expected = [
@@ -132,7 +132,7 @@ fn failed_tasks_run_again_with_more_memory() {
 }
 
 #[test]
-fn ignored_failures_leave_the_outputs_empty() {
+fn empties_ignored_outputs() {
     let config = "process.errorStrategy = 'ignore'\n";
     let (error, ran) = run(config, &[("FIRST", 1, 2)]);
     assert_eq!(error, None);
@@ -140,7 +140,7 @@ fn ignored_failures_leave_the_outputs_empty() {
 }
 
 #[test]
-fn finish_fails_the_run_once_the_running_tasks_end() {
+fn drains_finishing_tasks() {
     let config = "process.errorStrategy = 'finish'\n";
     let (error, ran) = run(config, &[("FIRST", 1, 3)]);
     let error = error.expect("an error");
@@ -184,7 +184,7 @@ fn steps(ran: &[Ran]) -> Vec<&str> {
 }
 
 #[test]
-fn failures_stop_new_tasks_unless_the_run_keeps_going() {
+fn stops_failed_admission() {
     let failure = [("FAIL", 1, 3)];
     // Nextflow 26.04.6 with `terminate`, the default, stops at once: the running `SLOW` is
     // killed, and `LATER` never starts. With `finish`, `SLOW` ends first, and `LATER` never
@@ -203,7 +203,7 @@ fn failures_stop_new_tasks_unless_the_run_keeps_going() {
 }
 
 #[test]
-fn rejected_cached_outputs_retry_through_fresh_execution() {
+fn retries_rejected_cache() {
     struct Cached {
         fresh: usize,
         policies: Vec<workflow_graph::Reuse>,
@@ -260,7 +260,7 @@ fn rejected_cached_outputs_retry_through_fresh_execution() {
 }
 
 #[test]
-fn collection_failures_follow_process_error_policy() {
+fn applies_collection_policy() {
     use nextflow_evaluator::interpreter::Host;
     use std::cell::RefCell;
     use std::rc::Rc;

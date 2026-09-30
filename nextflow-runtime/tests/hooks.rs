@@ -64,7 +64,7 @@ impl Executor for Scripted {
 }
 
 #[test]
-fn callbacks_run_once_after_cleanup_and_preserve_primary_failure() {
+fn preserves_callback_failure() {
     for (mode, error_hook_fails, completion_fails, status, primary) in [
         (0, false, false, 0, ""),
         (1, false, false, 3, "exit status (3)"),

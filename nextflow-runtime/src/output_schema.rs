@@ -64,7 +64,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn targets_of_the_output_block() {
+    fn describes_output_targets() {
         let targets = [
             OutputTarget {
                 name: "multiqc".into(),

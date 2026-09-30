@@ -271,7 +271,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lazy_source_preserves_multicast_and_late_subscription() {
+    fn preserves_lazy_multicast() {
         let mut channel = Channel::queue();
         let first = channel.subscribe();
         let second = channel.subscribe();
@@ -305,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn stopped_reader_does_not_retain_messages() {
+    fn releases_stopped_reader() {
         let mut channel = Channel::queue();
         let stopped = channel.subscribe();
         let active = channel.subscribe();

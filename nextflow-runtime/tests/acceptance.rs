@@ -42,7 +42,7 @@ fn outcome(task: &Task, attempt: u32, exit_code: i32, file: bool, cached: bool) 
 }
 
 #[test]
-fn valid_outputs_are_accepted_once_for_the_exact_attempt() {
+fn accepts_exact_attempt() {
     let mut driver = driver("terminate");
     let task = driver.start().unwrap().remove(0);
     driver.complete(outcome(&task, 1, 0, true, false)).unwrap();
@@ -52,7 +52,7 @@ fn valid_outputs_are_accepted_once_for_the_exact_attempt() {
 }
 
 #[test]
-fn ignored_exit_and_output_failures_are_not_accepted() {
+fn rejects_failed_acceptance() {
     for (exit_code, file) in [(0, false), (3, true)] {
         let mut driver = driver("ignore");
         let task = driver.start().unwrap().remove(0);
@@ -64,7 +64,7 @@ fn ignored_exit_and_output_failures_are_not_accepted() {
 }
 
 #[test]
-fn retry_attempts_keep_independent_acceptance() {
+fn isolates_retry_acceptance() {
     let mut driver = driver("retry");
     let first = driver.start().unwrap().remove(0);
     let second = driver
@@ -81,7 +81,7 @@ fn retry_attempts_keep_independent_acceptance() {
 }
 
 #[test]
-fn cached_outcomes_are_revalidated() {
+fn revalidates_cached_outcomes() {
     for (file, accepted) in [(false, false), (true, true)] {
         let mut driver = driver(if accepted { "terminate" } else { "ignore" });
         let task = driver.start().unwrap().remove(0);

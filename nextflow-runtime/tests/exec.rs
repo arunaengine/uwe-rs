@@ -27,7 +27,7 @@ fn files(folder: &Path) -> Vec<PathBuf> {
 }
 
 #[test]
-fn exec_sections_run_in_the_interpreter() {
+fn interprets_exec_sections() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/exec");
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::copy(fixture.join("main.nf"), directory.path().join("main.nf")).expect("copies");

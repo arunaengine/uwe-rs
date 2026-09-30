@@ -951,7 +951,7 @@ fn thrown(exception: Exception) -> Error {
 #[cfg(test)]
 mod directive_tests {
     #[test]
-    fn every_lowered_directive_is_handled_or_refused() {
+    fn accounts_lowered_directives() {
         let mut runtime = super::HANDLED_DIRECTIVES.to_vec();
         runtime.extend_from_slice(super::REFUSED_DIRECTIVES);
         runtime.sort_unstable();

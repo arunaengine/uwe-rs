@@ -82,7 +82,7 @@ fn run(simulated: bool) -> (Vec<Delivery>, tempfile::TempDir) {
 }
 
 #[test]
-fn real_runs_deliver_the_reports_that_the_config_turns_on() {
+fn delivers_enabled_reports() {
     let (deliveries, _directory) = run(false);
     let launch_dir = std::env::current_dir().expect("a current directory");
     let targets: Vec<String> = (deliveries.iter())
@@ -127,7 +127,7 @@ fn real_runs_deliver_the_reports_that_the_config_turns_on() {
 }
 
 #[test]
-fn simulated_runs_write_no_reports() {
+fn skips_simulated_reports() {
     let (deliveries, directory) = run(true);
     assert!(deliveries.is_empty());
     assert!(!directory.path().join("scratch/nextflow-reports").exists());

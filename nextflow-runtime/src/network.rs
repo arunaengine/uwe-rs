@@ -43,7 +43,7 @@ mod tests {
     }
 
     #[test]
-    fn stopped_nodes_release_their_queue_subscriptions() {
+    fn releases_stopped_subscriptions() {
         let mut network = Network::default();
         let channel = network.channel(false);
         let output = network.channel(false);
@@ -75,7 +75,7 @@ mod tests {
     }
 
     #[test]
-    fn factories_yield_between_values_and_release_drained_messages() {
+    fn yields_factory_values() {
         struct Count {
             count: Rc<std::cell::Cell<usize>>,
         }

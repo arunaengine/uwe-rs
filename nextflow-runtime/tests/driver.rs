@@ -50,7 +50,7 @@ fn run(directory: &Path, launch: Launch) -> ExecutionGraph {
 }
 
 #[test]
-fn secret_reads_in_workflows_processes_and_config_are_unsupported() {
+fn rejects_secret_reads() {
     for read in [
         "secrets.TOKEN",
         "secrets['TOKEN']",
@@ -80,7 +80,7 @@ fn secret_reads_in_workflows_processes_and_config_are_unsupported() {
 }
 
 #[test]
-fn tasks_and_their_files_make_the_graph() {
+fn builds_task_graph() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), PIPELINE).expect("writes the script");
     std::fs::write(directory.path().join("nextflow.config"), CONFIG).expect("writes the config");
@@ -119,7 +119,7 @@ fn tasks_and_their_files_make_the_graph() {
 }
 
 #[test]
-fn stage_in_mode_copy_gives_copies_the_task_may_change() {
+fn copies_staged_inputs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = PIPELINE.replace(
         "process SHOUT {\n",
@@ -143,7 +143,7 @@ fn stage_in_mode_copy_gives_copies_the_task_may_change() {
 }
 
 #[test]
-fn params_come_from_the_params_file_and_the_command_line() {
+fn combines_launch_parameters() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), PIPELINE).expect("writes the script");
     std::fs::write(directory.path().join("nextflow.config"), CONFIG).expect("writes the config");
@@ -161,7 +161,7 @@ fn params_come_from_the_params_file_and_the_command_line() {
 }
 
 #[test]
-fn normalized_params_are_used_to_plan_tasks() {
+fn plans_normalized_parameters() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let pipeline = PIPELINE.replace("${params.count}", "${params.count + 1}");
     std::fs::write(directory.path().join("main.nf"), pipeline).expect("writes the script");
@@ -195,7 +195,7 @@ fn normalized_params_are_used_to_plan_tasks() {
 }
 
 #[test]
-fn named_entry_selects_only_that_workflow() {
+fn selects_named_entry() {
     let directory = tempfile::tempdir().unwrap();
     std::fs::write(directory.path().join("main.nf"), "process P {\n input:\n val x\n script:\n \"echo ${x}\"\n}\nworkflow ALIGN { P('selected') }\nworkflow OTHER { P('other') }\nworkflow { P('default') }\n").unwrap();
     for (entry, step, script) in [
@@ -225,7 +225,7 @@ fn named_entry_selects_only_that_workflow() {
 }
 
 #[test]
-fn an_imported_workflow_alias_can_be_selected_as_entry() {
+fn selects_imported_entry() {
     let directory = tempfile::tempdir().unwrap();
     std::fs::write(
         directory.path().join("main.nf"),
@@ -249,7 +249,7 @@ fn an_imported_workflow_alias_can_be_selected_as_entry() {
 }
 
 #[test]
-fn missing_or_multiple_workflow_entries_have_clear_errors() {
+fn rejects_invalid_entries() {
     let directory = tempfile::tempdir().unwrap();
     std::fs::write(directory.path().join("main.nf"), "workflow ALIGN {}\n").unwrap();
     let mut driver = nextflow_runtime::driver(&Launch {
@@ -284,7 +284,7 @@ fn missing_or_multiple_workflow_entries_have_clear_errors() {
 /// stub run: an optional one is then missing, and a required one fails the task with
 /// Nextflow's message.
 #[test]
-fn simulated_runs_leave_out_outputs_that_stubs_do_not_make() {
+fn excludes_absent_outputs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let pipeline = r#"
 process SPLIT {
@@ -388,7 +388,7 @@ workflow {
 "#;
 
 #[test]
-fn outputs_that_decide_the_next_tasks_mark_their_task() {
+fn marks_deciding_outputs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), PLANNED).expect("writes the script");
     std::fs::write(directory.path().join("samples.txt"), "s1\ns2\n").expect("writes the sheet");

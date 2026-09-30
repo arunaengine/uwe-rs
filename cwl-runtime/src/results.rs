@@ -39,7 +39,7 @@ fn relocate(
                 relocate(item, folder, deliveries, used, grouped)?;
             }
         }
-        Value::Map(map) if is_file_or_directory(map) => {
+        Value::Map(map) if is_filesystem_value(map) => {
             let mut names = vec![basename(map)?];
             if let Some(Value::List(secondary)) = map.get("secondaryFiles") {
                 for item in secondary {
@@ -187,7 +187,7 @@ fn write_literal(
     Ok(())
 }
 
-fn is_file_or_directory(map: &Map) -> bool {
+fn is_filesystem_value(map: &Map) -> bool {
     matches!(
         map.get("class").and_then(Value::as_str),
         Some("File" | "Directory")

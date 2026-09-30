@@ -301,3 +301,30 @@ a span below its task. Their attributes come from the database; the events of th
 (`requested`, `started`, `finished`, `reused`, `marked`, `ended`) become events of the span
 they concern, and each marker an event with its kind and reason. Ids are made from the run
 id, so that the same run always gives the same trace.
+
+## File descriptions: run-page
+
+### `run-page/src/lib.rs`
+
+The web page of iunctus (decision 23). The binary serves it on localhost; it reads the run
+database and shows every run: the graph as it grows, the state of each step and task, the
+standard output and error of each task, and the outputs with links to download them. A
+running run updates the page live through Server-Sent Events. The page is plain HTML, CSS
+and JavaScript inside the binary: nothing to install and no build step. The same page also
+goes into one HTML file, the report of a run, which needs no server (`report`).
+
+### `run-page/src/live.rs`
+
+Live updates of a run as Server-Sent Events. The stream reads new events from the database
+twice a second and sends one update with the changed tasks, so that a run of thousands of
+short tasks sends few messages. It ends after the update that shows the run has ended.
+
+### `run-page/src/report.rs`
+
+The report of a run: one HTML file that shows the run as its page does, for a machine where
+no browser can reach the page, like the login node of a cluster. The file holds everything:
+the style, the scripts of the page, the pictures of the graph and the data that the page
+would ask the server for, with the end of each log. It needs no server and no network, so it
+can be copied anywhere and opened from the disk. `report.js` answers the requests of the
+page's scripts from the data, and adds a timeline, the resources of each task and where the
+results went.

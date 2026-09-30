@@ -1,10 +1,4 @@
-//! The report of a run: one HTML file that shows the run as its page does, for a machine where
-//! no browser can reach the page, like the login node of a cluster. The file holds everything:
-//! the style, the scripts of the page, the pictures of the graph and the data that the page
-//! would ask the server for, with the end of each log. It needs no server and no network, so it
-//! can be copied anywhere and opened from the disk. `report.js` answers the requests of the
-//! page's scripts from the data, and adds a timeline, the resources of each task and where the
-//! results went.
+//! Embeds page assets, graphs, logs and run data in a standalone HTML report.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

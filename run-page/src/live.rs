@@ -1,6 +1,4 @@
-//! Live updates of a run as Server-Sent Events. The stream reads new events from the database
-//! twice a second and sends one update with the changed tasks, so that a run of thousands of
-//! short tasks sends few messages. It ends after the update that shows the run has ended.
+//! Streams changed run tasks and completion events through Server-Sent Events.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

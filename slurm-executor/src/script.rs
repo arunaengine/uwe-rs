@@ -155,7 +155,7 @@ pub fn job_script(
 /// it is killed for lack of memory, records its exit code there, so that the containers that
 /// wait for one of them go on. `sizes` holds the length in bytes of the wrapper of each run,
 /// which the job waits to see whole, as [`job_script`] does.
-pub fn job_script_of_containers(
+pub fn container_script(
     container: &Container,
     runs: &[ContainerRun<'_>],
     exits: &[Vec<PathBuf>],

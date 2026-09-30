@@ -26,8 +26,8 @@ use tokio_util::sync::CancellationToken;
 use crate::images::{Images, file_name, pull_script, tag_file_name};
 use crate::queue::{Look, Queue};
 use crate::script::{
-    CONTAINER_EXIT, Container, LOG, NOT_SEEN, PullResources, SCRIPT, TIMED_OUT, job_script,
-    job_script_of_containers, pull_options, sbatch_options,
+    CONTAINER_EXIT, Container, LOG, NOT_SEEN, PullResources, SCRIPT, TIMED_OUT, container_script,
+    job_script, pull_options, sbatch_options,
 };
 
 /// How often the queue is asked about the jobs, by default.
@@ -401,7 +401,7 @@ impl SlurmBackend {
                     sizes.push(tokio::fs::metadata(path).await?.len());
                 }
                 let time = job.placement.time_seconds;
-                job_script_of_containers(&self.container, &runs, &exits, gpus, time, &sizes)
+                container_script(&self.container, &runs, &exits, gpus, time, &sizes)
             }
         };
         tokio::fs::write(control.join(SCRIPT), script).await?;

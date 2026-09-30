@@ -1,6 +1,4 @@
-//! What pins the run in the crate: the files of its workflow and of its command line as the run
-//! had them, the remote files it read with their digests and the time it read them, and the
-//! JSON Schema of the outputs of the workflow, with a formal parameter per output.
+//! Exports retained workflow sources, remote input identities and output schemas.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

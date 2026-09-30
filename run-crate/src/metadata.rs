@@ -1,7 +1,4 @@
-//! The entities of `ro-crate-metadata.json`: the workflow with its steps and tools, the engine
-//! run, the workflow run, one action per task, the container images, the parameters, the
-//! inputs of the workflow and the files. The shapes follow the example crates of the
-//! Provenance Run Crate profile 0.5.
+//! Builds provenance entities for workflows, tasks, parameters, images and files.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

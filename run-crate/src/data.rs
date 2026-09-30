@@ -1,6 +1,4 @@
-//! The data files of a crate. Each distinct file or directory of the run is copied once into
-//! `data/`, named by its SHA-256 digest, as CWLProv and runcrate name them. A copy, not a link,
-//! so that nothing done to the crate can change the store.
+//! Copies distinct run files and directories into RO-Crate data by content digest.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

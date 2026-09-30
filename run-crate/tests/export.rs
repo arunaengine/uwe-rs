@@ -1,7 +1,4 @@
-//! Exports a small simulated run and compares its crate with the fixture crate in
-//! `tests/fixtures/simulated/`, which the Provenance Run Crate validator checked
-//! (`tests/fixtures/validate.sh` writes the fixture again and records the validator's report in
-//! `tests/fixtures/validation.txt`).
+//! Checks simulated and historical run exports against retained provenance fixtures.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

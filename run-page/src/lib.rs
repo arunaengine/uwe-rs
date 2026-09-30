@@ -1,9 +1,4 @@
-//! The web page of iunctus (decision 23). The binary serves it on localhost; it reads the run
-//! database and shows every run: the graph as it grows, the state of each step and task, the
-//! standard output and error of each task, and the outputs with links to download them. A
-//! running run updates the page live through Server-Sent Events. The page is plain HTML, CSS
-//! and JavaScript inside the binary: nothing to install and no build step. The same page also
-//! goes into one HTML file, the report of a run, which needs no server (`report`).
+//! Serves recorded workflow runs and exports the same view as standalone HTML reports.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

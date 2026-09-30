@@ -108,7 +108,7 @@ fn directives_and_outputs() {
 }
 
 #[test]
-fn environment_and_stdin_inputs_survive_binding_each_round() {
+fn binds_round_inputs() {
     for declaration in [
         "env('SAMPLE')\n    stdin",
         "each env('SAMPLE')\n    stdin",

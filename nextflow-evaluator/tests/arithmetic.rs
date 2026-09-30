@@ -26,7 +26,7 @@ fn unsupported(message: &str) -> ArithmeticError {
 }
 
 #[test]
-fn promotion_and_wrap_around() {
+fn promotes_wrapping_arithmetic() {
     assert_eq!(
         show(n("2147483647").add(&n("1"))),
         expect("Integer", "-2147483648")
@@ -87,7 +87,7 @@ fn division() {
 }
 
 #[test]
-fn integer_division_and_remainder() {
+fn divides_integer_values() {
     let intdiv = |left: &str, right: &str| n(left).intdiv(&n(right)).map(show);
     assert_eq!(intdiv("-7", "2"), Ok(expect("Integer", "-3")));
     assert_eq!(intdiv("7L", "2"), Ok(expect("Long", "3")));
@@ -131,7 +131,7 @@ fn power() {
 }
 
 #[test]
-fn unary_bitwise_and_shifts() {
+fn applies_bitwise_operations() {
     assert_eq!(show(n("1.50").negate()), expect("BigDecimal", "-1.50"));
     assert_eq!(
         show(n("-2147483648").negate()),
@@ -183,7 +183,7 @@ fn unary_bitwise_and_shifts() {
 }
 
 #[test]
-fn comparison_uses_the_math_of_both_sides() {
+fn compares_promoted_numbers() {
     assert_eq!(n("1").compare(&n("1.0")), Ordering::Equal);
     assert_eq!(n("1").compare(&n("1L")), Ordering::Equal);
     assert_eq!(n("1.5").compare(&n("1.49d")), Ordering::Greater);

@@ -24,7 +24,7 @@ fn list(items: Vec<Value>) -> Value {
 }
 
 #[test]
-fn lists_and_maps_in_groovy_form() {
+fn formats_groovy_collections() {
     let mixed = list(vec![n("1"), s("a"), Value::Null, n("1.50"), n("2d")]);
     assert_eq!(mixed.to_groovy_string(), "[1, a, null, 1.50, 2.0]");
     let map = |entries: Vec<(Value, Value)>| Value::map(entries);
@@ -59,7 +59,7 @@ fn lists_and_maps_in_groovy_form() {
 }
 
 #[test]
-fn java_form_of_maps_and_entries() {
+fn formats_java_maps() {
     let map = Value::map([(s("a"), n("1")), (s("b"), list(vec![s("x")]))]);
     assert_eq!(map.to_java_string(), "{a=1, b=[x]}");
     assert_eq!(list(vec![map.clone()]).to_java_string(), "[{a=1, b=[x]}]");

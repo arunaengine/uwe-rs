@@ -114,7 +114,7 @@ fn build(workflows: &str) -> (Result<(), String>, Vec<String>) {
 }
 
 #[test]
-fn workflows_wire_processes_and_operators() {
+fn wires_workflow_dataflow() {
     let (result, calls) = build(
         "workflow W {\n    take:\n    ch\n    main:\n    P(ch)\n    emit:\n    out = P.out.out\n    n = 1\n}\n\
          workflow {\n    ch = channel.of(1, 2).map { v -> v * 2 }\n    W(ch)\n    W.out.out.view()\n    W.out.n.view()\n}",
@@ -149,7 +149,7 @@ fn pipes() {
 }
 
 #[test]
-fn outputs_need_a_call_first() {
+fn requires_output_call() {
     let (result, _) = build("workflow {\n    P.out.view()\n}");
     let message = "Access to 'P.out' is undefined since the process 'P' has not been invoked before accessing the output attribute";
     assert_eq!(result, Err(format!("IllegalStateException: {message}")));

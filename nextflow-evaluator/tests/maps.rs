@@ -55,7 +55,7 @@ fn maps_with_defaults() {
 }
 
 #[test]
-fn closures_get_keys_and_values_or_entries() {
+fn binds_map_closures() {
     assert_eq!(value("[a: 1, b: 2].findAll { k, v -> v > 1 }"), "[b:2]");
     assert_eq!(value("[a: 1].find { it.value == 1 }"), "a=1");
     assert_eq!(value("[a: 1].find { it.value == 1 }.key"), "a");

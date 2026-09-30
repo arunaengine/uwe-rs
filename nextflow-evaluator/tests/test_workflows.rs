@@ -15,7 +15,7 @@ const UNSUPPORTED: &str = include_str!("fixtures/nf_core_modules_unsupported.txt
 
 #[test]
 #[ignore = "needs the nf-core test workflows from `just test-workflows`; run it with `just test-workflows-test`"]
-fn nf_core_modules_lower() {
+fn lowers_core_modules() {
     let test_workflows = PathBuf::from(
         std::env::var("NF_CORE_TEST_WORKFLOWS").expect("NF_CORE_TEST_WORKFLOWS is set"),
     );
@@ -65,7 +65,7 @@ fn nf_core_modules_lower() {
 
 #[test]
 #[ignore = "needs the nf-core test workflows from `just test-workflows`; run it with `just test-workflows-test`"]
-fn nf_core_subworkflows_lower() {
+fn lowers_core_subworkflows() {
     let test_workflows = PathBuf::from(
         std::env::var("NF_CORE_TEST_WORKFLOWS").expect("NF_CORE_TEST_WORKFLOWS is set"),
     );

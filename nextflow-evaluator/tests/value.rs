@@ -62,7 +62,7 @@ fn class_names() {
 }
 
 #[test]
-fn java_equality_keeps_classes_apart() {
+fn distinguishes_java_classes() {
     assert!(n("1").java_equals(&n("1")));
     assert!(!n("1").java_equals(&n("1L")));
     assert!(!n("1.0").java_equals(&n("1.00")));
@@ -99,7 +99,7 @@ fn java_hash_codes() {
 }
 
 #[test]
-fn map_keys_use_java_equality() {
+fn compares_java_keys() {
     let map = Value::map([
         (n("1"), Value::string("int")),
         (n("1L"), Value::string("long")),

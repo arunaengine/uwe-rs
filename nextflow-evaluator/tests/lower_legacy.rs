@@ -50,7 +50,7 @@ const SHADOWED: &str = "process P {
 }";
 
 #[test]
-fn locals_hide_inputs_and_implicit_variables() {
+fn shadows_implicit_variables() {
     let (module, legacy) = lower(SHADOWED).expect("lowers");
     assert_eq!(
         legacy,
@@ -79,7 +79,7 @@ fn locals_hide_inputs_and_implicit_variables() {
 }
 
 #[test]
-fn closure_parameters_hide_takes_and_workflow_variables() {
+fn shadows_workflow_variables() {
     let source = "workflow W {
     take:
     x
@@ -102,13 +102,13 @@ fn closure_parameters_hide_takes_and_workflow_variables() {
 }
 
 #[test]
-fn locals_still_cannot_be_declared_twice() {
+fn rejects_duplicate_locals() {
     let source = "def f(a) {\n    def a = 1\n}";
     assert_eq!(lower(source).unwrap_err(), ["2:9: `a` is already declared"]);
 }
 
 #[test]
-fn undeclared_names_are_looked_up_when_the_code_runs() {
+fn defers_name_lookup() {
     let (module, legacy) = lower("def f() { segmentation_list.contains('x') }").expect("lowers");
     assert_eq!(legacy, ["1:11: `segmentation_list` is not defined"]);
     let body = format!("{:?}", module.functions[0].body);
@@ -118,7 +118,7 @@ fn undeclared_names_are_looked_up_when_the_code_runs() {
 }
 
 #[test]
-fn bare_env_names_are_names() {
+fn preserves_environment_names() {
     let source = "process P {
     output:
     env(trim_OT)
@@ -139,7 +139,7 @@ fn bare_env_names_are_names() {
 /// A DSL1 script fails to lower: with `nextflow.enable.dsl = 1`, with a process that reads
 /// `from` a channel or writes `into` one, or with a process inside a block (decision 14).
 #[test]
-fn dsl1_scripts_are_not_supported() {
+fn rejects_dsl1_scripts() {
     let message = nextflow_evaluator::lower::DSL1;
     for source in [
         "nextflow.enable.dsl = 1\nprintln 'hi'\n",

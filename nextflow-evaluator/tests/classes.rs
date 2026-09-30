@@ -129,7 +129,7 @@ class Counter {
 ";
 
 #[test]
-fn classes_run_as_groovy_runs_them() {
+fn matches_groovy_classes() {
     let source = format!(
         "{CLASSES}
 def f() {{
@@ -164,7 +164,7 @@ def f() {{
 }
 
 #[test]
-fn missing_members_fail_as_in_groovy() {
+fn rejects_missing_members() {
     let source = format!("{CLASSES}\ndef f() {{ Utils.nothing(1) }}\n");
     assert_eq!(
         run(&source).unwrap_err(),
@@ -179,7 +179,7 @@ fn missing_members_fail_as_in_groovy() {
 }
 
 #[test]
-fn class_numeric_overloads_use_specificity_in_both_orders() {
+fn selects_specific_overloads() {
     for methods in [
         "static pick(Long x) { 'long' }; static pick(Integer x) { 'integer' }",
         "static pick(Integer x) { 'integer' }; static pick(Long x) { 'long' }",
@@ -212,7 +212,7 @@ fn class_numeric_overloads_use_specificity_in_both_orders() {
 }
 
 #[test]
-fn class_parameter_writes_and_captures_keep_declared_scalar_types() {
+fn preserves_parameter_types() {
     assert_eq!(
         run("class Typed { static value(Integer count) { count = 5L;\n\
              { count += 2L }.call()\n count.getClass().getSimpleName() } }\n\
@@ -223,7 +223,7 @@ fn class_parameter_writes_and_captures_keep_declared_scalar_types() {
 }
 
 #[test]
-fn static_import_aliases_keep_the_original_member() {
+fn preserves_import_aliases() {
     let source = "import static java.lang.Math.max as min\n\
                   import static java.lang.Math.min as smallest\n\
                   def f() { [min(1, 2), smallest(1, 2)] }\n";
@@ -304,7 +304,7 @@ def f() {
 "#;
 
 #[test]
-fn switch_runs_as_in_groovy() {
+fn matches_groovy_switch() {
     // Groovy 4.0.31 prints this for the same functions.
     assert_eq!(
         run(SWITCHES).expect("runs"),

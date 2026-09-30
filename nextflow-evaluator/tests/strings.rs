@@ -194,7 +194,7 @@ fn conversions() {
 }
 
 #[test]
-fn case_whitespace_and_order() {
+fn transforms_string_values() {
     assert_eq!(value("'  a b \\t'.trim()"), "a b");
     assert_eq!(
         value("'MiXeD'.toLowerCase() + 'MiXeD'.toUpperCase()"),
@@ -215,7 +215,7 @@ fn case_whitespace_and_order() {
 }
 
 #[test]
-fn inspect_quotes_and_escapes() {
+fn escapes_inspected_strings() {
     assert_eq!(
         value("[[a: \"x\\ty\", 1: [2, null, true]].inspect(), \"it's\".inspect()]"),
         "[['a':'x\\ty', 1:[2, null, true]], 'it\\'s']"
@@ -296,7 +296,7 @@ fn statements_in_interpolations() {
 
 /// Groovy's `sprintf` and `stripIndent(true)`; Nextflow 26.04.6 gives `a-b` and `a\nb`.
 #[test]
-fn sprintf_and_strip_indent_with_an_argument() {
+fn formats_string_arguments() {
     assert_eq!(
         value("[sprintf('%s-%s', 'a', 'b'), '  a\\n  b'.stripIndent(true)]"),
         "[a-b, a\nb]"

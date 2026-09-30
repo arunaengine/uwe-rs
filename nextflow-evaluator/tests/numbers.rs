@@ -71,7 +71,7 @@ fn unit_properties() {
 }
 
 #[test]
-fn rounding_and_conversion_methods() {
+fn converts_numeric_methods() {
     assert_eq!(
         value(
             "[1.9.toInteger(), 2.5.round(), (-2.5).round(), 3.7d.round(), 2.5d.round(), (-2.5d).round()]"
@@ -120,7 +120,7 @@ fn casts() {
 }
 
 #[test]
-fn math_and_system_methods() {
+fn dispatches_system_methods() {
     assert_eq!(
         value(
             "def values = [Math.max(1, 2), Math.max(1, 2L), Math.min(3, 2.0d), Math.round(2.5), \
@@ -142,7 +142,7 @@ fn math_and_system_methods() {
 }
 
 #[test]
-fn dates_format_like_simple_date_format() {
+fn formats_java_dates() {
     // The middle of a month is the same month in every time zone.
     let june: i64 = 1_592_222_400_000; // 2020-06-15T12:00:00Z
     assert_eq!(
@@ -170,7 +170,7 @@ fn class_values() {
 }
 
 #[test]
-fn parsers_and_the_class_of_null() {
+fn dispatches_scalar_parsers() {
     assert_eq!(
         value(
             "def x = null\n[x.getClass(), x.getClass() == nextflow.util.MemoryUnit, \
@@ -181,7 +181,7 @@ fn parsers_and_the_class_of_null() {
 }
 
 #[test]
-fn primitive_casts_load_but_fail_when_they_run() {
+fn defers_primitive_failures() {
     // Nextflow fails with "Missing process or function call([A])".
     assert_eq!(
         eval("(char)('A')").unwrap_err(),
@@ -190,7 +190,7 @@ fn primitive_casts_load_but_fail_when_they_run() {
 }
 
 #[test]
-fn primitive_casts_constants_and_counts() {
+fn evaluates_primitive_casts() {
     assert_eq!(
         value(
             "[3.7 as int, 0 as boolean, Double.NEGATIVE_INFINITY, [1, 2, 3].countBy { v -> v % 2 }, \
@@ -231,7 +231,7 @@ fn upto_and_downto() {
 /// Groovy reads the private field `value` of a boxed Boolean or primitive number; Nextflow
 /// 26.04.6 gives `[true, 3, 3, 1.5]`, and a `BigDecimal` has no such property.
 #[test]
-fn value_field_of_booleans_and_numbers() {
+fn reads_scalar_values() {
     assert_eq!(
         value("[true.value, 3.value, 3L.value, 1.5d.value]"),
         "[true, 3, 3, 1.5]"

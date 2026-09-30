@@ -21,7 +21,7 @@ fn decimal(text: &str) -> Number {
 }
 
 #[test]
-fn memory_text_and_parsing() {
+fn parses_memory_text() {
     let cases = [
         ("2GB", "2 GB"),
         ("1536MB", "1.5 GB"),
@@ -76,7 +76,7 @@ fn memory_arithmetic() {
 }
 
 #[test]
-fn duration_text_and_parsing() {
+fn parses_duration_text() {
     let cases = [
         ("1h", "1h"),
         ("90min", "1h 30m"),

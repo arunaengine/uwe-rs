@@ -92,7 +92,7 @@ fn names_inside_closures() {
 }
 
 #[test]
-fn lazy_maps_call_their_closures_when_read() {
+fn evaluates_lazy_maps() {
     let mut host = Quiet;
     let mut interpreter = Interpreter::new(&mut host);
     let module = Rc::new(Module::default());

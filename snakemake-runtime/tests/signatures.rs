@@ -51,7 +51,7 @@ rule make:
 "#;
 
 #[test]
-fn evaluated_signatures_wait_for_all_output_acknowledgements_and_preserve_raw_bytes() {
+fn acknowledges_signature_delivery() {
     use std::os::unix::fs::PermissionsExt;
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(folder.path().join("in.txt"), "input").unwrap();
@@ -130,8 +130,7 @@ impl Files for DeliveredFiles {
 }
 
 #[test]
-fn failed_delivery_keeps_prior_successful_records_and_missing_legacy_metadata_is_not_bootstrapped()
-{
+fn preserves_prior_records() {
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(folder.path().join("in.txt"), "input").unwrap();
     let source = folder.path().join("raw");
@@ -201,7 +200,7 @@ fn failed_delivery_keeps_prior_successful_records_and_missing_legacy_metadata_is
 }
 
 #[test]
-fn service_group_records_wait_for_every_member_delivery_and_failures_publish_nothing() {
+fn acknowledges_group_delivery() {
     let folder = tempfile::tempdir().unwrap();
     let text = r#"
 rule all:
@@ -254,7 +253,7 @@ rule second:
 }
 
 #[test]
-fn changed_evaluated_signatures_rerun_and_unchanged_signatures_skip() {
+fn compares_evaluated_signatures() {
     let folder = tempfile::tempdir().unwrap();
     for name in ["in.txt", "other.txt"] {
         std::fs::write(folder.path().join(name), "input").unwrap();
@@ -291,7 +290,7 @@ fn changed_evaluated_signatures_rerun_and_unchanged_signatures_skip() {
 }
 
 #[test]
-fn signature_changes_propagate_to_dependents_and_evaluate_changed_params_once() {
+fn propagates_signature_changes() {
     let folder = tempfile::tempdir().unwrap();
     let text = r#"
 calls = []
@@ -335,7 +334,7 @@ rule last:
 }
 
 #[test]
-fn protected_deliveries_remove_write_bits_without_changing_stored_outputs() {
+fn protects_delivered_outputs() {
     use std::os::unix::fs::PermissionsExt;
     let folder = tempfile::tempdir().unwrap();
     let source = folder.path().join("raw");

@@ -39,7 +39,7 @@ fn git(folder: &Path, arguments: &[&str]) {
 }
 
 #[test]
-fn jobs_see_the_source_files_of_the_workflow() {
+fn stages_workflow_sources() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let workdir = folder.path().join("workflow");
     write(&workdir, "Snakefile", SNAKEFILE);

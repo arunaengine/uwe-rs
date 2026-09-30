@@ -243,7 +243,7 @@ mod tests {
     use super::body;
 
     #[test]
-    fn a_body_keeps_its_indentation_or_gets_one() {
+    fn preserves_body_indentation() {
         assert_eq!(
             body("        shell('x')\n        y = 1"),
             "        shell('x')\n        y = 1"

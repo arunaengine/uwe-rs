@@ -388,7 +388,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sizes_are_written_as_humanfriendly_writes_them() {
+    fn formats_resource_sizes() {
         assert_eq!(human_size(1000), "1 GB");
         assert_eq!(human_size(1500), "1.5 GB");
         assert_eq!(human_size(954), "954 MB");
@@ -396,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn runtimes_are_read_as_humanfriendly_reads_them() {
+    fn parses_resource_runtimes() {
         let cases = [
             ("2h", Some(120)),
             ("1.5h", Some(90)),
@@ -414,7 +414,7 @@ mod tests {
     }
 
     #[test]
-    fn a_sized_resource_replaces_the_same_resource_in_another_unit() {
+    fn replaces_sized_resources() {
         let mut resources = vec![
             ("mem".to_owned(), Value::Int(1000)),
             ("tmpdir".to_owned(), Value::str("/tmp")),
@@ -425,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn sized_resources_come_in_three_units() {
+    fn converts_resource_units() {
         let mut interpreter =
             Interpreter::new(std::rc::Rc::new(python_evaluator::LocalHost::new("/")));
         let expanded = expand_sized(

@@ -5,7 +5,7 @@
 use workflow_graph::Launch;
 
 #[test]
-fn unsupported_rule_options_reject_enabled_values_and_preserve_disabled_values() {
+fn rejects_active_options() {
     for option in ["shadow", "cache", "handover"] {
         for value in ["True", "'minimal'", "False", "None", "''"] {
             let folder = tempfile::tempdir().expect("folder");
@@ -38,7 +38,7 @@ fn unsupported_rule_options_reject_enabled_values_and_preserve_disabled_values()
 }
 
 #[test]
-fn nonempty_resource_scopes_fail_at_dispatch() {
+fn rejects_resource_scopes() {
     let directive = "resource_scopes: mem_mb='global'";
     let folder = tempfile::tempdir().expect("folder");
     std::fs::write(
@@ -61,7 +61,7 @@ fn nonempty_resource_scopes_fail_at_dispatch() {
 }
 
 #[test]
-fn empty_resource_scopes_preserve_default_scheduling() {
+fn preserves_default_scheduling() {
     for value in ["{}", "**{}"] {
         let folder = tempfile::tempdir().expect("folder");
         std::fs::write(
@@ -82,7 +82,7 @@ fn empty_resource_scopes_preserve_default_scheduling() {
 }
 
 #[test]
-fn minimal_shadow_stages_declared_files_without_extra_workflow_sources() {
+fn stages_minimal_shadow() {
     for mode in ["'minimal'", "False"] {
         let folder = tempfile::tempdir().expect("a folder");
         std::fs::write(folder.path().join("data"), "input").expect("input data");
@@ -122,7 +122,7 @@ fn minimal_shadow_stages_declared_files_without_extra_workflow_sources() {
 }
 
 #[test]
-fn shadow_parent_paths_and_unsupported_modes_fail_before_task_publication() {
+fn rejects_shadow_modes() {
     for directive in [
         "shadow: 'shallow'",
         "shadow: 'full'",

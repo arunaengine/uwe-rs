@@ -419,7 +419,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn templates_keep_unknown_fields() {
+    fn preserves_unknown_fields() {
         let host = std::rc::Rc::new(python_evaluator::LocalHost::new(std::env::temp_dir()));
         let mut interpreter = Interpreter::new(host);
         let mut sample = Attributes::new();

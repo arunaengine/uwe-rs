@@ -30,7 +30,7 @@ rule report:
 "#;
 
 #[test]
-fn a_workflow_describes_its_config_sample_sheet_and_targets() {
+fn describes_workflow_inputs() {
     let folder = tempfile::tempdir().expect("a folder");
     let files = [
         ("Snakefile", SNAKEFILE),

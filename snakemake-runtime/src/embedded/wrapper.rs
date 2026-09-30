@@ -149,7 +149,7 @@ mod tests {
     use super::{folder, location};
 
     #[test]
-    fn wrappers_are_found_as_snakemake_finds_them() {
+    fn resolves_wrapper_paths() {
         let workdir = Path::new("/w");
         assert_eq!(
             location("v8.1.1/bio/bgzip", workdir),

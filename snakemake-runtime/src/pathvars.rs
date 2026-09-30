@@ -248,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    fn variables_expand_until_none_is_left() {
+    fn expands_nested_variables() {
         let mut all = Pathvars::defaults();
         let workflow = pathvars(
             &[
@@ -276,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn undefined_variables_and_cycles_fail() {
+    fn rejects_invalid_variables() {
         let error = Pathvars::defaults()
             .apply("<nothing>/x")
             .expect_err("undefined");

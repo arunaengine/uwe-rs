@@ -215,7 +215,7 @@ mod tests {
     use crate::embedded::data::Data;
 
     #[test]
-    fn lists_are_vectors_when_their_items_are_of_one_kind() {
+    fn serializes_homogeneous_lists() {
         let numbers = [Data::Bool(true), Data::int(2), Data::Float(1.5)];
         assert_eq!(list(&numbers).as_deref(), Ok("c(TRUE, 2L, 1.5)"));
         let mixed = [Data::Bool(true), Data::int(123), Data::str("abc")];
@@ -224,7 +224,7 @@ mod tests {
     }
 
     #[test]
-    fn objects_without_an_r_form_are_errors() {
+    fn rejects_unrepresentable_objects() {
         let function = Data::Opaque {
             repr: "<function f>".into(),
             text: "<function f>".into(),

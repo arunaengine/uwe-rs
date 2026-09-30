@@ -249,7 +249,7 @@ mod tests {
     use crate::embedded::data::{Data, Named};
 
     #[test]
-    fn values_become_python_literals() {
+    fn serializes_python_literals() {
         assert_eq!(literal(&Data::Float(f64::NAN)), "float('nan')");
         assert_eq!(literal(&Data::Float(1e16)), "1e+16");
         assert_eq!(literal(&Data::Tuple(vec![Data::int(1)])), "(1,)");

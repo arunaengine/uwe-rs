@@ -144,7 +144,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn files_in_storage_have_local_paths_by_their_address() {
+    fn maps_storage_paths() {
         assert_eq!(
             local_suffix("https://github.com/owner/repo/raw/main/data.txt?raw=1"),
             "github.com/owner/repo/raw/main/data.txt"

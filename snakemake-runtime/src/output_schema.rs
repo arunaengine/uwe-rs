@@ -91,7 +91,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn one_file_or_a_list() {
+    fn describes_target_shapes() {
         let one = output(&[("results/report.html".into(), false)], false);
         assert_eq!(
             one,

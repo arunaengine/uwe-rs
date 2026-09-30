@@ -30,7 +30,7 @@ fn tasks(folder: &Path) -> Vec<Task> {
 }
 
 #[test]
-fn preambles_are_the_ones_snakemake_writes() {
+fn matches_snakemake_preambles() {
     let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/embedded/preambles");
     let tasks = tasks(&folder);
     let shown = folder.to_string_lossy().into_owned();

@@ -207,7 +207,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn files_come_through_the_storage_providers() {
+    fn reads_storage_providers() {
         use std::io::{BufRead, BufReader, Write};
         // A web server that answers only requests with the token of its provider.
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
@@ -261,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn remote_files_have_local_paths_and_web_addresses() {
+    fn maps_remote_paths() {
         let mirrors = Mirrors::new(PathBuf::from("/downloads"), &Storage::default());
         let snakefile = mirrors.hosted(
             "github",

@@ -5,7 +5,7 @@
 use workflow_graph::{Launch, Outcome, Writable};
 
 #[test]
-fn subprocess_cwd_selects_the_staged_folder_and_container_workdir() {
+fn stages_subprocess_directory() {
     for external in [false, true] {
         let folder = tempfile::tempdir().unwrap();
         let workflow = folder.path().join("workflow");

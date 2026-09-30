@@ -325,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn wildcards_are_found_like_snakemake_finds_them() {
+    fn finds_pattern_wildcards() {
         let found = wildcards("a/{sample}/{unit, \\d+}.{ext,a{2,3}}{{x}}");
         let names: Vec<&str> = found.iter().map(|w| w.name.as_str()).collect();
         assert_eq!(names, ["sample", "unit", "ext", "x"]);
@@ -352,14 +352,14 @@ mod tests {
     }
 
     #[test]
-    fn patterns_are_filled_in() {
+    fn fills_pattern_values() {
         let filled = apply("{a}/{b,\\w+}.txt", &values(&[("a", "x"), ("b", "y")]));
         assert_eq!(filled, Ok("x/y.txt".to_owned()));
         assert_eq!(apply("{a}.txt", &Wildcards::new()), Err("a".to_owned()));
     }
 
     #[test]
-    fn constraints_are_added_once() {
+    fn avoids_duplicate_constraints() {
         let rule: IndexMap<String, String> = [("a".to_owned(), "[0-9]+".to_owned())]
             .into_iter()
             .collect();

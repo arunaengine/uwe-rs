@@ -278,7 +278,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_workflow_profile_gives_config_and_resources() {
+    fn loads_workflow_profile() {
         let folder = tempfile::tempdir().expect("a folder");
         let profile_folder = folder.path().join("profiles/default");
         std::fs::create_dir_all(&profile_folder).expect("the profile folder");
@@ -308,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn later_profiles_replace_the_settings_they_have() {
+    fn overrides_profile_settings() {
         let folder = tempfile::tempdir().expect("a folder");
         let general = folder.path().join("general");
         std::fs::create_dir_all(&general).expect("the profile folder");

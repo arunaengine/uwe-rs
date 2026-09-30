@@ -68,7 +68,7 @@ impl Executor for Flaky {
 struct Targets(Vec<String>, std::path::PathBuf);
 
 #[test]
-fn ensured_outputs_are_checked_before_delivery_and_retried() {
+fn validates_delivered_outputs() {
     for ensure in [
         "non_empty=True",
         "sha256=lambda wildcards: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'",
@@ -130,7 +130,7 @@ rule make:
 }
 
 #[test]
-fn missing_outputs_retry_and_exhausted_integrity_failures_deliver_nothing() {
+fn retries_missing_outputs() {
     for output in ["\"out.txt\"", "ensure(\"out.txt\", non_empty=True)"] {
         let folder = tempfile::tempdir().unwrap();
         std::fs::write(
@@ -178,7 +178,7 @@ rule make:
 }
 
 #[test]
-fn storage_outputs_deliver_to_their_address_and_consumers_use_the_new_bytes() {
+fn delivers_storage_outputs() {
     use std::path::PathBuf;
     use workflow_graph::{Delivery, Files, LocalFiles};
 
@@ -276,7 +276,7 @@ impl Observer for Targets {
 }
 
 #[test]
-fn outputs_go_to_the_working_directory_and_failed_jobs_run_again() {
+fn delivers_workflow_outputs() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let workdir = folder.path().join("workflow");
     std::fs::create_dir(&workdir).expect("makes the folder");
@@ -345,7 +345,7 @@ rule finish:
 "#;
 
 #[test]
-fn default_output_flags_make_outputs_temporary() {
+fn applies_output_flags() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let workdir = folder.path().join("workflow");
     std::fs::create_dir(&workdir).expect("makes the folder");
@@ -406,7 +406,7 @@ impl Executor for Quiet {
 }
 
 #[test]
-fn logs_that_jobs_do_not_write_are_delivered_empty() {
+fn delivers_empty_logs() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let workdir = folder.path().join("workflow");
     std::fs::create_dir(&workdir).expect("makes the folder");
@@ -469,7 +469,7 @@ impl Executor for Folders {
 }
 
 #[test]
-fn files_in_a_made_folder_come_from_its_job() {
+fn tracks_directory_files() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let workdir = folder.path().join("workflow");
     std::fs::create_dir(&workdir).expect("makes the folder");

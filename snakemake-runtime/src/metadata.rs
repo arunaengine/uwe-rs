@@ -192,7 +192,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn records_are_named_as_snakemake_names_them() {
+    fn names_metadata_records() {
         assert_eq!(
             record_path("aggregated.txt"),
             ".snakemake/metadata/YWdncmVnYXRlZC50eHQ="

@@ -285,7 +285,7 @@ mod tests {
     use super::{Language, Source};
 
     #[test]
-    fn languages_follow_the_ends_of_file_names() {
+    fn detects_script_languages() {
         assert_eq!(Language::of("plot.py"), Some(Language::Python));
         assert_eq!(Language::of("plot.R"), Some(Language::R));
         assert_eq!(Language::of("report.Rmd"), Some(Language::RMarkdown));
@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn scripts_on_the_web_have_their_folder_as_address() {
+    fn resolves_web_scripts() {
         let source = Source {
             location: "https://example.org/wrappers/bio/x/wrapper.py".into(),
             text: None,

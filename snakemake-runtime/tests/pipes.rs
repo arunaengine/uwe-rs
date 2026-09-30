@@ -20,7 +20,7 @@ rule consume:
 "#;
 
 #[test]
-fn fifo_producers_and_consumers_fail_before_any_task_is_published() {
+fn rejects_pipe_tasks() {
     for existing_pipe in [false, true] {
         let folder = tempfile::tempdir().unwrap();
         std::fs::write(folder.path().join("Snakefile"), SNAKEFILE).unwrap();
@@ -50,7 +50,7 @@ fn fifo_producers_and_consumers_fail_before_any_task_is_published() {
 }
 
 #[test]
-fn unused_pipe_rules_and_up_to_date_pipe_workflows_are_preserved() {
+fn preserves_unused_pipes() {
     for unused in [false, true] {
         let folder = tempfile::tempdir().unwrap();
         std::fs::write(folder.path().join("Snakefile"), SNAKEFILE).unwrap();

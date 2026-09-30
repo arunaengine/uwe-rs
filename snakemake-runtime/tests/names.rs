@@ -27,7 +27,7 @@ fn error(snakefile: &str) -> Option<String> {
 }
 
 #[test]
-fn names_that_named_lists_keep_fail() {
+fn rejects_reserved_names() {
     let params =
         "rule a:\n    output: \"a.txt\"\n    params: items=1\n    shell: \"touch {output}\"\n";
     let message = error(params).expect("an error");

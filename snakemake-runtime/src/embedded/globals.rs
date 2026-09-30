@@ -315,7 +315,7 @@ mod tests {
     use super::used_names;
 
     #[test]
-    fn names_of_code_are_found_once() {
+    fn deduplicates_code_names() {
         let names = used_names("x = f(a)\nfor b in a:\n    g(b, x)\n");
         assert_eq!(names, ["f", "a", "x", "b", "g"]);
     }

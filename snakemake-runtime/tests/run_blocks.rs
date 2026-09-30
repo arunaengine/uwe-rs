@@ -8,7 +8,7 @@ use std::path::Path;
 use workflow_graph::{Launch, Simulator, execute};
 
 #[test]
-fn run_blocks_carry_the_globals_they_use() {
+fn captures_run_globals() {
     let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/embedded/run");
     let scratch = tempfile::tempdir().expect("a temporary directory");
     let launch = Launch {

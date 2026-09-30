@@ -1,3 +1,7 @@
+<!-- Offline Conda locking, container builds and image reuse. -->
+<!-- Copyright (c) 2026 The iunctus Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+
 # Conda environments
 
 Decision 12 says that a Conda environment is locked for the platform of the task and then built

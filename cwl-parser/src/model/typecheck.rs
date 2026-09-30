@@ -89,7 +89,7 @@ pub fn check_types(process: &Process, workflow: &Workflow) -> Result<(), Error> 
             name: short_name(&output.id),
             value_type: output.value_type.clone(),
             sources: &output.output_source,
-            listed: output.output_source_is_list,
+            listed: output.output_is_list,
             link_merge: output.link_merge,
             pick_value: output.pick_value,
             location: &output.location,

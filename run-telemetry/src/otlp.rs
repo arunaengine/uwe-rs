@@ -54,8 +54,10 @@ pub struct Span {
     pub parent_span_id: String,
     pub name: String,
     pub kind: u8,
-    pub start_time_unix_nano: String,
-    pub end_time_unix_nano: String,
+    #[serde(rename = "startTimeUnixNano")]
+    pub start_nanoseconds: String,
+    #[serde(rename = "endTimeUnixNano")]
+    pub end_nanoseconds: String,
     pub attributes: Vec<KeyValue>,
     pub events: Vec<SpanEvent>,
     pub status: Status,

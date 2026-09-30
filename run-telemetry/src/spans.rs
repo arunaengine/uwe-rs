@@ -1,9 +1,4 @@
-//! The spans of a run from the run database: the run as the root span, each task as a span
-//! from the moment the workflow asked for it until its last attempt ended, and each attempt as
-//! a span below its task. Their attributes come from the database; the events of the engine
-//! (`requested`, `started`, `finished`, `reused`, `marked`, `ended`) become events of the span
-//! they concern, and each marker an event with its kind and reason. Ids are made from the run
-//! id, so that the same run always gives the same trace.
+//! Builds stable run, task and attempt spans with recorded attributes and events.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

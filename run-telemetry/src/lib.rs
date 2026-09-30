@@ -1,10 +1,4 @@
-//! OpenTelemetry traces of runs: a run of the run database as a trace, with the run as the
-//! root span, each task as a span below it and each attempt below its task, with their
-//! attributes, markers and events, in the OTLP JSON format. The traces go to a file of JSON
-//! lines, one export request per line, as the file exporter of OpenTelemetry writes them and
-//! the `otlpjsonfile` receiver of the OpenTelemetry Collector reads them, and to an OTLP HTTP
-//! endpoint that the config file names. No OpenTelemetry library is needed: the format is
-//! plain JSON.
+//! Exports recorded runs as OTLP JSON traces to files and HTTP collectors.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

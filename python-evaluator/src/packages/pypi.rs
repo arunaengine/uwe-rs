@@ -60,7 +60,7 @@ mod tests {
     use super::pypi_packages;
 
     #[test]
-    fn modules_map_to_pypi_packages() {
+    fn resolves_package_names() {
         assert_eq!(pypi_packages("PIL.Image"), ["pillow"]);
         assert_eq!(pypi_packages("Bio.SeqIO"), ["biopython"]);
         assert_eq!(pypi_packages("cv2"), ["opencv-python-headless"]);

@@ -17,7 +17,7 @@ fn evaluate(code: &str) -> Result<String, Error> {
 }
 
 #[test]
-fn csv_numeric_separators_preserve_explicit_text_columns() {
+fn preserves_text_columns() {
     let output = evaluate(
         "import pandas as pd\nfrom io import StringIO\ntext = 'n;s\\n1.234,5;1.234,5\\n'\nf = pd.read_csv(StringIO(text), sep=';', decimal=',', thousands='.', dtype={'s': str})\nprint(f['n'].tolist(), f['s'].tolist())\n",
     ).expect("evaluates");
@@ -25,7 +25,7 @@ fn csv_numeric_separators_preserve_explicit_text_columns() {
 }
 
 #[test]
-fn csv_mixed_text_inference_preserves_numeric_looking_identifiers() {
+fn preserves_mixed_identifiers() {
     let output = evaluate(
         "import pandas as pd\nfrom io import StringIO\ntext = 'id\\n1.234,5\\nunknown\\n'\nprint(pd.read_csv(StringIO(text), sep=';', decimal=',', thousands='.')['id'].tolist())\n",
     ).expect("evaluates");
@@ -33,7 +33,7 @@ fn csv_mixed_text_inference_preserves_numeric_looking_identifiers() {
 }
 
 #[test]
-fn csv_encodings_preserve_identifiers_and_enforce_decode_errors() {
+fn enforces_csv_encodings() {
     let output = evaluate(
         "import pandas as pd\nwith open('latin.csv', 'wb') as f:\n    f.write(b'id\\ns\\xe4\\n')\nprint(pd.read_csv('latin.csv', encoding='latin-1')['id'].tolist())\ntry:\n    pd.read_csv('latin.csv')\nexcept UnicodeDecodeError:\n    print('strict rejected')\nprint(pd.read_csv('latin.csv', encoding_errors='replace')['id'].tolist())\n",
     ).expect("evaluates");
@@ -41,7 +41,7 @@ fn csv_encodings_preserve_identifiers_and_enforce_decode_errors() {
 }
 
 #[test]
-fn csv_date_and_iterator_requests_are_refused_before_materializing() {
+fn rejects_csv_options() {
     for option in [
         "parse_dates=['date']",
         "parse_dates=True",
@@ -58,7 +58,7 @@ fn csv_date_and_iterator_requests_are_refused_before_materializing() {
 }
 
 #[test]
-fn pandas_validation_and_truth_contracts_are_enforced() {
+fn enforces_pandas_contracts() {
     let output = evaluate(
         "import pandas as pd\nf = pd.DataFrame({'k': ['A', 'A'], 'n': [1, 2]})\ntry:\n    f.set_index('k', verify_integrity=True)\nexcept ValueError:\n    print('duplicate index rejected')\nprint(f.set_index('k').shape)\nfor obj in [f, f['n'], f.index, pd.Series([])]:\n    try:\n        bool(obj)\n    except ValueError:\n        print('ambiguous')\nr = pd.DataFrame({'k': ['A'], 'v': [3]})\ntry:\n    f.merge(r, on='k', validate='1:1')\nexcept Exception:\n    print('left duplicates rejected')\ntry:\n    r.merge(f, on='k', validate='m:1')\nexcept Exception:\n    print('right duplicates rejected')\nprint(f.merge(r, on='k', validate='m:1').shape)\nprint(r.merge(f, on='k', validate='1:m').shape)\nprint(f.merge(f, on='k', validate='m:m').shape)\n",
     ).expect("evaluates");
@@ -69,7 +69,7 @@ fn pandas_validation_and_truth_contracts_are_enforced() {
 }
 
 #[test]
-fn successive_flushes_preserve_write_and_append_chunks() {
+fn preserves_flushed_chunks() {
     let output = evaluate(
         "f = open('flush.txt', 'w')\nf.write('old')\nf.flush()\nprint(open('flush.txt').read())\nf.write('new')\nf.flush()\nf.flush()\nprint(open('flush.txt').read())\nf.close()\nprint(open('flush.txt').read())\nf = open('flush.txt', 'a')\nf.write('A')\nf.flush()\nf.flush()\nf.write('B')\nf.flush()\nf.close()\nprint(open('flush.txt').read())\n",
     ).expect("evaluates");
@@ -119,7 +119,7 @@ impl Host for CommandHost {
 }
 
 #[test]
-fn subprocess_cwd_is_resolved_for_every_dispatch_api() {
+fn resolves_subprocess_directory() {
     let host = Rc::new(CommandHost {
         local: LocalHost::new("/workflow"),
         commands: RefCell::new(Vec::new()),
@@ -147,7 +147,7 @@ fn subprocess_cwd_is_resolved_for_every_dispatch_api() {
 }
 
 #[test]
-fn unsupported_subprocess_options_never_dispatch() {
+fn rejects_subprocess_options() {
     for api in ["run", "check_output", "call", "check_call", "Popen"] {
         for option in ["env={}", "input=b'hello'", "timeout=1"] {
             let host = Rc::new(CommandHost {

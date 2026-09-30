@@ -284,7 +284,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn first_import_receives_all_workflow_constraints() {
+    fn forwards_workflow_constraints() {
         struct Starter(Rc<RefCell<Option<PythonStart>>>);
         impl PythonStarter for Starter {
             fn start(&self, start: &PythonStart) -> Result<Box<dyn PythonProcess>, String> {

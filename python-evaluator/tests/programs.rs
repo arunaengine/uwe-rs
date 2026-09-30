@@ -22,7 +22,7 @@ fn run(path: &Path) -> String {
 }
 
 #[test]
-fn programs_print_what_python_prints() {
+fn matches_python_output() {
     let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/python");
     let mut programs: Vec<_> = std::fs::read_dir(&folder)
         .expect("reads the fixtures")
@@ -48,21 +48,21 @@ fn evaluate(code: &str) -> Result<String, python_evaluator::Error> {
 }
 
 #[test]
-fn errors_name_the_line_and_the_exception() {
+fn reports_exception_lines() {
     let error = evaluate("x = 1\ny = {}\ny['missing']\n").expect_err("a KeyError");
     assert_eq!(error.to_string(), "<test>:3: KeyError: 'missing'");
     assert!(!error.is_unsupported());
 }
 
 #[test]
-fn unsupported_features_are_not_caught_by_except() {
+fn propagates_unsupported_features() {
     let error = evaluate("import os\ntry:\n    os.fork()\nexcept Exception:\n    pass\n")
         .expect_err("unsupported");
     assert!(error.is_unsupported(), "{error}");
 }
 
 #[test]
-fn writes_stay_in_memory() {
+fn buffers_file_writes() {
     let output = evaluate(
         "with open('iunctus-test-never-written.txt', 'w') as f:\n    f.write('hi')\nprint(open('iunctus-test-never-written.txt').read())\n",
     )
@@ -76,7 +76,7 @@ fn writes_stay_in_memory() {
 }
 
 #[test]
-fn unavailable_os_mutations_are_explicit_and_leave_files_unchanged() {
+fn rejects_unavailable_mutations() {
     for (name, call) in [
         ("symlink", "os.symlink('source.txt', 'created.txt')"),
         ("link", "os.link('source.txt', 'created.txt')"),
@@ -137,7 +137,7 @@ fn unavailable_os_mutations_are_explicit_and_leave_files_unchanged() {
 }
 
 #[test]
-fn os_walk_prunes_live_orders_bottom_up_and_bounds_link_cycles() {
+fn bounds_directory_walks() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let tree = folder.path().join("tree");
     for directory in ["keep", "prune", "real/nested"] {
@@ -197,7 +197,7 @@ fn os_walk_prunes_live_orders_bottom_up_and_bounds_link_cycles() {
 }
 
 #[test]
-fn os_walk_calls_error_handler_and_propagates_callback_errors() {
+fn propagates_walk_errors() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let host = Rc::new(LocalHost::new(folder.path()));
     let mut interpreter = Interpreter::new(host.clone());
@@ -233,7 +233,7 @@ fn os_walk_calls_error_handler_and_propagates_callback_errors() {
 }
 
 #[test]
-fn loops_that_never_end_stop() {
+fn bounds_infinite_loops() {
     let host = Rc::new(LocalHost::new(std::env::temp_dir()));
     let mut interpreter = Interpreter::new(host);
     interpreter.step_limit = 10_000;
@@ -251,7 +251,7 @@ fn recursion_is_limited() {
 }
 
 #[test]
-fn yaml_follows_the_safe_loader() {
+fn matches_safe_loader() {
     let output = evaluate(
         "import yaml\nprint(yaml.safe_load('a: yes\\nb: 1e3\\nc: 1.0e+3\\nd: 010\\ne: 1:30\\nf: ~\\ng: [1, x]\\nh: &x {k: 1}\\ni: *x\\n'))\n",
     )
@@ -310,7 +310,7 @@ impl python_evaluator::Host for CommandHost {
 }
 
 #[test]
-fn commands_run_where_the_host_runs_them() {
+fn dispatches_host_commands() {
     let host = Rc::new(CommandHost(LocalHost::new(std::env::temp_dir())));
     let mut interpreter = Interpreter::new(host.clone());
     interpreter
@@ -337,14 +337,14 @@ fn commands_run_where_the_host_runs_them() {
 }
 
 #[test]
-fn missing_standard_modules_are_unsupported() {
+fn rejects_missing_modules() {
     // Packages without a stand-in run in a container; tests/packages.rs covers them.
     let error = evaluate("import turtle\n").expect_err("no stand-in");
     assert!(error.is_unsupported(), "{error}");
 }
 
 #[test]
-fn integer_square_roots_do_not_overflow() {
+fn bounds_integer_roots() {
     assert_eq!(
         evaluate("import math\nprint(math.isqrt(9223372036854775807), math.isqrt(10 ** 100), math.isqrt(0))\n")
             .expect("integer roots"),
@@ -365,7 +365,7 @@ fn integer_square_roots_do_not_overflow() {
 }
 
 #[test]
-fn recursive_containers_have_bounded_representations() {
+fn bounds_recursive_representations() {
     assert_eq!(
         evaluate("a = []\na.append(a)\nd = {}\nd['self'] = d\nprint(a, d)\nprint([a, a])\n")
             .expect("recursive repr"),
@@ -374,7 +374,7 @@ fn recursive_containers_have_bounded_representations() {
 }
 
 #[test]
-fn dataframe_indexes_reject_invalid_shapes_before_access() {
+fn rejects_index_shapes() {
     for expression in [
         "pd.DataFrame({'x': [1]}).set_index(pd.Index(['a', 'b']))",
         "pd.MultiIndex.from_arrays([[1, 2], ['a']])",
@@ -394,7 +394,7 @@ fn dataframe_indexes_reject_invalid_shapes_before_access() {
 }
 
 #[test]
-fn appending_preserves_disk_content_without_writing_it() {
+fn preserves_buffered_appends() {
     let folder = tempfile::tempdir().expect("a folder");
     let path = folder.path().join("existing.txt");
     std::fs::write(&path, "old").expect("initial content");
@@ -406,7 +406,7 @@ fn appending_preserves_disk_content_without_writing_it() {
 }
 
 #[test]
-fn truth_consumers_release_the_iterator_before_item_truthiness() {
+fn releases_truth_iterators() {
     let output = evaluate(
         "class Item:\n    def __bool__(self):\n        next(it, None)\n        return True\nit = iter([Item(), 0])\nprint(any(it))\nit = iter([Item(), 0])\nprint(all(it))\n",
     ).expect("reentrant item truthiness");
@@ -414,7 +414,7 @@ fn truth_consumers_release_the_iterator_before_item_truthiness() {
 }
 
 #[test]
-fn generator_functions_suspend_effects_and_exceptions() {
+fn suspends_generator_effects() {
     let output = evaluate(
         "events = []\ndef source():\n    events.append('first')\n    x = yield 1\n    events.append(x)\n    yield 2\n    raise ValueError('tail')\ng = source()\nprint(events)\nprint(next(g), events)\nprint(next(g), events)\ntry:\n    next(g)\nexcept ValueError as error:\n    print(error)\nprint(next(g, 'done'))\n",
     ).expect("suspended generator");
@@ -422,7 +422,7 @@ fn generator_functions_suspend_effects_and_exceptions() {
 }
 
 #[test]
-fn generators_resume_nested_loop_flow_and_yield_from() {
+fn resumes_generator_flow() {
     let output = evaluate(
         "def source():\n    for i in range(3):\n        for j in range(3):\n            if j == 0:\n                continue\n            if j == 2:\n                break\n            yield (i, j)\n        else:\n            yield 'wrong'\n    else:\n        yield 'outer'\n    k = 0\n    while k < 2:\n        k += 1\n        yield k\n    else:\n        yield from ['end', 'tail']\nprint(list(source()))\ndef forever():\n    while True:\n        yield True\ng = forever()\nprint(any(g), next(g))\nfor item in forever():\n    print(item)\n    break\ndef false_first():\n    yield False\n    raise ValueError('unconsumed')\nprint(all(false_first()))\n",
     ).expect("resumed loops");
@@ -433,7 +433,7 @@ fn generators_resume_nested_loop_flow_and_yield_from() {
 }
 
 #[test]
-fn generator_delegation_preserves_effect_timing() {
+fn preserves_delegation_timing() {
     let output = evaluate(
         "events = []\ndef inner():\n    events.append('first')\n    yield 1\n    events.append('second')\n    yield 2\ndef outer():\n    yield from inner()\n    events.append('end')\ng = outer()\nprint(events)\nprint(next(g), events)\nprint(next(g), events)\nprint(next(g, None), events)\n",
     ).expect("incremental delegation");
@@ -444,7 +444,7 @@ fn generator_delegation_preserves_effect_timing() {
 }
 
 #[test]
-fn unsupported_generator_suspension_shapes_are_explicit() {
+fn rejects_suspension_shapes() {
     for code in [
         "def source():\n    yield 1\n    x = 1 + (yield 2)\ng = source()\nnext(g)\nnext(g)\n",
         "def source():\n    try:\n        yield 1\n    finally:\n        pass\nnext(source())\n",
@@ -462,7 +462,7 @@ fn unsupported_generator_suspension_shapes_are_explicit() {
 }
 
 #[test]
-fn every_generator_consumer_refuses_reentrant_advancement() {
+fn rejects_reentrant_advancement() {
     for body in [
         "next(g)",
         "any(g)",
@@ -482,7 +482,7 @@ fn every_generator_consumer_refuses_reentrant_advancement() {
 }
 
 #[test]
-fn generator_expressions_suspend_filters_inner_iterables_and_errors() {
+fn suspends_generator_expressions() {
     let output = evaluate(
         "events = []\nclass Source:\n    def __init__(self):\n        self.position = 0\n    def __iter__(self):\n        events.append('iter')\n        return self\n    def __next__(self):\n        events.append('next')\n        if self.position == 2:\n            raise ValueError('tail')\n        value = self.position\n        self.position += 1\n        return value\ndef accept(x):\n    events.append(('filter', x))\n    return x == 0\ndef inner(x):\n    events.append(('inner', x))\n    return [x, x + 10]\ndef record(x):\n    events.append(('value', x))\n    return x\ng = (record(y) for x in Source() if accept(x) for y in inner(x) if y < 11)\nprint(events)\nprint(next(g), events)\nprint(next(g), events)\ntry:\n    next(g)\nexcept ValueError as error:\n    print(error, events)\nprint(next(g, 'end'))\n",
     ).expect("lazy generator expression");
@@ -493,7 +493,7 @@ fn generator_expressions_suspend_filters_inner_iterables_and_errors() {
 }
 
 #[test]
-fn generator_expressions_capture_outer_iterators_and_live_bindings() {
+fn captures_generator_bindings() {
     let output = evaluate(
         "items = [1]\ncaptured = items\nfactor = 2\ng = (factor * x for x in items)\nitems = [99]\ncaptured.append(2)\nfactor = 3\nprint(next(g), next(g))\nfactor = 4\ncaptured.append(3)\nprint(next(g))\nprint(next(g, 'end'))\ncaptured.append(4)\nprint(next(g, 'end'))\ndef make():\n    scale = 2\n    g = (scale * x for x in [3])\n    scale = 4\n    return g\nprint(next(make()))\n",
     ).expect("outer capture and closures");
@@ -501,7 +501,7 @@ fn generator_expressions_capture_outer_iterators_and_live_bindings() {
 }
 
 #[test]
-fn custom_iterators_stop_after_short_circuit_and_loop_break() {
+fn stops_custom_iterators() {
     let output = evaluate(
         "events = []\nclass Source:\n    def __init__(self, first):\n        self.first = first\n        self.used = False\n    def __iter__(self):\n        events.append('iter')\n        return self\n    def __next__(self):\n        events.append('next')\n        if self.used:\n            raise ValueError('unconsumed')\n        self.used = True\n        return self.first\nprint(any(Source(1)), all(Source(0)))\nfor value in Source(7):\n    print(value)\n    break\nprint(events)\nprint(any(x for x in Source(1)), all(x for x in Source(0)))\n",
     ).expect("lazy custom iteration");
@@ -512,7 +512,7 @@ fn custom_iterators_stop_after_short_circuit_and_loop_break() {
 }
 
 #[test]
-fn sequence_iteration_and_list_mutation_remain_lazy() {
+fn preserves_lazy_iteration() {
     let output = evaluate(
         "events = []\nclass Sequence:\n    def __getitem__(self, index):\n        events.append(index)\n        if index == 2:\n            raise IndexError('end')\n        return index + 1\ng = (x for x in Sequence())\nprint(events)\nprint(next(g), events)\nprint(next(g), events)\nprint(next(g, None), events)\nitems = [1]\nfor item in items:\n    print(item)\n    if item == 1:\n        items.append(2)\nit = iter(items)\nprint(list(it))\nitems.append(3)\nprint(next(it, 'end'))\n",
     ).expect("lazy sequence and live list");
@@ -523,7 +523,7 @@ fn sequence_iteration_and_list_mutation_remain_lazy() {
 }
 
 #[test]
-fn generator_expression_outer_protocol_errors_happen_at_creation() {
+fn validates_outer_iterators() {
     let output = evaluate(
         "class Broken:\n    def __iter__(self):\n        raise ValueError('create')\ntry:\n    g = (x for x in Broken())\nexcept ValueError as error:\n    print(error)\nclass Invalid:\n    def __iter__(self):\n        return [1]\ntry:\n    g = (x for x in Invalid())\nexcept TypeError as error:\n    print(error)\n",
     ).expect("outer protocol checks");

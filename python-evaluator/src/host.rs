@@ -370,7 +370,7 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     #[test]
-    fn new_folders_need_write_permission_on_their_parent() {
+    fn requires_parent_permission() {
         let folder = tempfile::tempdir().expect("a folder");
         let locked = folder.path().join("locked");
         std::fs::create_dir(&locked).expect("a locked folder");

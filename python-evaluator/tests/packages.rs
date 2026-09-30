@@ -109,7 +109,7 @@ fn requests(run: &Run) -> Vec<Json> {
 }
 
 #[test]
-fn calls_give_plain_values_and_handles() {
+fn returns_package_values() {
     let mut test = interpreter(
         vec![
             handle(1, "module", false),
@@ -153,7 +153,7 @@ fn calls_give_plain_values_and_handles() {
 }
 
 #[test]
-fn values_of_every_kind_come_back() {
+fn decodes_package_values() {
     let mut test = interpreter(
         vec![
             handle(1, "module", false),
@@ -175,7 +175,7 @@ fn values_of_every_kind_come_back() {
 }
 
 #[test]
-fn exceptions_of_packages_are_python_exceptions() {
+fn maps_package_exceptions() {
     let mut test = interpreter(
         vec![
             handle(1, "module", false),
@@ -211,7 +211,7 @@ fn exceptions_of_packages_are_python_exceptions() {
 }
 
 #[test]
-fn submodules_are_imported_in_the_process() {
+fn imports_process_submodules() {
     let mut test = interpreter(
         vec![
             handle(1, "module", false),
@@ -243,7 +243,7 @@ fn submodules_are_imported_in_the_process() {
 }
 
 #[test]
-fn stopping_ends_the_process_and_its_handles() {
+fn releases_process_handles() {
     let mut test = interpreter(vec![handle(1, "module", false)], None);
     let Ok(globals) = test.interpreter.run_text("<test>", "import toy\n") else {
         panic!("imports");
@@ -260,7 +260,7 @@ fn stopping_ends_the_process_and_its_handles() {
 }
 
 #[test]
-fn without_a_container_runtime_the_run_stops() {
+fn requires_container_runtime() {
     let host = Rc::new(LocalHost::new(std::env::temp_dir()));
     let mut interpreter = Interpreter::new(host);
     let Err(error) = interpreter.run_text(
@@ -289,7 +289,7 @@ fn interpreter_failing(reason: &str) -> Run {
 }
 
 #[test]
-fn a_dotted_import_installs_the_package_of_its_full_name() {
+fn installs_dotted_packages() {
     let mut test = interpreter(
         vec![handle(1, "module", false), handle(2, "module", false)],
         None,
@@ -303,7 +303,7 @@ fn a_dotted_import_installs_the_package_of_its_full_name() {
 }
 
 #[test]
-fn folders_of_the_workflow_are_not_packages() {
+fn excludes_workflow_packages() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     std::fs::create_dir(folder.path().join("src")).expect("a folder");
     let host = Rc::new(LocalHost::new(folder.path()));
@@ -329,7 +329,7 @@ fn folders_of_the_workflow_are_not_packages() {
 }
 
 #[test]
-fn except_clauses_catch_exceptions_by_classes_of_the_package() {
+fn catches_package_classes() {
     let raised = |kind: &str| {
         json!({"error": {"type": kind, "module": "toy.errors", "bases": ["Exception", "BaseException"],
             "classes": [format!("toy.errors.{kind}"), "toy.errors.ToyError", "builtins.Exception", "builtins.BaseException"],
@@ -356,7 +356,7 @@ fn except_clauses_catch_exceptions_by_classes_of_the_package() {
 }
 
 #[test]
-fn path_like_objects_of_packages_are_paths() {
+fn resolves_package_paths() {
     let mut test = interpreter(
         vec![
             handle(1, "module", false),
@@ -375,7 +375,7 @@ fn path_like_objects_of_packages_are_paths() {
 }
 
 #[test]
-fn the_versions_that_the_workflow_pins_are_installed() {
+fn installs_pinned_versions() {
     let mut test = interpreter(vec![handle(1, "module", false)], None);
     test.interpreter
         .packages

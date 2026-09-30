@@ -124,7 +124,7 @@ mod tests {
     use super::{normalized, requirements};
 
     #[test]
-    fn conda_environments_give_their_pins() {
+    fn extracts_conda_pins() {
         let text = "channels:\n  - conda-forge\ndependencies:\n  - snakemake=6.15.3\n  - bioconda::pyfaidx>=0.5.8\n  - jq 1.6\n  - pip\n  - pip:\n      - yatiml==0.7\n      - git+https://example.org/x.git\n";
         assert_eq!(
             requirements("environment.yaml", text),
@@ -140,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn requirement_files_give_their_pins() {
+    fn extracts_requirement_pins() {
         let text = "# tools\nsnakemake==9.0\nYaTiML==0.7  # the old loader\n-r other.txt\npandas\n";
         assert_eq!(
             requirements("requirements.txt", text),

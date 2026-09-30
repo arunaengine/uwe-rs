@@ -71,7 +71,7 @@ mod tests {
     use super::is_hdf5;
 
     #[test]
-    fn finds_the_signature_after_a_user_block() {
+    fn finds_hdf5_signature() {
         let mut bytes = vec![0; 1024];
         bytes.extend_from_slice(super::SIGNATURE);
         assert!(is_hdf5(&bytes));

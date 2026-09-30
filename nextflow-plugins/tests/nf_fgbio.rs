@@ -39,7 +39,7 @@ fn read_structure(text: &str) -> String {
 }
 
 #[test]
-fn read_structures_parse_as_fgbio_does() {
+fn parses_read_structures() {
     assert_eq!(read_structure("3M2S+T"), "3M2S+T");
     assert_eq!(read_structure(" 8m 1t "), "8M1T");
     assert_eq!(

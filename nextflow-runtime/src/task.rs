@@ -1,6 +1,4 @@
-//! The parts of a Nextflow task that its container task takes: `.command.sh` with the code that
-//! captures `env` and `eval` outputs, the shell, the image and the resources from the
-//! directives.
+//! Builds container scripts, shells, images, and resources from Nextflow task directives.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -80,10 +78,8 @@ pub fn container(request: &TaskRequest) -> Option<String> {
     }
 }
 
-/// An image with the registry of the container engine in front, as Nextflow puts it before
-/// images without a registry of their own: `biocontainers/fastqc` becomes
-/// `quay.io/biocontainers/fastqc` with `docker.registry = 'quay.io'`. An image names its own
-/// registry when its first part holds a `.` or a `:`, like `community.wave.seqera.io/...`.
+/// Prepends the engine registry unless the image's first part contains a dot or colon.
+/// For example, docker.registry = 'quay.io' qualifies biocontainers/fastqc.
 pub fn with_registry(image: &str, registry: Option<&str>) -> String {
     let Some(registry) = registry.filter(|registry| !registry.is_empty()) else {
         return image.to_owned();

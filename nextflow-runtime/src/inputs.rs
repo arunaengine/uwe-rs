@@ -1,10 +1,4 @@
-//! The inputs of a Nextflow pipeline as one JSON Schema (decision 24). A pipeline with a
-//! `nextflow_schema.json`, like every nf-core pipeline, has that schema in draft 2020-12, with
-//! the schema of each sample sheet that nf-schema's `schema` keyword names put in its place.
-//! For other pipelines the schema comes from what they declare: the typed `params` block with
-//! its types, and the params of the config and of `params.x = value` statements with the types
-//! of their defaults. The values of a run are its params as nf-schema checks them, and the
-//! params that the code reads are found in the scripts and config files of the project.
+//! Builds pipeline input schemas from schema files, embedded sample sheets, and declared params.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -219,10 +213,8 @@ pub fn to_json(value: &Value) -> Json {
     }
 }
 
-/// Whether the pipeline holds its params to its schema itself: a script that it loads includes
-/// `validateParameters` of nf-schema or nf-validation, and the params do not switch the check
-/// off with `validate_params = false`, as nf-core pipelines allow. Nextflow alone checks no param
-/// against `nextflow_schema.json`.
+/// Detects included nf-schema or nf-validation checks unless validate_params disables them.
+/// Nextflow alone does not validate params against nextflow_schema.json.
 pub fn validates(module: &Rc<Module>, params: &Value) -> bool {
     let switched_off = match nextflow_config::tree::get(params, &["validate_params"]) {
         Some(Value::Boolean(false)) => true,
@@ -286,10 +278,8 @@ pub fn as_text(schema: &Json, values: &mut Json) {
     }
 }
 
-/// The params that the pipeline tells its check to leave out, like `genomes`, which are kept out
-/// of the schema on purpose: nf-schema's `validation.ignoreParams` and
-/// `validation.defaultIgnoreParams`, and nf-validation's `params.validationSchemaIgnoreParams`,
-/// a text of names joined by commas.
+/// Reads ignored params from nf-schema validation.ignoreParams and defaultIgnoreParams,
+/// or nf-validation params.validationSchemaIgnoreParams, as comma-separated names.
 pub fn ignored(config: &Config) -> Vec<String> {
     let mut names = Vec::new();
     for setting in ["ignoreParams", "defaultIgnoreParams"] {
@@ -316,14 +306,9 @@ const NF_VALIDATION_PARAMS: &[&str] = &[
     "validationSkipDuplicateCheck",
 ];
 
-/// The params that the code of a project reads, found in its scripts, its config files and its
-/// Groovy classes: `params.name`, `params?.name`, `params['name']`, `params.get('name')` and
-/// `$params.name` in a string. An assignment like `params.name = value` declares the param
-/// rather than reading it. A project that includes nf-schema or nf-validation also reads the
-/// params that the plugin reads by name, where its schema declares them, as the plugins read
-/// them only then. A project that calls the plugin's `paramsSummaryLog` or `paramsSummaryMap`
-/// reads every param of its schema: the summary shows each one that is set, like the
-/// `config_profile_name` of an nf-core test profile.
+/// Finds parameter reads in scripts, configs, and Groovy classes, excluding assignments.
+/// Includes plugin-read schema params and every schema param read by summary calls.
+/// See the crate README for recognized read forms and plugin scope.
 pub fn read(project: &Path, schema: &Json) -> BTreeSet<String> {
     let mut files = Vec::new();
     source_files(project, &mut files);

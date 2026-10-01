@@ -1,7 +1,4 @@
-//! Processes with `exec:` sections run in the interpreter when their task is asked for: the
-//! task has no image and no command, its files are those the section made in `task.workDir`,
-//! and the tasks that read them wait for it (tests/fixtures/exec, recorded with Nextflow
-//! 26.04.6).
+//! Checks interpreter execution, files, and dependencies against the Nextflow 26.04.6 exec oracle.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

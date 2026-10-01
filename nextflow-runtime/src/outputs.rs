@@ -1,8 +1,4 @@
-//! The workflow outputs of the `output { }` block, as Nextflow's `PublishOp` publishes them:
-//! the task files in each value that a published channel gives go below the output
-//! directory, into the folder of the output's `path`, or where the publish statements of a
-//! `path` closure say. Once the channel ends, an index file lists the values, with the files
-//! at their new places.
+//! Publishes workflow channel files and writes their index when the channel ends.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

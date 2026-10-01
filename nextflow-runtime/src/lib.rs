@@ -330,10 +330,8 @@ impl Default for Options {
     }
 }
 
-/// What a script declares about its params, before any of its workflow runs: the params of the
-/// config with those of the `params.x = value` statements of the script and its includes where
-/// the config leaves them unset, and the evaluated default of each param of the typed `params`
-/// block, `None` for one without a default.
+/// Evaluates declared params before workflow execution, filling unset config values from scripts.
+/// Typed params use evaluated defaults, or None when no default is declared.
 pub fn declared_params(
     module: &Rc<Module>,
     options: &Options,

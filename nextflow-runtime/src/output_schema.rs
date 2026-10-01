@@ -1,7 +1,4 @@
-//! The outputs of a Nextflow pipeline as one JSON Schema (decision 24): the outputs of the
-//! `output { }` block of the main script, which the pipeline publishes into its output folder,
-//! else the `emit`s of the workflows of the main script, which a pipeline that includes it
-//! gets as channels.
+//! Describes published workflow outputs or emitted main-script channels as JSON Schema.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

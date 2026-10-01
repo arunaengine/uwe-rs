@@ -301,11 +301,8 @@ impl Loader {
     }
 }
 
-/// The file an include source names, relative to the including script, as Nextflow's
-/// `realModulePath` finds it: the name with `.nf` added when that file exists, else `main.nf`
-/// of a directory, else the name itself, like `lib/utils.groovy`. Plugins have no file. A
-/// legacy source may start with the directory of the project or of the including script,
-/// like `${projectDir}/modules/x`.
+/// Resolves includes relative to their script: an existing .nf, a directory main.nf, or the name.
+/// Plugins have no file; legacy sources may start with project or script directory expressions.
 fn include_path(project: &Path, directory: &Path, source: &str) -> Option<PathBuf> {
     if source.starts_with("plugin/") {
         return None;

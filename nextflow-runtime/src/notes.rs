@@ -1,8 +1,4 @@
-//! What a Nextflow run notes while it plans, for the markers of the graph: the files that the
-//! workflow reads or lists through the host, and the files that operators like `flatten` turn
-//! into items of their own. The engine marks the tasks that made such files. Reads of the
-//! `versions.yml` files of nf-core modules are left out: pipelines read them for the report of
-//! tool versions, never to plan tasks.
+//! Tracks workflow file reads for graph dependencies, excluding versions.yml report reads.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

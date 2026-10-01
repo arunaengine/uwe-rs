@@ -1,6 +1,4 @@
-//! Splitters: `splitCsv`, `splitText`, `splitFasta`, `splitFastq` and `splitJson` emit the
-//! records of a file or text, alone or `by` several, as the splitter of the evaluator reads
-//! them (channels spec, section 5.33).
+//! Emits CSV, text, FASTA, FASTQ, and JSON splitter records, singly or in by groups.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

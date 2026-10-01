@@ -300,7 +300,7 @@ pub(crate) fn workflow_parameters(
         let reference = parameter
             .value_from
             .as_ref()
-            .and_then(|from| from.config_map_key_ref.as_ref())
+            .and_then(|from| from.config_key_ref.as_ref())
             .map(KeyRef::of);
         let (library, near) = config_maps;
         let fallback = parameter

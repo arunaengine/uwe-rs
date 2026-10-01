@@ -320,7 +320,8 @@ pub struct ValueFrom {
     pub event: String,
     pub default: Option<AnyString>,
     pub supplied: Option<Node>,
-    pub config_map_key_ref: Option<Node>,
+    #[serde(rename = "configMapKeyRef")]
+    pub config_key_ref: Option<Node>,
 }
 
 /// An artifact: a file or directory, where it is in the container, and where it comes from.

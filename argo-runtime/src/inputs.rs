@@ -57,7 +57,7 @@ impl Run {
                             input.name
                         )));
                     }
-                    if given.config_map_key_ref.is_some() {
+                    if given.config_key_ref.is_some() {
                         from = Some(given.clone());
                     } else if !given.supplied.is_none() || !given.expression.is_empty() {
                         value = given.default.clone().or(value);
@@ -65,10 +65,10 @@ impl Run {
                 }
             }
             // A ConfigMap wins; without it the default of `valueFrom` takes over, as in Argo.
-            if let Some(from) = from.filter(|from| from.config_map_key_ref.is_some()) {
+            if let Some(from) = from.filter(|from| from.config_key_ref.is_some()) {
                 let variables = Variables::new(self.globals.clone());
                 let mut reference = from
-                    .config_map_key_ref
+                    .config_key_ref
                     .as_ref()
                     .map(KeyRef::of)
                     .unwrap_or_default();

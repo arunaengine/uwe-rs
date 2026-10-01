@@ -76,7 +76,7 @@ pub(crate) fn process_args(template: &Template, supplied: Supplied) -> Result<()
                 from = argument.value_from.as_ref();
             }
         }
-        let config_map = from.is_some_and(|from| from.config_map_key_ref.is_some());
+        let config_map = from.is_some_and(|from| from.config_key_ref.is_some());
         if !value && !config_map {
             return Err(format!("inputs.parameters.{} was not supplied", input.name));
         }
@@ -370,9 +370,8 @@ pub(crate) fn arguments(
             ));
         }
         if let Some(from) = &parameter.value_from {
-            let allowed = from.config_map_key_ref.is_some()
-                || !from.event.is_empty()
-                || from.supplied.is_some();
+            let allowed =
+                from.config_key_ref.is_some() || !from.event.is_empty() || from.supplied.is_some();
             let other = !from.path.is_empty()
                 || !from.json_path.is_empty()
                 || !from.parameter.is_empty()

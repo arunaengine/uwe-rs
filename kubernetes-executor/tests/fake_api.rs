@@ -1,8 +1,4 @@
-//! The Kubernetes backend against a small fake Kubernetes API server on this machine, which
-//! the backend reaches through a kubeconfig of the test. Creating a Job runs the command of its
-//! container in the background, without a container, which works because the pod sees the
-//! files at the same paths; listing pods tells how each Job stands; deleting a Job stops it.
-//! The server refuses every request without the token of the test's kubeconfig.
+//! Checks the Kubernetes backend with a local API server that executes job commands.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

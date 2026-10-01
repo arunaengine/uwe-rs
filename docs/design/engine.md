@@ -624,3 +624,40 @@ job cannot ask the registry for; its file system is writable in memory
 (`--writable-tmpfs`), so that it may write outside its folders where its user may write.
 A task without network requests an isolated network. Sites or runtimes that cannot
 provide it must fail the container launch.
+
+## File descriptions: kubernetes-executor
+
+### `kubernetes-executor/src/backend.rs`
+
+Runs an attempt of a task as one Kubernetes Job: the inputs are placed in the scratch
+directory of the attempt, and the pod runs the wrapper in the task's image with the folders
+of the task as `hostPath` volumes. So the nodes must see the scratch directory and the store
+at the same paths, as a `kind` cluster whose node mounts them, or nodes with a shared file
+system.
+
+### `kubernetes-executor/src/cluster.rs`
+
+How the backend reaches the cluster: a client of the Kubernetes API, made from the kubeconfig
+that the run names. It never reads the default kubeconfig or its contexts, so that no run
+reaches a cluster by accident, and it needs no program like `kubectl`.
+
+### `kubernetes-executor/src/lib.rs`
+
+The Kubernetes executor: each attempt of a task runs as one Kubernetes Job with one pod,
+which runs the wrapper in the task's image. The nodes see the store and the scratch
+directories at the same paths, as `hostPath` volumes. The backend talks to the Kubernetes API
+itself, with the kubeconfig that the run names; there is no default.
+
+### `kubernetes-executor/src/pods.rs`
+
+What Kubernetes says about the pods of the Jobs of a backend. One request lists all of them
+at once, by the label of the backend, at most once per poll interval, so that many tasks do
+not load the API server.
+
+### `kubernetes-executor/tests/fake_api.rs`
+
+The Kubernetes backend against a small fake Kubernetes API server on this machine, which
+the backend reaches through a kubeconfig of the test. Creating a Job runs the command of its
+container in the background, without a container, which works because the pod sees the
+files at the same paths; listing pods tells how each Job stands; deleting a Job stops it.
+The server refuses every request without the token of the test's kubeconfig.

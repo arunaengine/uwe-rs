@@ -1,6 +1,4 @@
-//! How the backend reaches the cluster: a client of the Kubernetes API, made from the kubeconfig
-//! that the run names. It never reads the default kubeconfig or its contexts, so that no run
-//! reaches a cluster by accident, and it needs no program like `kubectl`.
+//! Connects to the Kubernetes API using only the explicitly selected kubeconfig.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

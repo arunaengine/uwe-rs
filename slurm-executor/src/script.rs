@@ -116,12 +116,9 @@ pub const TIMED_OUT: i32 = 124;
 /// How long a container that ran out of time may take to end after its stop signal.
 const STOP_GRACE: u64 = 10;
 
-/// The job script: it waits until the node sees the whole wrapper, runs the wrapper in the
-/// task's container, makes what the task wrote durable, then records the exit code of the
-/// container. Podman and Docker get an init process, which hands the signal that stops the job
-/// to the task, so that the container ends with the job. A task with a `time` runs under
-/// `timeout`, as SLURM counts the time of a job in whole minutes. `size` is the length of the
-/// wrapper in bytes.
+/// Waits for the complete wrapper, runs the task container, syncs outputs and records its exit
+/// code.
+/// See `docs/design/engine.md` for the full contract.
 pub fn job_script(
     container: &Container,
     run: &ContainerRun<'_>,
@@ -148,13 +145,9 @@ pub fn job_script(
     )
 }
 
-/// The job script of a task of several containers: it starts a container for each of `runs`,
-/// one for each image, all at once, as the local executor does, then records the exit code of
-/// the first container that failed, else 0. `exits` holds for each run the files of the exit
-/// codes of its containers: a container of the engine that fails without its wrappers, as when
-/// it is killed for lack of memory, records its exit code there, so that the containers that
-/// wait for one of them go on. `sizes` holds the length in bytes of the wrapper of each run,
-/// which the job waits to see whole, as [`job_script`] does.
+/// Runs image groups concurrently and records the first failure, preserving dependency exit
+/// markers.
+/// See `docs/design/engine.md` for the full contract.
 pub fn container_script(
     container: &Container,
     runs: &[ContainerRun<'_>],
@@ -197,10 +190,8 @@ pub const NOT_SEEN: i32 = 125;
 /// How long a job waits for the node to see the whole wrapper of its task, in seconds.
 const SEEN_GRACE: u64 = 60;
 
-/// The lines that wait until the node sees each file at its length in bytes. A shared file
-/// system like CephFS may show a file that another machine has just written as empty or short
-/// for a while, and a shell runs an empty wrapper as a task that did nothing and ended well.
-/// A file that the node does not see whole in time ends the job with [`NOT_SEEN`] in `exit`.
+/// The lines that wait until the node sees each file at its length in bytes.
+/// See `docs/design/engine.md` for the full contract.
 fn wait_for(files: &[(PathBuf, u64)], exit: &str) -> String {
     let checks: Vec<String> = (files.iter())
         .map(|(path, size)| format!("seen {} {size}", quote(&path.to_string_lossy())))
@@ -265,13 +256,8 @@ fn command(container: &Container, run: &ContainerRun<'_>, gpus: bool) -> Vec<Str
 }
 
 /// The command of Apptainer: a container with its own `/tmp`, home and environment, which sees
-/// the scratch directory at the same path, the work directory, and the other mounts. It runs
-/// as the user who runs iunctus, without setuid or fakeroot. A task that runs as Kubernetes
-/// runs it starts in its `workdir`, or in `/`, the working directory of most images, which a
-/// job cannot ask the registry for; its file system is writable in memory
-/// (`--writable-tmpfs`), so that it may write outside its folders where its user may write.
-/// A task without network requests an isolated network. Sites or runtimes that cannot
-/// provide it must fail the container launch.
+/// the scratch directory at the same path, the work directory, and the other mounts.
+/// See `docs/design/engine.md` for the full contract.
 fn apptainer(program: &str, run: &ContainerRun<'_>, gpus: bool) -> Vec<String> {
     let start = match run.access.run_as {
         Some(_) => run.start().unwrap_or_else(|| "/".to_owned()),

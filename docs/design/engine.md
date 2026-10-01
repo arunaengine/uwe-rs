@@ -524,3 +524,103 @@ the background, `squeue` tells whether it still runs, `scancel` stops it, and th
 keeps no accounting. A simulated Apptainer runs the wrapper without a container, which works
 because the job sees the files at the same paths. One test runs a real container with
 Docker and needs the `debian:stable-slim` image; run it with `-- --ignored`.
+
+## Source contracts: slurm-executor
+
+### `slurm-executor/src/backend.rs:212`
+
+The command that a container of `image` runs for these arguments. An image of a
+registry runs them through its entrypoint, or its default command when there are none,
+as `docker run`, the local executor and Kubernetes run them; a task that replaces the
+entrypoint runs them as they are. A SIF file or an address runs them as they are, as
+Apptainer's `exec` does.
+
+### `slurm-executor/src/backend.rs:255`
+
+The config of an image of a registry. An image pinned to its digest never changes, so
+its config is kept in a file next to its SIF file and asked of the registry only once:
+Docker Hub counts each request for a manifest against a limit per address, which all
+nodes of a cluster may share.
+
+### `slurm-executor/src/backend.rs:468`
+
+The image as the jobs run it: with Apptainer or Singularity, the SIF file of the image,
+pulled once by a job of its own, else the image itself. The file of an image pinned to
+its digest, or of an address, serves later runs too; that of a tag is pulled once per
+run, as the tag may move.
+
+### `slurm-executor/src/backend.rs:498`
+
+The SIF file of an image, pulled once by a job of its own. A file that is already there
+counts only when it is `lasting`. The tasks of the image share one pull per run, also
+when it fails: a failed pull is tried again a few times, with a growing pause, and then
+every task of the image fails with the same error.
+
+### `slurm-executor/src/backend.rs:1037`
+
+The exit code of the task and a note for its standard error, from the exit code that the
+wrapper recorded and the end of the job; `Err` when the machine failed rather than the task.
+
+The wrapper records the tool's exit code and ends with 0. A container stopped by a signal,
+as for lack of memory, ends the task with its own exit code. A job that ran out of time or
+memory ends the task as a stopped container would. Other ends are failures of the machine,
+like a container runtime that could not start the image, or a node that failed.
+
+### `slurm-executor/src/images.rs:30`
+
+The name of the SIF file of an image that is pinned to its digest, like
+`debian@sha256:ab` as `sha256-ab.sif`, or of a SIF file at an `http://` or `https://`
+address, like those that nf-core modules name for Apptainer, by the digest of its address;
+`None` for any other image, which the jobs take as it is: a tag that may move, a path, or
+an address with another scheme.
+
+### `slurm-executor/src/images.rs:50`
+
+The name of the SIF file of an image of a registry named by a tag, like
+`debian:stable-slim` as `tag-<digest of the name>.sif`. A tag may move, so a run never takes
+such a file from an earlier run: it pulls the image again, once for all its jobs. `None` for
+a path, a SIF file, an address with a scheme, and an image that [`file_name`] names.
+
+### `slurm-executor/src/images.rs:65`
+
+The script of the job that pulls an image into `file`. It writes a file of its own first,
+syncs it and moves it into place at the end, so that no task reads half a file, also on
+another node of a shared file system, and two runs that pull the same image at once do not
+spoil each other's file. `exit` gets the exit code.
+
+### `slurm-executor/src/script.rs:119`
+
+The job script: it waits until the node sees the whole wrapper, runs the wrapper in the
+task's container, makes what the task wrote durable, then records the exit code of the
+container. Podman and Docker get an init process, which hands the signal that stops the job
+to the task, so that the container ends with the job. A task with a `time` runs under
+`timeout`, as SLURM counts the time of a job in whole minutes. `size` is the length of the
+wrapper in bytes.
+
+### `slurm-executor/src/script.rs:151`
+
+The job script of a task of several containers: it starts a container for each of `runs`,
+one for each image, all at once, as the local executor does, then records the exit code of
+the first container that failed, else 0. `exits` holds for each run the files of the exit
+codes of its containers: a container of the engine that fails without its wrappers, as when
+it is killed for lack of memory, records its exit code there, so that the containers that
+wait for one of them go on. `sizes` holds the length in bytes of the wrapper of each run,
+which the job waits to see whole, as [`job_script`] does.
+
+### `slurm-executor/src/script.rs:200`
+
+The lines that wait until the node sees each file at its length in bytes. A shared file
+system like CephFS may show a file that another machine has just written as empty or short
+for a while, and a shell runs an empty wrapper as a task that did nothing and ended well.
+A file that the node does not see whole in time ends the job with [`NOT_SEEN`] in `exit`.
+
+### `slurm-executor/src/script.rs:267`
+
+The command of Apptainer: a container with its own `/tmp`, home and environment, which sees
+the scratch directory at the same path, the work directory, and the other mounts. It runs
+as the user who runs iunctus, without setuid or fakeroot. A task that runs as Kubernetes
+runs it starts in its `workdir`, or in `/`, the working directory of most images, which a
+job cannot ask the registry for; its file system is writable in memory
+(`--writable-tmpfs`), so that it may write outside its folders where its user may write.
+A task without network requests an isolated network. Sites or runtimes that cannot
+provide it must fail the container launch.

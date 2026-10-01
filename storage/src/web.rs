@@ -24,11 +24,9 @@ pub(crate) struct Web {
     strict: bool,
 }
 
-/// The one HTTP client of the process, made at the first use and shared by everything that
-/// sends requests: the web and bucket providers, the checks of images at their registries and
-/// the requests to TES servers. So connections are reused and a host's address is looked up
-/// once. Requests that must end in time set their own timeout; a download may take as long
-/// as its data keeps coming.
+/// Shares one lazy HTTP client across storage and executors; bounded requests supply their own
+/// timeouts.
+/// See `docs/design/storage.md` for the full contract.
 pub fn http_client() -> Result<&'static reqwest::Client, String> {
     static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
     let client = CLIENT.get_or_init(|| {

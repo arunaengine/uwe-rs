@@ -1,6 +1,4 @@
-//! The SLURM executor: each attempt of a task runs as one batch job, which runs the wrapper in
-//! the task's container with Apptainer, Singularity, Podman or Docker on a node. The nodes see
-//! the store and the scratch directories at the same paths, through a shared file system.
+//! Runs task attempts as SLURM jobs using configured container runtimes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

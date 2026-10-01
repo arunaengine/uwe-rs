@@ -1,6 +1,4 @@
-//! What SLURM says about the jobs of a run. One `squeue` asks about all jobs at once, at most
-//! once per poll interval, so that many tasks do not load the scheduler. The tools write JSON
-//! where they can (`--json`, since SLURM 21.08); older ones write text, which is read then.
+//! Polls scheduler job states in batches through bounded SLURM tool calls.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -423,11 +423,8 @@ impl<'h> Interpreter<'h> {
         own.or_else(|| self.globals.get("params").cloned())
     }
 
-    /// Starts a script that an include with params loads: its `params.x = value` declarations
-    /// set what its params lack, then its statements run, as Nextflow runs the script when the
-    /// include runs.
-    /// Runs the statements of a script, then those of the scripts it includes without
-    /// params and outside `if` statements, once each, as scripts run them when they load.
+    /// Starts a parameterized include by filling missing params, then running its statements.
+    /// Runs unparameterized unconditional includes once each when their script loads.
     pub fn start_statements(&mut self, module: &Rc<Module>) -> Result<(), Error> {
         if module.started.replace(true) {
             return Ok(());

@@ -1,6 +1,4 @@
-//! The workflow outputs of the `output { }` block: their options, evaluated when the workflow
-//! publishes a channel, and the publish statements of a `path` closure, like
-//! `file >> "fastq/${meta.id}/"`.
+//! Evaluates workflow output options and path-closure publish statements.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

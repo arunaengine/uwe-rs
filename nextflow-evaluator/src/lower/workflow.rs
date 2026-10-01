@@ -38,10 +38,8 @@ impl Lowering<'_> {
                 NamedOutput::Named { target, value } => {
                     let name = &target.name;
                     let value = match value {
-                        // Legacy syntax: `name = value` also sets the variable, which later
-                        // emits may read, as in `sample_size = meta.count()`. A variable of
-                        // the body with that name keeps its value, for the closures that read
-                        // it later.
+                        // Legacy emits assign names for later emits while retaining an existing
+                        // body variable's value for closures that read it later.
                         Some(value) => {
                             let span = value.span;
                             let value = self.expression(value);

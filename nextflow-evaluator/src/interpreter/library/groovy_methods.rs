@@ -1,6 +1,4 @@
-//! The names of the methods that Groovy finds for values of some Java classes, with the
-//! methods that Groovy adds, as `groovy_methods.txt` records them from Groovy itself (see
-//! `tests/fixtures/oracle/groovy_methods`). A call of another name fails as in Groovy.
+//! Checks Java and Groovy method names against groovy_methods.txt recorded by the oracle.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

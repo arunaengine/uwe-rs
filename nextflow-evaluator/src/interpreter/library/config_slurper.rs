@@ -15,11 +15,8 @@ use crate::lowered::Module;
 use crate::value::{Closure, Key, Map, MapKind, Value};
 
 impl Interpreter<'_> {
-    /// `new ConfigSlurper().parse(text)`: the settings of a config text as nested maps. Blocks
-    /// and selectors like `withName: 'FOO' { ... }` are maps of their own, by name or
-    /// pattern. As a `ConfigObject`, each map makes an empty map of a key it lacks, and a name
-    /// that the text does not define, like `params`, is such a map too, so that
-    /// `"${params.outdir}"` gives `[:]`.
+    /// Parses config text into maps, including blocks and named or patterned selectors.
+    /// ConfigObject creates empty maps for missing keys and names, so absent params print `[:]`.
     pub(super) fn slurp(&mut self, text: &str, span: Span) -> Result<Value, Error> {
         let parsed = parse_config(text);
         if !parsed.errors.is_empty() {

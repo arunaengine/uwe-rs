@@ -1,3 +1,4 @@
+"""Check loader aliases in the native CWL worker image build context."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -12,8 +13,8 @@ from unittest.mock import patch
 
 
 class ImageContext(unittest.TestCase):
-    def test_absolute_interpreter_alias_keeps_resolved_loader_bytes(self):
-        script = Path(__file__).resolve().parents[1] / "build-cwl-js-image.py"
+    def test_preserves_loader(self):
+        script = Path(__file__).resolve().parents[1] / "cwl-js-image.py"
         with tempfile.TemporaryDirectory() as directory:
             binary = Path(directory) / "iunctus"
             loader = Path(directory) / "ld-linux-x86-64.so.2"

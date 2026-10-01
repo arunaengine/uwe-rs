@@ -43,7 +43,7 @@ jobs:
         run: |
           docker info
           cargo +1.97.1 build --offline --locked -p iunctus -j 2
-          python3 scripts/build-cwl-js-image.py target/debug/iunctus
+          python3 scripts/cwl-js-image.py target/debug/iunctus
       - name: Workspace tests
         if: matrix.check == 'tests'
         run: cargo +1.97.1 test --offline --locked --workspace --all-targets --all-features -j 2

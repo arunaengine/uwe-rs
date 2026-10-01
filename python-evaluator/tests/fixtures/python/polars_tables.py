@@ -1,5 +1,6 @@
-# The polars stand-in: data types, series, tables from dicts and CSV files, expressions and
-# lazy tables.
+"""Exercises polars tables, series, types, expressions, and lazy evaluation."""
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 import polars as pl
 
 # Data types and series.

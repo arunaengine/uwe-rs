@@ -1,6 +1,4 @@
-//! Stand-ins for modules about the process and its users: `pwd`, `queue`, `threading`,
-//! `multiprocessing` and `pickle`. Code runs in one thread while a workflow is planned, so
-//! locks always succeed and queues are plain lists.
+//! Provides process and user stand-ins with single-threaded locks and list-backed queues.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

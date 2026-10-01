@@ -1,6 +1,4 @@
-# The Python process of the packages without a stand-in in iunctus (decision 19). It reads
-# one JSON request per line on standard input and writes one JSON reply per line on standard
-# output. The protocol is in docs/design/snakemake/python-packages.md.
+"""Serves one JSON request and reply per line for Python packages without native stand-ins."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

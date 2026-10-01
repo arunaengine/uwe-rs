@@ -1,6 +1,4 @@
-//! A stand-in for the part of polars that workflows use while they are planned: tables from
-//! dicts and CSV files, expressions that select and add columns, and the tables that
-//! Snakemake's `validate` checks. The tables use the table core of the pandas stand-in.
+//! Provides polars CSV tables, expressions, and validation using the pandas table core.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

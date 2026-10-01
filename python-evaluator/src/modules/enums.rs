@@ -1,6 +1,4 @@
-//! `enum`: `Enum`, `IntEnum`, `StrEnum`, `auto` and `unique`. The classes are written in
-//! Python; what Python's metaclass of enumerations does is here: the members of a class
-//! that derives from `Enum`, and iterating, indexing, sizing and searching the class.
+//! Implements enum metaclass behavior, members, iteration, indexing, and membership.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

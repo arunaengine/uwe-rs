@@ -1,4 +1,6 @@
-# Annotations of functions are evaluated when the function is defined, before Python 3.14.
+"""Exercises function annotations evaluated at definition time before Python 3.14."""
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 from typing import List, Optional
 
 

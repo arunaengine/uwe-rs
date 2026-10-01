@@ -1,6 +1,4 @@
-//! The classes of pandas that code calls to make objects (`DataFrame`, `Series`, `Index`,
-//! `MultiIndex`), and the small parts of the module around them: `to_numeric`, `options`,
-//! `errors` and `api.types`.
+//! Constructs pandas tables, series, and indexes, and provides module options and type helpers.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

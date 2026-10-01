@@ -1,6 +1,4 @@
-//! Expressions of the polars stand-in: `pl.col`, `pl.lit`, and what they combine into, like
-//! `pl.col("a").eq(1) & ~pl.col("b").is_in([...])`. An expression gives a column of values
-//! for a table.
+//! Evaluates polars column and literal expressions into table columns.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,4 +1,6 @@
-# Text: methods, formatting and f-strings.
+"""Exercises string methods, formatting, and f-strings."""
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 s = "  Hello, World  "
 print(repr(s.strip()), repr(s.lstrip()), repr(s.rstrip()), s.lower(), s.upper())
 print("a,b,,c".split(","), "a b  c".split(), "a,b,c".split(",", 1), "a,b,c".rsplit(",", 1))

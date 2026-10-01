@@ -1,6 +1,4 @@
-//! Runs code that imports packages without a stand-in against a fake Python process: the
-//! requests it records must follow the protocol, and its replies must become values, handles
-//! and exceptions (decision 19).
+//! Checks Python package requests, values, handles, and exceptions with a fake process.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

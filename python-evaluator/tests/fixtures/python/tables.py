@@ -1,4 +1,6 @@
-# The pandas stand-in: reading a sample sheet, looking values up, and reshaping.
+"""Exercises pandas sample-sheet input, indexing, and reshaping."""
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 import io
 import pandas as pd
 import numpy as np

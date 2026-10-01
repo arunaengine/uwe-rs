@@ -1,4 +1,6 @@
-# Functions, closures, generators, classes and exceptions.
+"""Exercises functions, closures, generators, classes, and exceptions."""
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 def greet(name, greeting="Hello", *args, punctuation="!", **kwargs):
     return f"{greeting}, {name}{punctuation} {args} {sorted(kwargs.items())}"
 

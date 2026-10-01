@@ -104,10 +104,8 @@ fn comes_after(spec: &TaskSpec, position: usize, before: usize) -> bool {
     false
 }
 
-/// An order of the containers that runs them one after the other: each after those it comes
-/// after, and the main container as early as it can be while every container that does not
-/// come after it comes before it. For servers that run the containers of a task one after the
-/// other, like TES.
+/// Orders sequential containers by dependencies, placing the main container as early as valid.
+/// See `docs/design/engine.md` for the full contract.
 pub fn sequence(spec: &TaskSpec) -> Option<Vec<usize>> {
     let order = spec.container_order()?;
     let (after_main, before): (Vec<usize>, Vec<usize>) = (order.into_iter())
@@ -249,9 +247,8 @@ pub fn exit_file(spec: &TaskSpec, position: usize) -> String {
 }
 
 /// The lines that run `command` in the background and, when it fails, record its exit code in
-/// each file of `exits` that has none yet. A wrapper or container that is killed, as for lack
-/// of memory, records nothing itself; this record keeps the containers that wait for it from
-/// waiting for ever.
+/// each file of `exits` that has none yet.
+/// See `docs/design/engine.md` for the full contract.
 pub fn recording_its_end(command: &str, exits: &[String]) -> String {
     let mut lines = format!(
         "{{
@@ -270,10 +267,8 @@ pub fn recording_its_end(command: &str, exits: &[String]) -> String {
 }
 
 /// The wrapper of one container of the engine that runs the wrappers of a group of containers
-/// at once, and ends when all of them ended. Each member is its wrapper and the file of its
-/// exit code, as paths that the container sees. With an `owner`, it then hands what the task
-/// made in `root`, the folder of the control folder, back to that user (see
-/// [`Folders::owner`]).
+/// at once, and ends when all of them ended.
+/// See `docs/design/engine.md` for the full contract.
 pub fn group_wrapper(members: &[(String, String)], owner: &str, root: &str) -> String {
     // The script is the first process of its container, which ignores a stop that it has no
     // trap for; when it ends, the container ends with every process in it.
@@ -291,10 +286,8 @@ pub fn group_wrapper(members: &[(String, String)], owner: &str, root: &str) -> S
 }
 
 /// Writes the wrapper of every container and of every group of a task that runs several into
-/// the control folder `control` of this machine. `folders` are the folders as the containers
-/// see them. The arguments of the containers must be what they run, the entrypoints of their
-/// images included. Gives the groups with the paths of their wrappers as the containers see
-/// them.
+/// the control folder `control` of this machine.
+/// See `docs/design/engine.md` for the full contract.
 pub fn write_wrappers(
     spec: &TaskSpec,
     control: &Path,

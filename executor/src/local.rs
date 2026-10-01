@@ -80,13 +80,7 @@ impl crate::Backend for LocalContainer {
 
     /// Runs a task in `<scratch>/<name>`, a name that must not be in use: stages its inputs,
     /// runs the wrapper in the task's image as the current user, and reads the control files.
-    /// The directory stays for the caller to take the outputs from, unless the attempt fails
-    /// or is cancelled.
-    ///
-    /// The task waits for its share of CPUs and memory, and its container gets no more. The
-    /// work directory is mounted at the task's `workdir` when it has one. A task without
-    /// arguments runs the image's default command. The container stops when `cancel` fires,
-    /// and when the task runs longer than its time.
+    /// See `docs/design/engine.md` for the full contract.
     async fn run(
         &self,
         job: Job<'_>,
@@ -194,11 +188,9 @@ impl ContainerRun<'_> {
         }
     }
 
-    /// The folders that the container sees, each with its place inside it: the scratch
-    /// directory at the same path, the work directory at the task's `workdir` when it names
-    /// one, and the mounts of the inputs. A mount with a relative target is inside the work
-    /// directory, and one at the work directory itself, like the working directory of a
-    /// Snakemake `shell()` call that the task changes in place, takes its place.
+    /// Maps scratch, workdir and input mounts into the container, including workdir
+    /// replacements.
+    /// See `docs/design/engine.md` for the full contract.
     pub fn binds(&self) -> Vec<Mount> {
         let inside = self.inside();
         let mounts: Vec<Mount> = (self.mounts.iter())
@@ -418,9 +410,8 @@ impl LocalContainer {
     }
 
     /// Runs a task of several containers: one container of the engine for each image, all at
-    /// once, on the same scratch directory and mounts, within the share of the task. When one
-    /// of them ends without its wrapper, the others stop, since containers that wait for it
-    /// would wait for ever.
+    /// once, on the same scratch directory and mounts, within the share of the task.
+    /// See `docs/design/engine.md` for the full contract.
     async fn contain_several(
         &self,
         job: Job<'_>,
@@ -553,10 +544,9 @@ impl LocalContainer {
         Ok(access)
     }
 
-    /// Hands back to the user `user` what a container that ran as another user left in the
-    /// scratch directory `root`, when its wrapper could not, with a short container of the
-    /// task's image as root with only the capabilities that this needs. A failure leaves the
-    /// files as they are; the wrapper let every user change them.
+    /// Returns scratch outputs to `user` with a restricted root helper when the wrapper could
+    /// not.
+    /// See `docs/design/engine.md` for the full contract.
     async fn hand_back(&self, access: &Access, image: &Image, root: &Path, user: u32) {
         let Some(owner) = access.hand_back else {
             return;
@@ -634,12 +624,8 @@ impl LocalContainer {
     }
 
     /// Runs a container to its end: creates it, attaches to its output before it starts, and
-    /// reads the output until the wrapper says that it ended. The wrapper writes only that
-    /// last line there, so the output tells when the task is done, without asking the engine
-    /// again and again, and without waiting for the engine to take the container down. Only
-    /// when the wrapper did not end does the container's exit code count; the request for it
-    /// goes out before the start, as the engine removes the container once it ended.
-    /// The container stops when `cancel` fires, and when it runs longer than `time`.
+    /// reads the output until the wrapper says that it ended.
+    /// See `docs/design/engine.md` for the full contract.
     async fn run_to_end(
         &self,
         run: &ContainerRun<'_>,
@@ -777,12 +763,8 @@ impl LocalContainer {
         })
     }
 
-    /// What a container left behind. The wrapper exits with 0 whenever it recorded the tool's
-    /// exit code. A container that could not run the wrapper (exit code 126 or 127, as for an
-    /// image without Bash), or an end without the tool's exit code, is a failure of the
-    /// machine. A container stopped by a signal, as for lack of memory, ends the task with the
-    /// container's exit code, and so does one that ran out of time; that one fails even when its
-    /// tool ended well while the engine stopped it.
+    /// What a container left behind.
+    /// See `docs/design/engine.md` for the full contract.
     async fn finish(
         &self,
         ending: Ending,

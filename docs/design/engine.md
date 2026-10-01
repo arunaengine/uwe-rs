@@ -217,3 +217,186 @@ to an environment variable instead of the secret itself, so that the file can be
 Secrets in config files: a password, a key or a token, written into the file or taken from
 an environment variable (`{ environment = "NAME" }`), so that the file can be shared without
 its secrets. A secret is read only when it is used, and never shows when printed.
+
+## Source contracts: executor
+
+### `executor/src/access.rs:58`
+
+How a container runs for a task with `run_as`, in an image whose config names the
+user `image_user` (like `1000:100`, `nobody` or empty for root). `owner` holds the ids
+of the user who runs iunctus, and `rootless` says whether the engine maps root of the
+container to that user.
+
+### `executor/src/access.rs:110`
+
+Opens the scratch directory `root` of a task to every user, for a container that may run
+as another user: its folders get mode 0777 and its files may be written by all. Links stay
+as they are. The folder that holds the scratch directories becomes private to the user,
+so that no other user of the machine reaches the open folders.
+
+### `executor/src/containers.rs:107`
+
+An order of the containers that runs them one after the other: each after those it comes
+after, and the main container as early as it can be while every container that does not
+come after it comes before it. For servers that run the containers of a task one after the
+other, like TES.
+
+### `executor/src/containers.rs:251`
+
+The lines that run `command` in the background and, when it fails, record its exit code in
+each file of `exits` that has none yet. A wrapper or container that is killed, as for lack
+of memory, records nothing itself; this record keeps the containers that wait for it from
+waiting for ever.
+
+### `executor/src/containers.rs:272`
+
+The wrapper of one container of the engine that runs the wrappers of a group of containers
+at once, and ends when all of them ended. Each member is its wrapper and the file of its
+exit code, as paths that the container sees. With an `owner`, it then hands what the task
+made in `root`, the folder of the control folder, back to that user (see
+[`Folders::owner`]).
+
+### `executor/src/containers.rs:293`
+
+Writes the wrapper of every container and of every group of a task that runs several into
+the control folder `control` of this machine. `folders` are the folders as the containers
+see them. The arguments of the containers must be what they run, the entrypoints of their
+images included. Gives the groups with the paths of their wrappers as the containers see
+them.
+
+### `executor/src/lib.rs:51`
+
+Starts no attempt that waits for its turn on this machine, as a run that ends after a
+failure starts no more tasks; an attempt that waits ends as cancelled. Backends whose
+attempts wait in a queue of their server or cluster start them all, as Snakemake does
+with the jobs that it submitted to a cluster. The default holds nothing.
+
+### `executor/src/local.rs:81`
+
+Runs a task in `<scratch>/<name>`, a name that must not be in use: stages its inputs,
+runs the wrapper in the task's image as the current user, and reads the control files.
+The directory stays for the caller to take the outputs from, unless the attempt fails
+or is cancelled.
+
+The task waits for its share of CPUs and memory, and its container gets no more. The
+work directory is mounted at the task's `workdir` when it has one. A task without
+arguments runs the image's default command. The container stops when `cancel` fires,
+and when the task runs longer than its time.
+
+### `executor/src/local.rs:197`
+
+The folders that the container sees, each with its place inside it: the scratch
+directory at the same path, the work directory at the task's `workdir` when it names
+one, and the mounts of the inputs. A mount with a relative target is inside the work
+directory, and one at the work directory itself, like the working directory of a
+Snakemake `shell()` call that the task changes in place, takes its place.
+
+### `executor/src/local.rs:420`
+
+Runs a task of several containers: one container of the engine for each image, all at
+once, on the same scratch directory and mounts, within the share of the task. When one
+of them ends without its wrapper, the others stop, since containers that wait for it
+would wait for ever.
+
+### `executor/src/local.rs:556`
+
+Hands back to the user `user` what a container that ran as another user left in the
+scratch directory `root`, when its wrapper could not, with a short container of the
+task's image as root with only the capabilities that this needs. A failure leaves the
+files as they are; the wrapper let every user change them.
+
+### `executor/src/local.rs:636`
+
+Runs a container to its end: creates it, attaches to its output before it starts, and
+reads the output until the wrapper says that it ended. The wrapper writes only that
+last line there, so the output tells when the task is done, without asking the engine
+again and again, and without waiting for the engine to take the container down. Only
+when the wrapper did not end does the container's exit code count; the request for it
+goes out before the start, as the engine removes the container once it ended.
+The container stops when `cancel` fires, and when it runs longer than `time`.
+
+### `executor/src/local.rs:780`
+
+What a container left behind. The wrapper exits with 0 whenever it recorded the tool's
+exit code. A container that could not run the wrapper (exit code 126 or 127, as for an
+image without Bash), or an end without the tool's exit code, is a failure of the
+machine. A container stopped by a signal, as for lack of memory, ends the task with the
+container's exit code, and so does one that ran out of time; that one fails even when its
+tool ended well while the engine stopped it.
+
+### `executor/src/pool.rs:122`
+
+Waits until a task's share is free. A task that asks for more than the pool has gets
+all of it; a task that names no memory takes none from the pool. The tasks that wait
+take their shares one after another, the one with the highest `priority` first, and of
+equal ones the one that came first. The choice is made when a share comes free, so a
+task that comes later with a higher priority goes before those that wait.
+
+### `executor/src/process.rs:644`
+
+The container of a spec and its command. Core dumps are off: a tool that crashes inside
+such a container would only fill the journal of the machine. It has the least permissions,
+as the containers of tasks (decision 28): no capabilities and no way to gain privileges. An
+engine without root runs it as root, which is the user outside.
+
+### `executor/src/stage.rs:13`
+
+Makes the scratch directory `root` of a task and places its inputs. The result is what the
+container must mount besides the scratch directory.
+
+A linked input is a symbolic link to its source, and the container sees the folder of the
+source read-only at the same path. A copy is the task's own. A linked input at an absolute
+path is mounted there read-only; a copy and a made directory at an absolute path are made
+in `mounts/` and mounted there. An input that the task changes in place is mounted
+writable at its path; the target of such a mount is relative to the work directory for a
+relative path, and `.` is the work directory itself.
+
+### `executor/src/wrapper.rs:48`
+
+The user and group, like `1000:100`, that get what the task made in the folder of the
+control folder at the end, for a container that may run as another user; empty for
+none. The wrapper hands the files back when it runs as root with the capability
+`CHOWN`, else it lets every user change them.
+
+### `executor/src/wrapper.rs:55`
+
+The wrapper for a task in the given folders. The task runs the arguments of the
+specification, which must not be empty.
+
+It runs the arguments with both streams captured in the control directory, so that output
+patterns cannot match the capture files, and with `stdin` of the control directory as
+standard input when the task has one. `HOME` is the home folder, unless the task sets it
+itself. The wrapper records the exit code and times, collects the outputs only on success,
+writes the manifest, then writes [`ENDED`] to its standard output and exits with 0, so that
+the logs of a failed tool are kept. Outputs at absolute paths are copied below `root` in the control
+directory, so that they outlive the container.
+
+With an outbox, the wrapper also copies each output in the work directory to the same path
+there, and at last lets every user change what the task made, since such a server may run
+the container as root and then cannot remove the folders that the task made.
+An invalid specification produces only a failure wrapper.
+
+### `executor/src/wrapper.rs:173`
+
+Runs a command so that a stop reaches it, and sets `status` to its exit code. The script
+that runs it is the first process of its container, which ignores signals that it has no
+trap for, so without the trap a stop would wait for the engine's whole grace time. The trap
+passes SIGTERM on to the command, for a stop by SIGTERM, SIGINT or SIGHUP, and sets
+`stopped`. The command runs in the background to let the trap run while it waits, with the
+script's own standard input, which a background command would not get otherwise.
+
+### `executor/src/wrapper.rs:195`
+
+Records what the task used, from the cgroup of the container, when the container has one of
+its own, as with Docker and Podman: CPU time, the peak of memory (page cache included), the
+bytes of block I/O, and how many processes the kernel killed for lack of memory. Shell
+builtins only, so that any image with a shell has what it needs, and no process starts.
+
+### `executor/src/wrapper.rs:231`
+
+Adds each file and directory that a pattern matches to the manifest, as `file <path>` or
+`directory <path>`, without a process per file. Bash expands the pattern with `globstar`,
+`nullglob` and `dotglob`; plain `sh` with its own globs, whose unmatched patterns stay as
+they are and are left out. A match at an absolute path is copied below `root` in the
+control directory, and one in the work directory to the outbox, when there is one; the
+copies hold what links point to.

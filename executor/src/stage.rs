@@ -10,15 +10,8 @@ use crate::job::{CONTROL, MOUNTS, Staged, Staging, WORK};
 use crate::process::Mount;
 use crate::wrapper::STDIN;
 
-/// Makes the scratch directory `root` of a task and places its inputs. The result is what the
-/// container must mount besides the scratch directory.
-///
-/// A linked input is a symbolic link to its source, and the container sees the folder of the
-/// source read-only at the same path. A copy is the task's own. A linked input at an absolute
-/// path is mounted there read-only; a copy and a made directory at an absolute path are made
-/// in `mounts/` and mounted there. An input that the task changes in place is mounted
-/// writable at its path; the target of such a mount is relative to the work directory for a
-/// relative path, and `.` is the work directory itself.
+/// Makes the scratch directory `root` of a task and places its inputs.
+/// See `docs/design/engine.md` for the full contract.
 pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
     for path in staging
         .inputs

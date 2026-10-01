@@ -1,6 +1,4 @@
-//! Running the Groovy classes of a pipeline's `lib/` directory, which only the legacy parser
-//! accepts: static fields and methods, enums, and objects with fields, methods and
-//! constructors.
+//! Evaluates legacy Groovy classes with fields, methods, constructors, and enums.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -443,10 +441,8 @@ fn static_field(class: &Rc<LibraryClass>, name: &str) -> Option<Value> {
         .map(|(constants, _)| constants[index].clone())
 }
 
-/// The method that Groovy chooses for the arguments, with the arguments it takes: the right
-/// number, remaining arguments collected for a method with variable arguments, and of the
-/// methods whose parameter types fit, the one with the closest types. A method of the
-/// objects has `this` as its first parameter, which the arguments leave out.
+/// Selects Groovy's closest parameter types, checks arity, and collects variable arguments.
+/// Instance methods include `this` as their first parameter, outside the supplied arguments.
 fn choose<'m>(
     methods: &[&'m MethodDef],
     arguments: Vec<Value>,

@@ -1,6 +1,4 @@
-//! The criteria closures of `branch` and `multiMap`, rewritten as Nextflow's
-//! `OpCriteriaVisitor` does: labelled statements become code that returns the label with a
-//! value (`branch`) or a map of the values by label (`multiMap`).
+//! Lowers labelled branch and multiMap criteria into returned labels or value maps.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

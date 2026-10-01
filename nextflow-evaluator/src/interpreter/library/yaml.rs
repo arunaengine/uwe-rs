@@ -11,10 +11,8 @@ use crate::exception::Exception;
 use crate::number::Number;
 use crate::value::{Key, Value};
 
-/// `yaml.load(text)`: mappings become maps and sequences lists; plain scalars are resolved
-/// as YAML 1.1 does, so `1.13` is a number and `yes` a boolean. An empty text gives `null`.
-/// An alias gives the value of its anchor, and a merge key `<<` adds the entries of a map, or
-/// of a list of maps, that the mapping does not have, as SnakeYAML does.
+/// Loads YAML 1.1 maps, lists, and scalars; empty text gives null and aliases use anchor values.
+/// Merge keys add absent entries from a map or list of maps, matching SnakeYAML.
 pub fn load(text: &str) -> Result<Value, Exception> {
     let mut stack: Vec<Collection> = Vec::new();
     let mut anchors: HashMap<usize, Value> = HashMap::new();

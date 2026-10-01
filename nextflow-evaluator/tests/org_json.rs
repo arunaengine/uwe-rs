@@ -1,6 +1,4 @@
-//! The stand-ins of `org.json`, which older nf-core `lib/` classes use, against the Groovy of
-//! Nextflow 26.04.6 with the jar of org.json; `fixtures/oracle/org_json/record.sh` recorded
-//! the expected values.
+//! Checks org.json stand-ins against the Groovy oracle in fixtures/oracle/org_json.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

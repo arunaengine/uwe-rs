@@ -1,6 +1,4 @@
-//! DSL1 scripts, which Nextflow ran before 22.12: each process reads its inputs `from`
-//! channels and writes its outputs `into` channels. iunctus does not run them (decision 14);
-//! lowering only finds them, to say so.
+//! Detects unsupported DSL1 scripts whose processes use from and into channels.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

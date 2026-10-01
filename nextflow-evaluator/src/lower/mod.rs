@@ -56,10 +56,8 @@ pub fn lower_module(script: &ast::Script, source: &str) -> Result<Module, Vec<Di
     lower_script(script, source, &mut NoImports)
 }
 
-/// Lowers the value of one config setting. Outside closures, config code may only use
-/// `params`, the directory constants, `secrets` and `env()`. Closures may also use the names of
-/// scripts. In the `process` scope, a closure may use any other name too, like the task input
-/// `meta`, which is looked up when the task runs.
+/// Lowers config values using params, directory constants, secrets, and env() outside closures.
+/// Closures may read script names; process closures also resolve task names at execution.
 pub fn lower_config_value(
     value: &ast::Expression,
     source: &str,

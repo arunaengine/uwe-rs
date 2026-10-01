@@ -1,8 +1,4 @@
-//! Stand-ins for `org.json` (`JSONObject`, `JSONArray`, `JSONTokener`) and the everit JSON
-//! schema validator (`SchemaLoader`, `Schema`, `ValidationException`). Nextflow releases
-//! before 24 shipped both, and the `lib/` classes of older nf-core pipelines use them
-//! ([decisions](../../../../docs/decisions.md), item 14). The host validates, as the
-//! evaluator has no JSON schema validator of its own.
+//! Implements org.json objects and everit validation for legacy Nextflow library classes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

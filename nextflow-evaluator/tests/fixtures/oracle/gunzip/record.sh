@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Records the .command.sh files of the nf-core GUNZIP module with Nextflow 26.04.6, for one
-# input file named sample.fastq.gz, as a real run and as a stub run.
-# Usage: record.sh <nf-core modules checkout> <output directory>
+# Records real and stub GUNZIP commands with Nextflow 26.04.6; see the crate README for usage.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 set -euo pipefail
 modules=$1
 output=$(cd "$2" && pwd)

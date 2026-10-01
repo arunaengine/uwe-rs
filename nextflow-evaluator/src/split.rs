@@ -1,6 +1,4 @@
-//! Splitting texts into records as Nextflow's splitters do: CSV rows, lines, FASTA and FASTQ
-//! records and JSON elements, alone or `by` several (channels spec, section 5.33). The
-//! `splitFasta` operator and the method of paths with that name, and the others, use it.
+//! Splits CSV, text, FASTA, FASTQ, and JSON into records shared by methods and operators.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

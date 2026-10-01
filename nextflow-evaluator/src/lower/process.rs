@@ -642,10 +642,8 @@ fn name_or_text(value: &ast::Expression) -> Option<&str> {
     }
 }
 
-/// The script of a `shell:` section, whose text interpolates `!{expression}` instead of
-/// `${expression}` and keeps `$` for the shell, as Nextflow's `TaskTemplateEngine` does with
-/// the placeholder `!`. The strings that make the value of the section become strings that
-/// interpolate each `!{expression}`.
+/// Lowers shell-section strings with `!{expression}` interpolation, keeping `$` for the shell.
+/// This matches Nextflow's TaskTemplateEngine with `!` as its placeholder.
 fn shell_statement(statement: &mut ast::Statement) {
     match &mut statement.kind {
         StatementKind::Expression(expression) | StatementKind::Return(Some(expression)) => {

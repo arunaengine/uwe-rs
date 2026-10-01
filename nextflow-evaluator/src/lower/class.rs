@@ -1,6 +1,4 @@
-//! Lowering of Groovy classes, which only the legacy parser accepts: static and instance
-//! fields and methods, constructors and nested enums, as the `lib/` directory of older nf-core
-//! pipelines holds them.
+//! Lowers legacy Groovy classes, fields, methods, constructors, and nested enums.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -219,10 +219,8 @@ impl Interpreter<'_> {
         Ok(())
     }
 
-    /// The values of a legacy `file` input, where each value that is not a path becomes a
-    /// file with its text, named `input.N` after the files of the task before it, as
-    /// Nextflow's `normalizeInputToFile` does. The file goes below `work/tmp` of the launch
-    /// directory, in a folder named by the MD5 hash of its text.
+    /// Converts nonpath legacy file inputs into text files named `input.N` after prior task files.
+    /// Files live under launch work/tmp in an MD5-named folder, matching normalizeInputToFile.
     fn file_values(&mut self, task: &TaskFrame, value: &Value) -> Result<Value, Error> {
         let items = match value {
             Value::List(list) => list.borrow().items.clone(),

@@ -487,3 +487,40 @@ Docker asks it.
 Containers that answer lines, and containers that run to their end, with the local Docker
 or Podman through its API. Needs the `debian:stable-slim` image; run with
 `cargo test -p executor --test process -- --ignored`.
+
+## File descriptions: slurm-executor
+
+### `slurm-executor/src/backend.rs`
+
+Runs an attempt of a task as one SLURM batch job: the inputs are placed in the scratch
+directory of the attempt, and the job runs the wrapper in the task's container on a node.
+So the nodes must see the scratch directory and the store at the same paths, as on a
+cluster with a shared file system.
+
+### `slurm-executor/src/images.rs`
+
+The images of Apptainer and Singularity as SIF files, made once per image by a job of their
+own. Jobs that each turn the same image of a registry into a SIF file at the same time spoil
+the shared cache of Apptainer ("conveyor failed to get: unexpected end of JSON input"), and
+each spends the time of its task on it. So the first task of an image waits for one job
+that pulls it into the folder of images, and every job then runs that file.
+
+### `slurm-executor/src/lib.rs`
+
+The SLURM executor: each attempt of a task runs as one batch job, which runs the wrapper in
+the task's container with Apptainer, Singularity, Podman or Docker on a node. The nodes see
+the store and the scratch directories at the same paths, through a shared file system.
+
+### `slurm-executor/src/queue.rs`
+
+What SLURM says about the jobs of a run. One `squeue` asks about all jobs at once, at most
+once per poll interval, so that many tasks do not load the scheduler. The tools write JSON
+where they can (`--json`, since SLURM 21.08); older ones write text, which is read then.
+
+### `slurm-executor/tests/simulated_slurm.rs`
+
+The SLURM backend against a simulated SLURM on this machine: `sbatch` runs the job script in
+the background, `squeue` tells whether it still runs, `scancel` stops it, and the cluster
+keeps no accounting. A simulated Apptainer runs the wrapper without a container, which works
+because the job sees the files at the same paths. One test runs a real container with
+Docker and needs the `debian:stable-slim` image; run it with `-- --ignored`.

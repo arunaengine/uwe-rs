@@ -1,7 +1,4 @@
-//! Runs an attempt of a task as one SLURM batch job: the inputs are placed in the scratch
-//! directory of the attempt, and the job runs the wrapper in the task's container on a node.
-//! So the nodes must see the scratch directory and the store at the same paths, as on a
-//! cluster with a shared file system.
+//! Runs staged task attempts as SLURM batch jobs and recovers their ownership.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

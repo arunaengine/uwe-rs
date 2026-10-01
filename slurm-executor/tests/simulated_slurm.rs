@@ -1,8 +1,4 @@
-//! The SLURM backend against a simulated SLURM on this machine: `sbatch` runs the job script in
-//! the background, `squeue` tells whether it still runs, `scancel` stops it, and the cluster
-//! keeps no accounting. A simulated Apptainer runs the wrapper without a container, which works
-//! because the job sees the files at the same paths. One test runs a real container with
-//! Docker and needs the `debian:stable-slim` image; run it with `-- --ignored`.
+//! Checks the backend with local tools that simulate SLURM submission and scheduling.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

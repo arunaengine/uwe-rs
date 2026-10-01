@@ -1,8 +1,4 @@
-//! The images of Apptainer and Singularity as SIF files, made once per image by a job of their
-//! own. Jobs that each turn the same image of a registry into a SIF file at the same time spoil
-//! the shared cache of Apptainer ("conveyor failed to get: unexpected end of JSON input"), and
-//! each spends the time of its task on it. So the first task of an image waits for one job
-//! that pulls it into the folder of images, and every job then runs that file.
+//! Coordinates atomic publication of shared Apptainer and Singularity SIF images.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

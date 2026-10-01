@@ -1,24 +1,4 @@
-//! Who a container runs as and what it may do (decision 28): the least permissions that let
-//! its task run, and the files that it makes owned by the user who runs iunctus.
-//!
-//! Every container drops all Linux capabilities and may not gain privileges (the option
-//! `no-new-privileges`, which also turns off setuid programs). It runs without a privileged
-//! mode and with its own process and IPC namespaces, the defaults of the engines; it gets
-//! network only as the run allows. A task of Nextflow, Snakemake or CWL runs as the user who
-//! runs iunctus. A task that runs as Kubernetes runs it (`TaskSpec::run_as`, for Argo) runs as
-//! the user of its image, or the one that it names, and that user may differ from the user
-//! who runs iunctus. Then:
-//!
-//! - its folders in the scratch directory are open to every user, so that it may write
-//!   there; the folder of all scratch directories stays private to the user;
-//! - when it runs as root, it keeps the capability `CHOWN`, and its wrapper hands what the
-//!   task made back to the user at its end;
-//! - otherwise the wrapper opens what the task made to every user, and the local executor
-//!   hands it back with a short container of its own, as root with only `CHOWN` and
-//!   `DAC_READ_SEARCH`.
-//!
-//! A rootless engine maps root of the container to the user who runs iunctus, so a task that
-//! runs as root there needs none of this.
+//! Selects container identity, permissions and output ownership for task execution.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

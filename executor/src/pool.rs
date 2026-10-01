@@ -1,6 +1,4 @@
-//! The CPUs and memory that local tasks share. A task starts when its share is free. Tasks that
-//! wait take their shares one after another: the one with the highest priority first, and of
-//! equal ones the one that asked first.
+//! Allocates local CPU and memory shares to waiting tasks in priority order.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

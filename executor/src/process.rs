@@ -1,8 +1,4 @@
-//! A container whose main process answers lines: it reads one line on standard input and
-//! writes one reply line on standard output, like the Python process of decision 19. The
-//! container keeps running between lines, and is removed when it stops. The containers talk to
-//! the engine through its API, on a runtime of this module, since their callers wait for them
-//! without a runtime of their own.
+//! Runs container helpers that exchange reply lines or complete bounded operations.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

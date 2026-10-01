@@ -1,3 +1,7 @@
+<!-- Running the iunctus demo on a laptop and on the BCF cluster. -->
+<!-- Copyright (c) 2026 The iunctus Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+
 # The iunctus demo on the BCF cluster and on a laptop
 
 ## TL;DR
@@ -299,3 +303,36 @@ License 2.0 (`LICENSE` in their folders), the Snakemake tutorial under the MIT l
 Snakemake (`snakemake/LICENSE.md`), the CWL user guide under CC BY 4.0 with its
 example programs under the Apache License 2.0 (`cwl/LICENSE.md`; Copyright the Common
 Workflow Language project, https://www.commonwl.org/). nf-core/demo is under the MIT license.
+
+## `demo/bcf-config.toml`
+
+The config file of iunctus for the BCF cluster. Copy it to ~/.config/iunctus/config.toml.
+Then `iunctus run <workflow>` runs each task as a SLURM job with Apptainer, with no options.
+Options on the command line still win, like `-executor local`.
+Run real tasks on SLURM. Without this, `iunctus run` simulates. `iunctus graph` always
+simulates.
+
+## `demo/local-config.toml`
+
+The config file of iunctus for a laptop or workstation with Docker. Pass it to a command with
+`-iunctus-config demo/local-config.toml`, or copy it to ~/.config/iunctus/config.toml.
+Then `iunctus run <workflow>` runs each task in a Docker container on this machine.
+Options on the command line still win, like `-executor simulator`.
+Run real tasks with Docker (or Podman) on this machine. Without this, `iunctus run`
+simulates. `iunctus graph` always simulates.
+
+## `demo/local-env.sh`
+
+Sets up this shell for the demo on a laptop or workstation with Docker or Podman.
+Source it, from bash or zsh, anywhere:
+
+  source demo/local-env.sh
+
+Or run it, `./local-env.sh` in demo/: then it opens a new shell (your $SHELL, zsh or bash)
+with the same set-up; `exit` goes back.
+
+It builds the release binary of iunctus (cargo does nothing when it is up to date), puts it
+first on the PATH, makes demo/local-config.toml the config of iunctus for this shell only
+and goes into demo/. Then it prints the commands of the demo, to run from there: tasks run
+in containers on this machine, and each run writes report.html into demo/.
+A config file in ~/.config/iunctus/ still wins over it. Nothing outside this shell changes.

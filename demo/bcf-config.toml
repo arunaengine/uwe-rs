@@ -1,9 +1,7 @@
-# The config file of iunctus for the BCF cluster. Copy it to ~/.config/iunctus/config.toml.
-# Then `iunctus run <workflow>` runs each task as a SLURM job with Apptainer, with no options.
-# Options on the command line still win, like `-executor local`.
+# Selects SLURM with Apptainer for the BCF cluster demo.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 
-# Run real tasks on SLURM. Without this, `iunctus run` simulates. `iunctus graph` always
-# simulates.
 [executor]
 default = "slurm"
 

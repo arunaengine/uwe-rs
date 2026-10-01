@@ -1,17 +1,7 @@
 #!/usr/bin/env bash
-# Sets up this shell for the demo on a laptop or workstation with Docker or Podman.
-# Source it, from bash or zsh, anywhere:
-#
-#   source demo/local-env.sh
-#
-# Or run it, `./local-env.sh` in demo/: then it opens a new shell (your $SHELL, zsh or bash)
-# with the same set-up; `exit` goes back.
-#
-# It builds the release binary of iunctus (cargo does nothing when it is up to date), puts it
-# first on the PATH, makes demo/local-config.toml the config of iunctus for this shell only
-# and goes into demo/. Then it prints the commands of the demo, to run from there: tasks run
-# in containers on this machine, and each run writes report.html into demo/.
-# A config file in ~/.config/iunctus/ still wins over it. Nothing outside this shell changes.
+# Builds and selects the demo binary and config for this shell.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 
 if [ -n "${ZSH_VERSION:-}" ]; then
   iunctus_demo=${${(%):-%x}:A:h}

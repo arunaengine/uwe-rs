@@ -1,6 +1,4 @@
-//! A folder on this machine that holds the objects of the addresses it serves: the rest of an
-//! address after the prefix is the path inside the folder. Local `file://` addresses are a
-//! folder too, the root of the file system.
+//! Maps provider address suffixes to files in a local folder.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

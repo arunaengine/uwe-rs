@@ -1,6 +1,4 @@
-//! Storage requests for code that does not run on Tokio, like the drivers, which plan a
-//! workflow on a thread of their own. Each request runs on a small runtime of the storage
-//! crate, and the calling thread waits for its end, so that this works from any thread.
+//! Runs asynchronous storage requests for synchronous workflow driver callers.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

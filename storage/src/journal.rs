@@ -1,6 +1,4 @@
-//! The remote files that a process read, and copies that answer for addresses. A run records
-//! what it read by digest, so that a later run can tell whether a remote file changed; a repeat
-//! of a run pins each address to the copy it read, so that it reads the same bytes again.
+//! Records remote reads and historical file copies by address and digest.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

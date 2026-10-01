@@ -1,7 +1,4 @@
-//! Files on web servers: whether they exist, and downloads that continue where a stopped one
-//! ended. All requests share one client per process, so that connections are reused and a
-//! host's address is looked up once; a provider with headers, like a token, sends them with
-//! each of its requests.
+//! Reads web metadata and downloads files through a shared HTTP client.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

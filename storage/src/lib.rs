@@ -1,12 +1,4 @@
-//! Storage providers (decision 20). The config file maps address prefixes to providers, each
-//! with its endpoint, region, credentials and settings: S3 and the services that speak its API,
-//! Google Cloud Storage, Azure Blob Storage, web servers, FTP servers and local folders. The
-//! longest prefix that serves an address wins. Web addresses, public buckets, FTP servers and
-//! local files that no provider serves go to a built-in one, so that a machine without a config file reads
-//! public files as before. Each provider makes its client once per process, when it is first
-//! used; secrets never show in messages. The storage notes each remote file that it reads, by
-//! digest, so that runs can record them, and a repeat of a run can pin addresses to the copies
-//! that the run read.
+//! Routes storage addresses to configured providers and shared process clients.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

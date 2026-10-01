@@ -174,3 +174,86 @@ Secrets live only in the environment, or in the config file, and in the memory o
 - `task-runner/src/files.rs`: deliveries from this machine to addresses, from addresses to this machine, and between addresses.
 - `iunctus/tests/storage.rs`: the secrets of a whole run, as above.
 - `just storage-test` starts two RustFS servers from the local image, each with its own credentials, and runs `storage/tests/s3.rs` (inputs on one provider, the store on the other, a wrong secret that never shows) and the ignored test of `iunctus/tests/storage.rs`: a real Nextflow run with Docker that reads its sample sheet and inputs from the first server, keeps its store on the second, publishes its results to a third provider (a folder), and takes every task from the store in a second run.
+
+## File descriptions: storage
+
+### `storage/src/address.rs`
+
+Addresses of files in storage, like `s3://bucket/key`, `gs://bucket/key`,
+`az://container/blob`, `https://host/path` or `ftp://host/path`: their parts, which
+prefix serves them, and the public web address of a file in a public bucket.
+
+### `storage/src/backend.rs`
+
+The connection of a provider: its client, made when the provider is first used, with its
+secrets read then. Built-in providers serve what no provider of the config file serves, so
+that a machine without a config file works as before: the public web, public buckets over
+HTTPS and local files. FTP servers need a provider of the config file.
+
+### `storage/src/blocking.rs`
+
+Storage requests for code that does not run on Tokio, like the drivers, which plan a
+workflow on a thread of their own. Each request runs on a small runtime of the storage
+crate, and the calling thread waits for its end, so that this works from any thread.
+
+### `storage/src/downloads.rs`
+
+Remote files downloaded once: a local copy lives in a folder of downloads under the SHA-256
+of its provider and address. Content and its version are published as one immutable bundle.
+What an earlier run found out about a remote file is noted there too.
+
+### `storage/src/folder.rs`
+
+A folder on this machine that holds the objects of the addresses it serves: the rest of an
+address after the prefix is the path inside the folder. Local `file://` addresses are a
+folder too, the root of the file system.
+
+### `storage/src/ftp.rs`
+
+Files on FTP servers, for inputs: whether they exist, the entries of a directory, and
+downloads that continue where a stopped one ended. Each request opens its own session in
+passive mode, as FTP transfers one file per session at a time; the address of each server
+is looked up once per process.
+
+### `storage/src/journal.rs`
+
+The remote files that a process read, and copies that answer for addresses. A run records
+what it read by digest, so that a later run can tell whether a remote file changed; a repeat
+of a run pins each address to the copy it read, so that it reads the same bytes again.
+
+### `storage/src/lib.rs`
+
+Storage providers (decision 20). The config file maps address prefixes to providers, each
+with its endpoint, region, credentials and settings: S3 and the services that speak its API,
+Google Cloud Storage, Azure Blob Storage, web servers, FTP servers and local folders. The
+longest prefix that serves an address wins. Web addresses, public buckets, FTP servers and
+local files that no provider serves go to a built-in one, so that a machine without a config file reads
+public files as before. Each provider makes its client once per process, when it is first
+used; secrets never show in messages. The storage notes each remote file that it reads, by
+digest, so that runs can record them, and a repeat of a run can pin addresses to the copies
+that the run read.
+
+### `storage/src/objects.rs`
+
+Object stores through OpenDAL: S3 and the services that speak its API, Google Cloud Storage
+and Azure Blob Storage. An operator of OpenDAL serves one bucket, so a provider makes one
+per bucket when it is first used, and all of them share the provider's HTTP client.
+
+### `storage/src/public.rs`
+
+Public S3 and Google Cloud Storage buckets, which anyone may read over HTTPS without
+credentials, as anonymous clients do. This is what `s3://` and `gs://` addresses use when no
+provider of the config file serves them.
+
+### `storage/src/web.rs`
+
+Files on web servers: whether they exist, and downloads that continue where a stopped one
+ended. All requests share one client per process, so that connections are reused and a
+host's address is looked up once; a provider with headers, like a token, sends them with
+each of its requests.
+
+### `storage/tests/s3.rs`
+
+Two S3 providers with their own endpoints and credentials, against two local RustFS servers
+that `just storage-test` starts: one holds inputs, the other a store. Ignored by default, as
+they need the servers.

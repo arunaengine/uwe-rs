@@ -257,3 +257,20 @@ each of its requests.
 Two S3 providers with their own endpoints and credentials, against two local RustFS servers
 that `just storage-test` starts: one holds inputs, the other a store. Ignored by default, as
 they need the servers.
+
+## Source contracts: storage
+
+### `storage/src/journal.rs:74`
+
+What the process read at an address from a local copy: its digest and size, remembered
+next to the copy while the copy does not change, and the version that a note next to the
+copy holds. The time is when the copy was written. A password in the address is hidden, so
+that no record of the read holds it.
+
+### `storage/src/web.rs:27`
+
+The one HTTP client of the process, made at the first use and shared by everything that
+sends requests: the web and bucket providers, the checks of images at their registries and
+the requests to TES servers. So connections are reused and a host's address is looked up
+once. Requests that must end in time set their own timeout; a download may take as long
+as its data keeps coming.

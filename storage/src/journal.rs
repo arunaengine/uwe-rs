@@ -71,10 +71,9 @@ impl Journal {
     }
 }
 
-/// What the process read at an address from a local copy: its digest and size, remembered
-/// next to the copy while the copy does not change, and the version that a note next to the
-/// copy holds. The time is when the copy was written. A password in the address is hidden, so
-/// that no record of the read holds it.
+/// Reads cached digest, size and version while the copy is unchanged; recorded addresses hide
+/// passwords.
+/// See `docs/design/storage.md` for the full contract.
 pub(crate) async fn described(address: &str, copy: &Path) -> Result<Fetched, StorageError> {
     let (address, copy) = (redacted(address), copy.to_owned());
     let described = tokio::task::spawn_blocking(move || {

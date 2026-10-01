@@ -1,6 +1,4 @@
-//! File operations of a store on the local file system: files arrive under a temporary name
-//! and are renamed into place, so that a reader never sees half a file; task outputs are moved
-//! in and their content is hard-linked, so that nothing is copied.
+//! Publishes local store files atomically through owned temporary paths.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

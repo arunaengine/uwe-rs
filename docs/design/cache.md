@@ -205,3 +205,36 @@ local = "/scratch/iunctus-store"       # a fast disk of this machine
 - **One layout of tasks for all languages.** Tasks of different languages share results only where their descriptions are equal. Writing paths inside the work directory the same way in every driver would make more of them equal.
 - **Trust in a shared cache** ([roadmap](../roadmap.md), open question 2).
 - **A preview that asks registries** for the digests of images that no real run used.
+
+## File descriptions: content-store
+
+### `content-store/src/layers.rs`
+
+A store in layers: a store in a folder of this machine in front of a shared store, like one
+on S3. Reads look in the folder first and take what it lacks from the shared store, keeping
+a copy in the folder; new objects go to both. Leases live in the shared store, so that runs
+on several machines see each other. Clean-up works on the folder only; the shared store is
+cleaned on its own.
+
+### `content-store/src/lease.rs`
+
+Leases in the store: one holder at a time for a name, like the cache key of a task that runs
+now. So two runs that ask for the same task at the same moment run it once: the one that
+holds the lease runs it, the other waits and then takes the result from the cache.
+
+A lease never outlives the process that holds it. In a store on this machine it is a lock on
+a file under `locks/`, which the kernel frees when the process ends, also when it crashes. In
+an object store it is an object under `locks/` with an expiry, which the holder renews while
+it lives, so that the lease of a crashed run ends after [`LEASE_TIME`].
+
+### `content-store/src/local.rs`
+
+File operations of a store on the local file system: files arrive under a temporary name
+and are renamed into place, so that a reader never sees half a file; task outputs are moved
+in and their content is hard-linked, so that nothing is copied.
+
+### `content-store/tests/layers.rs`
+
+Checks a store in layers: a folder of this machine in front of a shared store. Reads look in
+the folder first and keep a copy of what they take from the shared store; new objects go to
+both; leases live in the shared store.

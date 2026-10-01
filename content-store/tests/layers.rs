@@ -1,6 +1,4 @@
-//! Checks a store in layers: a folder of this machine in front of a shared store. Reads look in
-//! the folder first and keep a copy of what they take from the shared store; new objects go to
-//! both; leases live in the shared store.
+//! Checks local caching, shared leases and publication across store layers.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

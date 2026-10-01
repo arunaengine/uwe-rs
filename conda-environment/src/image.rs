@@ -184,10 +184,9 @@ impl ImagePreparation {
         Ok(completed)
     }
 
-    /// Writes a deterministic tar from the SHA-256 package cache of [`crate::fetch_packages`].
-    /// Package bytes are checked while copied. Output may be partial on any error: consumers
-    /// must stage the context and submit it to the container API only after this succeeds.
-    /// This method never invokes an installer or builds an image on the driver host.
+    /// Writes a deterministic tar from the verified SHA-256 cache of [`crate::fetch_packages`].
+    /// Errors may leave partial output: stage it and submit it to the container API only on success.
+    /// Checks bytes while copying; never installs packages or builds an image on the driver host.
     pub fn write_context(&self, package_cache: &Path, out: &mut dyn Write) -> io::Result<()> {
         let mut archive = Builder::new(out);
         append(&mut archive, "Dockerfile", self.recipe.as_bytes())?;

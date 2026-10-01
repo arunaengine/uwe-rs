@@ -1,7 +1,4 @@
-//! The lock of an environment: the packages that it installs for a platform, each with its
-//! channel, file, address and digest, so that the same environment is built again anywhere.
-//! Its digest names the environment, as decision 12 asks: an image built from it is reused by
-//! the lock, the base image, the platform and the recipe.
+//! Locks package addresses and digests for reproducible environments and container images.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

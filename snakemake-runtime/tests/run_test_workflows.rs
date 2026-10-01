@@ -1,28 +1,4 @@
-//! Runs every workflow of the Snakemake test workflows with the simulator and compares the
-//! outcome with `tests/fixtures/run_test_workflows.txt`: `ok` and the number of tasks, or the exit
-//! code (33 for unsupported features) and the first line of the error. Each workflow runs
-//! the way `tests/fixtures/run_test_workflows_launches.txt` says, which `launches.py` next to it
-//! writes: as its CI tests it, or as Snakemake's own tests run it. Input files that no rule
-//! makes are assumed to exist, since the test workflows hold no large data files. Up to eight
-//! tasks are pending at once and finish in a shuffled order, whose seed
-//! `SNAKEMAKE_TEST_WORKFLOWS_SEED` sets (1 by default), so that the driver meets the orders of
-//! a real run. Each workflow runs
-//! in a child process, so that a crash or a run of more than two minutes (exit code 124)
-//! stays with its workflow. Run with `just snakemake-run-test-workflows-test`; on a difference the
-//! test prints the lines of the new fixture. `SNAKEMAKE_TEST_WORKFLOWS_FILTER` runs only the
-//! workflows whose name contains it; with `UPDATE_FIXTURE=1` it updates only their lines.
-//!
-//! Before each run, the test describes the inputs of the workflow, as the binary does (decision
-//! 24), and compares the counts of its schema and of a check of the simulated run with
-//! `tests/fixtures/run_test_workflows_inputs.txt`, with the totals of their outputs as the line
-//! `(outputs)`; every schema must be valid JSON Schema.
-//! `UPDATE_FIXTURE=1` writes that file too.
-//!
-//! Workflows that import a Python package without a stand-in while they are planned need the
-//! Python container of decision 19. Without a container runtime they stop with an error that
-//! says so, and `tests/fixtures/run_test_workflows_containers.txt` must list them. With
-//! `IUNCTUS_CONTAINER_TESTS=1`, the test runs only these workflows, with the container, and
-//! compares their outcomes with that file; each may then take up to fifteen minutes.
+//! Compares simulated workflow outcomes and input schemas; see the crate README for controls.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -352,11 +328,8 @@ fn records(text: &str) -> impl Iterator<Item = Vec<&str>> {
         .map(|line| line.split('\t').collect())
 }
 
-/// The problems of the records of workflows that do not run: a failing workflow without a
-/// record, a record of a workflow that runs, a reason that is not one of the three, and an
-/// `invalid` or `missing` workflow that real Snakemake evaluated with the same launch. A
-/// workflow that needs the Python container needs no record when it has none, but a line in
-/// `run_test_workflows_containers.txt`.
+/// Checks missing or unexpected rejection records, reasons, and native evaluation outcomes.
+/// Workflows needing unavailable Python containers belong in run_test_workflows_containers.txt.
 fn check_records(outcomes: &[(String, String)]) -> Vec<String> {
     let listed = |name: &str| {
         CONTAINERS.lines().any(|line| {

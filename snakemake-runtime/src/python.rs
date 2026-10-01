@@ -1,7 +1,4 @@
-//! The Python container of a run (decision 19): the Python packages without a stand-in that
-//! workflow code imports run in one container, which the local container engine starts. uv
-//! installs them from PyPI into an environment that is kept for the next runs with the same
-//! packages.
+//! Starts the run's Python container and installs external packages into reusable environments.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

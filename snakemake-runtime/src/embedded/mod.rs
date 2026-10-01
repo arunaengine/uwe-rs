@@ -1,10 +1,4 @@
-//! The context of embedded code: what the code of a job gets besides its files. Snakemake
-//! gives scripts, wrappers and notebooks a `snakemake` object with the job's input, output,
-//! params, wildcards, threads, resources, log, config and rule, through a preamble in each
-//! language, and it runs `run:` blocks as functions with these names and the Snakefile's
-//! globals. iunctus builds the same preambles while it plans the job, so that the code runs
-//! unchanged in the task's container (decision 11); the design is in
-//! docs/design/snakemake/embedded-code.md.
+//! Builds language preambles and run-block globals for embedded code in task containers.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

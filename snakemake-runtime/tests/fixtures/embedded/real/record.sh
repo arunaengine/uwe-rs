@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# Records in expected-results/ what Snakemake 9.27.0 makes for the jobs of this folder that
-# need no image to run on the host: the Python script, the Bash script, the Python wrapper
-# and the run: block (Snakemake runs them without containers unless it is told to use them).
-# It needs uv with snakemake 9.27.0 in its cache or on PyPI (UV_OFFLINE=1 uses only the
-# cache).
+# Records real embedded-code workflow results with Snakemake.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 run="$(mktemp -d)"

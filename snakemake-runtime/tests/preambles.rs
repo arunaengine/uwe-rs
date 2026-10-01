@@ -1,6 +1,4 @@
-//! The scripts with their preambles that iunctus gives the jobs of
-//! `tests/fixtures/embedded/preambles` must be the ones Snakemake 9.27.0 writes, which
-//! `record.sh` there recorded, with the folder of the workflow as `{folder}`.
+//! Compares generated scripts with recorded Snakemake 9.27.0 preambles and normalized folders.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

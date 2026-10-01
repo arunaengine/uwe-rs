@@ -1,6 +1,4 @@
-//! The files a workflow sees while it is planned: its working directory on disk, the outputs
-//! of finished tasks, which live where the executor put them, and what code writes, which
-//! stays in memory.
+//! Combines workflow disk files, finished task outputs, and buffered planning writes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

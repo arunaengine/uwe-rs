@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Writes the Bash job output for the embedded-code fixture.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 set -euo pipefail
 exec > "${snakemake_output[0]}" 2> "${snakemake_log[0]}"
 echo "input ${snakemake_input[0]} named ${snakemake_input[named]}"

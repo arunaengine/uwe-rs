@@ -1,6 +1,4 @@
-//! Helpers of Snakemake's `snakemake.ioutils` that turn files into parameters: `prepend_param`,
-//! `as_py_module`, `parse_input`, `extract_checksum` and `flatten`, and `choose_file`,
-//! `choose_folder` and `choose_tmp`, which pick the first usable path of a list.
+//! Provides Snakemake file-to-parameter helpers and usable-path selection.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

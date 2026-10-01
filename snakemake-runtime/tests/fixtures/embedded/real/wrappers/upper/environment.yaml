@@ -1,3 +1,6 @@
+# Defines the coreutils environment for the wrapper fixture.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 channels:
   - conda-forge
 dependencies:

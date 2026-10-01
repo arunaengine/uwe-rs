@@ -1,33 +1,4 @@
-# Writes run_test_workflows_oracle.txt: what real Snakemake 9.27.0 does with each workflow of the
-# Snakemake test workflows and each launch that launches.py considers for it. Each run is
-# `snakemake --dry-run --printshellcmds` in a copy of the workflow folder under the temporary
-# directory, so that Snakemake also formats the shell command of each job, as iunctus does
-# when it builds the task of a job. Run it from the repository root after
-# `just snakemake-test-workflows-data`, then run launches.py:
-#
-#     uv run -q --with snakemake==9.27.0 --with pyyaml --with pandas --with numpy --with peppy \
-#         --with biopython --with psutil --with requests --with openpyxl --with pyarrow \
-#         --with ruamel.yaml --with snakemake-storage-plugin-http \
-#         --with snakemake-storage-plugin-s3 --with snakemake-executor-plugin-slurm \
-#         python snakemake-runtime/tests/fixtures/oracle.py
-#
-# With `--only FILE`, it runs only the workflows that FILE names, one per line, and replaces
-# their lines in the oracle file, keeping them even when Snakemake evaluates their first
-# launch: the evidence for the workflows that iunctus cannot run.
-#
-# The workflows of run_test_workflows_containers.txt import Python packages that run in the
-# Python container of decision 19. Their evidence comes from a run with those packages too:
-#
-#     grep -v '^#' snakemake-runtime/tests/fixtures/run_test_workflows_containers.txt \
-#         | cut -d' ' -f1 > /tmp/containers.txt
-#     uv run -q --with snakemake==9.27.0 ... (the packages above) --with giturlparse \
-#         --with yatiml --with pyfaidx --with earth-osm --with pydantic --with python-magic \
-#         --with universal-pathlib --with snakebids --with bionumpy --with wget --with cyvcf2 \
-#         --with pybedtools --with google-auth --with pillow --with utils \
-#         python snakemake-runtime/tests/fixtures/oracle.py --only /tmp/containers.txt
-#
-# Snakemake is only the reference here; iunctus never runs it (decision 1).
-#
+"""Records native Snakemake parsing and dry-run outcomes for the workflow corpus."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,7 +1,4 @@
-//! Python: the preamble of scripts, wrappers and notebooks, which makes the `snakemake` object
-//! as Snakemake's `PythonScript.generate_preamble` does. Snakemake pickles the object; the
-//! container of a task has no Snakemake to unpickle it with, so iunctus writes the object as
-//! Python code that builds it with the stand-in package (`snakemake/iocontainers.py`).
+//! Builds Python preambles with a Snakemake stand-in instead of pickled Snakemake objects.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,7 +1,4 @@
-//! Plans the jobs of a workflow backwards from its targets, as Snakemake's DAG does: each
-//! input file is made by the job of a rule whose output pattern matches it, or is a file that
-//! exists. A simulated run may assume that input files that no rule can make exist, since raw data
-//! is not part of a workflow.
+//! Plans jobs backwards from target files; simulated runs may assume unavailable raw inputs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

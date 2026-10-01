@@ -1,7 +1,4 @@
-//! Names of inputs, outputs, logs and params that Snakemake's named lists keep for themselves,
-//! like `items`, fail as they do in Snakemake 9.27.0, whose `snakemake -n` says:
-//! `AttributeError in file "Snakefile", line 1: invalid name for input, output, wildcard,
-//! params or log: items is reserved for internal use`.
+//! Checks errors for reserved names in Snakemake named lists.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

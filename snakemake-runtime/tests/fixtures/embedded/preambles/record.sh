@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Records the scripts with preambles that Snakemake 9.27.0 writes for the jobs of this folder
-# into snakemake-9.27.0/, with the folder of the run as `{folder}`. It needs uv with
-# snakemake 9.27.0 in its cache or on PyPI (UV_OFFLINE=1 uses only the cache); R, Julia and rust-script need not be installed,
-# as Snakemake writes each script before it runs it.
+# Records Snakemake 9.27.0 preambles with normalized folders using uv and a fixed hash seed.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 run="$(mktemp -d)"

@@ -1,6 +1,4 @@
-# The Namedlist family and the class of the `snakemake` object, with the behaviour of
-# snakemake.iocontainers in Snakemake 9.27: items by position and by name, `get`, `keys`,
-# `items`, `log_fmt_shell` and the params that Snakemake stores as plain data.
+"""Provides Snakemake 9.27 named lists, job context, shell log formatting, and plain params."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

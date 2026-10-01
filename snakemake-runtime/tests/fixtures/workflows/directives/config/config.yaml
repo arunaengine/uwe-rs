@@ -1,3 +1,6 @@
+# Defines sample-sheet and trimming settings for the directive workflow fixture.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 samples: config/samples.tsv
 trim:
   extra: "-q 20"

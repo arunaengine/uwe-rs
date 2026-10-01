@@ -1,5 +1,4 @@
-# The helpers of snakemake.utils that the code of jobs uses: Snakemake's `format` with its
-# formatters, which shell() uses too, and small file and config helpers.
+"""Provides Snakemake formatters and file and configuration helpers for job code."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

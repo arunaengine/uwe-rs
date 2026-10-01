@@ -1,8 +1,5 @@
-//! Runs Snakemake workflows: evaluates the Snakefile natively, plans the job graph backwards
-//! from the targets, and asks for one task per job. The Python of Snakefiles runs in
-//! `python-evaluator`; `script:`, `wrapper:`, `notebook:` and `run:` jobs become tasks that
-//! run their code in a container, and so do the Python packages without a stand-in that the
-//! Snakefile imports (decision 19).
+//! Plans Snakemake jobs with native Python and runs embedded code and external packages in
+//! containers.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

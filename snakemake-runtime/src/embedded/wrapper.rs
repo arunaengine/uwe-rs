@@ -1,9 +1,4 @@
-//! Wrappers: where a wrapper's script is, as Snakemake's `wrapper.get_script` finds it. A name
-//! like `v8.1.1/bio/bgzip` is a folder of the snakemake-wrappers repository at that tag, other
-//! names are below the default prefix, and `file:` or web addresses are taken as they are. The
-//! script is the first of `wrapper.py`, `wrapper.R`, `wrapper.Rmd` and `wrapper.jl` that
-//! exists. Scripts on the web are downloaded once into the folder of downloads; a simulated
-//! run reads none of them and takes `wrapper.py`.
+//! Resolves tagged, local, and remote wrapper scripts, caching downloads for real runs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

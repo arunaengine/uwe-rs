@@ -1,8 +1,4 @@
-//! PEP projects: `pepfile:` loads a project as peppy 0.40 does, and `pep` in the Snakefile is
-//! the project. peppy reads the project config, the sample table and the subsample tables as
-//! texts, applies the sample modifiers (remove, append, duplicate, imply, derive), merges
-//! samples of the same name and the rows of subsample tables, and gives the samples as a table
-//! indexed by their names.
+//! Loads peppy-compatible PEP projects, applies sample modifiers, and merges sample tables.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

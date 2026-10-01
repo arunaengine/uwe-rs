@@ -1,10 +1,4 @@
-//! The inputs of a Snakemake workflow as one JSON Schema (decision 24): the schema of
-//! `validate(config, ...)` where the workflow calls it, else its config files with the types of
-//! their values. A table that the workflow validates, like its sample sheet, is the content of
-//! the config value that names its file, as an array of rows, and a PEP project is the input
-//! `pepfile`. Texts that name existing files or directories are marked as such. The values of a
-//! run are its config, and the config keys that the code reads are found in its Snakefiles and
-//! scripts.
+//! Describes config, validated tables, PEP projects, and read config keys as JSON Schema.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -351,10 +345,8 @@ fn mark_path(property: &mut Json, text: &str, base: &Path) {
     }
 }
 
-/// The config keys that the code of the workflow reads, found in its Snakefiles and in the
-/// scripts and notebooks of its folder: `config["key"]`, `config.get("key")`, `"key" in
-/// config`, `{config[key]}` in a shell command, `snakemake.config["key"]` of a script,
-/// `snakemake@config[["key"]]` of R, and `dpath="key/..."` of `lookup`.
+/// Finds config reads in Snakefiles, scripts, notebooks, shell interpolation, and R expressions.
+/// Includes lookup dpath keys; see the crate README for recognized access forms.
 fn read(state: &Workflow) -> BTreeSet<String> {
     let mut files: Vec<PathBuf> = state.included.clone();
     files.push(state.main_snakefile.clone());

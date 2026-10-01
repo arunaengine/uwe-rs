@@ -1,6 +1,4 @@
-//! Runs code that imports Python packages without a stand-in in a real container (decision
-//! 19). It needs a container engine and the network, so it runs only when
-//! `IUNCTUS_CONTAINER_TESTS=1`; `IUNCTUS_ENGINE` names the engine (`docker` by default).
+//! Tests external Python packages in containers when IUNCTUS_CONTAINER_TESTS=1; requires network.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

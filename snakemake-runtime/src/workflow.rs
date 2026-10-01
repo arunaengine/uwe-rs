@@ -466,10 +466,8 @@ impl StatementHook for Hook {
 }
 
 impl Hook {
-    /// Includes a Snakefile: parses it and runs its code with the workflow's globals.
-    /// The Snakefile of a meta-wrapper of the Snakemake wrapper repository, like
-    /// `v1.0.0/meta/bio/bwa_mapping`, and the tag that replaces `master/` in the names of its
-    /// wrappers for meta-wrappers older than 8.0.0.
+    /// Parses and runs an included Snakefile with workflow globals.
+    /// Meta-wrappers before 8.0.0 substitute their repository tag for master in wrapper names.
     fn meta_wrapper(
         &self,
         interpreter: &mut Interpreter,

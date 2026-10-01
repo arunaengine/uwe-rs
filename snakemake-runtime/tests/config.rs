@@ -1,6 +1,4 @@
-//! Config values from the command line merge into the values of the config files, as
-//! Snakemake 9.27 merges them: `--config block={toad: t}` keeps the other keys of `block`. Config
-//! files with `__use_yte__: true` are YTE templates.
+//! Checks merged command-line config values and YTE config templates.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,6 +1,4 @@
-# shell() of Snakemake 9.27 for the code of jobs: it formats the command with the variables
-# of its caller, runs it with bash (`set -euo pipefail; ` in front) in the job's container,
-# and sets the thread variables of numerical libraries to the job's threads.
+"""Runs formatted Bash commands in the job container with strict mode and job thread limits."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

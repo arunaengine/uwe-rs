@@ -1,7 +1,4 @@
-//! The values of a job as plain data, which each language's preamble writes in its own
-//! syntax. Snakemake hands the values to a script by pickling them (Python) or by writing them
-//! as code (R, Julia, Bash, Rust); iunctus writes code for every language, so it first turns
-//! the interpreter's values into this plain form.
+//! Converts interpreter job values into plain data for each language's generated preamble.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

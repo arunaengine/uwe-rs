@@ -1,12 +1,4 @@
-//! `run:` blocks. Snakemake runs a block as a function of the Snakefile's module, with the
-//! job's values as its arguments and the Snakefile's globals around it. In iunctus the
-//! Snakefile runs in the native interpreter (decision 17), and a job runs in a container
-//! (decision 11). So the block runs in the task's container, in a module that iunctus writes:
-//! the rule function of Snakemake with the block as its body, and the Snakefile's globals that
-//! the block uses, carried over from the interpreter: plain values as literals, modules as
-//! imports, and functions of the workflow by their source text, with what they use in turn.
-//! Live objects of the interpreter, like the `workflow` object, cannot go: using one raises
-//! an error that says so.
+//! Builds container Python modules for run blocks with job arguments and captured globals.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

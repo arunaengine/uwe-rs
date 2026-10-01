@@ -1,6 +1,4 @@
-//! Jupyter notebooks: the notebook with the preamble in its first cell, as Snakemake's
-//! `JupyterNotebook.write_script` inserts it, run with papermill when the image has it, else
-//! with `jupyter-nbconvert`, as Snakemake runs it.
+//! Prepends notebook context and selects papermill or jupyter-nbconvert to run it.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

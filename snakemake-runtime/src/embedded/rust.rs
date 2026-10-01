@@ -1,6 +1,4 @@
-//! Rust: the preamble of rust-script scripts, as Snakemake's `RustScript` writes it: the
-//! object as JSON, a struct made from it by `json_typegen`, and iteration and indexing of the
-//! positional items.
+//! Builds rust-script preambles from JSON job context with positional iteration and indexing.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

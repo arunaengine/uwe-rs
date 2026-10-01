@@ -1,10 +1,4 @@
-//! Service jobs: a job with a `service()` output provides something, like a socket, that the
-//! jobs that read it use while it runs. Snakemake runs such a job in one group with the jobs
-//! that use it, all at once, and ends it with SIGTERM once they ended; the group succeeds when
-//! they do. iunctus runs the group as one task in one container: the service starts first in
-//! the background, each job that uses it starts once the service made its output, and the
-//! service gets SIGTERM when they ended. The output of a service is no file that a run keeps
-//! or checks.
+//! Runs service groups in one container, signalling the service after its consumers finish.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,3 +1,6 @@
+# Defines typed configuration values used by the embedded preamble oracle.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 test: true
 testint: 123
 testfloat: 7.65432

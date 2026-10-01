@@ -1,15 +1,4 @@
-//! Commands that workflow code runs while the workflow is planned, like `shell()` or
-//! `subprocess.run`. They never run on the machine of iunctus (decision 11): each becomes a
-//! container task that the engine runs like the task of a job. The image is the workflow's
-//! global `container:`, else a small default image. The task runs in the working directory of
-//! the workflow, which it changes where it is, as Snakemake runs the command there: the files
-//! that the command writes stay for the workflow code and the jobs after it. So such a task
-//! never comes from the cache.
-//!
-//! The session answers each request of the engine once. A command hands its task to the engine
-//! as the answer to the request that the session is handling, and waits for the outcome of that
-//! task. Outcomes of other tasks that come meanwhile get an empty answer and wait until the
-//! session has handled the request that ran the command.
+//! Runs planning commands as uncached container tasks and synchronizes their engine outcomes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

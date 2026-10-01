@@ -1,7 +1,4 @@
-//! The attributes that Snakemake's file objects have beyond those of `str`. Snakemake gives
-//! workflow code the files of rules as `_IOFile`, a subclass of `str`, and the folder of the
-//! current Snakefile as a `SourceFile`. Here they are texts tagged with `rule` or
-//! `source_file`, which behave like texts and get these attributes on top.
+//! Adds Snakemake rule-file and source-file attributes to tagged interpreter strings.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

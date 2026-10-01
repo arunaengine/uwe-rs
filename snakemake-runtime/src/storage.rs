@@ -1,9 +1,4 @@
-//! Snakemake's storage: files in remote storage, like `storage.http(url)` or
-//! `storage("s3://bucket/key")`. Snakemake's storage plugins download such an input into
-//! `.snakemake/storage/<provider>/...` before the job runs, and the job sees that local path.
-//! iunctus gives the job the same local path, and its task gets the file from the storage
-//! address, which the executor downloads. While the workflow is planned, a file in storage
-//! counts as present, as iunctus does not look into the storage itself.
+//! Maps storage addresses to job-local paths; planning assumes remote files are present.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

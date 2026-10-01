@@ -1,8 +1,4 @@
-//! Runs an attempt of a task as one Kubernetes Job: the inputs are placed in the scratch
-//! directory of the attempt, and the pod runs the wrapper in the task's image with the folders
-//! of the task as `hostPath` volumes. So the nodes must see the scratch directory and the store
-//! at the same paths, as a `kind` cluster whose node mounts them, or nodes with a shared file
-//! system.
+//! Runs task attempts as Kubernetes Jobs with staged inputs and bounded recovery.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

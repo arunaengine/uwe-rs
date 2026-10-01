@@ -1,6 +1,4 @@
-//! What Kubernetes says about the pods of the Jobs of a backend. One request lists all of them
-//! at once, by the label of the backend, at most once per poll interval, so that many tasks do
-//! not load the API server.
+//! Polls backend pods together and interprets their task and job states.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

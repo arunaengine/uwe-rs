@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
-# Writes the fixture crate of a simulated run again (tests/export.rs) and checks it with
-# rocrate-validator against the Provenance Run Crate profile 0.5: first at the severity REQUIRED,
-# which must pass, then at RECOMMENDED, whose report lists what the crate could still add. Both
-# go to validation.txt next to this script. Needs the validator in user space:
-# `uv tool install roc-validator`.
+# Rebuilds the simulated RO-Crate fixture and checks required and recommended profiles.
+# Needs rocrate-validator from `uv tool install roc-validator`.
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 set -euo pipefail

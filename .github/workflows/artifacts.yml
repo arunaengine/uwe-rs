@@ -41,7 +41,7 @@ jobs:
           target/release/iunctus help
       - name: Build and export native CWL JavaScript helper
         run: |
-          python3 scripts/build-cwl-js-image.py target/release/iunctus
+          python3 scripts/cwl-js-image.py target/release/iunctus
           mkdir -p dist
           docker image inspect --format '{{.Id}}' iunctus-cwl-js:0.1.0 > dist/CWL_JS_IMAGE_ID
           docker image save iunctus-cwl-js:0.1.0 | gzip > dist/iunctus-cwl-js-0.1.0-linux-amd64.tar.gz

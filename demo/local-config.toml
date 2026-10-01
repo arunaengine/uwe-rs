@@ -1,10 +1,7 @@
-# The config file of iunctus for a laptop or workstation with Docker. Pass it to a command with
-# `-iunctus-config demo/local-config.toml`, or copy it to ~/.config/iunctus/config.toml.
-# Then `iunctus run <workflow>` runs each task in a Docker container on this machine.
-# Options on the command line still win, like `-executor simulator`.
+# Selects local Docker execution and HTML reports for the workstation demo.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 
-# Run real tasks with Docker (or Podman) on this machine. Without this, `iunctus run`
-# simulates. `iunctus graph` always simulates.
 [executor]
 default = "local"
 

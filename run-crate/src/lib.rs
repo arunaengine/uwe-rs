@@ -59,10 +59,9 @@ pub struct Options {
     pub workflow: PathBuf,
     /// The license of the crate, as a URL like `https://spdx.org/licenses/CC-BY-4.0`.
     pub license: Option<String>,
-    /// Copies of the workflow, command-line and task files as the run had them, by
-    /// their digests; directories use `tree:<digest>` (plain digest keys remain accepted).
-    /// The crate takes them over
-    /// the files as they are now, which may have changed since the run.
+    /// Copies of the workflow, command-line and task files as the run had them, by their
+    /// digests; directories use `tree:<digest>` (plain digest keys remain accepted). The crate
+    /// takes them over the files as they are now, which may have changed since the run.
     pub sources: HashMap<String, PathBuf>,
 }
 

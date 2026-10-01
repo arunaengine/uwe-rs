@@ -367,10 +367,8 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
-    /// Runs the first `catch` clause that takes the exception of a failed `try` body. Only a
-    /// thrown exception can be caught, never a feature that iunctus does not support.
-    /// `path = value`, which gives the value. Legacy syntax sets each setting of a chain like
-    /// `a = b = 5` to the value of the last one.
+    /// Runs the first catch matching a thrown exception; unsupported features cannot be caught.
+    /// Assignments return their value; legacy chains set each setting to the final value.
     fn assign(
         &mut self,
         file: &mut File,

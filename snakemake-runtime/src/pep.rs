@@ -6,7 +6,9 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+#[path = "modifiers.rs"]
 mod modifiers;
+#[path = "pep_objects.rs"]
 mod objects;
 
 use std::path::Path;

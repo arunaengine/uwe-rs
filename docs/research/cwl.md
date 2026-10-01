@@ -518,3 +518,15 @@ Checks the loader against `cwltool --validate` on the CWL test workflows from
 `just cwl-test-workflows`: the documents of `fixtures/test-workflows/rejected.txt`, whose
 records say why they cannot run, must fail to load, and all others must load, including
 those of `differences.txt`, which cwltool rejects for the reason given there.
+
+## Source contracts: cwl-parser
+
+### `cwl-parser/src/yaml.rs:20`
+
+Reads the first document of a YAML stream, resolving scalars with the YAML 1.2 core schema.
+JSON is read as YAML. Later documents in the stream are not read, as in Schema Salad.
+
+Two forms that the YAML 1.2 grammar rejects but ruamel.yaml (and so cwltool) accepts are
+read as ruamel.yaml reads them, by changing the text and reading it again: continuation
+lines of quoted scalars that are not indented more than their key get indented further,
+which folding drops again, and a lone `-` in a flow collection gets quoted.

@@ -18,12 +18,7 @@ const QUOTED_INDENTATION: &str = "invalid indentation in multiline quoted scalar
 const LONE_DASH: &str = "plain scalar cannot start with '-'";
 
 /// Reads the first document of a YAML stream, resolving scalars with the YAML 1.2 core schema.
-/// JSON is read as YAML. Later documents in the stream are not read, as in Schema Salad.
-///
-/// Two forms that the YAML 1.2 grammar rejects but ruamel.yaml (and so cwltool) accepts are
-/// read as ruamel.yaml reads them, by changing the text and reading it again: continuation
-/// lines of quoted scalars that are not indented more than their key get indented further,
-/// which folding drops again, and a lone `-` in a flow collection gets quoted.
+/// See `docs/research/cwl.md` for the full contract.
 pub fn read(text: &str, file: &Arc<str>) -> Result<Node, Error> {
     let mut text = std::borrow::Cow::Borrowed(text);
     for _ in 0..256 {

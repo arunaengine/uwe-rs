@@ -1,6 +1,4 @@
-//! What the interpreter asks of its host: files, the working directory, output and the
-//! environment. Evaluation never writes to disk: [`LocalHost`] reads real files and keeps
-//! everything that code writes in memory.
+//! Provides interpreter files, output, environment, and working directory; writes stay in memory.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

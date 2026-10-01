@@ -1,4 +1,6 @@
-# The yte stand-in: expressions, conditions, loops, definitions, variables and merges.
+"""Exercises YTE expressions, conditions, loops, definitions, variables, and merges."""
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 from yte import process_yaml, SKIP
 
 template = """

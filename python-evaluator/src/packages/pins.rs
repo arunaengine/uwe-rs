@@ -1,6 +1,4 @@
-//! The version pins of Python packages in a workflow's own environment file, like
-//! `yatiml==0.7` in an `environment.yaml` or a `requirements.txt` that lists snakemake. The
-//! Python container installs a pinned package in that version (decision 19).
+//! Reads workflow package pins from Conda environments and requirement files.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

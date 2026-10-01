@@ -1,6 +1,4 @@
-//! A stand-in for `subprocess`, and for `os.system` and `os.popen`. Commands run where the
-//! host runs them, never on the machine of iunctus itself (decision 11); a Snakemake run turns
-//! each into a container task. They give their exit code and output as in Python.
+//! Dispatches subprocess and os commands through the host, which Snakemake runs in containers.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

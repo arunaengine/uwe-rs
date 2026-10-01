@@ -1,6 +1,4 @@
-//! A stand-in for the part of pandas that workflows use while they are planned: reading
-//! sample sheets into tables, and looking values up in them. It follows pandas 3.0: missing
-//! values are `nan`, texts stay texts, and `.loc` selects by label.
+//! Provides pandas 3.0 sample-sheet tables, missing values, and label-based selection.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

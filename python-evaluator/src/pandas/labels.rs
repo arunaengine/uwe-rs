@@ -1,6 +1,4 @@
-//! The labels of the rows or columns of a table, and the `Index` object that shows them. An
-//! index with several levels (a `MultiIndex`) has one tuple per label, with one value per
-//! level.
+//! Represents table labels and indexes, including tuple labels for MultiIndex levels.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

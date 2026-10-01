@@ -1,6 +1,4 @@
-//! `DataFrame.query`: the rows for which an expression over the columns is true. As in
-//! pandas, `and`, `or` and `not` work on each row, and `==` or `in` with a list tests
-//! membership. Other expressions run in the interpreter with the columns as series.
+//! Filters table rows with expressions, row-wise Boolean operators, and list membership.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,7 +1,4 @@
-//! A stand-in for yte, the YAML template engine that Snakemake depends on: `process_yaml`
-//! renders a YAML document whose values may be Python expressions (`?expr`), whose keys may
-//! be conditions (`?if`, `?elif`, `?else`) and loops (`?for x in y`), and which may define
-//! functions (`__definitions__`) and variables (`__variables__`).
+//! Renders YTE YAML templates with expressions, conditions, loops, functions, and variables.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

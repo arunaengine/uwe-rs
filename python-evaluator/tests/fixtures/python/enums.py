@@ -1,4 +1,6 @@
-# Enumerations: members, lookups by value and name, iteration, and auto numbers.
+"""Exercises enumeration members, lookups, iteration, and automatic values."""
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 import enum
 from enum import Enum, IntEnum, StrEnum, auto, unique
 

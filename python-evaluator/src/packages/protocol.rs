@@ -1,6 +1,4 @@
-//! Values and errors of the protocol with the Python process, as JSON: plain values as
-//! themselves or as a one-key object, like `{"tuple": [...]}`, and other objects as handles,
-//! like `{"handle": 7, "type": "SeqRecord", "callable": false}`.
+//! Encodes Python process values, object handles, and errors as JSON protocol messages.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

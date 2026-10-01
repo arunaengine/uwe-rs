@@ -1,4 +1,6 @@
-# The datetime stand-in: construction, parsing, arithmetic and durations.
+"""Exercises datetime construction, parsing, arithmetic, and durations."""
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 from datetime import datetime, timedelta, timezone
 
 start = datetime(2026, 9, 29, 12, 30)

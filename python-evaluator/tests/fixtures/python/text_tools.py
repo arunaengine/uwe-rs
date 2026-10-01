@@ -1,5 +1,6 @@
-# Stand-ins for string.Template, string.Formatter, csv.Sniffer and DictReader, os.strerror,
-# unbound Path methods, and threads that fill a queue.
+"""Exercises string formatting, CSV parsing, path methods, errors, and threads."""
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 import csv
 import errno
 import io

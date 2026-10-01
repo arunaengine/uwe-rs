@@ -1,6 +1,4 @@
-//! The methods of `pandas.DataFrame` that reshape or filter the table: indexes, sorting,
-//! dropping and renaming. Each takes the table's data and returns the changed data, so that
-//! it can also work in place.
+//! Reshapes pandas tables by indexing, sorting, dropping, and renaming, including in-place changes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,4 +1,6 @@
-# Stand-ins for urllib.parse, queue, fileinput, filecmp, threading and pwd.
+"""Exercises process, file, user, queue, and threading stand-ins."""
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 import filecmp
 import fileinput
 import pwd

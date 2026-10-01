@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Records what Nextflow 26.04.6 publishes for main.nf into nextflow-26.04.6/, and what it
-# prints besides its progress. It runs the processes on this machine without containers; needs no network.
+# Records Nextflow 26.04.6 exec results and printed output locally without containers or network.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 run="$(mktemp -d)"

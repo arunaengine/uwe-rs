@@ -125,10 +125,8 @@ workflow {
     assert_eq!(output.0, "b 1\n");
 }
 
-/// A `lib/` class like the `NfcoreSchema` of older nf-core pipelines, which reads a schema
-/// with `org.json`, drops an ignored param from it and validates params with everit. The
-/// violations are those of everit 1.14.1, which
-/// `nextflow-evaluator/tests/fixtures/oracle/org_json/schema.groovy` prints.
+/// Checks legacy NfcoreSchema-style org.json filtering and everit 1.14.1 validation.
+/// The oracle is nextflow-evaluator/tests/fixtures/oracle/org_json/schema.groovy.
 #[test]
 fn validates_library_classes() {
     let root = tempfile::tempdir().expect("a temporary directory");

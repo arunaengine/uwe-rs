@@ -1,12 +1,4 @@
-//! Nextflow's own reports of a real run, as the `trace`, `timeline`, `report` and `dag` scopes
-//! of the config turn them on: the trace of every task attempt, a timeline, a report with a
-//! summary and the tasks, and the graph of the processes. nf-core pipelines turn all four on,
-//! with files in `pipeline_info/`. The driver writes them at the end of the run into its own
-//! folder and asks the engine to deliver them, so that a simulated run writes none.
-//!
-//! The trace has the columns that Nextflow's has. What iunctus does not measure yet, like the
-//! CPU and memory that a task used, or has no counterpart for, like the hash of a work folder,
-//! is `-`, which Nextflow writes for unknown values too.
+//! Writes configured trace, timeline, summary, and process graph reports after real runs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

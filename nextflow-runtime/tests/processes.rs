@@ -783,11 +783,8 @@ fn applies_output_options() {
     assert_eq!(tasks.len(), 1);
 }
 
-/// The text of a channel, as nf-core/quantms reads `is_sdrf.toString()` of a value that a
-/// workflow emits, which is bound at once, even `null`, while `channel.value` binds its value
-/// when the run starts; and `println()` of a channel in a completion handler, which prints an
-/// empty line. Nextflow 26.04.6 prints the same lines for this script, with the empty line
-/// after `done`, as it writes that line through `System.out` apart.
+/// Checks immediate workflow emits versus value channels bound when execution starts.
+/// Completion-handler println emits an empty line after done, matching Nextflow 26.04.6.
 #[test]
 fn texts_of_channels() {
     let source = "workflow A {\n    main:\n    x = true\n    y = null\n    emit:\n    x = x\n    y = y\n}\n\

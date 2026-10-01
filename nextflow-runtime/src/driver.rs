@@ -1,6 +1,4 @@
-//! The Nextflow driver: a run of a script behind the language-neutral driver interface of
-//! `workflow-graph`. It loads the config and the main script, starts the dataflow network,
-//! turns each task the network asks for into a container task, and each outcome back.
+//! Runs Nextflow dataflow through workflow-graph, mapping task requests and outcomes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -485,12 +483,9 @@ fn title(config: &Config, project: &Path) -> String {
     })
 }
 
-/// In a simulated run, a task only pretends to run, and the simulator makes up the outputs that a
-/// script does not tell how it makes. An output that a script, like a stub, surely does not
-/// make is left out, as Nextflow's stub run finds no file for it: an optional output is then
-/// missing and a required one fails the task, so the run takes the same path. An output that
-/// names an input or the folder of one, without wildcards, keeps it, as Nextflow collects
-/// such an input.
+/// Drops simulated outputs a script cannot make, preserving exact input paths and folders.
+/// Optional missing files stay absent; required ones fail the task, matching Nextflow stub runs.
+/// See the crate README for simulated output collection.
 fn drop_made_up_outputs(request: &TaskRequest, outcome: &mut Outcome) {
     let inputs: Vec<&str> = request
         .staged
@@ -756,13 +751,9 @@ pub fn task(
     })
 }
 
-/// What the network reads of the outcome of a task: its output files, its standard output, and
-/// the values of its `env` and `eval` outputs from `.command.env`, which it reads through
-/// `files` when the run has them. A value that a task did not write, as with the simulator, is
-/// empty.
-/// The task of an `exec:` section, which ran in the interpreter when it was asked for (decision
-/// 17): it has no image and no command, so the engine finishes it at once (decision 11 asks
-/// no container of it), and it stands in the graph with the files it read.
+/// Reads task output files, stdout, and env/eval values from .command.env through run files.
+/// Unwritten values are empty; interpreter exec tasks have no image or command and finish at once.
+/// See the crate README for outcome and exec-task contracts.
 fn exec_task(
     request: &TaskRequest,
     environment: BTreeMap<String, String>,

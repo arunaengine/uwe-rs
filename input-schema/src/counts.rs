@@ -1,6 +1,4 @@
-//! What the tests of the test workflows record of the inputs of a workflow: the size of its
-//! schema, whether the schema is valid, the problems of a check, and where the schema and the
-//! code differ, on one line.
+//! Counts schema inputs, validation problems, and output totals for workflow corpus tests.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

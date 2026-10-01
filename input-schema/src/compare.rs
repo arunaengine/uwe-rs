@@ -1,6 +1,4 @@
-//! Where the schema of the inputs and the inputs that the workflow code reads differ: an input
-//! that the code reads but the schema does not declare, which the user cannot know about, and
-//! one that the schema declares but the code never reads, which does nothing.
+//! Compares schema declarations with the inputs read by workflow code.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

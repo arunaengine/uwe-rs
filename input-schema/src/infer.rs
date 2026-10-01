@@ -1,6 +1,4 @@
-//! A schema of the inputs of a workflow that declares none, from their default values: each
-//! input gets the type of its default, and a text that names an existing file or directory is
-//! marked as one.
+//! Infers input schemas from default values and existing local paths.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -29,10 +27,8 @@ pub fn infer(defaults: &Map<String, Json>, base: &Path) -> Json {
     json!({"$schema": DRAFT, "type": "object", "properties": properties})
 }
 
-/// The schema of one value: its JSON type, with the items of a list whose items share a type
-/// and the properties of an object. A text that names an existing file is a `file-path` that
-/// must exist; one that names an existing directory is a `directory-path`, which may be made by
-/// the run, like a folder of results. `null` gives a schema without a type.
+/// Infers JSON types, homogeneous array items, and object properties; null has no type.
+/// Existing files become required file paths; existing directories may be made by the run.
 pub fn value_schema(value: &Json, base: &Path) -> Json {
     match value {
         Json::Null => json!({}),

@@ -1,6 +1,4 @@
-//! The inputs or outputs of a workflow as text, for help on the command line: each with its
-//! kind, whether it is required, its default, its choices, its files and its description, in the
-//! groups of the schema.
+//! Formats grouped workflow inputs and outputs with types, defaults, choices, and help text.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

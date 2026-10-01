@@ -1,6 +1,4 @@
-//! nf-schema's keywords for paths, as the check applies them: `format` tells whether a text
-//! names a file or a directory, and `exists` whether it must exist. They look at local files;
-//! remote addresses and glob patterns are left alone.
+//! Checks nf-schema path formats and existence for local files and directories.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

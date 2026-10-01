@@ -1,7 +1,4 @@
-//! Checks the values of a run against the schema of its inputs before any task starts, with the
-//! same messages in every language: a required input without a value, a value of the wrong
-//! type, a value outside an enum, and a file or directory that does not exist or is of the other
-//! kind. Files at remote addresses are not looked at yet.
+//! Checks workflow input values and local paths against JSON Schema before execution.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -75,11 +72,9 @@ impl Validation {
     }
 }
 
-/// Checks the values of a run against the schema of its inputs. A simulated run assumes its
-/// input files, so a file that does not exist is only a warning there, and so is a required
-/// input without a value when the run makes up such values ([`Inputs::assumes_values`]). Every
-/// problem of an advisory schema ([`Inputs::advisory`]) is a warning, and the values of ignored
-/// inputs ([`Inputs::ignored`]) have none. A schema that is not valid gives one error.
+/// Checks input values; invalid schemas give one error and ignored inputs give no problems.
+/// Advisory failures, simulated missing files, and assumed missing values are warnings.
+/// See the crate README for validation details.
 pub fn check(inputs: &Inputs, simulated: bool) -> Vec<Problem> {
     validate(inputs, simulated)
         .diagnostics

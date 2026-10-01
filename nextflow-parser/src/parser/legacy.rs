@@ -1,6 +1,4 @@
-//! Parses statements and expressions that only the legacy parser accepts: `for` and `while`
-//! loops, `switch`, `break`, `continue`, `x++`, `*items` arguments, and line breaks inside
-//! brackets.
+//! Parses legacy loops, switches, increments, spread arguments, and bracketed line breaks.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

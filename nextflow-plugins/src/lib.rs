@@ -6,6 +6,7 @@ pub mod everit;
 mod nf_anndata;
 mod nf_fgbio;
 mod nf_schema;
+#[path = "validation.rs"]
 mod nf_validation;
 
 use nextflow_config::Config;

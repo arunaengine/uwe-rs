@@ -1,10 +1,4 @@
-//! Brings a schema of an older draft, like the draft 7 of nf-validation or the drafts 4 to 7 of
-//! Snakemake workflows, to draft 2020-12: `definitions` become `$defs` with their references,
-//! `dependencies` become `dependentRequired` and `dependentSchemas`, a list of `items` becomes
-//! `prefixItems`, and the boolean `exclusiveMinimum` and `exclusiveMaximum` of draft 4 and the
-//! boolean `required` of draft 3 take the forms of draft 2020-12. Parts that are no schema, like a
-//! list of names under `properties` or `additionalProperties: null`, which validators skip, are
-//! left out.
+//! Upgrades earlier JSON Schema drafts to 2020-12 and omits invalid schema shapes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -209,11 +209,8 @@ impl Backend for SlurmBackend {
 }
 
 impl SlurmBackend {
-    /// The command that a container of `image` runs for these arguments. An image of a
-    /// registry runs them through its entrypoint, or its default command when there are none,
-    /// as `docker run`, the local executor and Kubernetes run them; a task that replaces the
-    /// entrypoint runs them as they are. A SIF file or an address runs them as they are, as
-    /// Apptainer's `exec` does.
+    /// The command that a container of `image` runs for these arguments.
+    /// See `docs/design/engine.md` for the full contract.
     async fn task_command(
         &self,
         image: &mut task_model::Image,
@@ -252,10 +249,8 @@ impl SlurmBackend {
         Ok(command)
     }
 
-    /// The config of an image of a registry. An image pinned to its digest never changes, so
-    /// its config is kept in a file next to its SIF file and asked of the registry only once:
-    /// Docker Hub counts each request for a manifest against a limit per address, which all
-    /// nodes of a cluster may share.
+    /// The config of an image of a registry.
+    /// See `docs/design/engine.md` for the full contract.
     async fn image_config(&self, reference: &str) -> Result<ImageConfig, ExecutorError> {
         let kept =
             file_name(reference).map(|name| self.images.join(name.replace(".sif", ".config.json")));
@@ -466,9 +461,8 @@ impl SlurmBackend {
     }
 
     /// The image as the jobs run it: with Apptainer or Singularity, the SIF file of the image,
-    /// pulled once by a job of its own, else the image itself. The file of an image pinned to
-    /// its digest, or of an address, serves later runs too; that of a tag is pulled once per
-    /// run, as the tag may move.
+    /// pulled once by a job of its own, else the image itself.
+    /// See `docs/design/engine.md` for the full contract.
     async fn runnable(
         &self,
         image: &task_model::Image,
@@ -495,10 +489,8 @@ impl SlurmBackend {
         }
     }
 
-    /// The SIF file of an image, pulled once by a job of its own. A file that is already there
-    /// counts only when it is `lasting`. The tasks of the image share one pull per run, also
-    /// when it fails: a failed pull is tried again a few times, with a growing pause, and then
-    /// every task of the image fails with the same error.
+    /// The SIF file of an image, pulled once by a job of its own.
+    /// See `docs/design/engine.md` for the full contract.
     async fn sif(
         &self,
         program: &str,
@@ -1036,11 +1028,7 @@ fn sync_files(folder: &Path) -> std::io::Result<()> {
 
 /// The exit code of the task and a note for its standard error, from the exit code that the
 /// wrapper recorded and the end of the job; `Err` when the machine failed rather than the task.
-///
-/// The wrapper records the tool's exit code and ends with 0. A container stopped by a signal,
-/// as for lack of memory, ends the task with its own exit code. A job that ran out of time or
-/// memory ends the task as a stopped container would. Other ends are failures of the machine,
-/// like a container runtime that could not start the image, or a node that failed.
+/// See `docs/design/engine.md` for the full contract.
 fn outcome(
     recorded: Option<i32>,
     ended: &Ended,

@@ -27,11 +27,9 @@ impl Images {
     }
 }
 
-/// The name of the SIF file of an image that is pinned to its digest, like
-/// `debian@sha256:ab` as `sha256-ab.sif`, or of a SIF file at an `http://` or `https://`
-/// address, like those that nf-core modules name for Apptainer, by the digest of its address;
-/// `None` for any other image, which the jobs take as it is: a tag that may move, a path, or
-/// an address with another scheme.
+/// Names stable SIF files from pinned image digests or HTTP(S) address digests; otherwise
+/// returns `None`.
+/// See `docs/design/engine.md` for the full contract.
 pub fn file_name(reference: &str) -> Option<String> {
     if reference.starts_with("https://") || reference.starts_with("http://") {
         let digest = task_model::Digest::sha256(reference.as_bytes()).to_string();
@@ -47,10 +45,9 @@ pub fn file_name(reference: &str) -> Option<String> {
     (plain(algorithm) && plain(hex)).then(|| format!("{algorithm}-{hex}.sif"))
 }
 
-/// The name of the SIF file of an image of a registry named by a tag, like
-/// `debian:stable-slim` as `tag-<digest of the name>.sif`. A tag may move, so a run never takes
-/// such a file from an earlier run: it pulls the image again, once for all its jobs. `None` for
-/// a path, a SIF file, an address with a scheme, and an image that [`file_name`] names.
+/// The name of the SIF file of an image of a registry named by a tag, like `debian:stable-slim`
+/// as `tag-<digest of the name>.sif`.
+/// See `docs/design/engine.md` for the full contract.
 pub fn tag_file_name(reference: &str) -> Option<String> {
     let local = reference.starts_with('/') || reference.ends_with(".sif");
     if reference.is_empty() || local || reference.contains("://") || file_name(reference).is_some()
@@ -62,10 +59,8 @@ pub fn tag_file_name(reference: &str) -> Option<String> {
     Some(format!("tag-{}.sif", &hex[..hex.len().min(32)]))
 }
 
-/// The script of the job that pulls an image into `file`. It writes a file of its own first,
-/// syncs it and moves it into place at the end, so that no task reads half a file, also on
-/// another node of a shared file system, and two runs that pull the same image at once do not
-/// spoil each other's file. `exit` gets the exit code.
+/// The script of the job that pulls an image into `file`.
+/// See `docs/design/engine.md` for the full contract.
 pub fn pull_script(program: &str, reference: &str, file: &Path, exit: &Path) -> String {
     let file = quote(&file.to_string_lossy());
     format!(

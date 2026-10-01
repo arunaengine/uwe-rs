@@ -1,7 +1,4 @@
-//! Reads every conda environment file of the Snakemake test workflows, the files in their
-//! `envs` folders, and checks their accepted and rejected outcomes. Run it with
-//! `cargo test -p conda-environment --test test_workflows -- --ignored --nocapture`; the
-//! folder is `SNAKEMAKE_TEST_WORKFLOWS`, else `~/.cache/iunctus/test-workflows/snakemake`.
+//! Checks environment files of the Snakemake corpus; see the crate README for invocation.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

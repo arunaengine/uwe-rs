@@ -1,6 +1,4 @@
-//! Locks environments with the repodata of two small channels in a folder: the newest packages
-//! that fit, the order of channels, going back from a choice that cannot fit, constraints of
-//! packages, and the errors of missing repodata and packages.
+//! Tests package selection, channel priority, target capabilities, and lock failures.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

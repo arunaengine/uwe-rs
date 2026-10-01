@@ -1,6 +1,4 @@
-//! Conda environment parsing and locking with rattler types and resolvo, using cached HTTPS
-//! acquisition or local repodata. Locks bind exact package URLs, digests and supplied target
-//! capabilities to container-only image preparation. See docs/design/conda.md.
+//! Parses and locks Conda environments for verified container image preparation.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -102,10 +100,9 @@ pub fn platform() -> String {
     format!("linux-{arch}")
 }
 
-/// Locks an environment for a platform with the repodata in `folder`.
-/// No virtual packages are inferred. Dependencies on target capabilities cannot be satisfied
-/// unless they are supplied through `lock_with_virtual`. Target compatibility remains unknown.
-/// Use [`lock_with_virtual`] to check authoritative target capabilities instead.
+/// Locks an environment from local repodata without inferring virtual packages.
+/// Target compatibility stays unknown and capability dependencies require explicit packages.
+/// Use [`lock_with_virtual`] to check authoritative target capabilities.
 pub fn lock(environment: &Environment, folder: &Path, platform: &str) -> Result<Lock, LockError> {
     lock_inner(environment, folder, platform, None)
 }

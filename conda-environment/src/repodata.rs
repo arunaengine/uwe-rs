@@ -1,6 +1,4 @@
-//! The packages of channels, from their repodata in a local folder: for each channel and
-//! platform `<folder>/<channel>/<platform>/repodata.json`, as conda serves it at
-//! `https://conda.anaconda.org/<channel>/<platform>/repodata.json`. Nothing is downloaded here.
+//! Reads local channel repodata from <folder>/<channel>/<platform>/repodata.json.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

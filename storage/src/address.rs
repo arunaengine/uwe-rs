@@ -1,6 +1,4 @@
-//! Addresses of files in storage, like `s3://bucket/key`, `gs://bucket/key`,
-//! `az://container/blob`, `https://host/path` or `ftp://host/path`: their parts, which
-//! prefix serves them, and the public web address of a file in a public bucket.
+//! Parses storage addresses, encoded object keys and version selectors.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

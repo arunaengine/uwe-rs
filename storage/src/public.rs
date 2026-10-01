@@ -1,6 +1,4 @@
-//! Public S3 and Google Cloud Storage buckets, which anyone may read over HTTPS without
-//! credentials, as anonymous clients do. This is what `s3://` and `gs://` addresses use when no
-//! provider of the config file serves them.
+//! Reads public S3 and Google Cloud Storage addresses through anonymous HTTPS.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

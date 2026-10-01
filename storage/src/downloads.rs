@@ -1,6 +1,4 @@
-//! Remote files downloaded once: a local copy lives in a folder of downloads under the SHA-256
-//! of its provider and address. Content and its version are published as one immutable bundle.
-//! What an earlier run found out about a remote file is noted there too.
+//! Caches remote downloads as immutable bundles scoped to provider and address.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

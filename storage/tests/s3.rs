@@ -1,6 +1,4 @@
-//! Two S3 providers with their own endpoints and credentials, against two local RustFS servers
-//! that `just storage-test` starts: one holds inputs, the other a store. Ignored by default, as
-//! they need the servers.
+//! Checks separate S3 input and store providers against local RustFS servers.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

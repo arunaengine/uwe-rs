@@ -1,7 +1,4 @@
-//! Files on FTP servers, for inputs: whether they exist, the entries of a directory, and
-//! downloads that continue where a stopped one ended. Each request opens its own session in
-//! passive mode, as FTP transfers one file per session at a time; the address of each server
-//! is looked up once per process.
+//! Reads FTP metadata, directory entries and resumable input downloads.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

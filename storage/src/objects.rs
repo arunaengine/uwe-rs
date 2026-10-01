@@ -1,6 +1,4 @@
-//! Object stores through OpenDAL: S3 and the services that speak its API, Google Cloud Storage
-//! and Azure Blob Storage. An operator of OpenDAL serves one bucket, so a provider makes one
-//! per bucket when it is first used, and all of them share the provider's HTTP client.
+//! Reads and writes bucket objects through OpenDAL provider operators.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

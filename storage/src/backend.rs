@@ -1,7 +1,4 @@
-//! The connection of a provider: its client, made when the provider is first used, with its
-//! secrets read then. Built-in providers serve what no provider of the config file serves, so
-//! that a machine without a config file works as before: the public web, public buckets over
-//! HTTPS and local files. FTP servers need a provider of the config file.
+//! Builds configured and built-in provider clients and resolves their credentials on use.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

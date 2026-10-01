@@ -119,11 +119,8 @@ impl Pool {
         self.total_memory
     }
 
-    /// Waits until a task's share is free. A task that asks for more than the pool has gets
-    /// all of it; a task that names no memory takes none from the pool. The tasks that wait
-    /// take their shares one after another, the one with the highest `priority` first, and of
-    /// equal ones the one that came first. The choice is made when a share comes free, so a
-    /// task that comes later with a higher priority goes before those that wait.
+    /// Waits until a task's share is free.
+    /// See `docs/design/engine.md` for the full contract.
     pub async fn share(&self, cpus: u32, memory: Option<u64>, priority: u64) -> Share<'_> {
         let cpus = cpus.clamp(1, self.total_cpus);
         let memory = memory.map(|bytes| bytes.clamp(MIB, self.total_memory));

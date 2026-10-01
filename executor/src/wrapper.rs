@@ -46,27 +46,13 @@ pub struct Folders<'a> {
     /// names, like TES; empty for none.
     pub outbox: &'a str,
     /// The user and group, like `1000:100`, that get what the task made in the folder of the
-    /// control folder at the end, for a container that may run as another user; empty for
-    /// none. The wrapper hands the files back when it runs as root with the capability
-    /// `CHOWN`, else it lets every user change them.
+    /// control folder at the end, for a container that may run as another user; empty for none.
+    /// See `docs/design/engine.md` for the full contract.
     pub owner: &'a str,
 }
 
-/// The wrapper for a task in the given folders. The task runs the arguments of the
-/// specification, which must not be empty.
-///
-/// It runs the arguments with both streams captured in the control directory, so that output
-/// patterns cannot match the capture files, and with `stdin` of the control directory as
-/// standard input when the task has one. `HOME` is the home folder, unless the task sets it
-/// itself. The wrapper records the exit code and times, collects the outputs only on success,
-/// writes the manifest, then writes [`ENDED`] to its standard output and exits with 0, so that
-/// the logs of a failed tool are kept. Outputs at absolute paths are copied below `root` in the control
-/// directory, so that they outlive the container.
-///
-/// With an outbox, the wrapper also copies each output in the work directory to the same path
-/// there, and at last lets every user change what the task made, since such a server may run
-/// the container as root and then cannot remove the folders that the task made.
-/// An invalid specification produces only a failure wrapper.
+/// The wrapper for a task in the given folders.
+/// See `docs/design/engine.md` for the full contract.
 pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
     if spec.validate().is_err() {
         return invalid_specification();
@@ -170,12 +156,8 @@ pub(crate) fn hand_back(owner: &str, folder: &str) -> String {
     }
 }
 
-/// Runs a command so that a stop reaches it, and sets `status` to its exit code. The script
-/// that runs it is the first process of its container, which ignores signals that it has no
-/// trap for, so without the trap a stop would wait for the engine's whole grace time. The trap
-/// passes SIGTERM on to the command, for a stop by SIGTERM, SIGINT or SIGHUP, and sets
-/// `stopped`. The command runs in the background to let the trap run while it waits, with the
-/// script's own standard input, which a background command would not get otherwise.
+/// Runs a command so that a stop reaches it, and sets `status` to its exit code.
+/// See `docs/design/engine.md` for the full contract.
 pub fn stoppable(command: &str) -> String {
     format!(
         "exec 3<&0\n<&3 3<&- {command} &\npid=$!\n\
@@ -192,10 +174,9 @@ pub(crate) const BASH: &str = r#"if [ -z "${BASH_VERSION:-}" ] && command -v bas
 fi
 "#;
 
-/// Records what the task used, from the cgroup of the container, when the container has one of
-/// its own, as with Docker and Podman: CPU time, the peak of memory (page cache included), the
-/// bytes of block I/O, and how many processes the kernel killed for lack of memory. Shell
-/// builtins only, so that any image with a shell has what it needs, and no process starts.
+/// Records CPU, peak memory, block I/O and memory kills from the private cgroup using shell
+/// builtins.
+/// See `docs/design/engine.md` for the full contract.
 pub(crate) const USAGE_SCRIPT: &str = r#"cgroup=/sys/fs/cgroup
 if [ -r "$cgroup/memory.peak" ]; then
     {
@@ -229,11 +210,8 @@ fi
 "#;
 
 /// Adds each file and directory that a pattern matches to the manifest, as `file <path>` or
-/// `directory <path>`, without a process per file. Bash expands the pattern with `globstar`,
-/// `nullglob` and `dotglob`; plain `sh` with its own globs, whose unmatched patterns stay as
-/// they are and are left out. A match at an absolute path is copied below `root` in the
-/// control directory, and one in the work directory to the outbox, when there is one; the
-/// copies hold what links point to.
+/// `directory <path>`, without a process per file.
+/// See `docs/design/engine.md` for the full contract.
 pub(crate) const COLLECT: &str = r#"if [ -n "${BASH_VERSION:-}" ]; then
     shopt -s globstar nullglob dotglob
 fi

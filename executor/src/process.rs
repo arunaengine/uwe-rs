@@ -641,10 +641,9 @@ fn take_lines(buffer: &mut Vec<u8>) -> Vec<String> {
     lines
 }
 
-/// The container of a spec and its command. Core dumps are off: a tool that crashes inside
-/// such a container would only fill the journal of the machine. It has the least permissions,
-/// as the containers of tasks (decision 28): no capabilities and no way to gain privileges. An
-/// engine without root runs it as root, which is the user outside.
+/// Creates a helper without capabilities or privilege escalation; core dumps cannot fill the journal.
+/// Rootless container root maps to the invoking user.
+/// See `docs/design/engine.md` for the full contract.
 fn create(spec: &ContainerSpec, engine: &ContainerEngine, remove: bool) -> ContainerCreateBody {
     let binds = (spec.mounts.iter())
         .map(|mount| {

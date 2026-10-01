@@ -686,12 +686,7 @@ impl Store {
     }
 
     /// Removes only the observed stale versions, including a matching shared entry.
-    /// Unlike local eviction, this permits a subsequent first-writer publication to repair
-    /// the shared cache. Backends without conditional deletion refuse shared recovery.
-    /// Local and memory stores require cooperating Store writers; remote tags have their
-    /// provider's version semantics. Memory compares content; it and content-derived remote
-    /// tags cannot distinguish an identical-byte replacement. A front copy likewise cannot
-    /// distinguish an identical-byte shared replacement before its shared version is observed.
+    /// See `docs/design/cache.md` for the full contract.
     pub async fn invalidate_entry(
         &self,
         namespace: &str,

@@ -400,3 +400,90 @@ Adds each file and directory that a pattern matches to the manifest, as `file <p
 they are and are left out. A match at an absolute path is copied below `root` in the
 control directory, and one in the work directory to the outbox, when there is one; the
 copies hold what links point to.
+
+## File descriptions: executor
+
+### `executor/src/access.rs`
+
+Who a container runs as and what it may do (decision 28): the least permissions that let
+its task run, and the files that it makes owned by the user who runs iunctus.
+
+Every container drops all Linux capabilities and may not gain privileges (the option
+`no-new-privileges`, which also turns off setuid programs). It runs without a privileged
+mode and with its own process and IPC namespaces, the defaults of the engines; it gets
+network only as the run allows. A task of Nextflow, Snakemake or CWL runs as the user who
+runs iunctus. A task that runs as Kubernetes runs it (`TaskSpec::run_as`, for Argo) runs as
+the user of its image, or the one that it names, and that user may differ from the user
+who runs iunctus. Then:
+
+- its folders in the scratch directory are open to every user, so that it may write
+  there; the folder of all scratch directories stays private to the user;
+- when it runs as root, it keeps the capability `CHOWN`, and its wrapper hands what the
+  task made back to the user at its end;
+- otherwise the wrapper opens what the task made to every user, and the local executor
+  hands it back with a short container of its own, as root with only `CHOWN` and
+  `DAC_READ_SEARCH`.
+
+A rootless engine maps root of the container to the user who runs iunctus, so a task that
+runs as root there needs none of this.
+
+### `executor/src/containers.rs`
+
+Tasks of several containers, like an Argo container set: the containers run at once in one
+place, as the containers of one Kubernetes pod do, and share the work directory, the inputs
+and the control folder of the task.
+
+Each container runs a wrapper of its own. It waits until the containers that it comes after
+recorded their exit codes, and runs its command only when all of them ended with 0, as
+Argo's executor does; else it fails without running. It runs a failed command again while
+it has attempts left, as the `retryStrategy` of an Argo container set asks, unless the shell
+could not find the command (exit code 127). It records its exit code and streams in its own
+folder below `containers/` in the control folder. The main container, the first, uses the
+control folder itself, as the wrapper of a task of one container does, so its standard
+output is the task's. After its own end it waits for every container that does not come
+after it, then collects the outputs and writes the manifest.
+
+Containers that share an image can run in one container of the engine: its wrapper starts
+their wrappers at once and waits for all of them.
+
+### `executor/src/engine.rs`
+
+The container engine of this machine, Docker or Podman, found without any config and reached
+through the Docker Engine API over its socket, so that no program like `docker` is needed;
+and the command of an engine on another machine, for job scripts.
+
+### `executor/src/http.rs`
+
+The one HTTP client of the process for executors and the task runner: checks of images at
+their registries, and requests to TES servers. It is the client of the storage crate, which
+the storage providers share, so that the whole process reuses connections and looks up a
+host's address once.
+
+### `executor/src/pool.rs`
+
+The CPUs and memory that local tasks share. A task starts when its share is free. Tasks that
+wait take their shares one after another: the one with the highest priority first, and of
+equal ones the one that asked first.
+
+### `executor/src/process.rs`
+
+A container whose main process answers lines: it reads one line on standard input and
+writes one reply line on standard output, like the Python process of decision 19. The
+container keeps running between lines, and is removed when it stops. The containers talk to
+the engine through its API, on a runtime of this module, since their callers wait for them
+without a runtime of their own.
+
+### `executor/src/registry.rs`
+
+Image digests and configs from their registry, for backends without a local container
+engine, like TES or a cluster: a `HEAD` request for the manifest of the tag gives the
+digest, as `docker pull` finds it, and the config of the image gives its entrypoint and
+default command. Registries that ask for a token, like Docker Hub, quay.io and ghcr.io, give
+an anonymous one for public images. A registry on `localhost` is asked over plain HTTP, as
+Docker asks it.
+
+### `executor/tests/process.rs`
+
+Containers that answer lines, and containers that run to their end, with the local Docker
+or Podman through its API. Needs the `debian:stable-slim` image; run with
+`cargo test -p executor --test process -- --ignored`.

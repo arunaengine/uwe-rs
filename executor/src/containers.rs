@@ -1,19 +1,4 @@
-//! Tasks of several containers, like an Argo container set: the containers run at once in one
-//! place, as the containers of one Kubernetes pod do, and share the work directory, the inputs
-//! and the control folder of the task.
-//!
-//! Each container runs a wrapper of its own. It waits until the containers that it comes after
-//! recorded their exit codes, and runs its command only when all of them ended with 0, as
-//! Argo's executor does; else it fails without running. It runs a failed command again while
-//! it has attempts left, as the `retryStrategy` of an Argo container set asks, unless the shell
-//! could not find the command (exit code 127). It records its exit code and streams in its own
-//! folder below `containers/` in the control folder. The main container, the first, uses the
-//! control folder itself, as the wrapper of a task of one container does, so its standard
-//! output is the task's. After its own end it waits for every container that does not come
-//! after it, then collects the outputs and writes the manifest.
-//!
-//! Containers that share an image can run in one container of the engine: its wrapper starts
-//! their wrappers at once and waits for all of them.
+//! Groups task containers by image and coordinates their wrappers and dependencies.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

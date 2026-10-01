@@ -1,6 +1,4 @@
-//! The container engine of this machine, Docker or Podman, found without any config and reached
-//! through the Docker Engine API over its socket, so that no program like `docker` is needed;
-//! and the command of an engine on another machine, for job scripts.
+//! Finds and connects to local Docker or Podman through the Docker Engine API.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

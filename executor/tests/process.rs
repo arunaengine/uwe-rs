@@ -1,6 +1,4 @@
-//! Containers that answer lines, and containers that run to their end, with the local Docker
-//! or Podman through its API. Needs the `debian:stable-slim` image; run with
-//! `cargo test -p executor --test process -- --ignored`.
+//! Checks container helper exchanges and completion against local Docker or Podman.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

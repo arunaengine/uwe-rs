@@ -1,9 +1,4 @@
-//! Image digests and configs from their registry, for backends without a local container
-//! engine, like TES or a cluster: a `HEAD` request for the manifest of the tag gives the
-//! digest, as `docker pull` finds it, and the config of the image gives its entrypoint and
-//! default command. Registries that ask for a token, like Docker Hub, quay.io and ghcr.io, give
-//! an anonymous one for public images. A registry on `localhost` is asked over plain HTTP, as
-//! Docker asks it.
+//! Reads image digests and configuration from registries without a local engine.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

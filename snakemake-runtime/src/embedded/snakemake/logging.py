@@ -1,4 +1,4 @@
-# The logger of snakemake, which writes to standard error.
+"""Provides the Snakemake job logger on standard error."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

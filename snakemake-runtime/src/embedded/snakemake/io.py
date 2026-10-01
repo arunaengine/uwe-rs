@@ -1,5 +1,4 @@
-# The file helpers of snakemake.io that the code of jobs uses: expand(), glob_wildcards(),
-# the flags like temp() and directory(), multiext() and the Namedlist classes.
+"""Provides Snakemake file expansion, wildcard matching, flags, and named lists."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

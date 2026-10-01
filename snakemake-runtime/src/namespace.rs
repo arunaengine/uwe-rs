@@ -1,6 +1,4 @@
-//! The names that every Snakefile sees without importing them. Snakemake runs Snakefiles in
-//! the globals of its module `snakemake.workflow`, so the modules and names that module
-//! imports, like `os`, `Path` and `logger`, work in any Snakefile.
+//! Provides the imported modules and names available in every Snakefile's workflow globals.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

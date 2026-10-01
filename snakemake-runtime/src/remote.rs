@@ -1,8 +1,4 @@
-//! Workflow files on the web, like the Snakefile of a module from `github(...)` or an
-//! `include:` of a web address. Snakemake clones the git repository or downloads the file.
-//! iunctus mirrors each repository at its reference, or each web server, into a folder of
-//! downloads, and downloads a file the first time the workflow reads it. So paths relative to
-//! a remote Snakefile, like its includes, config schemas and scripts, work as local ones do.
+//! Mirrors remote repositories and downloads workflow files while preserving relative paths.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

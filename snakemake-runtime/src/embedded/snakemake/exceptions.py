@@ -1,4 +1,4 @@
-# The exceptions of snakemake that the code of jobs raises or catches.
+"""Defines Snakemake exceptions raised or caught by job code."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,7 +1,4 @@
-//! Scripts and wrappers: the script with its preamble in front, as Snakemake's `script()`
-//! writes it to `.snakemake/scripts`, the command that runs it, and the files it needs besides
-//! the job's inputs: the stand-in of the snakemake package for Python, and the folder of the
-//! script, whose other files scripts import or source.
+//! Stages embedded scripts, language preambles, stand-ins, and sibling script files.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

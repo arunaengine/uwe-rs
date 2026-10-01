@@ -1,8 +1,4 @@
-//! The Snakefile's globals that the code of a `run:` block uses, carried over from the
-//! native interpreter as Python code: plain values as literals, tables as Snakemake stores
-//! them, modules as imports (local ones with their files), functions of the workflow by their
-//! source text after what they use, and objects that only the interpreter has as objects that
-//! raise an error when the block uses them.
+//! Carries run-block globals into Python code and rejects unsupported live interpreter objects.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

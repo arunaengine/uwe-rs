@@ -1,6 +1,4 @@
-//! What a real Snakemake run does when a job fails: no job starts after it, the running jobs
-//! end and keep their outputs, and the run fails; with `-keep-going`, as Snakemake's
-//! `--keep-going`, every job that does not depend on the failed one runs too.
+//! Checks failed-run draining and continued execution of independent jobs with keep-going.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

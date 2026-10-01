@@ -1,15 +1,4 @@
-//! The source files of a workflow, which every job sees at their paths in its work directory,
-//! as Snakemake's jobs see them in the working directory.
-//!
-//! A task sees only the files that it gets (decision 11). Snakemake runs jobs in the working
-//! directory, where shell commands also call scripts and packages of the workflow that their
-//! rule does not declare. So every task also gets the files that Snakemake deploys to jobs
-//! that run without a shared file system (`DAG.get_sources` of Snakemake 9): the files that
-//! git tracks below the working directory, the folders of the rules' scripts and notebooks,
-//! the conda files of the rules and the config files, each at most 10 MB and below the working
-//! directory. The Snakefiles are left out: a job runs the code of its own rule, which its task
-//! has already. Each source is a read-only input with its digest in the cache key, so the
-//! result of a task stays tied to what it could read.
+//! Stages read-only workflow sources with cache digests, excluding Snakefiles and oversized files.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,7 +1,4 @@
-//! Path variables: names in angle brackets, like `<results>`, that the files of rules may
-//! contain and that the workflow, a module, the config or a rule sets, as Snakemake 9.12
-//! introduced them. A definition from a narrower place wins: a rule over a module or the
-//! config, those over the workflow's `pathvars:`, and that over the defaults.
+//! Expands path variables with rule, module, config, workflow, and default precedence.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,7 +1,4 @@
-//! Every job sees the source files of its workflow at their paths in its work directory, as
-//! Snakemake's jobs see them in the working directory: the files that git tracks, the folders
-//! of scripts, conda files and config files, but not the Snakefiles, and not where the job's
-//! own files go.
+//! Checks workflow source staging without Snakefiles or conflicts with job-owned files.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

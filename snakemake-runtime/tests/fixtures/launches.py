@@ -1,19 +1,4 @@
-# Writes run_test_workflows_launches.txt: how the run test-workflows test launches each workflow of
-# the Snakemake test workflows. Run it from the repository root after `just snakemake-test-workflows-data`:
-#
-#     uv run -q --with pyyaml --with snakemake==9.27.0 python snakemake-runtime/tests/fixtures/launches.py
-#
-# A catalog workflow runs plainly in its repository, unless real Snakemake does better with
-# another launch (run_test_workflows_oracle.txt from oracle.py says so): the way its CI tests
-# it, or with the mandatory flags of its catalog entry. Better means a dry run that succeeds,
-# else a Snakefile that Snakemake evaluates. The CI launch is the
-# first step of its GitHub workflows that runs Snakemake on it, with the
-# snakemake-github-action or a `snakemake` command, other than linting, reports, unit test
-# generation and environment setup, and whose folders and files exist. The catalog launch
-# takes the config files and values of the mandatory flags. A test of Snakemake runs the way
-# the first test function of tests.py that uses its folder runs it, preferring runs that
-# should not fail.
-#
+"""Records corpus workflow launches from CI, catalog flags, and Snakemake tests."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,8 +1,5 @@
-//! Runs each workflow of `tests/fixtures/workflows` with the simulator and compares the
-//! graph and the tasks with the folder's `expected.txt`. A folder may have a `targets` file
-//! with one target per line, and a `snakemake.txt` with the shell commands that
-//! `snakemake --dry-run --printshellcmds` (Snakemake 9.27.0) prints for it, which the tasks
-//! must run. `UPDATE_EXPECTED=1` rewrites the expected files.
+//! Compares fixture workflow graphs and tasks with recorded expectations; UPDATE_EXPECTED=1 updates
+//! them.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,7 +1,4 @@
-//! The resources of a job, as Snakemake gives them to jobs that run on a remote executor:
-//! the defaults for memory, disk and the temporary folder, under the `default-resources` of the
-//! workflow profile, under the rule's `resources:`, under the profile's `set-resources`. Memory
-//! and disk are kept in megabytes, and shown also as a human-readable size and in mebibytes.
+//! Combines default, profile, and rule resources and converts memory and disk size units.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,6 +1,4 @@
-//! The Snakemake driver: evaluates the Snakefile, plans the jobs of the targets, and asks the
-//! engine for the task of each job once the jobs it depends on are done. After a checkpoint's
-//! task, the workflow is planned again with the checkpoint's outputs.
+//! Evaluates Snakefiles, plans dependent jobs, and replans after checkpoint outputs arrive.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

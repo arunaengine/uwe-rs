@@ -1,8 +1,4 @@
-//! The outputs of a Snakemake workflow as one JSON Schema (decision 24): the files of its target
-//! rules, which are the first rule unless the launch names targets. A rule with outputs gives
-//! them; a rule without, like `all`, gives the inputs that it asks for. A named group of files is
-//! an output by that name, and the other files are the output `targets`. Each output holds the
-//! files for the config of the launch, as `const`.
+//! Describes target rule outputs or requested inputs as named and positional JSON Schema outputs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

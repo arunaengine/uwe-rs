@@ -1,4 +1,4 @@
-# Constants and small helpers of snakemake.common.
+"""Provides constants and helpers for snakemake.common."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

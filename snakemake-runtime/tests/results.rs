@@ -1,6 +1,4 @@
-//! What a real Snakemake run leaves in the working directory: the outputs of its jobs, but not
-//! the temporary ones; and a failed job runs again while its rule's `retries` allow, with its
-//! resources evaluated for the next attempt.
+//! Checks delivered outputs, temporary files, and retry resource evaluation.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

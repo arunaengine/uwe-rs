@@ -1,7 +1,4 @@
-//! The records that Snakemake keeps in `.snakemake/metadata` of the working directory: for each
-//! output, the checksums of the inputs that made it. Snakemake's `mtime` trigger does not run
-//! a job again for an input that is newer than an output but has the checksum that the record
-//! of each output names (Snakemake 9.27, `DAG.is_same_checksum`).
+//! Records input checksums so unchanged newer inputs can reuse Snakemake outputs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

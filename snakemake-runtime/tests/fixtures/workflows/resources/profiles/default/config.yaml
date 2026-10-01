@@ -1,3 +1,6 @@
+# Defines default resource overrides for the workflow fixture.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 default-resources:
   mem_mb: 500
   disk_mb: 1500

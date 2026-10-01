@@ -1,6 +1,4 @@
-//! Bash: the associative arrays of Bash scripts, as Snakemake's `BashEncoder` writes them:
-//! `snakemake_input`, `snakemake_params` and the others by name and by position, and
-//! `snakemake` for the single values.
+//! Writes Snakemake Bash associative arrays for named, positional, and scalar job values.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

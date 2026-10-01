@@ -1,6 +1,4 @@
-//! `snakemake.utils.Paramspace`: a table of parameters whose rows are the instances of a
-//! parameter space. File patterns name each value as `column~value`, in folders by default
-//! or in the file name for the columns of `filename_params`.
+//! Builds parameter-space instances and column~value file patterns from table rows.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

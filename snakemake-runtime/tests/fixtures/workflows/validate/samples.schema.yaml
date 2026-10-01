@@ -1,3 +1,6 @@
+# Defines the validated sample-sheet columns for the workflow fixture.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 $schema: "https://json-schema.org/draft/2020-12/schema"
 properties:
   sample:

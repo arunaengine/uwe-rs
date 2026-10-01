@@ -1,9 +1,4 @@
-//! The benchmark file of a Snakemake job (`benchmark:`), which Snakemake writes after the job
-//! with the time it took and what it used: tab-separated values under a header, or one JSON
-//! line when the name ends with `.jsonl` (Snakemake 9.27, `benchmark.py`). iunctus fills it
-//! from the tool's own start and end and from what the cgroup of the container counted;
-//! the values that it does not know (`max_vms`, `max_uss`, `max_pss`) are `NA`, as Snakemake
-//! writes them when it could not sample the job.
+//! Writes Snakemake TSV or JSONL benchmarks from tool timing and container measurements.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,7 +1,4 @@
-//! The workflow profile: settings in `profiles/default/profile.yaml` (or `config.yaml`) that
-//! Snakemake reads by itself as default command-line options. The ones that change how the
-//! workflow is planned are kept: config files and values, default resources, and resources
-//! and threads per rule.
+//! Loads workflow profile defaults that affect config, resources, threads, and job planning.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

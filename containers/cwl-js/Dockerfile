@@ -1,3 +1,4 @@
+# Packages the trusted native CWL JavaScript worker and its runtime libraries.
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 FROM scratch

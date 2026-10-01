@@ -1,8 +1,4 @@
-//! A store in layers: a store in a folder of this machine in front of a shared store, like one
-//! on S3. Reads look in the folder first and take what it lacks from the shared store, keeping
-//! a copy in the folder; new objects go to both. Leases live in the shared store, so that runs
-//! on several machines see each other. Clean-up works on the folder only; the shared store is
-//! cleaned on its own.
+//! Caches shared store reads in a local folder and publishes objects to both layers.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

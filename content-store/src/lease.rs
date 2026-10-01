@@ -1,11 +1,4 @@
-//! Leases in the store: one holder at a time for a name, like the cache key of a task that runs
-//! now. So two runs that ask for the same task at the same moment run it once: the one that
-//! holds the lease runs it, the other waits and then takes the result from the cache.
-//!
-//! A lease never outlives the process that holds it. In a store on this machine it is a lock on
-//! a file under `locks/`, which the kernel frees when the process ends, also when it crashes. In
-//! an object store it is an object under `locks/` with an expiry, which the holder renews while
-//! it lives, so that the lease of a crashed run ends after [`LEASE_TIME`].
+//! Coordinates named store leases and tracks their ownership and expiry.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

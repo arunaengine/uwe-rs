@@ -1,6 +1,4 @@
-//! The input object of a process, as cwltool's `_init_job` makes it: defaults for missing
-//! inputs, file objects with their derived fields, listings, sizes, contents and secondary
-//! files, and a check of every value against its type.
+//! Builds process inputs with defaults, file metadata, listings and secondary files.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

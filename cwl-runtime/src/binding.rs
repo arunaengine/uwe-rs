@@ -1,6 +1,4 @@
-//! Command line bindings: how input values, `baseCommand` and `arguments` become sorted
-//! bindings, and how each binding becomes arguments. This follows cwltool's `bind_input`,
-//! `generate_arg` and its sort of positions and names.
+//! Turns CWL inputs, base commands and arguments into ordered command-line bindings.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

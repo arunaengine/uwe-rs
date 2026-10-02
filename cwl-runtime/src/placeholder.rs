@@ -1,8 +1,4 @@
-//! Placeholder values for inputs that nothing sets, so that a graph builds without a job
-//! file: files named after the input, with the extension that their format, their secondary
-//! files or their name suggest, since expressions often take names apart. Every rule about
-//! placeholders lives here: the values themselves, which optional inputs get them, and which
-//! files count as placeholders.
+//! Builds placeholder input values for simulated graphs without complete job data.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

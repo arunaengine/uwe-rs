@@ -1,9 +1,4 @@
-//! The inputs and outputs of a CWL process as JSON Schema (decision 24): each input or output
-//! with its type, its `label` as the title, its `doc` as the description, and an input with its
-//! default. Files and directories are paths, which an input must name before the run, with
-//! their formats and secondary files; enums, arrays, records and optional types map onto their
-//! JSON Schema forms. The values of a run are its input object, with files and directories as
-//! their paths or addresses.
+//! Describes CWL process inputs and outputs as JSON Schema.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

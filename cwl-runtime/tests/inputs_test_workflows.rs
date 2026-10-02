@@ -1,11 +1,4 @@
-//! Describes the inputs of every CWL document of the graph test (`graph_test_workflows.txt`)
-//! as a run does before its first task (decision 24), and compares the counts with
-//! `tests/fixtures/inputs_test_workflows.txt`: the inputs of each schema and how many are
-//! required, files and directories, the errors and warnings of a check of a simulated run
-//! without a job file, and the inputs that the process reads or leaves unread. Every schema
-//! must be valid JSON Schema of draft 2020-12. No task runs. A document that loads a `run` file
-//! from the web depends on the network, so it is compared only when it loads both times. Run
-//! with `just inputs-test-workflows-test`; `UPDATE_FIXTURE=1` writes the fixture again.
+//! Checks input descriptions for CWL workflows against recorded counts.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

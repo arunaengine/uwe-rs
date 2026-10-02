@@ -1,6 +1,4 @@
-//! How values flow between the steps of a workflow: sources that must exist, `linkMerge` and
-//! `pickValue` over the sources of a step input, the outputs of a workflow, and the outputs of
-//! a scatter, nested by its shape.
+//! Resolves workflow sources and applies linkMerge and pickValue to linked values.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

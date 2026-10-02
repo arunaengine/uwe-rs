@@ -1,7 +1,4 @@
-//! The results of a real run, as `cwltool --outdir` gives them: each file and directory of the
-//! output object goes to the output folder under its basename, and the output object then
-//! names it there. The files of a directory come with it, and secondary files go next to
-//! their primary file.
+//! Delivers real CWL output files and directories and rewrites their result locations.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

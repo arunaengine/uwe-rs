@@ -1,20 +1,4 @@
-//! Runs every test of the CWL conformance suites v1.0, v1.1 and v1.2 through the driver and
-//! the simulator, and compares the outcome with `tests/fixtures/conformance.txt`.
-//!
-//! The simulator runs no tool, so a test checks its expected output only where the output does
-//! not depend on a real run: runs of expression tools, parameter references and command
-//! lines. For that the executor here simulates the few commands whose effect is known, like
-//! `echo`, `cat` of staged files, and the conformance suite's `args.py`, which writes its
-//! arguments to `cwl.output.json`; so the command lines are compared with cwltool's. Each test
-//! gets one of these outcomes:
-//!
-//! - `pass`: the output equals the expected one, as cwltest compares it; for `should_fail`
-//!   tests, the run fails.
-//! - `ran`: the graph was built, but the output needs a real run of some tool.
-//! - `fail: ...` and `unsupported: ...`: the run failed, or a checked output differs.
-//!
-//! Run with `just cwl-conformance-test`; on a difference the test writes the new fixture to
-//! the target directory and says where.
+//! Checks simulated CWL conformance outcomes against recorded suite results.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

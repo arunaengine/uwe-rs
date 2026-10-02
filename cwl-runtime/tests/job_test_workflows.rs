@@ -1,14 +1,4 @@
-//! Runs the real-world CWL documents of the test workflows from `just cwl-test-workflows` with
-//! their example job files, as `iunctus run <document> -inputs <job>` does with the
-//! simulator, and compares the outcomes with `tests/fixtures/job_test_workflows.txt`: per
-//! document and job file, `ok` and the number of tasks, or the error.
-//! `fixtures/job_test_workflows.py` finds the pairs; a pair may only fail when
-//! `fixtures/job_evidence.txt` has a record of it: why it cannot run, and that cwltool rejects
-//! it too (see `records`). Documents that
-//! `cwltool --validate` rejects, and pairs whose files the test workflows lack, are left out.
-//! Run with `just cwl-job-test-workflows-test`; on a difference the test writes the new fixture
-//! to the target directory and says where. `CWL_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets
-//! tasks finish in a random order (see `order`).
+//! Checks CWL workflows with their example job files against recorded outcomes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

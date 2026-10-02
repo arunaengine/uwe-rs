@@ -759,3 +759,43 @@ The names of the inputs that a process reads: in a workflow, those that a step o
 takes as a source; in a tool, those bound to the command line and those that its expressions
 name, like `inputs.reads` or `inputs["reads"]`. The expressions of a tool sit in many fields
 of the model, and its debug text holds each of them, so the names are found there.
+
+## Workflow evidence scripts
+
+### `cwl-runtime/tests/fixtures/graph_evidence.py`
+
+Records cwltool evidence for the CWL documents that fail in graph_test_workflows.txt, into
+graph_evidence.txt next to this script. The graph test-workflows test checks that every
+document that fails there is listed here. Invalid documents fail in cwltool too; intentional
+unsupported features are recorded with cwltool validation.
+
+Run it from the repository root: cwl-runtime/tests/fixtures/graph_evidence.py
+It reads the test workflows of `just cwl-test-workflows` (CWL_TEST_WORKFLOWS) and the data
+files of `just cwl-conformance-data` (CWL_CONFORMANCE_DATA), and needs Node.js for cwltool's
+JavaScript.
+
+### `cwl-runtime/tests/fixtures/job_evidence.py`
+
+Records why the example job files of job_test_workflows.txt that fail there cannot run, and
+how cwltool rejects them, into job_evidence.txt next to this script. The job test-workflows
+test checks that every pair that fails there has a record, and that no record is left for a
+pair that runs.
+
+For each failing pair, cwltool loads the document and checks the job against its inputs
+(`Process._init_job`), the check that `cwltool <document> <job>` makes before it runs
+anything. The files that the job names are replaced by empty files of the same name, since
+the test workflows hold no data, so that cwltool reports what is wrong with the job itself.
+The reason of a record comes from that check, from graph_evidence.txt for documents that fail
+for any job, or from REASONS.
+
+Run it from the repository root: cwl-runtime/tests/fixtures/job_evidence.py
+It reads the test workflows of `just cwl-test-workflows` (CWL_TEST_WORKFLOWS).
+
+### `cwl-runtime/tests/fixtures/job_test_workflows.py`
+
+Finds the example job files of the real-world CWL documents of the test workflows from
+`just cwl-test-workflows` (CWL_TEST_WORKFLOWS), and prints one line per pair: the document and
+the job file, relative to the test workflows. A job file pairs with a document of the same
+repository when the document has every input the job sets, the job sets every required input
+without default, and the name of the job file holds the name of the document, or the document
+is the only such one next to it. job_test_workflows.txt starts from its output.

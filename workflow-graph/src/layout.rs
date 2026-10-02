@@ -72,9 +72,8 @@ pub struct Graph {
     /// The edges, by the positions of their nodes in `sizes`.
     pub edges: Vec<(usize, usize)>,
     /// Nodes that sit beside another node instead of in a layer of their own, as pairs of the
-    /// node and the one it sits beside. Such a node follows the other in its layer: to its
-    /// right in a layout down, below it in a layout to the right. Several nodes beside the
-    /// same one follow each other in the order of this list.
+    /// node and the one it sits beside.
+    /// See `docs/design/graph.md` for the full contract.
     pub beside: Vec<(usize, usize)>,
     pub direction: Direction,
 }

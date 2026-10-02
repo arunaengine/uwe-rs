@@ -19,10 +19,8 @@ use crate::{ExecutionGraph, TaskId};
 /// By default, a step with more tasks than this is one box in a picture of the graph of tasks.
 pub const FOLD: usize = 5;
 
-/// The most boxes side by side that a picture of the graph of tasks aims at. Where more would
-/// stand in a row, steps with fewer tasks than [`Options::fold`] are one box too, the smaller
-/// the number the wider the graph. And when more lines than this run into one box, they become
-/// one line that says how many task edges it stands for.
+/// The most boxes side by side that a picture of the graph of tasks aims at.
+/// See `docs/design/graph.md` for the full contract.
 pub const WIDTH: usize = 16;
 
 /// A graph to draw.

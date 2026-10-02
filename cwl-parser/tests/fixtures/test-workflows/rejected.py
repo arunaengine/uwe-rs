@@ -1,13 +1,5 @@
 #!/usr/bin/env -S uv run -q --with cwltool==3.3.20260925135507 python3
-# Records why cwltool rejects each CWL test workflow of rejected.txt, into rejected.txt itself:
-# for each document, `cwltool --validate --skip-schemas --enable-dev` runs again, and the record
-# gives the kind and the reason in one plain sentence, taken from cwltool's error, and the
-# error. A document that cwltool accepts now is left out, with a note on standard error. The
-# documents of differences.txt, which cwltool rejects but the loader reads, have no record.
-#
-# Run it from the repository root: cwl-parser/tests/fixtures/test-workflows/rejected.py
-# It reads the test workflows of `just cwl-test-workflows` (CWL_TEST_WORKFLOWS).
-#
+"""Refresh cwltool rejection evidence for CWL workflow fixtures."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

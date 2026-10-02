@@ -350,3 +350,65 @@ each task gets its folders back as its own scratch directory, and the runner sto
 outputs, logs and cache entry as if it had run alone. A task that the group did not reach, as
 when its container stopped, fails as a failure of the machine, so that the engine runs it
 again, alone.
+
+## Source contracts: task-runner
+
+### `task-runner/src/inputs.rs:167`
+
+The input with a file of this machine in place of an object that only the shared store
+of a store in layers has, like an output of a task of another machine: a run takes the
+object into the folder of the store first, as it does with everything it reads there.
+A lookup of the cache downloads nothing.
+
+### `task-runner/src/inputs.rs:211`
+
+An input by its digest, and where its content comes from: literal content, a local
+directory or a local file. Local bytes are copied with links resolved, so that the
+backend executes the same bytes that were hashed. When the runner imports
+inputs, the backend takes them from the store instead.
+
+An input that the task changes where it is is named by its path, not its content,
+which the task changes: such a task never comes from the cache, and a large folder,
+like the working directory of a workflow, is not read.
+
+### `task-runner/src/lookup.rs:27`
+
+The outcome that a real run would take from the cache for a task whose image is pinned
+to `image`, with the stored files. `None` when a real run would run the task: the store
+has no complete result for it, its image is not pinned, the task denies reuse, or an input
+cannot be known without running or downloading something, like a local file that is
+missing or a remote file that no run downloaded yet.
+
+### `task-runner/src/outputs.rs:23`
+
+Stores the outputs of a finished attempt of `task` in the run `run`, and its captured
+streams by their content.
+
+Directories come first, the outer ones before those inside them: an output inside a
+directory output of the same task, as Snakemake allows, is part of what the directory
+stored already. A file that the task reaches through a link, like a directory output that
+is a link to an input, is copied; only the files of the scratch directory are moved. The
+digests of large files that a local store took over go into `digests`, so that later tasks
+that read them do not read them again.
+
+### `task-runner/src/request.rs:75`
+
+The request of a task whose image is pinned if possible and whose inputs and standard input
+are in the store. Results are shared across runs only when the image is pinned to a digest.
+The containers of a task that runs several keep their images as the task names them, so
+the caller pins those in the task first; the main container gets `image`.
+
+### `task-runner/src/runner.rs:355`
+
+Runs a request, unless the cache has a result for it that the reuse scope allows. When
+another run, or another task of this run, runs the same task at the same moment, the
+request waits for its result instead of running it too. The task stops when `cancel`
+fires.
+
+### `task-runner/src/runner.rs:626`
+
+Waits until this run may run the task of `key`: while another run, or another task of
+this run, runs the same task, it holds the lease of the key. When it has stored the
+result, that result answers this request too; when it failed or stopped, this run takes
+the lease and runs the task itself. The lease of a run that crashed ends with its process
+(see [`content_store::Lease`]).

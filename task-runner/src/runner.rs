@@ -352,10 +352,8 @@ impl<B: Backend> Runner<B> {
         self.store.local_path(location)
     }
 
-    /// Runs a request, unless the cache has a result for it that the reuse scope allows. When
-    /// another run, or another task of this run, runs the same task at the same moment, the
-    /// request waits for its result instead of running it too. The task stops when `cancel`
-    /// fires.
+    /// Runs a request, unless the cache has a result for it that the reuse scope allows.
+    /// See `docs/design/cache.md` for the full contract.
     pub async fn execute(
         &self,
         prepared: &Prepared,
@@ -624,10 +622,8 @@ impl<B: Backend> Runner<B> {
     }
 
     /// Waits until this run may run the task of `key`: while another run, or another task of
-    /// this run, runs the same task, it holds the lease of the key. When it has stored the
-    /// result, that result answers this request too; when it failed or stopped, this run takes
-    /// the lease and runs the task itself. The lease of a run that crashed ends with its process
-    /// (see [`content_store::Lease`]).
+    /// this run, runs the same task, it holds the lease of the key.
+    /// See `docs/design/cache.md` for the full contract.
     async fn turn(
         &self,
         namespace: &str,

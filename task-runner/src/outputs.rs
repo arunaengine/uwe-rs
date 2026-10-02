@@ -22,13 +22,7 @@ const KEPT_FROM: u64 = 1 << 20;
 
 /// Stores the outputs of a finished attempt of `task` in the run `run`, and its captured
 /// streams by their content.
-///
-/// Directories come first, the outer ones before those inside them: an output inside a
-/// directory output of the same task, as Snakemake allows, is part of what the directory
-/// stored already. A file that the task reaches through a link, like a directory output that
-/// is a link to an input, is copied; only the files of the scratch directory are moved. The
-/// digests of large files that a local store took over go into `digests`, so that later tasks
-/// that read them do not read them again.
+/// See `docs/design/cache.md` for the full contract.
 pub(crate) async fn store_outputs(
     store: &Store,
     run: &str,

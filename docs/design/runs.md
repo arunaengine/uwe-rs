@@ -205,7 +205,7 @@ Each task of the path splits its part of the run into three: the time between th
 
 ### 6.2 Comparing two runs
 
-`Database::compare` (`run-database/src/compare.rs`), `iunctus compare <run> [<run>]`, and the page `/compare/<run>/<run>`. The two runs may be runs of the same workflow or of two versions of it, like two revisions or two copies.
+`Database::compare` (`run-database/src/compare/mod.rs`), `iunctus compare <run> [<run>]`, and the page `/compare/<run>/<run>`. The two runs may be runs of the same workflow or of two versions of it, like two revisions or two copies.
 
 **The runs** differ in their workflow, language, executor, Git revision, whether they were simulated, their parameters (by name) and their input values (decision 24), each said in one sentence.
 
@@ -380,7 +380,7 @@ How the tasks of two runs pair up: step by step, first the tasks with the same f
 then those with the same name, then those that read and make the most files of the same
 names, and the rest in order.
 
-### `run-database/src/compare.rs`
+### `run-database/src/compare/mod.rs`
 
 What differs between two runs, of the same workflow or of two versions of it: the runs
 themselves (revision, parameters, input values, executor), and task by task what each does

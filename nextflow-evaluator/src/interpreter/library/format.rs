@@ -137,7 +137,7 @@ fn convert(
                 // Java rounds the decimal text of the value half up.
                 let rounded = number
                     .to_big_decimal()
-                    .set_scale_half_up(precision.unwrap_or(6) as i32);
+                    .round_scale(precision.unwrap_or(6) as i32);
                 let digits = rounded.unscaled().abs().to_string();
                 let scale = rounded.scale() as usize;
                 let digits = format!("{digits:0>width$}", width = scale + 1);

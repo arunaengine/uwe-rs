@@ -186,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn excludes_nonschema_parts() {
+    fn omits_invalid_parts() {
         let schema = json!({
             "properties": {
                 "name": {"type": "string"},

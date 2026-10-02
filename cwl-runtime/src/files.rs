@@ -17,10 +17,8 @@ use crate::value::{Map, Value};
 /// The most `loadContents` reads; larger files are an error since CWL v1.2.
 pub const CONTENTS_LIMIT: u64 = 64 * 1024;
 
-/// How files that are not on disk count. The simulator makes empty outputs and job files
-/// often name data that is not there, so a simulated run takes every file as present and
-/// empty, and reads no file at an address. A real run reads the content and size of files at
-/// addresses, like `https://` or `s3://`, through the storage providers of `remote`.
+/// How files that are not on disk count.
+/// See `docs/research/cwl.md` for the full contract.
 #[derive(Clone, Debug, Default)]
 pub struct Access {
     pub assume_present: bool,

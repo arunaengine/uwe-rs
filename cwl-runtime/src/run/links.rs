@@ -44,10 +44,9 @@ pub(super) fn check_sources(
     Ok(())
 }
 
-/// The input object of a step from its sources, as cwltool's `object_from_state`: sources
-/// merge by `linkMerge`, `pickValue` picks, and `default` stands in for null. `None` while a
-/// source has no value yet. `lenient` takes a failed pick as null, for runs on placeholder
-/// inputs, where optional inputs are null and conditions follow placeholder values.
+/// The input object of a step from its sources, as cwltool's `object_from_state`: sources merge
+/// by `linkMerge`, `pickValue` picks, and `default` stands in for null.
+/// See `docs/research/cwl.md` for the full contract.
 pub(super) fn gather(
     values: &HashMap<String, Value>,
     step: &Step,

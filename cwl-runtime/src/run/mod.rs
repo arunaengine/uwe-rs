@@ -372,10 +372,9 @@ impl Run {
         Ok(std::mem::take(&mut self.ready))
     }
 
-    /// Takes a file or directory that a tool updated in place as its new version everywhere
-    /// the run holds it, so that later steps read what the tool made, as with cwltool, which
-    /// changes the file itself. What the old version knew of its content goes: its listing,
-    /// size and checksum.
+    /// Propagates updated file or directory versions and drops stale listings, sizes and
+    /// checksums.
+    /// See `docs/research/cwl.md` for the full contract.
     fn update_in_place(&mut self, old: &str, new: &str) {
         let inside = format!("{old}/");
         let path = files::local_path(old);

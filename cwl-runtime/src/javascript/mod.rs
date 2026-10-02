@@ -30,9 +30,8 @@ const CONSOLE: &str = "var console = {log: function() {}, info: function() {}, \
 const UNDEFINED: &str = "\u{0}undefined";
 
 /// Runs a function body after the expression library and the global variables, the way
-/// cwltool's sandbox does, and returns its result as JSON data. cwltool adds "use strict";
-/// the spec asks for ECMAScript 5.1 only, and real documents assign to undeclared variables,
-/// which other runners accept, so the code runs in sloppy mode.
+/// cwltool's sandbox does, and returns its result as JSON data.
+/// See `docs/research/cwl.md` for the full contract.
 #[cfg(test)]
 pub fn evaluate(
     library: &[String],

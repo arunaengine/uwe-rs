@@ -1,6 +1,4 @@
-//! HTTP templates. Argo's agent sends the request itself; here the image `curlimages/curl` runs
-//! curl, which writes the response body and status code to files. The status code and the body
-//! decide the success condition, as in Argo.
+//! Lowers HTTP templates to curl tasks and collects their response files.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

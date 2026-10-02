@@ -1,7 +1,4 @@
-//! The Kubernetes objects that tasks read, without a cluster (decision 18). ConfigMaps come from
-//! the loaded documents: the workflow file, the configs and the repository. Secrets have no
-//! store: their values never enter a task, a simulated run gives placeholders, and a real run
-//! stops.
+//! Resolves ConfigMaps and Secrets from loaded documents without a cluster.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

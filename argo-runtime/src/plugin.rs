@@ -1,9 +1,4 @@
-//! Executor plugin templates. Argo runs them in its agent pod, whose sidecars are the servers of
-//! the plugins: the agent posts the template to `/api/v1/template.execute` of one plugin after
-//! the other, until one replies with a node. Here each call is a task in the image of the
-//! plugin: a shell script starts the plugin's server, posts the template as the agent does, and
-//! keeps the reply and its HTTP status as output files. The reply gives the node its phase,
-//! message and outputs; a plugin that does not take the template passes it to the next one.
+//! Lowers executor plugin templates to calls of the Argo plugin API.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

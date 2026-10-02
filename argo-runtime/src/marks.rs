@@ -1,6 +1,4 @@
-//! The markers of an Argo run: a `withParam`, a `withSequence` or a `when` that reads the
-//! outputs of earlier steps or tasks decides how many tasks follow from those outputs, so a run
-//! with real outputs can start more or fewer tasks there than a simulated run.
+//! Marks fanout and conditions whose task counts depend on earlier outputs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

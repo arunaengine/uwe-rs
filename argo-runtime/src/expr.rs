@@ -1,10 +1,4 @@
-//! An evaluator for expr-lang (github.com/expr-lang/expr v1.17), the language of Argo's
-//! expression tags `{{=...}}`, of `depends` and of the other expression fields. Argo adds
-//! `asInt`, `asFloat`, `toJson`, `jsonpath` and the Sprig functions as `sprig.<name>(...)`.
-//!
-//! The evaluator follows expr's runtime rules: `/` always gives a float, `&&` and `||` take
-//! only booleans, a missing map key reads as nil, and an unknown top-level name is an error,
-//! which makes Argo leave the tag for a later substitution phase.
+//! Evaluates Argo expression tags and fields with expr-lang semantics.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

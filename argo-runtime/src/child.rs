@@ -1,8 +1,4 @@
-//! Resource templates that start other Argo workflows (decision 18). A `create` or `apply` of
-//! a Workflow runs that workflow, the child, as a run of its own inside this run: its tasks join
-//! the execution graph, and the resource node reads the child as Argo reads the Workflow object,
-//! with `successCondition`, `failureCondition` and `jsonPath`. A `get` of a child by name waits
-//! for it in the same way.
+//! Runs child Workflow resources inside the parent execution graph.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

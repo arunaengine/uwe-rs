@@ -1,6 +1,4 @@
-//! The local scope of steps and DAG templates (workflow/controller/scope.go): the inputs of
-//! the template and what earlier steps and tasks made, as `steps.<name>.*` and
-//! `tasks.<name>.*`, and the outputs that steps and DAG templates take from it.
+//! Builds template scopes from inputs and completed step and task outputs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

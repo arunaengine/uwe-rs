@@ -1,6 +1,4 @@
-//! JSONPath for Argo's `jsonpath(json, path)` function, after github.com/evilmonkeyinc/jsonpath
-//! v0.8.1: a path that names one value gives that value, and a path with wildcards, slices,
-//! unions, filters or `..` gives a list. A missing key or index is an error.
+//! Evaluates Argo JSONPath expressions over JSON values.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

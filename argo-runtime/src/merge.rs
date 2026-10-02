@@ -1,7 +1,4 @@
-//! A merge of value trees by key, like the merge patches of Kubernetes, as Argo joins a
-//! Workflow with the WorkflowTemplate of its `workflowTemplateRef` and merges
-//! `templateDefaults` into templates: mappings merge key by key, lists of named items merge by
-//! name, and anything else in the overlay wins.
+//! Merges workflow trees and template defaults by their named fields.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

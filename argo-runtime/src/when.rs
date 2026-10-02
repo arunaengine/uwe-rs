@@ -1,11 +1,4 @@
-//! `when` conditions: govaluate (github.com/Knetic/govaluate v3) after simple-tag substitution,
-//! with Argo's rule that a bare word is a string, so `heads == heads` holds. A word with a dot,
-//! which govaluate reads as an accessor, stays an error, as in Argo.
-//!
-//! One rule is iunctus's own: a missing operand, as a tag that substitution left empty makes
-//! it (` == heads`), is not known, and every comparison with it is false, `!=` too. govaluate
-//! fails on such conditions; the rule lets runs whose outputs are empty, like simulated runs,
-//! decide their conditions instead of failing, and ends recursions that wait for an output.
+//! Evaluates Argo when conditions with govaluate semantics after tag substitution.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

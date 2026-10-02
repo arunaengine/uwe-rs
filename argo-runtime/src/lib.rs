@@ -1,13 +1,4 @@
-//! Runs Argo Workflows documents as language-neutral tasks, following the controller of Argo
-//! v4.1.4: template resolution through `templateRef` and `workflowTemplateRef`, Argo's
-//! substitution phases, expr-lang and govaluate expressions, steps, DAGs, loops, retries, exit
-//! handlers and hooks. Each leaf template becomes a [`workflow_graph::Task`].
-//!
-//! [`driver`] is the entry point for a [`Launch`]: the workflow file, a parameter file
-//! (`Launch.inputs`, like `argo submit --parameter-file`), parameters (`Launch.params`, like
-//! `-p`), an entrypoint (the first of `Launch.targets`), and extra files or directories of
-//! templates (`Launch.configs`). Templates are also looked up in the repository of the workflow
-//! file: the nearest directory above it that holds `.git`.
+//! Runs Argo Workflows documents as language-neutral tasks.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

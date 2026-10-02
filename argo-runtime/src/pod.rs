@@ -1,14 +1,4 @@
-//! Leaf templates as tasks: what a pod would run, and what its outcome makes.
-//!
-//! A container template is one task with the container's image, command and arguments. A
-//! script template runs its command on the source, which the task gets as the file
-//! `/argo/staging/script`, as Argo's executor writes it. A container set is one task of several
-//! containers, which run in one place in the order of their dependencies and share the volumes
-//! of the set. Init containers are tasks before these, one after
-//! the other, and the files they write into volumes are inputs of the next. An HTTP template
-//! runs curl, which writes the response body and status code to files that decide the success
-//! condition. Environment variables and volumes come from the modules `objects` and `volumes`
-//! (decision 18).
+//! Lowers leaf templates to tasks and interprets their outcomes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

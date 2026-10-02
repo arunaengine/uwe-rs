@@ -1,6 +1,4 @@
-//! How a run starts: the spec of the workflow joined with the WorkflowTemplate it runs, its
-//! parameters, the name of the workflow, its global variables, and warnings about fields that
-//! need Kubernetes.
+//! Resolves the workflow specification, parameters, names and initial scope.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

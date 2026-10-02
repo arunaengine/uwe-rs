@@ -1,6 +1,4 @@
-//! The single rules of Argo's checks of a submitted workflow (workflow/validate/validate.go of
-//! v4.1.4): names, arguments, the inputs a call supplies, leaf templates, and the order of DAG
-//! tasks. The module `validate` applies them while it walks the templates.
+//! Checks workflow names, arguments, templates and DAG ordering against Argo rules.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

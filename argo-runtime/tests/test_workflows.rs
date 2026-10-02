@@ -1,17 +1,4 @@
-//! Reads every Argo document of the test workflows from `just argo-test-workflows`. Documents
-//! with an entrypoint run with the simulator; the others, like libraries of
-//! WorkflowTemplates, get the checks Argo makes when they are created. The outcomes are compared
-//! with tests/fixtures/test-workflows/outcomes.txt: `ok` and the number of tasks, `valid`, or the
-//! exit code (33 for unsupported features) and the first error. Each document that does not pass
-//! needs a record in tests/fixtures/test-workflows/rejected.txt that names why it cannot run:
-//! `invalid` or `missing`, with the evidence that `argo lint` rejects it too, or `unsupported`
-//! by a decision. Before each run, the test describes the inputs of the workflow, as the binary
-//! does (decision 24), and compares the counts of its schema and of a check of the simulated run
-//! with tests/fixtures/test-workflows/inputs.txt, with the totals of their outputs as the line
-//! `(outputs)`; every schema must be valid JSON Schema.
-//! `ARGO_TEST_WORKFLOWS_UPDATE=1` rewrites the outcomes and the inputs;
-//! `ARGO_TEST_WORKFLOWS_FILTER` runs only the documents whose path contains it, and
-//! `ARGO_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets tasks finish in a random order.
+//! Checks loaded Argo workflow fixtures against recorded validation and run outcomes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

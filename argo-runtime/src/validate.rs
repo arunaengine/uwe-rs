@@ -1,15 +1,4 @@
-//! The checks Argo makes when a workflow is submitted or a template is created
-//! (workflow/validate/validate.go of v4.1.4), for what decides whether a workflow can run: the
-//! names of templates, steps, tasks and parameters, the entrypoint, template types, references
-//! to templates, the inputs that calls supply, the arguments of steps and tasks, hooks, and the
-//! dependencies of DAG tasks. The messages are Argo's. Like Argo, a template is checked where
-//! it is called and on its own, and templates of other documents only where they are called.
-//!
-//! The single rules are in the module `checks`.
-//!
-//! Left out: checks of Kubernetes fields (object name lengths, volume mounts, metrics, pod
-//! garbage collection), cron schedules, and whether every tag names a known variable; a run
-//! finds tags that do not resolve when it substitutes them.
+//! Checks whether submitted workflows and templates can run under Argo rules.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

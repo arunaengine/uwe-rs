@@ -1,12 +1,4 @@
-//! A cache of the digests of local files, so that runs and previews do not read the same file
-//! again. An entry keeps the digest of a file by its path, with what tells the version of the
-//! file that was read: its device and inode, its size, the time of its last change of content,
-//! and the time of its last change of any kind, which no program can set back. While all of
-//! them stay the same, the file has not changed, and its digest comes from the cache;
-//! otherwise the file is read again.
-//!
-//! The cache is a small SQLite file in the cache folder; several processes may use it at once.
-//! It only saves time: when it cannot be read or written, files are read as without it.
+//! Caches local file digests only while their observed identity stays unchanged.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,6 +1,4 @@
-//! Tasks near their data: with several sites, each a server that runs tasks and the addresses
-//! of the data near it, each task goes to the site that is near most of its input files
-//! (see `docs/design/efficiency.md`, section 3).
+//! Selects the execution site near the largest number of a task's input files.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

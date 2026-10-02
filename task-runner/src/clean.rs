@@ -1,12 +1,4 @@
-//! Clean-up of a store by rule: what no rule keeps goes, and never what a run that goes on may
-//! still need. The rules keep results by the time of their last use and by how long their task
-//! ran, and keep what named runs refer to. A plan lists what would go before anything goes.
-//!
-//! What refers to what: a cache entry names its output files (under `runs/`) and the contents
-//! of its captured streams and directories (in `cas/` and `trees/`). A run refers to the files
-//! of its tasks, which the run database knows. So a file stays when a kept entry or a kept run
-//! refers to it; entries go before files, so that no request ever gets a result whose files
-//! are gone.
+//! Plans and applies retention rules without deleting content needed by active runs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

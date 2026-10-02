@@ -1,6 +1,4 @@
-//! A lookup of the cache without side effects: whether the store holds the result of a task, as
-//! a real run would find it, without running, storing or downloading anything. The preview of a
-//! run asks it for each task before any compute is spent.
+//! Checks cached task results without executing tasks or populating storage.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

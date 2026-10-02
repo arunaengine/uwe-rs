@@ -1,8 +1,4 @@
-//! The task runner as the executor of a run: each attempt of a task runs on the backend, after
-//! the checks that every real executor makes. A task that does nothing finishes at once, and a
-//! task without a container image gets the default image or is an error, since every task runs
-//! in a container (decision 11). The simulator makes neither check: it pretends every task, so
-//! that a simulated run still gets the files its driver expects.
+//! Runs task attempts through preparation, cache decisions and backend execution.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

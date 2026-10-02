@@ -1,6 +1,4 @@
-//! The cache entry of a task: the outputs of a successful execution, the run and task that made
-//! them, and how long the task ran. A stored entry answers a request only while every file it
-//! names is still in the store.
+//! Validates and reads cached task outputs, stream content and execution metadata.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

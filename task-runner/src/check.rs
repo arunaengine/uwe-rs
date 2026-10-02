@@ -1,7 +1,4 @@
-//! The reproducibility check: a share of the tasks whose results come from the cache run again,
-//! and the digests of their outputs are compared with the stored ones. A tool that gives other
-//! bytes from the same inputs is marked in the store, so that no run shares its results any
-//! more. Resumed runs still take them, since they take results from the run database.
+//! Samples cached tasks for reruns and detects tools whose output digests change.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

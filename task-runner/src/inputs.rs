@@ -1,6 +1,4 @@
-//! The inputs of a task by their digests. A run stores literal content and directory manifests,
-//! and downloads remote inputs; a lookup of the cache only hashes, without writing anything or
-//! using the network.
+//! Hashes or stages task inputs while preserving side-effect-free cache lookups.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

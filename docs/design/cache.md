@@ -257,3 +257,96 @@ Local and memory stores require cooperating Store writers; remote tags have thei
 provider's version semantics. Memory compares content; it and content-derived remote
 tags cannot distinguish an identical-byte replacement. A front copy likewise cannot
 distinguish an identical-byte shared replacement before its shared version is observed.
+
+## File descriptions: task-runner
+
+### `task-runner/src/check.rs`
+
+The reproducibility check: a share of the tasks whose results come from the cache run again,
+and the digests of their outputs are compared with the stored ones. A tool that gives other
+bytes from the same inputs is marked in the store, so that no run shares its results any
+more. Resumed runs still take them, since they take results from the run database.
+
+### `task-runner/src/clean.rs`
+
+Clean-up of a store by rule: what no rule keeps goes, and never what a run that goes on may
+still need. The rules keep results by the time of their last use and by how long their task
+ran, and keep what named runs refer to. A plan lists what would go before anything goes.
+
+What refers to what: a cache entry names its output files (under `runs/`) and the contents
+of its captured streams and directories (in `cas/` and `trees/`). A run refers to the files
+of its tasks, which the run database knows. So a file stays when a kept entry or a kept run
+refers to it; entries go before files, so that no request ever gets a result whose files
+are gone.
+
+### `task-runner/src/digests.rs`
+
+A cache of the digests of local files, so that runs and previews do not read the same file
+again. An entry keeps the digest of a file by its path, with what tells the version of the
+file that was read: its device and inode, its size, the time of its last change of content,
+and the time of its last change of any kind, which no program can set back. While all of
+them stay the same, the file has not changed, and its digest comes from the cache;
+otherwise the file is read again.
+
+The cache is a small SQLite file in the cache folder; several processes may use it at once.
+It only saves time: when it cannot be read or written, files are read as without it.
+
+### `task-runner/src/entry.rs`
+
+The cache entry of a task: the outputs of a successful execution, the run and task that made
+them, and how long the task ran. A stored entry answers a request only while every file it
+names is still in the store.
+
+### `task-runner/src/executor.rs`
+
+The task runner as the executor of a run: each attempt of a task runs on the backend, after
+the checks that every real executor makes. A task that does nothing finishes at once, and a
+task without a container image gets the default image or is an error, since every task runs
+in a container (decision 11). The simulator makes neither check: it pretends every task, so
+that a simulated run still gets the files its driver expects.
+
+### `task-runner/src/files.rs`
+
+The files that the tasks of a run made, for deliveries and drivers. A location is a path on
+this machine or an address of a storage provider, like an output in a store on S3, and a
+target is a path or an address, like a `publishDir` in a bucket. A link needs both on this
+machine; else the file is copied.
+
+### `task-runner/src/inputs.rs`
+
+The inputs of a task by their digests. A run stores literal content and directory manifests,
+and downloads remote inputs; a lookup of the cache only hashes, without writing anything or
+using the network.
+
+### `task-runner/src/lookup.rs`
+
+A lookup of the cache without side effects: whether the store holds the result of a task, as
+a real run would find it, without running, storing or downloading anything. The preview of a
+run asks it for each task before any compute is spent.
+
+### `task-runner/src/network.rs`
+
+Which tasks of a run get the network. A workflow that says it decides for its tasks, like a
+CWL tool with or without `NetworkAccess`; for the others, the run decides: they get the
+network unless the run says `-no-network`. Steps that the config file names get it in any
+case, so that the steps that download can still download.
+
+### `task-runner/src/sites.rs`
+
+Tasks near their data: with several sites, each a server that runs tasks and the addresses
+of the data near it, each task goes to the site that is near most of its input files
+(see `docs/design/efficiency.md`, section 3).
+
+### `task-runner/src/together.rs`
+
+Short tasks together: tasks of steps whose tools ran shorter in earlier runs than the time
+their executor spent besides, and that ask for the same image and the same resources, run one
+after another in one container (one TES task, one Kubernetes Job, one SLURM job), so that
+only one container starts for them.
+
+Each task keeps its own folders, with its own wrapper: the group is one job of the backend,
+whose work directory holds the folders of each task under `m<number>`. After the group ends,
+each task gets its folders back as its own scratch directory, and the runner stores its
+outputs, logs and cache entry as if it had run alone. A task that the group did not reach, as
+when its container stopped, fails as a failure of the machine, so that the engine runs it
+again, alone.

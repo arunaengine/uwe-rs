@@ -1,15 +1,5 @@
 #!/usr/bin/env -S uv run -q --with pyyaml python3
-# Records why each Argo test workflow that does not pass cannot run, into rejected.txt next to
-# this script: one block per document with its kind and one plain sentence, and for `invalid`
-# and `missing` the output of `argo lint` (the argo CLI v4.1.4 in the PATH). iunctus never runs
-# this script; it only records the evidence.
-#
-# The document is linted with `argo lint --offline --strict=false` together with the files of
-# its repository that define the WorkflowTemplates it refers to (the copy that holds the
-# referenced template, cut down to the templates that are called, as a cluster would hold a
-# valid copy), with namespaces removed so that the references resolve, and with values for the
-# inputs of a Workflow's entrypoint, as `argo submit -p` gives them. A document that only the
-# strict mode rejects, the default of `argo lint` and `argo submit`, is linted in that mode too.
+"""Refresh Argo lint evidence for rejected workflow fixtures."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

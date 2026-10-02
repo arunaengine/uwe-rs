@@ -253,3 +253,152 @@ the attempts in flight when the run is cancelled.
 The engine keeps the order rules of a run: a task starts only after the tasks in its `after`
 list have finished, and it may only name tasks that the driver asked for before. With run
 options, several tasks are pending at once and finish in another order.
+
+## Source contracts: workflow-graph
+
+### `workflow-graph/src/driver.rs:41`
+
+Where the results go of languages that have no place of their own for them, from
+`-output-dir`: the files of the CWL output object, as `cwltool --outdir` puts them, the
+current directory by default; Argo's output artifacts, `results` by default; the
+Nextflow `output` block, `results` by default.
+
+### `workflow-graph/src/driver.rs:48`
+
+Whether the run is simulated: tasks make up their files (decision 21). Drivers then take
+input files that no task makes and that do not exist as present, so that a workflow
+plans all its tasks without its data, and log the files they assume. Other workarounds
+for made-up files hold only in simulated runs too, like placeholders for missing
+values; a real run follows the reference tool.
+
+### `workflow-graph/src/driver.rs:54`
+
+Whether the run goes on after a task failed, with every task that does not depend on
+the failed one, as Snakemake's `--keep-going` and cwltool's `--on-error continue` do;
+the run still fails at its end. Without it, each language stops as its engine does:
+no more tasks start, and the running ones end first, except where the language stops
+them at once, like Nextflow's default error strategy `terminate`.
+
+### `workflow-graph/src/driver.rs:100`
+
+Consumes explicit output-validation acceptance for exactly this task and attempt after
+[`Driver::complete`]. Drivers record the identity from [`Outcome::id`] and
+[`Outcome::attempt`], and approve only after their native output checks pass.
+A successful `complete` call or process exit does not imply acceptance. Missing,
+rejected or already consumed decisions return false; querying another identity must
+not consume this attempt's decision. The default approves nothing.
+
+### `workflow-graph/src/driver.rs:161`
+
+The files that the tasks make, where the executor keeps them. A driver that reads the
+content of task outputs, like a Nextflow `.command.env`, reads it through
+[`Files::local`], so that a store elsewhere works too ([`crate::files::read`]). The
+engine gives them before `start`; a simulated run has none, and its outputs are local
+files. The default keeps nothing.
+
+### `workflow-graph/src/driver.rs:178`
+
+Whether the run is ending after a failure: the tasks that run now end, and their
+outcomes still come, but no other task starts, not even one that the driver asked for
+already, as Snakemake and cwltool start no job after a failed one. The engine asks after
+each call. The default never drains.
+
+### `workflow-graph/src/executor.rs:82`
+
+Settles retained cache metadata for exactly this task and attempt after native output
+validation. Approval permits publication; rejection leaves a new candidate unpublished
+or conditionally invalidates the observed entry of a rejected cache hit. Unknown or
+already settled attempts do nothing. The default has no retained metadata.
+
+The future owns its state and performs asynchronous store I/O without blocking the
+caller. Build leases must be released before awaiting native acceptance, since ordered
+outcomes can otherwise deadlock. Failure or dropping the future does not prove a remote
+mutation did not happen; implementations retain unresolved evidence where needed and
+must never settle another attempt. This hook provides no atomic distributed fence.
+
+### `workflow-graph/src/layout.rs:74`
+
+Nodes that sit beside another node instead of in a layer of their own, as pairs of the
+node and the one it sits beside. Such a node follows the other in its layer: to its
+right in a layout down, below it in a layout to the right. Several nodes beside the
+same one follow each other in the order of this list.
+
+### `workflow-graph/src/recorder.rs:42`
+
+Adds a task that the driver asked for, with an edge from each task that made one of its
+input files and from each task in its `after` list. Each task in that list must have
+been asked for before, so that no task waits for one that never comes. The result is
+the edges into the task.
+
+A failed task or the task just completed may be asked for again, to retry it: its node
+takes the new task, and it gets no new edges.
+
+### `workflow-graph/src/recorder.rs:168`
+
+The marker of a task output that started tasks of its own, when an output pattern with
+a wildcard matched it; a pattern without one names exactly one file. A task asked for in
+the same call must read the file, else the spread items went on to be collected, as for
+a report of all files, and the number of tasks does not change.
+
+### `workflow-graph/src/render/drawing.rs:168`
+
+The most tasks that a step may have to be drawn task by task: `options.fold`, or fewer
+when that would put more than [`WIDTH`] boxes in a row of the picture, as when every
+step of a pipeline has four samples. It is the largest number that keeps the widest
+row within [`WIDTH`], else the one that makes it narrowest. Steps that are open stay
+open. The rows are those of the longest chains of tasks, which the layout follows.
+
+### `workflow-graph/src/render/mod.rs:22`
+
+The most boxes side by side that a picture of the graph of tasks aims at. Where more would
+stand in a row, steps with fewer tasks than [`Options::fold`] are one box too, the smaller
+the number the wider the graph. And when more lines than this run into one box, they become
+one line that says how many task edges it stands for.
+
+### `workflow-graph/src/simulator/mod.rs:176`
+
+Pretends to run a task in `work` and returns its outputs. Inputs with literal content are
+written first, as a TES server places them. A simulation of the script tells which files
+it makes and their text, like the files a stub `touch`es or writes with `echo`. An output
+is each made file that its pattern matches. When nothing matches, it is one empty file
+named after the pattern, or a directory for a pattern that ends with `/`, so that the run
+goes on; a driver that knows an output is optional can check the simulation itself
+([`shell::simulate`]). A `.gz` file without text is an empty gzip file, so that it can be
+read, and a `versions.yml` gets the one entry that nf-core code reads.
+
+### `workflow-graph/src/task.rs:77`
+
+The containers of a task that runs several at once in one place, like the containers of
+an Argo container set, which share the work directory, the inputs and the outputs of
+the task. Empty for a task of one container. Otherwise the first is the main container:
+`image`, `command`, `workdir` and `environment` of the task repeat its own, it reads the
+standard input, its standard output is the task's, and it collects the outputs.
+
+### `workflow-graph/src/task.rs:92`
+
+Whether the container runs as Kubernetes runs it, as Argo needs: as the user of its
+image, or the user and group that `RunAs` names, in the working directory of its image,
+or in `workdir`, which is then only where it starts. `None` runs it as the user who runs
+iunctus, in the work directory, as Nextflow, Snakemake and CWL tasks run.
+
+### `workflow-graph/src/task.rs:171`
+
+Whether the task does nothing: it has neither a command nor an image, like a CWL
+`Operation` or a Snakemake rule without an action. Such a task finishes at once with exit
+code 0 and makes no files. A task with an image but no command runs the image's default
+command, as an Argo container without `command` and `args` does.
+
+### `workflow-graph/src/task.rs:211`
+
+The task changes the input where it is, and later tasks see the changes, as a CWL input
+with `InplaceUpdateRequirement`, or the working directory of Snakemake's `shell()` calls
+in the Snakefile. Only a local file or directory can be changed in place, and such a
+task never comes from the cache.
+
+### `workflow-graph/src/task.rs:268`
+
+How the containers of a task that runs several ended, in the order of `Task.containers`,
+the main one first, whose streams are those of the outcome. The exit code of the
+outcome is that of the main container when it failed, else that of the first other
+container that failed. Empty when the task ran one container, and when the executor
+does not run them, as the simulator does not.

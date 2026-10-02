@@ -38,24 +38,17 @@ pub struct Launch {
     pub forceall: bool,
     /// Where the run keeps files of its own, like downloads.
     pub scratch: PathBuf,
-    /// Where the results go of languages that have no place of their own for them, from
-    /// `-output-dir`: the files of the CWL output object, as `cwltool --outdir` puts them, the
-    /// current directory by default; Argo's output artifacts, `results` by default; the
-    /// Nextflow `output` block, `results` by default.
+    /// Selects language result destinations from `-output-dir`, retaining each language
+    /// default.
+    /// See `docs/design/graph.md` for the full contract.
     pub output_dir: Option<PathBuf>,
     /// Run the stubs of tasks instead of their scripts, where the language has stubs.
     pub stub: bool,
-    /// Whether the run is simulated: tasks make up their files (decision 21). Drivers then take
-    /// input files that no task makes and that do not exist as present, so that a workflow
-    /// plans all its tasks without its data, and log the files they assume. Other workarounds
-    /// for made-up files hold only in simulated runs too, like placeholders for missing
-    /// values; a real run follows the reference tool.
+    /// Whether the run is simulated: tasks make up their files (decision 21).
+    /// See `docs/design/graph.md` for the full contract.
     pub simulated: bool,
-    /// Whether the run goes on after a task failed, with every task that does not depend on
-    /// the failed one, as Snakemake's `--keep-going` and cwltool's `--on-error continue` do;
-    /// the run still fails at its end. Without it, each language stops as its engine does:
-    /// no more tasks start, and the running ones end first, except where the language stops
-    /// them at once, like Nextflow's default error strategy `terminate`.
+    /// Continues independent tasks after failure when enabled; the final run still fails.
+    /// See `docs/design/graph.md` for the full contract.
     pub keep_going: bool,
 }
 
@@ -98,11 +91,8 @@ pub trait Driver {
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError>;
 
     /// Consumes explicit output-validation acceptance for exactly this task and attempt after
-    /// [`Driver::complete`]. Drivers record the identity from [`Outcome::id`] and
-    /// [`Outcome::attempt`], and approve only after their native output checks pass.
-    /// A successful `complete` call or process exit does not imply acceptance. Missing,
-    /// rejected or already consumed decisions return false; querying another identity must
-    /// not consume this attempt's decision. The default approves nothing.
+    /// [`Driver::complete`].
+    /// See `docs/design/graph.md` for the full contract.
     fn take_acceptance(&mut self, _task: TaskId, _attempt: u32) -> bool {
         false
     }
@@ -158,11 +148,8 @@ pub trait Driver {
         }
     }
 
-    /// The files that the tasks make, where the executor keeps them. A driver that reads the
-    /// content of task outputs, like a Nextflow `.command.env`, reads it through
-    /// [`Files::local`], so that a store elsewhere works too ([`crate::files::read`]). The
-    /// engine gives them before `start`; a simulated run has none, and its outputs are local
-    /// files. The default keeps nothing.
+    /// The files that the tasks make, where the executor keeps them.
+    /// See `docs/design/graph.md` for the full contract.
     fn use_files(&mut self, _files: Arc<dyn Files>) {}
 
     /// Supplies cancellation to drivers that evaluate code while planning.
@@ -175,10 +162,9 @@ pub trait Driver {
         Ok(None)
     }
 
-    /// Whether the run is ending after a failure: the tasks that run now end, and their
-    /// outcomes still come, but no other task starts, not even one that the driver asked for
-    /// already, as Snakemake and cwltool start no job after a failed one. The engine asks after
-    /// each call. The default never drains.
+    /// During draining, running tasks finish and report outcomes, while all new admissions
+    /// stop.
+    /// See `docs/design/graph.md` for the full contract.
     fn draining(&self) -> bool {
         false
     }

@@ -173,14 +173,8 @@ fn url(source: &str) -> String {
     }
 }
 
-/// Pretends to run a task in `work` and returns its outputs. Inputs with literal content are
-/// written first, as a TES server places them. A simulation of the script tells which files
-/// it makes and their text, like the files a stub `touch`es or writes with `echo`. An output
-/// is each made file that its pattern matches. When nothing matches, it is one empty file
-/// named after the pattern, or a directory for a pattern that ends with `/`, so that the run
-/// goes on; a driver that knows an output is optional can check the simulation itself
-/// ([`shell::simulate`]). A `.gz` file without text is an empty gzip file, so that it can be
-/// read, and a `versions.yml` gets the one entry that nf-core code reads.
+/// Pretends to run a task in `work` and returns its outputs.
+/// See `docs/design/graph.md` for the full contract.
 pub fn pretend(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
     Ok(pretend_run(task, work)?.unwrap_or_default())
 }

@@ -74,11 +74,8 @@ pub struct Task {
     /// or Snakemake rules ordered without files. Each must be a task that the driver asked for
     /// before this one; the engine starts this task only when all of them have finished.
     pub after: Vec<TaskId>,
-    /// The containers of a task that runs several at once in one place, like the containers of
-    /// an Argo container set, which share the work directory, the inputs and the outputs of
-    /// the task. Empty for a task of one container. Otherwise the first is the main container:
-    /// `image`, `command`, `workdir` and `environment` of the task repeat its own, it reads the
-    /// standard input, its standard output is the task's, and it collects the outputs.
+    /// Containers share task files; the first owns stdin, stdout and output collection.
+    /// See `docs/design/graph.md` for the full contract.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub containers: Vec<Container>,
     /// Whether `command` replaces the entrypoint of the image, as the `command` of a container
@@ -89,10 +86,9 @@ pub struct Task {
     /// `WorkReuse` and `enableReuse: false` runs every time; its result is still stored.
     #[serde(default, skip_serializing_if = "Reuse::is_allowed")]
     pub reuse: Reuse,
-    /// Whether the container runs as Kubernetes runs it, as Argo needs: as the user of its
-    /// image, or the user and group that `RunAs` names, in the working directory of its image,
-    /// or in `workdir`, which is then only where it starts. `None` runs it as the user who runs
-    /// iunctus, in the work directory, as Nextflow, Snakemake and CWL tasks run.
+    /// Selects Kubernetes image or explicit identity and starting directory; `None` uses the
+    /// iunctus user.
+    /// See `docs/design/graph.md` for the full contract.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_as: Option<RunAs>,
 }
@@ -169,9 +165,8 @@ impl Network {
 
 impl Task {
     /// Whether the task does nothing: it has neither a command nor an image, like a CWL
-    /// `Operation` or a Snakemake rule without an action. Such a task finishes at once with exit
-    /// code 0 and makes no files. A task with an image but no command runs the image's default
-    /// command, as an Argo container without `command` and `args` does.
+    /// `Operation` or a Snakemake rule without an action.
+    /// See `docs/design/graph.md` for the full contract.
     pub fn is_no_op(&self) -> bool {
         self.command.is_empty() && self.image.is_none()
     }
@@ -208,10 +203,8 @@ pub enum Writable {
     /// The task gets a copy of its own, which it may change and no other task sees, as a CWL
     /// `InitialWorkDir` entry with `writable: true`.
     Copy,
-    /// The task changes the input where it is, and later tasks see the changes, as a CWL input
-    /// with `InplaceUpdateRequirement`, or the working directory of Snakemake's `shell()` calls
-    /// in the Snakefile. Only a local file or directory can be changed in place, and such a
-    /// task never comes from the cache.
+    /// Changes a local input in place for later tasks; this task never reuses a cached result.
+    /// See `docs/design/graph.md` for the full contract.
     InPlace,
 }
 
@@ -266,10 +259,8 @@ pub struct Outcome {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reproducibility: Option<ReproducibilityCheck>,
     /// How the containers of a task that runs several ended, in the order of `Task.containers`,
-    /// the main one first, whose streams are those of the outcome. The exit code of the
-    /// outcome is that of the main container when it failed, else that of the first other
-    /// container that failed. Empty when the task ran one container, and when the executor
-    /// does not run them, as the simulator does not.
+    /// the main one first, whose streams are those of the outcome.
+    /// See `docs/design/graph.md` for the full contract.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub containers: Vec<ContainerOutcome>,
 }

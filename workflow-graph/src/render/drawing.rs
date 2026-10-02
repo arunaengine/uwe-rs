@@ -165,11 +165,8 @@ impl ExecutionGraph {
         (steps, fold)
     }
 
-    /// The most tasks that a step may have to be drawn task by task: `options.fold`, or fewer
-    /// when that would put more than [`WIDTH`] boxes in a row of the picture, as when every
-    /// step of a pipeline has four samples. It is the largest number that keeps the widest
-    /// row within [`WIDTH`], else the one that makes it narrowest. Steps that are open stay
-    /// open. The rows are those of the longest chains of tasks, which the layout follows.
+    /// Chooses task folding to respect `options.fold` and graph width; open steps stay open.
+    /// See `docs/design/graph.md` for the full contract.
     fn fold_for(&self, steps: &[Step], options: &Options) -> usize {
         if options.fold == 0 {
             return 0;

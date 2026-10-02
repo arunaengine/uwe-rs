@@ -40,12 +40,8 @@ impl Recorder {
     }
 
     /// Adds a task that the driver asked for, with an edge from each task that made one of its
-    /// input files and from each task in its `after` list. Each task in that list must have
-    /// been asked for before, so that no task waits for one that never comes. The result is
-    /// the edges into the task.
-    ///
-    /// A failed task or the task just completed may be asked for again, to retry it: its node
-    /// takes the new task, and it gets no new edges.
+    /// input files and from each task in its `after` list.
+    /// See `docs/design/graph.md` for the full contract.
     pub(crate) fn add(
         &mut self,
         task: &Task,
@@ -165,10 +161,9 @@ impl Recorder {
         Some((task, Marker::new(MarkerKind::Content, reason)))
     }
 
-    /// The marker of a task output that started tasks of its own, when an output pattern with
-    /// a wildcard matched it; a pattern without one names exactly one file. A task asked for in
-    /// the same call must read the file, else the spread items went on to be collected, as for
-    /// a report of all files, and the number of tasks does not change.
+    /// The marker of a task output that started tasks of its own, when an output pattern with a
+    /// wildcard matched it; a pattern without one names exactly one file.
+    /// See `docs/design/graph.md` for the full contract.
     fn spread(&self, path: &Path, asked: usize) -> Option<(TaskId, Marker)> {
         let file = normalize(path);
         let asked = self.graph.nodes.get(asked..).unwrap_or_default();

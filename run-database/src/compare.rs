@@ -1,10 +1,4 @@
-//! What differs between two runs, of the same workflow or of two versions of it: the runs
-//! themselves (revision, parameters, input values, executor), and task by task what each does
-//! (image, command, script, environment, inputs), which outputs have other content, how it
-//! ended, and which came from the cache or an earlier run in one run and ran in the other.
-//!
-//! Tasks are paired step by step: first those with the same fingerprint, then those with the
-//! same name, then those that read the most files of the same names, and the rest in order.
+//! Compares run settings and pairs tasks to describe execution and content differences.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

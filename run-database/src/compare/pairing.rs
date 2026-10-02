@@ -1,6 +1,4 @@
-//! How the tasks of two runs pair up: step by step, first the tasks with the same fingerprint,
-//! then those with the same name, then those that read and make the most files of the same
-//! names, and the rest in order.
+//! Pairs tasks by step, fingerprint, name and shared file paths.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

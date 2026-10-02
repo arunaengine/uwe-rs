@@ -1,9 +1,4 @@
-//! The journal of the SQLite files of iunctus: WAL on a local file system, where readers go on
-//! while a run writes, and the rollback journal on a file system that machines share, like NFS
-//! or CephFS on a cluster. WAL keeps its index in memory that all its processes share, so they
-//! must be on one machine: a run on a second node of a cluster cannot open the file ("database
-//! is locked"). The rollback journal takes its locks through the file system, which the file
-//! systems of clusters share between machines.
+//! Selects WAL for local storage and rollback journals for shared file systems.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

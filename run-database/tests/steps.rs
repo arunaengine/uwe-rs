@@ -1,6 +1,4 @@
-//! The steps of two runs compared by content: a step whose tasks are made another way from the
-//! same inputs, a step that reads what it made, a step with another number of tasks, and a
-//! step whose tool gave other bytes.
+//! Checks step comparisons across changed tasks, input content and output digests.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,6 +1,4 @@
-//! The images that real runs pinned to their digests. A simulated run takes them to tell,
-//! without asking a registry, which image a real run would use for a task, and so whether the
-//! cache holds its result.
+//! Finds image digests from earlier real runs for simulated cache decisions.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

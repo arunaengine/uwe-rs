@@ -1,6 +1,4 @@
-//! Where a file came from: the task that made it, the tasks that made that task's inputs, and so
-//! on back to the data that no task made. The chain can cross runs, since a resumed run reads
-//! the files of the runs before it.
+//! Traces file producers and their input ancestry across current and resumed runs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

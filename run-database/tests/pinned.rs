@@ -1,6 +1,4 @@
-//! What pins a run: the files of its workflow and command line, the remote files it read, the
-//! images it ran in and the digests of the inputs of its tasks, the schema of its outputs, and
-//! the verdicts of the reproducibility check; and a database of version 3 that gets them.
+//! Checks retained run identities and migration of their database records.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

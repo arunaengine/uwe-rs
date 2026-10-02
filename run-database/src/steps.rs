@@ -1,7 +1,4 @@
-//! The steps of two runs of a workflow compared by content: for each step, whether its tasks
-//! read the same inputs, are made the same way and made the same outputs, by digest. It needs
-//! no pairs of tasks, so it holds where the names and ids of tasks depend on the order in which
-//! earlier tasks finished. The order check compares two runs in other orders this way.
+//! Compares workflow steps by their inputs, task construction and output digests.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

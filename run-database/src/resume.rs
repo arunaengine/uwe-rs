@@ -49,10 +49,8 @@ impl Database {
     }
 
     /// The outcomes of the tasks that succeeded in the given runs, by fingerprint; for a
-    /// fingerprint in several runs, the run that comes first in the list wins. A task whose
-    /// standard output or error the database does not hold in whole is left out, since its
-    /// driver may read them. Directory inputs are left out because their fingerprint does
-    /// not describe changes to their descendants.
+    /// fingerprint in several runs, the run that comes first in the list wins.
+    /// See `docs/design/runs.md` for the full contract.
     pub fn reusable(&self, runs: &[String]) -> Result<HashMap<String, Reusable>, DatabaseError> {
         let mut reusable = HashMap::new();
         for run in runs {

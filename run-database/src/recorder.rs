@@ -19,10 +19,8 @@ use crate::{DatabaseError, now};
 /// text keeps its end, where errors are; a real run has the whole text in its store.
 pub const LOG_LIMIT: usize = 64 * 1024;
 
-/// How long writes gather in one transaction before they are committed. Readers, like the web
-/// page, see a run at most this much later; a run of many short tasks commits far less often.
-/// A thread commits an open transaction after this time even when no write follows, so that a
-/// long task never holds the write lock that other iunctus processes wait for.
+/// How long writes gather in one transaction before they are committed.
+/// See `docs/design/runs.md` for the full contract.
 const BATCH: Duration = Duration::from_millis(250);
 
 /// What is known of a run when it starts.

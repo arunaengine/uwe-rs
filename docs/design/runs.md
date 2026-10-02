@@ -464,3 +464,64 @@ the verdicts of the reproducibility check; and a database of version 3 that gets
 The steps of two runs compared by content: a step whose tasks are made another way from the
 same inputs, a step that reads what it made, a step with another number of tasks, and a
 step whose tool gave other bytes.
+
+## Source contracts: run-database
+
+### `run-database/src/chains.rs:16`
+
+For each step of a workflow, the time in milliseconds of the longest chain of steps that
+starts with it: its own time, and the time of the longest chain after it. The times come
+from the latest real runs of the workflow. The time of a step is the mean time of its
+tasks that ran; a task taken from the cache or from an earlier run took no time.
+
+### `run-database/src/fingerprint.rs:40`
+
+The SHA-256 of the task as the driver described it, and of the state of each local input.
+What differs between runs of the same task is left out: its id and `after` list, its name
+for people, which can hold a number in the order tasks finished, like Nextflow's
+`COUNT (2)`, and its resources, as Nextflow leaves them out of its hash. Outputs of earlier
+tasks are inputs by their location, so a task after a task that ran again has a new
+fingerprint.
+
+### `run-database/src/graph.rs:15`
+
+The graph of a run: its tasks in the order they were asked for, with the exit code of
+their last attempt, whether an earlier result answered it, and their markers, and the
+edges between them. The graph of a simulated run says that it is a simulation. `None`
+for an unknown run.
+
+### `run-database/src/recorder.rs:22`
+
+How long writes gather in one transaction before they are committed. Readers, like the web
+page, see a run at most this much later; a run of many short tasks commits far less often.
+A thread commits an open transaction after this time even when no write follows, so that a
+long task never holds the write lock that other iunctus processes wait for.
+
+### `run-database/src/resume.rs:51`
+
+The outcomes of the tasks that succeeded in the given runs, by fingerprint; for a
+fingerprint in several runs, the run that comes first in the list wins. A task whose
+standard output or error the database does not hold in whole is left out, since its
+driver may read them. Directory inputs are left out because their fingerprint does
+not describe changes to their descendants.
+
+### `run-database/src/schema.rs:191`
+
+Version 4: what a run needs to be repeated exactly, and the verdicts of the reproducibility
+check. The run gets the iunctus that ran it, the folder it started in (relative paths of its
+command line start there), the folder of its workflow, the run it repeats, and the JSON
+Schema of the outputs of its workflow.
+
+### `run-database/src/schema.rs:278`
+
+Brings the schema of a database to [`VERSION`]: creates it in a new file, and runs the
+missing steps on an older one, in one transaction. Two runs that open a new file at the same
+moment take turns: the version is read again once the write lock is held, so the second
+finds the tables of the first.
+
+### `run-database/src/why.rs:50`
+
+The same task in the run this one resumes, or else in the latest earlier run of the
+same workflow: of the tasks of the same step there, the one with the same fingerprint,
+else the one with the most inputs from the same places, else the one with the same
+name. Names alone can mislead, since some hold a number in the order tasks finished.

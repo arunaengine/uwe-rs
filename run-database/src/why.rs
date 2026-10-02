@@ -47,10 +47,8 @@ impl Database {
         }))
     }
 
-    /// The same task in the run this one resumes, or else in the latest earlier run of the
-    /// same workflow: of the tasks of the same step there, the one with the same fingerprint,
-    /// else the one with the most inputs from the same places, else the one with the same
-    /// name. Names alone can mislead, since some hold a number in the order tasks finished.
+    /// Matches a prior task by step and fingerprint, then shared input locations, then name.
+    /// See `docs/design/runs.md` for the full contract.
     fn earlier(&self, run: &str, now: &TaskDetail) -> Result<Option<(String, u64)>, DatabaseError> {
         let step = &now.row.step;
         let earlier: Option<String> = self

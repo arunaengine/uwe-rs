@@ -38,11 +38,7 @@ pub fn input_states(task: &Task) -> Vec<Option<InputState>> {
 }
 
 /// The SHA-256 of the task as the driver described it, and of the state of each local input.
-/// What differs between runs of the same task is left out: its id and `after` list, its name
-/// for people, which can hold a number in the order tasks finished, like Nextflow's
-/// `COUNT (2)`, and its resources, as Nextflow leaves them out of its hash. Outputs of earlier
-/// tasks are inputs by their location, so a task after a task that ran again has a new
-/// fingerprint.
+/// See `docs/design/runs.md` for the full contract.
 pub fn fingerprint(task: &Task, states: &[Option<InputState>]) -> String {
     let described = Task {
         id: TaskId(0),

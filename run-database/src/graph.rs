@@ -12,10 +12,8 @@ use workflow_graph::{
 use crate::{Database, DatabaseError};
 
 impl Database {
-    /// The graph of a run: its tasks in the order they were asked for, with the exit code of
-    /// their last attempt, whether an earlier result answered it, and their markers, and the
-    /// edges between them. The graph of a simulated run says that it is a simulation. `None`
-    /// for an unknown run.
+    /// Reads tasks, last attempt state, reuse, markers and edges; unknown runs return `None`.
+    /// See `docs/design/runs.md` for the full contract.
     pub fn graph(&self, run: &str) -> Result<Option<ExecutionGraph>, DatabaseError> {
         let Some(record) = self.run(run)? else {
             return Ok(None);

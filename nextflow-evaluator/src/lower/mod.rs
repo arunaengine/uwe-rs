@@ -27,7 +27,6 @@ use crate::lowered::{
 use crate::value::Value;
 use scope::{Earlier, Scopes};
 
-pub use lower_legacy_value as lower_legacy_config_value;
 pub use names::DIRECTIVES as PROCESS_DIRECTIVES;
 
 /// Tells lowering what a name that a script includes stands for.

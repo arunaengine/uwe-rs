@@ -627,14 +627,9 @@ async fn finish(
     })
 }
 
-/// The exit code of the task and a note for its standard error, from the exit code that the
-/// wrapper recorded and the end of the container; `Err` when the machine failed rather than
-/// the task.
-///
-/// The wrapper records the tool's exit code and ends with 0. A container killed for lack of
-/// memory or stopped by a signal ends the task with its own exit code, and a pod that ran out
-/// of time with 143. Other ends are failures of the machine, like an image without Bash, or a
-/// pod that was evicted.
+/// Combines wrapper and container or job status into a task exit code; machine failures return
+/// `Err`.
+/// See `docs/design/engine.md` for the full contract.
 fn outcome(
     recorded: Option<i32>,
     ended: &Ended,

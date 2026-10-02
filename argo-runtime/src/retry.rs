@@ -1,6 +1,4 @@
-//! Retries, after `processNodeRetries` of Argo's operator (workflow/controller/operator.go): a
-//! retry node makes attempts of its call until one succeeds, the policy or the expression stops
-//! it, or the limit is reached.
+//! Decides retry policy, backoff and limits for Argo template calls.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

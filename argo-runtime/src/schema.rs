@@ -1,10 +1,4 @@
-//! The inputs of an Argo workflow as one JSON Schema (decision 24): the parameters of
-//! `spec.arguments`, which are texts, with their `enum`, their value as the default and their
-//! `description`, and the input parameters of the entrypoint that no argument supplies. Input
-//! artifacts are paths that the workflow gives itself, with their location as the default. The
-//! values of a run are its parameters after the command line and the parameter file. The
-//! outputs are those of the entrypoint, parameters as texts and artifacts as paths, and the
-//! global outputs of all templates, by their `globalName`.
+//! Describes Argo workflow parameters and artifacts as JSON Schema.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

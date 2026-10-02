@@ -1,6 +1,4 @@
-//! Runs small Argo workflows through the engine and the simulator, and checks the
-//! execution graphs: steps, DAGs, loops, conditions, outputs, artifacts, templates of other
-//! documents, exit handlers, retries and hooks.
+//! Checks Argo execution graphs with small workflows and the simulator.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

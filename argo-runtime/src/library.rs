@@ -1,6 +1,4 @@
-//! The documents a workflow can reference by name: the WorkflowTemplates and
-//! ClusterWorkflowTemplates of its own file, of extra files, and of its repository, which
-//! stand in for the templates a cluster would hold.
+//! Resolves named WorkflowTemplates from loaded documents and repositories.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

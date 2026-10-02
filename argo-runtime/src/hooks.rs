@@ -1,6 +1,4 @@
-//! Hooks and exit handlers (workflow/controller/hooks.go and exit_handler.go): the hooks of the
-//! workflow and of steps and tasks that run when their expression holds, and the exit handlers
-//! that run after the entrypoint or after a node, with `workflow.status` and `workflow.failures`.
+//! Starts lifecycle hooks and exit handlers from workflow and task state.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

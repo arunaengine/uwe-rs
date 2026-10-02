@@ -1,10 +1,4 @@
-//! Argo's `{{...}}` tags. A simple tag like `{{inputs.parameters.x}}` is looked up by name; an
-//! expression tag `{{=...}}` runs as expr in an environment that nests the dotted names.
-//!
-//! Argo substitutes the JSON text of a whole template (util/template/replace.go); substituting
-//! every string of the value tree gives the same result, because Argo escapes the inserted
-//! values and unescapes the text again. Tags that cannot be resolved yet stay in place when the
-//! phase allows it, for a later phase to resolve.
+//! Substitutes simple tags and evaluates expression tags in Argo text.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

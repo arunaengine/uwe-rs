@@ -1,6 +1,4 @@
-//! The Sprig functions (github.com/Masterminds/sprig v3.3.0) that Argo offers in expressions as
-//! `sprig.<name>(...)`. Argo leaves out `env` and `expandenv`. Conversions follow Sprig's use
-//! of `cast`: a text that is not a number converts to 0 rather than failing.
+//! Evaluates the Sprig functions available in Argo expressions.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

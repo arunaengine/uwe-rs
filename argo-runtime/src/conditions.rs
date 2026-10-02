@@ -1,6 +1,4 @@
-//! The `successCondition` and `failureCondition` of resource templates: Kubernetes label
-//! selectors (k8s.io/apimachinery/pkg/labels) whose keys are paths into the JSON of the
-//! resource, as Argo's executor reads them with gjson (workflow/executor/resource.go).
+//! Evaluates resource success and failure conditions as Kubernetes label selectors.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

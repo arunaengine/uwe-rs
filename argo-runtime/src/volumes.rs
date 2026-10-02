@@ -1,9 +1,4 @@
-//! Volumes as shared files (decision 18). Volumes that several steps mount act as a shared file
-//! system: the run keeps the files that tasks write into a volume, and gives them to the tasks
-//! that mount it later. A volume is a claim (`persistentVolumeClaim` or `volumeClaimTemplates`),
-//! a host path, or the `emptyDir` of one pod. In a real run, the files that tasks write into a
-//! host path go back to that path on this machine. ConfigMaps become files with their text, and
-//! Secrets placeholders in a simulated run.
+//! Shares files between task volume mounts and writes host paths back.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

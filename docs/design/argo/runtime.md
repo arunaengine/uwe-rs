@@ -369,3 +369,223 @@ The 183 documents that do not pass:
 | invalid | A resource template that waits for a Workflow whose phase never meets its conditions (`status.phase == Test`, an Argo test of stopping a run); Argo waits forever, and `argo lint` accepts it | 1 |
 
 Some documents that pass are rejected by `argo lint --strict=false`, where iunctus is more lenient without a change to what runs: tags that name variables no template sets (19 documents; section 4.1 leaves this check out), CronWorkflows with the v3 field `schedule`, which iunctus converts as `argo convert` does (6), and references to WorkflowTemplates that Argo would refuse to create, like gennext's `copy-inputs-to-scratch` with its unfinished template that no workflow calls. With `--strict`, its default, `argo lint` also rejects unknown fields, which iunctus leaves out.
+
+## File descriptions: argo-runtime
+
+### `argo-runtime/src/checks.rs`
+
+The single rules of Argo's checks of a submitted workflow (workflow/validate/validate.go of
+v4.1.4): names, arguments, the inputs a call supplies, leaf templates, and the order of DAG
+tasks. The module `validate` applies them while it walks the templates.
+
+### `argo-runtime/src/child.rs`
+
+Resource templates that start other Argo workflows (decision 18). A `create` or `apply` of
+a Workflow runs that workflow, the child, as a run of its own inside this run: its tasks join
+the execution graph, and the resource node reads the child as Argo reads the Workflow object,
+with `successCondition`, `failureCondition` and `jsonPath`. A `get` of a child by name waits
+for it in the same way.
+
+### `argo-runtime/src/conditions.rs`
+
+The `successCondition` and `failureCondition` of resource templates: Kubernetes label
+selectors (k8s.io/apimachinery/pkg/labels) whose keys are paths into the JSON of the
+resource, as Argo's executor reads them with gjson (workflow/executor/resource.go).
+
+### `argo-runtime/src/expr.rs`
+
+An evaluator for expr-lang (github.com/expr-lang/expr v1.17), the language of Argo's
+expression tags `{{=...}}`, of `depends` and of the other expression fields. Argo adds
+`asInt`, `asFloat`, `toJson`, `jsonpath` and the Sprig functions as `sprig.<name>(...)`.
+
+The evaluator follows expr's runtime rules: `/` always gives a float, `&&` and `||` take
+only booleans, a missing map key reads as nil, and an unknown top-level name is an error,
+which makes Argo leave the tag for a later substitution phase.
+
+### `argo-runtime/src/hooks.rs`
+
+Hooks and exit handlers (workflow/controller/hooks.go and exit_handler.go): the hooks of the
+workflow and of steps and tasks that run when their expression holds, and the exit handlers
+that run after the entrypoint or after a node, with `workflow.status` and `workflow.failures`.
+
+### `argo-runtime/src/http.rs`
+
+HTTP templates. Argo's agent sends the request itself; here the image `curlimages/curl` runs
+curl, which writes the response body and status code to files. The status code and the body
+decide the success condition, as in Argo.
+
+### `argo-runtime/src/jsonpath.rs`
+
+JSONPath for Argo's `jsonpath(json, path)` function, after github.com/evilmonkeyinc/jsonpath
+v0.8.1: a path that names one value gives that value, and a path with wildcards, slices,
+unions, filters or `..` gives a list. A missing key or index is an error.
+
+### `argo-runtime/src/lib.rs`
+
+Runs Argo Workflows documents as language-neutral tasks, following the controller of Argo
+v4.1.4: template resolution through `templateRef` and `workflowTemplateRef`, Argo's
+substitution phases, expr-lang and govaluate expressions, steps, DAGs, loops, retries, exit
+handlers and hooks. Each leaf template becomes a [`workflow_graph::Task`].
+
+[`driver`] is the entry point for a [`Launch`]: the workflow file, a parameter file
+(`Launch.inputs`, like `argo submit --parameter-file`), parameters (`Launch.params`, like
+`-p`), an entrypoint (the first of `Launch.targets`), and extra files or directories of
+templates (`Launch.configs`). Templates are also looked up in the repository of the workflow
+file: the nearest directory above it that holds `.git`.
+
+### `argo-runtime/src/library.rs`
+
+The documents a workflow can reference by name: the WorkflowTemplates and
+ClusterWorkflowTemplates of its own file, of extra files, and of its repository, which
+stand in for the templates a cluster would hold.
+
+### `argo-runtime/src/marks.rs`
+
+The markers of an Argo run: a `withParam`, a `withSequence` or a `when` that reads the
+outputs of earlier steps or tasks decides how many tasks follow from those outputs, so a run
+with real outputs can start more or fewer tasks there than a simulated run.
+
+### `argo-runtime/src/merge.rs`
+
+A merge of value trees by key, like the merge patches of Kubernetes, as Argo joins a
+Workflow with the WorkflowTemplate of its `workflowTemplateRef` and merges
+`templateDefaults` into templates: mappings merge key by key, lists of named items merge by
+name, and anything else in the overlay wins.
+
+### `argo-runtime/src/objects.rs`
+
+The Kubernetes objects that tasks read, without a cluster (decision 18). ConfigMaps come from
+the loaded documents: the workflow file, the configs and the repository. Secrets have no
+store: their values never enter a task, a simulated run gives placeholders, and a real run
+stops.
+
+### `argo-runtime/src/plugin.rs`
+
+Executor plugin templates. Argo runs them in its agent pod, whose sidecars are the servers of
+the plugins: the agent posts the template to `/api/v1/template.execute` of one plugin after
+the other, until one replies with a node. Here each call is a task in the image of the
+plugin: a shell script starts the plugin's server, posts the template as the agent does, and
+keeps the reply and its HTTP status as output files. The reply gives the node its phase,
+message and outputs; a plugin that does not take the template passes it to the next one.
+
+### `argo-runtime/src/pod.rs`
+
+Leaf templates as tasks: what a pod would run, and what its outcome makes.
+
+A container template is one task with the container's image, command and arguments. A
+script template runs its command on the source, which the task gets as the file
+`/argo/staging/script`, as Argo's executor writes it. A container set is one task of several
+containers, which run in one place in the order of their dependencies and share the volumes
+of the set. Init containers are tasks before these, one after
+the other, and the files they write into volumes are inputs of the next. An HTTP template
+runs curl, which writes the response body and status code to files that decide the success
+condition. Environment variables and volumes come from the modules `objects` and `volumes`
+(decision 18).
+
+### `argo-runtime/src/retry.rs`
+
+Retries, after `processNodeRetries` of Argo's operator (workflow/controller/operator.go): a
+retry node makes attempts of its call until one succeeds, the policy or the expression stops
+it, or the limit is reached.
+
+### `argo-runtime/src/run.rs`
+
+The state of a run, after Argo's workflow controller (workflow/controller/operator.go): a
+tree of nodes that each pass walks from the root. A pass starts the nodes whose turn has
+come; leaf templates become tasks, and a run goes on when their outcomes arrive.
+
+### `argo-runtime/src/schema.rs`
+
+The inputs of an Argo workflow as one JSON Schema (decision 24): the parameters of
+`spec.arguments`, which are texts, with their `enum`, their value as the default and their
+`description`, and the input parameters of the entrypoint that no argument supplies. Input
+artifacts are paths that the workflow gives itself, with their location as the default. The
+values of a run are its parameters after the command line and the parameter file. The
+outputs are those of the entrypoint, parameters as texts and artifacts as paths, and the
+global outputs of all templates, by their `globalName`.
+
+### `argo-runtime/src/scope.rs`
+
+The local scope of steps and DAG templates (workflow/controller/scope.go): the inputs of
+the template and what earlier steps and tasks made, as `steps.<name>.*` and
+`tasks.<name>.*`, and the outputs that steps and DAG templates take from it.
+
+### `argo-runtime/src/sprig.rs`
+
+The Sprig functions (github.com/Masterminds/sprig v3.3.0) that Argo offers in expressions as
+`sprig.<name>(...)`. Argo leaves out `env` and `expandenv`. Conversions follow Sprig's use
+of `cast`: a text that is not a number converts to 0 rather than failing.
+
+### `argo-runtime/src/start.rs`
+
+How a run starts: the spec of the workflow joined with the WorkflowTemplate it runs, its
+parameters, the name of the workflow, its global variables, and warnings about fields that
+need Kubernetes.
+
+### `argo-runtime/src/tags.rs`
+
+Argo's `{{...}}` tags. A simple tag like `{{inputs.parameters.x}}` is looked up by name; an
+expression tag `{{=...}}` runs as expr in an environment that nests the dotted names.
+
+Argo substitutes the JSON text of a whole template (util/template/replace.go); substituting
+every string of the value tree gives the same result, because Argo escapes the inserted
+values and unescapes the text again. Tags that cannot be resolved yet stay in place when the
+phase allows it, for a later phase to resolve.
+
+### `argo-runtime/src/validate.rs`
+
+The checks Argo makes when a workflow is submitted or a template is created
+(workflow/validate/validate.go of v4.1.4), for what decides whether a workflow can run: the
+names of templates, steps, tasks and parameters, the entrypoint, template types, references
+to templates, the inputs that calls supply, the arguments of steps and tasks, hooks, and the
+dependencies of DAG tasks. The messages are Argo's. Like Argo, a template is checked where
+it is called and on its own, and templates of other documents only where they are called.
+
+The single rules are in the module `checks`.
+
+Left out: checks of Kubernetes fields (object name lengths, volume mounts, metrics, pod
+garbage collection), cron schedules, and whether every tag names a known variable; a run
+finds tags that do not resolve when it substitutes them.
+
+### `argo-runtime/src/volumes.rs`
+
+Volumes as shared files (decision 18). Volumes that several steps mount act as a shared file
+system: the run keeps the files that tasks write into a volume, and gives them to the tasks
+that mount it later. A volume is a claim (`persistentVolumeClaim` or `volumeClaimTemplates`),
+a host path, or the `emptyDir` of one pod. In a real run, the files that tasks write into a
+host path go back to that path on this machine. ConfigMaps become files with their text, and
+Secrets placeholders in a simulated run.
+
+### `argo-runtime/src/when.rs`
+
+`when` conditions: govaluate (github.com/Knetic/govaluate v3) after simple-tag substitution,
+with Argo's rule that a bare word is a string, so `heads == heads` holds. A word with a dot,
+which govaluate reads as an accessor, stays an error, as in Argo.
+
+One rule is iunctus's own: a missing operand, as a tag that substitution left empty makes
+it (` == heads`), is not known, and every comparison with it is false, `!=` too. govaluate
+fails on such conditions; the rule lets runs whose outputs are empty, like simulated runs,
+decide their conditions instead of failing, and ends recursions that wait for an output.
+
+### `argo-runtime/tests/run.rs`
+
+Runs small Argo workflows through the engine and the simulator, and checks the
+execution graphs: steps, DAGs, loops, conditions, outputs, artifacts, templates of other
+documents, exit handlers, retries and hooks.
+
+### `argo-runtime/tests/test_workflows.rs`
+
+Reads every Argo document of the test workflows from `just argo-test-workflows`. Documents
+with an entrypoint run with the simulator; the others, like libraries of
+WorkflowTemplates, get the checks Argo makes when they are created. The outcomes are compared
+with tests/fixtures/test-workflows/outcomes.txt: `ok` and the number of tasks, `valid`, or the
+exit code (33 for unsupported features) and the first error. Each document that does not pass
+needs a record in tests/fixtures/test-workflows/rejected.txt that names why it cannot run:
+`invalid` or `missing`, with the evidence that `argo lint` rejects it too, or `unsupported`
+by a decision. Before each run, the test describes the inputs of the workflow, as the binary
+does (decision 24), and compares the counts of its schema and of a check of the simulated run
+with tests/fixtures/test-workflows/inputs.txt, with the totals of their outputs as the line
+`(outputs)`; every schema must be valid JSON Schema.
+`ARGO_TEST_WORKFLOWS_UPDATE=1` rewrites the outcomes and the inputs;
+`ARGO_TEST_WORKFLOWS_FILTER` runs only the documents whose path contains it, and
+`ARGO_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets tasks finish in a random order.

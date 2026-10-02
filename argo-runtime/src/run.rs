@@ -1,6 +1,4 @@
-//! The state of a run, after Argo's workflow controller (workflow/controller/operator.go): a
-//! tree of nodes that each pass walks from the root. A pass starts the nodes whose turn has
-//! come; leaf templates become tasks, and a run goes on when their outcomes arrive.
+//! Advances workflow nodes and starts calls whose dependencies are ready.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

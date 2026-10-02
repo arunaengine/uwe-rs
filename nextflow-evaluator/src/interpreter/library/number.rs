@@ -29,14 +29,14 @@ impl Interpreter<'_> {
             ("toBigDecimal", []) => Value::Number(Number::BigDecimal(number.to_big_decimal())),
             ("toBigInteger", []) => Value::Number(Number::BigInteger(number.to_bigint())),
             ("round", []) => Value::Number(match number {
-                Number::BigDecimal(value) => Number::BigDecimal(value.set_scale_half_up(0)),
+                Number::BigDecimal(value) => Number::BigDecimal(value.round_scale(0)),
                 Number::Double(value) => Number::Long(java_round(*value)),
                 Number::Float(value) => Number::Integer(java_round(f64::from(*value)) as i32),
                 other => other.clone(),
             }),
             ("round", [Value::Number(places)]) => {
                 let places = places.to_i32();
-                let decimal = number.to_big_decimal().set_scale_half_up(places);
+                let decimal = number.to_big_decimal().round_scale(places);
                 Value::Number(match number {
                     Number::Double(_) => Number::Double(decimal.to_f64()),
                     Number::Float(_) => Number::Float(decimal.to_f64() as f32),

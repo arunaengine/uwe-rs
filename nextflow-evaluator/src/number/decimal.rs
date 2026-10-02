@@ -181,7 +181,7 @@ impl BigDecimal {
         let quotient = self.divide_rounded(divisor, precision)?;
         let scale = self.scale.max(divisor.scale).max(DIVISION_MIN_SCALE);
         Ok(if quotient.scale > scale {
-            quotient.set_scale_half_up(scale)
+            quotient.round_scale(scale)
         } else {
             quotient
         })
@@ -198,7 +198,7 @@ impl BigDecimal {
         } else {
             let whole = Self::new(left / right, 0).strip_zeros_to(preferred);
             if whole.scale < preferred {
-                whole.set_scale_half_up(preferred)
+                whole.round_scale(preferred)
             } else {
                 whole
             }
@@ -207,7 +207,7 @@ impl BigDecimal {
     }
 
     /// Java's `setScale(scale, RoundingMode.HALF_UP)`.
-    pub fn set_scale_half_up(&self, scale: i32) -> Self {
+    pub fn round_scale(&self, scale: i32) -> Self {
         match scale.cmp(&self.scale) {
             Ordering::Equal => self.clone(),
             Ordering::Greater => {

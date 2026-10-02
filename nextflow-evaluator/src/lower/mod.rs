@@ -27,6 +27,7 @@ use crate::lowered::{
 use crate::value::Value;
 use scope::{Earlier, Scopes};
 
+pub use lower_legacy_value as lower_legacy_config_value;
 pub use names::DIRECTIVES as PROCESS_DIRECTIVES;
 
 /// Tells lowering what a name that a script includes stands for.
@@ -63,7 +64,7 @@ pub fn lower_config_value(
     source: &str,
     process_scope: bool,
 ) -> Result<Code, Vec<Diagnostic>> {
-    lower_legacy_config_value(value, source, process_scope, &ConfigNames::default())
+    lower_legacy_value(value, source, process_scope, &ConfigNames::default())
 }
 
 /// The names that the legacy parser adds to config code (decision 14). It runs a config file
@@ -85,7 +86,7 @@ pub type Lookup<'a> = dyn Fn(&str, bool) -> Option<Value> + 'a;
 
 /// Lowers the value of one config setting like `lower_config_value`, with the names of
 /// legacy syntax.
-pub fn lower_legacy_config_value(
+pub fn lower_legacy_value(
     value: &ast::Expression,
     source: &str,
     process_scope: bool,

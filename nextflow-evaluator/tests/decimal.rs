@@ -118,10 +118,10 @@ fn preserves_remainder_sign() {
 
 #[test]
 fn converts_decimal_values() {
-    assert_eq!(decimal("2.5").set_scale_half_up(0).to_string(), "3");
-    assert_eq!(decimal("-2.5").set_scale_half_up(0).to_string(), "-3");
-    assert_eq!(decimal("2.4").set_scale_half_up(0).to_string(), "2");
-    assert_eq!(decimal("2").set_scale_half_up(2).to_string(), "2.00");
+    assert_eq!(decimal("2.5").round_scale(0).to_string(), "3");
+    assert_eq!(decimal("-2.5").round_scale(0).to_string(), "-3");
+    assert_eq!(decimal("2.4").round_scale(0).to_string(), "2");
+    assert_eq!(decimal("2").round_scale(2).to_string(), "2.00");
     assert_eq!(decimal("1.0").compare(&decimal("1.00")), Ordering::Equal);
     assert_ne!(decimal("1.0"), decimal("1.00"));
     assert_eq!(decimal("-3.7").to_bigint(), (-3).into());

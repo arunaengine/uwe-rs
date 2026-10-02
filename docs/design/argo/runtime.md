@@ -589,3 +589,102 @@ with tests/fixtures/test-workflows/inputs.txt, with the totals of their outputs 
 `ARGO_TEST_WORKFLOWS_UPDATE=1` rewrites the outcomes and the inputs;
 `ARGO_TEST_WORKFLOWS_FILTER` runs only the documents whose path contains it, and
 `ARGO_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets tasks finish in a random order.
+
+## Source contracts: argo-runtime
+
+### `argo-runtime/src/checks.rs:94`
+
+Why a template cannot run without a Kubernetes cluster, if it cannot (decision 18):
+`resource` templates, except those that manage a PersistentVolumeClaim, which become volumes
+of the run, and those that start an Argo Workflow, which runs inside the run; `data`
+templates, sidecars and daemons.
+
+### `argo-runtime/src/dag.rs:201`
+
+The phase of a DAG, as Argo's `assessDAGPhase` finds it: running while any of its
+nodes, hooks included, runs; then by the branch phases of its target tasks. A task that
+completed gives its branch its own phase; a skipped or omitted task inherits the phase
+of its dependencies, a failure over success. A target that failed without continuing
+fails the DAG; under fail-fast the first such target decides at once.
+
+### `argo-runtime/src/library.rs:289`
+
+The document that a `templateRef` names: like [`Library::find`], but among several
+documents of the kind and name, those that hold the template win. A repository may keep
+several versions of a WorkflowTemplate, while a cluster holds the one that the workflow
+was written for.
+
+### `argo-runtime/src/plugin.rs:118`
+
+The plugins that a plugin template goes to, in the order they are tried: those of
+`spec.executorPlugins`, which replace the installed plugins as in Argo, or else the
+plugin ConfigMaps of the library. Plugins whose name holds a key of the template's
+`plugin` field come first, as they are the ones most likely to take it.
+
+### `argo-runtime/src/pod.rs:534`
+
+Warns once about fields of a template and its containers that only matter to
+Kubernetes, which a run without Kubernetes leaves out (decision 18).
+The user and group that a container runs as, as Kubernetes picks them: from the
+`securityContext` of the container, else of the template, else of the workflow; what
+none of them names, the image decides.
+
+### `argo-runtime/src/schema.rs:106`
+
+The outputs of the workflow that a document runs: the output parameters of its entrypoint,
+which are texts, and its output artifacts, which are paths, then the global outputs of its
+templates by their `globalName`, as `workflow.outputs` gives them. An artifact that is
+`optional` may be missing.
+
+### `argo-runtime/src/schema.rs:313`
+
+The parameters that the workflow reads: `workflow.parameters.<name>` anywhere in its spec
+and in the templates it refers to with `templateRef`, and `inputs.parameters.<name>` in its
+entrypoint, whose inputs the arguments supply. An input artifact of the entrypoint is read,
+as Argo places it in the container. `{{workflow.parameters}}` reads every parameter.
+
+### `argo-runtime/src/start.rs:211`
+
+The workflow parameters of a run: those of the spec, overridden by the command line and the
+parameter file, and the inputs of the entrypoint (`entry`), which `-p` supplies too. In a
+simulated run, parameters without a value get placeholders, and the input artifacts of the
+entrypoint that nothing supplies are listed for placeholders too.
+
+### `argo-runtime/src/validate.rs:202`
+
+Checks a workflow spec whose templates are those of `base`. `entry` is the entrypoint
+and what the workflow supplies to it; without it the templates are only checked on
+their own, as for a WorkflowTemplate without an entrypoint. `allow_empty` lets workflow
+parameters be without a value, as when Argo lints a document or creates a template.
+
+### `argo-runtime/src/volumes.rs:249`
+
+The files of a volume that the task may write are copies that it may
+change, as a task changes the files of a volume in Argo; its changes go
+into the volume when it ends. The files of a host path stay read-only,
+since the host folder itself is shown there.
+
+### `argo-runtime/tests/run.rs:508`
+
+Argo schedules the tasks whose dependencies are done before it assesses the DAG, and a
+DAG runs while any of its tasks runs; so `c` starts after `b` although `a` failed, also
+with `failFast`, the default (workflow/controller/dag.go of Argo v4.1.4). `-keep-going`
+turns `failFast` off where a DAG does not set it.
+
+### `argo-runtime/tests/test_workflows.rs:26`
+
+Directories of templates that documents under a path get as configs, as `Launch.configs`
+gives them. Hera's upstream examples are copies of Argo's examples, but Hera does not copy
+the WorkflowTemplates that they refer to in full. The talk-demos examples of plugin templates
+install the hello executor plugin from its own repository, and the talk-demos copy of the CI
+workflow of pipekit/argo-workflows-ci-example refers to that repository's WorkflowTemplates.
+
+### `argo-runtime/tests/test_workflows.rs:450`
+
+The records of rejected.txt: for each document, its kind and why it cannot run. A record is
+a block of lines between empty lines: the document, then `= <kind>: <why>` with one plain
+sentence, then for `invalid` and `missing` the command (`$`) and the output (`>`) of `argo
+lint`. The kind is `invalid` (the workflow itself is broken), `missing` (it needs a
+WorkflowTemplate that is in no repository of the test workflows), or `unsupported (decision
+N)` (iunctus leaves the feature out on purpose, as decision N of docs/decisions.md says).
+Panics on a record without a valid kind or without its evidence.

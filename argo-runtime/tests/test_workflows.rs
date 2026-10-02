@@ -24,10 +24,8 @@ const INPUTS_HEADER: &str = "# The inputs of each Argo document with an entrypoi
 const REJECTED: &str = "tests/fixtures/test-workflows/rejected.txt";
 
 /// Directories of templates that documents under a path get as configs, as `Launch.configs`
-/// gives them. Hera's upstream examples are copies of Argo's examples, but Hera does not copy
-/// the WorkflowTemplates that they refer to in full. The talk-demos examples of plugin templates
-/// install the hello executor plugin from its own repository, and the talk-demos copy of the CI
-/// workflow of pipekit/argo-workflows-ci-example refers to that repository's WorkflowTemplates.
+/// gives them.
+/// See `docs/design/argo/runtime.md` for the full contract.
 const CONFIGS: &[(&str, &str)] = &[
     (
         "hera/examples/workflows/upstream/",
@@ -447,13 +445,8 @@ fn passed(outcome: &str) -> bool {
     outcome.starts_with("ok") || outcome == "valid"
 }
 
-/// The records of rejected.txt: for each document, its kind and why it cannot run. A record is
-/// a block of lines between empty lines: the document, then `= <kind>: <why>` with one plain
-/// sentence, then for `invalid` and `missing` the command (`$`) and the output (`>`) of `argo
-/// lint`. The kind is `invalid` (the workflow itself is broken), `missing` (it needs a
-/// WorkflowTemplate that is in no repository of the test workflows), or `unsupported (decision
-/// N)` (iunctus leaves the feature out on purpose, as decision N of docs/decisions.md says).
-/// Panics on a record without a valid kind or without its evidence.
+/// The records of rejected.txt: for each document, its kind and why it cannot run.
+/// See `docs/design/argo/runtime.md` for the full contract.
 fn records(text: &str) -> BTreeMap<String, String> {
     let mut records = BTreeMap::new();
     for block in text.split("\n\n") {

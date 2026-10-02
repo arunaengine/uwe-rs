@@ -198,11 +198,9 @@ impl Run {
         self.add_node_scope(scope, &prefix, node);
     }
 
-    /// The phase of a DAG, as Argo's `assessDAGPhase` finds it: running while any of its
-    /// nodes, hooks included, runs; then by the branch phases of its target tasks. A task that
-    /// completed gives its branch its own phase; a skipped or omitted task inherits the phase
-    /// of its dependencies, a failure over success. A target that failed without continuing
-    /// fails the DAG; under fail-fast the first such target decides at once.
+    /// The phase of a DAG, as Argo's `assessDAGPhase` finds it: running while any of its nodes,
+    /// hooks included, runs; then by the branch phases of its target tasks.
+    /// See `docs/design/argo/runtime.md` for the full contract.
     fn assess_dag(
         &self,
         index: usize,

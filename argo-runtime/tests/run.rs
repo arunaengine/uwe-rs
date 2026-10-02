@@ -505,10 +505,9 @@ fn failure_preserves_branches() {
         keep_going,
         ..Setup::default()
     };
-    // Argo schedules the tasks whose dependencies are done before it assesses the DAG, and a
-    // DAG runs while any of its tasks runs; so `c` starts after `b` although `a` failed, also
-    // with `failFast`, the default (workflow/controller/dag.go of Argo v4.1.4). `-keep-going`
-    // turns `failFast` off where a DAG does not set it.
+    // Argo admits ready dependencies before assessing DAG failure; `-keep-going` disables
+    // default fail-fast.
+    // See `docs/design/argo/runtime.md` for the full contract.
     for keep_going in [false, true] {
         let ran = run_with(&workflow(dag), failing(keep_going));
         assert_eq!(ran.names(), ["a", "b", "c"]);

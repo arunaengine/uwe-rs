@@ -199,10 +199,8 @@ impl<'a> Check<'a> {
         self.unsupported
     }
 
-    /// Checks a workflow spec whose templates are those of `base`. `entry` is the entrypoint
-    /// and what the workflow supplies to it; without it the templates are only checked on
-    /// their own, as for a WorkflowTemplate without an entrypoint. `allow_empty` lets workflow
-    /// parameters be without a value, as when Argo lints a document or creates a template.
+    /// Checks a workflow spec whose templates are those of `base`.
+    /// See `docs/design/argo/runtime.md` for the full contract.
     pub fn spec(
         &mut self,
         spec: &WorkflowSpec,

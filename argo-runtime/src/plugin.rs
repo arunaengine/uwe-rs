@@ -115,10 +115,9 @@ fn simple(name: &str) -> String {
 }
 
 impl Run {
-    /// The plugins that a plugin template goes to, in the order they are tried: those of
-    /// `spec.executorPlugins`, which replace the installed plugins as in Argo, or else the
-    /// plugin ConfigMaps of the library. Plugins whose name holds a key of the template's
-    /// `plugin` field come first, as they are the ones most likely to take it.
+    /// Tries explicit executor plugins, otherwise library ConfigMaps, prioritizing matching
+    /// plugin names.
+    /// See `docs/design/argo/runtime.md` for the full contract.
     pub(crate) fn plugins(&mut self, template: &Template) -> Vec<Plugin> {
         let mut plugins = Vec::new();
         let mut problems = Vec::new();

@@ -98,7 +98,7 @@ impl Native for Series {
     ) -> Result<Option<Value>, Error> {
         let data = self.data();
         // A mask or a slice of positions selects by position.
-        if let Some(positions) = super::mask_or_positional_slice(interpreter, key, &data.index)? {
+        if let Some(positions) = super::mask_or_slice(interpreter, key, &data.index)? {
             return Ok(Some(Series::from_data(data.take(&positions))));
         }
         match select(interpreter, &data.index, key) {
@@ -134,7 +134,7 @@ impl Native for Series {
         value: Value,
     ) -> Result<bool, Error> {
         let index = self.data.borrow().index.clone();
-        let positions = match super::mask_or_positional_slice(interpreter, key, &index)? {
+        let positions = match super::mask_or_slice(interpreter, key, &index)? {
             Some(positions) => positions,
             None => {
                 let index = self.data.borrow().index.clone();

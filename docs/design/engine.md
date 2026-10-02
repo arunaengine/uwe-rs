@@ -681,3 +681,24 @@ The Job that runs the wrapper of each of `runs` in its image, labelled with `lab
 container for a task, or one for each image of a task of several containers, which share
 the folders of the task. The first container asks for the CPUs and memory of the task, and
 each may use all of its memory.
+
+## File descriptions: tes-executor
+
+### `tes-executor/src/backend.rs`
+
+Runs an attempt of a task as one TES task: the wrapper is its one executor, the inputs come
+from their `file://` places, and the outputs and control files go back to the scratch
+directory of the attempt. So the server must see the files of this machine at the same
+paths, as Funnel on this machine or on a cluster with a shared file system does.
+
+### `tes-executor/src/client.rs`
+
+A small client of the GA4GH TES v1.1 API: the parts of a task that iunctus sends, and the
+calls to create a task, read its state and cancel it. Field names are those of the OpenAPI
+file, in snake case.
+
+### `tes-executor/tests/funnel.rs`
+
+The TES backend against a real Funnel server on this machine, which `just funnel-server`
+starts. Needs Docker and the `debian:stable-slim` image; run with `just tes-test`, which
+sets `IUNCTUS_TES_SERVER`. Funnel must be allowed to read and write the temporary folder.

@@ -1,7 +1,7 @@
-# Funnel for the tests of iunctus, started by `just funnel-server`: tasks run in Docker with a
-# memory limit and without network, and images are never pulled (`--pull never`, and `image
-# inspect` in place of `pull`), so a task needs an image that is on this machine already. Other
-# storage than local folders is off.
+# Configures Funnel tests with bounded Docker tasks, local images and no network.
+# Only local filesystem storage is enabled.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 Server:
   HostName: localhost
   HTTPPort: "18000"

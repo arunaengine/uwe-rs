@@ -1,6 +1,4 @@
-//! A small client of the GA4GH TES v1.1 API: the parts of a task that iunctus sends, and the
-//! calls to create a task, read its state and cancel it. Field names are those of the OpenAPI
-//! file, in snake case.
+//! Creates, reads and cancels tasks through the GA4GH TES v1.1 API.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

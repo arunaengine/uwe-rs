@@ -1,6 +1,4 @@
-//! The TES backend against a real Funnel server on this machine, which `just funnel-server`
-//! starts. Needs Docker and the `debian:stable-slim` image; run with `just tes-test`, which
-//! sets `IUNCTUS_TES_SERVER`. Funnel must be allowed to read and write the temporary folder.
+//! Checks task outputs and container ordering against a local Funnel TES server.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

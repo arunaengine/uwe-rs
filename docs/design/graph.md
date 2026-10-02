@@ -213,7 +213,7 @@ The web page of runs shows the same picture and makes it move, zoom and follow a
 reads the classes and `data-` attributes of the boxes and turns the icons of `#icon-<state>`.
 Names use a monospace font, so that their width is known without measuring text.
 
-### `workflow-graph/src/simulator/mod.rs`
+### `workflow-graph/src/simulator.rs`
 
 The simulator: a task does not run, it only makes the files it would make, and the simulator
 writes the GA4GH TES v1.1 task document that a TES server would receive. So a whole workflow
@@ -221,7 +221,7 @@ runs through without containers or a server, and the TES documents can be checke
 later. The files are made up, so a simulated run gives a simulated graph, not a prediction
 of a real run (decision 21).
 
-### `workflow-graph/src/simulator/shell/mod.rs`
+### `workflow-graph/src/shell/mod.rs`
 
 A small simulation of the shell scripts of tasks, for the simulator: which files a
 script makes and what text it writes into them. It follows the commands that stub scripts
@@ -230,7 +230,7 @@ document, `cp`, `mv`, `gzip`, `for` loops over words and `if` statements whose c
 it can decide. Anything else, like a tool, makes the simulation incomplete: the script may
 make more files than it tells.
 
-### `workflow-graph/src/simulator/shell/words.rs`
+### `workflow-graph/src/shell/words.rs`
 
 Word expansions of the shell for the simulator: variables, brace
 expansion, the escapes of `echo -e` and `printf`, and paths relative to the working
@@ -355,7 +355,7 @@ stand in a row, steps with fewer tasks than [`Options::fold`] are one box too, t
 the number the wider the graph. And when more lines than this run into one box, they become
 one line that says how many task edges it stands for.
 
-### `workflow-graph/src/simulator/mod.rs:176`
+### `workflow-graph/src/simulator.rs:176`
 
 Pretends to run a task in `work` and returns its outputs. Inputs with literal content are
 written first, as a TES server places them. A simulation of the script tells which files

@@ -131,7 +131,7 @@ Whether tasks run without network by default is an open question of the user ([r
 | Remote reads | `storage/src/journal.rs`, `downloads.rs` (`Storage::{fetched, pin, copy_of}`, `Metadata.version`) |
 | Changes and repeats | `iunctus/src/changes.rs`, `repeat.rs`; `task_runner::Runner::pin_images` |
 | The reproducibility check | `task-runner/src/check.rs`, `runner.rs`; `content_store::Store::{mark_unreproducible, unreproducible}`; `run-page/assets/run.js` |
-| The order check | `run-database/src/steps.rs`, `iunctus/src/order.rs`; digests of made-up files in `workflow-graph/src/simulator/mod.rs` |
+| The order check | `run-database/src/steps.rs`, `iunctus/src/order.rs`; digests of made-up files in `workflow-graph/src/simulator.rs` |
 | Tasks without network | `workflow_graph::Network`, `task-runner/src/network.rs`, `iunctus/src/setup.rs` (`[network]`), `main.rs` |
 | The RO-Crate | `run-crate/src/pinned.rs` |
 

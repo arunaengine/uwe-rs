@@ -1,11 +1,4 @@
-//! Where the time of a run went: the critical path, the chain of tasks that set the length of
-//! the run; how long tasks waited and how long they ran; and the steps that used the most CPU
-//! time, memory and I/O.
-//!
-//! A task on the critical path waited for the task before it: of the tasks whose files it
-//! reads or that it comes after, the one that ended last; or, when the workflow asked for it
-//! only after all of those had ended, the task whose end made the workflow ask for it, which
-//! the event log names.
+//! Computes critical paths, wait times and per-step resource usage for recorded runs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,6 +1,4 @@
-//! What pins a run, so that it can be repeated exactly and a change since can be found: the
-//! files of its workflow and the files its command line names, the remote files it read, and
-//! the images its tasks ran in, each by digest; and the verdicts of the reproducibility check.
+//! Reads retained run sources, remote files, images and reproducibility verdicts.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

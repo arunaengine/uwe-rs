@@ -371,3 +371,96 @@ Exports a small simulated run and compares its crate with the fixture crate in
 `tests/fixtures/simulated/`, which the Provenance Run Crate validator checked
 (`tests/fixtures/validate.sh` writes the fixture again and records the validator's report in
 `tests/fixtures/validation.txt`).
+
+## File descriptions: run-database
+
+### `run-database/src/compare/pairing.rs`
+
+How the tasks of two runs pair up: step by step, first the tasks with the same fingerprint,
+then those with the same name, then those that read and make the most files of the same
+names, and the rest in order.
+
+### `run-database/src/compare.rs`
+
+What differs between two runs, of the same workflow or of two versions of it: the runs
+themselves (revision, parameters, input values, executor), and task by task what each does
+(image, command, script, environment, inputs), which outputs have other content, how it
+ended, and which came from the cache or an earlier run in one run and ran in the other.
+
+Tasks are paired step by step: first those with the same fingerprint, then those with the
+same name, then those that read the most files of the same names, and the rest in order.
+
+### `run-database/src/journal.rs`
+
+The journal of the SQLite files of iunctus: WAL on a local file system, where readers go on
+while a run writes, and the rollback journal on a file system that machines share, like NFS
+or CephFS on a cluster. WAL keeps its index in memory that all its processes share, so they
+must be on one machine: a run on a second node of a cluster cannot open the file ("database
+is locked"). The rollback journal takes its locks through the file system, which the file
+systems of clusters share between machines.
+
+### `run-database/src/lib.rs`
+
+The run database (decision 10): one SQLite file that records every run, simulated or real,
+in the same form for all languages. It holds each run with its workflow, revision, command
+line and parameters; each task that the driver asked for with its description; each attempt
+with its times and exit code; the input and output files with their locations; the edges of
+the execution graph; the standard output and error of each attempt; the events in the order
+the engine saw them; the JSON Schemas of the inputs, with the values of the run, and of the
+outputs; and what pins the run: the files of its workflow, the files its command line names
+and the remote files it read, by digest, the verdicts of the reproducibility check, and
+where its results went.
+
+A [`Recorder`] writes one run while it goes on. The web page, the RO-Crate export, resume and
+the insight commands read the database through [`Database`]. SQLite runs in WAL mode, so a
+page can read a run while another process records it; on a file system that machines share,
+it uses the rollback journal instead (see `journal`). The SQL is kept portable, so that
+another engine can replace SQLite behind this interface later (decisions, open questions).
+
+### `run-database/src/origin.rs`
+
+Where a file came from: the task that made it, the tasks that made that task's inputs, and so
+on back to the data that no task made. The chain can cross runs, since a resumed run reads
+the files of the runs before it.
+
+### `run-database/src/pinned.rs`
+
+What pins a run, so that it can be repeated exactly and a change since can be found: the
+files of its workflow and the files its command line names, the remote files it read, and
+the images its tasks ran in, each by digest; and the verdicts of the reproducibility check.
+
+### `run-database/src/pins.rs`
+
+The images that real runs pinned to their digests. A simulated run takes them to tell,
+without asking a registry, which image a real run would use for a task, and so whether the
+cache holds its result.
+
+### `run-database/src/steps.rs`
+
+The steps of two runs of a workflow compared by content: for each step, whether its tasks
+read the same inputs, are made the same way and made the same outputs, by digest. It needs
+no pairs of tasks, so it holds where the names and ids of tasks depend on the order in which
+earlier tasks finished. The order check compares two runs in other orders this way.
+
+### `run-database/src/time.rs`
+
+Where the time of a run went: the critical path, the chain of tasks that set the length of
+the run; how long tasks waited and how long they ran; and the steps that used the most CPU
+time, memory and I/O.
+
+A task on the critical path waited for the task before it: of the tasks whose files it
+reads or that it comes after, the one that ended last; or, when the workflow asked for it
+only after all of those had ended, the task whose end made the workflow ask for it, which
+the event log names.
+
+### `run-database/tests/pinned.rs`
+
+What pins a run: the files of its workflow and command line, the remote files it read, the
+images it ran in and the digests of the inputs of its tasks, the schema of its outputs, and
+the verdicts of the reproducibility check; and a database of version 3 that gets them.
+
+### `run-database/tests/steps.rs`
+
+The steps of two runs compared by content: a step whose tasks are made another way from the
+same inputs, a step that reads what it made, a step with another number of tasks, and a
+step whose tool gave other bytes.

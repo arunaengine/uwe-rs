@@ -1,18 +1,4 @@
-//! The run database (decision 10): one SQLite file that records every run, simulated or real,
-//! in the same form for all languages. It holds each run with its workflow, revision, command
-//! line and parameters; each task that the driver asked for with its description; each attempt
-//! with its times and exit code; the input and output files with their locations; the edges of
-//! the execution graph; the standard output and error of each attempt; the events in the order
-//! the engine saw them; the JSON Schemas of the inputs, with the values of the run, and of the
-//! outputs; and what pins the run: the files of its workflow, the files its command line names
-//! and the remote files it read, by digest, the verdicts of the reproducibility check, and
-//! where its results went.
-//!
-//! A [`Recorder`] writes one run while it goes on. The web page, the RO-Crate export, resume and
-//! the insight commands read the database through [`Database`]. SQLite runs in WAL mode, so a
-//! page can read a run while another process records it; on a file system that machines share,
-//! it uses the rollback journal instead (see `journal`). The SQL is kept portable, so that
-//! another engine can replace SQLite behind this interface later (decisions, open questions).
+//! Records and reads workflow runs, task attempts, files, events and reproducibility data.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

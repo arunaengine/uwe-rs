@@ -704,3 +704,58 @@ tasks finish in a random order (see `order`).
 The run options of the test-workflows tests. `CWL_TEST_WORKFLOWS_ORDER=reversed` or
 `shuffled:<seed>` lets up to 8 tasks be pending and finish in that order, which shows whether
 the driver depends on the order of outcomes; without it, one task runs at a time.
+
+## Source contracts: cwl-runtime
+
+### `cwl-runtime/src/driver.rs:194`
+
+A tool that failed fails its step. As cwltool's `--on-error stop`, the default, the
+run starts no more steps and lets the running ones end; as `--on-error continue`
+(`-keep-going`), it runs the steps that do not depend on the failure. Either way the
+run fails at its end.
+
+### `cwl-runtime/src/expression.rs:20`
+
+Evaluates the expressions of one process.
+
+Without `InlineJavascriptRequirement` the spec allows parameter references only and says
+that nothing else is interpolated; cwltool fails on anything else. Documents written for
+other runners use JavaScript without the requirement, and bash variables like `${HOME}` in
+scripts. So without it, `$(...)` that is not a parameter reference runs as JavaScript,
+since it cannot mean text in a command, and `${...}` that does not run as JavaScript stays
+as written.
+
+### `cwl-runtime/src/files.rs:20`
+
+How files that are not on disk count. The simulator makes empty outputs and job files
+often name data that is not there, so a simulated run takes every file as present and
+empty, and reads no file at an address. A real run reads the content and size of files at
+addresses, like `https://` or `s3://`, through the storage providers of `remote`.
+
+### `cwl-runtime/src/javascript/mod.rs:32`
+
+Runs a function body after the expression library and the global variables, the way
+cwltool's sandbox does, and returns its result as JSON data. cwltool adds "use strict";
+the spec asks for ECMAScript 5.1 only, and real documents assign to undeclared variables,
+which other runners accept, so the code runs in sloppy mode.
+
+### `cwl-runtime/src/run/links.rs:47`
+
+The input object of a step from its sources, as cwltool's `object_from_state`: sources
+merge by `linkMerge`, `pickValue` picks, and `default` stands in for null. `None` while a
+source has no value yet. `lenient` takes a failed pick as null, for runs on placeholder
+inputs, where optional inputs are null and conditions follow placeholder values.
+
+### `cwl-runtime/src/run/mod.rs:375`
+
+Takes a file or directory that a tool updated in place as its new version everywhere
+the run holds it, so that later steps read what the tool made, as with cwltool, which
+changes the file itself. What the old version knew of its content goes: its listing,
+size and checksum.
+
+### `cwl-runtime/src/schema.rs:323`
+
+The names of the inputs that a process reads: in a workflow, those that a step or an output
+takes as a source; in a tool, those bound to the command line and those that its expressions
+name, like `inputs.reads` or `inputs["reads"]`. The expressions of a tool sit in many fields
+of the model, and its debug text holds each of them, so the names are found there.

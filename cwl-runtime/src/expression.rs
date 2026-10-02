@@ -18,13 +18,7 @@ pub struct Variables<'a> {
 }
 
 /// Evaluates the expressions of one process.
-///
-/// Without `InlineJavascriptRequirement` the spec allows parameter references only and says
-/// that nothing else is interpolated; cwltool fails on anything else. Documents written for
-/// other runners use JavaScript without the requirement, and bash variables like `${HOME}` in
-/// scripts. So without it, `$(...)` that is not a parameter reference runs as JavaScript,
-/// since it cannot mean text in a command, and `${...}` that does not run as JavaScript stays
-/// as written.
+/// See `docs/research/cwl.md` for the full contract.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Evaluator {
     /// The `expressionLib` of `InlineJavascriptRequirement`; `None` when the requirement is

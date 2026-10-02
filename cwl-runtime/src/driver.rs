@@ -191,10 +191,8 @@ impl Driver for CwlDriver {
         (self.run.start(&process, job, &name, requirements)).map_err(error)
     }
 
-    /// A tool that failed fails its step. As cwltool's `--on-error stop`, the default, the
-    /// run starts no more steps and lets the running ones end; as `--on-error continue`
-    /// (`-keep-going`), it runs the steps that do not depend on the failure. Either way the
-    /// run fails at its end.
+    /// A tool that failed fails its step.
+    /// See `docs/research/cwl.md` for the full contract.
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
         let stopping = !self.failures.is_empty() && !self.launch.keep_going;
         let identity = (outcome.id, outcome.attempt);

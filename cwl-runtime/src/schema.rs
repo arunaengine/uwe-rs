@@ -320,10 +320,8 @@ fn data_address(text: &str) -> String {
     address
 }
 
-/// The names of the inputs that a process reads: in a workflow, those that a step or an output
-/// takes as a source; in a tool, those bound to the command line and those that its expressions
-/// name, like `inputs.reads` or `inputs["reads"]`. The expressions of a tool sit in many fields
-/// of the model, and its debug text holds each of them, so the names are found there.
+/// Finds inputs read through workflow sources, command-line bindings and tool expressions.
+/// See `docs/research/cwl.md` for the full contract.
 pub fn read(process: &Process) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     match &process.class {

@@ -1,8 +1,4 @@
-//! nf-validation 1.1.3, the plugin that nf-schema replaced: parameter validation, summaries
-//! and help from a JSON schema of draft-07 with `definitions`, and `fromSamplesheet`. Older
-//! nf-core pipelines use it, and Nextflow 26.04.6 still runs it with the legacy parser
-//! ([decisions](../../../docs/decisions.md), item 14). It shares the JSON helpers of
-//! [`crate::nf_schema`].
+//! Implements nf-validation 1.1.3 checks, summaries, help, and sample sheets with draft-07 schemas.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

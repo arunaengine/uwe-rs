@@ -1,6 +1,7 @@
 #!/bin/sh
-# Records the expected output with Nextflow 26.04.6 and nf-validation 1.1.3, which needs the
-# legacy parser, in a copy of this directory; tests/nf_validation.rs has the results.
+# Records nf-validation 1.1.3 oracle output with Nextflow 26.04.6 and its legacy parser.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 export NXF_SYNTAX_PARSER=v1
 nextflow run main.nf -ansi-log false
 nextflow run invalid.nf -ansi-log false --n x --mode c --outdir ''

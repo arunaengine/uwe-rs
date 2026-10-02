@@ -1,6 +1,4 @@
-//! Samplesheets as nf-validation 1.1.3 reads them: `fromSamplesheet` and the check of the
-//! samplesheets that params name. A CSV or TSV row is a map of its header fields; a sheet
-//! whose schema has one unnamed field has no header, and its field is called `empty`.
+//! Reads nf-validation CSV and TSV rows, including headerless sheets with an empty field.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

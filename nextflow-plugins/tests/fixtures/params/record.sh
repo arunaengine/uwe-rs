@@ -1,6 +1,7 @@
 #!/bin/sh
-# Records the expected output with Nextflow 26.04.6 and nf-schema 2.5.1 in a copy of this
-# directory, with the nextflow.config and main.nf that the comments of tests/nf_schema.rs show.
+# Records nf-schema 2.5.1 parameter oracle output with Nextflow 26.04.6.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 nextflow -q run main.nf --outdir res --n 7
 nextflow -q run main.nf --outdir res --mode c --input 'a b.txt'
 nextflow -q run main.nf

@@ -170,10 +170,8 @@ pub(crate) fn lenient(context: &Context) -> bool {
         .is_some_and(|value| value.truth())
 }
 
-/// The errors of an instance, in nf-schema's words, by the path of the value they concern.
-/// Missing required fields become one error of the object, like `Missing required field(s):
-/// a, b`; `what` names the fields, like `field` or `parameter`. With `lenient`, types are
-/// checked leniently.
+/// Returns nf-schema errors by value path; missing fields form one object error.
+/// `what` labels the fields, and `lenient` relaxes type checking.
 pub(crate) fn errors(
     validator: &jsonschema::Validator,
     instance: &serde_json::Value,

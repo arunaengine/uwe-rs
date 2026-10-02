@@ -714,10 +714,10 @@ impl Session {
     /// Runs the Python packages without a stand-in in a container of the local engine
     /// (decision 19), which sees the folders of the workflow.
     pub fn use_python_containers(&mut self, settings: PythonContainers) {
-        self.use_python_containers_with_cancel(settings, executor::CancellationToken::new());
+        self.use_cancellable_python(settings, executor::CancellationToken::new());
     }
 
-    pub fn use_python_containers_with_cancel(
+    pub fn use_cancellable_python(
         &mut self,
         settings: PythonContainers,
         cancel: executor::CancellationToken,
@@ -746,7 +746,7 @@ impl Session {
 
     /// Stops the Python container once no more Python code runs: every job that must run has
     /// its task, and no checkpoint job is left whose outputs make the workflow planned again.
-    fn stop_python_when_done(&self) {
+    fn stop_unneeded_python(&self) {
         if !self.hooks_finished && !self.state.borrow().lifecycle.is_empty() {
             return;
         }
@@ -1888,7 +1888,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
                 session.deliveries = shared.clone();
                 session.files.read_outputs_through(task_files.clone());
                 if let Some(python) = settings.python.clone() {
-                    session.use_python_containers_with_cancel(python, settings.cancel.clone());
+                    session.use_cancellable_python(python, settings.cancel.clone());
                 }
                 session.files.set_commands(Rc::new(CommandRunner {
                     channel: channel.clone(),
@@ -1982,7 +1982,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
                         reply = Err(error);
                     }
                 }
-                session.stop_python_when_done();
+                session.stop_unneeded_python();
                 if let Ok(mut notes) = session_notes.lock() {
                     notes.extend(session.take_notes());
                 }

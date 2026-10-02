@@ -1,6 +1,4 @@
-//! JSON schema validation in the words of the everit validator (`org.everit.json.schema`),
-//! which Nextflow releases before 24 shipped. nf-validation and the `lib/` classes of older
-//! nf-core pipelines report its messages, and those classes read its `toJSON()`.
+//! Validates JSON schemas using everit-compatible messages and violation objects.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -94,10 +92,8 @@ fn java_class(kind: &str) -> &'static str {
     }
 }
 
-/// Validates the JSON text of an instance against the JSON text of a schema, as
-/// `SchemaLoader.load(schema).validate(instance)` does. The result is `None` when the
-/// instance is valid, else the violation as everit's `ValidationException.toJSON()` gives
-/// it: one problem, or a violation of the whole instance that lists them.
+/// Validates JSON text with everit's `SchemaLoader.load(schema).validate(instance)` contract.
+/// Returns no violation on success, otherwise `ValidationException.toJSON()`-style problems.
 pub fn violation(schema: &str, instance: &str) -> Result<Option<Json>, String> {
     let schema: Json = serde_json::from_str(schema).map_err(|error| error.to_string())?;
     let instance: Json = serde_json::from_str(instance).map_err(|error| error.to_string())?;

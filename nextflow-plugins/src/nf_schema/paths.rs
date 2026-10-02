@@ -1,6 +1,4 @@
-//! nf-schema's own keywords for paths: the formats `file-path`, `directory-path`, `path` and
-//! `file-path-pattern`, and `exists`. They look at the files that texts name, which are
-//! looked up through the host before validation.
+//! Checks nf-schema path formats and existence through the host before validation.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

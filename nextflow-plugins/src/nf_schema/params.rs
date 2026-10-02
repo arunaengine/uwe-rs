@@ -9,11 +9,9 @@ use nextflow_evaluator::value::Value;
 use super::{Schema, entries, errors, get, json, plain, schema, thrown};
 use crate::Context;
 
-/// `validateParameters`: checks the params against the schema. Params that the schema does
-/// not know give a warning, unless the config ignores them. Ignored params that the schema
-/// knows are checked like the others, but as in nf-schema, the errors that start with the
-/// name of an ignored param are dropped. Text from the command line stays text, so `--n 7`
-/// is not an integer.
+/// Validates params, warns for unknown nonignored names, and checks all known names.
+/// Drops errors prefixed by ignored names; command-line text stays text, including `--n 7`.
+/// See the crate README for the nf-schema parameter contract.
 pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result<Value, Error> {
     let schema = parameters_schema(options, context)?;
     let ignored = ignored(context);

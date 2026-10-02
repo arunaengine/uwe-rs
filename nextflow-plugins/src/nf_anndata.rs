@@ -1,6 +1,4 @@
-//! nf-anndata 0.5: `anndata(path)` opens an AnnData file, which is HDF5. Reading the data is not
-//! supported yet. A file that is not HDF5, like the empty `.h5ad` that a stub makes, cannot be
-//! opened, as with the plugin.
+//! Checks HDF5 signatures for nf-anndata 0.5; reading AnnData contents is unsupported.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

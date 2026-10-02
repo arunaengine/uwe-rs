@@ -430,10 +430,8 @@ fn unsupported(message: impl Into<String>) -> Error {
     }
 }
 
-/// The samplesheet as a structure: YAML and JSON as they are, CSV and TSV as a list of
-/// maps when the schema's items have properties, else of lists, or of single values for
-/// rows with one field. The text of CSV and TSV fields becomes numbers, booleans or null
-/// where it reads as such.
+/// Reads YAML and JSON structures, or CSV and TSV rows as maps, lists, or single values.
+/// Schema item properties select maps; CSV and TSV scalars become numbers, booleans, or null.
 fn file_object(
     file: &PathValue,
     text: &str,

@@ -567,7 +567,7 @@ impl Collector<'_> {
                 // fail; the output then gets a placeholder, as when it does not fit its type.
                 Err(error)
                     if self.access.assume_present
-                        && !crate::javascript_helper::boundary(&error)
+                        && !crate::javascript::helper::boundary(&error)
                         && reads_self(expression) =>
                 {
                     Value::Null
@@ -612,7 +612,7 @@ impl Collector<'_> {
                     // The format is metadata; over the inputs of a simulated run it may not exist.
                     Err(error)
                         if self.access.assume_present
-                            && !crate::javascript_helper::boundary(&error) =>
+                            && !crate::javascript::helper::boundary(&error) =>
                     {
                         Value::Null
                     }

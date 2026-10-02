@@ -10,7 +10,7 @@ use cwl_parser::model::{Class, LoadListing, Process, Requirement, RequirementCla
 use workflow_graph::DriverError;
 
 use crate::expression::Evaluator;
-use crate::javascript_helper::JavaScriptSettings;
+use crate::javascript::helper::JavaScriptSettings;
 use crate::types::Types;
 
 /// Extension requirements that change nothing a task needs, so they can be satisfied by

@@ -6,7 +6,7 @@ use std::ops::{Deref, DerefMut};
 
 use executor::process::ContainerProcess;
 
-use crate::javascript_helper::Failure;
+use crate::javascript::helper::Failure;
 
 pub(crate) fn run<T: Send>(operation: impl FnOnce() -> T + Send) -> Result<T, Failure> {
     std::thread::scope(|scope| scope.spawn(operation).join())

@@ -3,6 +3,10 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod budget;
+pub(crate) mod helper;
+mod thread;
+
 use std::future::Future;
 use std::pin::pin;
 use std::task::{Poll, Waker};
@@ -10,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use boa_engine::{Context, JsError, JsValue, Script, Source};
 
-use crate::javascript_helper::Failure;
+use crate::javascript::helper::Failure;
 use crate::value::Value;
 
 const LOOP_LIMIT: u64 = 100_000_000;
@@ -79,7 +83,7 @@ pub(crate) fn evaluate_literals(
     if text == UNDEFINED {
         return Ok(Value::Null);
     }
-    crate::javascript_helper::check_frame(&text, crate::javascript_helper::NESTING_LIMIT)
+    crate::javascript::helper::check_frame(&text, crate::javascript::helper::NESTING_LIMIT)
         .map_err(Failure::Boundary)?;
     Value::parse(&text)
         .map_err(|error| Failure::Language(format!("the result is not JSON: {error}")))
@@ -150,5 +154,5 @@ fn failure(error: &JsError, context: &mut Context) -> Failure {
 }
 
 #[cfg(test)]
-#[path = "javascript_tests.rs"]
+#[path = "tests.rs"]
 mod tests;

@@ -1,7 +1,4 @@
-//! Runs an attempt of a task as one TES task: the wrapper is its one executor, the inputs come
-//! from their `file://` places, and the outputs and control files go back to the scratch
-//! directory of the attempt. So the server must see the files of this machine at the same
-//! paths, as Funnel on this machine or on a cluster with a shared file system does.
+//! Runs staged task attempts through TES and collects their output and control files.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

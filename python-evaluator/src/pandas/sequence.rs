@@ -98,7 +98,7 @@ pub fn positions_of(
 }
 
 /// The positions of a mask, or of a slice of positions, which `[]` selects by position.
-pub fn mask_or_positional_slice(
+pub fn mask_or_slice(
     interpreter: &mut Interpreter,
     key: &Value,
     labels: &super::labels::Labels,

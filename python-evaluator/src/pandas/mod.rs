@@ -34,9 +34,7 @@ pub use labels::Labels;
 pub use series::{Series, SeriesData};
 
 pub(crate) use display::{text_list, value_text};
-pub(crate) use sequence::{
-    is_list_like, is_mask, mask_or_positional_slice, positions_of, seq_values,
-};
+pub(crate) use sequence::{is_list_like, is_mask, mask_or_slice, positions_of, seq_values};
 pub(crate) use values::{
     DtypeKind, cast_values, distinct, dtype_kind, dtype_name, duplicated, elementwise, extreme,
     map_values, replace_values, sorted_positions, sum, unary_values,

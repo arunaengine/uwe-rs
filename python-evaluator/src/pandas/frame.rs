@@ -422,7 +422,7 @@ impl Native for DataFrame {
         key: &Value,
     ) -> Result<Option<Value>, Error> {
         let data = self.data();
-        if let Some(positions) = super::mask_or_positional_slice(interpreter, key, &data.index())? {
+        if let Some(positions) = super::mask_or_slice(interpreter, key, &data.index())? {
             return Ok(Some(DataFrame::from_data(data.take_rows(&positions))));
         }
         if super::is_list_like(key) {

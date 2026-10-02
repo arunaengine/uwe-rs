@@ -69,10 +69,9 @@ pub struct Limits {
     pub seconds: Option<u64>,
 }
 
-/// The Job that runs the wrapper of each of `runs` in its image, labelled with `label`: one
-/// container for a task, or one for each image of a task of several containers, which share
-/// the folders of the task. The first container asks for the CPUs and memory of the task, and
-/// each may use all of its memory.
+/// Builds labelled Jobs with image-group containers sharing task folders and the task memory
+/// limit.
+/// See `docs/design/engine.md` for the full contract.
 pub fn job(name: &str, label: &str, runs: &[ContainerRun<'_>], limits: &Limits) -> Value {
     let run = &runs[0];
     let mut mounts = Vec::new();

@@ -661,3 +661,23 @@ the backend reaches through a kubeconfig of the test. Creating a Job runs the co
 container in the background, without a container, which works because the pod sees the
 files at the same paths; listing pods tells how each Job stands; deleting a Job stops it.
 The server refuses every request without the token of the test's kubeconfig.
+
+## Source contracts: kubernetes-executor
+
+### `kubernetes-executor/src/backend.rs:630`
+
+The exit code of the task and a note for its standard error, from the exit code that the
+wrapper recorded and the end of the container; `Err` when the machine failed rather than
+the task.
+
+The wrapper records the tool's exit code and ends with 0. A container killed for lack of
+memory or stopped by a signal ends the task with its own exit code, and a pod that ran out
+of time with 143. Other ends are failures of the machine, like an image without Bash, or a
+pod that was evicted.
+
+### `kubernetes-executor/src/manifest.rs:72`
+
+The Job that runs the wrapper of each of `runs` in its image, labelled with `label`: one
+container for a task, or one for each image of a task of several containers, which share
+the folders of the task. The first container asks for the CPUs and memory of the task, and
+each may use all of its memory.

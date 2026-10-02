@@ -9,7 +9,7 @@ use std::rc::Rc;
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, Host, Interpreter};
 use nextflow_evaluator::lower::{
-    ConfigNames, lower_config_function, lower_config_statement, lower_legacy_config_value,
+    ConfigNames, lower_config_function, lower_config_statement, lower_legacy_value,
 };
 use nextflow_evaluator::lowered::{Code, Link, Module};
 use nextflow_evaluator::number::Number;
@@ -540,7 +540,7 @@ impl<'a> Evaluator<'a> {
             inherited: file.inherited.clone(),
             lookup: Some(&lookup),
         };
-        let code = lower_legacy_config_value(value, &file.source, process_scope, &names)
+        let code = lower_legacy_value(value, &file.source, process_scope, &names)
             .map_err(|errors| located(&file.path, &file.source, &errors))?;
         self.run(file, code)
     }

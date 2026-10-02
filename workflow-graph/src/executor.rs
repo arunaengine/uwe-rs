@@ -1,7 +1,4 @@
-//! The interface between the engine and the executors that run tasks: the simulator, local
-//! containers, TES and clusters. An executor starts an attempt of a task and gives back a
-//! future of its outcome, which the engine drives on Tokio while the driver waits on its own
-//! thread.
+//! Defines executor admission, running attempts and task completion outcomes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

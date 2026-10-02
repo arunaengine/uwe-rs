@@ -1,3 +1,4 @@
+//! Checks deterministic layered layouts, ordering and graph geometry.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

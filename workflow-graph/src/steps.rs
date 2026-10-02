@@ -1,6 +1,4 @@
-//! The graph with one node per step (process, rule, step or template), made from the graph with
-//! one node per task: a step node counts its tasks, and a step edge stands for the task edges
-//! between two steps.
+//! Folds task graphs into per-step counts, states, edges and open points.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

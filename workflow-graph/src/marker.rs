@@ -1,7 +1,4 @@
-//! Markers: the points of a graph where the tasks that follow depend on data, so that a run
-//! with real data can have more or fewer tasks there than a simulated run (decision 21).
-//! Drivers report what they notice while they plan ([`Note`]); the engine turns the notes into
-//! markers on the tasks whose outputs they concern.
+//! Describes graph points whose downstream tasks depend on runtime data.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

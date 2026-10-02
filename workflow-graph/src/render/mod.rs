@@ -1,10 +1,4 @@
-//! Pictures and texts of a graph. The graph with one node per task or one node per step
-//! becomes a [`Drawing`]: boxes with text and a state, and lines between them. In the graph of
-//! tasks, a step with more tasks than [`Options::fold`] becomes one box that counts its tasks,
-//! unless it is open; more steps fold when the graph would be wider than [`WIDTH`] boxes. Many
-//! lines into one box become one line with a count. [`dot`] writes a drawing as Graphviz DOT, and [`svg`] draws it as SVG with
-//! the layered layout of [`crate::layout`], with no program besides iunctus. The web page of
-//! runs shows the same SVG. [`render`] gives a graph in each view and format.
+//! Turns task and step graphs into drawings, SVG and text.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

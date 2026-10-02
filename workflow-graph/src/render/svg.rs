@@ -1,12 +1,4 @@
-//! A drawing as SVG, laid out by [`crate::layout`] down or to the right. Each task is a rounded
-//! box with the round icon of its state and its name; each step, or step folded into one box,
-//! is a box with its name and how many tasks it has in which states, stacked when it has
-//! several; each open point of a simulated graph is a dashed box beside the task or step before
-//! it. Smooth lines join the boxes. The title is on top and a legend of the states below.
-//!
-//! The web page of runs shows the same picture and makes it move, zoom and follow a run: it
-//! reads the classes and `data-` attributes of the boxes and turns the icons of `#icon-<state>`.
-//! Names use a monospace font, so that their width is known without measuring text.
+//! Renders laid-out graph boxes, edges, states and markers as SVG.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

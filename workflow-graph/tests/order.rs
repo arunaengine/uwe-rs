@@ -1,6 +1,4 @@
-//! The engine keeps the order rules of a run: a task starts only after the tasks in its `after`
-//! list have finished, and it may only name tasks that the driver asked for before. With run
-//! options, several tasks are pending at once and finish in another order.
+//! Checks dependency and completion ordering with pending executor attempts.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,26 +1,4 @@
-//! A layered layout that draws a graph from top to bottom, or from left to right, as Graphviz
-//! `dot` does, in the steps of Sugiyama's method:
-//!
-//! 1. The nodes are put in a depth-first order, in which every edge points from a node to a
-//!    later one, except the edges that close a cycle. Those are laid out turned round.
-//! 2. Layers by the longest path from a node without predecessors. Then each node with more
-//!    successors than predecessors, like a node without predecessors, moves down to just above
-//!    the first of its successors, which shortens more edges than it lengthens.
-//! 3. An edge that spans several layers gets a point in each layer between, so that it can
-//!    pass between the nodes there.
-//! 4. The order in each layer: sweeps down and up that sort each layer by the mean position of
-//!    its neighbours (the barycenter), a bounded number of times, keeping the order with the
-//!    fewest crossings.
-//! 5. The places in each layer: each node moves towards the mean place of its neighbours, as
-//!    close as the order and the gaps between nodes allow (an isotonic regression). The points
-//!    of long edges weigh more than nodes, so that long edges run straight and nodes make way.
-//!
-//! A node can sit beside another one instead of in a layer of its own, like the open point
-//! after a marked task: it takes room after that node in its layer. A layout from left to
-//! right is a layout from top to bottom with widths and heights swapped, turned at the end.
-//!
-//! Everything is deterministic: the same input gives the same layout. The work grows with the
-//! number of nodes, edges and layers, so graphs of thousands of tasks stay fast.
+//! Lays out directed graph nodes and edges in ordered layers.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

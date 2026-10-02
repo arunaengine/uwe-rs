@@ -1,6 +1,4 @@
-//! The drawing of a graph: a box per task, where a step with many tasks can be folded into one
-//! box that counts its tasks, or a box per step. In a simulated graph, each marked task or step
-//! gets a dashed box beside it: more tasks may follow from real data.
+//! Builds task and step boxes, graph edges and open points for rendering.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

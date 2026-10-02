@@ -1,6 +1,4 @@
-//! The files that tasks made: reading them on this machine, and delivering them to where a
-//! language expects its results, like Nextflow's `publishDir`, the working directory of
-//! Snakemake, or the output folder of a CWL run.
+//! Reads and delivers task files through their local or executor-provided locations.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

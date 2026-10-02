@@ -1,14 +1,4 @@
-//! Short tasks together: tasks of steps whose tools ran shorter in earlier runs than the time
-//! their executor spent besides, and that ask for the same image and the same resources, run one
-//! after another in one container (one TES task, one Kubernetes Job, one SLURM job), so that
-//! only one container starts for them.
-//!
-//! Each task keeps its own folders, with its own wrapper: the group is one job of the backend,
-//! whose work directory holds the folders of each task under `m<number>`. After the group ends,
-//! each task gets its folders back as its own scratch directory, and the runner stores its
-//! outputs, logs and cache entry as if it had run alone. A task that the group did not reach, as
-//! when its container stopped, fails as a failure of the machine, so that the engine runs it
-//! again, alone.
+//! Groups short tasks with matching images and resources into shared backend jobs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

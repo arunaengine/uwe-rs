@@ -1,7 +1,4 @@
-//! The files that the tasks of a run made, for deliveries and drivers. A location is a path on
-//! this machine or an address of a storage provider, like an output in a store on S3, and a
-//! target is a path or an address, like a `publishDir` in a bucket. A link needs both on this
-//! machine; else the file is copied.
+//! Reads and delivers task outputs from local paths and remote storage addresses.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,7 +1,4 @@
-//! Which tasks of a run get the network. A workflow that says it decides for its tasks, like a
-//! CWL tool with or without `NetworkAccess`; for the others, the run decides: they get the
-//! network unless the run says `-no-network`. Steps that the config file names get it in any
-//! case, so that the steps that download can still download.
+//! Resolves task network access from workflow requirements and run policy.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

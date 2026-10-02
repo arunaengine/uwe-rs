@@ -164,10 +164,9 @@ impl Inputs<'_> {
         }
     }
 
-    /// The input with a file of this machine in place of an object that only the shared store
-    /// of a store in layers has, like an output of a task of another machine: a run takes the
-    /// object into the folder of the store first, as it does with everything it reads there.
-    /// A lookup of the cache downloads nothing.
+    /// Materializes shared-only inputs into the local store for runs; cache lookups download
+    /// nothing.
+    /// See `docs/design/cache.md` for the full contract.
     async fn taken_into_folder(&self, input: &Input) -> Result<Option<Input>, RunnerError> {
         let shared = self.store.shared().is_some() && input.writable != Writable::InPlace;
         let decoded = input
@@ -209,13 +208,8 @@ impl Inputs<'_> {
     }
 
     /// An input by its digest, and where its content comes from: literal content, a local
-    /// directory or a local file. Local bytes are copied with links resolved, so that the
-    /// backend executes the same bytes that were hashed. When the runner imports
-    /// inputs, the backend takes them from the store instead.
-    ///
-    /// An input that the task changes where it is is named by its path, not its content,
-    /// which the task changes: such a task never comes from the cache, and a large folder,
-    /// like the working directory of a workflow, is not read.
+    /// directory or a local file.
+    /// See `docs/design/cache.md` for the full contract.
     pub(crate) async fn input(&self, input: &Input) -> Result<(InputFile, Source), RunnerError> {
         if let Some(local) = self.taken_into_folder(input).await? {
             return Box::pin(self.input(&local)).await;

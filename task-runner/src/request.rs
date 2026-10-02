@@ -73,9 +73,8 @@ pub(crate) async fn prepare(
 }
 
 /// The request of a task whose image is pinned if possible and whose inputs and standard input
-/// are in the store. Results are shared across runs only when the image is pinned to a digest.
-/// The containers of a task that runs several keep their images as the task names them, so
-/// the caller pins those in the task first; the main container gets `image`.
+/// are in the store.
+/// See `docs/design/cache.md` for the full contract.
 pub fn request(
     task: &Task,
     image: Option<String>,

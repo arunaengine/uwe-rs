@@ -16,9 +16,6 @@ pub mod expression;
 pub mod files;
 mod inputs;
 mod javascript;
-mod javascript_budget;
-mod javascript_helper;
-mod javascript_thread;
 mod placeholder;
 mod results;
 mod run;
@@ -30,6 +27,6 @@ pub mod value;
 
 pub use driver::{CwlDriver, driver, driver_with, driver_with_options, process_name};
 pub use expression::{Evaluator, Variables};
-pub use javascript_helper::{JavaScriptSettings, javascript_worker_main};
+pub use javascript::helper::{JavaScriptSettings, javascript_worker_main};
 pub use tool::Options;
 pub use value::{Map, Value};

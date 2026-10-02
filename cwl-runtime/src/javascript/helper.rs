@@ -13,7 +13,7 @@ use executor::CancellationToken;
 use executor::process::{ContainerProcess, ContainerSpec, ProcessLimits};
 use serde::Deserialize;
 
-use crate::javascript_thread::HelperProcess;
+use crate::javascript::thread::HelperProcess;
 use crate::value::Value;
 
 pub(crate) const FRAME_LIMIT: usize = 16 << 20;
@@ -274,7 +274,7 @@ impl JavaScriptSettings {
         body: &str,
     ) -> Result<Value, Failure> {
         let deadline = Instant::now() + TIME_LIMIT;
-        crate::javascript_thread::run(|| {
+        crate::javascript::thread::run(|| {
             self.evaluate_blocking(library, variables, body, deadline)
         })?
     }
@@ -413,12 +413,12 @@ impl JavaScriptSettings {
 }
 
 #[cfg(test)]
-#[path = "javascript_helper_tests.rs"]
+#[path = "helper_tests.rs"]
 mod tests;
 
 /// Runs Boa inside the bounded helper container. Called by the hidden binary dispatch.
 pub fn javascript_worker_main() -> Result<(), String> {
-    crate::javascript_budget::prove_worker_budget()?;
+    crate::javascript::budget::prove_worker_budget()?;
     let mut input = io::stdin().lock();
     let mut output = io::stdout().lock();
     loop {

@@ -18,7 +18,7 @@ use crate::binding::{self, Binder, Bound, Key};
 use crate::expression::{Evaluator, Variables};
 use crate::files::{self, Access};
 use crate::inputs::has_code;
-use crate::javascript_helper::JavaScriptSettings;
+use crate::javascript::helper::JavaScriptSettings;
 use crate::scope::Scope;
 use crate::types::Types;
 use crate::value::{Map, Value};
@@ -332,7 +332,7 @@ pub fn task(
                 // a simulated run, cannot be made; it becomes a marker, so the task still exists.
                 Err(error)
                     if fake
-                        && !crate::javascript_helper::boundary(&error)
+                        && !crate::javascript::helper::boundary(&error)
                         && reads_contents(expression) =>
                 {
                     Value::string(FAKE_ARGUMENT)

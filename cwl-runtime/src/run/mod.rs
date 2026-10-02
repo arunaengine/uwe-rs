@@ -538,7 +538,7 @@ impl Run {
             (Err(error), Some(base))
                 if leaf
                     && !error.contains(tool::UNSUPPORTED)
-                    && !crate::javascript_helper::boundary(&error) =>
+                    && !crate::javascript::helper::boundary(&error) =>
             {
                 let base = base.clone();
                 let mut job = job;
@@ -551,7 +551,9 @@ impl Run {
                     };
                     match self.start_process(id, process, filled.clone(), outer, &names, toplevel) {
                         Ok(()) => return Ok(()),
-                        Err(next) if crate::javascript_helper::boundary(&next) => return Err(next),
+                        Err(next) if crate::javascript::helper::boundary(&next) => {
+                            return Err(next);
+                        }
                         Err(next) => (job, last) = (filled, next),
                     }
                 }
@@ -561,7 +563,7 @@ impl Run {
                     Some(filled) => self
                         .start_process(id, process, filled, outer, &names, toplevel)
                         .map_err(|later| {
-                            if crate::javascript_helper::boundary(&later) {
+                            if crate::javascript::helper::boundary(&later) {
                                 later
                             } else {
                                 error
@@ -700,7 +702,7 @@ impl Run {
                 let value = match value {
                     Ok(Value::Map(map)) => Value::Map(map),
                     Ok(Value::Null) => Value::Map(Map::new()),
-                    Err(error) if fake && !crate::javascript_helper::boundary(&error) => {
+                    Err(error) if fake && !crate::javascript::helper::boundary(&error) => {
                         Value::Map(Map::new())
                     }
                     Err(error) => return Err(at(format!("the expression: {error}"))),

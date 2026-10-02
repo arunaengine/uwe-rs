@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use cwl_parser::model::{Expression, ExpressionKind, Part};
 
-use crate::javascript_helper::{FRAME_LIMIT, Failure, JavaScriptSettings};
+use crate::javascript::helper::{FRAME_LIMIT, Failure, JavaScriptSettings};
 use crate::value::Value;
 
 /// What an expression sees: `inputs`, `self` and `runtime`.

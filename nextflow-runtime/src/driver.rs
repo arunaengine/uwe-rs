@@ -349,7 +349,7 @@ impl Driver for Nextflow {
             },
             _ => {
                 if self.launch.simulated {
-                    drop_made_up_outputs(&request, &mut outcome);
+                    drop_simulated_outputs(&request, &mut outcome);
                 }
                 task_outcome_as(
                     &request,
@@ -486,7 +486,7 @@ fn title(config: &Config, project: &Path) -> String {
 /// Drops simulated outputs a script cannot make, preserving exact input paths and folders.
 /// Optional missing files stay absent; required ones fail the task, matching Nextflow stub runs.
 /// See the crate README for simulated output collection.
-fn drop_made_up_outputs(request: &TaskRequest, outcome: &mut Outcome) {
+fn drop_simulated_outputs(request: &TaskRequest, outcome: &mut Outcome) {
     let inputs: Vec<&str> = request
         .staged
         .iter()

@@ -1,13 +1,8 @@
 #!/usr/bin/env -S uv run -q --with ruamel.yaml python3
-# Finds the example job files of the real-world CWL documents of the test workflows from
-# `just cwl-test-workflows` (CWL_TEST_WORKFLOWS), and prints one line per pair: the document and
-# the job file, relative to the test workflows. A job file pairs with a document of the same
-# repository when the document has every input the job sets, the job sets every required input
-# without default, and the name of the job file holds the name of the document, or the document
-# is the only such one next to it. job_test_workflows.txt starts from its output.
-#
+"""Find example job files that match CWL workflow fixture inputs."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
+
 import os
 import sys
 

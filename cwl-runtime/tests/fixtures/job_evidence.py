@@ -1,19 +1,5 @@
 #!/usr/bin/env -S uv run -q --with cwltool==3.3.20260925135507 python3
-# Records why the example job files of job_test_workflows.txt that fail there cannot run, and
-# how cwltool rejects them, into job_evidence.txt next to this script. The job test-workflows
-# test checks that every pair that fails there has a record, and that no record is left for a
-# pair that runs.
-#
-# For each failing pair, cwltool loads the document and checks the job against its inputs
-# (`Process._init_job`), the check that `cwltool <document> <job>` makes before it runs
-# anything. The files that the job names are replaced by empty files of the same name, since
-# the test workflows hold no data, so that cwltool reports what is wrong with the job itself.
-# The reason of a record comes from that check, from graph_evidence.txt for documents that fail
-# for any job, or from REASONS.
-#
-# Run it from the repository root: cwl-runtime/tests/fixtures/job_evidence.py
-# It reads the test workflows of `just cwl-test-workflows` (CWL_TEST_WORKFLOWS).
-#
+"""Refresh cwltool input-check evidence for failing example jobs."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

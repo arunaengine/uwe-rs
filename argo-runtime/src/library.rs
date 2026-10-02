@@ -287,9 +287,8 @@ impl Library {
     }
 
     /// The document that a `templateRef` names: like [`Library::find`], but among several
-    /// documents of the kind and name, those that hold the template win. A repository may keep
-    /// several versions of a WorkflowTemplate, while a cluster holds the one that the workflow
-    /// was written for.
+    /// documents of the kind and name, those that hold the template win.
+    /// See `docs/design/argo/runtime.md` for the full contract.
     pub fn find_template(
         &self,
         kind: Kind,

@@ -246,10 +246,9 @@ impl Run {
                         "" => String::new(),
                         folder => format!("{folder}/"),
                     };
-                    // The files of a volume that the task may write are copies that it may
-                    // change, as a task changes the files of a volume in Argo; its changes go
-                    // into the volume when it ends. The files of a host path stay read-only,
-                    // since the host folder itself is shown there.
+                    // Volume files are writable copies committed on task completion; mounted
+                    // host paths stay read-only.
+                    // See `docs/design/argo/runtime.md` for the full contract.
                     let writable = match read_only || host_input {
                         true => workflow_graph::Writable::No,
                         false => workflow_graph::Writable::Copy,

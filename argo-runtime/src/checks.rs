@@ -91,10 +91,9 @@ pub(crate) fn process_args(template: &Template, supplied: Supplied) -> Result<()
     Ok(())
 }
 
-/// Why a template cannot run without a Kubernetes cluster, if it cannot (decision 18):
-/// `resource` templates, except those that manage a PersistentVolumeClaim, which become volumes
-/// of the run, and those that start an Argo Workflow, which runs inside the run; `data`
-/// templates, sidecars and daemons.
+/// Explains unsupported cluster-dependent templates, except locally modeled claims and child
+/// workflows.
+/// See `docs/design/argo/runtime.md` for the full contract.
 pub(crate) fn cluster_only(template: &Template) -> Option<String> {
     let name = &template.name;
     for artifact in template

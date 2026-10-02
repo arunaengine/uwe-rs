@@ -531,11 +531,9 @@ impl Run {
         ])
     }
 
-    /// Warns once about fields of a template and its containers that only matter to
-    /// Kubernetes, which a run without Kubernetes leaves out (decision 18).
-    /// The user and group that a container runs as, as Kubernetes picks them: from the
-    /// `securityContext` of the container, else of the template, else of the workflow; what
-    /// none of them names, the image decides.
+    /// Selects user and group from container, template, then workflow securityContext; missing
+    /// IDs defer to the image.
+    /// See `docs/design/argo/runtime.md` for the full contract.
     fn run_as(&self, template: &Template, container: Option<&Container>) -> RunAs {
         let contexts = [
             container.and_then(|container| container.security_context.as_ref()),

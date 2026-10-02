@@ -103,10 +103,9 @@ pub(crate) fn inputs(document: &Document, library: &Library, options: &Options) 
     })
 }
 
-/// The outputs of the workflow that a document runs: the output parameters of its entrypoint,
-/// which are texts, and its output artifacts, which are paths, then the global outputs of its
-/// templates by their `globalName`, as `workflow.outputs` gives them. An artifact that is
-/// `optional` may be missing.
+/// Describes entrypoint and global output parameters and artifacts, allowing optional artifacts
+/// to be absent.
+/// See `docs/design/argo/runtime.md` for the full contract.
 pub(crate) fn outputs(document: &Document, library: &Library, options: &Options) -> Result<Json> {
     let Joined { spec: node, .. } = joined_spec(document, library)?;
     let (spec, _) =
@@ -310,10 +309,9 @@ fn annotation(document: &Document, key: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// The parameters that the workflow reads: `workflow.parameters.<name>` anywhere in its spec
-/// and in the templates it refers to with `templateRef`, and `inputs.parameters.<name>` in its
-/// entrypoint, whose inputs the arguments supply. An input artifact of the entrypoint is read,
-/// as Argo places it in the container. `{{workflow.parameters}}` reads every parameter.
+/// Finds workflow and entrypoint parameters and artifacts read by the specification and
+/// referenced templates.
+/// See `docs/design/argo/runtime.md` for the full contract.
 fn read(
     spec: &Node,
     library: &Library,

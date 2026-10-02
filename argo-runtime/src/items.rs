@@ -25,10 +25,8 @@ pub(crate) fn loops(node: &Node) -> bool {
         })
 }
 
-/// The items of a loop.
-///
-/// Simulated loops over unknown values have no items and produce a warning. Real loops
-/// reject unknown values, as Argo does.
+/// The items of a loop. Simulated loops over unknown values have no items and produce a
+/// warning. Real loops reject unknown values, as Argo does.
 pub(crate) fn items(
     node: &Node,
     sequence: Option<&Sequence>,

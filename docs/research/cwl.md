@@ -530,3 +530,14 @@ Two forms that the YAML 1.2 grammar rejects but ruamel.yaml (and so cwltool) acc
 read as ruamel.yaml reads them, by changing the text and reading it again: continuation
 lines of quoted scalars that are not indented more than their key get indented further,
 which folding drops again, and a lone `-` in a flow collection gets quoted.
+
+## Rejection evidence regeneration
+
+Records why cwltool rejects each CWL test workflow of rejected.txt, into rejected.txt itself:
+for each document, `cwltool --validate --skip-schemas --enable-dev` runs again, and the record
+gives the kind and the reason in one plain sentence, taken from cwltool's error, and the
+error. A document that cwltool accepts now is left out, with a note on standard error. The
+documents of differences.txt, which cwltool rejects but the loader reads, have no record.
+
+Run it from the repository root: cwl-parser/tests/fixtures/test-workflows/rejected.py
+It reads the test workflows of `just cwl-test-workflows` (CWL_TEST_WORKFLOWS).

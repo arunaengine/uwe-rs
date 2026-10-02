@@ -1,9 +1,4 @@
-//! A small simulation of the shell scripts of tasks, for the simulator: which files a
-//! script makes and what text it writes into them. It follows the commands that stub scripts
-//! use to make their files, like `touch`, `mkdir`, `echo`, `printf`, `cat` with a here
-//! document, `cp`, `mv`, `gzip`, `for` loops over words and `if` statements whose condition
-//! it can decide. Anything else, like a tool, makes the simulation incomplete: the script may
-//! make more files than it tells.
+//! Simulates file-producing shell commands and reports incomplete or failed scripts.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

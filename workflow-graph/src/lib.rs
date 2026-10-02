@@ -1,10 +1,4 @@
-//! The language-neutral side of a run. Every language driver (Nextflow, Snakemake, CWL, Argo)
-//! turns its program into concrete [`Task`]s; [`execute`] hands them to an [`Executor`] and
-//! records the [`ExecutionGraph`] of the run: every task that ran, and which task produced the
-//! files another one read.
-//!
-//! The graph grows while the run goes on, because Nextflow channels, Snakemake checkpoints,
-//! CWL scatter over outputs and Argo `withParam` only know their tasks at run time.
+//! Runs language-neutral task graphs and records execution events and outcomes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

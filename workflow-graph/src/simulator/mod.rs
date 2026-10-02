@@ -1,8 +1,4 @@
-//! The simulator: a task does not run, it only makes the files it would make, and the simulator
-//! writes the GA4GH TES v1.1 task document that a TES server would receive. So a whole workflow
-//! runs through without containers or a server, and the TES documents can be checked or sent
-//! later. The files are made up, so a simulated run gives a simulated graph, not a prediction
-//! of a real run (decision 21).
+//! Simulates task outputs and writes TES documents without executing containers.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

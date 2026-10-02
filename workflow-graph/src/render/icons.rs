@@ -1,7 +1,4 @@
-//! The round icons of the states and of open points, as SVG symbols. Each box refers to the
-//! icon of its state as `#icon-<state>`, so that the web page changes the state of a box by
-//! changing one reference. The colours are those of the web page, which it can change for its
-//! dark look through CSS variables of the same names.
+//! Defines SVG state and open-point symbols shared by graph boxes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

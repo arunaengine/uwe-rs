@@ -1,6 +1,4 @@
-//! Word expansions of the shell for the simulator: variables, brace
-//! expansion, the escapes of `echo -e` and `printf`, and paths relative to the working
-//! directory.
+//! Expands simulated shell variables, braces, escapes and relative file paths.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

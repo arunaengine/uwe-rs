@@ -119,3 +119,137 @@ All test workflows ran with markers on 2026-09-30, with the same outcomes as bef
 Typical points: the `SAMPLESHEET_CHECK` task of older nf-core pipelines, whose checked sample sheet the pipeline reads (a real run can have more samples); the trimming reports of TRIMGALORE in nf-core/rnaseq, from which the pipeline drops samples with too few reads (the simulated run drops all five, a real run keeps them); `UNTAR` tasks whose folders a pipeline lists; split steps like `SEQKIT_SPLIT2`, `BAMTOOLS_SPLIT` or GATK `SplitIntervals` in CWL, whose files each start tasks; Snakemake checkpoints and the folders their input functions list; Argo `withParam` over a step's `outputs.result` and `when` over the flip of a coin. A per-sample fan-out over the sample sheet of the user is never marked.
 
 Known limits: a spread whose items are collected into one task that the driver asks for in the same call, like a report of all files at the end of a run, is still marked; and a plan that follows the standard output of a task, or a Nextflow `env` or `eval` output, is not marked, as those are values and not files.
+
+## File descriptions: workflow-graph
+
+### `workflow-graph/src/executor.rs`
+
+The interface between the engine and the executors that run tasks: the simulator, local
+containers, TES and clusters. An executor starts an attempt of a task and gives back a
+future of its outcome, which the engine drives on Tokio while the driver waits on its own
+thread.
+
+### `workflow-graph/src/files.rs`
+
+The files that tasks made: reading them on this machine, and delivering them to where a
+language expects its results, like Nextflow's `publishDir`, the working directory of
+Snakemake, or the output folder of a CWL run.
+
+### `workflow-graph/src/layout.rs`
+
+A layered layout that draws a graph from top to bottom, or from left to right, as Graphviz
+`dot` does, in the steps of Sugiyama's method:
+
+1. The nodes are put in a depth-first order, in which every edge points from a node to a
+   later one, except the edges that close a cycle. Those are laid out turned round.
+2. Layers by the longest path from a node without predecessors. Then each node with more
+   successors than predecessors, like a node without predecessors, moves down to just above
+   the first of its successors, which shortens more edges than it lengthens.
+3. An edge that spans several layers gets a point in each layer between, so that it can
+   pass between the nodes there.
+4. The order in each layer: sweeps down and up that sort each layer by the mean position of
+   its neighbours (the barycenter), a bounded number of times, keeping the order with the
+   fewest crossings.
+5. The places in each layer: each node moves towards the mean place of its neighbours, as
+   close as the order and the gaps between nodes allow (an isotonic regression). The points
+   of long edges weigh more than nodes, so that long edges run straight and nodes make way.
+
+A node can sit beside another one instead of in a layer of its own, like the open point
+after a marked task: it takes room after that node in its layer. A layout from left to
+right is a layout from top to bottom with widths and heights swapped, turned at the end.
+
+Everything is deterministic: the same input gives the same layout. The work grows with the
+number of nodes, edges and layers, so graphs of thousands of tasks stay fast.
+
+### `workflow-graph/src/lib.rs`
+
+The language-neutral side of a run. Every language driver (Nextflow, Snakemake, CWL, Argo)
+turns its program into concrete [`Task`]s; [`execute`] hands them to an [`Executor`] and
+records the [`ExecutionGraph`] of the run: every task that ran, and which task produced the
+files another one read.
+
+The graph grows while the run goes on, because Nextflow channels, Snakemake checkpoints,
+CWL scatter over outputs and Argo `withParam` only know their tasks at run time.
+
+### `workflow-graph/src/marker.rs`
+
+Markers: the points of a graph where the tasks that follow depend on data, so that a run
+with real data can have more or fewer tasks there than a simulated run (decision 21).
+Drivers report what they notice while they plan ([`Note`]); the engine turns the notes into
+markers on the tasks whose outputs they concern.
+
+### `workflow-graph/src/render/drawing.rs`
+
+The drawing of a graph: a box per task, where a step with many tasks can be folded into one
+box that counts its tasks, or a box per step. In a simulated graph, each marked task or step
+gets a dashed box beside it: more tasks may follow from real data.
+
+### `workflow-graph/src/render/icons.rs`
+
+The round icons of the states and of open points, as SVG symbols. Each box refers to the
+icon of its state as `#icon-<state>`, so that the web page changes the state of a box by
+changing one reference. The colours are those of the web page, which it can change for its
+dark look through CSS variables of the same names.
+
+### `workflow-graph/src/render/mod.rs`
+
+Pictures and texts of a graph. The graph with one node per task or one node per step
+becomes a [`Drawing`]: boxes with text and a state, and lines between them. In the graph of
+tasks, a step with more tasks than [`Options::fold`] becomes one box that counts its tasks,
+unless it is open; more steps fold when the graph would be wider than [`WIDTH`] boxes. Many
+lines into one box become one line with a count. [`dot`] writes a drawing as Graphviz DOT, and [`svg`] draws it as SVG with
+the layered layout of [`crate::layout`], with no program besides iunctus. The web page of
+runs shows the same SVG. [`render`] gives a graph in each view and format.
+
+### `workflow-graph/src/render/svg.rs`
+
+A drawing as SVG, laid out by [`crate::layout`] down or to the right. Each task is a rounded
+box with the round icon of its state and its name; each step, or step folded into one box,
+is a box with its name and how many tasks it has in which states, stacked when it has
+several; each open point of a simulated graph is a dashed box beside the task or step before
+it. Smooth lines join the boxes. The title is on top and a legend of the states below.
+
+The web page of runs shows the same picture and makes it move, zoom and follow a run: it
+reads the classes and `data-` attributes of the boxes and turns the icons of `#icon-<state>`.
+Names use a monospace font, so that their width is known without measuring text.
+
+### `workflow-graph/src/simulator/mod.rs`
+
+The simulator: a task does not run, it only makes the files it would make, and the simulator
+writes the GA4GH TES v1.1 task document that a TES server would receive. So a whole workflow
+runs through without containers or a server, and the TES documents can be checked or sent
+later. The files are made up, so a simulated run gives a simulated graph, not a prediction
+of a real run (decision 21).
+
+### `workflow-graph/src/simulator/shell/mod.rs`
+
+A small simulation of the shell scripts of tasks, for the simulator: which files a
+script makes and what text it writes into them. It follows the commands that stub scripts
+use to make their files, like `touch`, `mkdir`, `echo`, `printf`, `cat` with a here
+document, `cp`, `mv`, `gzip`, `for` loops over words and `if` statements whose condition
+it can decide. Anything else, like a tool, makes the simulation incomplete: the script may
+make more files than it tells.
+
+### `workflow-graph/src/simulator/shell/words.rs`
+
+Word expansions of the shell for the simulator: variables, brace
+expansion, the escapes of `echo -e` and `printf`, and paths relative to the working
+directory.
+
+### `workflow-graph/src/steps.rs`
+
+The graph with one node per step (process, rule, step or template), made from the graph with
+one node per task: a step node counts its tasks, and a step edge stands for the task edges
+between two steps.
+
+### `workflow-graph/tests/attempts.rs`
+
+Attempts run on Tokio at the same time: the engine hands their outcomes to the driver as they
+end, runs a task again after a failure of the machine or when the driver asks, and stops
+the attempts in flight when the run is cancelled.
+
+### `workflow-graph/tests/order.rs`
+
+The engine keeps the order rules of a run: a task starts only after the tasks in its `after`
+list have finished, and it may only name tasks that the driver asked for before. With run
+options, several tasks are pending at once and finish in another order.

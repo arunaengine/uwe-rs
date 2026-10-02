@@ -1,6 +1,4 @@
-//! Attempts run on Tokio at the same time: the engine hands their outcomes to the driver as they
-//! end, runs a task again after a failure of the machine or when the driver asks, and stops
-//! the attempts in flight when the run is cancelled.
+//! Checks concurrent attempts, retries, dependency gates and cancellation through the engine.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

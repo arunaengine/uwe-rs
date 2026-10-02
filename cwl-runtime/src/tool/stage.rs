@@ -1,6 +1,4 @@
-//! Where every input file of a task goes inside the container: each file of the input object
-//! in a folder of its own, with its secondary files beside it and the entries of a literal
-//! directory inside it, and the InitialWorkDir entries in the output directory.
+//! Stages input files, secondary files, directories and initial workdir entries.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,6 +1,4 @@
-//! The requirements and hints in effect for a process: those of the enclosing workflows and
-//! steps, then its own. The last entry of a class wins, and any requirement beats any hint.
-//! Requirements of the input object (`cwl:requirements`) beat all of them.
+//! Resolves inherited requirements and hints with CWL precedence rules.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

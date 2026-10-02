@@ -1,6 +1,4 @@
-//! The state of a run: every process instance (tool, expression tool, workflow, scatter) as a
-//! job in an arena, with the parent it reports to. Steps start as soon as all their sources
-//! have values, so steps that wait for outputs of earlier tasks start from `complete`.
+//! Tracks process instances and advances workflow jobs when their sources are ready.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

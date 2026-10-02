@@ -1,6 +1,4 @@
-//! Command line tools: a prepared input object becomes a task, with staged files, the
-//! command line, environment, image and resources; the outcome of the task becomes the
-//! output object. This follows cwltool's `CommandLineTool.job` and `collect_output`.
+//! Prepares command-line tool tasks and interprets their completed outputs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

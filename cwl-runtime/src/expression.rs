@@ -1,6 +1,4 @@
-//! Evaluates CWL expressions: parameter references natively, JavaScript in the embedded
-//! engine when `InlineJavascriptRequirement` is in effect, and string interpolation as
-//! cwltool does it.
+//! Evaluates CWL parameter references, interpolation and enabled JavaScript expressions.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

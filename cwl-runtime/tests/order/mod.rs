@@ -1,6 +1,4 @@
-//! The run options of the test-workflows tests. `CWL_TEST_WORKFLOWS_ORDER=reversed` or
-//! `shuffled:<seed>` lets up to 8 tasks be pending and finish in that order, which shows whether
-//! the driver depends on the order of outcomes; without it, one task runs at a time.
+//! Selects fixture completion orders to detect dependence on task finish order.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

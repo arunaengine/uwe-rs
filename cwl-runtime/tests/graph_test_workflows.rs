@@ -1,13 +1,4 @@
-//! Builds the execution graph of every CWL document of the test workflows from
-//! `just cwl-test-workflows` that `cwltool --validate` accepts, with placeholder inputs and the
-//! simulator, and compares the outcome with `tests/fixtures/graph_test_workflows.txt`:
-//! `ok` and the number of tasks, or the error. Documents of the fixture that the test workflows
-//! lack, like those of a host the network could not reach, are left out. A document may only
-//! fail when `tests/fixtures/graph_evidence.txt` has a record of it: why it cannot run, and
-//! that cwltool fails on it too (see `records`). Run with
-//! `just cwl-graph-test-workflows-test`; on a difference the test writes the new fixture to the
-//! target directory and says where. `CWL_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets
-//! tasks finish in a random order (see `order`).
+//! Checks simulated execution graphs for validated CWL workflow fixtures.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,6 +1,4 @@
-//! Collecting the outputs of a finished task, as cwltool's `collect_output` does: from
-//! `cwl.output.json`, or from the files that the globs of the output bindings match; in a
-//! simulated run, outputs the executor could not make get placeholders.
+//! Collects finished tool outputs from cwl.output.json or output-binding globs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

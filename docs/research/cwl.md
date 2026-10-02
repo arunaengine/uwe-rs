@@ -541,3 +541,166 @@ documents of differences.txt, which cwltool rejects but the loader reads, have n
 
 Run it from the repository root: cwl-parser/tests/fixtures/test-workflows/rejected.py
 It reads the test workflows of `just cwl-test-workflows` (CWL_TEST_WORKFLOWS).
+
+## File descriptions: cwl-runtime
+
+### `cwl-runtime/src/binding.rs`
+
+Command line bindings: how input values, `baseCommand` and `arguments` become sorted
+bindings, and how each binding becomes arguments. This follows cwltool's `bind_input`,
+`generate_arg` and its sort of positions and names.
+
+### `cwl-runtime/src/expression.rs`
+
+Evaluates CWL expressions: parameter references natively, JavaScript in the embedded
+engine when `InlineJavascriptRequirement` is in effect, and string interpolation as
+cwltool does it.
+
+### `cwl-runtime/src/inputs.rs`
+
+The input object of a process, as cwltool's `_init_job` makes it: defaults for missing
+inputs, file objects with their derived fields, listings, sizes, contents and secondary
+files, and a check of every value against its type.
+
+### `cwl-runtime/src/lib.rs`
+
+Runs CWL documents as a driver of the execution graph: values with exact numbers, File and
+Directory objects, parameter references and JavaScript expressions, the command line of
+tools, and workflows with scatter, conditions and subworkflows.
+
+[`driver`] is the entry point: it loads the document of a [`workflow_graph::Launch`], takes
+its input object from the job file (or placeholders from the input types when there is
+none), and asks for one task per command line tool run. Expression tools run inside the
+driver. Features iunctus does not support fail with [`workflow_graph::DriverError`]s that
+are marked unsupported, which gives exit code 33.
+
+### `cwl-runtime/src/placeholder.rs`
+
+Placeholder values for inputs that nothing sets, so that a graph builds without a job
+file: files named after the input, with the extension that their format, their secondary
+files or their name suggest, since expressions often take names apart. Every rule about
+placeholders lives here: the values themselves, which optional inputs get them, and which
+files count as placeholders.
+
+### `cwl-runtime/src/results.rs`
+
+The results of a real run, as `cwltool --outdir` gives them: each file and directory of the
+output object goes to the output folder under its basename, and the output object then
+names it there. The files of a directory come with it, and secondary files go next to
+their primary file.
+
+### `cwl-runtime/src/run/links.rs`
+
+How values flow between the steps of a workflow: sources that must exist, `linkMerge` and
+`pickValue` over the sources of a step input, the outputs of a workflow, and the outputs of
+a scatter, nested by its shape.
+
+### `cwl-runtime/src/run/marks.rs`
+
+The markers of a CWL run: a scatter over an output of an earlier step decides how many jobs
+follow from that output, so a run with real data can have more or fewer tasks there. Files
+in the scattered lists go to the engine, which marks their task when a glob with a wildcard
+matched them; for lists without files, the tasks of the steps that made them are marked.
+
+### `cwl-runtime/src/run/mod.rs`
+
+The state of a run: every process instance (tool, expression tool, workflow, scatter) as a
+job in an arena, with the parent it reports to. Steps start as soon as all their sources
+have values, so steps that wait for outputs of earlier tasks start from `complete`.
+
+### `cwl-runtime/src/schema.rs`
+
+The inputs and outputs of a CWL process as JSON Schema (decision 24): each input or output
+with its type, its `label` as the title, its `doc` as the description, and an input with its
+default. Files and directories are paths, which an input must name before the run, with
+their formats and secondary files; enums, arrays, records and optional types map onto their
+JSON Schema forms. The values of a run are its input object, with files and directories as
+their paths or addresses.
+
+### `cwl-runtime/src/scope.rs`
+
+The requirements and hints in effect for a process: those of the enclosing workflows and
+steps, then its own. The last entry of a class wins, and any requirement beats any hint.
+Requirements of the input object (`cwl:requirements`) beat all of them.
+
+### `cwl-runtime/src/tool/collect.rs`
+
+Collecting the outputs of a finished task, as cwltool's `collect_output` does: from
+`cwl.output.json`, or from the files that the globs of the output bindings match; in a
+simulated run, outputs the executor could not make get placeholders.
+
+### `cwl-runtime/src/tool/mod.rs`
+
+Command line tools: a prepared input object becomes a task, with staged files, the
+command line, environment, image and resources; the outcome of the task becomes the
+output object. This follows cwltool's `CommandLineTool.job` and `collect_output`.
+
+### `cwl-runtime/src/tool/stage.rs`
+
+Where every input file of a task goes inside the container: each file of the input object
+in a folder of its own, with its secondary files beside it and the entries of a literal
+directory inside it, and the InitialWorkDir entries in the output directory.
+
+### `cwl-runtime/tests/conformance.rs`
+
+Runs every test of the CWL conformance suites v1.0, v1.1 and v1.2 through the driver and
+the simulator, and compares the outcome with `tests/fixtures/conformance.txt`.
+
+The simulator runs no tool, so a test checks its expected output only where the output does
+not depend on a real run: runs of expression tools, parameter references and command
+lines. For that the executor here simulates the few commands whose effect is known, like
+`echo`, `cat` of staged files, and the conformance suite's `args.py`, which writes its
+arguments to `cwl.output.json`; so the command lines are compared with cwltool's. Each test
+gets one of these outcomes:
+
+- `pass`: the output equals the expected one, as cwltest compares it; for `should_fail`
+  tests, the run fails.
+- `ran`: the graph was built, but the output needs a real run of some tool.
+- `fail: ...` and `unsupported: ...`: the run failed, or a checked output differs.
+
+Run with `just cwl-conformance-test`; on a difference the test writes the new fixture to
+the target directory and says where.
+
+### `cwl-runtime/tests/graph_test_workflows.rs`
+
+Builds the execution graph of every CWL document of the test workflows from
+`just cwl-test-workflows` that `cwltool --validate` accepts, with placeholder inputs and the
+simulator, and compares the outcome with `tests/fixtures/graph_test_workflows.txt`:
+`ok` and the number of tasks, or the error. Documents of the fixture that the test workflows
+lack, like those of a host the network could not reach, are left out. A document may only
+fail when `tests/fixtures/graph_evidence.txt` has a record of it: why it cannot run, and
+that cwltool fails on it too (see `records`). Run with
+`just cwl-graph-test-workflows-test`; on a difference the test writes the new fixture to the
+target directory and says where. `CWL_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets
+tasks finish in a random order (see `order`).
+
+### `cwl-runtime/tests/inputs_test_workflows.rs`
+
+Describes the inputs of every CWL document of the graph test (`graph_test_workflows.txt`)
+as a run does before its first task (decision 24), and compares the counts with
+`tests/fixtures/inputs_test_workflows.txt`: the inputs of each schema and how many are
+required, files and directories, the errors and warnings of a check of a simulated run
+without a job file, and the inputs that the process reads or leaves unread. Every schema
+must be valid JSON Schema of draft 2020-12. No task runs. A document that loads a `run` file
+from the web depends on the network, so it is compared only when it loads both times. Run
+with `just inputs-test-workflows-test`; `UPDATE_FIXTURE=1` writes the fixture again.
+
+### `cwl-runtime/tests/job_test_workflows.rs`
+
+Runs the real-world CWL documents of the test workflows from `just cwl-test-workflows` with
+their example job files, as `iunctus run <document> -inputs <job>` does with the
+simulator, and compares the outcomes with `tests/fixtures/job_test_workflows.txt`: per
+document and job file, `ok` and the number of tasks, or the error.
+`fixtures/job_test_workflows.py` finds the pairs; a pair may only fail when
+`fixtures/job_evidence.txt` has a record of it: why it cannot run, and that cwltool rejects
+it too (see `records`). Documents that
+`cwltool --validate` rejects, and pairs whose files the test workflows lack, are left out.
+Run with `just cwl-job-test-workflows-test`; on a difference the test writes the new fixture
+to the target directory and says where. `CWL_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets
+tasks finish in a random order (see `order`).
+
+### `cwl-runtime/tests/order/mod.rs`
+
+The run options of the test-workflows tests. `CWL_TEST_WORKFLOWS_ORDER=reversed` or
+`shuffled:<seed>` lets up to 8 tasks be pending and finish in that order, which shows whether
+the driver depends on the order of outcomes; without it, one task runs at a time.

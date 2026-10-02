@@ -1,7 +1,4 @@
-//! The markers of a CWL run: a scatter over an output of an earlier step decides how many jobs
-//! follow from that output, so a run with real data can have more or fewer tasks there. Files
-//! in the scattered lists go to the engine, which marks their task when a glob with a wildcard
-//! matched them; for lists without files, the tasks of the steps that made them are marked.
+//! Marks scatters and inputs whose simulated shape depends on real output data.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -6,7 +6,7 @@
 
 Baseline: `945ad6c1a8933d26a1ffea13b8d81879fdb9b450`. Branch: `fix/universal-execution`.
 
-The user authorized implementation of all findings in the [2026-10-07 audit](universal-workflow-audit-2026-10-07.md). The core remains portable across execution backends. Aruna is a required integration using those contracts, rather than the default authority or a dependency of every core type. Workflow tools, package helpers and Conda installation remain container-only.
+The user authorized implementation of all findings in the [2026-10-07 audit](universal-workflow-audit-2026-10-07.md). The core remains portable across execution backends. Workflow tools, package helpers and Conda installation remain container-only.
 
 Four focused implementation workers share one checkout with exclusive files. The parent reviews exact diffs, runs bounded focused checks, and creates single-author signed commits of at most 500 changed lines. Existing support boundaries and user changes are preserved. No push, deployment or release is authorized by this ledger.
 
@@ -20,7 +20,7 @@ Statuses distinguish an implementation from qualification. A safe refusal can cl
 | D04 | Versioned S3 output addresses are interpreted as object keys | Fixed locally | `96c1105c`: exact version-bound HEAD/GET and encoded keys. Version-enabled service qualification pending. |
 | D05 | Recorder actions have no rollback boundary | Fixed | `41306644`: failing action rollback and prior-action preservation, three tests. |
 | A01 | No reusable application facade or workflow control API | Partial | `f6e3916c`: structured describe/validate/admit/execute over existing drivers and executors, four tests. Hosted control/persistence remains pending. |
-| A02 | The current TES backend cannot submit to current Aruna TES | In progress | `268bd15`, `3d6d449`, `87e3143`, `7f652f25`, `86198701`: bounded native jobs client, three wire tests and completed-write version receipts. Mutable S3 null versions refuse immutable binding. Backend staging/recovery/collection pending. |
+| A02 | Portable TES staging through S3 is unfinished | In progress | Generic TES staging is still being implemented. |
 | A03 | Tenant authorization and cache isolation are absent | Queued | Pending |
 | A04 | Hosted execution needs durable admission and persistence policy | Queued | Pending |
 | A05 | Secret values need an explicit artifact and form policy | Queued | Pending |
@@ -28,7 +28,7 @@ Statuses distinguish an implementation from qualification. A safe refusal can cl
 | A07 | Cached remote URLs have no fresh-read policy | Queued | Pending |
 | A08 | Repeat can proceed without complete historical inputs | Queued | Pending |
 | A09 | Large-run APIs and telemetry need bounded result streaming | Queued | Pending |
-| A10 | Engine build identity and Aruna data identity are not a single contract | Queued | Pending |
+| A10 | Engine build identity and remote data identity are not a single contract | Queued | Pending |
 | S01 | There is no schema-driven submission form | Partial | `0e539a81`, `d5db493c`: versioned full-schema form description, typed field-error responses and profile-sensitive CLI JSON; four native-driver form tests and one CLI test pass. Browser renderer and hosted submit/control remain pending. |
 | S02 | Validation is not uniformly mandatory | Partial | `f6e3916c`: strict embedding admission rejects missing/advisory schemas and simulated assumptions. Existing CLI relaxed policy remains. |
 | S03 | Remote resources and sample-sheet contents are not checked generically | Queued | Pending |
@@ -84,7 +84,7 @@ Statuses distinguish an implementation from qualification. A safe refusal can cl
 1. Confirmed correctness and containment: recording atomicity, private telemetry, file/cache identity, path and option handling, native filesystem semantics and language schema fidelity.
 2. Reusable description, strict admission, normalized typed values, structured errors and result contracts, including bounded file/table validation.
 3. Portable Conda image preparation and completed-image cache, with verified existing-image import and cross-workflow/cross-language reuse.
-4. Portable backend capability and object transfer interfaces, plus the Aruna execution/data adapter.
+4. Portable backend capability and object transfer interfaces, including TES staging through S3.
 5. Schema-driven submission forms, current language/plugin coverage, WDL and native mixed-language workflows.
 6. Pinned differential corpora, resource limits, ownership/recovery, rootless/platform and actual backend qualification.
 
@@ -98,7 +98,7 @@ Focused command output and frozen identities are kept under the locally excluded
 
 The initial recorder fault regression failed before the rollback patch and passed afterward. The first delegated checks exposed two compile errors; both were corrected, and all five retry targets passed (59 selected tests). Later checks caught malformed YAML/test setup and an unsupported Bollard import query. The fixtures were corrected, the optional query removed, and the affected targets passed. One unbounded mock listener was stopped, then replaced with bounded acceptance and read deadlines before its five archive tests passed.
 
-The Docker Python package fixture ran through its real container path. Conda API fixtures remain distinct from the actual installation and reuse qualification below. Podman, rootless execution and other architectures remain unqualified. Aruna fixtures match native jobs revision `51c43dba96198542addb53d3375579c308de0b17`; they do not qualify a live Aruna backend.
+The Docker Python package fixture ran through its real container path. Conda API fixtures remain distinct from the actual installation and reuse qualification below. Podman, rootless execution and other architectures remain unqualified.
 
 ## Semantic acceptance verification
 
@@ -136,6 +136,4 @@ The explicitly enabled `real_conda_rule_reuses_its_image_after_package_cache_evi
 
 This qualifies one small offline local environment and its image reuse. BuildKit, online acquisition, pip locking, remote Conda executors, rootless engines, other platforms, large environments and complete language/backend parity remain open.
 
-## Next Aruna backend boundary
-
-The frozen Aruna source inspection found that native literal output capture can lose the output inventory on capture failure. A first executable adapter therefore needs one result bundle created inside the task container, carrying existing control files, logs and collected outputs. Input writes and bundle reads must bind exact immutable versions. Durable owner/caller-bound idempotency, family evidence, output-owner endpoint checks, bounded extraction, collection recovery and unresolved cancellation handling remain prerequisites. These belong in the adapter; portable workflow and task types remain backend-independent.
+Aruna integration uses the generic TES executor plus S3 storage; TES-over-S3 staging is still being implemented.

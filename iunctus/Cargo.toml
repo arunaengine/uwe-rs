@@ -13,7 +13,6 @@ publish.workspace = true
 
 [dependencies]
 argo-runtime.workspace = true
-aruna-executor.workspace = true
 conda-environment.workspace = true
 config-file.workspace = true
 content-store.workspace = true

@@ -32,7 +32,7 @@ const SECTIONS: &[&str] = &[
 ];
 
 /// The executors that `-executor` and `default` of `[executor]` may name.
-const EXECUTORS: &[&str] = &["simulator", "local", "tes", "slurm", "kubernetes", "aruna"];
+const EXECUTORS: &[&str] = &["simulator", "local", "tes", "slurm", "kubernetes"];
 
 /// What the config files set up for a command; the default is what no config file sets up.
 #[derive(Default)]
@@ -46,8 +46,6 @@ pub struct Setup {
     /// Which tasks get the network, from `[network]`.
     pub network: NetworkRule,
     pub conda: Option<crate::conda::Config>,
-    /// Host-authorized immutable Aruna object transfer, required for `-executor aruna`.
-    pub aruna_objects: Option<std::sync::Arc<dyn crate::aruna::Objects>>,
 }
 
 /// The settings of executors from the `[executor.<name>]` sections. Options on the command line
@@ -62,12 +60,6 @@ pub struct Executors {
     pub tes_token: Option<Secret>,
     /// `[executor.tes.sites.<name>]`: more TES servers, each near some data.
     pub tes_sites: Vec<TesSite>,
-    pub aruna_server: Option<String>,
-    pub aruna_group: Option<String>,
-    pub aruna_bucket: Option<String>,
-    pub aruna_scope: Option<String>,
-    /// Only an environment variable reference is accepted in `[executor.aruna] token`.
-    pub aruna_token: Option<Secret>,
     /// `[executor.slurm] container`, like `-slurm-container`.
     pub slurm_container: Option<String>,
     /// `[executor.slurm] options`, a list of options of `sbatch`, like `-slurm-options`.
@@ -98,7 +90,7 @@ impl Executors {
         let Some(section) = config.section("executor")? else {
             return Ok(settings);
         };
-        section.only(&["default", "local", "tes", "slurm", "kubernetes", "aruna"])?;
+        section.only(&["default", "local", "tes", "slurm", "kubernetes"])?;
         if let Some(local) = section.table("local")? {
             local.only(&["engine"])?;
             settings.engine = local.text("engine")?;
@@ -125,22 +117,6 @@ impl Executors {
                     token: site.secret("token")?,
                     near: site.texts("near")?.unwrap_or_default(),
                 });
-            }
-        }
-        if let Some(aruna) = section.table("aruna")? {
-            aruna.only(&["server", "group", "bucket", "scope", "token"])?;
-            settings.aruna_server = aruna.text("server")?;
-            settings.aruna_group = aruna.text("group")?;
-            settings.aruna_bucket = aruna.text("bucket")?;
-            settings.aruna_scope = aruna.text("scope")?;
-            settings.aruna_token = aruna.secret("token")?;
-            if let Some(token) = &settings.aruna_token
-                && token.variable().is_none()
-            {
-                return Err(ConfigError::at(
-                    token.origin(),
-                    "Aruna token must reference an environment variable",
-                ));
             }
         }
         if let Some(slurm) = section.table("slurm")? {
@@ -321,7 +297,6 @@ impl Setup {
         let network = network(&config).map_err(failed)?;
         let conda = crate::conda::Config::read(&config).map_err(failed)?;
         Ok(Setup {
-            aruna_objects: None,
             storage,
             executors,
             telemetry,
@@ -459,26 +434,6 @@ mod tests {
         let config =
             ConfigFile::parse(text, Path::new("config.toml")).map_err(|e| e.to_string())?;
         Executors::read(&config).map_err(|error| error.to_string())
-    }
-
-    #[test]
-    fn aruna_config_accepts_environment_tokens_and_rejects_literal_secrets() {
-        let settings = read("[executor]\ndefault = 'aruna'\n[executor.aruna]\nserver = 'https://aruna.example/api/v1'\ngroup = 'group'\nbucket = 'results'\nscope = 'caller'\ntoken = { environment = 'ARUNA_TEST_TOKEN' }\n").unwrap();
-        assert_eq!(
-            settings.aruna_server.as_deref(),
-            Some("https://aruna.example/api/v1")
-        );
-        assert_eq!(settings.aruna_group.as_deref(), Some("group"));
-        assert_eq!(settings.aruna_bucket.as_deref(), Some("results"));
-        assert_eq!(settings.aruna_scope.as_deref(), Some("caller"));
-        assert_eq!(
-            settings.aruna_token.as_ref().unwrap().variable(),
-            Some("ARUNA_TEST_TOKEN")
-        );
-        assert!(!format!("{settings:?}").contains("fixture-secret"));
-        let error = read("[executor.aruna]\ntoken = 'fixture-secret'\n").unwrap_err();
-        assert!(error.contains("environment variable") && !error.contains("fixture-secret"));
-        assert!(read("[executor.aruna]\nunknown = 'value'\n").is_err());
     }
 
     #[test]

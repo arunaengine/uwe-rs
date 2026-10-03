@@ -7,6 +7,11 @@ lint:
 	cargo +nightly-2026-09-14 fmt --all -- --check
 	cargo +nightly-2026-09-14 clippy --workspace --all-targets --all-features --locked -- -D warnings
 
+# Static structure, naming, comment and header check from STYLE.md; no build.
+style:
+	python3 scripts/dev/check_style_tests.py
+	python3 scripts/dev/check_style.py
+
 # Workspace tests and doctests.
 test:
 	cargo test --workspace --all-targets --all-features --locked

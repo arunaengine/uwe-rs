@@ -437,6 +437,7 @@ async fn several(
             image: image.reference.clone(),
             command: vec!["sh".into(), inside],
             workdir: start(spec, container.workdir.as_deref(), folders.work),
+            env: BTreeMap::new(),
         });
     }
     Ok(())
@@ -508,6 +509,7 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
                 path: inside(&staged.path),
                 url: file_url(&staged.source),
                 kind,
+                path_prefix: None,
             });
         }
     }
@@ -531,11 +533,13 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
             path: OUTBOX.into(),
             url: file_url(&root.join("work")),
             kind: FileType::Directory,
+            path_prefix: None,
         },
         Output {
             path: CONTROL.into(),
             url: file_url(&root.join("control")),
             kind: FileType::Directory,
+            path_prefix: None,
         },
     ];
     outputs.extend(written_back);
@@ -555,6 +559,7 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
             image: image.reference.clone(),
             command: vec!["sh".into(), WRAPPER.into()],
             workdir: start(spec, spec.workdir.as_deref(), &work),
+            env: BTreeMap::new(),
         }],
         // The work directory, the home folder and `/tmp` are writable, also when the image's
         // own files are not.

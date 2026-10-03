@@ -5858,10 +5858,14 @@ dependencies = [
 name = "tes-executor"
 version = "0.1.0"
 dependencies = [
+ "config-file",
+ "content-store",
  "executor",
+ "opendal",
  "reqwest",
  "serde",
  "serde_json",
+ "storage",
  "task-model",
  "tempfile",
  "thiserror 2.0.21",

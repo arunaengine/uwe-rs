@@ -59,6 +59,8 @@ pub struct Input {
 pub struct Output {
     pub path: String,
     pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path_prefix: Option<String>,
     #[serde(rename = "type")]
     pub kind: FileType,
 }
@@ -80,6 +82,8 @@ pub struct ExecutorSpec {
     pub command: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workdir: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
 }
 
 /// The state of a task on the server.
@@ -126,6 +130,24 @@ pub struct Status {
 pub struct TaskLog {
     #[serde(default)]
     pub system_logs: Vec<String>,
+    #[serde(default)]
+    pub logs: Vec<ExecutorLog>,
+    #[serde(default)]
+    pub outputs: Vec<FileLog>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct ExecutorLog {
+    pub exit_code: Option<i32>,
+    pub stdout: Option<String>,
+    pub stderr: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct FileLog {
+    pub path: String,
+    pub url: String,
+    pub size_bytes: String,
 }
 
 #[derive(Deserialize)]
@@ -134,13 +156,23 @@ struct Created {
 }
 
 /// A client of one TES server.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Client {
     /// The address of the API, like `http://localhost:8000/ga4gh/tes/v1`.
     base: String,
     http: &'static reqwest::Client,
     /// A bearer token for the server, when it needs one.
     token: Option<String>,
+    basic: Option<(String, String)>,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Client")
+            .field("base", &self.base)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Client {
@@ -156,7 +188,31 @@ impl Client {
             url: base.clone(),
             message,
         })?;
-        Ok(Client { base, http, token })
+        Ok(Client {
+            base,
+            http,
+            token,
+            basic: None,
+        })
+    }
+
+    pub fn with_basic(mut self, user: String, password: String) -> Self {
+        self.basic = Some((user, password));
+        self
+    }
+
+    pub fn redact(&self, text: &str) -> String {
+        let mut text = text.to_owned();
+        for secret in self.token.iter().chain(
+            self.basic
+                .iter()
+                .flat_map(|(user, password)| [user, password]),
+        ) {
+            if !secret.is_empty() {
+                text = text.replace(secret, "[secret]");
+            }
+        }
+        text
     }
 
     pub fn server(&self) -> &str {
@@ -204,10 +260,12 @@ impl Client {
         request = request.timeout(Duration::from_secs(120));
         if let Some(token) = &self.token {
             request = request.bearer_auth(token);
+        } else if let Some((user, password)) = &self.basic {
+            request = request.basic_auth(user, Some(password));
         }
         let failed = |error: reqwest::Error| TesError::Request {
             url: url.to_owned(),
-            message: cause(&error),
+            message: self.redact(&cause(&error)),
         };
         let response = request.send().await.map_err(failed)?;
         let status = response.status();
@@ -216,10 +274,11 @@ impl Client {
             return Err(TesError::Status {
                 url: url.to_owned(),
                 status: status.as_u16(),
-                body: text,
+                body: self.redact(&text),
             });
         }
-        serde_json::from_str(&text).map_err(|error| TesError::Answer(format!("{error}: {text}")))
+        serde_json::from_str(&text)
+            .map_err(|error| TesError::Answer(self.redact(&format!("{error}: {text}"))))
     }
 }
 
@@ -238,6 +297,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hides_authentication_secrets() {
+        let client = Client::new("http://localhost:1", Some("private-token".into()))
+            .unwrap()
+            .with_basic("private-user".into(), "private-password".into());
+        let printed = format!("{client:?}");
+        assert!(!printed.contains("private"));
+        assert_eq!(
+            client.redact("private-token private-user private-password"),
+            "[secret] [secret] [secret]"
+        );
+    }
+
+    #[test]
+    fn reads_terminal_logs() {
+        let status: Status = serde_json::from_value(serde_json::json!({
+            "id": "x", "state": "COMPLETE", "logs": [{
+                "logs": [{"exit_code": 0, "stdout": "tail", "stderr": null}],
+                "outputs": [{"path": "/work/x", "url": "s3://bucket/x", "size_bytes": "4"}]
+            }]
+        }))
+        .unwrap();
+        assert_eq!(status.logs[0].logs[0].exit_code, Some(0));
+        assert_eq!(status.logs[0].outputs[0].size_bytes, "4");
+    }
+
+    #[test]
     fn preserves_specification_names() {
         let task = Task {
             name: "a".into(),
@@ -250,6 +335,7 @@ mod tests {
                 image: "debian".into(),
                 command: vec!["bash".into()],
                 workdir: None,
+                env: BTreeMap::new(),
             }],
             resources: Some(Resources {
                 cpu_cores: Some(2),

@@ -12,6 +12,9 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+config-file.workspace = true
+content-store.workspace = true
+storage.workspace = true
 tracing.workspace = true
 executor.workspace = true
 reqwest.workspace = true
@@ -23,5 +26,6 @@ tokio = { workspace = true, features = ["time", "fs"] }
 tokio-util.workspace = true
 
 [dev-dependencies]
+opendal.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt"] }

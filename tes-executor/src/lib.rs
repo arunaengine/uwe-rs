@@ -5,6 +5,8 @@
 
 mod backend;
 pub mod client;
+mod settings;
 
 pub use backend::TesBackend;
 pub use client::{Client, TesError};
+pub use settings::Settings;

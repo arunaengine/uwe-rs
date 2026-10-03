@@ -1,3 +1,4 @@
+<!-- Supported execution behavior, qualification gates and operational guidance. -->
 <!-- Copyright (c) 2026 The iunctus Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
@@ -62,3 +63,187 @@ Resume and repeat are implemented, but exact historical computation depends on r
 [Explicit qualification](../.github/workflows/qualification.yml) requires a corpus/oracle tar.gz URL and its exact SHA-256. The archive root must contain `nf-core-text/pipelines`, `snakemake`, `config-oracle` and `manifest.json`. The manifest uses `format: 1`, `nextflow_version: "26.04.6"`, `fixtures` mapping the three fixture paths listed in [the verifier](../.github/scripts/verify-corpus.py) to their SHA-256 digests, and `files` mapping every other bundle-relative file path to its SHA-256. Record oracle outputs with that reference version and pinned workflow revisions; include `.exit`, `.txt` and `.err` for every pipeline. The verifier checks fixture identities, every file digest and the exact pipeline inventory. Existing tests then enforce config parity and the exact Conda inventory/rejections. Missing resources fail this invocation; no public complete bundle is claimed to be available yet.
 
 Qualification also explicitly invokes the real Docker Python package bridge, requiring a working engine and network for image/package preparation. It is one integration gate, not qualification of rootless or remote backends or the other ignored language corpora. [Candidate artifacts](../.github/workflows/artifacts.yml) is manually invoked with the same bundle identity, depends on those source/corpus/container checks, and produces a Linux x86_64 binary archive, license texts, documentation and SHA-256 checksums with source/toolchain identities. It uploads CI artifacts only; publication and production acceptance remain separate decisions. Verify `SHA256SUMS` before extracting and `BINARY.sha256` inside the extracted folder. Checksums identify bytes; they do not imply an independent signature, complete dependency license/advisory audit or backend qualification.
+
+## Command and harness details
+
+The following descriptions retain the detailed contracts and invocation notes from the crate source introductions.
+
+### `iunctus/src/changes.rs`
+
+What changed since a run: the files of its workflow and of its command line, the files it read on this machine and at addresses, and the images that its tags name now, each compared by digest with what the run recorded. `iunctus changes <run>` prints it, and `iunctus repeat <run>` prints it before it runs the run again with what the run pinned.
+
+### `iunctus/src/check.rs`
+
+`iunctus check <workflow>`: everything that would stop a real run, found at once and without running a task, in every language: unsupported features, syntax and load errors, broken references like missing includes, inputs that do not fit the schema of the workflow, local files that tasks read and that do not exist, and tasks without a container image.
+
+The check plans the run with the simulator, in a scratch folder that it removes, so that it goes past the missing files that would stop a real run at the first one. It records nothing in the run database.
+
+### `iunctus/src/clean.rs`
+
+`iunctus clean`: removes from the store what no rule keeps, as `nextflow clean` removes work folders, but by rule and never what a run still refers to. It lists what it would remove first, and removes it only with `-remove`. It also removes the scratch folders that runs which ended left behind.
+
+### `iunctus/src/failure.rs`
+
+Why a command failed, and its exit code. Every error has one form, whichever part of iunctus finds it: `iunctus: <where>: <what went wrong>; <what to do>`. The place is a file and line, a task, an input or an address. docs/design/checks.md lists the exit codes.
+
+### `iunctus/src/fetched.rs`
+
+The remote files that a run read, as the storage providers noted them: task inputs at addresses, and files that workflow code read, like a sample sheet on the web. The run database records them by digest, and a real run keeps their contents in its store, so that a repeat of the run reads the same bytes, also when the file at the address has changed.
+
+### `iunctus/src/inputs.rs`
+
+The inputs and outputs of a workflow as JSON Schema (decision 24): `iunctus inputs` prints the schema of the inputs of any workflow, `iunctus outputs` that of its outputs, and every run checks its values against the schema of its inputs before any task starts.
+
+### `iunctus/src/kubernetes.rs`
+
+The Kubernetes executor: each task runs as a Kubernetes Job through the task runner. The nodes must see the store and the scratch directories at the same paths, as `hostPath` volumes. The cluster is the one of the kubeconfig that `-kubeconfig` names: iunctus never takes the default kubeconfig, so that no run reaches a cluster by accident.
+
+### `iunctus/src/order.rs`
+
+The order check, `iunctus check-order <workflow>`: runs a workflow twice, once with the results of its tasks handed to the workflow in the order it asked for them and once in the reverse order, and compares the steps of the two runs by the digests of what their tasks read and made. A step whose tasks or outputs change with the order depends on which task finished first, like a step that collects files in the order their tasks finish.
+
+### `iunctus/src/page.rs`
+
+The web page of runs (decision 23): `iunctus page [<run>]` serves it for any run, and `iunctus run -page` serves it for the run it starts. The page listens on this machine only, unless `-address` says otherwise.
+
+### `iunctus/src/preview.rs`
+
+The preview of a run: a simulated run that tells, for each task, whether a real run would take it from the cache, so that the user sees how much work is left before any compute is spent. A task whose result the store holds gets that result, with its real files, so that the tasks after it can be found in the cache too; every other task is simulated.
+
+A real run pins each image to its digest, which is part of the cache key. The preview asks no registry: it takes the digest that the latest real run pinned the image to, from the run database. So a task whose image no real run used, or whose tag moved since, is simulated.
+
+### `iunctus/src/progress.rs`
+
+What `iunctus run` shows of a real run, as `nextflow run` shows its log: a line that names the run, then a line per step with its counts, and at the end how the run went and where its results went. In a terminal, the lines of the steps are drawn again in place as the run goes (`terminal.rs`); elsewhere, like in a log file, each task that ends prints its own line, like `[done] SAY (1)`, and the summary comes at the end. The same for every language.
+
+### `iunctus/src/repeat.rs`
+
+`iunctus repeat <run>`: runs a past run again, exactly: with the files of its workflow and of its command line as the run had them, its images at the digests it ran at, and its remote files as it read them, from its store. It first prints what changed since the run, and at its end compares the outputs of each step with those of the run by digest.
+
+### `iunctus/src/report.rs`
+
+The report of a run, one HTML file that needs no server (decision 23's page in a file): `iunctus report <run>` writes it for any run, and `iunctus run -report <file>`, or `file` of the `[report]` section of the config file, writes it when the run ends. It suits machines where no browser can reach the page, like the login node of a cluster: copy the file and open it.
+
+### `iunctus/src/resources.rs`
+
+Right-sized resources: what the tasks of each step used in earlier real runs of the workflow sets the CPUs and memory that the next run asks for, and a note after the run says what changed (see `docs/design/efficiency.md`).
+
+### `iunctus/src/resume.rs`
+
+Resume from the run database: a run that continues an earlier one takes the result of each task that finished there, instead of running it again. Real results additionally need their recorded input and output bytes and pinned image identity. Simulated results have no such identities to prove. The store's cache still answers tasks whose image is pinned, in any run.
+
+### `iunctus/src/runs.rs`
+
+The commands that read the run database: `iunctus runs` lists the runs, `iunctus export <run>` writes the Workflow Run RO-Crate of a run, and `iunctus why <run> <task>` tells why a task ran instead of taking an earlier result, and `iunctus origin <file>` tells where a file came from.
+
+### `iunctus/src/setup.rs`
+
+The config file of iunctus (decision 20): the site-wide file, the user's file and the file of `-iunctus-config`, read once per command, with the storage providers and the store that they name. Without any file, everything works with its defaults.
+
+### `iunctus/src/slurm.rs`
+
+The SLURM executor: each task runs as a SLURM batch job through the task runner. The nodes must see the store and the scratch directories at the same paths, through a shared file system, as the cache directory in a home folder usually is.
+
+### `iunctus/src/sources.rs`
+
+The sources of a run: the files of its workflow and the files that its command line names, like config files, params files and CWL job files, each by digest. A real run keeps their contents in its store, so that a repeat of the run has the same workflow and the same config years later, also when the folder of the workflow has changed since.
+
+### `iunctus/src/terminal.rs`
+
+The live drawing of a run in a terminal, as `nextflow run` draws its log: the lines of the steps stay at the bottom and are drawn again in place, at each event and every second. What else the run prints, like Nextflow's `view` or a warning, goes above them: while the drawing lasts, standard output (and standard error, when it is the same terminal) go into pipes, whose lines a thread each prints above the steps.
+
+### `iunctus/src/tes.rs`
+
+The TES executor: each task runs on a GA4GH TES server through the task runner. The store and the scratch directories are on this machine, and the server reads and writes them at the same paths through `file://` URLs, as Funnel on this machine or on a cluster with a shared file system does.
+
+### `iunctus/src/tracked.rs`
+
+The files that Git tracks in a repository, read from its index (`.git/index`) without a Git program, so that a run can record the files of its workflow by digest. The index of Git versions 2, 3 and 4 is read; the paths of version 4 are compressed against the path before.
+
+### `iunctus/src/insight/mod.rs`
+
+The commands that show what runs did and why, from the run database: `iunctus time` tells where the time of a run went, `iunctus compare` what differs between two runs, and `iunctus replay` runs one task again and tells what differs, and `iunctus telemetry` writes and sends the trace of a run in the OpenTelemetry format. `time` and `compare` write plain text, or JSON with `-format json`.
+
+### `iunctus/src/insight/replay.rs`
+
+`iunctus replay <run> <task>`: runs one recorded task again, alone, from its description in the run database: in the image it ran in, pinned to its digest, with the same inputs, taken from the store by their digest where their files are gone. It runs on this machine, or on the executor that `-executor` names, whatever the cache holds, and is recorded as a run of its own. Then it tells how the replay compares with the task as it ran: its exit code, time and outputs by digest, and the standard output and error of both. A failed task replays too.
+
+### `iunctus/src/insight/telemetry.rs`
+
+OpenTelemetry traces of runs: `iunctus telemetry <run>` writes the trace of a run as OTLP JSON lines to a file, and sends it to the OTLP HTTP endpoint of the `[telemetry]` section of the config file when there is one. Every real run sends its trace there when it ends.
+
+```toml [telemetry] endpoint = "http://localhost:4318" headers = { authorization = { environment = "OTLP_AUTHORIZATION" } } ```
+
+### `iunctus/src/insight/time.rs`
+
+`iunctus time <run>`: where the time of a run went. The critical path, the chain of tasks that set the length of the run, with how long each waited and ran; how long all tasks ran and waited together; and the steps that ran the longest and used the most CPU time, memory and I/O.
+
+### `iunctus/src/machine/mod.rs`
+
+`iunctus check-machine`: what is ready on this machine for real runs, and what is missing with what to install or set: the config file and its secrets, the container engine, the store and its free space, the run database, and each executor that the config file or the command line sets up.
+
+The check asks no server outside this machine, except those that the config file or the command line names, each once: the store at an address, and the TES server.
+
+### `iunctus/tests/cache.rs`
+
+The global cache with real runs in Docker: a task that any run, pipeline or language asked for before comes from the store, and two runs that ask for the same task at the same moment run it once. The tests need Docker and the `debian:stable-slim` image; run them with `cargo test -p iunctus --test cache -- --ignored --test-threads 1`.
+
+### `iunctus/tests/config_files.rs`
+
+Which config files the binary reads: the file that `IUNCTUS_SITE_CONFIG` names in place of the site-wide file, and none at all for the commands of the other tests, which run in an empty config folder.
+
+### `iunctus/tests/config_test_workflows.rs`
+
+Compares `iunctus config -profile test` with `nextflow config -flat -profile test` for every nf-core pipeline of the test workflows. `just config-oracle` records the Nextflow output first; run with `just config-test-workflows-test`.
+
+### `iunctus/tests/efficiency.rs`
+
+Right-sized resources and short tasks together in real runs: a run after an earlier one asks for the memory that its tasks used, not for what the workflow names, and says so; `-no-right-sizing` keeps what the workflow names. Short tasks run one after another in one container, each with its own outcome, log and outputs. `cargo test -p iunctus --test efficiency -- --ignored` (needs Docker and the debian:stable-slim image).
+
+### `iunctus/tests/errors.rs`
+
+Checks that every error has the same form, `iunctus: <where>: <what>; <what to do>`, and the exit code of its kind: 1 for the workflow, 2 for the command line, 3 for the machine or its config, 33 for a feature that iunctus does not support. No test needs a container engine or the network: servers are at a local port that nothing listens on.
+
+### `iunctus/tests/inputs_test_workflows.rs`
+
+Describes the inputs of every Nextflow workflow of the test workflows, the nf-core pipelines and the Nextflow workflows of WorkflowHub, as a run does before its first task (decision 24), and compares the counts with `tests/fixtures/inputs_test_workflows.txt`: the inputs of each schema and how many are required, files and sample sheets, the errors and warnings of a check of a simulated run with `-profile test` (without a profile where a WorkflowHub workflow has none), and where the schema and the params that the code reads differ. Every schema must be valid JSON Schema of draft 2020-12. No task runs and nothing comes from the network: the driver reads local files only, and a remote file is an `IOException`, as Nextflow throws when it cannot reach one; nf-core pipelines leave out their remote config files, as with `NXF_OFFLINE`. Each workflow is described in a child process that starts in its folder, as a run does. Run with `just inputs-test-workflows-test`; `UPDATE_FIXTURE=1` writes the fixture again.
+
+### `iunctus/tests/insight.rs`
+
+The insight commands on recorded runs: `iunctus time`, `iunctus compare` and `iunctus telemetry` on simulated runs, with a small OTLP HTTP receiver of the test, and `iunctus replay`, which refuses simulated runs and, in the ignored test, runs a task of a real run again in its container: `cargo test -p iunctus --test insight -- --ignored` (needs Docker and the debian:stable-slim image).
+
+### `iunctus/tests/machine.rs`
+
+Runs `iunctus check-machine`: it says what is ready and what is missing for real runs, with what to do, and exits with 3 when something is missing. The container engine is a socket that is not there, and the only server is at a local port that nothing listens on.
+
+### `iunctus/tests/reproducibility.rs`
+
+Reproducibility in whole runs: what a run records to pin it, what changed since, the order check, and, with Docker, the reproducibility check of cached tasks and a repeat of a run whose workflow and remote file changed since. The Docker tests need the `debian:stable-slim` image; run them with `cargo test -p iunctus --test reproducibility -- --ignored --test-threads 1`. A repeat asks the registries whether the tags of its images moved; inside `unshare --map-current-user -n --keep-caps` (with `ip link set lo up`) it cannot, and says so.
+
+### `iunctus/tests/run.rs`
+
+Runs `iunctus run` on small scripts with the simulator, and with Docker in the ignored test, which needs the `debian:stable-slim` image; run it with `cargo test -p iunctus --test run -- --ignored`.
+
+### `iunctus/tests/run_test_workflows.rs`
+
+Runs every nf-core pipeline of the test workflows with `-profile test` and the simulator, and compares the outcome with `tests/fixtures/run_test_workflows.txt`: `ok`, or the exit code and the first line of the error. The Nextflow workflows of WorkflowHub run the same way, and compare with `tests/fixtures/run_workflowhub.txt`. The runs are stub runs, as pipelines then do not read the content of the outputs that the simulator makes up, and up to 8 tasks finish in a seeded shuffled order, so that the Nextflow driver cannot depend on the order of outcomes. Each run starts from a copy of the folder of its workflow, as a user runs a workflow after a clone. The execution graph of each run that succeeds must be valid. A workflow may only fail with a record in `tests/fixtures/run_evidence.txt` of why it cannot run, and a record is only kept while its workflow fails. Run with `just run-test-workflows-test`; on a difference the test prints the lines of the new fixture.
+
+### `iunctus/tests/runs.rs`
+
+Every `iunctus run` records itself in the run database: `iunctus runs` lists it, `-resume` continues it without running its finished tasks again, and `iunctus export` writes its RO-Crate. The runs use the simulator, so they need no container engine, except the ignored test of resume with real containers: `cargo test -p iunctus --test runs -- --ignored`.
+
+### `iunctus/tests/storage.rs`
+
+Storage providers of the config file in whole runs: a private web server whose token comes from an environment variable, and whose secret shows nowhere, not in the output, the run database, the RO-Crate, the files of the simulator or the cache. The ignored test reads the inputs of a real run from one S3 server, keeps the store on another, as `just storage-test` starts them, and publishes the results to a third provider, a folder.
+
+### `iunctus/tests/stub_test_workflows.rs`
+
+Runs nf-core pipelines of the test workflows with `-stub` and the simulator, and compares each task's script in the execution graph with the one Nextflow wrote, as `tests/fixtures/oracle/stub/record.sh` recorded them. Run with `just stub-test-workflows-test`.
+
+### Corpus records and TES routing
+
+Sends tasks to the site near their inputs: two Funnel servers on this machine, the second near one folder. Start them with `just funnel-server` and the same with `--Server.HTTPPort 18001 --Server.RPCPort 19091` and other BoltDB and work folders. It counts the tasks of each server, so run it with `--test-threads 1`.
+
+The reason of each pipeline that a record names. A record is a block of lines between empty lines: the pipelines, then `= <kind>: <why>` with one plain sentence, then the evidence that Nextflow fails the same way: `$` the command, and `>` the lines of its output. The kind is `invalid` (the pipeline itself is broken), `missing` (it needs something that is not public or not in its repository), or `unsupported (decision N)` (iunctus leaves the feature out on purpose, as decision N of docs/decisions.md says). Panics on a record without a valid reason or without evidence, so that the record file stays complete.
+
+The outcome of one run: `ok`, or the exit code and the first error line without the parts that differ between machines and runs. A run that takes more than ten minutes is stopped with exit code 124. A run that succeeds with an invalid graph is `graph` and the problem. `target` is the folder of the workflow, or its main script, and `project` its folder, which the run starts from; `profile` runs it with `-profile test`.

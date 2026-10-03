@@ -1,6 +1,4 @@
-//! The SLURM executor: each task runs as a SLURM batch job through the task runner. The nodes
-//! must see the store and the scratch directories at the same paths, through a shared file
-//! system, as the cache directory in a home folder usually is.
+//! Builds SLURM container executors with shared store and scratch paths.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

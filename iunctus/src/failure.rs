@@ -1,6 +1,4 @@
-//! Why a command failed, and its exit code. Every error has one form, whichever part of
-//! iunctus finds it: `iunctus: <where>: <what went wrong>; <what to do>`. The place is a file
-//! and line, a task, an input or an address. docs/design/checks.md lists the exit codes.
+//! Formats command failures and classifies their exit codes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

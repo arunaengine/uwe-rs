@@ -1,11 +1,4 @@
-//! The preview of a run: a simulated run that tells, for each task, whether a real run would
-//! take it from the cache, so that the user sees how much work is left before any compute is
-//! spent. A task whose result the store holds gets that result, with its real files, so that
-//! the tasks after it can be found in the cache too; every other task is simulated.
-//!
-//! A real run pins each image to its digest, which is part of the cache key. The preview asks
-//! no registry: it takes the digest that the latest real run pinned the image to, from the run
-//! database. So a task whose image no real run used, or whose tag moved since, is simulated.
+//! Previews cache reuse with recorded image pins and simulated uncached tasks.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

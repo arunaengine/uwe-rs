@@ -1,7 +1,4 @@
-//! The Kubernetes executor: each task runs as a Kubernetes Job through the task runner. The
-//! nodes must see the store and the scratch directories at the same paths, as `hostPath`
-//! volumes. The cluster is the one of the kubeconfig that `-kubeconfig` names: iunctus never
-//! takes the default kubeconfig, so that no run reaches a cluster by accident.
+//! Builds Kubernetes task executors with explicit kubeconfig and shared host paths.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

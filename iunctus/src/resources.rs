@@ -1,6 +1,4 @@
-//! Right-sized resources: what the tasks of each step used in earlier real runs of the
-//! workflow sets the CPUs and memory that the next run asks for, and a note after the run says
-//! what changed (see `docs/design/efficiency.md`).
+//! Uses earlier task measurements to size resources and report changes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

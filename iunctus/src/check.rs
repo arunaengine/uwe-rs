@@ -1,11 +1,4 @@
-//! `iunctus check <workflow>`: everything that would stop a real run, found at once and without
-//! running a task, in every language: unsupported features, syntax and load errors, broken
-//! references like missing includes, inputs that do not fit the schema of the workflow, local
-//! files that tasks read and that do not exist, and tasks without a container image.
-//!
-//! The check plans the run with the simulator, in a scratch folder that it removes, so that it
-//! goes past the missing files that would stop a real run at the first one. It records nothing
-//! in the run database.
+//! Finds workflow planning problems without running tasks or recording a run.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

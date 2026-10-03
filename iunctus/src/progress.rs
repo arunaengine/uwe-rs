@@ -1,8 +1,4 @@
-//! What `iunctus run` shows of a real run, as `nextflow run` shows its log: a line that names
-//! the run, then a line per step with its counts, and at the end how the run went and where
-//! its results went. In a terminal, the lines of the steps are drawn again in place as the run
-//! goes (`terminal.rs`); elsewhere, like in a log file, each task that ends prints its own line,
-//! like `[done] SAY (1)`, and the summary comes at the end. The same for every language.
+//! Displays real run progress, task outcomes and result locations.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

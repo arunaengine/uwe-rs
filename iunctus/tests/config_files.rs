@@ -1,6 +1,4 @@
-//! Which config files the binary reads: the file that `IUNCTUS_SITE_CONFIG` names in place of
-//! the site-wide file, and none at all for the commands of the other tests, which run in an
-//! empty config folder.
+//! Checks site configuration selection and isolation from user configuration.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

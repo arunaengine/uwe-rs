@@ -1,12 +1,4 @@
-//! OpenTelemetry traces of runs: `iunctus telemetry <run>` writes the trace of a run as OTLP
-//! JSON lines to a file, and sends it to the OTLP HTTP endpoint of the `[telemetry]` section of
-//! the config file when there is one. Every real run sends its trace there when it ends.
-//!
-//! ```toml
-//! [telemetry]
-//! endpoint = "http://localhost:4318"
-//! headers = { authorization = { environment = "OTLP_AUTHORIZATION" } }
-//! ```
+//! Writes and sends recorded run traces using configured OTLP HTTP settings.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

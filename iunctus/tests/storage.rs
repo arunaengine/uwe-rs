@@ -1,8 +1,4 @@
-//! Storage providers of the config file in whole runs: a private web server whose token comes
-//! from an environment variable, and whose secret shows nowhere, not in the output, the run
-//! database, the RO-Crate, the files of the simulator or the cache. The ignored test reads the
-//! inputs of a real run from one S3 server, keeps the store on another, as `just storage-test`
-//! starts them, and publishes the results to a third provider, a folder.
+//! Checks configured storage providers and secret handling across whole runs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,8 +1,4 @@
-//! The commands that show what runs did and why, from the run database: `iunctus time` tells
-//! where the time of a run went, `iunctus compare` what differs between two runs, and
-//! `iunctus replay` runs one task again and tells what differs, and `iunctus telemetry` writes
-//! and sends the trace of a run in the OpenTelemetry format. `time` and `compare` write plain
-//! text, or JSON with `-format json`.
+//! Formats recorded run diagnostics and exposes insight commands.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

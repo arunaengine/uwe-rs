@@ -1,8 +1,4 @@
-//! The insight commands on recorded runs: `iunctus time`, `iunctus compare` and
-//! `iunctus telemetry` on simulated runs, with a small OTLP HTTP receiver of the test, and
-//! `iunctus replay`, which refuses simulated runs and, in the ignored test, runs a task of a
-//! real run again in its container: `cargo test -p iunctus --test insight -- --ignored` (needs
-//! Docker and the debian:stable-slim image).
+//! Checks timing, comparison, replay and telemetry commands on recorded runs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

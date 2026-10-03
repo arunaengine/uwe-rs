@@ -1,6 +1,4 @@
-//! Runs `iunctus run` on small scripts with the simulator, and with Docker in the ignored
-//! test, which needs the `debian:stable-slim` image; run it with
-//! `cargo test -p iunctus --test run -- --ignored`.
+//! Checks simulator and container runs through the CLI.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

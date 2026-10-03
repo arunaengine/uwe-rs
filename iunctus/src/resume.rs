@@ -1,7 +1,4 @@
-//! Resume from the run database: a run that continues an earlier one takes the result of each
-//! task that finished there, instead of running it again. Real results additionally need their
-//! recorded input and output bytes and pinned image identity. Simulated results have no such
-//! identities to prove. The store's cache still answers tasks whose image is pinned, in any run.
+//! Reuses recorded task results after verifying inputs, outputs and execution identity.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

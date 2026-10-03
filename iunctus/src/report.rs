@@ -1,8 +1,4 @@
-//! The report of a run, one HTML file that needs no server (decision 23's page in a file):
-//! `iunctus report <run>` writes it for any run, and `iunctus run -report <file>`, or `file` of
-//! the `[report]` section of the config file, writes it when the run ends. It suits machines
-//! where no browser can reach the page, like the login node of a cluster: copy the file and
-//! open it.
+//! Writes a standalone HTML report for a recorded or newly completed run.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

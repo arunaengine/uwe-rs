@@ -1,16 +1,4 @@
-//! The `iunctus` command: `iunctus run` runs a workflow in any language iunctus knows,
-//! `iunctus graph` prints the execution graph of a run, `iunctus config` prints the config of a
-//! Nextflow project, `iunctus runs` lists the runs of the run database, `iunctus export`
-//! writes the RO-Crate of a run, `iunctus page` serves the web page of the runs,
-//! `iunctus why` tells why a task ran again, `iunctus origin` where a file came from,
-//! `iunctus inputs` prints the JSON Schema of the inputs of a workflow, `iunctus outputs` that
-//! of its outputs, `iunctus clean` removes from the store what no rule keeps,
-//! `iunctus time` tells where the time of a run went, `iunctus compare` what differs
-//! between two runs, `iunctus replay` runs one recorded task again, `iunctus telemetry`
-//! writes and sends the OpenTelemetry trace of a run, `iunctus report` writes the report of a
-//! run as one HTML file, `iunctus check-order` whether the
-//! outputs of a workflow depend on the order in which its tasks finish, `iunctus changes`
-//! what changed since a run, and `iunctus repeat` runs a past run again with what it pinned.
+//! Dispatches CLI commands and the internal CWL JavaScript worker.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

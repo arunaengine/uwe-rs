@@ -1,7 +1,4 @@
-//! The commands that read the run database: `iunctus runs` lists the runs,
-//! `iunctus export <run>` writes the Workflow Run RO-Crate of a run, and
-//! `iunctus why <run> <task>` tells why a task ran instead of taking an earlier result, and
-//! `iunctus origin <file>` tells where a file came from.
+//! Lists recorded runs and exports their historical files as RO-Crates.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

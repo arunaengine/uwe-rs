@@ -1,7 +1,4 @@
-//! The sources of a run: the files of its workflow and the files that its command line names,
-//! like config files, params files and CWL job files, each by digest. A real run keeps their
-//! contents in its store, so that a repeat of the run has the same workflow and the same config
-//! years later, also when the folder of the workflow has changed since.
+//! Collects workflow sources and command-line files for run recording.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

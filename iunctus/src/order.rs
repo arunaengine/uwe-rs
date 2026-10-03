@@ -1,8 +1,4 @@
-//! The order check, `iunctus check-order <workflow>`: runs a workflow twice, once with the
-//! results of its tasks handed to the workflow in the order it asked for them and once in the
-//! reverse order, and compares the steps of the two runs by the digests of what their tasks
-//! read and made. A step whose tasks or outputs change with the order depends on which task
-//! finished first, like a step that collects files in the order their tasks finish.
+//! Compares task and output digests from runs with opposite completion orders.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

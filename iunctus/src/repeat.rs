@@ -1,7 +1,4 @@
-//! `iunctus repeat <run>`: runs a past run again, exactly: with the files of its workflow and of
-//! its command line as the run had them, its images at the digests it ran at, and its remote
-//! files as it read them, from its store. It first prints what changed since the run, and at
-//! its end compares the outputs of each step with those of the run by digest.
+//! Restores recorded workflow sources and inputs to repeat a pinned run.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -46,7 +46,7 @@ pub struct Arguments {
     pub forcerun: Vec<String>,
     /// `-forceall`: rerun every job needed for the Snakemake targets.
     pub forceall: bool,
-    /// `-executor simulator|local|tes|slurm|kubernetes|aruna`; `None` for the default.
+    /// `-executor simulator|local|tes|slurm|kubernetes`; `None` for the default.
     pub executor: Option<String>,
     /// `-graph file`: where to write the execution graph.
     pub graph: Option<PathBuf>,
@@ -56,14 +56,6 @@ pub struct Arguments {
     pub output_dir: Option<PathBuf>,
     /// `-tes-server address`: the TES server of `-executor tes`.
     pub tes_server: Option<String>,
-    /// `-aruna-server address`: the native jobs REST API base, including its API prefix.
-    pub aruna_server: Option<String>,
-    /// `-aruna-group id`: the authorized group for execution and staging.
-    pub aruna_group: Option<String>,
-    /// `-aruna-bucket name`: the authorized destination bucket for result bundles.
-    pub aruna_bucket: Option<String>,
-    /// `-aruna-scope name`: a stable caller namespace for idempotent replay.
-    pub aruna_scope: Option<String>,
     /// `-slurm-container apptainer|singularity|podman|docker`: how the nodes of
     /// `-executor slurm` run containers.
     pub slurm_container: Option<String>,
@@ -252,10 +244,6 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
             "-report" => parsed.report = Some(value()?.into()),
             "-output-dir" => parsed.output_dir = Some(value()?.into()),
             "-tes-server" => parsed.tes_server = Some(value()?),
-            "-aruna-server" => parsed.aruna_server = Some(value()?),
-            "-aruna-group" => parsed.aruna_group = Some(value()?),
-            "-aruna-bucket" => parsed.aruna_bucket = Some(value()?),
-            "-aruna-scope" => parsed.aruna_scope = Some(value()?),
             "-slurm-container" => parsed.slurm_container = Some(value()?),
             "-slurm-options" => parsed.slurm_options = Some(value()?),
             "-kubeconfig" => parsed.kubeconfig = Some(value()?.into()),
@@ -547,10 +535,7 @@ const OPTIONS: &[(&str, &[&str])] = &[
         &["run", "graph", "check", "check-order"],
     ),
     ("-forceall", &["run", "graph", "check", "check-order"]),
-    (
-        "-executor <simulator|local|tes|slurm|kubernetes|aruna>",
-        BACKEND,
-    ),
+    ("-executor <simulator|local|tes|slurm|kubernetes>", BACKEND),
     (
         "-store <folder|address>",
         &[
@@ -565,10 +550,6 @@ const OPTIONS: &[(&str, &[&str])] = &[
         ],
     ),
     ("-tes-server <address>", BACKEND),
-    ("-aruna-server <address>", BACKEND),
-    ("-aruna-group <id>", BACKEND),
-    ("-aruna-bucket <name>", BACKEND),
-    ("-aruna-scope <name>", BACKEND),
     (
         "-slurm-container <apptainer|singularity|podman|docker>",
         BACKEND,
@@ -1061,40 +1042,6 @@ mod tests {
         let parsed = parse_all(&arguments);
         assert_eq!(parsed.kubeconfig, Some(PathBuf::from("kind.yaml")));
         assert_eq!(parsed.kubernetes_namespace.as_deref(), Some("x"));
-    }
-
-    #[test]
-    fn aruna_options_are_accepted_and_shown_in_help() {
-        let arguments = [
-            "main.nf",
-            "-executor",
-            "aruna",
-            "-aruna-server",
-            "https://aruna.example/api/v1",
-            "-aruna-group",
-            "group",
-            "-aruna-bucket",
-            "results",
-            "-aruna-scope",
-            "caller",
-        ];
-        let parsed = parse_command("run", &arguments.map(str::to_owned)).unwrap();
-        assert_eq!(parsed.executor.as_deref(), Some("aruna"));
-        assert_eq!(
-            parsed.aruna_server.as_deref(),
-            Some("https://aruna.example/api/v1")
-        );
-        assert_eq!(parsed.aruna_group.as_deref(), Some("group"));
-        assert_eq!(parsed.aruna_bucket.as_deref(), Some("results"));
-        assert_eq!(parsed.aruna_scope.as_deref(), Some("caller"));
-        for option in [
-            "-aruna-server",
-            "-aruna-group",
-            "-aruna-bucket",
-            "-aruna-scope",
-        ] {
-            assert!(help("run").unwrap().contains(option));
-        }
     }
 
     #[test]

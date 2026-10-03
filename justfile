@@ -138,7 +138,7 @@ run-test-workflows-test:
 inputs-test-workflows-test:
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
 	WORKFLOWHUB_TEST_WORKFLOWS="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nextflow-workflowhub}" \
-	cargo test --release --locked -p iunctus --test inputs_test_workflows -- --ignored --exact workflows_describe_their_inputs
+	cargo test --release --locked -p iunctus --test inputs_test_workflows -- --ignored --exact describes_workflow_inputs
 	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test inputs_test_workflows -- --ignored
 
 # Records the stub scripts of the pipelines in iunctus/tests/fixtures/oracle/stub with Nextflow

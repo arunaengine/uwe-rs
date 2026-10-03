@@ -117,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn indexes_of_every_version_list_the_tracked_files() {
+    fn lists_tracked_files() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let folder = root.path();
         git(folder, &["init", "-q"]);
@@ -156,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn varints_follow_the_offset_encoding_of_git() {
+    fn decodes_git_offsets() {
         assert_eq!(varint(&[0x05]), Some((5, 1)));
         assert_eq!(varint(&[0x80, 0x00]), Some((128, 2)));
         assert_eq!(varint(&[0x81, 0x01]), Some((257, 2)));

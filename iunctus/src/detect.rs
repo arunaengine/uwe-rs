@@ -179,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn directories_by_their_files() {
+    fn detects_directory_language() {
         assert_eq!(directory(&["main.nf"]), Ok(Language::Nextflow));
         assert_eq!(directory(&["nextflow.config"]), Ok(Language::Nextflow));
         assert_eq!(directory(&["Snakefile"]), Ok(Language::Snakemake));
@@ -193,12 +193,12 @@ mod tests {
     }
 
     #[test]
-    fn missing_targets_are_errors() {
+    fn rejects_missing_targets() {
         assert!(language(Path::new("/no/such/workflow.nf")).is_err());
     }
 
     #[test]
-    fn main_files_of_projects() {
+    fn selects_project_entry() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let project = root.path();
         std::fs::create_dir_all(project.join("workflow")).expect("makes a directory");

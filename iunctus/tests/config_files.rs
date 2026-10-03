@@ -30,7 +30,7 @@ fn graph(command: &mut Command, directory: &Path) -> (i32, String) {
 }
 
 #[test]
-fn the_site_file_is_the_one_the_variable_names() {
+fn environment_selects_config() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let site = directory.path().join("site.toml");
     std::fs::write(&site, BAD_CONFIG).expect("writes the site file");
@@ -43,7 +43,7 @@ fn the_site_file_is_the_one_the_variable_names() {
 }
 
 #[test]
-fn commands_of_the_tests_read_no_user_file() {
+fn isolates_user_configuration() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     // The user's file of a home folder, which the empty config folder makes unreachable.
     let user = directory.path().join("home/.config/iunctus");
@@ -57,7 +57,7 @@ fn commands_of_the_tests_read_no_user_file() {
 }
 
 #[test]
-fn the_cache_folder_of_the_file_wins_and_graph_keeps_the_simulator() {
+fn cache_configuration_wins() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let folder = directory.path().join("elsewhere");
     let site = directory.path().join("site.toml");

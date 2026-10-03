@@ -461,7 +461,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn unresolved_remote_attempts_keep_their_inputs_and_scratch() {
+    fn unresolved_attempts_retained() {
         let folder = tempfile::tempdir().expect("scratch");
         std::fs::write(folder.path().join("scratch.note"), "note").expect("ordinary file");
         assert!(
@@ -490,7 +490,7 @@ mod tests {
     }
 
     #[test]
-    fn sizes_and_times_read_well() {
+    fn formats_retention_units() {
         assert_eq!(bytes(1), "1 byte");
         assert_eq!(bytes(999), "999 bytes");
         assert_eq!(bytes(1_234), "1.2 kB");

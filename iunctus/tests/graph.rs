@@ -80,7 +80,7 @@ fn check(graph: &ExecutionGraph) {
 }
 
 #[test]
-fn graph_prints_the_tasks_and_their_files() {
+fn lists_graph_files() {
     let directory = pipeline();
     let (code, stdout, stderr) =
         iunctus(directory.path(), &["graph", "main.nf", "-format", "json"]);
@@ -104,7 +104,7 @@ fn graph_prints_the_tasks_and_their_files() {
 }
 
 #[test]
-fn runs_write_the_graph_and_tes_documents() {
+fn writes_run_documents() {
     let directory = pipeline();
     let arguments = ["run", "main.nf", "-graph", "graph.json"];
     let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
@@ -139,7 +139,7 @@ fn runs_write_the_graph_and_tes_documents() {
 }
 
 #[test]
-fn runs_take_a_pending_limit_and_an_order() {
+fn scheduling_options_apply() {
     let directory = pipeline();
     let arguments = [
         "graph",
@@ -158,7 +158,7 @@ fn runs_take_a_pending_limit_and_an_order() {
 }
 
 #[test]
-fn languages_can_be_named() {
+fn accepts_language_selection() {
     let directory = pipeline();
     std::fs::rename(
         directory.path().join("main.nf"),
@@ -175,7 +175,7 @@ fn languages_can_be_named() {
 }
 
 #[test]
-fn unknown_executors_and_formats_are_errors() {
+fn rejects_unknown_formats() {
     let directory = pipeline();
     let (code, _, stderr) = iunctus(directory.path(), &["run", "main.nf", "-executor", "cloud"]);
     assert_eq!(code, 2);
@@ -189,7 +189,7 @@ fn unknown_executors_and_formats_are_errors() {
 }
 
 #[test]
-fn graphs_have_a_step_view_and_svg() {
+fn renders_step_graph() {
     let directory = pipeline();
     let arguments = ["graph", "main.nf", "-view", "steps"];
     let (code, stdout, stderr) = iunctus(directory.path(), &arguments);

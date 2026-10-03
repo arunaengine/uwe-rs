@@ -54,7 +54,7 @@ fn graph_scripts(file: &Path) -> BTreeMap<String, String> {
 
 #[test]
 #[ignore = "needs the nf-core test workflows; run `just stub-test-workflows-test`"]
-fn stub_scripts_equal_the_oracle() {
+fn stubs_match_oracle() {
     let test_workflows = PathBuf::from(
         std::env::var("NF_CORE_TEST_WORKFLOWS").expect("NF_CORE_TEST_WORKFLOWS is set"),
     )

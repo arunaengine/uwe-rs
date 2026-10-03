@@ -23,7 +23,7 @@ fn request(root: &std::path::Path) -> RunRequest {
 }
 
 #[tokio::test]
-async fn async_simulator_completes_records_and_resumes_inside_tokio() {
+async fn records_async_runs() {
     let root = tempfile::tempdir().unwrap();
     let cancel = CancellationToken::new();
     let run = request(root.path()).run(cancel.clone()).await.unwrap();
@@ -53,7 +53,7 @@ async fn async_simulator_completes_records_and_resumes_inside_tokio() {
 }
 
 #[tokio::test]
-async fn discovery_and_typed_admission_share_the_configured_driver() {
+async fn shares_configured_driver() {
     let root = tempfile::tempdir().unwrap();
     let described = request(root.path())
         .describe(CancellationToken::new())
@@ -70,7 +70,7 @@ async fn discovery_and_typed_admission_share_the_configured_driver() {
 }
 
 #[tokio::test]
-async fn a_cancelled_host_token_reaches_the_engine() {
+async fn forwards_host_cancellation() {
     let root = tempfile::tempdir().unwrap();
     let cancel = CancellationToken::new();
     cancel.cancel();
@@ -82,7 +82,7 @@ async fn a_cancelled_host_token_reaches_the_engine() {
 }
 
 #[tokio::test]
-async fn simultaneous_embedded_runs_have_distinct_receipts() {
+async fn concurrent_receipts_differ() {
     let root = tempfile::tempdir().unwrap();
     let first = request(root.path());
     let second = request(root.path());
@@ -99,7 +99,7 @@ async fn simultaneous_embedded_runs_have_distinct_receipts() {
 }
 
 #[tokio::test]
-async fn embedded_snakemake_runs_record_target_controls() {
+async fn records_target_controls() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(
         root.path().join("Snakefile"),

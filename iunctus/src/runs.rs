@@ -450,7 +450,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn historical_tree_exports_preserve_legacy_manifests_links_and_file_namespaces() {
+    fn preserves_historical_exports() {
         use std::os::unix::fs::PermissionsExt;
         use task_model::{Tree, TreeEntry};
         use workflow_graph::{Input, Outcome, Task, TaskId};
@@ -656,7 +656,7 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_tree_descendants_are_unavailable_and_private_copies_are_cleaned() {
+    fn corrupt_exports_cleaned() {
         use task_model::{Tree, TreeEntry};
         let root = tempfile::tempdir().expect("a directory");
         let store = content_store::Store::local(&root.path().join("store")).expect("a store");
@@ -716,7 +716,7 @@ mod tests {
     }
 
     #[test]
-    fn untracked_preferred_main_is_not_replaced_by_a_recorded_module() {
+    fn preserves_untracked_entry() {
         let root = tempfile::tempdir().expect("a directory");
         let project = root.path().join("workflow");
         std::fs::create_dir_all(&project).expect("creates workflow");
@@ -834,7 +834,7 @@ mod tests {
     }
 
     #[test]
-    fn runs_are_listed_one_per_line() {
+    fn lists_run_lines() {
         let run = Run {
             id: "19a8f3c2b10-1a2b".into(),
             lineage: "19a8f3c2b10-1a2b".into(),

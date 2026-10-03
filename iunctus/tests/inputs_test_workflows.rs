@@ -162,7 +162,7 @@ fn child(target: &Path, project: &Path, outcome: &Path) -> String {
 
 #[test]
 #[ignore = "needs the Nextflow test workflows; run `just inputs-test-workflows-test`"]
-fn workflows_describe_their_inputs() {
+fn describes_workflow_inputs() {
     let mut targets = Vec::new();
     if let Some(root) = std::env::var_os("NF_CORE_TEST_WORKFLOWS") {
         targets.extend(targets::nf_core(Path::new(&root)));

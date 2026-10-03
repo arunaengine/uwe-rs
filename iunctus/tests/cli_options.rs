@@ -5,7 +5,7 @@
 mod common;
 
 #[test]
-fn commands_reject_options_from_other_commands() {
+fn rejects_misplaced_options() {
     for words in [
         ["runs", "-remove"],
         ["clean", "-executor"],
@@ -21,7 +21,7 @@ fn commands_reject_options_from_other_commands() {
 }
 
 #[test]
-fn help_and_version_do_not_load_configuration() {
+fn discovery_skips_configuration() {
     for words in [vec!["run", "-help"], vec!["help", "run"]] {
         let output = common::command()
             .args(words)
@@ -84,7 +84,7 @@ fn logging_respects_filters() {
 }
 
 #[test]
-fn snakemake_target_controls_select_jobs_and_forcing_bypasses_resume() {
+fn target_controls_apply() {
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(
         folder.path().join("Snakefile"),

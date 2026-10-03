@@ -410,7 +410,7 @@ mod tests {
     }
 
     #[test]
-    fn steps_count_their_tasks_and_the_summary_names_the_results() {
+    fn summarizes_step_results() {
         let mut board = Board::new("slurm");
         for (id, name) in [(1, "SAY (1)"), (2, "SAY (2)"), (3, "SAY (3)")] {
             board.note(&Event::Requested {
@@ -462,7 +462,7 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_task_marks_its_step_and_the_run() {
+    fn failure_marks_progress() {
         let mut board = Board::new("local");
         board.note(&Event::Requested {
             task: &task(7, "align", "align (sample=A)"),
@@ -486,7 +486,7 @@ mod tests {
     }
 
     #[test]
-    fn many_results_of_a_folder_are_counted() {
+    fn counts_directory_results() {
         let targets: Vec<String> = (0..8).map(|n| format!("/d/out/{n}.txt")).collect();
         let lines: Vec<String> = super::results(&targets, Path::new("/d")).collect();
         assert_eq!(lines, ["out/ (8 files)"]);

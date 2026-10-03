@@ -210,7 +210,7 @@ mod tests {
     }
 
     #[test]
-    fn the_text_lists_what_differs_by_kind() {
+    fn groups_comparison_changes() {
         let comparison = Comparison {
             first: run("a"),
             second: run("b"),

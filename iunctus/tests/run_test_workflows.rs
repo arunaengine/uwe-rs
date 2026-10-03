@@ -135,7 +135,7 @@ fn outcome(target: &Path, project: &Path, cache: &Path, profile: bool) -> String
 
 #[test]
 #[ignore = "needs the nf-core test workflows and the network; run `just run-test-workflows-test`"]
-fn pipelines_run_as_recorded() {
+fn pipelines_match_records() {
     let test_workflows = PathBuf::from(
         std::env::var("NF_CORE_TEST_WORKFLOWS").expect("NF_CORE_TEST_WORKFLOWS is set"),
     );
@@ -151,7 +151,7 @@ fn pipelines_run_as_recorded() {
 /// its RO-Crate names; with `-profile test`, or without a profile when it has no `test` profile.
 #[test]
 #[ignore = "needs the WorkflowHub test workflows and the network; run `just run-test-workflows-test`"]
-fn workflowhub_workflows_run_as_recorded() {
+fn workflowhub_matches_records() {
     let test_workflows = PathBuf::from(
         std::env::var("WORKFLOWHUB_TEST_WORKFLOWS").expect("WORKFLOWHUB_TEST_WORKFLOWS is set"),
     );

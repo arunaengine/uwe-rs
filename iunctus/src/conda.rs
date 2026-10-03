@@ -376,7 +376,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn fifo_sources_fail_without_waiting_for_a_writer() {
+    fn rejects_fifo_sources() {
         let folder = tempfile::tempdir().unwrap();
         let path = folder.path().join("source.yaml");
         rustix::fs::mkfifoat(rustix::fs::CWD, &path, rustix::fs::Mode::RUSR).unwrap();
@@ -394,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn preparation_reads_changed_environment_and_repodata_without_package_bytes() {
+    fn preparation_refreshes_metadata() {
         let folder = tempfile::tempdir().unwrap();
         let root = folder.path();
         let config = Config {

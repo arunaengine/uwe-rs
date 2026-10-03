@@ -57,7 +57,7 @@ fn limit(directory: &Path, n: u32) -> u64 {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn a_later_run_asks_for_the_memory_that_its_tasks_used() {
+fn reuses_observed_memory() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let directory = directory.path();
     std::fs::write(directory.join("main.nf"), SCRIPT).expect("writes the workflow");
@@ -120,7 +120,7 @@ workflow {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn short_tasks_run_together_and_keep_their_own_results() {
+fn groups_keep_results() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let directory = directory.path();
     std::fs::write(directory.join("main.nf"), SHORT).expect("writes the workflow");
@@ -177,7 +177,7 @@ fn short_tasks_run_together_and_keep_their_own_results() {
 /// Runs short tasks through the runner on the Funnel server of `just funnel-server`.
 #[test]
 #[ignore = "needs the Funnel server of `just funnel-server`, Docker and debian:stable-slim"]
-fn short_tasks_run_together_in_one_tes_task() {
+fn tes_groups_tasks() {
     use std::sync::Arc;
     use task_model::Measured;
     use workflow_graph::{Attempt, CancellationToken, Executor, Task, TaskId};
@@ -274,7 +274,7 @@ fn tes_tasks(server: &str) -> usize {
 /// It counts the tasks of each server, so run it with `--test-threads 1`.
 #[test]
 #[ignore = "needs two Funnel servers, at ports 18000 and 18001, Docker and debian:stable-slim"]
-fn tasks_go_to_the_tes_server_near_their_inputs() {
+fn routes_near_inputs() {
     use std::sync::Arc;
     use workflow_graph::{Attempt, CancellationToken, Executor, Input, Task, TaskId};
 

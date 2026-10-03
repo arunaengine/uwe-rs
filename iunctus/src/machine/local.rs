@@ -217,7 +217,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sizes_are_in_plain_units() {
+    fn formats_storage_units() {
         assert_eq!(bytes(512), "512 bytes");
         assert_eq!(bytes(1_500), "1.5 kB");
         assert_eq!(bytes(123_400_000_000), "123.4 GB");

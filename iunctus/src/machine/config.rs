@@ -124,7 +124,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn secrets_are_found_wherever_the_config_file_has_them() {
+    fn finds_configured_secrets() {
         let text = "[storage.lab]\ntype = \"s3\"\nprefixes = [\"s3://lab/\"]\nsecret_access_key = \
                     { environment = \"LAB_SECRET\" }\n\n[storage.portal]\ntype = \"https\"\n\
                     prefixes = [\"https://x/\"]\nheaders = { X-Key = { environment = \"KEY\" } \

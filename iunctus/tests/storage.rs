@@ -210,7 +210,7 @@ outputs: []
 ";
 
 #[test]
-fn cwl_documents_come_through_the_providers() {
+fn loads_provider_documents() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     let server = private_server(&[("/private/tool.cwl", CWL_TOOL)]);
@@ -284,7 +284,7 @@ workflow {
 
 #[test]
 #[ignore = "needs Docker, the debian:stable-slim image and two S3 servers: just storage-test"]
-fn inputs_and_the_store_on_two_s3_providers() {
+fn separates_s3_providers() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     let config = format!(

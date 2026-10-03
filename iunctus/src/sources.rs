@@ -259,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn git_sources_keep_the_selected_untracked_main_only() {
+    fn keeps_selected_entry() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let project = root.path().join("workflow");
         write(&project.join("a.nf"), "process MODULE {}");
@@ -308,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn a_folder_outside_git_gives_its_files_without_the_folders_of_runs() {
+    fn excludes_run_folders() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let folder = root.path().join("pipeline");
         write(&folder.join("main.nf"), "workflow {}");

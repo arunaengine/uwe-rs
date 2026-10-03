@@ -77,7 +77,7 @@ mod tests {
     }
 
     #[test]
-    fn branches_packed_references_and_detached_heads() {
+    fn resolves_git_heads() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let repository = root.path().join("repository");
         let workflow = repository.join("workflows/main.nf");
@@ -98,7 +98,7 @@ mod tests {
     }
 
     #[test]
-    fn worktrees_read_their_branch_from_the_common_folder() {
+    fn resolves_worktree_branch() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let common = root.path().join("main/.git");
         write(&common.join("refs/heads/feature"), &format!("{OTHER}\n"));

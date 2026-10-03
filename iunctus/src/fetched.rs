@@ -85,7 +85,7 @@ mod tests {
     }
 
     #[test]
-    fn rows_keep_the_time_in_milliseconds() {
+    fn preserves_millisecond_times() {
         let rows = rows(&[fetched("https://example.org/a.csv")]);
         assert_eq!(rows[0].fetched, 1500);
         assert_eq!(rows[0].version.as_deref(), Some("\"1\""));

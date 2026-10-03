@@ -56,7 +56,7 @@ fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String) {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn runs_and_reuses_tasks() {
+fn reuses_run_tasks() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), SCRIPT).expect("writes the script");
     std::fs::write(directory.path().join("input.txt"), "one\ntwo\n").expect("writes the input");
@@ -77,7 +77,7 @@ fn runs_and_reuses_tasks() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn a_real_run_names_itself_and_says_where_its_results_went() {
+fn reports_real_results() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "process SAY {\n    container 'debian:stable-slim'\n    \
                   publishDir 'results', mode: 'copy'\n    input:\n    val x\n    \
@@ -136,7 +136,7 @@ workflow {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn ctrl_c_stops_the_running_tasks() {
+fn interrupt_stops_tasks() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), SLEEPERS).expect("writes the script");
     let mut child = common::command()
@@ -167,7 +167,7 @@ fn ctrl_c_stops_the_running_tasks() {
 }
 
 #[test]
-fn real_runs_need_an_image_for_each_task() {
+fn requires_task_images() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "process P {\n    script:\n    'true'\n}\nworkflow {\n    P()\n}\n";
     std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
@@ -181,7 +181,7 @@ fn real_runs_need_an_image_for_each_task() {
 }
 
 #[test]
-fn a_bare_script_name_has_the_launch_directory_as_project() {
+fn script_project_defaults() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(
         directory.path().join("main.nf"),
@@ -193,7 +193,7 @@ fn a_bare_script_name_has_the_launch_directory_as_project() {
 }
 
 #[test]
-fn unsupported_features_exit_with_33() {
+fn unsupported_exit_code() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(
         directory.path().join("main.nf"),
@@ -254,7 +254,7 @@ const GREETER_CONFIG: &str =
     "params.greeting = 'hi'\nprofiles {\n    loud { params.greeting = 'HI' }\n}\n";
 
 #[test]
-fn simulated_runs_use_the_config_and_the_command_line() {
+fn simulation_uses_settings() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), GREETER).expect("writes the script");
     std::fs::write(directory.path().join("nextflow.config"), GREETER_CONFIG)
@@ -287,7 +287,7 @@ fn simulated_runs_use_the_config_and_the_command_line() {
 }
 
 #[test]
-fn simulated_outputs_include_directories() {
+fn simulates_output_directories() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "process P {\n    output:\n    path 'db/', emit: db\n    path 'db/x.txt', emit: x\n    \
                   path '*.{csv,tsv}', emit: table\n    script:\n    'tool'\n}\n\
@@ -308,7 +308,7 @@ fn simulated_outputs_include_directories() {
 }
 
 #[test]
-fn simulated_outputs_are_the_names_in_the_script() {
+fn preserves_output_names() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "process P {\n    input:\n    val x\n    output:\n    path '*.fq', emit: reads\n    \
                   path x, emit: db\n    path '*cluster', emit: c\n    \

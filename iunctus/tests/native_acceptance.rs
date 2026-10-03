@@ -223,7 +223,7 @@ fn exercise(
 }
 
 #[test]
-fn snakemake_ensure_gates_cache_and_resume() {
+fn snakemake_acceptance_gates() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(
         folder.path().join("Snakefile"),
@@ -250,7 +250,7 @@ rule make:
 }
 
 #[test]
-fn cwl_output_object_types_gate_cache_and_resume() {
+fn cwl_acceptance_gates() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: unused\n\
                 inputs: []\noutputs: {n: int}\n";

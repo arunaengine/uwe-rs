@@ -86,7 +86,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn durations_and_sizes_read_well() {
+    fn formats_report_units() {
         assert_eq!(duration(850), "850 ms");
         assert_eq!(duration(4_200), "4.2 s");
         assert_eq!(duration(185_000), "3 min 5 s");

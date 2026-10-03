@@ -58,7 +58,7 @@ workflow {
 ";
 
 #[test]
-fn every_problem_of_a_nextflow_pipeline_comes_at_once() {
+fn reports_planning_problems() {
     let directory = folder(&[("main.nf", PIPELINE)]);
     let (code, stdout) = check(directory.path(), &["main.nf"]);
     assert_eq!(code, 1, "{stdout}");
@@ -87,7 +87,7 @@ fn every_problem_of_a_nextflow_pipeline_comes_at_once() {
 }
 
 #[test]
-fn broken_references_and_unsupported_features_are_reported_together() {
+fn reports_reference_problems() {
     let script = "include { B } from './modules/b'\ninclude { C } from './modules/c'\n\n\
                   workflow {\n    B()\n    C()\n}\n";
     let directory = folder(&[("main.nf", script)]);
@@ -109,7 +109,7 @@ fn broken_references_and_unsupported_features_are_reported_together() {
 }
 
 #[test]
-fn snakemake_cwl_and_argo_are_checked_the_same_way() {
+fn checks_native_languages() {
     let snakefile = "rule all:\n    input: \"out/a.txt\"\n\nrule copy:\n    input: \
                      \"data/{name}.txt\"\n    output: \"out/{name}.txt\"\n    shell: \"cp \
                      {input} {output}\"\n";

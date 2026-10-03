@@ -8,6 +8,7 @@ mod lease;
 mod local;
 mod objects;
 mod store;
+mod transfer;
 
 pub use lease::{Holder, LEASE_TIME, Lease};
 pub use objects::{FileIdentity, Object};

@@ -1,6 +1,4 @@
-//! The inputs and outputs of a workflow as JSON Schema (decision 24): `iunctus inputs` prints the
-//! schema of the inputs of any workflow, `iunctus outputs` that of its outputs, and every run
-//! checks its values against the schema of its inputs before any task starts.
+//! Describes workflow input and output schemas and checks launch values.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -12,10 +10,8 @@ use crate::arguments::Arguments;
 use crate::forms::Form;
 use crate::{Failure, failure};
 
-/// Checks the inputs of a run before any task starts. Warnings go where the messages of the
-/// workflow go: standard output, or standard error when `quiet` keeps standard output for the
-/// graph. Errors fail the run, one line each. The result holds the inputs, when the driver
-/// knows them.
+/// Checks inputs before tasks start; errors fail the run with one line each.
+/// Warnings use stdout, or stderr with `quiet`; returns known driver inputs.
 pub fn check(
     driver: &mut dyn Driver,
     simulated: bool,
@@ -79,10 +75,9 @@ fn warnings(inputs: &Inputs, problems: &[Problem]) -> Vec<String> {
     warnings
 }
 
-/// `iunctus inputs`: prints the JSON Schema of the inputs of a workflow, their help text with
-/// `-format text`, or their versioned form description with `-format form`. With `-check`, the
-/// launch values are checked as `iunctus run` with the same options checks them: a simulated
-/// run, unless `-executor local` asks for a real one. The workflow runs no task.
+/// Prints input JSON Schema, `-format text` help or `-format form` descriptions.
+/// `-check` validates launch values with simulated assumptions unless `-executor local`.
+/// No workflow task runs.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let form = arguments.format.as_deref() == Some("form");
     let text = if form {

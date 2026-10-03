@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-# Runs the tests of Snakemake (the `tests/` folder of its repository) for real on a SLURM
-# cluster with `-executor slurm` and Apptainer, and checks the files of each run against the
-# `expected-results` folder of the test. It records one line per test in
-# real_runs_slurm_snakemake.txt next to this script (or RECORD).
-#
-# Run it on a node of the cluster that may submit jobs, not on a login node:
-#   real_runs_slurm_snakemake.py <tests folder> [test...]
-# It needs the iunctus binary (IUNCTUS, else `iunctus` on the PATH), git, and next to it
-# real_runs_snakemake.py (whose helpers it uses) and run_test_workflows_launches.txt (LAUNCHES),
-# which says how each test runs. Jobs run in IMAGE, which has Bash and Python without extra
-# packages, so that the cluster pulls no new image. Tests without expected results, tests that
-# name other images or Python packages, and those that real_runs_snakemake.py leaves out, are
-# left out with the reason. At most PARALLEL tests run at a time, each with 3 jobs at once.
-# A test that fails, or misses its expected results, the same way in Snakemake 9.27 on a
-# machine with Docker (real_runs_snakemake.txt next to this script) counts as the same.
-#
+"""Checks Snakemake expected results on SLURM with Apptainer."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

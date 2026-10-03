@@ -1,24 +1,5 @@
 #!/usr/bin/env python3
-# Runs Argo workflows of the Argo test workflows for real with iunctus, and compares how each
-# ends with what Argo expects of it. Argo has no native run without a Kubernetes cluster, so
-# the reference is Argo's own test suite: the workflows of argo-workflows' `expectedfailures`
-# must fail, every other workflow must succeed, as Argo's end-to-end tests run its examples.
-# `argo lint --offline` (argo v4) checks each workflow first; a workflow that it rejects counts
-# as failing in Argo. It records the result in real_runs_argo.txt next to this script.
-#
-# Run it from the repository root: iunctus/tests/fixtures/real_runs_argo.py [workflow...]
-# With workflows (paths as in the record), it runs only them and keeps the other records. It
-# needs Docker, `argo`, the release binary of iunctus (target/release/iunctus, or IUNCTUS) and
-# the Argo test workflows (ARGO_TEST_WORKFLOWS).
-#
-# It runs only workflows that run with the simulator (argo-runtime's outcomes.txt) and whose
-# images are all on this machine; the others are left out with the reason. The runs use no
-# network: iunctus runs in a network namespace of its own, gives its containers none
-# (`-no-network`), and talks to Docker through a socket
-# that refuses pulls (docker_no_pull.py), since the Docker daemon has network; a workflow that
-# needs an image that is not on this machine, like one of a template that it calls, fails.
-# One workflow runs at a time, with at most 3 containers at once.
-#
+"""Compares real Argo workflow outcomes with the reference test expectations."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

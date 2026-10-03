@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-# Records how Nextflow 26.04.6 fails on the nf-core pipelines that fail in
-# run_test_workflows.txt and on the WorkflowHub workflows that fail in run_workflowhub.txt,
-# into run_evidence.txt next to this script. The run test checks that every pipeline that fails
-# there is listed here, so a pipeline may only fail when Nextflow fails on it too, or when
-# iunctus leaves the feature out on purpose.
-#
-# Run it from the repository root: iunctus/tests/fixtures/run_evidence.py [pipeline...]
-# With pipelines, it records only their cases and keeps the other records. It reads the
-# pipelines of `just test-workflows` (NF_CORE_TEST_WORKFLOWS) and the workflows of `just
-# workflowhub-test-workflows` (WORKFLOWHUB_TEST_WORKFLOWS), and needs `nextflow` 26.04.6 on
-# the PATH. Each pipeline runs in a copy, from the folder of the copy, as the run test runs it:
-# `nextflow run <pipeline> -profile test -stub-run --outdir <out>`. The machine has none of
-# the tools of the pipelines, so a shell function stands in for each missing command: it
-# prints `1.0`, which stubs take for a version, and succeeds. `SHOW=1` prints the whole output
-# of each run.
-#
+"""Records native Nextflow failure evidence for workflow corpus outcomes."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-# A Docker socket in front of the real one that refuses to pull images: each request to
-# `/images/create` gets 403, every other request goes through. The evidence scripts of real
-# runs point iunctus at it with DOCKER_HOST, so that a run without network cannot make the
-# Docker daemon, which has network, fetch an image.
-#
-# Use it as a context manager: `with NoPull(folder) as socket: ...` gives the path of the socket.
-#
+"""Proxies Docker requests while refusing image pulls."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

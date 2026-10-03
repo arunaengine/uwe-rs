@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-# Runs the CWL conformance tests (v1.2) for real, with iunctus and with cwltool, and compares
-# their output objects: the values, and for each file and directory its class, basename,
-# checksum, size, contents, secondary files and listing, except what the expected output of the
-# test leaves open with `Any`, like random file names. It records the comparison in
-# real_runs_cwl.txt next to this script.
-#
-# Run it from the repository root: iunctus/tests/fixtures/real_runs_cwl.py [test id...]
-# It needs Docker, cwltool, the release binary of iunctus (target/release/iunctus, or IUNCTUS),
-# the CWL test workflows (CWL_TEST_WORKFLOWS) and their data (CWL_CONFORMANCE_DATA).
-#
-# The runs use no network: both tools run in a network namespace of their own, a `docker`
-# in front of the real one refuses to pull, and a test runs only when every image it names is
-# on this machine already; tests that need the network are left out. Tools without an image run
-# in debian:stable-slim with both. One test runs at a time, so at most one container at a time.
-#
+"""Compares real CWL conformance outputs with cwltool results."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

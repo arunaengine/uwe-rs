@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-# Runs CWL conformance tests (v1.2) for real on a SLURM cluster with `-executor slurm` and
-# Apptainer, and compares each output object with the output that the test expects, as
-# cwltest does: only the keys that the expected output names count, `Any` matches everything,
-# and a location counts by its last part. It records one line per test in
-# real_runs_slurm_cwl.txt next to this script (or RECORD).
-#
-# Run it on a node of the cluster that may submit jobs, not on a login node:
-#   real_runs_slurm_cwl.py <conformance folder> [test id...]   (all tests without ids)
-# The folder holds the CWL test workflows with their data (`v1.2/conformance_tests.yaml`).
-# It needs the iunctus binary (IUNCTUS, else `iunctus` on the PATH). Tools without an image run
-# in debian:stable-slim. Each test runs without the cache (`-no-cache`), as cwltool does, so
-# that a result of an earlier run never answers it. Tests that need the network or name other images are left out, so that
-# the cluster pulls only a few small images. At most 4 tests run at a time (PARALLEL).
-#
+"""Checks CWL conformance outputs on SLURM with Apptainer."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

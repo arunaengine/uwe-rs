@@ -247,3 +247,75 @@ Sends tasks to the site near their inputs: two Funnel servers on this machine, t
 The reason of each pipeline that a record names. A record is a block of lines between empty lines: the pipelines, then `= <kind>: <why>` with one plain sentence, then the evidence that Nextflow fails the same way: `$` the command, and `>` the lines of its output. The kind is `invalid` (the pipeline itself is broken), `missing` (it needs something that is not public or not in its repository), or `unsupported (decision N)` (iunctus leaves the feature out on purpose, as decision N of docs/decisions.md says). Panics on a record without a valid reason or without evidence, so that the record file stays complete.
 
 The outcome of one run: `ok`, or the exit code and the first error line without the parts that differ between machines and runs. A run that takes more than ten minutes is stopped with exit code 124. A run that succeeds with an invalid graph is `graph` and the problem. `target` is the folder of the workflow, or its main script, and `project` its folder, which the run starts from; `profile` runs it with `-profile test`.
+
+## Evidence harness invocation
+
+### `iunctus/tests/fixtures/docker_no_pull.py`
+
+A Docker socket in front of the real one that refuses to pull images: each request to `/images/create` gets 403, every other request goes through. The evidence scripts of real runs point iunctus at it with DOCKER_HOST, so that a run without network cannot make the Docker daemon, which has network, fetch an image.
+
+Use it as a context manager: `with NoPull(folder) as socket: ...` gives the path of the socket.
+
+### `iunctus/tests/fixtures/real_runs.py`
+
+Runs workflows for real, with iunctus and with the native tool, and compares what each delivers: the names and the SHA-256 digests of the result files. It records the comparison of each case in real_runs.txt next to this script.
+
+Run it from the repository root: iunctus/tests/fixtures/real_runs.py [case...] With cases, it runs only them and keeps the other records. It needs Docker, the release binary of iunctus (target/release/iunctus, or IUNCTUS), and the native tool of each case on the PATH: nextflow 26.04.6 for Nextflow, cwltool for CWL, snakemake (through uvx) for Snakemake. Argo has no native tool without a cluster: its cases compare with the files that the workflow documents. Each case runs in ~/.cache/iunctus/real-runs/<case> (REAL_RUNS).
+
+The native tool runs twice, into two folders, so that the files whose content differs between two native runs, like reports with dates, are compared by their names only. Names with a date and time, like `params_2026-09-30_12-02-36.json`, are compared with the date and time replaced by `<time>`. The native runs are kept and not repeated; `NATIVE=1` runs them again. At most 4 containers run at a time: Nextflow gets `executor.cpus = 4`, iunctus `-max-pending 4`.
+
+The cases that end in `-slurm` run on a SLURM cluster with Apptainer: run the script on a node that may submit jobs, not on a login node, with nextflow, java and apptainer on the PATH. Nextflow gets `queueSize = 4` and names its jobs `iunctus-native-...`, iunctus `-max-pending 4`.
+
+### `iunctus/tests/fixtures/real_runs_argo.py`
+
+Runs Argo workflows of the Argo test workflows for real with iunctus, and compares how each ends with what Argo expects of it. Argo has no native run without a Kubernetes cluster, so the reference is Argo's own test suite: the workflows of argo-workflows' `expectedfailures` must fail, every other workflow must succeed, as Argo's end-to-end tests run its examples. `argo lint --offline` (argo v4) checks each workflow first; a workflow that it rejects counts as failing in Argo. It records the result in real_runs_argo.txt next to this script.
+
+Run it from the repository root: iunctus/tests/fixtures/real_runs_argo.py [workflow...] With workflows (paths as in the record), it runs only them and keeps the other records. It needs Docker, `argo`, the release binary of iunctus (target/release/iunctus, or IUNCTUS) and the Argo test workflows (ARGO_TEST_WORKFLOWS).
+
+It runs only workflows that run with the simulator (argo-runtime's outcomes.txt) and whose images are all on this machine; the others are left out with the reason. The runs use no network: iunctus runs in a network namespace of its own, gives its containers none (`-no-network`), and talks to Docker through a socket that refuses pulls (docker_no_pull.py), since the Docker daemon has network; a workflow that needs an image that is not on this machine, like one of a template that it calls, fails. One workflow runs at a time, with at most 3 containers at once.
+
+### `iunctus/tests/fixtures/real_runs_cwl.py`
+
+Runs the CWL conformance tests (v1.2) for real, with iunctus and with cwltool, and compares their output objects: the values, and for each file and directory its class, basename, checksum, size, contents, secondary files and listing, except what the expected output of the test leaves open with `Any`, like random file names. It records the comparison in real_runs_cwl.txt next to this script.
+
+Run it from the repository root: iunctus/tests/fixtures/real_runs_cwl.py [test id...] It needs Docker, cwltool, the release binary of iunctus (target/release/iunctus, or IUNCTUS), the CWL test workflows (CWL_TEST_WORKFLOWS) and their data (CWL_CONFORMANCE_DATA).
+
+The runs use no network: both tools run in a network namespace of their own, a `docker` in front of the real one refuses to pull, and a test runs only when every image it names is on this machine already; tests that need the network are left out. Tools without an image run in debian:stable-slim with both. One test runs at a time, so at most one container at a time.
+
+### `iunctus/tests/fixtures/real_runs_slurm_argo.py`
+
+Runs Argo workflows for real on a SLURM cluster with `-executor slurm` and Apptainer, and checks that each ends as Argo's tests expect: real_runs_argo.txt next to this script says which workflows succeed and which fail in Argo (from argo lint and Argo's expected failures), and records those that ran the same way with iunctus on this machine. It records one line per workflow in real_runs_slurm_argo.txt next to this script (or RECORD).
+
+Run it on a node of the cluster that may submit jobs, not on a login node: real_runs_slurm_argo.py <Argo test workflows folder> [workflow...] It needs the iunctus binary (IUNCTUS, else `iunctus` on the PATH). Without workflows it takes every workflow that ran the same way here and names only the images in IMAGES, so that the cluster pulls a few small images. Tasks get no network (`-no-network`), as in real_runs_argo.py. At most PARALLEL workflows run at a time, each with 3 jobs at once. The folder may hold only some files of each repository; each repository folder then needs a `.git` folder, so that iunctus finds the WorkflowTemplates of the other files there.
+
+### `iunctus/tests/fixtures/real_runs_slurm_cwl.py`
+
+Runs CWL conformance tests (v1.2) for real on a SLURM cluster with `-executor slurm` and Apptainer, and compares each output object with the output that the test expects, as cwltest does: only the keys that the expected output names count, `Any` matches everything, and a location counts by its last part. It records one line per test in real_runs_slurm_cwl.txt next to this script (or RECORD).
+
+Run it on a node of the cluster that may submit jobs, not on a login node: real_runs_slurm_cwl.py <conformance folder> [test id...]   (all tests without ids) The folder holds the CWL test workflows with their data (`v1.2/conformance_tests.yaml`). It needs the iunctus binary (IUNCTUS, else `iunctus` on the PATH). Tools without an image run in debian:stable-slim. Each test runs without the cache (`-no-cache`), as cwltool does, so that a result of an earlier run never answers it. Tests that need the network or name other images are left out, so that the cluster pulls only a few small images. At most 4 tests run at a time (PARALLEL).
+
+### `iunctus/tests/fixtures/real_runs_slurm_snakemake.py`
+
+Runs the tests of Snakemake (the `tests/` folder of its repository) for real on a SLURM cluster with `-executor slurm` and Apptainer, and checks the files of each run against the `expected-results` folder of the test. It records one line per test in real_runs_slurm_snakemake.txt next to this script (or RECORD).
+
+Run it on a node of the cluster that may submit jobs, not on a login node: real_runs_slurm_snakemake.py <tests folder> [test...] It needs the iunctus binary (IUNCTUS, else `iunctus` on the PATH), git, and next to it real_runs_snakemake.py (whose helpers it uses) and run_test_workflows_launches.txt (LAUNCHES), which says how each test runs. Jobs run in IMAGE, which has Bash and Python without extra packages, so that the cluster pulls no new image. Tests without expected results, tests that name other images or Python packages, and those that real_runs_snakemake.py leaves out, are left out with the reason. At most PARALLEL tests run at a time, each with 3 jobs at once. A test that fails, or misses its expected results, the same way in Snakemake 9.27 on a machine with Docker (real_runs_snakemake.txt next to this script) counts as the same.
+
+### `iunctus/tests/fixtures/real_runs_snakemake.py`
+
+Runs the tests of Snakemake (the `tests/` folder of its repository, from the Snakemake test workflows) for real, with iunctus and with Snakemake, and compares the files that each run made, changed or removed in the folder of the test, by name and SHA-256 digest. It also checks both runs against the `expected-results` folder of the test. It records the comparison in real_runs_snakemake.txt next to this script.
+
+Run it from the repository root: iunctus/tests/fixtures/real_runs_snakemake.py [test...] With tests, it runs only them and keeps the other records. It needs Docker, Snakemake 9.27.0 (SNAKEMAKE, else `snakemake` on the PATH), the release binary of iunctus (target/release/iunctus, or IUNCTUS) and the Snakemake test workflows (SNAKEMAKE_TESTS).
+
+Each test runs the way run_test_workflows_launches.txt says (targets, config files and values), with 3 jobs at once, as Snakemake's own tests do, in a git repository of its files, as the tests are in Snakemake's repository. Snakemake gets the CPUs of the machine as cores, as iunctus sees them, where Snakemake's tests give 3. Snakemake runs the jobs on this machine, iunctus in containers of IMAGE, which has Bash, Python with pandas, and the usual tools. Both run in the same folder, one after the other, so that paths in outputs agree.
+
+The runs use no network: both tools run in a network namespace of their own, and iunctus gives its containers none (`-no-network`). Tests that read remote files, need Conda environments, wrappers or modules, or name an image that is not on this machine, are left out with the reason. iunctus talks to Docker through a socket that refuses pulls (docker_no_pull.py), since the Docker daemon has network. When the runs differ, Snakemake runs once more, and files that differ between its two runs count by name only. Snakemake's own files (`.snakemake`, the `.snakemake_timestamp` of directory outputs, Python's `__pycache__`) are left out of the comparison.
+
+### `iunctus/tests/fixtures/run_evidence.py`
+
+Records how Nextflow 26.04.6 fails on the nf-core pipelines that fail in run_test_workflows.txt and on the WorkflowHub workflows that fail in run_workflowhub.txt, into run_evidence.txt next to this script. The run test checks that every pipeline that fails there is listed here, so a pipeline may only fail when Nextflow fails on it too, or when iunctus leaves the feature out on purpose.
+
+Run it from the repository root: iunctus/tests/fixtures/run_evidence.py [pipeline...] With pipelines, it records only their cases and keeps the other records. It reads the pipelines of `just test-workflows` (NF_CORE_TEST_WORKFLOWS) and the workflows of `just workflowhub-test-workflows` (WORKFLOWHUB_TEST_WORKFLOWS), and needs `nextflow` 26.04.6 on the PATH. Each pipeline runs in a copy, from the folder of the copy, as the run test runs it: `nextflow run <pipeline> -profile test -stub-run --outdir <out>`. The machine has none of the tools of the pipelines, so a shell function stands in for each missing command: it prints `1.0`, which stubs take for a version, and succeeds. `SHOW=1` prints the whole output of each run.
+
+### `iunctus/tests/fixtures/oracle/stub/record.sh`
+
+Records the stub scripts of nf-core pipelines with Nextflow 26.04.6 and Docker: `sh record.sh <test-workflows>/pipelines <pipeline>...`. Each task's `.command.sh`, up to the capture block of `eval` outputs, goes to `<pipeline>/<task name>.sh`, with `:` and spaces in the name replaced by `_`.

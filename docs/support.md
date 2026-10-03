@@ -168,13 +168,13 @@ The commands that show what runs did and why, from the run database: `iunctus ti
 
 `iunctus replay <run> <task>`: runs one recorded task again, alone, from its description in the run database: in the image it ran in, pinned to its digest, with the same inputs, taken from the store by their digest where their files are gone. It runs on this machine, or on the executor that `-executor` names, whatever the cache holds, and is recorded as a run of its own. Then it tells how the replay compares with the task as it ran: its exit code, time and outputs by digest, and the standard output and error of both. A failed task replays too.
 
-### `iunctus/src/insight/telemetry.rs`
+### `iunctus/src/telemetry.rs`
 
 OpenTelemetry traces of runs: `iunctus telemetry <run>` writes the trace of a run as OTLP JSON lines to a file, and sends it to the OTLP HTTP endpoint of the `[telemetry]` section of the config file when there is one. Every real run sends its trace there when it ends.
 
 ```toml [telemetry] endpoint = "http://localhost:4318" headers = { authorization = { environment = "OTLP_AUTHORIZATION" } } ```
 
-### `iunctus/src/insight/time.rs`
+### `iunctus/src/time.rs`
 
 `iunctus time <run>`: where the time of a run went. The critical path, the chain of tasks that set the length of the run, with how long each waited and ran; how long all tasks ran and waited together; and the steps that ran the longest and used the most CPU time, memory and I/O.
 

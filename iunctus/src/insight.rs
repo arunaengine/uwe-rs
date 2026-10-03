@@ -6,9 +6,9 @@
 pub mod compare;
 #[path = "insight/replay.rs"]
 pub mod replay;
-#[path = "insight/telemetry.rs"]
+#[path = "telemetry.rs"]
 pub mod telemetry;
-#[path = "insight/time.rs"]
+#[path = "time.rs"]
 pub mod time;
 
 use run_database::{Database, Run};

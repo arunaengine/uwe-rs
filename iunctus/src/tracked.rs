@@ -1,6 +1,4 @@
-//! The files that Git tracks in a repository, read from its index (`.git/index`) without a Git
-//! program, so that a run can record the files of its workflow by digest. The index of Git
-//! versions 2, 3 and 4 is read; the paths of version 4 are compressed against the path before.
+//! Reads tracked file paths from Git index versions 2, 3 and 4.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,7 +1,4 @@
-//! The TES executor: each task runs on a GA4GH TES server through the task runner. The store
-//! and the scratch directories are on this machine, and the server reads and writes them at
-//! the same paths through `file://` URLs, as Funnel on this machine or on a cluster with a
-//! shared file system does.
+//! Builds TES task executors with shared paths and configured site routing.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

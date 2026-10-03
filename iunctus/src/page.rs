@@ -1,6 +1,4 @@
-//! The web page of runs (decision 23): `iunctus page [<run>]` serves it for any run, and
-//! `iunctus run -page` serves it for the run it starts. The page listens on this machine only,
-//! unless `-address` says otherwise.
+//! Serves recorded run pages on the configured local address.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

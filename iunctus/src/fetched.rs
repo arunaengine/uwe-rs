@@ -1,7 +1,4 @@
-//! The remote files that a run read, as the storage providers noted them: task inputs at
-//! addresses, and files that workflow code read, like a sample sheet on the web. The run
-//! database records them by digest, and a real run keeps their contents in its store, so that a
-//! repeat of the run reads the same bytes, also when the file at the address has changed.
+//! Records fetched input digests and retains their bytes for repeat runs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

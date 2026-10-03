@@ -1,8 +1,4 @@
-//! The live drawing of a run in a terminal, as `nextflow run` draws its log: the lines of the
-//! steps stay at the bottom and are drawn again in place, at each event and every second.
-//! What else the run prints, like Nextflow's `view` or a warning, goes above them: while the
-//! drawing lasts, standard output (and standard error, when it is the same terminal) go into
-//! pipes, whose lines a thread each prints above the steps.
+//! Redraws live progress below captured stdout and stderr lines.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

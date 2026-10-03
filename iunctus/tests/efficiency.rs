@@ -1,8 +1,4 @@
-//! Right-sized resources and short tasks together in real runs: a run after an earlier one asks
-//! for the memory that its tasks used, not for what the workflow names, and says so;
-//! `-no-right-sizing` keeps what the workflow names. Short tasks run one after another in one
-//! container, each with its own outcome, log and outputs. `cargo test -p iunctus --test
-//! efficiency -- --ignored` (needs Docker and the debian:stable-slim image).
+//! Checks measured resource sizing, task grouping and TES input locality.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -268,10 +264,8 @@ fn tes_tasks(server: &str) -> usize {
     tasks["tasks"].as_array().map_or(0, Vec::len)
 }
 
-/// Sends tasks to the site near their inputs: two Funnel servers on this machine, the second
-/// near one folder. Start them with `just funnel-server` and the same with
-/// `--Server.HTTPPort 18001 --Server.RPCPort 19091` and other BoltDB and work folders.
-/// It counts the tasks of each server, so run it with `--test-threads 1`.
+/// Counts tasks routed near inputs across two local Funnel servers.
+/// Run with `--test-threads 1`; server setup is in docs/support.md.
 #[test]
 #[ignore = "needs two Funnel servers, at ports 18000 and 18001, Docker and debian:stable-slim"]
 fn routes_near_inputs() {

@@ -1,6 +1,4 @@
-//! Runs `iunctus check-machine`: it says what is ready and what is missing for real runs, with
-//! what to do, and exits with 3 when something is missing. The container engine is a socket
-//! that is not there, and the only server is at a local port that nothing listens on.
+//! Checks machine readiness diagnostics without reachable external services.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

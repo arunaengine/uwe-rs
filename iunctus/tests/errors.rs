@@ -1,7 +1,4 @@
-//! Checks that every error has the same form, `iunctus: <where>: <what>; <what to do>`, and the
-//! exit code of its kind: 1 for the workflow, 2 for the command line, 3 for the machine or its
-//! config, 33 for a feature that iunctus does not support. No test needs a container engine or
-//! the network: servers are at a local port that nothing listens on.
+//! Checks workflow, usage, setup and unsupported-feature diagnostics and exit codes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

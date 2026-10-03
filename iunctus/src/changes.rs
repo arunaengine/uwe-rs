@@ -1,7 +1,4 @@
-//! What changed since a run: the files of its workflow and of its command line, the files it
-//! read on this machine and at addresses, and the images that its tags name now, each compared
-//! by digest with what the run recorded. `iunctus changes <run>` prints it, and
-//! `iunctus repeat <run>` prints it before it runs the run again with what the run pinned.
+//! Compares recorded workflow files, inputs and image digests with their current state.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,6 +1,4 @@
-//! Compares `iunctus config -profile test` with `nextflow config -flat -profile test` for every
-//! nf-core pipeline of the test workflows. `just config-oracle` records the Nextflow output first;
-//! run with `just config-test-workflows-test`.
+//! Compares pipeline configuration with recorded Nextflow oracle results.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1,14 +1,4 @@
-//! Runs every nf-core pipeline of the test workflows with `-profile test` and the simulator,
-//! and compares the outcome with `tests/fixtures/run_test_workflows.txt`: `ok`, or the
-//! exit code and the first line of the error. The Nextflow workflows of WorkflowHub run the same
-//! way, and compare with `tests/fixtures/run_workflowhub.txt`. The runs are stub runs, as
-//! pipelines then do not read the content of the outputs that the simulator makes up, and up to 8
-//! tasks finish in a seeded shuffled order, so that the Nextflow driver cannot depend on the
-//! order of outcomes. Each run starts from a copy of the folder of its workflow, as a user runs
-//! a workflow after a clone. The execution graph of each run that succeeds must be valid. A
-//! workflow may only fail with a record in `tests/fixtures/run_evidence.txt` of why it cannot
-//! run, and a record is only kept while its workflow fails. Run with
-//! `just run-test-workflows-test`; on a difference the test prints the lines of the new fixture.
+//! Compares simulated pipeline outcomes with recorded fixtures and failure evidence.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -28,13 +18,8 @@ mod targets;
 /// `fixtures/run_evidence.py`.
 const EVIDENCE: &str = include_str!("fixtures/run_evidence.txt");
 
-/// The reason of each pipeline that a record names. A record is a block of lines between
-/// empty lines: the pipelines, then `= <kind>: <why>` with one plain sentence, then the
-/// evidence that Nextflow fails the same way: `$` the command, and `>` the lines of its output.
-/// The kind is `invalid` (the pipeline itself is broken), `missing` (it needs something that is
-/// not public or not in its repository), or `unsupported (decision N)` (iunctus leaves the
-/// feature out on purpose, as decision N of docs/decisions.md says). Panics on a record without
-/// a valid reason or without evidence, so that the record file stays complete.
+/// Parses pipeline names, typed reasons and Nextflow evidence from record blocks.
+/// Panics on missing reasons or evidence; docs/support.md describes the format.
 fn reasons(text: &str) -> BTreeMap<&str, &str> {
     let mut reasons = BTreeMap::new();
     for block in text.split("\n\n") {
@@ -80,11 +65,8 @@ fn valid(reason: &str) -> bool {
     (matches!(kind, "invalid" | "missing") || decision) && !why.trim().is_empty()
 }
 
-/// The outcome of one run: `ok`, or the exit code and the first error line without the
-/// parts that differ between machines and runs. A run that takes more than ten minutes is
-/// stopped with exit code 124. A run that succeeds with an invalid graph is `graph` and the
-/// problem. `target` is the folder of the workflow, or its main script, and `project` its
-/// folder, which the run starts from; `profile` runs it with `-profile test`.
+/// Normalizes exit/error output and validates successful execution graphs.
+/// Runs from `project` with optional test profile; ten-minute timeouts exit with 124.
 fn outcome(target: &Path, project: &Path, cache: &Path, profile: bool) -> String {
     let graph = cache.join("graph.json");
     let _ = std::fs::remove_file(&graph);

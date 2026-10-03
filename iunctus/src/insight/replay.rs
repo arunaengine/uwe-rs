@@ -1,9 +1,4 @@
-//! `iunctus replay <run> <task>`: runs one recorded task again, alone, from its description in
-//! the run database: in the image it ran in, pinned to its digest, with the same inputs, taken
-//! from the store by their digest where their files are gone. It runs on this machine, or on
-//! the executor that `-executor` names, whatever the cache holds, and is recorded as a run of
-//! its own. Then it tells how the replay compares with the task as it ran: its exit code, time
-//! and outputs by digest, and the standard output and error of both. A failed task replays too.
+//! Replays a recorded task with pinned inputs and compares its result.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

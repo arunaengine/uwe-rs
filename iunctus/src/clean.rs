@@ -1,7 +1,4 @@
-//! `iunctus clean`: removes from the store what no rule keeps, as `nextflow clean` removes work
-//! folders, but by rule and never what a run still refers to. It lists what it would remove
-//! first, and removes it only with `-remove`. It also removes the scratch folders that runs
-//! which ended left behind.
+//! Previews and removes unretained store entries and completed run scratch directories.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

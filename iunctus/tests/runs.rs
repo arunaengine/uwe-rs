@@ -1,7 +1,4 @@
-//! Every `iunctus run` records itself in the run database: `iunctus runs` lists it, `-resume`
-//! continues it without running its finished tasks again, and `iunctus export` writes its
-//! RO-Crate. The runs use the simulator, so they need no container engine, except the ignored
-//! test of resume with real containers: `cargo test -p iunctus --test runs -- --ignored`.
+//! Checks run recording, resume, report locations and RO-Crate export.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

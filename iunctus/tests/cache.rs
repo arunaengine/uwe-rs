@@ -1,7 +1,4 @@
-//! The global cache with real runs in Docker: a task that any run, pipeline or language asked
-//! for before comes from the store, and two runs that ask for the same task at the same moment
-//! run it once. The tests need Docker and the `debian:stable-slim` image; run them with
-//! `cargo test -p iunctus --test cache -- --ignored --test-threads 1`.
+//! Checks cache sharing, retention and preview across runs and workflow languages.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

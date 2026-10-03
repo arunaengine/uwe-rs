@@ -1,10 +1,4 @@
-//! `iunctus check-machine`: what is ready on this machine for real runs, and what is missing
-//! with what to install or set: the config file and its secrets, the container engine, the
-//! store and its free space, the run database, and each executor that the config file or the
-//! command line sets up.
-//!
-//! The check asks no server outside this machine, except those that the config file or the
-//! command line names, each once: the store at an address, and the TES server.
+//! Reports configured machine and executor prerequisites for real runs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

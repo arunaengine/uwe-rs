@@ -1,7 +1,4 @@
-//! `iunctus time <run>`: where the time of a run went. The critical path, the chain of tasks
-//! that set the length of the run, with how long each waited and ran; how long all tasks ran
-//! and waited together; and the steps that ran the longest and used the most CPU time, memory
-//! and I/O.
+//! Reports the critical path and per-step time and resource use.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

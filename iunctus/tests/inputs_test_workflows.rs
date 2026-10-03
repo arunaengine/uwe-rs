@@ -1,15 +1,4 @@
-//! Describes the inputs of every Nextflow workflow of the test workflows, the nf-core pipelines
-//! and the Nextflow workflows of WorkflowHub, as a run does before its first task (decision
-//! 24), and compares the counts with `tests/fixtures/inputs_test_workflows.txt`: the inputs of
-//! each schema and how many are required, files and sample sheets, the errors and warnings of a
-//! check of a simulated run with `-profile test` (without a profile where a WorkflowHub workflow
-//! has none), and where the schema and the params that the code reads differ. Every schema must
-//! be valid JSON Schema of draft 2020-12. No task runs and nothing comes from the network: the
-//! driver reads local files only, and a remote file is an `IOException`, as Nextflow throws
-//! when it cannot reach one; nf-core pipelines leave out their remote config files, as with
-//! `NXF_OFFLINE`. Each workflow is described in a child process that starts in its folder, as a
-//! run does. Run with `just inputs-test-workflows-test`; `UPDATE_FIXTURE=1` writes the fixture
-//! again.
+//! Compares workflow input schemas and validation counts with recorded fixtures.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

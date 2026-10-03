@@ -1,10 +1,4 @@
-//! Reproducibility in whole runs: what a run records to pin it, what changed since, the order
-//! check, and, with Docker, the reproducibility check of cached tasks and a repeat of a run
-//! whose workflow and remote file changed since. The Docker tests need the
-//! `debian:stable-slim` image; run them with
-//! `cargo test -p iunctus --test reproducibility -- --ignored --test-threads 1`. A repeat asks
-//! the registries whether the tags of its images moved; inside
-//! `unshare --map-current-user -n --keep-caps` (with `ip link set lo up`) it cannot, and says so.
+//! Checks run pins, changed inputs, completion order and reproducible repeats.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -379,7 +379,7 @@ snakemake-test-workflows-test:
 # Runs every Snakemake test workflow with the simulator and compares the outcomes
 # with snakemake-runtime/tests/fixtures/run_test_workflows.txt; `UPDATE_FIXTURE=1` rewrites the fixture.
 snakemake-run-test-workflows-test:
-	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/snakemake}" cargo test --release --locked -p snakemake-runtime --test run_test_workflows -- --ignored --exact workflows_run_as_recorded
+	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/snakemake}" cargo test --release --locked -p snakemake-runtime --test run_test_workflows -- --ignored --exact matches_recorded_workflows
 
 # Fetches the text-only Argo test workflows at the commits the Argo test-workflows test
 # expects. The checkouts keep their `.git`, which marks the repository whose templates a workflow

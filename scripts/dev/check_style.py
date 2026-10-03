@@ -24,6 +24,8 @@ EXTERNAL_NAMES = {}
 SMALL_DOMAINS = {
     "nextflow-evaluator/src/number": "grouped shared-prefix domain; hoisting recreates number_*",
     "nextflow-plugins/src/nf_schema": "grouped shared-prefix domain; hoisting recreates nf_schema_*",
+    "run-database/src/compare": "grouped shared-prefix domain; hoisting recreates compare_*",
+    "workflow-graph/src/shell": "grouped shared-prefix domain; hoisting recreates shell_*",
 }
 FOLDER_MIN = 5
 TERM_MAX = 3
@@ -38,6 +40,13 @@ HEADER_HASH_NAMES = frozenset({".dockerignore", ".gitignore", "Dockerfile", "jus
 HEADER_HASH_SUFFIXES = (".env", ".example", ".sh", ".toml", ".ttl", ".yaml", ".yml")
 HEADER_EXCEPTIONS = {
     "Cargo.lock": "generated lockfile; Cargo rewrites it",
+    "demo/argo/dag-diamond.yaml": "copied upstream example",
+    "demo/argo/hello-world.yaml": "copied upstream example",
+    "demo/cwl/LICENSE.md": "third-party license text",
+    "demo/cwl/scatter-job.yml": "copied upstream example",
+    "demo/snakemake/LICENSE.md": "third-party license text",
+    "demo/snakemake/scripts/plot-quals.py": "copied upstream example",
+    "run-crate/tests/fixtures/simulated/README.md": "generated RO-Crate fixture output",
     "nextflow-evaluator/tests/fixtures/oracle/gunzip/script.command.sh": "recorded command compared byte for byte",
     "nextflow-evaluator/tests/fixtures/oracle/gunzip/stub.command.sh": "recorded command compared byte for byte",
     "python-evaluator/tests/fixtures/python/library.py": "the program prints its own first source line",

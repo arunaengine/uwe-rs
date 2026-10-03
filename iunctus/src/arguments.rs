@@ -80,7 +80,7 @@ pub struct Arguments {
     /// `-max-pending n`: how many tasks may be pending at once.
     pub max_pending: Option<usize>,
     pub machine_retries: Option<u32>,
-    pub machine_retry_delay_ms: Option<u64>,
+    pub retry_delay_ms: Option<u64>,
     /// `-order asked|reversed|finished|shuffled[:seed]`: the order in which pending tasks
     /// finish.
     pub order: Option<Order>,
@@ -350,7 +350,7 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
             }
             "-machine-retry-delay-ms" => {
                 let number = value()?;
-                parsed.machine_retry_delay_ms =
+                parsed.retry_delay_ms =
                     Some(number.parse().ok().filter(|n| *n > 0).ok_or_else(|| {
                         format!(
                             "`-machine-retry-delay-ms` needs a number above zero, not `{number}`"
@@ -784,17 +784,17 @@ mod tests {
     }
 
     #[test]
-    fn machine_retry_options_take_bounded_numbers() {
+    fn retry_numbers_bounded() {
         let parsed = parse_all(&["-machine-retries", "0", "-machine-retry-delay-ms", "250"]);
         assert_eq!(parsed.machine_retries, Some(0));
-        assert_eq!(parsed.machine_retry_delay_ms, Some(250));
+        assert_eq!(parsed.retry_delay_ms, Some(250));
         for pair in [["-machine-retries", "-1"], ["-machine-retry-delay-ms", "0"]] {
             assert!(parse(&pair.map(str::to_owned)).is_err());
         }
     }
 
     #[test]
-    fn snakemake_target_controls_take_lists_and_apply_only_to_planning_commands() {
+    fn target_options_scoped() {
         let words = [
             "Snakefile",
             "-until",
@@ -844,7 +844,7 @@ mod tests {
     }
 
     #[test]
-    fn engine_flags_are_not_workflow_parameters() {
+    fn engine_flags_reserved() {
         for flag in [
             "--cores",
             "--use-conda",
@@ -888,7 +888,7 @@ mod tests {
     }
 
     #[test]
-    fn clean_up_takes_its_rules() {
+    fn clean_rules_parsed() {
         let parsed = parse_all(&[
             "-keep-days",
             "30",
@@ -914,13 +914,13 @@ mod tests {
     }
 
     #[test]
-    fn no_network_is_a_switch() {
+    fn network_switch_parsed() {
         assert!(parse_all(&["main.nf", "-no-network"]).no_network);
         assert!(!parse_all(&["main.nf"]).no_network);
     }
 
     #[test]
-    fn the_reproducibility_check_takes_a_percent() {
+    fn check_percent_parsed() {
         let parsed = parse_all(&["-check-reproducibility", "10%"]);
         assert_eq!(parsed.check_reproducibility, Some(0.1));
         assert_eq!(percent("100"), Some(1.0));
@@ -930,7 +930,7 @@ mod tests {
     }
 
     #[test]
-    fn params_take_their_values() {
+    fn parameter_values_parsed() {
         let parsed = parse_all(&[
             "main.nf",
             "--outdir",
@@ -978,7 +978,7 @@ mod tests {
     }
 
     #[test]
-    fn pictures_take_a_direction_and_a_fold() {
+    fn graph_options_parsed() {
         let parsed = parse_all(&["main.nf", "-direction", "right", "-fold", "0"]);
         assert_eq!(parsed.direction, Some(Direction::Right));
         assert_eq!(parsed.fold, Some(0));
@@ -994,7 +994,7 @@ mod tests {
     }
 
     #[test]
-    fn a_config_param_without_a_setting_is_a_param() {
+    fn config_parameter_parsed() {
         let parsed = parse_all(&["main.nf", "--config", "file.txt"]);
         assert_eq!(
             parsed.params,
@@ -1003,7 +1003,7 @@ mod tests {
     }
 
     #[test]
-    fn stores_are_folders_or_addresses() {
+    fn store_locations_parsed() {
         let parsed = parse_all(&["main.nf", "-store", "s3://cache/iunctus"]);
         assert_eq!(parsed.store.as_deref(), Some("s3://cache/iunctus"));
         let parsed = parse_all(&["main.nf", "-store", "cache", "-iunctus-config", "lab.toml"]);
@@ -1045,7 +1045,7 @@ mod tests {
     }
 
     #[test]
-    fn orders_and_pending_limits() {
+    fn scheduling_options_parsed() {
         let parsed = parse_all(&["main.nf", "-max-pending", "4", "-order", "shuffled:7"]);
         assert_eq!(parsed.default_image, None);
         let parsed = parse_all(&["tool.cwl", "-output-dir", "out"]);
@@ -1082,7 +1082,7 @@ mod tests {
     }
 
     #[test]
-    fn resume_takes_a_run_when_one_follows() {
+    fn resume_id_optional() {
         let parsed = parse_all(&["main.nf", "-resume"]);
         assert_eq!(parsed.resume, Some(Resume::Last));
         let parsed = parse_all(&["main.nf", "-resume", "19a8f3c2b10-1a2b", "-page"]);
@@ -1098,7 +1098,7 @@ mod tests {
     }
 
     #[test]
-    fn a_job_file_after_a_cwl_document_is_its_inputs() {
+    fn cwl_inputs_positional() {
         let parsed = parse_all(&["tool.cwl", "job.yml"]);
         assert_eq!(parsed.inputs, Some(PathBuf::from("job.yml")));
         assert!(parsed.targets.is_empty());
@@ -1117,7 +1117,7 @@ mod tests {
     }
 
     #[test]
-    fn runs_can_go_without_the_cache() {
+    fn cache_optional() {
         assert!(!parse_all(&["main.nf"]).no_cache);
         assert!(parse_all(&["main.nf", "-no-cache"]).no_cache);
         assert!(parse_all(&["main.nf", "-no-right-sizing"]).no_right_sizing);
@@ -1125,7 +1125,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_languages_and_options_are_errors() {
+    fn rejects_unknown_options() {
         let arguments = ["-lang".to_owned(), "wdl".to_owned()];
         assert!(parse(&arguments).is_err());
         assert!(parse(&["-x".to_owned()]).is_err());

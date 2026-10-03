@@ -5,7 +5,7 @@
 
 The existing `iunctus` library owns driver and executor construction, config setup, the run database, resume, workflow sources and the content store. The CLI calls those same services. No separate library crate or workflow executable is needed.
 
-`RunRequest::new(target)` selects strict admission. Its `settings: RunSettings` uses the existing CLI configuration fields: language, profiles, config files, parameters, input file, executor, database, store, resume and task scheduling. Set `settings.inputs` to the admitted JSON input document. This uses each native driver's existing input binding and keeps its file in the source inventory. Strict admission validates typed values without CLI coercion, default insertion or simulated assumptions. `Policy::Relaxed` permits missing and advisory schemas, while preserving typed validation in the embedding path. The CLI retains its existing relaxed checks and coercion.
+`RunRequest::new(target)` selects strict admission. Its `settings: RunSettings` uses the existing CLI configuration fields: language, profiles, config files, parameters, input file, executor, database, store, resume and task scheduling. The retry delay is `settings.retry_delay_ms`, in milliseconds; the CLI flag remains `-machine-retry-delay-ms`. Set `settings.inputs` to the admitted JSON input document. This uses each native driver's existing input binding and keeps its file in the source inventory. Strict admission validates typed values without CLI coercion, default insertion or simulated assumptions. `Policy::Relaxed` permits missing and advisory schemas, while preserving typed validation in the embedding path. The CLI retains its existing relaxed checks and coercion.
 
 ```rust
 use iunctus::{CancellationToken, RunRequest};

@@ -50,7 +50,7 @@ fn inputs() -> Inputs {
 }
 
 #[test]
-fn form_keeps_original_schema_and_effective_values() {
+fn preserves_schema_values() {
     let inputs = inputs();
     let mut driver = Described(inputs.clone());
     let form = forms::describe(&mut driver, Policy::Strict).expect("describes a form");
@@ -66,7 +66,7 @@ fn form_keeps_original_schema_and_effective_values() {
 }
 
 #[test]
-fn typed_responses_round_trip_without_changing_wire_bytes() {
+fn preserves_wire_bytes() {
     let form = forms::describe(&mut Described(inputs()), Policy::Strict).expect("a form");
     let shown = form.response();
     let bytes = serde_json::to_vec(&shown).unwrap();
@@ -102,7 +102,7 @@ fn typed_responses_round_trip_without_changing_wire_bytes() {
 }
 
 #[test]
-fn posted_values_get_field_errors_without_coercion_or_default_insertion() {
+fn validates_posted_types() {
     let form = forms::describe(&mut Described(inputs()), Policy::Strict).expect("a form");
     let values = json!({"count": "2", "a/b~": []});
     let rejected = form.validate(values.clone());
@@ -130,7 +130,7 @@ fn posted_values_get_field_errors_without_coercion_or_default_insertion() {
 }
 
 #[test]
-fn missing_and_advisory_schemas_follow_the_declared_policy() {
+fn enforces_schema_policy() {
     assert!(matches!(
         Form::new(
             Description {
@@ -162,7 +162,7 @@ fn missing_and_advisory_schemas_follow_the_declared_policy() {
 }
 
 #[test]
-fn all_four_native_drivers_provide_renderable_form_descriptions() {
+fn describes_native_forms() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let files = [
         (

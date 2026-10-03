@@ -44,7 +44,7 @@ fn assert_form(stderr: &str) {
 }
 
 #[test]
-fn mistakes_of_the_command_line_say_so_in_one_line() {
+fn formats_usage_errors() {
     let directory = project(PIPELINE);
     let (code, stderr) = iunctus(directory.path(), &["run", "main.nf", "-bogus"]);
     assert_eq!(code, 2, "{stderr}");
@@ -71,7 +71,7 @@ fn mistakes_of_the_command_line_say_so_in_one_line() {
 }
 
 #[test]
-fn errors_of_a_workflow_name_their_place() {
+fn errors_name_location() {
     let directory = project("process A {\n    script:\n    \"echo a\"\n\nworkflow {\n    A()\n}\n");
     let (code, stderr) = iunctus(directory.path(), &["run", "main.nf"]);
     assert_eq!(code, 1, "{stderr}");
@@ -101,7 +101,7 @@ fn errors_of_a_workflow_name_their_place() {
 }
 
 #[test]
-fn unsupported_features_exit_with_33() {
+fn unsupported_exit_code() {
     let script = "nextflow.enable.dsl=1\nprocess A {\n    output:\n    file 'x' into ch\n    \
                   script:\n    \"touch x\"\n}\n";
     let directory = project(script);
@@ -115,7 +115,7 @@ fn unsupported_features_exit_with_33() {
 }
 
 #[test]
-fn a_broken_config_file_is_a_problem_of_the_setup() {
+fn rejects_broken_configuration() {
     let directory = project(PIPELINE);
     std::fs::write(
         directory.path().join("lab.toml"),
@@ -136,7 +136,7 @@ fn a_broken_config_file_is_a_problem_of_the_setup() {
 }
 
 #[test]
-fn executors_that_cannot_run_say_what_to_install_or_set() {
+fn explains_missing_prerequisites() {
     let directory = project(PIPELINE);
     let output = common::command()
         .args(["run", "main.nf", "-executor", "local"])

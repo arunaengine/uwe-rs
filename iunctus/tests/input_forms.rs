@@ -33,7 +33,7 @@ fn command(folder: &std::path::Path, name: &str, format: &str) -> Value {
 }
 
 #[test]
-fn nextflow_form_has_effective_values_and_the_exact_envelope() {
+fn preserves_form_envelope() {
     let folder = tempfile::tempdir().expect("a folder");
     std::fs::write(
         folder.path().join("main.nf"),

@@ -218,7 +218,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn effective_repeat_options_roundtrip() {
+    fn repeat_options_roundtrip() {
         let arguments = Arguments {
             target: Some("/restored/workflow/main.nf".into()),
             language: Some(Language::Nextflow),

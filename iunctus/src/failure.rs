@@ -157,7 +157,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_line_names_iunctus_once() {
+    fn prefixes_each_line() {
         let failure = Failure::new(
             "main.nf:3:5: Expected `}`\niunctus: the input `x` is required\n    affected files:\n* \
              --input: missing\n",
@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn numbers_of_system_errors_are_left_out() {
+    fn omits_error_numbers() {
         let line = "cannot read job.yml: No such file or directory (os error 2)";
         assert_eq!(
             shown(line),
@@ -185,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn failures_of_the_machine_are_failures_of_the_setup() {
+    fn classifies_setup_failures() {
         let error = ExecuteError::Machine {
             task: "A".into(),
             message: "the TES server does not answer".into(),

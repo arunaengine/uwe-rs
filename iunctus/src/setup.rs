@@ -196,7 +196,7 @@ pub struct Defaults {
     pub proxy: Option<String>,
     pub report: Option<PathBuf>,
     pub machine_retries: Option<u32>,
-    pub machine_retry_delay_ms: Option<u64>,
+    pub retry_delay_ms: Option<u64>,
 }
 
 impl Defaults {
@@ -244,7 +244,7 @@ impl Defaults {
                         .map_err(|_| retry.invalid("machine_count", "use a whole number from zero"))
                 })
                 .transpose()?;
-            defaults.machine_retry_delay_ms = retry
+            defaults.retry_delay_ms = retry
                 .integer("base_delay_ms")?
                 .map(|number| {
                     u64::try_from(number)
@@ -266,9 +266,7 @@ impl Defaults {
             "run" | "graph" | "check-order" | "repeat" | "replay"
         ) {
             arguments.machine_retries = arguments.machine_retries.or(self.machine_retries);
-            arguments.machine_retry_delay_ms = arguments
-                .machine_retry_delay_ms
-                .or(self.machine_retry_delay_ms);
+            arguments.retry_delay_ms = arguments.retry_delay_ms.or(self.retry_delay_ms);
         }
         if matches!(command, "run" | "check-machine") && arguments.executor.is_none() {
             arguments.executor = self.executor;
@@ -395,7 +393,7 @@ mod tests {
     use task_runner::NetworkRule;
 
     #[test]
-    fn retry_defaults_validate_and_cli_values_win() {
+    fn retry_options_override() {
         let config = ConfigFile::parse(
             "[retry]\nmachine_count = 4\nbase_delay_ms = 250\n",
             Path::new("config.toml"),
@@ -409,7 +407,7 @@ mod tests {
             .unwrap()
             .apply("run", &mut arguments);
         assert_eq!(arguments.machine_retries, Some(0));
-        assert_eq!(arguments.machine_retry_delay_ms, Some(250));
+        assert_eq!(arguments.retry_delay_ms, Some(250));
         for setting in ["machine_count = -1", "base_delay_ms = 0"] {
             let config =
                 ConfigFile::parse(&format!("[retry]\n{setting}\n"), Path::new("config.toml"))
@@ -419,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn nextflow_sees_the_engine_that_runs_the_tasks() {
+    fn exposes_task_engine() {
         let kind = super::engine_kind;
         assert_eq!(kind(Some("slurm"), "apptainer", "docker"), "apptainer");
         assert_eq!(kind(Some("slurm"), "singularity", ""), "singularity");
@@ -437,7 +435,7 @@ mod tests {
     }
 
     #[test]
-    fn executors_take_their_settings_from_the_config_file() {
+    fn loads_executor_settings() {
         let text = "[executor.local]\nengine = \"podman\"\n\n[executor.tes]\nserver = \
                     \"https://tes.example.org\"\ntoken = \"t\"\n\n[executor.slurm]\ncontainer = \
                     \"podman\"\noptions = [\"--account=lab\", \"--qos=low\"]\n\n\
@@ -468,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn the_pull_job_of_slurm_asks_for_what_the_config_file_says() {
+    fn loads_slurm_resources() {
         let text = "[executor.slurm.pull]\ncpus = 8\nminutes = 120\n";
         let pull = read(text).expect("settings").slurm_pull;
         let expected = PullResources {
@@ -484,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn the_network_section_names_the_default_and_the_allowed_steps() {
+    fn loads_network_policy() {
         let parse = |text: &str| -> Result<NetworkRule, String> {
             let config = ConfigFile::parse(text, Path::new("config.toml"))
                 .map_err(|error| error.to_string())?;
@@ -500,7 +498,7 @@ mod tests {
     }
 
     #[test]
-    fn tes_sites_name_their_server_and_the_data_near_them() {
+    fn loads_tes_sites() {
         let text = "[executor.tes]\nserver = \"https://tes.example.org\"\n\n\
                     [executor.tes.sites.hamburg]\nserver = \"https://tes.hh.example.org\"\n\
                     near = [\"s3://hh/\", \"/mnt/hh/\"]\n\n\
@@ -522,7 +520,7 @@ mod tests {
     }
 
     #[test]
-    fn the_config_file_names_the_default_executor_the_cache_and_the_proxy() {
+    fn loads_command_defaults() {
         let text = "[executor]\ndefault = \"slurm\"\n\n[cache]\nfolder = \"/vol/cache\"\n\n\
                     [network]\nproxy = \"http://proxy.example.org:3128\"\n\n\
                     [report]\nfile = \"report.html\"\n";
@@ -548,7 +546,7 @@ mod tests {
     }
 
     #[test]
-    fn the_option_wins_over_the_default_executor_of_the_file() {
+    fn executor_option_overrides() {
         let slurm = || super::Defaults {
             executor: Some("slurm".into()),
             ..super::Defaults::default()
@@ -566,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_executors_and_settings_are_errors() {
+    fn rejects_unknown_settings() {
         let error = read("[executor.tes]\nsrever = \"x\"\n").expect_err("an error");
         assert!(error.contains("srever"), "{error}");
         let error = read("[executor.cloud]\nx = 1\n").expect_err("an error");

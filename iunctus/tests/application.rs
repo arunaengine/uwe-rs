@@ -67,7 +67,7 @@ fn inputs(values: serde_json::Value) -> Inputs {
 }
 
 #[test]
-fn describe_and_validate_start_no_tasks() {
+fn admission_starts_nothing() {
     let starts = Rc::new(Cell::new(0));
     let mut driver = FakeDriver {
         starts: starts.clone(),
@@ -107,7 +107,7 @@ fn describe_and_validate_start_no_tasks() {
 }
 
 #[test]
-fn strict_admission_disables_simulated_input_assumptions() {
+fn strict_admission_validates() {
     let mut required = inputs(json!({}));
     required.assumes_values = true;
     let folder = tempfile::tempdir().expect("a temporary directory");
@@ -145,7 +145,7 @@ fn strict_admission_disables_simulated_input_assumptions() {
 }
 
 #[test]
-fn invalid_inputs_never_start_the_driver_or_executor() {
+fn rejects_before_execution() {
     let starts = Rc::new(Cell::new(0));
     let mut driver = FakeDriver {
         starts: starts.clone(),
@@ -172,7 +172,7 @@ fn invalid_inputs_never_start_the_driver_or_executor() {
 }
 
 #[test]
-fn nextflow_executes_normalized_values() {
+fn executes_normalized_values() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let pipeline = r#"
 process COUNT {

@@ -498,7 +498,7 @@ mod tests {
     }
 
     #[test]
-    fn files_are_changed_gone_or_new() {
+    fn classifies_file_changes() {
         let then = [
             source(SourceKind::Workflow, "main.nf", "sha256:1"),
             source(SourceKind::Workflow, "gone.nf", "sha256:2"),
@@ -525,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn images_whose_tags_moved_are_changed() {
+    fn detects_image_changes() {
         let pins = [
             ImagePin {
                 named: "debian:stable-slim".into(),
@@ -562,7 +562,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_repeat_ancestry_preserves_inputs_and_rejects_missing_or_cyclic_parents() {
+    fn validates_repeat_ancestry() {
         let root = tempfile::tempdir().expect("a folder");
         let path = root.path().join("runs.sqlite");
         let start = |id: &str, parent: Option<&str>, words: &[&str]| run_database::RunStart {

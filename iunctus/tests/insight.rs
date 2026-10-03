@@ -85,7 +85,7 @@ fn workflow(directory: &Path) {
 }
 
 #[test]
-fn simulated_runs_tell_where_the_time_went_and_what_differs() {
+fn reports_run_insight() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     workflow(path);
@@ -133,7 +133,7 @@ fn simulated_runs_tell_where_the_time_went_and_what_differs() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn a_task_replays_in_its_container() {
+fn replays_recorded_container() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     workflow(path);
@@ -182,7 +182,7 @@ fn a_task_replays_in_its_container() {
 }
 
 #[test]
-fn the_trace_of_a_run_goes_to_a_file_and_to_an_otlp_endpoint() {
+fn delivers_run_traces() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     workflow(path);

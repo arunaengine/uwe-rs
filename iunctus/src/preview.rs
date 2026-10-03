@@ -96,7 +96,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn conda_markers_ignore_historical_pins() {
+    fn ignores_conda_pins() {
         let marker = "conda-env:/workflow/environment.yaml";
         let pinned = format!("sha256:{}", "a".repeat(64));
         let pins = [(marker.into(), pinned)].into();

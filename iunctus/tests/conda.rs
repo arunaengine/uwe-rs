@@ -44,7 +44,7 @@ fn lock(folder: &Path, arguments: &[&str]) -> (i32, String, String) {
 }
 
 #[test]
-fn an_environment_file_gets_its_lock_from_the_repodata_in_the_cache() {
+fn locks_cached_metadata() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let root = folder.path();
     std::fs::write(root.join("env.yaml"), "dependencies:\n  - zlib=1.3\n").expect("writes");
@@ -112,7 +112,7 @@ fn configuration(
 }
 
 #[test]
-fn conda_configuration_rejects_unsupported_installers_and_unbound_capabilities() {
+fn rejects_unbound_capabilities() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path();
     let base = format!("mamba@sha256:{}", "a".repeat(64));
@@ -176,7 +176,7 @@ fn conda_configuration_rejects_unsupported_installers_and_unbound_capabilities()
 }
 
 #[test]
-fn configured_locks_use_container_target_capabilities_and_refuse_pip() {
+fn validates_target_capabilities() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path();
     let cache = root.join("cache");
@@ -231,7 +231,7 @@ fn configured_locks_use_container_target_capabilities_and_refuse_pip() {
 
 #[test]
 #[ignore = "requires Docker/Podman, the pinned micromamba base, and IUNCTUS_CONDA_TEST_FIXTURE with target.json, repodata and SHA-256 packages"]
-fn real_conda_rule_reuses_its_image_after_package_cache_eviction() {
+fn reuses_prepared_image() {
     let fixture = std::path::PathBuf::from(
         std::env::var_os("IUNCTUS_CONDA_TEST_FIXTURE").expect("explicit offline fixture"),
     );

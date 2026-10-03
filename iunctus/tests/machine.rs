@@ -33,7 +33,7 @@ fn line<'a>(stdout: &'a str, part: &str) -> &'a str {
 }
 
 #[test]
-fn a_machine_without_a_container_engine_says_how_to_turn_one_on() {
+fn explains_missing_engine() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let (code, stdout) = check_machine(directory.path(), &[]);
     assert_eq!(code, 3, "{stdout}");
@@ -76,7 +76,7 @@ fn a_machine_without_a_container_engine_says_how_to_turn_one_on() {
 }
 
 #[test]
-fn executors_of_the_config_file_are_checked() {
+fn checks_configured_executors() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let config = "[executor.tes]\nserver = \"http://127.0.0.1:1\"\ntoken = { environment = \
                   \"IUNCTUS_TEST_TES_TOKEN\" }\n\n[executor.slurm]\ncontainer = \"podman\"\n\n\
@@ -112,7 +112,7 @@ fn executors_of_the_config_file_are_checked() {
 }
 
 #[test]
-fn a_config_file_with_a_mistake_is_missing_and_the_check_goes_on() {
+fn configuration_failure_continues() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(
         directory.path().join("lab.toml"),
@@ -136,7 +136,7 @@ fn a_config_file_with_a_mistake_is_missing_and_the_check_goes_on() {
 }
 
 #[test]
-fn a_slurm_login_node_needs_the_runtime_of_the_jobs_and_no_container_engine() {
+fn checks_slurm_runtime() {
     use std::os::unix::fs::PermissionsExt;
     let directory = tempfile::tempdir().expect("a temporary directory");
     let tool = |name: &str| {

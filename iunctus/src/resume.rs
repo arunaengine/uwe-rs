@@ -342,7 +342,7 @@ mod tests {
     }
 
     #[test]
-    fn denied_and_disabled_tasks_bypass_matching_lineage_results() {
+    fn respects_reuse_policy() {
         let runtime = workflow_graph::runtime().unwrap();
         for policy in [Reuse::Allowed, Reuse::Denied, Reuse::Disabled] {
             let task = Arc::new(Task {
@@ -374,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn remote_output_bytes_are_verified_before_resume() {
+    fn verifies_remote_outputs() {
         let runtime = workflow_graph::runtime().unwrap();
         let folder = tempfile::tempdir().expect("a temporary directory");
         let output = folder.path().join("output.txt");
@@ -453,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn local_input_bytes_are_verified_despite_same_size_and_time() {
+    fn verifies_input_bytes() {
         let runtime = workflow_graph::runtime().unwrap();
         let folder = tempfile::tempdir().expect("a temporary directory");
         let input = folder.path().join("input.txt");
@@ -509,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn unaccepted_exit_zero_results_with_no_files_are_not_resumed() {
+    fn rejects_unaccepted_results() {
         let runtime = workflow_graph::runtime().unwrap();
         for accepted in [None, Some(false), Some(true)] {
             let task = Arc::new(real_task());
@@ -537,7 +537,7 @@ mod tests {
     }
 
     #[test]
-    fn unpinned_images_defer_to_the_underlying_runner() {
+    fn unpinned_images_defer() {
         let runtime = workflow_graph::runtime().unwrap();
         let mut task = real_task();
         task.image = Some("image@sha256:abc".into());
@@ -565,7 +565,7 @@ mod tests {
     }
 
     #[test]
-    fn changed_or_unstated_network_policy_defers_to_the_runner() {
+    fn network_changes_defer() {
         let runtime = workflow_graph::runtime().unwrap();
         let cases = [
             (

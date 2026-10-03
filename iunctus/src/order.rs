@@ -159,7 +159,7 @@ mod tests {
     }
 
     #[test]
-    fn a_report_names_the_steps_that_depend_on_the_order_first() {
+    fn lists_order_dependencies() {
         let (text, depends) = report(&[
             difference("COLLECT", StepChange::Made, &[]),
             difference("REPORT", StepChange::Inputs, &["COLLECT"]),

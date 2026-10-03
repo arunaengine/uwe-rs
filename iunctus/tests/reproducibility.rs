@@ -144,7 +144,7 @@ fn latest(cache: &Path) -> String {
 }
 
 #[test]
-fn a_run_records_what_pins_it_and_tells_what_changed_since() {
+fn reports_pinned_changes() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let (folder, cache) = (root.path().join("pipeline"), root.path().join("cache"));
     std::fs::create_dir_all(&folder).expect("makes the folder");
@@ -216,7 +216,7 @@ fn a_run_records_what_pins_it_and_tells_what_changed_since() {
 }
 
 #[test]
-fn the_order_check_names_a_step_that_collects_in_the_order_tasks_finish() {
+fn identifies_order_dependence() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let cache = root.path().join("cache");
     let script = COLLECT_WORKFLOW.replace("SORTED", "");
@@ -255,7 +255,7 @@ fn output_text(cache: &Path, run: &str, step: &str) -> String {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn the_reproducibility_check_and_a_repeat_of_a_changed_workflow() {
+fn repeats_pinned_workflow() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let (folder, cache) = (root.path().join("pipeline"), root.path().join("cache"));
     std::fs::create_dir_all(&folder).expect("makes the folder");
@@ -323,7 +323,7 @@ fn the_reproducibility_check_and_a_repeat_of_a_changed_workflow() {
 }
 
 #[test]
-fn executors_that_cannot_cut_tasks_off_the_network_say_so_before_they_start() {
+fn rejects_unsupported_isolation() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let cache = root.path().join("cache");
     std::fs::write(root.path().join("main.nf"), NETWORK_WORKFLOW).expect("writes");
@@ -346,7 +346,7 @@ fn executors_that_cannot_cut_tasks_off_the_network_say_so_before_they_start() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn tasks_run_without_network_unless_a_step_is_allowed() {
+fn enforces_network_policy() {
     let root = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(root.path().join("main.nf"), NETWORK_WORKFLOW).expect("writes");
     let nets = |cache: &str, extra: &[&str], config: Option<&str>| {

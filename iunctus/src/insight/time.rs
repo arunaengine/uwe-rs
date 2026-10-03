@@ -191,7 +191,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_text_names_the_chain_and_the_steps() {
+    fn names_critical_steps() {
         let spent = TimeSpent {
             run: "r".into(),
             started: 0,

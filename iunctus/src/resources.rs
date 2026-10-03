@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn the_note_names_the_steps_that_asked_for_less() {
+    fn names_underallocated_steps() {
         let graph = ExecutionGraph {
             nodes: vec![
                 node("ALIGN", false),

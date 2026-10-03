@@ -53,7 +53,7 @@ fn normalised(text: &str) -> String {
 
 #[test]
 #[ignore = "needs the nf-core test workflows and the recorded oracle; run `just config-test-workflows-test`"]
-fn configs_equal_the_oracle() {
+fn matches_oracle() {
     let test_workflows = directory("NF_CORE_TEST_WORKFLOWS").join("pipelines");
     let oracle = directory("IUNCTUS_CONFIG_ORACLE");
     let expected = expected();

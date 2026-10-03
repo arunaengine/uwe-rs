@@ -115,7 +115,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_summary_counts_what_is_missing() {
+    fn counts_missing_requirements() {
         let mut report = Report::default();
         report.add(State::Ready, "store", "/s, 1.0 GB free");
         report.add(State::NotSetUp, "executor tes", "no TES server named");

@@ -67,7 +67,7 @@ fn tasks(output: &str) -> Vec<String> {
 }
 
 #[test]
-fn runs_are_recorded_resumed_and_exported() {
+fn preserves_run_history() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     std::fs::write(path.join("main.nf"), SCRIPT).expect("writes the script");
@@ -165,7 +165,7 @@ fn self_contained(html: &str) -> bool {
 }
 
 #[test]
-fn a_run_writes_its_report_as_the_option_or_the_config_file_says() {
+fn report_location_configurable() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     std::fs::write(path.join("main.nf"), SCRIPT).expect("writes the script");
@@ -209,7 +209,7 @@ fn a_run_writes_its_report_as_the_option_or_the_config_file_says() {
 }
 
 #[test]
-fn a_real_run_cannot_resume_a_simulated_one() {
+fn rejects_simulated_resume() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     std::fs::write(path.join("main.nf"), SCRIPT).expect("writes the script");
@@ -237,7 +237,7 @@ fn a_real_run_cannot_resume_a_simulated_one() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn real_runs_resume_in_containers() {
+fn resumes_container_runs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     let script = SCRIPT.replace(

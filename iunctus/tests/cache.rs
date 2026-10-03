@@ -121,7 +121,7 @@ fn entries(cache: &Path) -> usize {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn a_module_runs_once_for_two_pipelines() {
+fn pipelines_share_cache() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let cache = root.path().join("cache");
     let first = pipeline(root.path(), "first", FIRST);
@@ -209,7 +209,7 @@ rule count:
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn languages_share_a_task_where_their_descriptions_are_equal() {
+fn languages_share_cache() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let cache = root.path().join("cache");
     let folder = root.path();
@@ -277,7 +277,7 @@ workflow {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn two_runs_at_the_same_moment_run_a_task_once() {
+fn concurrent_runs_deduplicate() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let cache = root.path().join("cache");
     let folders: Vec<_> = ["one", "two"]
@@ -325,7 +325,7 @@ fn run_ids(cache: &Path) -> Vec<String> {
 }
 
 #[test]
-fn clean_up_needs_a_rule_and_removes_the_scratch_of_simulated_runs() {
+fn clean_requires_rule() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let cache = root.path().join("cache");
     let first = pipeline(root.path(), "first", FIRST);
@@ -389,7 +389,7 @@ fn clean_up_needs_a_rule_and_removes_the_scratch_of_simulated_runs() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn clean_up_removes_what_no_rule_keeps() {
+fn clean_respects_retention() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let cache = root.path().join("cache");
     let first = pipeline(root.path(), "first", FIRST);
@@ -469,7 +469,7 @@ fn clean_up_removes_what_no_rule_keeps() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn a_simulated_run_previews_what_comes_from_the_cache() {
+fn previews_cached_results() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let cache = root.path().join("cache");
     let first = pipeline(root.path(), "first", FIRST);
@@ -601,7 +601,7 @@ workflow {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn the_longest_chain_starts_first() {
+fn longest_chain_first() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let cache = root.path().join("cache");
     std::fs::write(root.path().join("main.nf"), CHAINS).expect("writes");
@@ -656,7 +656,7 @@ fn layers(front: &Path, shared: &Path) -> std::path::PathBuf {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
-fn a_store_in_layers_shares_results_between_machines() {
+fn layered_store_shares() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let shared = root.path().join("shared");
     let entries = |folder: &Path| {

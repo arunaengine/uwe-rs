@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     #[ignore = "needs Docker and the cached debian:stable-slim image"]
-    fn restricted_argo_host_inputs_are_readable_as_the_image_user() {
+    fn restricted_inputs_readable() {
         use std::os::unix::fs::PermissionsExt;
 
         let root = tempfile::tempdir().unwrap();
@@ -219,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    fn failure_hook_diagnostic_preserves_the_original_exit_code() {
+    fn preserves_hook_exit() {
         let execution = Execution {
             graph: ExecutionGraph::default(),
             error: Some(workflow_graph::ExecuteError::Machine {

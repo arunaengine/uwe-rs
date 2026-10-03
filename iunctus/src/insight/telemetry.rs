@@ -158,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn telemetry_comes_from_its_section() {
+    fn loads_telemetry_settings() {
         assert!(read("").expect("no section").is_none());
         let text = "[telemetry]\nendpoint = \"http://localhost:4318\"\nheaders = { authorization \
                     = \"Bearer t\" }\n";

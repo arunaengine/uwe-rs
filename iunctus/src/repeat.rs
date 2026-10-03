@@ -93,7 +93,7 @@ pub(crate) fn chosen_here(repeated: &mut Arguments, given: &Arguments) {
         default_image,
         max_pending,
         machine_retries,
-        machine_retry_delay_ms,
+        retry_delay_ms,
         order,
         database,
         address,
@@ -300,7 +300,7 @@ mod tests {
     use workflow_graph::{Language, Outcome, Task, TaskId};
 
     #[test]
-    fn concurrent_restorations_keep_independent_sources() {
+    fn restorations_stay_independent() {
         let root = tempfile::tempdir().expect("a folder");
         let first = restoration_folder(root.path(), "original")
             .unwrap_or_else(|error| panic!("{}", error.message));
@@ -316,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn repeat_keeps_conda_markers_with_bare_local_ids() {
+    fn preserves_conda_markers() {
         let root = tempfile::tempdir().expect("a folder");
         let database_path = root.path().join("runs.sqlite");
         let start = RunStart {

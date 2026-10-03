@@ -399,7 +399,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_worst_problem_decides_the_exit_code() {
+    fn worst_problem_wins() {
         let mut report = Report::default();
         assert_eq!(report.code(), 0);
         report.add(Kind::Warning, "w");
@@ -417,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn lines_that_continue_a_message_stay_with_it() {
+    fn preserves_message_continuations() {
         let mut report = Report::default();
         let error = DriverError::new(
             "iunctus: WorkflowError: Missing input files for rule copy:\n    affected files:\n",
@@ -434,7 +434,7 @@ mod tests {
     }
 
     #[test]
-    fn many_missing_files_are_counted() {
+    fn counts_missing_files() {
         let files: Vec<PathBuf> = ["/d/a", "/d/b", "/d/c", "/d/e"]
             .iter()
             .map(PathBuf::from)

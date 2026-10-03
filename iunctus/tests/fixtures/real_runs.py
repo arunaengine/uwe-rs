@@ -1,26 +1,5 @@
 #!/usr/bin/env python3
-# Runs workflows for real, with iunctus and with the native tool, and compares what each
-# delivers: the names and the SHA-256 digests of the result files. It records the comparison of
-# each case in real_runs.txt next to this script.
-#
-# Run it from the repository root: iunctus/tests/fixtures/real_runs.py [case...]
-# With cases, it runs only them and keeps the other records. It needs Docker, the release
-# binary of iunctus (target/release/iunctus, or IUNCTUS), and the native tool of each case on
-# the PATH: nextflow 26.04.6 for Nextflow, cwltool for CWL, snakemake (through uvx) for
-# Snakemake. Argo has no native tool without a cluster: its cases compare with the files that
-# the workflow documents. Each case runs in ~/.cache/iunctus/real-runs/<case> (REAL_RUNS).
-#
-# The native tool runs twice, into two folders, so that the files whose content differs
-# between two native runs, like reports with dates, are compared by their names only. Names
-# with a date and time, like `params_2026-09-30_12-02-36.json`, are compared with the date and
-# time replaced by `<time>`. The native runs are kept and not repeated; `NATIVE=1` runs them
-# again. At most 4 containers run at a time: Nextflow gets `executor.cpus = 4`, iunctus
-# `-max-pending 4`.
-#
-# The cases that end in `-slurm` run on a SLURM cluster with Apptainer: run the script on a node
-# that may submit jobs, not on a login node, with nextflow, java and apptainer on the PATH.
-# Nextflow gets `queueSize = 4` and names its jobs `iunctus-native-...`, iunctus `-max-pending 4`.
-#
+"""Compares real workflow outputs from iunctus and native tools."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

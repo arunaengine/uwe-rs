@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-# Runs Argo workflows for real on a SLURM cluster with `-executor slurm` and Apptainer, and
-# checks that each ends as Argo's tests expect: real_runs_argo.txt next to this script says
-# which workflows succeed and which fail in Argo (from argo lint and Argo's expected failures),
-# and records those that ran the same way with iunctus on this machine. It records one line per
-# workflow in real_runs_slurm_argo.txt next to this script (or RECORD).
-#
-# Run it on a node of the cluster that may submit jobs, not on a login node:
-#   real_runs_slurm_argo.py <Argo test workflows folder> [workflow...]
-# It needs the iunctus binary (IUNCTUS, else `iunctus` on the PATH). Without workflows it takes
-# every workflow that ran the same way here and names only the images in IMAGES, so that the
-# cluster pulls a few small images. Tasks get no network (`-no-network`), as in
-# real_runs_argo.py. At most PARALLEL workflows run at a time, each with 3 jobs at once.
-# The folder may hold only some files of each repository; each repository folder then needs a
-# `.git` folder, so that iunctus finds the WorkflowTemplates of the other files there.
-#
+"""Checks Argo workflow outcomes on SLURM with Apptainer."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

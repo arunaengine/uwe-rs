@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Records the stub scripts of nf-core pipelines with Nextflow 26.04.6 and Docker:
-# `sh record.sh <test-workflows>/pipelines <pipeline>...`. Each task's `.command.sh`, up to the capture
-# block of `eval` outputs, goes to `<pipeline>/<task name>.sh`, with `:` and spaces in the name
-# replaced by `_`.
+# Records native Nextflow stub scripts for the selected nf-core pipelines.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 test_workflows="$1"

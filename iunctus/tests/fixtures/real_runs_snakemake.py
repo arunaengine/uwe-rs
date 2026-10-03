@@ -1,31 +1,5 @@
 #!/usr/bin/env python3
-# Runs the tests of Snakemake (the `tests/` folder of its repository, from the Snakemake test
-# workflows) for real, with iunctus and with Snakemake, and compares the files that each run
-# made, changed or removed in the folder of the test, by name and SHA-256 digest. It also checks
-# both runs against the `expected-results` folder of the test. It records the comparison in
-# real_runs_snakemake.txt next to this script.
-#
-# Run it from the repository root: iunctus/tests/fixtures/real_runs_snakemake.py [test...]
-# With tests, it runs only them and keeps the other records. It needs Docker, Snakemake 9.27.0
-# (SNAKEMAKE, else `snakemake` on the PATH), the release binary of iunctus
-# (target/release/iunctus, or IUNCTUS) and the Snakemake test workflows (SNAKEMAKE_TESTS).
-#
-# Each test runs the way run_test_workflows_launches.txt says (targets, config files and
-# values), with 3 jobs at once, as Snakemake's own tests do, in a git repository of its files,
-# as the tests are in Snakemake's repository. Snakemake gets the CPUs of the machine as cores,
-# as iunctus sees them, where Snakemake's tests give 3. Snakemake runs the jobs on this machine,
-# iunctus in containers of IMAGE, which has Bash, Python with pandas, and the usual tools. Both
-# run in the same folder, one after the other, so that paths in outputs agree.
-#
-# The runs use no network: both tools run in a network namespace of their own, and iunctus
-# gives its containers none (`-no-network`). Tests that read
-# remote files, need Conda environments, wrappers or modules, or name an image that is not on
-# this machine, are left out with the reason. iunctus talks to Docker through a socket that
-# refuses pulls (docker_no_pull.py), since the Docker daemon has network.
-# When the runs differ, Snakemake runs once more, and files that differ between its two runs
-# count by name only. Snakemake's own files (`.snakemake`, the `.snakemake_timestamp` of
-# directory outputs, Python's `__pycache__`) are left out of the comparison.
-#
+"""Compares real Snakemake workflow files with native expected results."""
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 

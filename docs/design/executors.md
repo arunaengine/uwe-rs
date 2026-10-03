@@ -220,3 +220,9 @@ TES servers decide the user and the permissions of their containers themselves; 
 **Tested.** Docker as root on this machine: `executor/tests/local.rs` checks that a container of the user has no capabilities and `NoNewPrivs`, that root of an Argo container has only `CHOWN`, that a step writes `/result.txt` and `/data` as root in `/` with `HOME=/root`, that a step of user 4242 starts in its `workingDir` and its files come back to the user, and that the containers of a set do the same. Rootless Podman and rootless Docker are not set up on this machine; the settings that iunctus sends for them are tested as data (`executor::access`, `slurm-executor` script tests). Apptainer 1.4.5 without setuid on the BCF cluster, in a SLURM job (`-slurm-container apptainer`): an Argo step of `alpine` ran as the user (`Uid` of the user, `CapEff` and `CapPrm` 0, `NoNewPrivs` 1), started in `/`, and wrote `/tmp` and `/result.txt`; its artifacts and the scratch folder belong to the user. Rootless Podman is not installed on the nodes of that cluster, so it is not tested.
 
 Aruna integration uses the generic TES executor plus S3 storage; TES-over-S3 staging is still being implemented.
+
+## Construction details
+
+The default simulator writes one TES task document per task, keeps files in cache scratch and synthesizes outputs. `local` runs containers, `tes` submits to a TES server, `slurm` submits container batch jobs and `kubernetes` creates Jobs. Disabling reuse makes real executors run every task regardless of cached results, including task replay.
+
+Nextflow's `workflow.containerEngine` and engine config scopes name the runtime that runs tasks. SLURM uses its selected job runtime, such as Apptainer. Local execution reports Docker or Podman; a socket path naming Podman selects Podman. Remote inputs download once into the cache. Local digests remain cached while files are unchanged; importing inputs also copies local bytes into the store for remote executors.

@@ -79,11 +79,9 @@ pub(crate) fn offline_possible(arguments: &Arguments, setup: &Setup) -> Result<(
     )))
 }
 
-/// The executor that `-executor` names: `simulator` (the default) writes a TES task document
-/// for each task and makes up its outputs, `local` runs each task in a container, `tes` on a
-/// TES server, `slurm` as a SLURM batch job and `kubernetes` as a Kubernetes Job. The simulator
-/// keeps its files in the scratch directory of the cache. Without `reuse`, real executors run
-/// every task whatever the cache holds, as a replay of one task does.
+/// Builds the executor selected by `-executor`, defaulting to simulated tasks.
+/// Without `reuse`, real executors bypass cached results, including during replay.
+/// See docs/design/executors.md for backends and scratch paths.
 pub(crate) fn executor(
     arguments: &Arguments,
     setup: &Setup,

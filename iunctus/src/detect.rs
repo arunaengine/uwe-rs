@@ -14,10 +14,8 @@ const SNAKEFILES: [&str; 4] = [
     "workflow/snakefile",
 ];
 
-/// The language of a workflow: a directory with `main.nf` or `nextflow.config`, or a `.nf`
-/// file, is Nextflow; a Snakefile, a `.smk` file or a directory with one is Snakemake; a `.cwl`
-/// file, or JSON or YAML with `cwlVersion`, is CWL; JSON or YAML with an `apiVersion` of
-/// `argoproj.io` is Argo.
+/// Detects Nextflow projects, Snakefiles and CWL or Argo documents.
+/// CWL uses `cwlVersion`; Argo uses `apiVersion: argoproj.io`.
 pub fn language(target: &Path) -> Result<Language, String> {
     let shown = target.display();
     if target.is_dir() {

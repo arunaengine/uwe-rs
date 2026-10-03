@@ -1,6 +1,4 @@
-//! The config file of iunctus (decision 20): the site-wide file, the user's file and the file
-//! of `-iunctus-config`, read once per command, with the storage providers and the store that
-//! they name. Without any file, everything works with its defaults.
+//! Loads executor settings, command defaults and storage configuration.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -182,13 +180,8 @@ fn network(config: &ConfigFile) -> Result<NetworkRule, ConfigError> {
     })
 }
 
-/// What the config file sets for a whole command, read before anything else looks at the
-/// options, the cache folder or the network: the executor of `iunctus run` and `iunctus
-/// check-machine` when `-executor` is not given (`default` of `[executor]`; the simulator when
-/// the file does not say), the cache folder (`folder` of `[cache]`, which wins over
-/// `XDG_CACHE_HOME`), the web proxy of the requests of iunctus itself (`proxy` of
-/// `[network]`, unless the environment names one), and where `iunctus run` writes the report of
-/// each run (`file` of `[report]`; a relative path starts in the folder of the run).
+/// Config defaults applied before command options, cache and network setup.
+/// See docs/design/embedding.md for executor, cache, proxy and report precedence.
 #[derive(Debug, Default, PartialEq)]
 pub struct Defaults {
     pub executor: Option<String>,
@@ -313,11 +306,9 @@ impl Setup {
         .unwrap_or_default()
     }
 
-    /// The kind of the container engine that runs the tasks, as Nextflow names it in
-    /// `workflow.containerEngine` and in its config scopes, like `docker.registry`: the
-    /// runtime of the SLURM jobs with `-executor slurm`, like `apptainer`, so that workflows
-    /// choose their images for it as they do in Nextflow; else `docker` or `podman` of this
-    /// machine, where a socket counts as Podman when its path says so.
+    /// Names the task engine for Nextflow metadata and config scope selection.
+    /// Uses the SLURM runtime or this machine's Docker/Podman engine.
+    /// See docs/design/executors.md for socket and runtime selection.
     pub fn engine_kind(&self, arguments: &Arguments) -> String {
         engine_kind(
             arguments.executor.as_deref(),

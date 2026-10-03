@@ -6,10 +6,8 @@ use crate::failure::{Failure, INTERRUPTED};
 use std::path::PathBuf;
 use workflow_graph::{CancellationToken, Execution, ExecutionGraph, SIMULATION};
 
-/// How the task runner treats the inputs of tasks: remote files are downloaded once into the
-/// cache folder, and the digests of local files are kept there, so that a file that did not
-/// change is not read again. `import_inputs` copies local inputs into the store too, for
-/// executors whose tasks run on other machines.
+/// Downloads remote inputs once and caches digests of unchanged local files.
+/// `import_inputs` also stores local bytes for executors on other machines.
 pub(crate) fn runner_settings(
     storage: storage::Storage,
     import_inputs: bool,

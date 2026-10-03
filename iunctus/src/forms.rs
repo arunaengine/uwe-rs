@@ -121,11 +121,9 @@ impl Form {
         })
     }
 
-    /// JSON for a schema renderer. Values are effective launch values; defaults remain
-    /// annotations. Callers control authorization and disclosure of schemas and values.
-    /// `remote_content_checked` is always false: input-schema checks remote locators without
-    /// fetching their bytes, checking object access, or binding immutable versions. Downloads
-    /// during execution do not turn form validation into a remote-content check.
+    /// JSON with effective values and defaults as annotations, for authorized renderers.
+    /// Remote bytes, access and immutable versions remain unchecked during validation.
+    /// See docs/design/embedding.md for disclosure and remote-content boundaries.
     pub fn json(&self) -> Value {
         serde_json::to_value(self.response()).expect("form responses serialize")
     }

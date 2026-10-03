@@ -1,3 +1,4 @@
+<!-- Embedding services, run ownership and typed form contracts. -->
 <!-- Copyright (c) 2026 The iunctus Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
@@ -39,3 +40,9 @@ The form format remains `FORMAT = 1`. `remote_content_checked: false` is accurat
 `Form::response()` returns `FormResponse`, and `Form::validate_response(values)` returns `ValidationResponse`. Both derive serde serialization and deserialization, including nested diagnostic branches. The existing `json()` and `validate()` methods retain their version 1 JSON format. Round-trip checks cover accepted, rejected and unavailable responses and preserve serialized bytes.
 
 Aruna integration uses the generic TES executor plus S3 storage; TES-over-S3 staging is still being implemented.
+
+## Configuration and validation boundaries
+
+Drivers are not `Send`; callers construct and use them on their owner thread. Validation performs input-schema checks, including declared local path checks, without fetching or verifying remote content. Form defaults remain annotations. Callers control authorization and disclosure of schemas and values. Input validation does not check remote object access or bind immutable versions, and later execution downloads do not turn it into a remote-content check.
+
+Command defaults are read before options, cache folders or networking. `[executor].default` supplies the executor for `run` and `check-machine` when `-executor` is absent; otherwise the simulator is the default. `[cache].folder` wins over `XDG_CACHE_HOME`. `[network].proxy` applies to iunctus requests unless the environment supplies a proxy. `[report].file` selects each run's report, with relative paths starting in the run folder.

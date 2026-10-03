@@ -1,8 +1,4 @@
 //! Structured workflow description, admission and execution for embedding iunctus.
-//!
-//! Drivers are not `Send`; callers construct and use them on their owner thread. Validation
-//! performs the checks of `input-schema`, including declared local path checks, but does not
-//! fetch or verify remote content.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

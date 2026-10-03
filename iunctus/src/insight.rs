@@ -2,9 +2,13 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+#[path = "compare.rs"]
 pub mod compare;
+#[path = "insight/replay.rs"]
 pub mod replay;
+#[path = "insight/telemetry.rs"]
 pub mod telemetry;
+#[path = "insight/time.rs"]
 pub mod time;
 
 use run_database::{Database, Run};

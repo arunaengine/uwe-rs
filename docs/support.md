@@ -160,7 +160,7 @@ The TES executor: each task runs on a GA4GH TES server through the task runner. 
 
 The files that Git tracks in a repository, read from its index (`.git/index`) without a Git program, so that a run can record the files of its workflow by digest. The index of Git versions 2, 3 and 4 is read; the paths of version 4 are compressed against the path before.
 
-### `iunctus/src/insight/mod.rs`
+### `iunctus/src/insight.rs`
 
 The commands that show what runs did and why, from the run database: `iunctus time` tells where the time of a run went, `iunctus compare` what differs between two runs, and `iunctus replay` runs one task again and tells what differs, and `iunctus telemetry` writes and sends the trace of a run in the OpenTelemetry format. `time` and `compare` write plain text, or JSON with `-format json`.
 

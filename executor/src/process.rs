@@ -688,11 +688,11 @@ pub fn run_cancellable(
     spec: &ContainerSpec,
     cancel: &CancellationToken,
 ) -> Result<(), ProcessError> {
-    run_to_end_cancellable_with_timeout(spec, cancel, OPERATION_LIMIT)
+    run_with_limit(spec, cancel, OPERATION_LIMIT)
 }
 
 /// Runs with an explicit execution budget; image acquisition and creation remain bounded.
-pub fn run_to_end_cancellable_with_timeout(
+pub fn run_with_limit(
     spec: &ContainerSpec,
     cancel: &CancellationToken,
     limit: Duration,

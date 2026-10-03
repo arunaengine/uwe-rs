@@ -9,9 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use executor::CancellationToken;
-use executor::process::{
-    ContainerProcess, ContainerSpec, Mount, ProcessLimits, run_to_end_cancellable_with_timeout,
-};
+use executor::process::{ContainerProcess, ContainerSpec, Mount, ProcessLimits, run_with_limit};
 use python_evaluator::packages::{PythonProcess, PythonStart, PythonStarter};
 
 /// The image of the Python container when the user gives none: a slim Python with uv.
@@ -259,7 +257,7 @@ impl ContainerStarter {
                 memory: Some(PREPARE_MEMORY),
                 show_stderr: false,
             };
-            run_to_end_cancellable_with_timeout(&spec, &self.cancel, PREPARE_DEADLINE)
+            run_with_limit(&spec, &self.cancel, PREPARE_DEADLINE)
                 .map_err(|error| error.to_string())?;
         }
         drop(lock);

@@ -21,7 +21,10 @@ LICENSE_MARKS = ("spdx-license-identifier", "copyright", "licensed under", "lice
 STRUCT_NAMES = frozenset({"bin", "benches", "examples"})
 GENERIC_PREFIXES = frozenset({("get",), ("set",), ("test",), ("tests",)})
 EXTERNAL_NAMES = {}
-SMALL_DOMAINS = {}
+SMALL_DOMAINS = {
+    "nextflow-evaluator/src/number": "grouped shared-prefix domain; hoisting recreates number_*",
+    "nextflow-plugins/src/nf_schema": "grouped shared-prefix domain; hoisting recreates nf_schema_*",
+}
 FOLDER_MIN = 5
 TERM_MAX = 3
 COMMENT_MAX = 3
@@ -35,6 +38,13 @@ HEADER_HASH_NAMES = frozenset({".dockerignore", ".gitignore", "Dockerfile", "jus
 HEADER_HASH_SUFFIXES = (".env", ".example", ".sh", ".toml", ".ttl", ".yaml", ".yml")
 HEADER_EXCEPTIONS = {
     "Cargo.lock": "generated lockfile; Cargo rewrites it",
+    "nextflow-evaluator/tests/fixtures/oracle/gunzip/script.command.sh": "recorded command compared byte for byte",
+    "nextflow-evaluator/tests/fixtures/oracle/gunzip/stub.command.sh": "recorded command compared byte for byte",
+    "python-evaluator/tests/fixtures/python/library.py": "the program prints its own first source line",
+    "snakemake-runtime/tests/fixtures/embedded/preambles/scripts/test.rs": "fragment included in a generated preamble",
+    "snakemake-runtime/tests/fixtures/embedded/preambles/scripts/test.sh": "fragment included in a generated preamble",
+    "snakemake-runtime/tests/fixtures/embedded/preambles/snakemake-9.27.0/test.rs": "recorded preamble compared byte for byte",
+    "snakemake-runtime/tests/fixtures/embedded/preambles/snakemake-9.27.0/test.sh": "recorded preamble compared byte for byte",
 }
 
 WORD_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")

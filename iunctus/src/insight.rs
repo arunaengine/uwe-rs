@@ -4,7 +4,7 @@
 
 #[path = "compare.rs"]
 pub mod compare;
-#[path = "insight/replay.rs"]
+#[path = "replay.rs"]
 pub mod replay;
 #[path = "telemetry.rs"]
 pub mod telemetry;

@@ -5861,6 +5861,7 @@ dependencies = [
  "config-file",
  "content-store",
  "executor",
+ "glob",
  "opendal",
  "reqwest",
  "serde",

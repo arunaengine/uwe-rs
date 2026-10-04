@@ -145,7 +145,7 @@ fn replays_recorded_container() {
         "-iunctus-config",
         "config.toml",
     ];
-    let (code, output) = iunctus(path, &arguments);
+    let (code, output) = iunctus_with(path, &arguments, &[("IUNCTUS_LOG", "info")]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("sent the trace to"), "{output}");
     let (_, body) = received.recv().expect("the trace");

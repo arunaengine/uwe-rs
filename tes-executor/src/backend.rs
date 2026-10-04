@@ -10,20 +10,19 @@ use std::time::Duration;
 
 use executor::poll::{CANCEL_GRACE, Poll, REQUEST_GRACE, WaitError};
 use executor::registry::{self, ImageConfigs};
-use executor::{Backend, ExecutorError, Finished, Job, containers, wrapper};
+use executor::{Backend, ExecutorError, Finished, Job, wrapper};
 use task_model::TaskSpec;
 use tokio_util::sync::CancellationToken;
 
 use crate::client::{Client, ExecutorSpec, FileType, Input, Output, Resources, State, Task};
+use crate::{ObjectStage, Settings};
 
 /// The folders of a task in its container.
-const WORK: &str = "/iunctus/work";
-const CONTROL: &str = "/iunctus/control";
-const OUTBOX: &str = "/iunctus/outbox";
-const HOME: &str = "/iunctus/home";
-const WRAPPER: &str = "/iunctus/wrapper.sh";
-/// The folder of the wrappers of a task of several containers.
-const CONTAINER_WRAPPERS: &str = "/iunctus/containers";
+pub(crate) const WORK: &str = "/iunctus/work";
+pub(crate) const CONTROL: &str = "/iunctus/control";
+pub(crate) const OUTBOX: &str = "/iunctus/outbox";
+pub(crate) const HOME: &str = "/iunctus/home";
+pub(crate) const WRAPPER: &str = "/iunctus/wrapper.sh";
 
 /// How long the backend waits between two looks at a task, at most.
 const POLL: Duration = Duration::from_secs(5);
@@ -39,6 +38,8 @@ pub struct TesBackend {
     pub scratch: PathBuf,
     /// The entrypoints and default commands of images, from their registries.
     pub configs: ImageConfigs,
+    pub staging: Option<ObjectStage>,
+    pub settings: Settings,
 }
 
 impl Backend for TesBackend {
@@ -53,6 +54,18 @@ impl Backend for TesBackend {
     ) -> Result<Finished, ExecutorError> {
         if cancel.is_cancelled() {
             return Err(ExecutorError::Cancelled);
+        }
+        if job.spec.containers.len() > 1
+            || job
+                .spec
+                .containers
+                .iter()
+                .any(|container| container.attempts != 1 || !container.after.is_empty())
+        {
+            return Err(ExecutorError::Unsupported(
+                "TES tasks support exactly one executor without container retry dependencies"
+                    .into(),
+            ));
         }
         if job.placement.offline {
             return Err(ExecutorError::Unsupported(
@@ -71,9 +84,9 @@ impl Backend for TesBackend {
         }
         let root = self.scratch.join(job.name);
         tokio::fs::create_dir_all(&self.scratch).await?;
-        tokio::fs::create_dir(&root).await?;
+        tokio::fs::create_dir_all(&root).await?;
         let _ownership = ownership(&root)?;
-        tokio::fs::create_dir(root.join("empty")).await?;
+        tokio::fs::create_dir_all(root.join("empty")).await?;
         let result = self.attempt(job, &root, cancel).await;
         if result.is_err() && !root.join("remote.json").exists() {
             let _ = tokio::fs::remove_dir_all(&root).await;
@@ -92,6 +105,7 @@ impl TesBackend {
         // The command runs through the entrypoint of the image, as `docker run` and the local
         // executor run it; a task without one runs the image's default command.
         let mut spec = job.spec.clone();
+        let attempt_key = crate::staging::attempt_prefix(job)?;
         let image = spec.image.as_mut().ok_or(ExecutorError::NoImage)?;
         let config = if image.platform.is_some() {
             let resolved = self
@@ -100,8 +114,10 @@ impl TesBackend {
                 .await?;
             image.reference = resolved.reference;
             resolved.config
-        } else {
+        } else if !spec.replaces_entrypoint || spec.arguments.is_empty() {
             self.configs.get(&image.reference).await?
+        } else {
+            Default::default()
         };
         if !spec.replaces_entrypoint || spec.arguments.is_empty() {
             spec.arguments = config.command(&job.spec.arguments);
@@ -131,7 +147,20 @@ impl TesBackend {
             }
         }
         let job = Job { spec: &spec, ..job };
-        let mut task = task(job, root)?;
+        let mut task = match &self.staging {
+            Some(staging) => staging.prepare(job).await?,
+            None => task(job, root)?,
+        };
+        if task.inputs.len() > self.settings.max_inputs
+            || task.outputs.len() > self.settings.max_outputs
+        {
+            return Err(ExecutorError::Unsupported(
+                "TES task exceeds the configured input or output limit".into(),
+            ));
+        }
+        if let Some(tag) = &self.settings.idempotency_tag {
+            task.tags.insert(tag.clone(), attempt_key);
+        }
         let folders = wrapper::Folders {
             work: &workdir(job),
             control: CONTROL,
@@ -141,12 +170,9 @@ impl TesBackend {
             // what the task made, for the outbox.
             owner: "",
         };
-        match spec.containers.is_empty() {
-            true => {
-                let script = wrapper::wrapper(job.spec, &folders);
-                tokio::fs::write(root.join("wrapper.sh"), script).await?;
-            }
-            false => several(&spec, &folders, root, &mut task).await?,
+        if self.staging.is_none() {
+            let script = wrapper::wrapper(job.spec, &folders);
+            tokio::fs::write(root.join("wrapper.sh"), script).await?;
         }
         if cancel.is_cancelled() {
             return Err(ExecutorError::Cancelled);
@@ -157,6 +183,11 @@ impl TesBackend {
         let mut journal = serde_json::json!({"backend": "TES", "server": self.client.server(),
             "name": job.name, "id": null, "owner": std::process::id(), "host": host,
             "started": started, "locked": true});
+        if self.settings.idempotency_tag.is_some() {
+            journal["request"] =
+                serde_json::to_value(&task).map_err(|error| unresolved(root, error))?;
+            journal["idempotency_tag"] = serde_json::json!(self.settings.idempotency_tag);
+        }
         journal_at(root, &journal)?;
         let id = self
             .client
@@ -185,13 +216,40 @@ impl TesBackend {
                 root: root.to_owned(),
             });
         }
+        if let Some(staging) = &self.staging {
+            return match status.state {
+                State::Complete | State::ExecutorError => {
+                    staging.collect(job, &task, &status, root).await
+                }
+                State::Canceled => Err(ExecutorError::Cancelled),
+                _ => Err(failure(&status, "the TES server could not run the task")),
+            };
+        }
         match status.state {
-            State::Complete | State::ExecutorError => Finished::from_control(root.to_owned())
-                .map(|finished| recorded(finished, &spec))
-                .and_then(|finished| match finished.exit_code {
+            State::ExecutorError => {
+                let mut finished = Finished::from_control(root.to_owned())?;
+                finished.exit_code = finished
+                    .exit_code
+                    .filter(|code| *code != 0)
+                    .or_else(|| {
+                        status
+                            .logs
+                            .last()?
+                            .logs
+                            .last()?
+                            .exit_code
+                            .filter(|code| *code != 0)
+                    })
+                    .or(Some(1));
+                finished.files.clear();
+                Ok(finished)
+            }
+            State::Complete => Finished::from_control(root.to_owned()).and_then(|finished| {
+                match finished.exit_code {
                     Some(_) => Ok(finished),
                     None => Err(failure(&status, "the task ended without an exit code")),
-                }),
+                }
+            }),
             State::Canceled => Err(ExecutorError::Cancelled),
             _ => Err(failure(&status, "the TES server could not run the task")),
         }
@@ -292,6 +350,30 @@ impl TesBackend {
                 .iter()
                 .find(|peer| Some(peer.client.server()) == journal["server"].as_str())
                 .ok_or_else(|| unresolved(&root, "the original TES server is not configured"))?;
+            if journal["id"].is_null() {
+                let tag = backend
+                    .settings
+                    .idempotency_tag
+                    .as_deref()
+                    .filter(|tag| journal["idempotency_tag"].as_str() == Some(*tag));
+                if let Some(tag) = tag {
+                    let task: Task = serde_json::from_value(journal["request"].clone())
+                        .map_err(|error| unresolved(&root, error))?;
+                    if !task.tags.contains_key(tag) {
+                        return Err(unresolved(
+                            &root,
+                            "the saved submission has no idempotency tag",
+                        ));
+                    }
+                    let id = backend
+                        .client
+                        .create(&task)
+                        .await
+                        .map_err(|error| unresolved(&root, error))?;
+                    journal["id"] = serde_json::json!(id);
+                    journal_at(&root, &journal)?;
+                }
+            }
             let id = journal["id"].as_str().filter(|id| !id.is_empty())
                 .ok_or_else(|| unresolved(&root, "the submission response was not recorded; resolve it on the TES server before removing its journal"))?;
             backend.stop(id, &root, CANCEL_GRACE).await?;
@@ -372,7 +454,8 @@ impl TesBackend {
 fn ownership(root: &Path) -> Result<File, ExecutorError> {
     let lock = File::options()
         .write(true)
-        .create_new(true)
+        .create(true)
+        .truncate(false)
         .open(root.join("remote.lock"))?;
     lock.try_lock()
         .map_err(|error| std::io::Error::other(error.to_string()))?;
@@ -404,56 +487,6 @@ fn journal_at(root: &Path, journal: &serde_json::Value) -> Result<(), ExecutorEr
     std::fs::rename(path, root.join("remote.json"))?;
     std::fs::File::open(root)?.sync_all()?;
     Ok(())
-}
-
-/// The TES executors of a task of several containers, one per container, one after the other
-/// in an order where each comes after those it waits for, since TES runs the executors of a
-/// task in turn. Their wrappers are inputs of the task.
-async fn several(
-    spec: &TaskSpec,
-    folders: &wrapper::Folders<'_>,
-    root: &Path,
-    task: &mut Task,
-) -> Result<(), ExecutorError> {
-    let order = spec.container_order().ok_or_else(|| {
-        std::io::Error::other("the containers of the task wait for each other in a cycle")
-    })?;
-    let order = containers::sequence(spec).unwrap_or(order);
-    task.inputs.retain(|input| input.path != WRAPPER);
-    task.executors.clear();
-    for position in order {
-        let container = &spec.containers[position];
-        let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
-        let local = root.join(format!("wrapper-{}.sh", container.name));
-        let script = containers::container_wrapper(spec, position, folders);
-        tokio::fs::write(&local, script).await?;
-        let inside = format!("{CONTAINER_WRAPPERS}/{}.sh", container.name);
-        task.inputs.push(Input {
-            path: inside.clone(),
-            url: file_url(&local),
-            kind: FileType::File,
-        });
-        task.executors.push(ExecutorSpec {
-            image: image.reference.clone(),
-            command: vec!["sh".into(), inside],
-            workdir: start(spec, container.workdir.as_deref(), folders.work),
-            env: BTreeMap::new(),
-        });
-    }
-    Ok(())
-}
-
-/// The exit code of a task of several containers: that of the main container when it failed,
-/// else that of the first other container that failed.
-fn recorded(mut finished: Finished, spec: &TaskSpec) -> Finished {
-    if spec.containers.is_empty() {
-        return finished;
-    }
-    finished.exit_code = containers::recorded(spec, &finished.root.join(executor::CONTROL));
-    if finished.exit_code != Some(0) {
-        finished.files.clear();
-    }
-    finished
 }
 
 /// The work directory of a task in its container.
@@ -676,6 +709,8 @@ mod tests {
             client: Client::new(&server, None).unwrap(),
             scratch: folder.path().to_owned(),
             configs: ImageConfigs::default(),
+            staging: None,
+            settings: Settings::default(),
         };
         journal_at(folder.path(), &serde_json::json!({"id": "accepted"})).unwrap();
         let runtime = tokio::runtime::Builder::new_current_thread()

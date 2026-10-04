@@ -4,9 +4,13 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod backend;
+mod capture;
 pub mod client;
+mod outputs;
 mod settings;
+mod staging;
 
 pub use backend::TesBackend;
 pub use client::{Client, TesError};
 pub use settings::Settings;
+pub use staging::ObjectStage;

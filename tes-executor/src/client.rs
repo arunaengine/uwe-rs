@@ -32,7 +32,7 @@ pub struct Task {
     pub resources: Option<Resources>,
     pub executors: Vec<ExecutorSpec>,
     /// Directories that the executors share, made empty when the task starts.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub volumes: Vec<String>,
     pub tags: BTreeMap<String, String>,
 }
@@ -179,6 +179,18 @@ impl Client {
     /// A client of the server at `server`, like `http://localhost:8000`; the API path
     /// `/ga4gh/tes/v1` is added unless the address has it.
     pub fn new(server: &str, token: Option<String>) -> Result<Client, TesError> {
+        let address = reqwest::Url::parse(server)
+            .map_err(|_| TesError::Answer("TES server must be an HTTP address".into()))?;
+        if !matches!(address.scheme(), "http" | "https")
+            || !address.username().is_empty()
+            || address.password().is_some()
+            || address.query().is_some()
+            || address.fragment().is_some()
+        {
+            return Err(TesError::Answer(
+                "TES server must be an HTTP address without credentials, query or fragment".into(),
+            ));
+        }
         let server = server.trim_end_matches('/');
         let base = match server.ends_with("/ga4gh/tes/v1") {
             true => server.to_owned(),
@@ -203,6 +215,19 @@ impl Client {
 
     pub fn redact(&self, text: &str) -> String {
         let mut text = text.to_owned();
+        if let Some((user, password)) = &self.basic
+            && let Ok(request) = self
+                .http
+                .get(&self.base)
+                .basic_auth(user, Some(password))
+                .build()
+            && let Some(value) = request
+                .headers()
+                .get(reqwest::header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok())
+        {
+            text = text.replace(value, "[secret]");
+        }
         for secret in self.token.iter().chain(
             self.basic
                 .iter()
@@ -236,7 +261,17 @@ impl Client {
     /// The state of a task, with the logs of the system when it failed.
     pub async fn status(&self, id: &str) -> Result<Status, TesError> {
         let url = format!("{}/tasks/{id}?view=FULL", self.base);
-        self.send(self.http.get(&url), &url).await
+        let mut status: Status = self.send(self.http.get(&url), &url).await?;
+        for log in &mut status.logs {
+            for text in &mut log.system_logs {
+                *text = self.redact(text);
+            }
+            for executor in &mut log.logs {
+                executor.stdout = executor.stdout.as_deref().map(|text| self.redact(text));
+                executor.stderr = executor.stderr.as_deref().map(|text| self.redact(text));
+            }
+        }
+        Ok(status)
     }
 
     /// Asks the server about itself (`GET /service-info`), which tells whether it answers.

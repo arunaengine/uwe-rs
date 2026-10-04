@@ -16,6 +16,8 @@ fn backend(folder: &std::path::Path) -> TesBackend {
     TesBackend {
         client: Client::new(&server, None).expect("a client"),
         scratch: folder.join("scratch"),
+        staging: None,
+        settings: Default::default(),
         configs: executor::registry::ImageConfigs::known([
             ("debian:stable-slim".into(), config.clone()),
             ("alpine:latest".into(), config),
@@ -123,7 +125,7 @@ fn funnel_cancels_tasks() {
 
 #[test]
 #[ignore = "needs a Funnel server and the alpine:latest image; run with `just tes-test`"]
-fn funnel_orders_containers() {
+fn funnel_refuses_containers() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let container = |name: &str, image: &str, script: &str, after: &[&str]| ContainerSpec {
         replaces_entrypoint: false,
@@ -159,15 +161,8 @@ fn funnel_orders_containers() {
         placement: &placement,
     };
     let backend = backend(folder.path());
-    let finished = runtime()
-        .block_on(backend.run(job, &CancellationToken::new()))
-        .expect("runs");
-    assert_eq!(finished.exit_code, Some(0));
-    let output = std::fs::read_to_string(finished.local_path("out/a.txt")).expect("reads");
-    assert!(
-        output.trim().starts_with('3'),
-        "the release of Alpine: {output}"
-    );
-    let said = std::fs::read_to_string(finished.stdout()).expect("reads");
-    assert_eq!(said, "main\n");
+    assert!(matches!(
+        runtime().block_on(backend.run(job, &CancellationToken::new())),
+        Err(ExecutorError::Unsupported(_))
+    ));
 }

@@ -126,6 +126,8 @@ fn returns_server_outputs() {
     let backend = TesBackend {
         client: Client::new(&address, None).expect("a client"),
         scratch: folder.path().join("scratch"),
+        staging: None,
+        settings: Default::default(),
         configs: ImageConfigs::known([("debian:stable-slim".to_owned(), config)]),
     };
     let source = folder.path().join("in.txt");
@@ -220,7 +222,7 @@ fn returns_server_outputs() {
 }
 
 #[test]
-fn orders_container_executors() {
+fn refuses_multiple_executors() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let task = Arc::new(Mutex::new(None));
     let address = serve(task.clone());
@@ -232,6 +234,8 @@ fn orders_container_executors() {
     let backend = TesBackend {
         client: Client::new(&address, None).expect("a client"),
         scratch: folder.path().join("scratch"),
+        staging: None,
+        settings: Default::default(),
         configs: ImageConfigs::known([
             ("debian:stable-slim".to_owned(), config(&[])),
             ("alpine:latest".to_owned(), config(&["/entry"])),
@@ -282,34 +286,12 @@ fn orders_container_executors() {
         .enable_all()
         .build()
         .expect("a runtime");
-    let finished = runtime
+    let error = runtime
         .block_on(backend.run(job, &CancellationToken::new()))
-        .expect("runs");
-    assert_eq!(finished.exit_code, Some(0));
-    let sent = task.lock().expect("the task").clone().expect("a task");
-    let executors = sent["executors"].as_array().expect("executors");
-    let shown: Vec<(&str, &str)> = (executors.iter())
-        .map(|executor| {
-            let image = executor["image"].as_str().unwrap_or_default();
-            (image, executor["command"][1].as_str().unwrap_or_default())
-        })
-        .collect();
-    assert_eq!(
-        shown,
-        [
-            ("alpine:latest", "/iunctus/containers/prepare.sh"),
-            ("debian:stable-slim", "/iunctus/containers/main.sh"),
-        ]
-    );
-    let wrapper = std::fs::read_to_string(finished.root.join("wrapper-prepare.sh")).expect("reads");
-    assert!(
-        wrapper.contains("'/entry' 'sh' '-c' 'echo prepare'"),
-        "{wrapper}"
-    );
-    let paths: Vec<&str> = (sent["inputs"].as_array().expect("inputs").iter())
-        .filter_map(|input| input["path"].as_str())
-        .collect();
-    assert!(!paths.contains(&"/iunctus/wrapper.sh"), "{paths:?}");
+        .expect_err("one TES executor is required");
+    assert!(matches!(error, ExecutorError::Unsupported(_)));
+    assert!(task.lock().unwrap().is_none());
+    assert!(!backend.scratch.join(job.name).exists());
 }
 
 #[test]
@@ -356,6 +338,8 @@ fn bounds_accepted_tasks() {
         let backend = TesBackend {
             client: Client::new(&address, None).unwrap(),
             scratch: folder.path().join("scratch"),
+            staging: None,
+            settings: Default::default(),
             configs: ImageConfigs::known([("test".into(), ImageConfig::default())]),
         };
         let spec = TaskSpec {
@@ -423,6 +407,8 @@ fn retains_ambiguous_submissions() {
     let backend = TesBackend {
         client: Client::new("http://localhost:1", None).unwrap(),
         scratch: folder.path().join("scratch"),
+        staging: None,
+        settings: Default::default(),
         configs: ImageConfigs::default(),
     };
     std::fs::write(root.join("remote.json"), serde_json::json!({
@@ -486,6 +472,8 @@ fn recovers_dropped_attempts() {
     let backend = TesBackend {
         client: Client::new(&address, None).unwrap(),
         scratch,
+        staging: None,
+        settings: Default::default(),
         configs: ImageConfigs::known([("test".into(), ImageConfig::default())]),
     };
     std::fs::write(
@@ -531,6 +519,8 @@ fn preserves_active_attempts() {
     let backend = TesBackend {
         client: Client::new(&address, None).unwrap(),
         scratch,
+        staging: None,
+        settings: Default::default(),
         configs: ImageConfigs::known([("test".into(), ImageConfig::default())]),
     };
     std::fs::write(

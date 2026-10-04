@@ -189,6 +189,8 @@ fn tes_groups_tasks() {
         scratch: folder.join("scratch"),
         // Funnel runs images of this machine, whose configs no registry needs to give.
         configs: executor::registry::ImageConfigs::known([(image.into(), Default::default())]),
+        settings: Default::default(),
+        staging: None,
     };
     let settings = task_runner::Settings {
         downloads: folder.join("downloads"),
@@ -287,6 +289,8 @@ fn routes_near_inputs() {
         client: tes_executor::Client::new(server, None).expect("a client"),
         scratch: folder.join("scratch"),
         configs: executor::registry::ImageConfigs::known([(image.into(), Default::default())]),
+        settings: Default::default(),
+        staging: None,
     };
     let backends = task_runner::Sites {
         default: backend(&first),

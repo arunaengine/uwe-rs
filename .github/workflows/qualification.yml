@@ -58,7 +58,7 @@ jobs:
       - name: Exact Conda corpus outcomes
         run: cargo +1.97.1 test --offline --locked -p conda-environment --test test_workflows -j 2 -- --ignored --exact the_environments_of_the_snakemake_test_workflows_read
       - name: Exact config inventory and oracle parity
-        run: cargo +1.97.1 test --offline --locked -p iunctus --test config_test_workflows -j 2 -- --ignored --exact configs_equal_the_oracle
+        run: cargo +1.97.1 test --offline --locked -p iunctus --test config_test_workflows -j 2 -- --ignored --exact matches_oracle
   container:
     runs-on: ubuntu-24.04
     timeout-minutes: 60

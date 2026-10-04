@@ -182,7 +182,7 @@ headers = { authorization = { environment = "OTLP_AUTHORIZATION" } }
 
 `iunctus time <run>`: where the time of a run went. The critical path, the chain of tasks that set the length of the run, with how long each waited and ran; how long all tasks ran and waited together; and the steps that ran the longest and used the most CPU time, memory and I/O.
 
-### `iunctus/src/machine/mod.rs`
+### `iunctus/src/machine.rs`
 
 `iunctus check-machine`: what is ready on this machine for real runs, and what is missing with what to install or set: the config file and its secrets, the container engine, the store and its free space, the run database, and each executor that the config file or the command line sets up.
 

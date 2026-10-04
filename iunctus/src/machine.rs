@@ -2,8 +2,11 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+#[path = "machine/config.rs"]
 mod config;
+#[path = "machine/executors.rs"]
 mod executors;
+#[path = "machine/local.rs"]
 mod local;
 
 use std::fmt;

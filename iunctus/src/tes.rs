@@ -41,6 +41,8 @@ pub fn executor(
             client,
             scratch: scratch.clone(),
             configs: Default::default(),
+            settings: Default::default(),
+            staging: None,
         })
     };
     let mut backends = Sites::one(backend(place.server, place.token)?);

@@ -62,6 +62,20 @@ namespace = "iunctus"                # like -kubernetes-namespace
 
 ## 2. Local containers
 
+Registry digest and image configuration requests use `[registry."host"]` credentials first,
+then `$DOCKER_CONFIG/config.json` (or `~/.docker/config.json`),
+then `$XDG_RUNTIME_DIR/containers/auth.json`, then `~/.config/containers/auth.json`.
+Each host accepts `username` and `password`, or a Bearer `token`.
+All three values accept `{ environment = "VARIABLE" }` secret references.
+Docker and Podman `auth` entries supply base64-encoded `user:password`;
+`identitytoken` supplies an OAuth refresh token for the registry's token realm.
+Basic credentials work at the token realm and with direct Basic registry challenges.
+Docker Hub aliases, including `https://index.docker.io/v1/`, share credentials.
+Credential helpers are never run: failed anonymous access explains helper-only settings.
+Authentication errors omit response bodies and secret values.
+The existing client retains digest selection and the shared HTTP transport, without adding
+the broader image transfer dependencies of an OCI client replacement.
+
 ```sh
 iunctus run main.nf -executor local
 ```

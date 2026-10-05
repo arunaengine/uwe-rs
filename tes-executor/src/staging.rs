@@ -55,7 +55,7 @@ impl ObjectStage {
         })
     }
 
-    pub(crate) async fn prepare(&self, job: Job<'_>) -> Result<Task, ExecutorError> {
+    pub(crate) async fn prepare(&self, job: Job<'_>, shell: bool) -> Result<Task, ExecutorError> {
         let spec = job.spec;
         spec.validate().map_err(unsupported)?;
         if spec.arguments.is_empty() {
@@ -76,7 +76,7 @@ impl ObjectStage {
             ));
         }
         let work = container_path(spec.workdir.as_deref().unwrap_or(super::backend::WORK), "/")?;
-        let shell = shell_command(&spec.arguments);
+        let shell = shell || shell_command(&spec.arguments);
         if shell
             && [
                 super::backend::CONTROL,

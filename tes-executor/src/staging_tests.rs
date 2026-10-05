@@ -170,21 +170,26 @@ fn enforce(task: &Value) {
                     .any(|part| part.is_empty() || part == "." || part == "..")
         );
     }
+    for output in outputs {
+        let pattern = output["path"].as_str().unwrap();
+        if wildcard(pattern) {
+            let prefix = output["path_prefix"].as_str().unwrap();
+            assert!(
+                prefix.starts_with('/')
+                    && prefix != "/"
+                    && !prefix[1..]
+                        .split('/')
+                        .any(|part| part.is_empty() || part == "." || part == "..")
+            );
+            assert!(pattern.starts_with(&format!("{prefix}/")));
+        }
+    }
     for input in inputs {
         let path = input["path"].as_str().unwrap();
         assert!(!wildcard(path));
         for output in outputs {
             let pattern = output["path"].as_str().unwrap();
             if wildcard(pattern) {
-                let prefix = output["path_prefix"].as_str().unwrap();
-                assert!(
-                    prefix.starts_with('/')
-                        && prefix != "/"
-                        && !prefix[1..]
-                            .split('/')
-                            .any(|part| part.is_empty() || part == "." || part == "..")
-                );
-                assert!(pattern.starts_with(&format!("{prefix}/")));
                 assert!(!glob::Pattern::new(pattern).unwrap().matches(path));
             } else {
                 assert!(
@@ -287,13 +292,21 @@ async fn restores_object_outputs() {
     let folder = tempfile::tempdir().unwrap();
     let (operator, objects, source) = stores();
     let server = server(operator.clone(), objects.clone(), "COMPLETE").await;
-    let backend = backend(&server, folder.path(), &source, &objects);
+    let mut backend = backend(&server, folder.path(), &source, &objects);
+    backend.configs = executor::registry::ImageConfigs::known([(
+        "test@sha256:fixed".into(),
+        executor::registry::ImageConfig {
+            entrypoint: vec!["/entry".into()],
+            ..Default::default()
+        },
+    )]);
     let input = folder.path().join("input");
     let directory = folder.path().join("directory");
     std::fs::create_dir_all(directory.join("nested")).unwrap();
     std::fs::write(&input, b"alpha").unwrap();
     std::fs::write(directory.join("nested/b.txt"), b"beta").unwrap();
     let mut spec = spec(true);
+    spec.replaces_entrypoint = false;
     let digest = source.put_content(b"beta".to_vec().into()).await.unwrap();
     let tree = task_model::Tree {
         entries: vec![task_model::TreeEntry::File {

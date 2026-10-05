@@ -11,7 +11,7 @@ use executor::{ExecutorError, Finished, Job, manifest};
 use crate::capture::{INDEX, RECORDS, TRANSFER};
 use crate::client::{FileLog, FileType, Output, State, Status, Task};
 use crate::staging::{
-    ObjectStage, container_path, destination, shell_command, storage_error, unsupported, wildcard,
+    ObjectStage, container_path, destination, storage_error, unsupported, wildcard,
 };
 
 pub(crate) fn declare(
@@ -132,7 +132,7 @@ impl ObjectStage {
         let control = root.join(executor::CONTROL);
         tokio::fs::create_dir_all(&control).await?;
         let log = status.logs.last().and_then(|log| log.logs.last());
-        let shell = shell_command(&job.spec.arguments);
+        let shell = matches!(task.executors[0].command.as_slice(), [program, path] if program == "sh" && path == super::backend::WRAPPER);
         if status.state == State::ExecutorError || !shell {
             for (name, text) in [
                 ("stdout", log.and_then(|log| log.stdout.as_deref())),

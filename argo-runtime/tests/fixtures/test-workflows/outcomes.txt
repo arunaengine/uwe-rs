@@ -200,7 +200,7 @@ argo-workflows/examples/artifact-path-placeholders.yaml	ok 1
 argo-workflows/examples/artifact-repository-ref.yaml	33 spec.artifactRepositoryRef is not supported
 argo-workflows/examples/artifactory-artifact.yaml	33 templates.artifact-example.steps[0].generate-artifact artifact hello-art: Artifactory.usernameSecret is not supported; use the configured storage provider
 argo-workflows/examples/artifacts-workflowtemplate.yaml	33 artifact text-file: declared repository uploads are not supported; use the results destination
-argo-workflows/examples/buildkit-template.yaml	33 templates.main.tasks.image template image: container `readinessProbe` is not supported
+argo-workflows/examples/buildkit-template.yaml	ok 3
 argo-workflows/examples/ci-output-artifact.yaml	33 templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported
 argo-workflows/examples/ci-workflowtemplate.yaml	33 templates.main.tasks.test artifact test-report: declared repository uploads are not supported; use the results destination
 argo-workflows/examples/ci.yaml	33 templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported
@@ -234,16 +234,16 @@ argo-workflows/examples/cron-when.yaml	ok 1
 argo-workflows/examples/cron-workflow-multiple-schedules.yaml	ok 1
 argo-workflows/examples/cron-workflow.yaml	ok 1
 argo-workflows/examples/custom-metrics.yaml	ok 2
-argo-workflows/examples/daemon-nginx.yaml	33 templates.daemon-nginx-example.steps[0].nginx-server template nginx-server: container `readinessProbe` is not supported
-argo-workflows/examples/daemon-step.yaml	33 templates.daemon-example.steps[0].influx template influxdb: container `readinessProbe` is not supported
+argo-workflows/examples/daemon-nginx.yaml	33 ....nginx-server template nginx-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/daemon-step.yaml	33 ...e.steps[0].influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/daemoned-stateful-set-with-service.yaml	33 ...s[0].create-service template create-service is a resource template that manages Kubernetes objects of kind Service; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/dag-coinflip.yaml	ok 4
 argo-workflows/examples/dag-conditional-artifacts.yaml	ok 1
 argo-workflows/examples/dag-conditional-parameters.yaml	ok 1
 argo-workflows/examples/dag-continue-on-fail.yaml	ok 6
 argo-workflows/examples/dag-custom-metrics.yaml	ok 4
-argo-workflows/examples/dag-daemon-retry-strategy.yaml	33 templates.main.tasks.server template server: container `readinessProbe` is not supported
-argo-workflows/examples/dag-daemon-task.yaml	33 templates.daemon-example.tasks.influx template influxdb: container `readinessProbe` is not supported
+argo-workflows/examples/dag-daemon-retry-strategy.yaml	33 ...s.main.tasks.server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/dag-daemon-task.yaml	33 ...mple.tasks.influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/dag-diamond-steps.yaml	ok 12
 argo-workflows/examples/dag-diamond.yaml	ok 4
 argo-workflows/examples/dag-disable-failFast.yaml	ok 5
@@ -368,7 +368,7 @@ argo-workflows/examples/skipped-output-defaults/expression-fallback.yaml	ok 0
 argo-workflows/examples/skipped-output-defaults/producer-output-default.yaml	ok 1
 argo-workflows/examples/status-reference.yaml	ok 2
 argo-workflows/examples/step-level-timeout.yaml	33 templates.sleep-sleep.steps[0].sleep1 template sleep: `timeout` is not supported
-argo-workflows/examples/steps-daemon-retry-strategy.yaml	33 templates.main.steps[0].server template server: container `readinessProbe` is not supported
+argo-workflows/examples/steps-daemon-retry-strategy.yaml	33 ...ain.steps[0].server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/steps-inline-workflow.yaml	ok 1
 argo-workflows/examples/steps.yaml	ok 3
 argo-workflows/examples/suspend-template-outputs.yaml	33 templates.suspend.steps[0].approve template approve: `suspend` is not supported
@@ -386,7 +386,7 @@ argo-workflows/examples/template-on-exit.yaml	ok 4
 argo-workflows/examples/timeouts-step.yaml	ok 1
 argo-workflows/examples/timeouts-workflow.yaml	33 spec.activeDeadlineSeconds is not supported
 argo-workflows/examples/title-and-description-with-markdown.yaml	ok 1
-argo-workflows/examples/variables-showcase.yaml	33 templates.main.steps[0].svc template svc-daemon: container `readinessProbe` is not supported
+argo-workflows/examples/variables-showcase.yaml	33 ...in.steps[0].svc template svc-daemon runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/volumes-emptydir.yaml	ok 1
 argo-workflows/examples/volumes-existing.yaml	ok 2
 argo-workflows/examples/volumes-pvc.yaml	ok 2
@@ -468,11 +468,11 @@ argo-workflows/test/e2e/functional/conditionals.yaml	ok 3
 argo-workflows/test/e2e/functional/continue-on-fail.yaml	ok 4
 argo-workflows/test/e2e/functional/continue-on-failed.yaml	ok 3
 argo-workflows/test/e2e/functional/custom_template_variable.yaml	ok 3
-argo-workflows/test/e2e/functional/daemon-nginx.yaml	33 templates.daemon-nginx-example.steps[0].nginx-server template nginx-server: container `readinessProbe` is not supported
-argo-workflows/test/e2e/functional/daemon-step.yaml	33 templates.daemon-example.steps[0].influx template influxdb: container `readinessProbe` is not supported
+argo-workflows/test/e2e/functional/daemon-nginx.yaml	33 ....nginx-server template nginx-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/daemon-step.yaml	33 ...e.steps[0].influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/functional/dag-argument-passing.yaml	ok 3
 argo-workflows/test/e2e/functional/dag-coinflip.yaml	ok 4
-argo-workflows/test/e2e/functional/dag-daemon-task.yaml	33 templates.daemon-example.tasks.influx template influxdb: container `readinessProbe` is not supported
+argo-workflows/test/e2e/functional/dag-daemon-task.yaml	33 ...mple.tasks.influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/functional/dag-depends.yaml	ok 6
 argo-workflows/test/e2e/functional/dag-diamond-steps.yaml	ok 12
 argo-workflows/test/e2e/functional/dag-diamond.yaml	ok 4
@@ -991,7 +991,7 @@ hera/examples/workflows/misc/container-with-resources.yaml	ok 1
 hera/examples/workflows/misc/container.yaml	ok 1
 hera/examples/workflows/misc/cron-hello-world.yaml	ok 1
 hera/examples/workflows/misc/cron-workflow-stop-strategy.yaml	ok 1
-hera/examples/workflows/misc/daemon.yaml	33 templates.d.tasks.server template server: container `readinessProbe` is not supported
+hera/examples/workflows/misc/daemon.yaml	33 ...ates.d.tasks.server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/misc/data.yaml	33 template list-log-files is a data template, which reads an artifact repository from inside a cluster; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/misc/dynamic-resources.yaml	33 templates.d.tasks.resource-consumer template resource-consumer: `podSpecPatch` is not supported
 hera/examples/workflows/misc/dynamic-volumes.yaml	ok 1
@@ -1036,7 +1036,7 @@ hera/examples/workflows/upstream/artifact-path-placeholders.yaml	ok 1
 hera/examples/workflows/upstream/artifact-repository-ref.yaml	33 spec.artifactRepositoryRef is not supported
 hera/examples/workflows/upstream/artifactory-artifact.yaml	33 templates.artifact-example.steps[0].generate-artifact artifact hello-art: Artifactory.passwordSecret is not supported; use the configured storage provider
 hera/examples/workflows/upstream/artifacts-workflowtemplate.yaml	33 artifact text-file: declared repository uploads are not supported; use the results destination
-hera/examples/workflows/upstream/buildkit-template.yaml	33 templates.main.tasks.image template image: container `readinessProbe` is not supported
+hera/examples/workflows/upstream/buildkit-template.yaml	ok 3
 hera/examples/workflows/upstream/ci-output-artifact.yaml	33 templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported
 hera/examples/workflows/upstream/ci-workflowtemplate.yaml	33 templates.main.tasks.test artifact test-report: declared repository uploads are not supported; use the results destination
 hera/examples/workflows/upstream/ci.yaml	33 templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported
@@ -1062,16 +1062,16 @@ hera/examples/workflows/upstream/cron-when.yaml	ok 1
 hera/examples/workflows/upstream/cron-workflow-multiple-schedules.yaml	ok 1
 hera/examples/workflows/upstream/cron-workflow.yaml	ok 1
 hera/examples/workflows/upstream/custom-metrics.yaml	ok 2
-hera/examples/workflows/upstream/daemon-nginx.yaml	33 templates.daemon-nginx-example.steps[0].nginx-server template nginx-server: container `readinessProbe` is not supported
-hera/examples/workflows/upstream/daemon-step.yaml	33 templates.daemon-example.steps[0].influx template influxdb: container `readinessProbe` is not supported
+hera/examples/workflows/upstream/daemon-nginx.yaml	33 ....nginx-server template nginx-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/daemon-step.yaml	33 ...e.steps[0].influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/daemoned-stateful-set-with-service.yaml	33 ...s[0].create-service template create-service is a resource template that manages Kubernetes objects of kind Service; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/dag-coinflip.yaml	ok 4
 hera/examples/workflows/upstream/dag-conditional-artifacts.yaml	ok 1
 hera/examples/workflows/upstream/dag-conditional-parameters.yaml	ok 1
 hera/examples/workflows/upstream/dag-continue-on-fail.yaml	ok 6
 hera/examples/workflows/upstream/dag-custom-metrics.yaml	ok 4
-hera/examples/workflows/upstream/dag-daemon-retry-strategy.yaml	33 templates.main.tasks.server template server: container `readinessProbe` is not supported
-hera/examples/workflows/upstream/dag-daemon-task.yaml	33 templates.daemon-example.tasks.influx template influxdb: container `readinessProbe` is not supported
+hera/examples/workflows/upstream/dag-daemon-retry-strategy.yaml	33 ...s.main.tasks.server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/dag-daemon-task.yaml	33 ...mple.tasks.influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/dag-diamond-steps.yaml	ok 12
 hera/examples/workflows/upstream/dag-diamond.yaml	ok 4
 hera/examples/workflows/upstream/dag-enhanced-depends.yaml	ok 7
@@ -1185,7 +1185,7 @@ hera/examples/workflows/upstream/sidecar-nginx.yaml	33 template sidecar-nginx-ex
 hera/examples/workflows/upstream/sidecar.yaml	33 template sidecar-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/status-reference.yaml	ok 2
 hera/examples/workflows/upstream/step-level-timeout.yaml	33 templates.sleep-sleep.steps[0].sleep1 template sleep: `timeout` is not supported
-hera/examples/workflows/upstream/steps-daemon-retry-strategy.yaml	33 templates.main.steps[0].server template server: container `readinessProbe` is not supported
+hera/examples/workflows/upstream/steps-daemon-retry-strategy.yaml	33 ...ain.steps[0].server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/steps-inline-workflow.yaml	ok 1
 hera/examples/workflows/upstream/steps.yaml	ok 3
 hera/examples/workflows/upstream/suspend-template-outputs.yaml	33 templates.suspend.steps[0].approve template approve: `suspend` is not supported

@@ -190,9 +190,6 @@ argo-workflows/examples/artifactory-artifact.yaml
 argo-workflows/examples/artifacts-workflowtemplate.yaml
 = unsupported (decision 18): artifact text-file: declared repository uploads are not supported; use the results destination
 
-argo-workflows/examples/buildkit-template.yaml
-= unsupported (decision 18): templates.main.tasks.image template image: container `readinessProbe` is not supported
-
 argo-workflows/examples/ci-output-artifact.yaml
 = unsupported (decision 18): templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported
 
@@ -1069,9 +1066,6 @@ hera/examples/workflows/upstream/artifactory-artifact.yaml
 
 hera/examples/workflows/upstream/artifacts-workflowtemplate.yaml
 = unsupported (decision 18): artifact text-file: declared repository uploads are not supported; use the results destination
-
-hera/examples/workflows/upstream/buildkit-template.yaml
-= unsupported (decision 18): templates.main.tasks.image template image: container `readinessProbe` is not supported
 
 hera/examples/workflows/upstream/ci-output-artifact.yaml
 = unsupported (decision 18): templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported

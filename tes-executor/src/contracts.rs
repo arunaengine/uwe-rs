@@ -266,10 +266,7 @@ async fn preserves_encoded_paths() {
         .write(&format!("{prefix}/root{path}"), b"data".to_vec())
         .await
         .unwrap();
-    let url = format!(
-        "{}iunctus/work/out/a%20%25%2B%23%3F.txt",
-        task.outputs[0].url
-    );
+    let url = format!("{}a%20%25%2B%23%3F.txt", task.outputs[0].url);
     let status = serde_json::from_value(json!({ "id": "encoded", "state": "COMPLETE", "logs": [{ "outputs": [{ "path": path, "url": url, "size_bytes": "4" }] }] })).unwrap();
     let finished = stage
         .collect(job, &task, &status, folder.path())

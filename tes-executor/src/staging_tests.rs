@@ -176,7 +176,15 @@ fn enforce(task: &Value) {
         for output in outputs {
             let pattern = output["path"].as_str().unwrap();
             if wildcard(pattern) {
-                assert!(output["path_prefix"].as_str().unwrap().starts_with('/'));
+                let prefix = output["path_prefix"].as_str().unwrap();
+                assert!(
+                    prefix.starts_with('/')
+                        && prefix != "/"
+                        && !prefix[1..]
+                            .split('/')
+                            .any(|part| part.is_empty() || part == "." || part == "..")
+                );
+                assert!(pattern.starts_with(&format!("{prefix}/")));
                 assert!(!glob::Pattern::new(pattern).unwrap().matches(path));
             } else {
                 assert!(
@@ -204,7 +212,7 @@ async fn leave(operator: &Operator, objects: &Store, task: &Value) -> Vec<Value>
             "/iunctus/control/end" => vec![("", "1700000001\n")],
             "/iunctus/control/usage" => vec![("", "")],
             "/iunctus/transfer/*" => vec![("1", "alpha beta\n"), ("2", "hidden\n")],
-            _ => vec![("iunctus/work/out/a.txt", "alpha beta\n")],
+            _ => vec![("a.txt", "alpha beta\n")],
         };
         for (suffix, bytes) in entries {
             let address = format!("{url}{suffix}");
@@ -216,7 +224,7 @@ async fn leave(operator: &Operator, objects: &Store, task: &Value) -> Vec<Value>
             let path = if suffix.is_empty() {
                 path.into()
             } else {
-                format!("{}{}", output["path_prefix"].as_str().unwrap(), suffix)
+                format!("{}/{suffix}", output["path_prefix"].as_str().unwrap())
             };
             logs.push(json!({"url": address, "path": path, "size_bytes": bytes.len().to_string()}));
         }

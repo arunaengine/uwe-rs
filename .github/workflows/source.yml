@@ -35,6 +35,11 @@ jobs:
       - name: Formatting
         if: matrix.check == 'format'
         run: cargo +nightly-2026-09-14 fmt --all -- --check
+      - name: Style
+        if: matrix.check == 'format'
+        run: |
+          python3 scripts/dev/check_style_tests.py
+          python3 scripts/dev/check_style.py
       - name: Clippy
         if: matrix.check == 'clippy'
         run: cargo +nightly-2026-09-14 clippy --offline --locked --workspace --all-targets --all-features -j 2 -- -D warnings

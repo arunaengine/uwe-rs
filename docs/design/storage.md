@@ -35,7 +35,7 @@ Options on the command line win over all files: `-store` over `[store] location`
 |---|---|
 | `[store]` | `location`: where the cache store lives, an absolute folder or an address of a provider, like `s3://lab-cache/iunctus`; `local`: an absolute folder of this machine in front of a store at an address, the store in layers of [the cache](cache.md), section 8 |
 | `[storage.<name>]` | one storage provider; the name is free, like `lab` or `aws` |
-| `[executor]` | `default`: the executor of `iunctus run` and `iunctus check-machine` when `-executor` is not given, like `"slurm"`; without it, the simulator. `iunctus graph` and the other commands keep the simulator |
+| `[executor]` | `default`: the executor of `iunctus run` and `iunctus check-machine` when `-executor` is not given, like `"slurm"`; without it, local Docker/Podman containers. `iunctus graph` and the other commands keep the simulator |
 | `[executor.<name>]` | the settings of an executor ([executors](executors.md)) |
 | `[cache]` | `folder`: the cache folder of iunctus, an absolute folder, in place of `$XDG_CACHE_HOME/iunctus` or `~/.cache/iunctus`; it holds the run database, the scratch folders, the downloads and, unless `[store] location` says otherwise, the store. It wins over `XDG_CACHE_HOME` |
 | `[network]` | `proxy`: the web proxy of the requests of iunctus itself, like those to image registries and for remote files, such as `http://proxy.example.org:3128`; a proxy in the environment (`HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`) wins, and `NO_PROXY` names the hosts that go without it. Tasks do not get it. `default` and `allowed_steps` say which tasks get the network ([reproducibility](reproducibility.md), section 6) |

@@ -15,8 +15,8 @@ A laptop needs the `iunctus` binary and Docker or Podman, nothing else: no Java,
 ```sh
 iunctus check-machine                        # what is ready for real runs, and what to install or set
 iunctus check main.nf                        # what would stop a real run of the workflow, found at once
-iunctus run main.nf                          # a simulated run: the plan of tasks, no container runs
-iunctus run main.nf -executor local          # a real run in Docker or Podman
+iunctus run main.nf                          # a real run in Docker or Podman
+iunctus run main.nf -executor simulator      # a simulated run with made-up outputs
 ```
 
 With Podman, turn on its socket once: `systemctl --user enable --now podman.socket`. Tasks whose workflow names no container image need one: add `-default-image <image>`. Every error says where it is and what to do, and `iunctus check-machine` and `iunctus check` list every problem at once ([errors, exit codes and checks](design/checks.md)). A config file is needed only for private storage and for the TES, SLURM and Kubernetes executors ([the config file and storage providers](design/storage.md), [executors](design/executors.md)).
@@ -41,7 +41,7 @@ iunctus check-order <workflow file or directory>
 iunctus help
 ```
 
-`iunctus run` finds the language of its target, or takes it from `-lang`. The default executor is the simulator, which writes the TES task document of each task and makes up its outputs, so any workflow runs through without containers. A simulated run gives a simulated graph, not a prediction of a real run (decision 21). All four languages run: Nextflow, Snakemake, CWL and Argo. The local executor runs tasks in Docker or Podman instead, the TES executor on a GA4GH TES server, the SLURM executor as batch jobs, and the Kubernetes executor as Jobs. See [the engine](design/engine.md) and [the executors](design/executors.md). `iunctus graph` prints the graph of a run with one node per task or one node per step, as a summary, JSON, DOT or an SVG drawn by iunctus itself, and marks the points where a run with real data can add or remove tasks; see [the graphs of a run](design/graph.md).
+`iunctus run` finds the language of its target, or takes it from `-lang`. The default executor is local, which runs tasks in Docker or Podman containers. Select `-executor simulator` to write the TES task document of each task and make up its outputs without task containers. A simulated run gives a simulated graph, not a prediction of a real run (decision 21). All four languages run: Nextflow, Snakemake, CWL and Argo. The local executor runs tasks in Docker or Podman, the TES executor on a GA4GH TES server, the SLURM executor as batch jobs, and the Kubernetes executor as Jobs. See [the engine](design/engine.md) and [the executors](design/executors.md). `iunctus graph` prints the graph of a run with one node per task or one node per step, as a summary, JSON, DOT or an SVG drawn by iunctus itself, and marks the points where a run with real data can add or remove tasks; see [the graphs of a run](design/graph.md).
 
 Storage needs no setup for public files. A config file, `~/.config/iunctus/config.toml`, names the storage providers of private buckets and servers, each with its own endpoint and credentials, and where the cache store lives, also as a folder of this machine in front of a store that several machines share; see [the config file and storage providers](design/storage.md).
 

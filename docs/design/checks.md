@@ -24,7 +24,7 @@ iunctus: <where>: <what went wrong>; <what to do>
 iunctus: main.nf:1:11: the included file /home/me/pipeline/modules/b.nf does not exist
 iunctus: task A: the input /home/me/pipeline/data/samples.csv does not exist
 iunctus: config.toml:4: `[storage.lab]` has no setting `regoin`; it knows `type`, `prefixes`, `endpoint`, `region`, ...
-iunctus: no container engine answers at /var/run/docker.sock or /run/user/1000/podman/podman.sock; iunctus runs every task in a container, so start Docker, or turn on the socket of Podman with `systemctl --user enable --now podman.socket`, or name a socket with IUNCTUS_ENGINE
+iunctus: cannot reach a Docker or Podman engine: no container engine answers at /var/run/docker.sock or /run/user/1000/podman/podman.sock; iunctus runs every task in a container, so start Docker, or turn on the socket of Podman with `systemctl --user enable --now podman.socket`, or name a socket with IUNCTUS_ENGINE; use `-executor simulator` for a run without containers, or `iunctus check-machine` to check the setup
 iunctus: the TES server at http://localhost:8000 does not answer: Connection refused; start it, or name another with -tes-server or `server` in [executor.tes] of the config file
 iunctus: -executor slurm needs the tools of SLURM, but `sbatch`, `squeue` and `scancel` are not on the PATH; run iunctus on a node of the SLURM cluster, like its login node
 iunctus: unknown option `-bogus`; `iunctus help` lists the commands and their options

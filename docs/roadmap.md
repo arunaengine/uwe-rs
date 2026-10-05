@@ -6,7 +6,7 @@
 
 Capability statements reconciled on 2026-10-03. Counts below are historical evidence recorded by 2026-09-30, not qualification of the current revision.
 
-iunctus reads and plans four workflow languages in one Rust binary. Real execution and result delivery are implemented, including parallel local container execution and TES, SLURM and Kubernetes backends. The simulator remains the default and produces synthetic outputs (decision 21). Language parity, failure/restart behavior and real backend qualification still need work. See the [support matrix](support.md) for the implemented subsets and qualification limits; completion marks below mean implementation, not production acceptance.
+iunctus reads and plans four workflow languages in one Rust binary. Real execution and result delivery are implemented, including parallel local container execution and TES, SLURM and Kubernetes backends. Local Docker/Podman execution is the default; `-executor simulator` produces synthetic outputs (decision 21). Language parity, failure/restart behavior and real backend qualification still need work. See the [support matrix](support.md) for the implemented subsets and qualification limits; completion marks below mean implementation, not production acceptance.
 
 | Language | Test workflows | Run in the simulator | Work natively, not in iunctus |
 | --- | --- | --- | --- |

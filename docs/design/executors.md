@@ -267,6 +267,6 @@ Aruna integration uses the generic TES executor plus S3 storage; TES-over-S3 sta
 
 ## Construction details
 
-The default simulator writes one TES task document per task, keeps files in cache scratch and synthesizes outputs. `local` runs containers, `tes` submits to a TES server, `slurm` submits container batch jobs and `kubernetes` creates Jobs. Disabling reuse makes real executors run every task regardless of cached results, including task replay.
+The default `local` executor runs Docker or Podman containers. Explicit `-executor simulator` writes one TES task document per task, keeps files in cache scratch and synthesizes outputs; `tes` submits to a TES server, `slurm` submits container batch jobs and `kubernetes` creates Jobs. Disabling reuse makes real executors run every task regardless of cached results, including task replay.
 
 Nextflow's `workflow.containerEngine` and engine config scopes name the runtime that runs tasks. SLURM uses its selected job runtime, such as Apptainer. Local execution reports Docker or Podman; a socket path naming Podman selects Podman. Remote inputs download once into the cache. Local digests remain cached while files are unchanged; importing inputs also copies local bytes into the store for remote executors.

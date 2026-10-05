@@ -101,8 +101,8 @@ A finished task's outputs are published by its `publishDir` directives (section 
 
 | `-executor` | What it does |
 |---|---|
-| `simulator` (default) | Writes the TES v1.1 task document of each task to `<cache>/scratch/simulator/<run>/tes/<id>.json` and pretends to run it in `work/<id>/` (decision 21). |
-| `local` | Runs each task in Docker or Podman through the task runner, which reuses results from the cache store (`-store`). |
+| `simulator` | Writes the TES v1.1 task document of each task to `<cache>/scratch/simulator/<run>/tes/<id>.json` and pretends to run it in `work/<id>/` (decision 21). |
+| `local` (default for `run`) | Runs each task in Docker or Podman through the task runner, which reuses results from the cache store (`-store`). |
 | `tes` | Runs each task as a task on a GA4GH TES server (`-tes-server`). |
 | `slurm` | Runs each task as a SLURM batch job, with Apptainer, Singularity, Podman or Docker on the nodes (`-slurm-container`, `-slurm-options`). |
 | `kubernetes` | Runs each task as a Kubernetes Job, in the cluster of the kubeconfig that `-kubeconfig` names (`-kubernetes-namespace`). |

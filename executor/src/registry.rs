@@ -521,6 +521,10 @@ fn encode(value: &str) -> String {
 }
 
 #[cfg(test)]
+#[path = "registry_auth_tests.rs"]
+mod auth_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

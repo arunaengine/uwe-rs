@@ -170,6 +170,10 @@ fn restore(
         };
         runtime.block_on(copy_out(store, source, &target))?;
     }
+    if let Some(revision) = &run.revision {
+        std::fs::write(workflow.join(crate::repository::MARKER), revision)
+            .map_err(|error| Failure::setup(error.to_string()))?;
+    }
     let inside = Path::new(&run.workflow)
         .strip_prefix(workflow_folder)
         .unwrap_or(Path::new(""));
@@ -309,6 +313,73 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(first.join("main.nf")).expect("reads"),
             "original workflow"
+        );
+    }
+
+    #[test]
+    fn restores_repository_revision() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Store::local(&root.path().join("store")).unwrap();
+        let runtime = runtime().unwrap();
+        let mut sources = Vec::new();
+        for (name, text) in [("main.nf", "workflow {}"), (".settings", "kept")] {
+            let path = root.path().join(name);
+            std::fs::write(&path, text).unwrap();
+            let (digest, size) = runtime.block_on(store.put_file(&path)).unwrap();
+            sources.push(Source {
+                kind: SourceKind::Workflow,
+                path: name.into(),
+                digest: digest.to_string(),
+                size,
+            });
+        }
+        let commit = "0123456789abcdef0123456789abcdef01234567";
+        let database = Database::open(&root.path().join("runs.sqlite")).unwrap();
+        let start = RunStart {
+            id: "original".into(),
+            resumes: None,
+            workflow: "/old/pipeline".into(),
+            language: Language::Nextflow,
+            revision: Some(commit.into()),
+            arguments: vec!["run".into()],
+            parameters: Vec::new(),
+            executor: "local".into(),
+            simulated: false,
+            store: Some(root.path().join("store").to_string_lossy().into_owned()),
+            program: None,
+            launch: None,
+            workflow_folder: Some("/old/pipeline".into()),
+            repeats: None,
+        };
+        let mut recorder = database.record(&start).unwrap();
+        recorder.sources(&sources);
+        recorder.close().unwrap();
+        let database = Database::open(&root.path().join("runs.sqlite")).unwrap();
+        let run = database.run("original").unwrap().unwrap();
+        let mut arguments = Arguments::default();
+        restore(
+            &database,
+            &run,
+            Some(&store),
+            &root.path().join("restored"),
+            &mut arguments,
+        )
+        .unwrap();
+        let target = arguments.target.as_ref().unwrap();
+        assert_eq!(crate::revision::revision(target).as_deref(), Some(commit));
+        let restored = runtime.block_on(crate::sources::collect(target, &arguments));
+        assert_eq!(restored.files.len(), 2);
+        assert!(
+            restored
+                .files
+                .iter()
+                .any(|source| source.path == ".settings")
+        );
+        assert!(
+            !restored
+                .files
+                .iter()
+                .any(|source| source.path == crate::repository::MARKER)
         );
     }
 

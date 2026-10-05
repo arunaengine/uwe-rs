@@ -4,7 +4,7 @@
 
 use crate::arguments::Arguments;
 use crate::setup::Setup;
-use crate::{Failure, cache_directory, detect, failure, nextflow};
+use crate::{Failure, cache_directory, detect, failure, nextflow, repository};
 use std::path::PathBuf;
 use workflow_graph::{CancellationToken, Driver, DriverError, Language, Launch};
 
@@ -15,11 +15,39 @@ pub(crate) fn target_and_language(arguments: &Arguments) -> Result<(PathBuf, Lan
             "iunctus: name a workflow file or a project directory to run",
         ));
     };
-    let language = match arguments.language {
+    let target = repository::prepare(target, arguments.revision.as_deref(), arguments.latest)?;
+    let remote = target.to_string_lossy();
+    let remote = remote.starts_with("https://") || remote.starts_with("http://");
+    let cwl = remote
+        && (arguments.language == Some(Language::Cwl)
+            || (arguments.language.is_none()
+                && target
+                    .to_string_lossy()
+                    .split('#')
+                    .next()
+                    .unwrap_or_default()
+                    .ends_with(".cwl")));
+    let target = if remote && !cwl {
+        storage::Storage::default()
+            .blocking()
+            .fetch(
+                &target.to_string_lossy(),
+                &cache_directory().join("downloads"),
+            )
+            .map_err(|error| failure(error.to_string()))?
+    } else {
+        target
+    };
+    let language = match arguments.language.or(cwl.then_some(Language::Cwl)) {
         Some(language) => language,
         None => {
-            detect::language(target).map_err(|message| failure(format!("iunctus: {message}")))?
+            detect::language(&target).map_err(|message| failure(format!("iunctus: {message}")))?
         }
+    };
+    let target = if remote && language == Language::Cwl {
+        arguments.target.clone().unwrap()
+    } else {
+        target
     };
     if language != Language::Snakemake
         && (!arguments.until.is_empty()
@@ -32,7 +60,7 @@ pub(crate) fn target_and_language(arguments: &Arguments) -> Result<(PathBuf, Lan
         )
         .into());
     }
-    Ok((target.clone(), language))
+    Ok((target, language))
 }
 
 /// The driver of a language.

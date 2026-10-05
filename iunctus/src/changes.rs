@@ -248,6 +248,8 @@ fn parsed_arguments(run: &Run) -> Result<Arguments, Failure> {
         false => launch.join(path),
     };
     parsed.target = Some(PathBuf::from(&run.workflow));
+    parsed.revision = None;
+    parsed.latest = false;
     parsed.configs = parsed.configs.iter().map(absolute).collect();
     parsed.inputs = parsed.inputs.as_ref().map(absolute);
     parsed.output_dir = parsed.output_dir.as_ref().map(absolute);

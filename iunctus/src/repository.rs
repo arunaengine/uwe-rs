@@ -310,6 +310,11 @@ pub(crate) fn prepare(
     latest: bool,
 ) -> Result<PathBuf, Failure> {
     if target.exists() {
+        if reference.is_some() || latest {
+            return Err(Failure::usage(
+                "-r and -latest require a repository name or URL; use the local workflow without revision options",
+            ));
+        }
         return Ok(target.to_owned());
     }
     let Some(repository) = Repository::parse(&target.to_string_lossy())? else {
@@ -453,3 +458,7 @@ fn default_branch(folder: &Path) -> Result<Option<String>, Failure> {
     }
     find(&parsed.tree.statements, false)
 }
+
+#[cfg(test)]
+#[path = "repository_tests.rs"]
+mod tests;

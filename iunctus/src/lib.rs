@@ -28,6 +28,7 @@ mod progress;
 mod record;
 mod repeat;
 mod report;
+mod repository;
 mod resources;
 mod resume;
 mod revision;

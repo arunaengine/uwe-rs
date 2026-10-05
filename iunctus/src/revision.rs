@@ -10,6 +10,9 @@ use std::path::{Path, PathBuf};
 /// for plain repositories, worktrees and submodules, whose `.git` is a file that names the
 /// real Git folder, and for references packed into `packed-refs`.
 pub fn revision(path: &Path) -> Option<String> {
+    if let Some((_, commit)) = crate::repository::root(path) {
+        return Some(commit);
+    }
     let (_, git) = repository(path)?;
     let head = read_to_string(git.join("HEAD")).ok()?;
     let head = head.trim();
@@ -59,7 +62,7 @@ pub fn repository(path: &Path) -> Option<(PathBuf, PathBuf)> {
 }
 
 /// The text when it is a SHA-1 or SHA-256 commit id.
-fn commit(text: &str) -> Option<String> {
+pub(crate) fn commit(text: &str) -> Option<String> {
     let hex = text.bytes().all(|byte| byte.is_ascii_hexdigit());
     (hex && (text.len() == 40 || text.len() == 64)).then(|| text.to_owned())
 }

@@ -4,7 +4,7 @@
 
 # iunctus
 
-iunctus is a Rust workflow engine for subsets of Nextflow, Snakemake, CWL and Argo. It plans one shared execution graph, records runs and stores results by content digest. The default executor simulates tasks; real tasks run in containers through local Docker/Podman, TES, SLURM or Kubernetes backends.
+iunctus is a Rust workflow engine for subsets of Nextflow, Snakemake, CWL and Argo. It plans one shared execution graph, records runs and stores results by content digest. The default executor runs tasks in local Docker/Podman containers. TES, SLURM and Kubernetes backends are also available; `-executor simulator` explicitly selects synthetic outputs without task containers.
 
 Aruna integration uses the generic TES executor plus S3 storage; TES-over-S3 staging is still being implemented.
 
@@ -28,8 +28,9 @@ Add `$HOME/.local/bin` to your `PATH` if needed. Record the source commit and th
 
 ```sh
 iunctus check main.nf
-iunctus run main.nf                       # simulation with synthetic outputs
-iunctus run main.nf -executor local       # real container execution
+iunctus check-machine
+iunctus run main.nf                       # real local container execution
+iunctus run main.nf -executor simulator   # synthetic outputs without task containers
 ```
 
 For real local runs, Docker or Podman must expose its engine socket. A workflow task without an image needs `-default-image <image>`. Conda currently parses and locks environments; the Conda-to-image builder is unfinished. Task and package execution stays in containers, including dependencies that the workflow would normally find on its host.

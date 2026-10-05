@@ -236,8 +236,8 @@ source demo/local-env.sh             # or, in demo/: ./local-env.sh, which opens
 ```
 
 `local-config.toml` runs tasks on this machine (`[executor] default = "local"`) and writes
-`report.html` after each run. Without it, add `-executor local` to each `iunctus run`; without
-either, `iunctus run` only simulates.
+`report.html` after each run. Without it, `iunctus run` still uses local Docker or Podman containers.
+Use `-executor simulator` for made-up outputs without task containers.
 
 The first time, `local-env.sh` also downloads what is not in this repository: nf-core/demo
 into `nextflow/nf-core-demo/` and the data of the Snakemake tutorial into `snakemake/data/`.
@@ -309,8 +309,8 @@ Workflow Language project, https://www.commonwl.org/). nf-core/demo is under the
 The config file of iunctus for the BCF cluster. Copy it to ~/.config/iunctus/config.toml.
 Then `iunctus run <workflow>` runs each task as a SLURM job with Apptainer, with no options.
 Options on the command line still win, like `-executor local`.
-Run real tasks on SLURM. Without this, `iunctus run` simulates. `iunctus graph` always
-simulates.
+Run real tasks on SLURM. Without this, `iunctus run` uses local Docker or Podman containers. `iunctus graph`
+simulates by default.
 
 ## `demo/local-config.toml`
 
@@ -318,8 +318,7 @@ The config file of iunctus for a laptop or workstation with Docker. Pass it to a
 `-iunctus-config demo/local-config.toml`, or copy it to ~/.config/iunctus/config.toml.
 Then `iunctus run <workflow>` runs each task in a Docker container on this machine.
 Options on the command line still win, like `-executor simulator`.
-Run real tasks with Docker (or Podman) on this machine. Without this, `iunctus run`
-simulates. `iunctus graph` always simulates.
+Run real tasks with Docker (or Podman) on this machine. Local execution is also the built-in default. `iunctus graph` simulates by default.
 
 ## `demo/local-env.sh`
 

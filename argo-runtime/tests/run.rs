@@ -1533,6 +1533,35 @@ fn rejects_cluster_claims() {
 }
 
 #[test]
+fn accepts_readiness_probes() {
+    let probe = "readinessProbe: {exec: {command: [sh, -c, 'exit 1']}, initialDelaySeconds: 3600}";
+    for (template, tasks) in [
+        (
+            format!(
+                "  - name: main\n    container: {{image: alpine, command: [echo, ready], {probe}}}\n    initContainers: [{{name: init, image: alpine, command: [echo, ready], {probe}}}]\n"
+            ),
+            2,
+        ),
+        (
+            format!(
+                "  - name: main\n    script: {{image: alpine, command: [sh], source: echo ready, {probe}}}\n"
+            ),
+            1,
+        ),
+        (
+            format!(
+                "  - name: main\n    containerSet: {{containers: [{{name: main, image: alpine, command: [echo, ready], {probe}}}]}}\n"
+            ),
+            1,
+        ),
+    ] {
+        let ran = run(&workflow(&template));
+        ran.succeeded();
+        assert_eq!(ran.tasks().len(), tasks);
+    }
+}
+
+#[test]
 fn orders_init_containers() {
     let templates = r#"
   - name: main

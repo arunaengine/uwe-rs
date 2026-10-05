@@ -166,3 +166,94 @@ fn funnel_refuses_containers() {
         Err(ExecutorError::Unsupported(_))
     ));
 }
+
+#[test]
+#[ignore = "needs a TES server and S3 bucket accessible to both client and worker; see docs/design/executors.md"]
+fn transfers_s3_outputs() {
+    use config_file::ConfigFile;
+    use content_store::Store;
+    use storage::Storage;
+    use tes_executor::{ObjectStage, Settings};
+
+    let server = std::env::var("IUNCTUS_TES_SERVER").expect("IUNCTUS_TES_SERVER");
+    let root = std::env::var("IUNCTUS_TES_STAGING_ROOT").expect("IUNCTUS_TES_STAGING_ROOT");
+    let endpoint = std::env::var("IUNCTUS_S3_ENDPOINT").expect("IUNCTUS_S3_ENDPOINT");
+    let text = format!(
+        "[storage.tes]\ntype = 's3'\nprefixes = ['s3://']\nendpoint = {}\nregion = 'us-east-1'\naccess_key_id = {{ environment = 'AWS_ACCESS_KEY_ID' }}\nsecret_access_key = {{ environment = 'AWS_SECRET_ACCESS_KEY' }}\n",
+        serde_json::to_string(&endpoint).unwrap()
+    );
+    let config = ConfigFile::parse(&text, std::path::Path::new("tes-test.toml")).unwrap();
+    let storage = Storage::from_config(&config).unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    let source = Store::local(&folder.path().join("store")).unwrap();
+    let settings = Settings {
+        staging_root: Some(root),
+        ..Settings::default()
+    };
+    let backend = TesBackend {
+        client: Client::new(&server, std::env::var("IUNCTUS_TES_TOKEN").ok()).unwrap(),
+        staging: Some(ObjectStage::configured(source, &storage, &settings).unwrap()),
+        settings,
+        ..backend(folder.path())
+    };
+    let input = folder.path().join("input");
+    let directory = folder.path().join("directory");
+    std::fs::write(&input, b"alpha\n").unwrap();
+    std::fs::create_dir_all(directory.join("nested")).unwrap();
+    std::fs::write(directory.join("nested/b.txt"), b"beta\n").unwrap();
+    let staging = Staging {
+        inputs: vec![
+            Staged {
+                path: "in.txt".into(),
+                source: input,
+                ..Staged::default()
+            },
+            Staged {
+                path: "directory".into(),
+                source: directory,
+                directory: true,
+                ..Staged::default()
+            },
+        ],
+        ..Staging::default()
+    };
+    let mut spec = spec(
+        "mkdir -p out tree/deep empty && cat in.txt directory/nested/b.txt > out/a.txt && echo hidden > tree/deep/.hidden && echo captured",
+    );
+    spec.replaces_entrypoint = true;
+    spec.outputs.extend([
+        OutputRule {
+            pattern: "tree/".into(),
+        },
+        OutputRule {
+            pattern: "empty/".into(),
+        },
+    ]);
+    let placement = Placement::default();
+    let name = format!(
+        "s3-{}",
+        task_model::Digest::sha256(folder.path().to_string_lossy().as_bytes()).hex()
+    );
+    let finished = runtime()
+        .block_on(backend.run(
+            Job {
+                name: &name,
+                spec: &spec,
+                staging: &staging,
+                placement: &placement,
+            },
+            &CancellationToken::new(),
+        ))
+        .unwrap();
+    assert_eq!(finished.exit_code, Some(0));
+    assert_eq!(
+        std::fs::read(finished.local_path("out/a.txt")).unwrap(),
+        b"alpha\nbeta\n"
+    );
+    assert_eq!(
+        std::fs::read(finished.local_path("tree/deep/.hidden")).unwrap(),
+        b"hidden\n"
+    );
+    assert!(finished.local_path("empty").is_dir());
+    assert_eq!(std::fs::read(finished.stdout()).unwrap(), b"captured\n");
+}

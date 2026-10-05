@@ -163,7 +163,15 @@ Secrets live only in the environment, or in the config file, and in the memory o
 - **Drivers that read task outputs** from a store elsewhere, like a Nextflow `.command.env` or a CWL `cwl.output.json`, still read them as local paths; they need to go through `Files::local` ([the engine](engine.md), section 8). Runs that only pass files on work with a store on S3 today.
 - **CWL** lists no remote directory (`loadListing`), reads no remote file in a simulated run, and fetches `run` and `$import` documents only from `http://` and `https://` addresses.
 - **Settings in workflows.** Argo artifacts may name an endpoint and Kubernetes secrets, and Snakemake's `storage:` directive may give provider settings; iunctus takes the bucket and key from the workflow and the provider from the config file (decision 20).
-- Remote directories as task inputs, FTPS and SFTP, and TES servers that read a store on S3 with credentials of their own.
+- Remote directory addresses as task inputs, FTPS and SFTP. TES object-store staging expands directories already prepared locally and transfers them through S3 (see below).
+
+## Using a TES + S3 service
+
+Set `[executor.tes] staging = "object-store"` and `staging_root = "s3://bucket/prefix"`, and configure an S3 provider for that address under `[storage.<name>]`. Existing endpoint, region, path style and credential settings apply. Secrets may use `{ environment = "VARIABLE" }`. The TES service needs its own bucket credentials and an endpoint reachable from its workers; the engine's credentials are never passed in TES task documents.
+
+The staging store holds immutable inputs under the content-store CAS layout and outputs under a unique attempt prefix. If the content store already holds an input in the same S3 bucket, TES receives that object's address directly. Other local or downloaded inputs are uploaded by SHA-256. Directory inputs expand into files. After completion, outputs return through bounded streaming reads, reported-size checks and computed digests into the content store. Output log `versionId` parameters select the exact S3 version. The cache store can remain local, remote or layered.
+
+Workers need no access to local scratch or download folders in this mode. Shell tasks use FILE objects and a manifest to restore directory output layout. S3 staging objects remain available for idempotent replay and diagnostics; manage retention through bucket lifecycle rules. See [TES setup and opt-in deployment test](executors.md#using-a-tes--s3-service) for all config keys, refused tasks and log limitations.
 
 ## 7. Checks
 

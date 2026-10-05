@@ -22,15 +22,15 @@ The runner does the rest, the same for every backend:
 - It pins each image to its digest once per run (`pin`), so that every task of the run uses the same image and the cache key names it.
 - It answers a task from the store when the store has its outputs already.
 - It stages the inputs: local files, literal content, files of the store, and remote files, which it downloads once into `<cache>/downloads`.
-- **A store elsewhere**, like `s3://lab-cache/iunctus` ([storage](storage.md)), works with every real executor, and its data goes through this machine: the runner downloads each input that only the store has into `<cache>/downloads` (once per content), and uploads each output into the store after the attempt. So with TES, SLURM and Kubernetes the servers and nodes must see `<cache>/downloads` and the scratch folders at the same paths, as they must see the store folder of a local store; they never need the credentials of the store. A TES server or nodes that read the store themselves, without this machine in between, are a next step. With a folder in front of the store (`local` in `[store]`, [the cache](cache.md), section 8), what this machine reads once stays in that folder.
+- **A store elsewhere**, like `s3://lab-cache/iunctus` ([storage](storage.md)), works with every real executor. The runner downloads inputs for local preparation and uploads outputs after the attempt. Shared-path TES, SLURM and Kubernetes need matching paths for those downloads and scratch folders. TES object-store staging (section 3) sends S3 input addresses to workers and reads their S3 outputs, so workers need no shared filesystem. With a folder in front of the store (`local` in `[store]`, [the cache](cache.md), section 8), what this machine reads once stays in that folder.
 - It adopts the outputs into the store and fills the outcome: the exit code, the output files with size and digest, the attempt, the pinned image and the times.
 - It sorts errors: a failure of the machine (`ExecutorError::Engine`) lets the engine run the task again, twice by default, and a cancelled attempt ends quietly. An image that its registry does not have, or does not let this machine pull, fails the task at once (`ExecutorError::MissingImage`), with the advice to check its name and tag or to log in to the registry, since another attempt would pull in vain.
 
-Each attempt gets a scratch directory, `<scratch>/<run>-<task>-<attempt>`, with the folders `work` (the work directory of the task), `control` (the wrapper and its records) and `home` (the home folder of the task, which the wrapper sets as `HOME`; on TES it is `/iunctus/home`, a volume of the task). The wrapper (`executor::wrapper`) runs the command of the task with its streams captured in `control`, records the exit code, and on success lists the outputs in the manifest. Every backend runs the same wrapper, so a task behaves the same everywhere.
+Each attempt gets a scratch directory, `<scratch>/<run>-<task>-<attempt>`, with the folders `work` (the work directory of the task), `control` (the wrapper and its records) and `home` (the home folder of the task, which the wrapper sets as `HOME`). The wrapper (`executor::wrapper`) captures streams in `control`, records the exit code, and lists outputs on success. TES object-store mode uses this wrapper for shell tasks and runs other commands directly, with TES logs (section 3).
 
 Inputs that the task only reads are symbolic links to their sources, and the container sees the folders of the sources read-only at the same paths (`executor::place`). Inputs that the task may change or run are copies.
 
-**Tasks of several containers**, like an Argo container set, run their containers at once in one place: they share the scratch directory, the inputs and the mounts. Each container runs a wrapper of its own (`executor::containers`) that waits until the containers it comes after recorded their exit codes, runs its command only when they ended with 0, runs it again while it fails and has attempts left, and records its exit code and streams in `control/containers/<name>/`. The main container uses `control/` itself and collects the outputs. The exit code of the task is that of the main container when it failed, else that of the first other container that failed. The local executor, Kubernetes and SLURM start one container for each image, all at once; containers of one image run in one container, whose wrapper starts theirs and waits for all. A container that dies without its wrapper, as when it is killed for lack of memory, records nothing itself, so the others would wait for it until the time limit: the script that started it (the wrapper of its group, or the SLURM job script) records its exit code for it when it fails, so that the containers that wait for it go on and the task fails. The local executor stops the other containers when one ends without its wrapper, and Kubernetes ends the pod when one of its containers fails. TES runs one executor per container, one after the other, in an order where each comes after those it waits for.
+**Tasks of several containers**, like an Argo container set, run their containers at once in one place: they share the scratch directory, the inputs and the mounts. Each container runs a wrapper of its own (`executor::containers`) that waits until the containers it comes after recorded their exit codes, runs its command only when they ended with 0, runs it again while it fails and has attempts left, and records its exit code and streams in `control/containers/<name>/`. The main container uses `control/` itself and collects the outputs. The exit code of the task is that of the main container when it failed, else that of the first other container that failed. The local executor, Kubernetes and SLURM start one container for each image, all at once; containers of one image run in one container, whose wrapper starts theirs and waits for all. A container that dies without its wrapper, as when it is killed for lack of memory, records nothing itself, so the others would wait for it until the time limit: the script that started it (the wrapper of its group, or the SLURM job script) records its exit code for it when it fails, so that the containers that wait for it go on and the task fails. The local executor stops the other containers when one ends without its wrapper, and Kubernetes ends the pod when one of its containers fails. TES refuses tasks with several containers or container retry dependencies because it submits exactly one executor.
 
 **Settings in the config file.** Each executor takes its settings from a section `[executor.<name>]` of the config file ([storage](storage.md), section 1), so that a run needs no long command line. Options on the command line and environment variables win over the file. A key that a section does not know is an error.
 
@@ -74,19 +74,63 @@ The local executor needs only Docker or Podman, and no program of theirs: it tal
 iunctus run main.nf -executor tes -tes-server http://localhost:8000
 ```
 
-Each attempt becomes one TES v1.1 task with the wrapper as its one executor. Its inputs are `file://` URLs of the store, the wrapper and the staged inputs; its outputs are the outbox of the wrapper, which it copies back into the work directory, and the control folder. So the TES server must see the store and the scratch directories of this machine at the same paths: Funnel on this machine, or a server on a cluster with a shared file system. Inputs are copied into the store first (`Settings::import_inputs`).
+Each attempt becomes one TES v1.1 task with exactly one executor. The default `staging = "shared-path"` keeps the existing wrapper and `file://` inputs and outputs. This mode needs matching store and scratch paths on the worker. `staging = "object-store"` instead transfers FILE objects through S3 and needs no shared filesystem.
 
 - `-tes-server <address>` names the server; Funnel's `http://localhost:8000` is the default.
-- `IUNCTUS_TES_TOKEN` gives a bearer token, when the server needs one.
+- `IUNCTUS_TES_TOKEN` or `token` in the config gives a bearer token. `user` and `password` enable HTTP Basic authentication; both accept environment references. A bearer token takes precedence. Credentials are omitted from task requests and journal records, and hidden in client diagnostics.
 - `[executor.tes.sites.<name>]` names more TES servers, each with the address prefixes or folders of the data near it (`near`); each task goes to the site near most of its input files, and the others to the server above ([efficiency](efficiency.md), section 3).
 - Before the first task, iunctus asks the server once whether it answers (`GET /service-info`). A server that does not answer, or that refuses the token, stops the run at once with exit code 3, instead of after the retries of the first task.
 - Images are pinned through their registry, which needs no container engine on this machine.
 - The command of a task runs through the entrypoint of its image, as with the local executor; the entrypoint and the default command come from the config of the image at its registry, read once per image (`executor::registry::ImageConfigs`). A task without a command runs the default command of the image.
-- The state `SYSTEM_ERROR` and failed requests are failures of the machine. A cancelled run cancels its TES tasks.
+- `EXECUTOR_ERROR` is a permanent task failure, with the last executor log's exit code when present, else 1. `SYSTEM_ERROR` is retryable through the engine's machine retries. Status reads tolerate transient failures within the existing grace period. Cancellation waits through `CANCELING` until a terminal state.
 
-A task of several containers becomes one TES task with one executor per container (section 1).
+TES refuses tasks of several containers and container retry dependencies with unsupported exit code 33.
 
-The TES backend is tested against a small fake TES server (`tes-executor/tests/fake_server.rs`) and against Funnel 0.11.14 on this machine: `just funnel-server` starts Funnel from `~/.cache/iunctus/tools/funnel` with the config of the tests (`tes-executor/tests/fixtures/funnel.yaml`: a memory limit and no network for tasks, and images are never pulled), and `just tes-test` runs the tests against it. A whole Nextflow workflow ran on it too: two processes with an input file and `publishDir`, Ctrl-C cancelled the TES tasks, and a task whose image was missing failed as a failure of the machine, twice retried. A test with TESK is still to come.
+### Using a TES + S3 service
+
+```toml
+[executor.tes]
+server = "https://tes.example.org"
+token = { environment = "TES_TOKEN" }
+staging = "object-store"
+staging_root = "s3://task-data/iunctus-tes"
+# Set only when the server supports deduplication by this tag.
+idempotency_tag = "example.org/idempotency-key"
+max_inputs = 512
+max_outputs = 1024
+
+[storage.tasks]
+type = "s3"
+prefixes = ["s3://task-data/"]
+endpoint = "https://objects.example.org"
+region = "us-east-1"
+access_key_id = { environment = "S3_ACCESS_KEY" }
+secret_access_key = { environment = "S3_SECRET_KEY" }
+```
+
+The engine and TES workers need access to this bucket. Configure the worker's S3 endpoint and credentials on the TES service too. The cache store may stay local or use `[store] location = "s3://task-data/cache"`. Site tables accept the same TES keys and configure their own staging mode and authentication.
+
+Inputs are uploaded under `cas/sha256/<2 hex>/<62 hex>` in the staging root. Existing content in the same bucket is referenced directly, including a shared S3 layer behind a local cache. Directory inputs expand into FILE entries with their relative layout. The limit includes the wrapper input. Outputs live under `attempts/<digest>/`, derived from the task specification and unique attempt name. Completion imports output bytes into the content store, checks reported sizes, and computes SHA-256 digests. A nonempty immutable `versionId` in an output log pins the S3 read to that version; the mutable S3 null version and other query parameters are refused.
+
+Tasks whose argv or image default command starts with `sh`, `bash`, `dash`, `ash`, `ksh` or `zsh` use the existing task wrapper, including through an image entrypoint. It creates empty input directories, sets executable permissions and captures full stdout/stderr. Directory outputs and shell globs are collected into flat FILE objects under a wildcard output with `path_prefix`; a manifest restores nested paths, hidden files and empty directories. The container needs the shell and standard utilities used by the existing wrapper, including `mkdir`, `cp` and `chmod`. Other commands retain their full argv and environment, use POSIX output globs with `path_prefix`, and obtain stdout/stderr from the last TES executor log. TES logs may be absent, truncated or URL references, so they do not promise full stream bytes. This follows the [TES log and output contract](https://github.com/ga4gh/task-execution-schemas/blob/develop/openapi/task_execution_service.openapi.yaml).
+
+Object-store mode refuses stdin, explicit user/group identity, symbolic-link inputs, updates to inputs in place, overlapping input/output paths, input wildcards, wildcard outputs without a non-root literal ancestor and excessive declarations. Empty directories, executable inputs, directory outputs and shell glob extensions require a task shell. GPU placement and offline tasks remain unsupported. These cases stop with unsupported exit code 33; malformed output records or missing transfer objects fail collection instead of publishing incomplete results.
+
+`idempotency_tag` has no default. When set, its value hashes the original task cache key and unique attempt name, which includes the attempt number. The journal retains the exact request before submission. Recovery requires the original authentication and replays an ambiguous request with the same tag and destinations, then confirms termination of the orphan under the existing recovery policy. The server must implement atomic deduplication for the configured tag. Without it, a lost submission response remains unresolved for manual recovery. S3 attempt prefixes are retained; apply bucket lifecycle rules when retention is no longer needed.
+
+The non-ignored strict TES and memory S3 tests cover transfers, direct argv, error classification, cancellation, duplicate submissions, lost-response recovery and refusal limits. They simulate server execution. The opt-in deployment test runs containers on a real TES worker and checks actual output bytes:
+
+```sh
+IUNCTUS_TES_SERVER=http://localhost:8000 \
+IUNCTUS_TES_STAGING_ROOT=s3://task-data/iunctus-test \
+IUNCTUS_S3_ENDPOINT=http://localhost:9000 \
+AWS_ACCESS_KEY_ID=minio-user AWS_SECRET_ACCESS_KEY=minio-password \
+nice cargo test -p tes-executor -j 8 --locked --test funnel transfers_s3_outputs -- --ignored --test-threads=1
+```
+
+Provision the bucket and make the same S3 service reachable from the worker, with its own credentials. Funnel or another TES service must support S3 FILE transfers and TES 1.1 wildcard outputs. The test uses `debian:stable-slim`, optionally `IUNCTUS_TES_TOKEN`, and leaves attempt objects in S3. It is ignored by default; real S3/TES versions, authentication, wildcard behavior, permissions and restart behavior still need deployment qualification.
+
+Historical shared-path evidence covers a small fake TES server (`tes-executor/tests/fake_server.rs`) and Funnel 0.11.14 on this machine: `just funnel-server` starts Funnel from `~/.cache/iunctus/tools/funnel` with the config of the tests (`tes-executor/tests/fixtures/funnel.yaml`: a memory limit and no network for tasks, and images are never pulled), and `just tes-test` runs the tests against it. A whole Nextflow workflow ran on it too: two processes with an input file and `publishDir`, Ctrl-C cancelled the TES tasks, and a task whose image was missing failed as a failure of the machine, twice retried. A test with TESK is still to come.
 
 ## 4. SLURM
 

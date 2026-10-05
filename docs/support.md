@@ -26,11 +26,11 @@ Unsupported constructs should produce a diagnostic, typically exit code 33; pars
 | --- | --- | --- | --- |
 | Simulator (default) | Plans and makes synthetic outputs without running task containers | No real task result, cancellation or ownership evidence | Planning/corpus checks only |
 | Local Docker/Podman | Parallel container execution through the engine API | Reachable engine socket; usable images; explicit host inputs and writable paths operate under caller/engine permissions | Selected current rootful Docker cases passed; rootless Podman, broader mixed UID and platform qualification remain separate gates |
-| TES | Submit, poll, cancel and journal task ownership | Server must see staged inputs, store downloads and scratch at matching paths; portable direct-store staging is unfinished; offline execution capability is limited | Fake-server checks and historical Funnel evidence; current live-server/restart qualification outstanding |
+| TES | One executor per task; shared-path or S3 FILE staging; verified output import; tagged submission recovery; poll and cancel | Object-store mode needs a bucket accessible to engine and workers; directory capture needs task shells; stdin, symbolic-link inputs, several containers, offline tasks and GPUs are refused | Strict fake TES and memory S3 checks pass; historical shared-path Funnel evidence; current real TES/S3 and restart qualification outstanding |
 | SLURM | Container batch tasks with Apptainer or Podman | Scheduler tools and shared store/scratch paths; backend-specific image, network and GPU limits | Simulated scheduler and historical cluster evidence; current real scheduler qualification outstanding |
 | Kubernetes | Container Jobs through the Kubernetes API | Configured namespace and nodes with matching shared host paths; backend-specific network and GPU limits | Fake API checks; current live-cluster qualification outstanding |
 
-Aruna integration uses the generic TES executor plus S3 storage; TES-over-S3 staging is still being implemented.
+TES services integrate through their native TES 1.1 endpoint and S3 interface. See [Using a TES + S3 service](design/executors.md#using-a-tes--s3-service); no server-specific backend is needed.
 
 Linux x86_64 is the initial locally tested build platform. That host evidence does not establish production support. Other host architectures and macOS/Windows have no qualification claimed here. Container platform compatibility must be checked for each image and executor; a host build alone does not establish it. See [executor configuration and shared paths](design/executors.md) and [storage configuration](design/storage.md).
 
@@ -154,7 +154,7 @@ The live drawing of a run in a terminal, as `nextflow run` draws its log: the li
 
 ### `iunctus/src/tes.rs`
 
-The TES executor: each task runs on a GA4GH TES server through the task runner. The store and the scratch directories are on this machine, and the server reads and writes them at the same paths through `file://` URLs, as Funnel on this machine or on a cluster with a shared file system does.
+The TES executor runs each task through one GA4GH TES executor. Shared-path mode uses matching local paths and `file://` URLs. Object-store mode transfers FILE inputs and outputs through S3, with directory layout preserved by shell capture and a manifest, so workers need no shared filesystem.
 
 ### `iunctus/src/tracked.rs`
 

@@ -160,9 +160,7 @@ outputs:
       glob: count.txt
 "#;
 
-/// An Argo workflow whose template describes the same task as the CWL tool: the same image,
-/// command, working directory, environment and input by content, as the CWL standard sets
-/// them.
+/// An Argo workflow that counts the same words with its image's user and working directory.
 const TEMPLATE: &str = r#"
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
@@ -192,7 +190,7 @@ spec:
       outputs:
         artifacts:
           - name: count
-            path: count.txt
+            path: /var/spool/cwl/count.txt
 "#;
 
 /// A Snakemake rule that does the same work as the CWL tool, as Snakemake describes it.
@@ -239,11 +237,14 @@ fn languages_share_cache() {
     let (code, output) = iunctus(folder, &cache, &cwl);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("[done] count"), "{output}");
-    // The Argo template describes the same task, so it comes from the cache.
+    // Argo keeps its image's user, so its task has a different execution identity.
+    let (code, output) = iunctus(folder, &cache, &argo);
+    assert_eq!(code, 0, "{output}");
+    assert!(output.contains("[done] count"), "{output}");
     let (code, output) = iunctus(folder, &cache, &argo);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("[cached] count"), "{output}");
-    // The artifact was delivered from the stored result of the CWL tool.
+    // The artifact was delivered from Argo's stored result.
     assert_eq!(delivered(&folder.join("argo")), ["3\n"]);
     // The Snakemake rule does the same work, but Snakemake describes its jobs in its own way:
     // another command, no fixed working directory, other variables. So it runs.

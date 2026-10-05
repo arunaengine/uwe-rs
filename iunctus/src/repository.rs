@@ -367,12 +367,17 @@ fn unpack(reader: impl Read, folder: &Path) -> Result<(), Failure> {
     let mut top = None;
     for (count, entry) in archive.entries().map_err(local)?.enumerate() {
         let mut entry = entry.map_err(local)?;
+        if count >= MOST_FILES {
+            return Err(failure("oversized repository archive"));
+        }
+        if entry.header().entry_type().is_pax_global_extensions() {
+            continue;
+        }
         let path = entry.path().map_err(local)?.into_owned();
         let parts: Vec<_> = path.components().collect();
-        if count >= MOST_FILES
-            || parts
-                .iter()
-                .any(|part| !matches!(part, Component::Normal(_)))
+        if parts
+            .iter()
+            .any(|part| !matches!(part, Component::Normal(_)))
         {
             return Err(failure("unsafe or oversized repository archive"));
         }

@@ -7,6 +7,15 @@ use super::*;
 fn archive(files: &[(&str, &str)]) -> Vec<u8> {
     let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
     let mut archive = tar::Builder::new(encoder);
+    let metadata = "52 comment=0123456789abcdef0123456789abcdef01234567\n";
+    let mut header = tar::Header::new_gnu();
+    header.set_entry_type(tar::EntryType::XGlobalHeader);
+    header.set_size(metadata.len() as u64);
+    header.set_mode(0o644);
+    header.set_cksum();
+    archive
+        .append_data(&mut header, "pax_global_header", metadata.as_bytes())
+        .unwrap();
     for (path, text) in files {
         let mut header = tar::Header::new_gnu();
         header.set_size(text.len() as u64);

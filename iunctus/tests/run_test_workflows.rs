@@ -71,9 +71,12 @@ fn outcome(target: &Path, project: &Path, cache: &Path, profile: bool) -> String
     let graph = cache.join("graph.json");
     let _ = std::fs::remove_file(&graph);
     let mut command = common::isolated(Command::new("timeout"));
-    command
-        .args(["600", common::BINARY])
-        .args(["run", &target.to_string_lossy()]);
+    command.args(["600", common::BINARY]).args([
+        "run",
+        "-executor",
+        "simulator",
+        &target.to_string_lossy(),
+    ]);
     if profile {
         command.args(["-profile", "test"]);
     }

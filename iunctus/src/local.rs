@@ -26,7 +26,11 @@ pub fn executor(
     let runtime = workflow_graph::runtime().map_err(|error| error.to_string())?;
     let named = Some(engine).filter(|name| !name.is_empty());
     let found = runtime.block_on(ContainerEngine::named(named));
-    let engine = found.map_err(|error| error.to_string())?;
+    let engine = found.map_err(|error| {
+        format!(
+            "cannot reach a Docker or Podman engine: {error}; use `-executor simulator` for a run without containers, or `iunctus check-machine` to check the setup"
+        )
+    })?;
     let backend = LocalContainer::new(engine, scratch.to_owned(), Pool::of_this_machine());
     let backend = crate::conda_backend::Local {
         backend,

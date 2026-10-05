@@ -71,7 +71,10 @@ fn preserves_run_history() {
     std::fs::write(path.join("a.txt"), "one\ntwo\n").expect("writes an input");
     std::fs::write(path.join("b.txt"), "three\n").expect("writes an input");
 
-    let (code, output) = iunctus(path, &["run", "main.nf", "-resume"]);
+    let (code, output) = iunctus(
+        path,
+        &["run", "-executor", "simulator", "main.nf", "-resume"],
+    );
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("no earlier run"), "{output}");
     let (code, output) = iunctus(path, &["runs"]);
@@ -89,7 +92,17 @@ fn preserves_run_history() {
     );
 
     // Nothing changed, so every task comes from the first run.
-    let (code, output) = iunctus(path, &["run", "main.nf", "-resume", &first]);
+    let (code, output) = iunctus(
+        path,
+        &[
+            "run",
+            "-executor",
+            "simulator",
+            "main.nf",
+            "-resume",
+            &first,
+        ],
+    );
     assert_eq!(code, 0, "{output}");
     let expected = [
         "[resumed] COUNT (1)",
@@ -101,7 +114,10 @@ fn preserves_run_history() {
 
     // A changed input runs its task and the task after it again.
     std::fs::write(path.join("b.txt"), "four\nfive\n").expect("changes an input");
-    let (code, output) = iunctus(path, &["run", "main.nf", "-resume"]);
+    let (code, output) = iunctus(
+        path,
+        &["run", "-executor", "simulator", "main.nf", "-resume"],
+    );
     assert_eq!(code, 0, "{output}");
     let expected = [
         "[resumed] COUNT (1)",
@@ -168,7 +184,17 @@ fn report_location_configurable() {
     std::fs::write(path.join("main.nf"), SCRIPT).expect("writes the script");
     std::fs::write(path.join("a.txt"), "one\n").expect("writes an input");
     std::fs::write(path.join("b.txt"), "two\n").expect("writes an input");
-    let (code, output) = iunctus(path, &["run", "main.nf", "-report", "report.html"]);
+    let (code, output) = iunctus(
+        path,
+        &[
+            "run",
+            "-executor",
+            "simulator",
+            "main.nf",
+            "-report",
+            "report.html",
+        ],
+    );
     assert_eq!(code, 0, "{output}");
     let report = path.join("report.html");
     assert!(
@@ -185,7 +211,17 @@ fn report_location_configurable() {
     let config = path.join("iunctus.toml");
     std::fs::write(&config, "[report]\nfile = \"reports/last.html\"\n").expect("writes");
     let config = config.to_string_lossy();
-    let (code, output) = iunctus(path, &["run", "main.nf", "-iunctus-config", &config]);
+    let (code, output) = iunctus(
+        path,
+        &[
+            "run",
+            "-executor",
+            "simulator",
+            "main.nf",
+            "-iunctus-config",
+            &config,
+        ],
+    );
     assert_eq!(code, 0, "{output}");
     assert!(path.join("reports/last.html").is_file(), "{output}");
 
@@ -212,7 +248,7 @@ fn rejects_simulated_resume() {
     std::fs::write(path.join("main.nf"), SCRIPT).expect("writes the script");
     std::fs::write(path.join("a.txt"), "one\n").expect("writes an input");
     std::fs::write(path.join("b.txt"), "two\n").expect("writes an input");
-    let (code, output) = iunctus(path, &["run", "main.nf"]);
+    let (code, output) = iunctus(path, &["run", "-executor", "simulator", "main.nf"]);
     assert_eq!(code, 0, "{output}");
     let (_, runs) = iunctus(path, &["runs"]);
     let id = runs

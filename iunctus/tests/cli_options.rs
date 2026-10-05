@@ -32,9 +32,13 @@ fn discovery_skips_configuration() {
         let help = String::from_utf8_lossy(&output.stdout);
         assert!(help.contains("usage: iunctus run"));
         assert!(help.contains("-executor"));
+        assert!(help.contains("Default executor: local"));
         assert!(help.contains("-profile <a,b>"));
         assert!(!help.contains("-remove"));
     }
+    let output = common::command().arg("help").output().unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("local (the default for run)"));
     for flag in ["version", "-version", "--version"] {
         let output = common::command().arg(flag).output().unwrap();
         assert!(output.status.success());
@@ -170,6 +174,8 @@ rule side:
             let output = common::command()
                 .args([
                     "run",
+                    "-executor",
+                    "simulator",
                     "Snakefile",
                     "-lang",
                     language,

@@ -73,3 +73,60 @@ fn cache_configuration_wins() {
     assert!(folder.join(run_database::FILE_NAME).exists(), "{error}");
     assert!(!directory.path().join("cache/iunctus").exists(), "{error}");
 }
+
+#[test]
+fn executor_config_precedence() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(directory.path().join("main.nf"), SCRIPT).unwrap();
+    let config = directory.path().join("config.toml");
+    for (default, option, code) in [
+        ("simulator", None, 0),
+        ("simulator", Some("local"), 3),
+        ("local", Some("simulator"), 0),
+    ] {
+        std::fs::write(&config, format!("[executor]\ndefault = '{default}'\n")).unwrap();
+        let mut command = common::command();
+        command
+            .args(["run", "main.nf"])
+            .arg("-iunctus-config")
+            .arg(&config)
+            .env("IUNCTUS_ENGINE", directory.path().join("missing.sock"))
+            .env("XDG_CACHE_HOME", directory.path().join("cache"))
+            .current_dir(directory.path());
+        if let Some(option) = option {
+            command.args(["-executor", option]);
+        }
+        let output = command.output().unwrap();
+        assert_eq!(output.status.code(), Some(code), "{output:?}");
+        if code == 0 {
+            assert!(String::from_utf8_lossy(&output.stdout).contains("outputs are made-up files"));
+        }
+    }
+}
+
+#[test]
+fn inspection_uses_simulation() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(directory.path().join("tool.cwl"),
+        "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: echo\ninputs:\n  message: string\noutputs: []\n",
+    ).unwrap();
+    let config = directory.path().join("config.toml");
+    std::fs::write(&config, "[executor]\ndefault = 'local'\n").unwrap();
+    for name in ["graph", "check", "check-order", "inputs", "outputs"] {
+        let output = common::command()
+            .args([name, "tool.cwl"])
+            .arg("-iunctus-config")
+            .arg(&config)
+            .env("IUNCTUS_ENGINE", directory.path().join("missing.sock"))
+            .env("XDG_CACHE_HOME", directory.path().join("cache"))
+            .current_dir(directory.path())
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(if name == "check" { 1 } else { 0 }),
+            "{name}: {output:?}"
+        );
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("cannot reach"));
+    }
+}

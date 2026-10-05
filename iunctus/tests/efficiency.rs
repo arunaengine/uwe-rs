@@ -83,7 +83,10 @@ fn reuses_observed_memory() {
     assert_eq!(limit(directory, 2), asked);
 
     // A simulated run says what a real run would ask for.
-    let (code, output) = iunctus(directory, &["run", "main.nf", "-no-cache"]);
+    let (code, output) = iunctus(
+        directory,
+        &["run", "-executor", "simulator", "main.nf", "-no-cache"],
+    );
     assert_eq!(code, 0, "{output}");
     assert!(
         output.contains("a real run would ask for less than the workflow"),

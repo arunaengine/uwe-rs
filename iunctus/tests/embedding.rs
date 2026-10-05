@@ -23,6 +23,31 @@ fn request(root: &std::path::Path) -> RunRequest {
 }
 
 #[tokio::test]
+async fn defaults_to_local() {
+    let root = tempfile::tempdir().unwrap();
+    let mut request = request(root.path());
+    request.settings.executor = iunctus::RunSettings::default().executor;
+    request.setup.as_mut().unwrap().executors.engine = Some(
+        root.path()
+            .join("missing.sock")
+            .to_string_lossy()
+            .into_owned(),
+    );
+    let failure = request.run(CancellationToken::new()).await.err().unwrap();
+    assert!(
+        failure
+            .message
+            .contains("cannot reach a Docker or Podman engine")
+    );
+    assert!(failure.message.contains("-executor simulator"));
+    assert!(failure.message.contains("iunctus check-machine"));
+    let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
+    let runs = database.runs(1).unwrap();
+    assert_eq!(runs[0].executor, "local");
+    assert!(!runs[0].simulated);
+}
+
+#[tokio::test]
 async fn records_async_runs() {
     let root = tempfile::tempdir().unwrap();
     let cancel = CancellationToken::new();

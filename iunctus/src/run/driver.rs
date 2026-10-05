@@ -100,7 +100,7 @@ pub(crate) fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
         stub: arguments.stub,
         // The simulator makes up the outputs of tasks, so its runs also assume that the
         // source files of the workflow exist, as the graph needs them rather than their content.
-        simulated: arguments.executor.as_deref().unwrap_or("simulator") == "simulator",
+        simulated: arguments.executor.as_deref().unwrap_or("local") == "simulator",
         keep_going: arguments.keep_going,
     }
 }

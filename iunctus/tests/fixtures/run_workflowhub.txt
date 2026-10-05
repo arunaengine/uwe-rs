@@ -1,4 +1,4 @@
-# The outcome of `iunctus run <workflow> -profile test -stub-run -max-pending 8
+# The outcome of `iunctus run <workflow> -executor simulator -profile test -stub-run -max-pending 8
 # -order shuffled:1` with the simulator for every Nextflow workflow of WorkflowHub of
 # the test workflows (without `-profile test` for a workflow without that profile): `ok` (with
 # a valid execution graph), or the exit code and the first line of the error (33 for

@@ -120,7 +120,7 @@ fn execute_with(
     let target = &target;
     let launch = launch(arguments, target.clone());
     let run = run_id();
-    let name = arguments.executor.as_deref().unwrap_or("simulator");
+    let name = arguments.executor.as_deref().unwrap_or("local");
     let setup = match setup {
         Some(setup) => setup,
         None => Setup::load(arguments)?,

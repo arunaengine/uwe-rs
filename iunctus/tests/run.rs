@@ -186,7 +186,10 @@ fn script_project_defaults() {
         "workflow {\n    println(projectDir == launchDir)\n}\n",
     )
     .expect("writes the script");
-    let (code, output) = iunctus(directory.path(), &["run", "main.nf"]);
+    let (code, output) = iunctus(
+        directory.path(),
+        &["run", "-executor", "simulator", "main.nf"],
+    );
     assert_eq!((code, output.as_str()), (0, "true\n"));
 }
 
@@ -198,7 +201,10 @@ fn unsupported_exit_code() {
         "enum Color {\n    RED\n}\n",
     )
     .expect("writes the script");
-    let (code, output) = iunctus(directory.path(), &["run", "main.nf"]);
+    let (code, output) = iunctus(
+        directory.path(),
+        &["run", "-executor", "simulator", "main.nf"],
+    );
     assert_eq!(code, 33, "{output}");
     assert!(
         output.contains("main.nf:1:1: This script item is not supported yet"),
@@ -210,7 +216,10 @@ fn unsupported_exit_code() {
         "process P {\n    input:\n    val x from Channel.from(1)\n    script:\n    'true'\n}\n",
     )
     .expect("writes the script");
-    let (code, output) = iunctus(directory.path(), &["run", "dsl1.nf"]);
+    let (code, output) = iunctus(
+        directory.path(),
+        &["run", "-executor", "simulator", "dsl1.nf"],
+    );
     assert_eq!(code, 33, "{output}");
     assert!(
         output.contains("dsl1.nf:1:1: DSL1 scripts are not supported (decision 14)"),
@@ -223,7 +232,10 @@ fn unsupported_exit_code() {
          process Q {\n    input:\n    val x from EXIT_STAT\n    script:\n    'true'\n}\n",
     )
     .expect("writes the script");
-    let (code, output) = iunctus(directory.path(), &["run", "dsl1.nf"]);
+    let (code, output) = iunctus(
+        directory.path(),
+        &["run", "-executor", "simulator", "dsl1.nf"],
+    );
     assert_eq!(code, 33, "{output}");
     assert!(
         output.contains("dsl1.nf:1:1: DSL1 scripts are not supported (decision 14)"),

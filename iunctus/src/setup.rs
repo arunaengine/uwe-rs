@@ -270,7 +270,13 @@ impl Defaults {
             arguments.retry_delay_ms = arguments.retry_delay_ms.or(self.retry_delay_ms);
         }
         if matches!(command, "run" | "check-machine") && arguments.executor.is_none() {
-            arguments.executor = self.executor;
+            arguments.executor = self.executor.or_else(|| Some("local".into()));
+        } else if matches!(
+            command,
+            "graph" | "check" | "check-order" | "inputs" | "outputs"
+        ) && arguments.executor.is_none()
+        {
+            arguments.executor = Some("simulator".into());
         }
         if command == "run" && arguments.report.is_none() {
             arguments.report = self.report;
@@ -582,7 +588,17 @@ mod tests {
         assert_eq!(arguments.executor.as_deref(), Some("local"));
         let mut arguments = crate::arguments::parse(&["main.nf".into()]).expect("arguments");
         slurm().apply("graph", &mut arguments);
-        assert_eq!(arguments.executor, None);
+        assert_eq!(arguments.executor.as_deref(), Some("simulator"));
+        for command in ["run", "check-machine"] {
+            let mut arguments = crate::arguments::Arguments::default();
+            super::Defaults::default().apply(command, &mut arguments);
+            assert_eq!(arguments.executor.as_deref(), Some("local"));
+        }
+        for command in ["graph", "check", "check-order", "inputs", "outputs"] {
+            let mut arguments = crate::arguments::Arguments::default();
+            slurm().apply(command, &mut arguments);
+            assert_eq!(arguments.executor.as_deref(), Some("simulator"));
+        }
     }
 
     #[test]

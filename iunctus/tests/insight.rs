@@ -85,9 +85,19 @@ fn reports_run_insight() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     workflow(path);
-    let (code, output) = iunctus(path, &["run", "main.nf"]);
+    let (code, output) = iunctus(path, &["run", "-executor", "simulator", "main.nf"]);
     assert_eq!(code, 0, "{output}");
-    let (code, output) = iunctus(path, &["run", "main.nf", "--note", "second"]);
+    let (code, output) = iunctus(
+        path,
+        &[
+            "run",
+            "-executor",
+            "simulator",
+            "main.nf",
+            "--note",
+            "second",
+        ],
+    );
     assert_eq!(code, 0, "{output}");
     let [second, first] = runs(path).try_into().expect("two runs");
 
@@ -182,7 +192,7 @@ fn delivers_run_traces() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     workflow(path);
-    let (code, output) = iunctus(path, &["run", "main.nf"]);
+    let (code, output) = iunctus(path, &["run", "-executor", "simulator", "main.nf"]);
     assert_eq!(code, 0, "{output}");
     let [run] = runs(path).try_into().expect("one run");
     let (endpoint, received) = receiver();

@@ -244,11 +244,26 @@ The crate `run-telemetry` turns a run of the database into an OpenTelemetry trac
 | each task, named by its step | the run | when the workflow asked for it, until its last attempt ended | `iunctus.task.id`, `.name`, `.step`, `.state`, `.exit_code`, `.attempts`, `.reused` | `requested`, `marked` with `iunctus.marker.kind` and `.reason` |
 | each attempt, `attempt <n>` | its task | its start and end | `iunctus.attempt.number`, `.exit_code`, `.image` (pinned), `.reused`, `.retried`, `.cpu_usec`, `.memory_peak`, `.read_bytes`, `.write_bytes` | `started`, `finished`, `reused` |
 
-The resource is `service.name = iunctus` with its version. A failed run, task or attempt has the status error with a message, a succeeded one ok. Tasks are named by their step, as OpenTelemetry advises names of few values, so that dashboards group the tasks of a step; the name of each task is an attribute. The trace id and the span ids come from the SHA-256 of the run id (and task and attempt), so the same run always gives the same trace, and sending it twice does not make two.
+The resource is `service.name = iunctus` with its version. A failed run, task or attempt has the status error with a message, a succeeded one ok. Tasks are named by their step, as OpenTelemetry advises names of few values, so that dashboards group the tasks of a step; the name of each task is an attribute. The trace id and the span ids come from the SHA-256 of the run id (and task and attempt), so the same run always gives the same ids. Live export tracks completed tasks separately to prevent duplicate requests.
 
 **To a file.** `iunctus telemetry <run>` writes the trace as JSON lines, one export request of at most 1,000 spans per line, as the file exporter of OpenTelemetry writes them and the `otlpjsonfile` receiver of the OpenTelemetry Collector reads them.
 
 **To an endpoint.** With a `[telemetry]` section in the config file, the command also sends the requests, one after the other, as `POST <endpoint>/v1/traces` with JSON (an endpoint that ends with `/v1/traces` is taken as it is), through the one HTTP client of the process, with the headers of the section, whose values are secrets (decision 20) and marked as sensitive. Every real run and replay sends its trace there when it ends; simulated runs do not, since their times are made up. A failure to send is a warning after the run; a partial success says how many spans the endpoint rejected.
+
+**Live exporter.** `run-telemetry::Live` reads committed task data on a background thread,
+every two seconds, in requests of at most 1,000 spans.
+The recorder only attempts a nonblocking send into a one-slot notification queue after
+a successful database commit. Notifications coalesce; the database keeps the backlog.
+Each task and its attempts are read in one snapshot after output validation, with the
+same span construction and redaction as historical exports. Retried tasks wait for their
+final attempt. A task is exported once, even when both finish and validation events appear.
+Failures and partial rejection only warn; failed batches are dropped without retries,
+because a collector may have accepted a request before its response was lost.
+The caller starts export with `Telemetry::start`, closes the recorder, then calls
+`Live::finish` instead of sending the full historical trace again. Closing the recorder
+commits pending writes and signals the worker to export remaining task spans and the run
+span last. HTTP requests have a two-second deadline and drain waits at most five seconds.
+A hard kill can lose spans from the latest interval; already exported spans survive.
 
 ```toml
 [telemetry]

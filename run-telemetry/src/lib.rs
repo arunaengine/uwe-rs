@@ -2,12 +2,14 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod live;
 mod otlp;
 mod send;
 mod spans;
 
 use std::io::Write;
 
+pub use live::Live;
 pub use otlp::{KeyValue, Request, Span, SpanEvent, Status, Value};
 pub use send::{Sent, TelemetryError, send, traces_address};
 pub use spans::requests;

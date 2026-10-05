@@ -207,11 +207,20 @@ impl Database {
 
     /// The markers of a run, in the order they were found.
     pub fn markers(&self, run: &str) -> Result<Vec<MarkerRow>, DatabaseError> {
+        self.span_markers(run, None)
+    }
+
+    /// Markers of one task, or all markers when `task` is absent.
+    pub fn span_markers(
+        &self,
+        run: &str,
+        task: Option<u64>,
+    ) -> Result<Vec<MarkerRow>, DatabaseError> {
         let mut statement = self
             .connection
-            .prepare("SELECT task, kind, reason FROM markers WHERE run = ?1 ORDER BY rowid")?;
+            .prepare("SELECT task, kind, reason FROM markers WHERE run = ?1 AND (?2 IS NULL OR task = ?2) ORDER BY rowid")?;
         let markers = statement
-            .query_map([run], |row| {
+            .query_map(params![run, task], |row| {
                 Ok(MarkerRow {
                     task: row.get(0)?,
                     kind: row.get(1)?,

@@ -139,6 +139,7 @@ pub(crate) fn executor(
             let place = tes::Place {
                 server,
                 token,
+                settings: &settings.tes,
                 sites: &settings.tes_sites,
                 scratch: &scratch,
             };

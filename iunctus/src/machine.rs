@@ -305,8 +305,9 @@ mod executors {
             Ok(token) if !token.is_empty() => Some(token),
             _ => (executors.tes_token.as_ref()).and_then(|secret| secret.reveal().ok()),
         };
-        let answer = tes_executor::Client::new(&server, token)
-            .map_err(|error| error.to_string())
+        let answer = executors
+            .tes
+            .client(&server, token)
             .and_then(|client| tes::answers(&client, &server));
         match answer {
             Ok(()) => report.add(

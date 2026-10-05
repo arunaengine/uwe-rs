@@ -33,7 +33,9 @@ pub(crate) fn script(
     let mut prepare = String::new();
     for directory in directories {
         let path = container_path(directory, work)?;
-        if path == CONTROL
+        if super::staging::wildcard(&path)
+            || path == super::backend::WRAPPER
+            || path == CONTROL
             || path.starts_with(&format!("{CONTROL}/"))
             || path == TRANSFER
             || path.starts_with(&format!("{TRANSFER}/"))
@@ -57,6 +59,7 @@ pub(crate) fn script(
 const FLATTEN: &str = r#"transfer=/iunctus/transfer
 [ -z "${BASH_VERSION:-}" ] || shopt -u dotglob
 mkdir -p "$transfer" || exit 1
+[ -f "$control/usage" ] || : > "$control/usage"
 : > "$control/objects"
 number=0
 flatten() {

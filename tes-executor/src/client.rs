@@ -244,6 +244,12 @@ impl Client {
         &self.base
     }
 
+    pub(crate) fn identity(&self) -> String {
+        let bytes =
+            serde_json::to_vec(&(&self.token, &self.basic)).expect("authentication strings encode");
+        task_model::Digest::sha256(&bytes).hex().to_owned()
+    }
+
     /// Creates a task and gives its id.
     pub async fn create(&self, task: &Task) -> Result<String, TesError> {
         let url = format!("{}/tasks", self.base);

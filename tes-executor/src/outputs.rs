@@ -11,7 +11,7 @@ use executor::{ExecutorError, Finished, Job, manifest};
 use crate::capture::{INDEX, RECORDS, TRANSFER};
 use crate::client::{FileLog, FileType, Output, State, Status, Task};
 use crate::staging::{
-    ObjectStage, container_path, shell_command, storage_error, unsupported, wildcard,
+    ObjectStage, container_path, destination, shell_command, storage_error, unsupported, wildcard,
 };
 
 pub(crate) fn declare(
@@ -26,14 +26,14 @@ pub(crate) fn declare(
         for name in RECORDS {
             task.outputs.push(Output {
                 path: format!("{}/{name}", super::backend::CONTROL),
-                url: objects.url(&format!("{prefix}/control/{name}")),
+                url: destination(objects, &format!("{prefix}/control/{name}"))?,
                 kind: FileType::File,
                 path_prefix: None,
             });
         }
         task.outputs.push(Output {
             path: format!("{TRANSFER}/*"),
-            url: format!("{}/", objects.url(&format!("{prefix}/files"))),
+            url: format!("{}/", destination(objects, &format!("{prefix}/files"))?),
             kind: FileType::File,
             path_prefix: Some(format!("{TRANSFER}/")),
         });
@@ -50,8 +50,8 @@ pub(crate) fn declare(
             let path = container_path(&rule.pattern, work)?;
             task.outputs.push(Output {
                 url: match wildcard(&path) {
-                    true => format!("{}/", objects.url(&format!("{prefix}/root"))),
-                    false => objects.url(&format!("{prefix}/root{}", path)),
+                    true => format!("{}/", destination(objects, &format!("{prefix}/root"))?),
+                    false => destination(objects, &format!("{prefix}/root{}", path))?,
                 },
                 path_prefix: wildcard(&path).then(|| "/".into()),
                 path,
@@ -278,12 +278,24 @@ impl ObjectStage {
             ),
             None => output.url.clone(),
         };
+        let address = storage::address::decode(address);
+        let expected = match &output.path_prefix {
+            Some(prefix) => format!(
+                "{}{}",
+                storage::address::decode(&output.url),
+                file.path.strip_prefix(prefix).unwrap()
+            ),
+            None => storage::address::decode(&expected),
+        };
         if address != expected {
             return Err(storage_error(
                 "TES output URL differs from its declared destination",
             ));
         }
-        let base = format!("{}/", self.objects.url("").trim_end_matches('/'));
+        let base = format!(
+            "{}/",
+            storage::address::decode(&self.objects.url("")).trim_end_matches('/')
+        );
         let location = address
             .strip_prefix(&base)
             .ok_or_else(|| storage_error("TES output is outside the staging store"))?
@@ -295,15 +307,64 @@ impl ObjectStage {
             return Err(storage_error("TES output object path is not canonical"));
         }
         let url = reqwest::Url::parse(&file.url).map_err(storage_error)?;
+        if url.fragment().is_some() {
+            return Err(unsupported("TES output URLs cannot contain fragments"));
+        }
         let mut version = None;
-        for (key, value) in url.query_pairs() {
-            if key != "versionId" || version.is_some() {
+        if let Some(query) = url.query() {
+            let (key, value) = query
+                .split_once('=')
+                .ok_or_else(|| unsupported("TES output versionId is invalid"))?;
+            if key != "versionId" || value.is_empty() || query.contains('&') {
                 return Err(unsupported(
                     "TES output URLs support only one versionId query parameter",
                 ));
             }
-            version = Some(value.into_owned());
+            let value = storage::address::decode(value);
+            if value == "null" {
+                return Err(unsupported(
+                    "TES output versionId must name an immutable version",
+                ));
+            }
+            version = Some(value);
         }
         Ok((location, version))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preserves_version_symbols() {
+        let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
+        let objects = Store::remote(operator, "s3://bucket/tes").unwrap();
+        let stage = ObjectStage::new(
+            Store::memory().unwrap(),
+            objects,
+            crate::Settings::default(),
+        )
+        .unwrap();
+        let task = Task {
+            outputs: vec![Output {
+                path: "/work/file".into(),
+                url: "s3://bucket/tes/attempts/a/file".into(),
+                kind: FileType::File,
+                path_prefix: None,
+            }],
+            ..Task::default()
+        };
+        let mut file = FileLog {
+            path: "/work/file".into(),
+            url: "s3://bucket/tes/attempts/a/file?versionId=a+b%2Fc".into(),
+            size_bytes: "4".into(),
+        };
+        assert_eq!(
+            stage.file_location(&task, &file).unwrap().1.as_deref(),
+            Some("a+b/c")
+        );
+        file.url = "s3://bucket/tes/attempts/a/file?versionId=null".into();
+        assert!(stage.file_location(&task, &file).is_err());
     }
 }

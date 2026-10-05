@@ -18,6 +18,9 @@ use tokio_util::sync::CancellationToken;
 use super::*;
 use crate::{Client, TesBackend};
 
+#[path = "contracts.rs"]
+mod contracts;
+
 struct Server {
     address: String,
     documents: Arc<Mutex<Vec<Value>>>,
@@ -199,7 +202,7 @@ async fn leave(operator: &Operator, objects: &Store, task: &Value) -> Vec<Value>
             "/iunctus/control/stderr" => vec![("", "")],
             "/iunctus/control/start" => vec![("", "1700000000\n")],
             "/iunctus/control/end" => vec![("", "1700000001\n")],
-            "/iunctus/control/usage" => Vec::new(),
+            "/iunctus/control/usage" => vec![("", "")],
             "/iunctus/transfer/*" => vec![("1", "alpha beta\n"), ("2", "hidden\n")],
             _ => vec![("iunctus/work/out/a.txt", "alpha beta\n")],
         };
@@ -283,6 +286,23 @@ async fn restores_object_outputs() {
     std::fs::write(&input, b"alpha").unwrap();
     std::fs::write(directory.join("nested/b.txt"), b"beta").unwrap();
     let mut spec = spec(true);
+    let digest = source.put_content(b"beta".to_vec().into()).await.unwrap();
+    let tree = task_model::Tree {
+        entries: vec![task_model::TreeEntry::File {
+            path: "nested/b.txt".into(),
+            digest,
+            size: 4,
+            executable: false,
+        }],
+    };
+    let digest = source.put_tree(&tree).await.unwrap();
+    spec.inputs.push(InputFile {
+        path: "directory".into(),
+        kind: FileKind::Directory,
+        digest,
+        executable: false,
+        writable: false,
+    });
     spec.inputs.push(InputFile {
         path: "in.txt".into(),
         kind: FileKind::File,

@@ -6,10 +6,11 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use reqwest::header::{ACCEPT, AUTHORIZATION, WWW_AUTHENTICATE};
+use reqwest::header::{ACCEPT, AUTHORIZATION, HeaderValue, WWW_AUTHENTICATE};
 use reqwest::{Method, StatusCode};
 use tokio::sync::OnceCell;
 
+use crate::credentials::{Credential, Found};
 use crate::job::ExecutorError;
 
 /// The manifest types a registry may answer with, as `docker pull` asks for them.
@@ -301,40 +302,68 @@ fn registry_url(parsed: &Reference, path: &str) -> String {
     )
 }
 
-/// A request to a registry, with an anonymous token when the registry asks for one; an answer
-/// that is no success is an error.
+/// A request to a registry, retrying its authentication challenge with local credentials.
 async fn ask(
     parsed: &Reference,
     method: Method,
     url: &str,
     accept: &str,
 ) -> Result<reqwest::Response, ExecutorError> {
+    ask_with(parsed, method, url, accept, None).await
+}
+
+async fn ask_with(
+    parsed: &Reference,
+    method: Method,
+    url: &str,
+    accept: &str,
+    credentials: Option<Found>,
+) -> Result<reqwest::Response, ExecutorError> {
     let failed = |message: String| ExecutorError::Engine {
         engine: parsed.registry.clone(),
         message,
     };
     let client = crate::http::client().map_err(failed)?;
-    let send = |token: Option<String>| {
+    let send = |auth: Option<HeaderValue>| {
         let mut request = (client.request(method.clone(), url))
             .header(ACCEPT, accept)
             .timeout(TIMEOUT);
-        if let Some(token) = token {
-            request = request.header(AUTHORIZATION, format!("Bearer {token}"));
+        if let Some(auth) = auth {
+            request = request.header(AUTHORIZATION, auth);
         }
         request.send()
     };
     let mut response = send(None)
         .await
-        .map_err(|error| failed(error.to_string()))?;
+        .map_err(|_| failed("registry request failed (details redacted)".into()))?;
+    let mut credentials = credentials.unwrap_or_default();
     if response.status() == StatusCode::UNAUTHORIZED {
         let challenge = (response.headers().get(WWW_AUTHENTICATE))
             .and_then(|value| value.to_str().ok())
             .unwrap_or_default()
             .to_owned();
-        let token = token(client, &challenge).await.map_err(failed)?;
-        response = send(Some(token))
-            .await
-            .map_err(|error| failed(error.to_string()))?;
+        if credentials.credential.is_none() && !credentials.helper {
+            credentials = crate::credentials::lookup(&parsed.registry).map_err(failed)?;
+        }
+        let scheme = challenge.split_whitespace().next().unwrap_or_default();
+        let auth = if scheme.eq_ignore_ascii_case("Bearer") {
+            let token = token(client, &challenge, credentials.credential.as_ref())
+                .await
+                .map_err(|message| failed(format!("{message}{}", credentials.hint())))?;
+            Some(bearer(&token).map_err(failed)?)
+        } else if scheme.eq_ignore_ascii_case("Basic") {
+            match &credentials.credential {
+                Some(Credential::Basic(user, password)) => Some(basic(user, password)),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        if auth.is_some() {
+            response = send(auth).await.map_err(|_| {
+                failed("authenticated registry request failed (details redacted)".into())
+            })?;
+        }
     }
     let version = match &parsed.digest {
         Some(digest) => format!("@{digest}"),
@@ -350,7 +379,15 @@ async fn ask(
         // Another attempt gives the same answer.
         return Err(ExecutorError::MissingImage {
             image: format!("{}{version}", parsed.name),
-            reason: format!("the registry {} answers {status}", parsed.registry),
+            reason: format!(
+                "the registry {} answers {status}{}",
+                parsed.registry,
+                if status == StatusCode::NOT_FOUND {
+                    ""
+                } else {
+                    credentials.hint()
+                }
+            ),
         });
     }
     if status == StatusCode::TOO_MANY_REQUESTS {
@@ -370,41 +407,103 @@ async fn ask(
     Ok(response)
 }
 
-/// An anonymous token for the challenge of a registry, like
-/// `Bearer realm="https://auth.docker.io/token",service="registry.docker.io",scope="..."`.
-async fn token(client: &reqwest::Client, challenge: &str) -> Result<String, String> {
-    let fields = challenge.strip_prefix("Bearer ").unwrap_or(challenge);
+/// Exchanges Basic credentials or an identity refresh token for a registry access token.
+async fn token(
+    client: &reqwest::Client,
+    challenge: &str,
+    credential: Option<&Credential>,
+) -> Result<String, String> {
+    if let Some(Credential::Bearer(token)) = credential {
+        return Ok(token.clone());
+    }
+    let fields = challenge.split_once(' ').map_or("", |(_, fields)| fields);
     let field = |name: &str| {
         fields.split(',').find_map(|part| {
             let (key, value) = part.trim().split_once('=')?;
             (key == name).then(|| value.trim_matches('"').to_owned())
         })
     };
-    let realm = field("realm").ok_or_else(|| format!("unexpected challenge: {challenge}"))?;
-    let mut url = realm;
-    for (index, name) in ["service", "scope"].into_iter().enumerate() {
+    let realm = field("realm").ok_or_else(|| "registry challenge has no token realm".to_owned())?;
+    let mut url =
+        reqwest::Url::parse(&realm).map_err(|_| "invalid token realm (redacted)".to_owned())?;
+    let local = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"));
+    if (url.scheme() != "https" && !(url.scheme() == "http" && local))
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err("token realm must use HTTPS or loopback HTTP without URL credentials".into());
+    }
+    let mut fields = Vec::new();
+    for name in ["service", "scope"] {
         if let Some(value) = field(name) {
-            let separator = if index == 0 && !url.contains('?') {
-                '?'
-            } else {
-                '&'
-            };
-            url.push_str(&format!("{separator}{name}={}", encode(&value)));
+            fields.push((name, value));
         }
     }
-    let text = (client.get(&url).timeout(TIMEOUT).send().await)
-        .and_then(|response| response.error_for_status())
-        .map_err(|error| error.to_string())?
+    let request = match credential {
+        Some(Credential::Identity(token)) => {
+            fields.extend([
+                ("grant_type", "refresh_token".into()),
+                ("refresh_token", token.clone()),
+                ("client_id", "iunctus".into()),
+            ]);
+            let body = fields
+                .iter()
+                .map(|(name, value)| format!("{name}={}", encode(value)))
+                .collect::<Vec<_>>()
+                .join("&");
+            client
+                .post(url)
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(body)
+        }
+        credential => {
+            url.query_pairs_mut().extend_pairs(&fields);
+            let request = client.get(url);
+            match credential {
+                Some(Credential::Basic(user, password)) => {
+                    request.header(AUTHORIZATION, basic(user, password))
+                }
+                _ => request,
+            }
+        }
+    };
+    let response = request
+        .timeout(TIMEOUT)
+        .send()
+        .await
+        .map_err(|_| "registry token request failed (details redacted)".to_owned())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "registry token exchange returned {} (body redacted)",
+            response.status()
+        ));
+    }
+    let text = response
         .text()
         .await
-        .map_err(|error| error.to_string())?;
-    let answer: serde_json::Value =
-        serde_json::from_str(&text).map_err(|error| error.to_string())?;
+        .map_err(|_| "cannot read registry token response".to_owned())?;
+    let answer: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|_| "invalid registry token response (body redacted)".to_owned())?;
     let token = answer.get("token").or_else(|| answer.get("access_token"));
     token
         .and_then(serde_json::Value::as_str)
         .map(str::to_owned)
         .ok_or_else(|| "the registry gave no token".to_owned())
+}
+
+fn basic(user: &str, password: &str) -> HeaderValue {
+    use base64::Engine;
+    let encoded = base64::prelude::BASE64_STANDARD.encode(format!("{user}:{password}"));
+    let mut header = HeaderValue::from_str(&format!("Basic {encoded}")).expect("base64 header");
+    header.set_sensitive(true);
+    header
+}
+
+fn bearer(token: &str) -> Result<HeaderValue, String> {
+    let mut header = HeaderValue::from_str(&format!("Bearer {token}"))
+        .map_err(|_| "invalid registry token (redacted)".to_owned())?;
+    header.set_sensitive(true);
+    Ok(header)
 }
 
 /// A value for a query of a URL, with the characters that have a meaning there encoded.

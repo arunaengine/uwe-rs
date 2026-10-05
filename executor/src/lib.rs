@@ -8,6 +8,7 @@ mod braces;
 pub mod conda;
 pub mod conda_cache;
 pub mod containers;
+pub mod credentials;
 pub mod engine;
 pub mod http;
 mod image;

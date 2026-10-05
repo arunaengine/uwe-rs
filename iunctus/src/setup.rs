@@ -21,6 +21,7 @@ const SECTIONS: &[&str] = &[
     "storage",
     "executor",
     "telemetry",
+    "registry",
     "network",
     "cache",
     "report",
@@ -296,6 +297,7 @@ impl Setup {
         let failed = |error: ConfigError| Failure::setup(format!("iunctus: {error}"));
         let config = ConfigFile::load(arguments.config_file.as_deref()).map_err(failed)?;
         config.root().only(SECTIONS).map_err(failed)?;
+        executor::credentials::configure(&config).map_err(failed)?;
         let storage = Storage::from_config(&config).map_err(failed)?;
         let executors = Executors::read(&config).map_err(failed)?;
         let telemetry = Telemetry::read(&config).map_err(failed)?;

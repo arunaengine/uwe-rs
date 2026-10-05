@@ -4,6 +4,7 @@
 
 mod error;
 mod node;
+mod registry;
 mod secret;
 mod table;
 
@@ -13,6 +14,7 @@ use std::path::{Path, PathBuf};
 
 pub use error::ConfigError;
 pub use node::Origin;
+pub use registry::{RegistryAuth, registry_auth};
 pub use secret::Secret;
 pub use table::Table;
 

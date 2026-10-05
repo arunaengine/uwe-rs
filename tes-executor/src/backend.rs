@@ -182,7 +182,7 @@ impl TesBackend {
             .ok_or_else(|| std::io::Error::other("cannot identify the TES coordinator process"))?;
         let mut journal = serde_json::json!({"backend": "TES", "server": self.client.server(),
             "name": job.name, "id": null, "owner": std::process::id(), "host": host,
-            "started": started, "locked": true});
+            "started": started, "locked": true, "auth": self.client.identity()});
         if self.settings.idempotency_tag.is_some() {
             journal["request"] =
                 serde_json::to_value(&task).map_err(|error| unresolved(root, error))?;
@@ -351,11 +351,10 @@ impl TesBackend {
                 .find(|peer| Some(peer.client.server()) == journal["server"].as_str())
                 .ok_or_else(|| unresolved(&root, "the original TES server is not configured"))?;
             if journal["id"].is_null() {
-                let tag = backend
-                    .settings
-                    .idempotency_tag
-                    .as_deref()
-                    .filter(|tag| journal["idempotency_tag"].as_str() == Some(*tag));
+                let tag = backend.settings.idempotency_tag.as_deref().filter(|tag| {
+                    journal["idempotency_tag"].as_str() == Some(*tag)
+                        && journal["auth"].as_str() == Some(backend.client.identity().as_str())
+                });
                 if let Some(tag) = tag {
                     let task: Task = serde_json::from_value(journal["request"].clone())
                         .map_err(|error| unresolved(&root, error))?;

@@ -58,6 +58,15 @@ impl ObjectStage {
     pub(crate) async fn prepare(&self, job: Job<'_>) -> Result<Task, ExecutorError> {
         let spec = job.spec;
         spec.validate().map_err(unsupported)?;
+        if spec.arguments.is_empty() {
+            return Err(ExecutorError::NoCommand(
+                spec.image
+                    .as_ref()
+                    .ok_or(ExecutorError::NoImage)?
+                    .reference
+                    .clone(),
+            ));
+        }
         if spec.stdin.is_some() || job.staging.stdin.is_some() {
             return Err(unsupported("TES object-store staging cannot express stdin"));
         }
@@ -68,6 +77,19 @@ impl ObjectStage {
         }
         let work = container_path(spec.workdir.as_deref().unwrap_or(super::backend::WORK), "/")?;
         let shell = shell_command(&spec.arguments);
+        if shell
+            && [
+                super::backend::CONTROL,
+                super::backend::OUTBOX,
+                super::capture::TRANSFER,
+            ]
+            .iter()
+            .any(|folder| {
+                Path::new(folder).starts_with(&work) || Path::new(&work).starts_with(folder)
+            })
+        {
+            return Err(unsupported("TES workdir overlaps output capture folders"));
+        }
         let mut files = Vec::new();
         let mut directories = job.staging.directories.clone();
         let mut programs = Vec::new();
@@ -200,6 +222,9 @@ impl ObjectStage {
             ..Task::default()
         };
         super::outputs::declare(&mut task, job, &work, &self.objects, &prefix, shell)?;
+        if task.outputs.len() > self.settings.max_outputs {
+            return Err(unsupported("TES outputs exceed max_outputs"));
+        }
         for (source, path, expected) in files {
             if wildcard(&path) {
                 return Err(unsupported("TES input paths cannot contain wildcards"));
@@ -230,7 +255,7 @@ impl ObjectStage {
                 .map_err(storage_error)?;
             task.inputs.push(Input {
                 path: super::backend::WRAPPER.into(),
-                url: self.objects.url(&content_store::layout::content(&digest)),
+                url: destination(&self.objects, &content_store::layout::content(&digest))?,
                 kind: FileType::File,
             });
             task.executors[0].command = vec!["sh".into(), super::backend::WRAPPER.into()];
@@ -252,7 +277,7 @@ impl ObjectStage {
             .put_file_as(source, digest)
             .await
             .map_err(storage_error)?;
-        Ok(self.objects.url(&content_store::layout::content(digest)))
+        destination(&self.objects, &content_store::layout::content(digest))
     }
 }
 
@@ -262,6 +287,14 @@ pub(crate) fn attempt_prefix(job: Job<'_>) -> Result<String, ExecutorError> {
         "attempts/{}",
         Digest::sha256(format!("{key}\0{}", job.name).as_bytes()).hex()
     ))
+}
+
+pub(crate) fn destination(objects: &Store, location: &str) -> Result<String, ExecutorError> {
+    let mut url = reqwest::Url::parse(&objects.url("")).map_err(storage_error)?;
+    let root = storage::address::decode(url.path());
+    let path = format!("{}/{location}", root.trim_end_matches('/'));
+    url.set_path(&path.replace('%', "%25"));
+    Ok(url.to_string())
 }
 
 pub(crate) fn container_path(path: &str, work: &str) -> Result<String, ExecutorError> {

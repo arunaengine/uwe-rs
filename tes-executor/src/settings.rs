@@ -28,6 +28,18 @@ impl Default for Settings {
 }
 
 impl Settings {
+    pub fn client(&self, server: &str, token: Option<String>) -> Result<crate::Client, String> {
+        let bearer = token.is_some();
+        let mut client = crate::Client::new(server, token).map_err(|error| error.to_string())?;
+        if !bearer && let (Some(user), Some(password)) = (&self.user, &self.password) {
+            client = client.with_basic(
+                user.reveal().map_err(|error| error.to_string())?,
+                password.reveal().map_err(|error| error.to_string())?,
+            );
+        }
+        Ok(client)
+    }
+
     pub const KEYS: &'static [&'static str] = &[
         "staging",
         "staging_root",
@@ -51,6 +63,8 @@ impl Settings {
                 })?;
                 let rest = root.strip_prefix("s3://").unwrap_or_default();
                 if rest.is_empty()
+                    || rest.split('/').next().unwrap_or("").contains(['@', ':'])
+                    || rest.chars().any(char::is_whitespace)
                     || rest.starts_with('/')
                     || rest.contains(['?', '#', '\\'])
                     || rest

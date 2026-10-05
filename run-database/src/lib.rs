@@ -71,6 +71,17 @@ pub struct Database {
 }
 
 impl Database {
+    /// Reads related rows from one committed snapshot.
+    pub fn snapshot<T>(
+        &self,
+        read: impl FnOnce(&Self) -> Result<T, DatabaseError>,
+    ) -> Result<T, DatabaseError> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let result = read(self)?;
+        transaction.commit()?;
+        Ok(result)
+    }
+
     /// Opens the database file, creating it and its folder when missing, and brings its schema
     /// to the current [`VERSION`]. Runs that open a new file at the same moment take turns.
     pub fn open(path: &Path) -> Result<Self, DatabaseError> {

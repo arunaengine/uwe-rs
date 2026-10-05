@@ -71,6 +71,7 @@ struct Writer {
     /// When the open transaction began; `None` when no transaction is open.
     batch: Option<Instant>,
     error: Option<DatabaseError>,
+    committed: Option<mpsc::SyncSender<()>>,
 }
 
 impl Recorder {
@@ -119,6 +120,7 @@ impl Recorder {
             sequence: 0,
             batch: None,
             error: None,
+            committed: None,
         }));
         let (stop, stopped) = mpsc::channel::<()>();
         let shared = Arc::clone(&writer);
@@ -139,6 +141,13 @@ impl Recorder {
     /// The id of the run.
     pub fn run(&self) -> &str {
         &self.run
+    }
+
+    /// A bounded notification queue for committed data; notifications may coalesce.
+    pub fn commits(&mut self) -> mpsc::Receiver<()> {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        lock(&self.writer).committed = Some(sender);
+        receiver
     }
 
     /// The driver asked for a task; `edges` join it to the earlier tasks it waits for. A task
@@ -587,6 +596,7 @@ impl Recorder {
             let _ = thread.join();
         }
         self.commit();
+        lock(&self.writer).committed.take();
     }
 }
 
@@ -658,11 +668,16 @@ impl Writer {
     }
 
     fn commit(&mut self) {
-        if self.batch.take().is_some()
-            && let Err(error) = self.connection.execute_batch("COMMIT")
-            && self.error.is_none()
-        {
-            self.error = Some(error.into());
+        if self.batch.take().is_some() {
+            match self.connection.execute_batch("COMMIT") {
+                Ok(()) => {
+                    if let Some(sender) = &self.committed {
+                        let _ = sender.try_send(());
+                    }
+                }
+                Err(error) if self.error.is_none() => self.error = Some(error.into()),
+                Err(_) => {}
+            }
         }
     }
 }
@@ -772,6 +787,7 @@ mod tests {
         let mut recorder = crate::Database::open(&path)
             .and_then(|database| database.record(&start))
             .expect("records");
+        let committed = recorder.commits();
         let sources: Vec<Source> = (0..500)
             .map(|number| Source {
                 kind: crate::SourceKind::Workflow,
@@ -783,7 +799,10 @@ mod tests {
         recorder.sources(&sources);
         // The rows wait in the open transaction for one commit.
         assert!(!lock(&recorder.writer).connection.is_autocommit());
+        assert_eq!(committed.try_recv(), Err(mpsc::TryRecvError::Empty));
         recorder.close().expect("commits");
+        committed.recv().expect("committed data");
+        assert_eq!(committed.recv(), Err(mpsc::RecvError));
         let database = crate::Database::open(&path).expect("opens");
         assert_eq!(database.sources("run-1").expect("reads").len(), 500);
     }

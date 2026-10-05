@@ -202,6 +202,25 @@ impl Database {
         Ok(events)
     }
 
+    /// Events of one task, or the root run span when `task` is absent.
+    pub fn span_events(&self, run: &str, task: Option<u64>) -> Result<Vec<Event>, DatabaseError> {
+        let mut statement = self.connection.prepare_cached(
+            "SELECT sequence, time, kind, task, attempt FROM events
+             WHERE run = ?1 AND task IS ?2 ORDER BY sequence",
+        )?;
+        Ok(statement
+            .query_map(params![run, task], |row| {
+                Ok(Event {
+                    sequence: row.get(0)?,
+                    time: row.get(1)?,
+                    kind: row.get(2)?,
+                    task: row.get(3)?,
+                    attempt: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
     /// Adds the number of tasks in each state, and marks a run whose process is gone as stopped.
     fn counted(&self, mut run: Run) -> Result<Run, DatabaseError> {
         let mut statement = self

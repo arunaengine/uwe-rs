@@ -68,7 +68,7 @@ pub fn requests(
 }
 
 /// One export request with these spans of iunctus.
-fn request(spans: Vec<Span>) -> Request {
+pub(crate) fn request(spans: Vec<Span>) -> Request {
     let version = env!("CARGO_PKG_VERSION");
     Request {
         resource_spans: vec![ResourceSpans {
@@ -87,6 +87,75 @@ fn request(spans: Vec<Span>) -> Request {
             }],
         }],
     }
+}
+
+pub(crate) fn finished_spans(
+    database: &Database,
+    run: &str,
+    task: u64,
+    finalizing: bool,
+) -> Result<Vec<Span>, DatabaseError> {
+    let Some(detail) = database.task(run, task)? else {
+        return Ok(Vec::new());
+    };
+    let row = &detail.row;
+    if !finalizing
+        && (!matches!(row.state.as_str(), "succeeded" | "failed")
+            || !detail
+                .attempts
+                .last()
+                .is_some_and(|attempt| attempt.accepted.is_some()))
+    {
+        return Ok(Vec::new());
+    }
+    let ids = Ids::of(run);
+    let events = database.span_events(run, Some(task))?;
+    let ended = if finalizing {
+        database.run(run)?.and_then(|record| record.ended)
+    } else {
+        None
+    }
+    .or_else(|| events.iter().map(|event| event.time).max())
+    .unwrap_or(row.requested);
+    let own = events
+        .iter()
+        .filter(|event| event.attempt.is_none())
+        .collect::<Vec<_>>();
+    let mut markers = database.span_markers(run, Some(task))?.into();
+    let mut spans = vec![task_span(
+        row,
+        &detail.attempts,
+        &ids,
+        ended,
+        &own,
+        &mut markers,
+    )];
+    for attempt in &detail.attempts {
+        let events = events
+            .iter()
+            .filter(|event| event.attempt == Some(attempt.number))
+            .collect::<Vec<_>>();
+        spans.push(attempt_span(row, attempt, &ids, ended, &events));
+    }
+    Ok(spans)
+}
+
+pub(crate) fn finished_run(database: &Database, run: &str) -> Result<Option<Span>, DatabaseError> {
+    let Some(record) = database.run(run)? else {
+        return Ok(None);
+    };
+    let Some(ended) = record.ended else {
+        return Ok(None);
+    };
+    let tasks = record.tasks.values().sum::<u64>() as usize;
+    let events = database.span_events(run, None)?;
+    Ok(Some(run_span(
+        &record,
+        &Ids::of(run),
+        ended,
+        tasks,
+        &events,
+    )))
 }
 
 /// Redacts private text at the boundary of the public telemetry artifact.
@@ -345,6 +414,74 @@ fn attempt_span(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn awaits_output_validation() {
+        use run_database::RunStart;
+        use workflow_graph::{Language, Outcome, Task, TaskId};
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("runs.sqlite");
+        let start = RunStart {
+            id: "validation".into(),
+            resumes: None,
+            workflow: "main.nf".into(),
+            language: Language::Nextflow,
+            revision: None,
+            arguments: Vec::new(),
+            parameters: Vec::new(),
+            executor: "local".into(),
+            simulated: false,
+            store: None,
+            program: None,
+            launch: None,
+            workflow_folder: None,
+            repeats: None,
+        };
+        let mut recorder = Database::open(&path).unwrap().record(&start).unwrap();
+        let committed = recorder.commits();
+        let task = Task {
+            id: TaskId(1),
+            ..Task::default()
+        };
+        recorder.requested(&task, &[]);
+        recorder.started(task.id, 1);
+        recorder.finished(
+            &Outcome {
+                id: task.id,
+                ..Outcome::default()
+            },
+            1,
+            false,
+        );
+        committed
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        let database = Database::open(&path).unwrap();
+        assert!(
+            database
+                .snapshot(|database| finished_spans(database, "validation", 1, false))
+                .unwrap()
+                .is_empty()
+        );
+        recorder.validated(task.id, 1, false);
+        committed
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        let spans = database
+            .snapshot(|database| finished_spans(database, "validation", 1, false))
+            .unwrap();
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].status.code, ERROR);
+        assert!(
+            spans[1]
+                .events
+                .iter()
+                .any(|event| event.name == "validated")
+        );
+        assert!(finished_run(&database, "validation").unwrap().is_none());
+        recorder.ended(Some("output validation failed"));
+        recorder.close().unwrap();
+    }
 
     #[test]
     fn ids_stay_stable() {

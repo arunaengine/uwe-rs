@@ -101,6 +101,41 @@ pub fn after_run(arguments: &Arguments, setup: &Setup, run: &str) {
     }
 }
 
+impl Telemetry {
+    /// Starts live export. Close the recorder before finishing the handle.
+    pub fn start(
+        &self,
+        arguments: &Arguments,
+        recorder: &mut run_database::Recorder,
+    ) -> Option<run_telemetry::Live> {
+        let telemetry = self;
+        let live = (|| {
+            let headers = telemetry
+                .headers
+                .iter()
+                .map(|(name, secret)| secret.reveal().map(|value| (name.clone(), value)))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| error.to_string())?;
+            let client = storage::http_client()?.clone();
+            run_telemetry::Live::start(
+                &runs::database_path(arguments),
+                recorder,
+                client,
+                telemetry.endpoint.clone(),
+                headers,
+            )
+            .map_err(|error| error.to_string())
+        })();
+        match live {
+            Ok(live) => Some(live),
+            Err(message) => {
+                tracing::warn!("live telemetry could not start: {message}");
+                None
+            }
+        }
+    }
+}
+
 /// The trace of a run in export requests.
 fn traces(database: &run_database::Database, run: &str) -> Result<Vec<Request>, Failure> {
     run_telemetry::requests(database, run, SPANS_PER_REQUEST)

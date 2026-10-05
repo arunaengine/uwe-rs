@@ -38,6 +38,18 @@ Real backend acceptance must cover exact output bytes, missing/failed outputs, c
 
 ## Installation and operation
 
+### Repository sources
+
+`run` and `graph` accept GitHub `owner/repo` names and full HTTP or HTTPS repository URLs. `-r` (also `-revision`) selects a tag, branch or full commit id. GitHub, GitLab, Bitbucket Cloud and Gitea-compatible APIs are supported; self-hosted GitLab URLs must have a `gitlab` host component. GitLab subgroups are supported. SSH URLs, arbitrary Git servers, submodules and archive links are unsupported. Submodules and links fail with exit code 33; use a local workflow with their files materialized.
+
+The host's default branch is resolved when no revision is supplied. A literal `manifest.defaultBranch` in the root `nextflow.config` overrides it; computed values fail with code 33 and guidance to select `-r`. Included config files and profiles do not select the repository revision. Archives are limited to 256 MiB compressed and extracted data and 20,000 entries, reject paths outside their root and cache metadata, and publish a checkout only after extraction finishes. Existing source-recording limits still apply.
+
+The cache is `<cache>/pipelines/<host>/<owner>/<repo>/<resolved commit>`, below the configured `[cache] folder` or the normal iunctus cache. Symbolic revisions require a successful server lookup even when cached; they keep the remembered commit until `-latest`. A cached full commit id works offline, including when a refresh fails. Abbreviated commit ids are resolved online. `repeat` retains the recorded revision and source bytes, and RO-Crate workflow versions use the full commit id.
+
+GitHub tokens come from `NXF_GITHUB_ACCESS_TOKEN`, then `GITHUB_TOKEN`; other hosts use `GITLAB_TOKEN`, `BITBUCKET_TOKEN` or `GITEA_TOKEN`. Use tokens accepted as Bearer credentials by the selected host. Credentials in repository URLs are refused. Tokens stay in sensitive HTTP headers, outside cache metadata, arguments, run records and exports.
+
+The non-ignored `repository` unit tests and `repositories` CLI tests use archive fixtures and loopback HTTP only. They verify branch refresh, manifest selection, nested Snakefiles, token handling, offline commit reuse, repeat and export pinning, and unsafe archives. The optional GitHub fetch test is `cargo test -p iunctus --lib fetches_github_demo -- --ignored`; it downloads nf-core/demo 1.2.0 without running tasks. Hosted source retrieval does not establish language or real pipeline compatibility.
+
 Use the [root installation instructions](../README.md#build-and-install-from-source). `iunctus help` lists options; `iunctus check-machine` checks executor prerequisites and `iunctus check <workflow>` diagnoses supported planning constraints. These checks do not run tools or prove successful real results. A task without a workflow image requires `-default-image`; host-installed packages are not a fallback.
 
 The config defaults to `~/.config/iunctus/config.toml`. The cache defaults to `$XDG_CACHE_HOME/iunctus`, else `~/.cache/iunctus`; `runs.sqlite` is stored there. Preserve the actual configured store, scratch and download paths when moving between machines or remote backends. The local run page binds to `127.0.0.1` by default; `-address` is an explicit choice to make its run data reachable elsewhere. See [runs and page options](design/runs.md).

@@ -25,6 +25,7 @@ With Podman, turn on its socket once: `systemctl --user enable --now podman.sock
 
 ```sh
 iunctus run <workflow file or directory> [-graph graph.json] [-executor simulator|local|tes|slurm|kubernetes] [--<param> <value>]
+iunctus run <owner/repo or repository URL> [-r <tag|branch|commit>] [-latest] [-profile <names>] [--<param> <value>]
 iunctus graph <workflow file or directory> [-format json|dot|summary|svg] [-view tasks|steps] [-direction down|right] [-fold <n>]
 iunctus check <workflow file or directory> [-default-image <image>]
 iunctus check-machine [-executor <executor>]
@@ -40,6 +41,19 @@ iunctus repeat <run> [-executor <executor>]
 iunctus check-order <workflow file or directory>
 iunctus help
 ```
+
+Repository names use GitHub by default. Full HTTP or HTTPS repository URLs support GitHub, GitLab, Bitbucket Cloud and Gitea-compatible hosts. An existing local path takes precedence. No Git program is needed: iunctus resolves the revision through the host API and downloads its archive with the shared Rust HTTP client.
+
+```sh
+iunctus run nf-core/rnaseq -r 3.14.0 -profile test,docker --outdir out
+iunctus run https://github.com/nf-core/demo -r 1.2.0 -profile test --outdir out
+iunctus run snakemake-workflows/rna-seq-star-deseq2 -r v2.1.2
+iunctus run nf-core/demo -latest -profile test --outdir out
+```
+
+Without `-r`, the host's default branch is used, with a literal `manifest.defaultBranch` in `nextflow.config` taking precedence. Snakemake repositories also find `workflow/Snakefile`. Checkouts live under `<cache>/pipelines/<host>/<owner>/<repo>/<commit>`. Symbolic requests check the server and retain their cached revision until `-latest`; only a cached full commit id can run offline. Run records and RO-Crate exports retain the resolved commit, and `repeat` uses the recorded sources without resolving the branch again. CWL and Argo documents can also be run by their HTTP or HTTPS file URL.
+
+Private repositories use `NXF_GITHUB_ACCESS_TOKEN` or `GITHUB_TOKEN` for GitHub, `GITLAB_TOKEN`, `BITBUCKET_TOKEN`, or `GITEA_TOKEN` for the other hosts. Tokens are sent in sensitive authorization headers and are never recorded. See [repository limits](support.md#repository-sources).
 
 `iunctus run` finds the language of its target, or takes it from `-lang`. The default executor is local, which runs tasks in Docker or Podman containers. Select `-executor simulator` to write the TES task document of each task and make up its outputs without task containers. A simulated run gives a simulated graph, not a prediction of a real run (decision 21). All four languages run: Nextflow, Snakemake, CWL and Argo. The local executor runs tasks in Docker or Podman, the TES executor on a GA4GH TES server, the SLURM executor as batch jobs, and the Kubernetes executor as Jobs. See [the engine](design/engine.md) and [the executors](design/executors.md). `iunctus graph` prints the graph of a run with one node per task or one node per step, as a summary, JSON, DOT or an SVG drawn by iunctus itself, and marks the points where a run with real data can add or remove tasks; see [the graphs of a run](design/graph.md).
 

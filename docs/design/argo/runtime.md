@@ -245,6 +245,8 @@ Fields that only tell Kubernetes where and how to run a pod do not change what a
 
 Init containers are no such field: they run as tasks (section 11.8).
 
+Container `readinessProbe` settings are accepted as a no-op wherever they appear, including main containers, scripts, init containers, sidecars and container sets: readiness only reports whether a container can receive traffic, and never stops or restarts it. Sidecars remain unsupported under decision 18. Container `livenessProbe`, `startupProbe`, lifecycle hooks, restart policies and rules, and resize policies remain refused because they can run, stop or restart commands.
+
 ### 11.3 ConfigMaps
 
 ConfigMaps come from the same documents as templates: the workflow file, the configs and the repository (section 3). They give:

@@ -85,3 +85,10 @@ iunctus: exit 33 in 4 s, 1 published file
 comparison: 27 reference files and 0 iunctus files after excluding pipeline_info/**; 0 matching digests, 27 missing, 0 extra, 0 differing contents
 verdict: unsupported, parity not established
 notes: iunctus: workflows/datasync.nf:209:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. Data headers total 1852 bytes.
+
+## nf-core-fastqrepair-local-20261008: nf-core/fastqrepair 70a3820, -profile test, local Docker
+native: exit 0 in 52 s, 71 published files
+iunctus: exit 33 in 2 s, published files=1
+comparison: 65 reference files and 0 iunctus files after excluding pipeline_info/**; 0 matching digests, 65 missing, 0 extra, 0 differing contents
+verdict: unsupported, parity not established
+notes: iunctus: workflows/fastqrepair.nf:161:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. Data headers total 3659 bytes.

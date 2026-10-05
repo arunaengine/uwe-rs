@@ -616,15 +616,26 @@ impl Store {
         let Some(shared) = &self.shared else {
             return Ok(here);
         };
-        Ok(shared
-            .observe_entry_here(&location)
-            .await?
-            .map(|behind| EntrySnapshot {
-                bytes: behind.bytes.clone(),
-                location,
-                version: None,
-                shared: Some(Box::new(behind)),
-            }))
+        let Some(behind) = shared.observe_entry_here(&location).await? else {
+            return Ok(None);
+        };
+        if self.cache_reads
+            && let Some(target) = self.local_path(&location)
+        {
+            local::write_absent(&target, &behind.bytes)
+                .await
+                .map_err(at(&target))?;
+            if let Some(mut front) = self.observe_entry_here(&location).await? {
+                front.shared = Some(Box::new(behind));
+                return Ok(Some(front));
+            }
+        }
+        Ok(Some(EntrySnapshot {
+            bytes: behind.bytes.clone(),
+            location,
+            version: None,
+            shared: Some(Box::new(behind)),
+        }))
     }
 
     async fn observe_entry_here(

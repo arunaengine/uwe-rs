@@ -137,3 +137,13 @@ The explicitly enabled `real_conda_rule_reuses_its_image_after_package_cache_evi
 This qualifies one small offline local environment and its image reuse. BuildKit, online acquisition, pip locking, remote Conda executors, rootless engines, other platforms, large environments and complete language/backend parity remain open.
 
 Aruna integration uses the generic TES executor plus S3 storage; TES-over-S3 staging is still being implemented.
+
+## Local nf-core execution qualification, 2026-10-08
+
+Sequential real runs use Nextflow 26.04.6 as the reference and the release iunctus binary with local Docker Engine 29.8.2. Sources are temporary copies at the cached nf-core revisions, with unchanged test profiles. Reference tasks have a four CPU, 16 GB executor limit; iunctus has four pending tasks and a fresh cache, with result reuse disabled. Input headers and free space are checked before runs. A 25 GiB free-space reserve is retained; existing images and caches are preserved.
+
+| Pipeline | Revision | Nextflow | iunctus | Verdict and remaining difference |
+| --- | --- | --- | --- | --- |
+| demo | 555d145 | Exit 0, 76 files | Exit 33, 1 file | Explicit default `collectFile` hash-sort refusal at workflows/demo.nf:91; 70 material files missing. |
+
+The only comparison exclusion is `pipeline_info/**`; date-bearing filenames are normalized to `<time>`. Scientific outputs, FastQC reports, MultiQC data and plots remain in the comparison. Complete output hashes, names and logs are retained in the locally excluded `.claude/production-readiness-evidence/nfcore-20261008/`; per-pipeline source, run, work and cache folders are removed after recording. These refusals leave local nf-core output parity open. The older SLURM records predate the explicit hash-sort refusal and do not qualify the current revision.

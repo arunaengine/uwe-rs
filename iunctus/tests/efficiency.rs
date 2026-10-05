@@ -128,10 +128,8 @@ fn groups_keep_results() {
     let again = ["run", "main.nf", "-executor", "local", "-no-cache"];
     let (code, output) = iunctus(directory, &again);
     assert_eq!(code, 0, "{output}");
-    assert!(
-        output.contains("[together] 12 short tasks run one after another in one container"),
-        "{output}"
-    );
+    // Nextflow commands keep the image entrypoint, so the grouping policy runs them separately.
+    assert!(!output.contains("[together]"), "{output}");
     for n in (1..=12).filter(|n| *n != 3) {
         let text = std::fs::read_to_string(directory.join(format!("results/out-{n}.txt")));
         assert_eq!(text.expect("an output").trim(), format!("task {n}"));
@@ -223,6 +221,7 @@ fn tes_groups_tasks() {
                     format!("sleep 0.5; echo {n} > out.txt; echo log {n}"),
                 ],
                 outputs: vec!["out.txt".into()],
+                replaces_entrypoint: true,
                 ..Task::default()
             };
             let attempt = Attempt {

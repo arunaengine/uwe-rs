@@ -78,3 +78,10 @@ iunctus: exit 33 in 26 s, 1 published file (pipeline_info/params_<time>.json)
 comparison: 70 reference files and 0 iunctus files after excluding pipeline_info/**; 70 missing, 0 extra, 0 comparable contents
 verdict: unsupported, parity not established
 notes: workflows/demo.nf:91:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. This is an intentional refusal before task execution, with a clear location and reason. Data headers total 12,819,269 bytes; 50 GiB free before iunctus; four reference images total about 2.47 GB unpacked.
+
+## nf-core-datasync-local-20261008: nf-core/datasync d25e58a, -profile test, local Docker
+native: exit 0 in 110 s, 33 published files
+iunctus: exit 33 in 4 s, 1 published file
+comparison: 27 reference files and 0 iunctus files after excluding pipeline_info/**; 0 matching digests, 27 missing, 0 extra, 0 differing contents
+verdict: unsupported, parity not established
+notes: iunctus: workflows/datasync.nf:209:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. Data headers total 1852 bytes.

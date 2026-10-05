@@ -145,5 +145,6 @@ Sequential real runs use Nextflow 26.04.6 as the reference and the release iunct
 | Pipeline | Revision | Nextflow | iunctus | Verdict and remaining difference |
 | --- | --- | --- | --- | --- |
 | demo | 555d145 | Exit 0, 76 files | Exit 33, 1 file | Explicit default `collectFile` hash-sort refusal at workflows/demo.nf:91; 70 material files missing. |
+| datasync | d25e58a | Exit 0, 33 files | Exit 33, 1 file | Default `collectFile` hash sorting refused at workflows/datasync.nf:209; 27 material files missing. |
 
 The only comparison exclusion is `pipeline_info/**`; date-bearing filenames are normalized to `<time>`. Scientific outputs, FastQC reports, MultiQC data and plots remain in the comparison. Complete output hashes, names and logs are retained in the locally excluded `.claude/production-readiness-evidence/nfcore-20261008/`; per-pipeline source, run, work and cache folders are removed after recording. These refusals leave local nf-core output parity open. The older SLURM records predate the explicit hash-sort refusal and do not qualify the current revision.

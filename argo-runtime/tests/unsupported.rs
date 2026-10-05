@@ -75,8 +75,6 @@ fn rejects_template_controls() {
 fn rejects_lifecycle_controls() {
     for field in [
         "lifecycle",
-        "livenessProbe",
-        "readinessProbe",
         "startupProbe",
         "restartPolicy",
         "restartPolicyRules",
@@ -94,6 +92,20 @@ fn rejects_lifecycle_controls() {
             assert!(error.unsupported, "{field}: {error}");
             assert!(error.message.contains(field), "{error}");
         }
+    }
+}
+
+#[test]
+fn rejects_liveness_probes() {
+    for template in [
+        "    container: {image: alpine, livenessProbe: {exec: {command: [sh, -c, 'exit 1']}}}\n",
+        "    script: {image: alpine, command: [sh], source: echo ready, livenessProbe: {exec: {command: [sh, -c, 'exit 1']}}}\n",
+        "    initContainers: [{name: init, image: alpine, livenessProbe: {exec: {command: [sh, -c, 'exit 1']}}}]\n    container: {image: alpine}\n",
+        "    containerSet: {containers: [{name: main, image: alpine, livenessProbe: {exec: {command: [sh, -c, 'exit 1']}}}]}\n",
+    ] {
+        let error = start_error(&format!("  templates:\n  - name: main\n{template}"));
+        assert!(error.unsupported, "{error}");
+        assert!(error.message.contains("livenessProbe"), "{error}");
     }
 }
 

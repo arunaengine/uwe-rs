@@ -250,15 +250,14 @@ fn resumes_container_runs() {
     std::fs::write(path.join("b.txt"), "four\nfive\n").expect("changes an input");
     let (code, output) = iunctus(path, &arguments);
     assert_eq!(code, 0, "{output}");
-    // Real tasks run at once and Nextflow numbers them in the order they end, so only the
-    // kinds of the lines are the same in every run.
-    let kinds: Vec<String> = tasks(&output)
+    // Mutable image tags defer resume to the shared cache, which verifies pinned identity.
+    let kinds: Vec<String> = tasks(&common::without_display(&output))
         .iter()
         .map(|line| line.split(' ').next().unwrap_or_default().to_owned())
         .collect();
     assert_eq!(
         kinds,
-        ["[done]", "[done]", "[resumed]", "[resumed]"],
+        ["[cached]", "[cached]", "[done]", "[done]"],
         "{output}"
     );
 }

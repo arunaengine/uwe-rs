@@ -335,7 +335,11 @@ fn clean_requires_rule() {
         "{output}"
     );
     for _ in 0..2 {
-        let (code, output) = iunctus(&first, &cache, &["run", "main.nf"]);
+        let (code, output) = iunctus(
+            &first,
+            &cache,
+            &["run", "-executor", "simulator", "main.nf"],
+        );
         assert_eq!(code, 0, "{output}");
     }
     let simulated = cache.join("iunctus/scratch/simulator");
@@ -473,7 +477,11 @@ fn previews_cached_results() {
     let first = pipeline(root.path(), "first", FIRST);
     let second = pipeline(root.path(), "second", SECOND);
     // Before any real run, everything is simulated.
-    let (code, output) = iunctus(&second, &cache, &["run", "main.nf"]);
+    let (code, output) = iunctus(
+        &second,
+        &cache,
+        &["run", "-executor", "simulator", "main.nf"],
+    );
     assert_eq!(code, 0, "{output}");
     assert!(
         output.contains("[simulated] PREPARE:WORDCOUNT (1)"),
@@ -486,7 +494,11 @@ fn previews_cached_results() {
     );
     // The count of the first pipeline answers the second, which a real run would take from
     // the cache; the report after it would run.
-    let (code, output) = iunctus(&second, &cache, &["run", "main.nf"]);
+    let (code, output) = iunctus(
+        &second,
+        &cache,
+        &["run", "-executor", "simulator", "main.nf"],
+    );
     assert_eq!(code, 0, "{output}");
     assert!(
         output.contains("[cached] PREPARE:WORDCOUNT (1)"),
@@ -524,12 +536,20 @@ fn previews_cached_results() {
         iunctus(&second, &cache, &["run", "main.nf", "-executor", "local"]).0,
         0
     );
-    let (code, output) = iunctus(&second, &cache, &["run", "main.nf"]);
+    let (code, output) = iunctus(
+        &second,
+        &cache,
+        &["run", "-executor", "simulator", "main.nf"],
+    );
     assert_eq!(code, 0, "{output}");
     let all = "A real run would take all 2 tasks from the cache; none would run.";
     assert!(output.contains(all), "{output}");
     // Without the cache, a preview finds nothing in it, and a real run runs every task.
-    let (code, output) = iunctus(&second, &cache, &["run", "main.nf", "-no-cache"]);
+    let (code, output) = iunctus(
+        &second,
+        &cache,
+        &["run", "-executor", "simulator", "main.nf", "-no-cache"],
+    );
     assert_eq!(code, 0, "{output}");
     assert!(!output.contains("[cached]"), "{output}");
     assert!(!output.contains("from the cache"), "{output}");

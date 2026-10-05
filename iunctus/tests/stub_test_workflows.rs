@@ -74,7 +74,12 @@ fn stubs_match_oracle() {
         let cache = tempfile::tempdir().expect("a temporary directory");
         let graph = cache.path().join("graph.json");
         let output = common::command()
-            .args(["run", &test_workflows.join(&name).to_string_lossy()])
+            .args([
+                "run",
+                "-executor",
+                "simulator",
+                &test_workflows.join(&name).to_string_lossy(),
+            ])
             .args(["-profile", "test,docker", "-stub"])
             .args(["-graph", &graph.to_string_lossy()])
             .args(["--outdir", "/tmp/iunctus-stub-out"])

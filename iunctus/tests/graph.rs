@@ -106,14 +106,20 @@ fn lists_graph_files() {
 #[test]
 fn writes_run_documents() {
     let directory = pipeline();
-    let arguments = ["run", "main.nf", "-graph", "graph.json"];
+    let arguments = [
+        "run",
+        "-executor",
+        "simulator",
+        "main.nf",
+        "-graph",
+        "graph.json",
+    ];
     let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
     assert_eq!(code, 0, "{stderr}");
     assert_eq!(
         stdout,
-        "iunctus: simulated run selected; use `-executor local` to run tasks for real\n\
-         [simulated] GREET\n[simulated] SHOUT\nmade shout.txt\n\
-         iunctus: simulated run ended; use `-executor local` to run tasks for real\n"
+        "iunctus: simulated run selected; outputs are made-up files, no task containers run\n\
+         [simulated] GREET\n[simulated] SHOUT\nmade shout.txt\n"
     );
     let text = std::fs::read_to_string(directory.path().join("graph.json")).expect("the graph");
     let graph: ExecutionGraph = serde_json::from_str(&text).expect("the graph as JSON");
@@ -131,7 +137,14 @@ fn writes_run_documents() {
     let document: serde_json::Value = serde_json::from_str(&document).expect("JSON");
     assert_eq!(document["executors"][0]["image"], "debian:stable-slim");
     assert_eq!(document["inputs"][0]["path"], "/work/.command.sh");
-    let arguments = ["run", "main.nf", "-graph", "graph.dot"];
+    let arguments = [
+        "run",
+        "-executor",
+        "simulator",
+        "main.nf",
+        "-graph",
+        "graph.dot",
+    ];
     let (code, _, stderr) = iunctus(directory.path(), &arguments);
     assert_eq!(code, 0, "{stderr}");
     let dot = std::fs::read_to_string(directory.path().join("graph.dot")).expect("the graph");
@@ -221,7 +234,16 @@ fn renders_step_graph() {
     let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
     assert_eq!(code, 0, "{stderr}");
     assert!(stdout.contains("data-direction=\"right\""), "{stdout}");
-    let arguments = ["run", "main.nf", "-graph", "steps.svg", "-view", "steps"];
+    let arguments = [
+        "run",
+        "-executor",
+        "simulator",
+        "main.nf",
+        "-graph",
+        "steps.svg",
+        "-view",
+        "steps",
+    ];
     let (code, _, stderr) = iunctus(directory.path(), &arguments);
     assert_eq!(code, 0, "{stderr}");
     let svg = std::fs::read_to_string(directory.path().join("steps.svg")).expect("the SVG");

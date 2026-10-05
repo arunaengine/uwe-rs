@@ -114,10 +114,10 @@ options:
   -machine-retry-delay-ms <n>          base retry delay in milliseconds (default: 1000),
                                       doubled with jitter and capped at one minute
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
-  -executor <executor>                simulator (the default) writes TES task documents
-                                      and makes up the outputs; local runs containers on
-                                      this machine, tes on a TES server, slurm as SLURM
-                                      batch jobs, kubernetes as Kubernetes Jobs
+  -executor <executor>                local (the default for run) runs Docker or Podman
+                                      containers on this machine; simulator writes TES task
+                                      documents and makes up outputs, tes runs on a TES server,
+                                      slurm as SLURM batch jobs, kubernetes as Kubernetes Jobs
   -graph <file>                       writes the execution graph: DOT for .dot, SVG for .svg,
                                       a summary for .txt, else JSON
   -view tasks|steps                   one node per task (the default) or one per step

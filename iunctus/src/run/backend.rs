@@ -79,7 +79,7 @@ pub(crate) fn offline_possible(arguments: &Arguments, setup: &Setup) -> Result<(
     )))
 }
 
-/// Builds the executor selected by `-executor`, defaulting to simulated tasks.
+/// Builds the executor selected by `-executor`, defaulting to local containers.
 /// Without `reuse`, real executors bypass cached results, including during replay.
 /// See docs/design/executors.md for backends and scratch paths.
 pub(crate) fn executor(
@@ -94,7 +94,7 @@ pub(crate) fn executor(
     let cache = cache_directory();
     let scratch = cache.join("scratch");
     offline_possible(arguments, setup)?;
-    match arguments.executor.as_deref().unwrap_or("simulator") {
+    match arguments.executor.as_deref().unwrap_or("local") {
         "simulator" if arguments.check_reproducibility.is_some() => Err(Failure::usage(
             "iunctus: the reproducibility check runs cached tasks again, so it needs a real \
              executor, like `-executor local`",

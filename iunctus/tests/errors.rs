@@ -70,7 +70,10 @@ fn formats_usage_errors() {
 #[test]
 fn errors_name_location() {
     let directory = project("process A {\n    script:\n    \"echo a\"\n\nworkflow {\n    A()\n}\n");
-    let (code, stderr) = iunctus(directory.path(), &["run", "main.nf"]);
+    let (code, stderr) = iunctus(
+        directory.path(),
+        &["run", "-executor", "simulator", "main.nf"],
+    );
     assert_eq!(code, 1, "{stderr}");
     assert!(stderr.starts_with("iunctus: "), "{stderr}");
     assert!(stderr.contains("main.nf:8:1: "), "{stderr}");
@@ -78,7 +81,10 @@ fn errors_name_location() {
     // A run that stopped before its first task simulated nothing, so it says nothing of it.
     assert!(!stderr.contains("This is a simulation"), "{stderr}");
     let directory = project("include { B } from './modules/b'\n\nworkflow {\n    B()\n}\n");
-    let (code, stderr) = iunctus(directory.path(), &["run", "main.nf"]);
+    let (code, stderr) = iunctus(
+        directory.path(),
+        &["run", "-executor", "simulator", "main.nf"],
+    );
     assert_eq!(code, 1, "{stderr}");
     let missing = directory.path().join("modules/b.nf");
     assert!(
@@ -88,7 +94,10 @@ fn errors_name_location() {
         )),
         "{stderr}"
     );
-    let (code, stderr) = iunctus(directory.path(), &["run", "nowhere.nf"]);
+    let (code, stderr) = iunctus(
+        directory.path(),
+        &["run", "-executor", "simulator", "nowhere.nf"],
+    );
     assert_eq!(code, 1, "{stderr}");
     assert_eq!(
         stderr,
@@ -102,7 +111,10 @@ fn unsupported_exit_code() {
     let script = "nextflow.enable.dsl=1\nprocess A {\n    output:\n    file 'x' into ch\n    \
                   script:\n    \"touch x\"\n}\n";
     let directory = project(script);
-    let (code, stderr) = iunctus(directory.path(), &["run", "main.nf"]);
+    let (code, stderr) = iunctus(
+        directory.path(),
+        &["run", "-executor", "simulator", "main.nf"],
+    );
     assert_eq!(code, 33, "{stderr}");
     assert!(
         stderr.contains("DSL1 scripts are not supported (decision 14)"),
@@ -136,7 +148,7 @@ fn rejects_broken_configuration() {
 fn explains_missing_prerequisites() {
     let directory = project(PIPELINE);
     let output = common::command()
-        .args(["run", "main.nf", "-executor", "local"])
+        .args(["run", "main.nf"])
         .env("XDG_CACHE_HOME", directory.path().join("cache"))
         .env("IUNCTUS_ENGINE", "/nowhere/podman.sock")
         .current_dir(directory.path())
@@ -148,6 +160,13 @@ fn explains_missing_prerequisites() {
         stderr.contains("no container engine answers at /nowhere/podman.sock; "),
         "{stderr}"
     );
+    assert!(
+        stderr.contains("cannot reach a Docker or Podman engine"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("-executor simulator"), "{stderr}");
+    assert!(stderr.contains("iunctus check-machine"), "{stderr}");
+    assert!(output.stdout.is_empty());
     let output = common::command()
         .args(["run", "main.nf", "-executor", "slurm"])
         .env("XDG_CACHE_HOME", directory.path().join("cache"))

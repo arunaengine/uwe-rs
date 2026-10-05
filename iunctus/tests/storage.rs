@@ -138,7 +138,14 @@ fn secrets_never_show() {
     std::fs::write(path.join("iunctus.toml"), config).expect("writes the config file");
 
     let right = [("IUNCTUS_TEST_TOKEN", TOKEN)];
-    let run = ["run", "main.nf", "-iunctus-config", "iunctus.toml"];
+    let run = [
+        "run",
+        "-executor",
+        "simulator",
+        "main.nf",
+        "-iunctus-config",
+        "iunctus.toml",
+    ];
     let (code, output) = iunctus(path, "cache", &right, &run);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("[simulated] COUNT (1)"), "{output}");

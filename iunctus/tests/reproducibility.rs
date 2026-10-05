@@ -149,7 +149,16 @@ fn reports_pinned_changes() {
     let (code, output) = iunctus(
         &folder,
         &cache,
-        &["run", "main.nf", "--sheet", &sheet, "-c", "extra.config"],
+        &[
+            "run",
+            "-executor",
+            "simulator",
+            "main.nf",
+            "--sheet",
+            &sheet,
+            "-c",
+            "extra.config",
+        ],
     );
     assert_eq!(code, 0, "{output}");
     let run = latest(&cache);

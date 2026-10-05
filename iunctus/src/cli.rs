@@ -61,9 +61,10 @@ fn run(arguments: &Arguments) -> Result<(), Failure> {
             "iunctus: `-format` is an option of `iunctus graph`",
         ));
     }
-    let simulated = arguments.executor.as_deref().unwrap_or("simulator") == "simulator";
-    if simulated {
-        println!("iunctus: simulated run selected; use `-executor local` to run tasks for real");
+    if arguments.executor.as_deref() == Some("simulator") {
+        println!(
+            "iunctus: simulated run selected; outputs are made-up files, no task containers run"
+        );
     }
     let Ran {
         execution, page, ..
@@ -75,11 +76,7 @@ fn run(arguments: &Arguments) -> Result<(), Failure> {
         eprintln!("iunctus: the run has ended; the page stays open until you press Ctrl-C");
         page.serve_until_interrupted();
     }
-    let result = finish(execution);
-    if simulated {
-        println!("iunctus: simulated run ended; use `-executor local` to run tasks for real");
-    }
-    result
+    finish(execution)
 }
 
 /// `iunctus graph`: runs the workflow, with the simulator unless `-executor` says otherwise,

@@ -1,4 +1,4 @@
-# The outcome of `iunctus run <pipeline> -profile test -stub-run -max-pending 8
+# The outcome of `iunctus run <pipeline> -executor simulator -profile test -stub-run -max-pending 8
 # -order shuffled:1` with the simulator for every pipeline of the test workflows:
 # `ok` (with a valid execution graph), or the exit code and the first line of the error (33
 # for unsupported features). run_evidence.txt says why each pipeline that fails cannot run.

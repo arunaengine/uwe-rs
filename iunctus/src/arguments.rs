@@ -46,7 +46,7 @@ pub struct Arguments {
     pub forcerun: Vec<String>,
     /// `-forceall`: rerun every job needed for the Snakemake targets.
     pub forceall: bool,
-    /// `-executor simulator|local|tes|slurm|kubernetes`; `None` for the default.
+    /// `-executor simulator|local|tes|slurm|kubernetes`; `None` uses config, else local for runs.
     pub executor: Option<String>,
     /// `-graph file`: where to write the execution graph.
     pub graph: Option<PathBuf>,
@@ -631,6 +631,9 @@ pub fn help(command: &str) -> Result<String, String> {
         _ => " <run>",
     };
     help.push_str(target);
+    if command == "run" {
+        help.push_str("\n\nDefault executor: local (Docker or Podman containers). Use -executor simulator for made-up outputs.");
+    }
     help.push_str("\n\noptions:\n");
     for (names, commands) in OPTIONS {
         if commands.contains(&command) {

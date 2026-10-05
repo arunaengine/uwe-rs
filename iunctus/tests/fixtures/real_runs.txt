@@ -63,3 +63,18 @@ iunctus: exit 0 in 1217 s, 243 files: 165 with the same digest, 76 of the varyin
 notes: pipeline_dag is the graph page of iunctus. MultiQC's table of the lima filters has the same rows and values as Nextflow's, with its columns in another order.
 differs: multiqc/multiqc_data/lima-filter-graph.txt
 differs: pipeline_info/pipeline_dag_<time>.html
+
+## Local Docker qualification, 2026-10-08
+reference: Nextflow 26.04.6, Docker Engine 29.8.2, Linux amd64
+source: copies of nf-core-text/pipelines at the revisions in nf-core-text/revisions.txt; no pipeline edits
+commands: nice -n 19 nextflow run <copy> -profile test,docker --outdir out -c limits.config; nice -n 19 target/release/iunctus run <copy> -profile test --outdir out -executor local -max-pending 4 -no-cache
+limits: reference executor.cpus=4, executor.memory='16 GB'; iunctus uses a fresh XDG_CACHE_HOME per pipeline
+comparison: SHA-256 and file lists of published outputs; only pipeline_info/** is excluded; dated names become <time>. No scientific output, FastQC report, MultiQC data or plot is excluded.
+evidence: locally excluded .claude/production-readiness-evidence/nfcore-20261008/ retains logs and complete output manifests; temporary source/run/work/cache folders are removed after recording.
+
+## nf-core-demo-local-20261008: nf-core/demo 555d145, -profile test, local Docker
+native: exit 0, 76 published files
+iunctus: exit 33 in 26 s, 1 published file (pipeline_info/params_<time>.json)
+comparison: 70 reference files and 0 iunctus files after excluding pipeline_info/**; 70 missing, 0 extra, 0 comparable contents
+verdict: unsupported, parity not established
+notes: workflows/demo.nf:91:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. This is an intentional refusal before task execution, with a clear location and reason. Data headers total 12,819,269 bytes; 50 GiB free before iunctus; four reference images total about 2.47 GB unpacked.

@@ -56,6 +56,7 @@ pub struct Executors {
     pub tes_server: Option<String>,
     /// `[executor.tes] token`, like `IUNCTUS_TES_TOKEN`.
     pub tes_token: Option<Secret>,
+    pub tes: tes_executor::Settings,
     /// `[executor.tes.sites.<name>]`: more TES servers, each near some data.
     pub tes_sites: Vec<TesSite>,
     /// `[executor.slurm] container`, like `-slurm-container`.
@@ -79,6 +80,7 @@ pub struct TesSite {
     pub server: String,
     pub token: Option<Secret>,
     pub near: Vec<String>,
+    pub settings: tes_executor::Settings,
 }
 
 impl Executors {
@@ -94,15 +96,20 @@ impl Executors {
             settings.engine = local.text("engine")?;
         }
         if let Some(tes) = section.table("tes")? {
-            tes.only(&["server", "token", "sites"])?;
+            let mut keys = vec!["server", "token", "sites"];
+            keys.extend(tes_executor::Settings::KEYS);
+            tes.only(&keys)?;
             settings.tes_server = tes.text("server")?;
             settings.tes_token = tes.secret("token")?;
+            settings.tes = tes_executor::Settings::read(&tes)?;
             for site in (tes.table("sites")?.map(|sites| sites.tables()))
                 .transpose()?
                 .into_iter()
                 .flatten()
             {
-                site.only(&["server", "token", "near"])?;
+                let mut keys = vec!["server", "token", "near"];
+                keys.extend(tes_executor::Settings::KEYS);
+                site.only(&keys)?;
                 let server = site.text("server")?;
                 let server = server
                     .ok_or_else(|| site.missing("server", "the address of its TES server"))?;
@@ -114,6 +121,7 @@ impl Executors {
                     server,
                     token: site.secret("token")?,
                     near: site.texts("near")?.unwrap_or_default(),
+                    settings: tes_executor::Settings::read(&site)?,
                 });
             }
         }
@@ -382,6 +390,29 @@ mod tests {
 
     use super::Executors;
     use task_runner::NetworkRule;
+
+    #[test]
+    fn loads_object_staging() {
+        let settings = read("[executor.tes]\nserver = 'https://tes.example.org'\nstaging = 'object-store'\nstaging_root = 's3://bucket/tes'\nidempotency_tag = 'example.org/key'\nuser = { environment = 'TES_USER' }\npassword = { environment = 'TES_PASSWORD' }\nmax_inputs = 200\n").unwrap();
+        assert_eq!(
+            settings.tes.staging_root.as_deref(),
+            Some("s3://bucket/tes")
+        );
+        assert_eq!(
+            settings.tes.idempotency_tag.as_deref(),
+            Some("example.org/key")
+        );
+        assert_eq!(settings.tes.max_inputs, 200);
+        assert_eq!(
+            settings.tes.user.as_ref().unwrap().variable(),
+            Some("TES_USER")
+        );
+        assert_eq!(
+            settings.tes.password.as_ref().unwrap().variable(),
+            Some("TES_PASSWORD")
+        );
+        assert!(read("[executor.tes]\nstaging = 'object-store'\n").is_err());
+    }
 
     #[test]
     fn retry_options_override() {

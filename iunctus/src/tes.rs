@@ -1,4 +1,4 @@
-//! Builds TES task executors with shared paths and configured site routing.
+//! Builds TES executors with configured staging, authentication and site routing.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -7,7 +7,7 @@ use std::path::Path;
 use content_store::Store;
 use storage::Storage;
 use task_runner::{Runner, RunnerExecutor, Site, SiteRule, Sites};
-use tes_executor::{Client, TesBackend, TesError};
+use tes_executor::{Client, ObjectStage, Settings, TesBackend, TesError};
 
 use crate::setup::TesSite;
 
@@ -19,6 +19,7 @@ pub const DEFAULT_SERVER: &str = "http://localhost:8000";
 pub struct Place<'a> {
     pub server: &'a str,
     pub token: Option<String>,
+    pub settings: &'a Settings,
     pub sites: &'a [TesSite],
     pub scratch: &'a Path,
 }
@@ -34,25 +35,32 @@ pub fn executor(
     storage: Storage,
 ) -> Result<RunnerExecutor<Sites<TesBackend>>, String> {
     let scratch = place.scratch.join("tes");
-    let backend = |server: &str, token: Option<String>| -> Result<TesBackend, String> {
-        let client = Client::new(server, token).map_err(|error| error.to_string())?;
-        answers(&client, server)?;
-        Ok(TesBackend {
-            client,
-            scratch: scratch.clone(),
-            configs: Default::default(),
-            settings: Default::default(),
-            staging: None,
-        })
-    };
-    let mut backends = Sites::one(backend(place.server, place.token)?);
+    let backend =
+        |server: &str, token: Option<String>, settings: &Settings| -> Result<TesBackend, String> {
+            let client = settings.client(server, token)?;
+            answers(&client, server)?;
+            let staging = settings
+                .staging_root
+                .as_ref()
+                .map(|_| ObjectStage::configured(store.clone(), &storage, settings))
+                .transpose()?;
+            Ok(TesBackend {
+                client,
+                scratch: scratch.clone(),
+                configs: Default::default(),
+                settings: settings.clone(),
+                staging,
+            })
+        };
+    let mut backends = Sites::one(backend(place.server, place.token, place.settings)?);
     for site in place.sites {
         let token = (site.token.as_ref().map(|secret| secret.reveal()))
             .transpose()
             .map_err(|error| error.to_string())?;
-        backends
-            .sites
-            .insert(site.name.clone(), backend(&site.server, token)?);
+        backends.sites.insert(
+            site.name.clone(),
+            backend(&site.server, token, &site.settings)?,
+        );
     }
     let runtime = workflow_graph::runtime().map_err(|error| error.to_string())?;
     let peers: Vec<&TesBackend> = std::iter::once(&backends.default)

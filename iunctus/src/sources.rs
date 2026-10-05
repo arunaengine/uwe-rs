@@ -9,7 +9,7 @@ use run_database::{Source, SourceKind};
 use task_model::{Tree, TreeEntry};
 
 use crate::arguments::Arguments;
-use crate::{detect, revision, tracked};
+use crate::{detect, repository, revision, tracked};
 
 /// The most files, and bytes in all, that a run records of the folder of its workflow. A larger
 /// folder likely holds data, which the inputs of tasks record by digest anyway.
@@ -38,8 +38,13 @@ struct Found {
 
 /// Finds the sources of a run of `target` with `arguments`, and hashes them.
 pub async fn collect(target: &Path, arguments: &Arguments) -> Sources {
+    let remote = storage::address::scheme(&target.to_string_lossy()).is_some();
     let target = std::path::absolute(target).unwrap_or_else(|_| target.to_owned());
-    let (folder, found, skipped) = workflow_files(&target, arguments);
+    let (folder, found, skipped) = if remote {
+        (PathBuf::new(), Vec::new(), None)
+    } else {
+        workflow_files(&target, arguments)
+    };
     let mut files = Vec::new();
     for file in found {
         if let Ok((digest, size)) = content_store::hash_file(&file.path).await {
@@ -124,6 +129,30 @@ fn workflow_files(target: &Path, arguments: &Arguments) -> (PathBuf, Vec<Found>,
         true => target.to_owned(),
         false => target.parent().unwrap_or(Path::new("/")).to_owned(),
     };
+    if let Some((root, _)) = repository::root(target) {
+        let mut files = Vec::new();
+        let complete = walk(&root, &root, None, &mut files);
+        let skipped = limited(&files).or_else(|| (!complete).then(|| too_many(&root)));
+        if skipped.is_some() {
+            files.clear();
+        }
+        return (root, files, skipped);
+    }
+    if target.is_file()
+        && arguments.target.as_ref().is_some_and(|path| {
+            let text = path.to_string_lossy();
+            text.starts_with("https://") || text.starts_with("http://")
+        })
+    {
+        return (
+            own,
+            vec![Found {
+                path: target.to_owned(),
+                relative: target.file_name().unwrap().to_string_lossy().into_owned(),
+            }],
+            None,
+        );
+    }
     if let Some((root, git)) = revision::repository(target)
         && let Some(paths) = tracked::tracked(&git)
     {
@@ -222,11 +251,19 @@ fn walk(root: &Path, folder: &Path, output: Option<&Path>, files: &mut Vec<Found
         let Ok(kind) = entry.file_type() else {
             continue;
         };
-        if name.starts_with('.') || kind.is_symlink() || Some(path.as_path()) == output {
+        if (name.starts_with('.') && !root.join(repository::MARKER).is_file())
+            || name == repository::MARKER
+            || name == ".git"
+            || kind.is_symlink()
+            || Some(path.as_path()) == output
+        {
             continue;
         }
         if kind.is_dir() {
-            if folder == root && RUN_FOLDERS.contains(&name.as_str()) {
+            if folder == root
+                && !root.join(repository::MARKER).is_file()
+                && RUN_FOLDERS.contains(&name.as_str())
+            {
                 continue;
             }
             if !walk(root, &path, output, files) {

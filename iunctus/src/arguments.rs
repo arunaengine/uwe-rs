@@ -18,6 +18,10 @@ pub struct Arguments {
     pub quiet: bool,
     /// The workflow file or project directory.
     pub target: Option<PathBuf>,
+    /// `-r`: the repository tag, branch or full commit id.
+    pub revision: Option<String>,
+    /// `-latest`: resolve a cached repository reference again.
+    pub latest: bool,
     /// `-lang name`; else the language is found from the target.
     pub language: Option<Language>,
     pub stub: bool,
@@ -196,6 +200,14 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
             "-version" | "--version" => parsed.version = true,
             "-v" | "-verbose" => parsed.verbose = true,
             "-quiet" => parsed.quiet = true,
+            "-latest" => parsed.latest = true,
+            "-r" | "-revision" => {
+                let revision = value()?;
+                if revision.is_empty() || revision.starts_with('-') {
+                    return Err(format!("the option `{argument}` needs a revision"));
+                }
+                parsed.revision = Some(revision);
+            }
             "-stub" | "-stub-run" => parsed.stub = true,
             "-keep-going" => parsed.keep_going = true,
             "-forceall" => parsed.forceall = true,
@@ -481,6 +493,8 @@ const BACKEND: &[&str] = &[
     "check-machine",
 ];
 const OPTIONS: &[(&str, &[&str])] = &[
+    ("-r,-revision <tag|branch|commit>", &["run", "graph"]),
+    ("-latest", &["run", "graph"]),
     ("-help", COMMANDS),
     ("-version,--version", COMMANDS),
     ("-v,-verbose", CONFIGURED),
@@ -784,6 +798,23 @@ mod tests {
     fn parse_all(arguments: &[&str]) -> Arguments {
         let arguments: Vec<String> = arguments.iter().map(|text| text.to_string()).collect();
         parse(&arguments).expect("valid options")
+    }
+
+    #[test]
+    fn repository_options_scoped() {
+        let words = ["owner/repo", "-r", "feature/new", "-latest"].map(str::to_owned);
+        let parsed = parse_command("run", &words).unwrap();
+        assert_eq!(parsed.revision.as_deref(), Some("feature/new"));
+        assert!(parsed.latest);
+        assert!(parse_command("repeat", &words).is_err());
+        assert!(
+            parse_all(&["owner/repo", "-revision", "v1"])
+                .revision
+                .is_some()
+        );
+        for words in [["-r", "-latest"], ["-r", ""]] {
+            assert!(parse(&words.map(str::to_owned)).is_err());
+        }
     }
 
     #[test]

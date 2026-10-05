@@ -10,6 +10,9 @@ use std::path::{Path, PathBuf};
 /// for plain repositories, worktrees and submodules, whose `.git` is a file that names the
 /// real Git folder, and for references packed into `packed-refs`.
 pub fn revision(path: &Path) -> Option<String> {
+    if storage::address::scheme(&path.to_string_lossy()).is_some() {
+        return None;
+    }
     if let Some((_, commit)) = crate::repository::root(path) {
         return Some(commit);
     }

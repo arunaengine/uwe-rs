@@ -41,10 +41,13 @@ pub struct Started<'a> {
 pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure> {
     let broken = |error: run_database::DatabaseError| Failure::setup(format!("iunctus: {error}"));
     let database = runs::open(arguments)?;
-    let workflow = std::path::absolute(run.target)
-        .unwrap_or_else(|_| run.target.to_owned())
-        .to_string_lossy()
-        .into_owned();
+    let workflow = if storage::address::scheme(&run.target.to_string_lossy()).is_some() {
+        run.target.to_owned()
+    } else {
+        std::path::absolute(run.target).unwrap_or_else(|_| run.target.to_owned())
+    }
+    .to_string_lossy()
+    .into_owned();
     let resumed = match &arguments.resume {
         Some(resume) => resumed(&database, resume, &workflow, run.simulated)?,
         None => None,
@@ -119,13 +122,14 @@ pub(crate) fn run_arguments(arguments: &Arguments) -> Vec<String> {
         default_image => "-default-image", python_image => "-python-image",
         max_pending => "-max-pending", address => "-address", port => "-port",
         format => "-format", fold => "-fold", platform => "-platform", license => "-license",
-        keep_days => "-keep-days");
+        keep_days => "-keep-days", revision => "-r");
     paths!(config_file => "-iunctus-config", inputs => "-inputs", graph => "-graph",
         report => "-report", output_dir => "-output-dir", kubeconfig => "-kubeconfig",
         database => "-database", output => "-output");
     flags!(stub => "-stub", keep_going => "-keep-going", page => "-page",
         no_cache => "-no-cache", no_network => "-no-network", no_right_sizing => "-no-right-sizing",
-        no_grouping => "-no-grouping", check => "-check", remove => "-remove");
+        no_grouping => "-no-grouping", check => "-check", remove => "-remove",
+        latest => "-latest");
     if let Some(profiles) = &arguments.profiles {
         words.extend(["-profile".into(), profiles.join(",")]);
     }

@@ -78,7 +78,7 @@ fn exit(result: Result<(), Failure>) -> ExitCode {
 }
 
 const USAGE: &str = "\
-usage: iunctus run <workflow file or directory> [<targets>] [options]
+usage: iunctus run <workflow file, directory or repository> [<targets>] [options]
        iunctus graph <workflow file or directory> [-format json|dot|summary|svg] [-view tasks|steps]
                      [-direction down|right] [-fold <n>] [options]
        iunctus check <workflow file or directory> [-default-image <image>] [options]
@@ -114,6 +114,7 @@ options:
   -machine-retry-delay-ms <n>          base retry delay in milliseconds (default: 1000),
                                       doubled with jitter and capped at one minute
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
+  -r <tag|branch|commit>, -latest     repository revision and refresh of its cached reference
   -executor <executor>                local (the default for run) runs Docker or Podman
                                       containers on this machine; simulator writes TES task
                                       documents and makes up outputs, tes runs on a TES server,

@@ -35,7 +35,7 @@ pub(crate) fn declare(
             path: format!("{TRANSFER}/*"),
             url: format!("{}/", destination(objects, &format!("{prefix}/files"))?),
             kind: FileType::File,
-            path_prefix: Some(format!("{TRANSFER}/")),
+            path_prefix: Some(TRANSFER.into()),
         });
     } else {
         for rule in &job.spec.outputs {
@@ -48,12 +48,27 @@ pub(crate) fn declare(
                 ));
             }
             let path = container_path(&rule.pattern, work)?;
+            let parent = path
+                .split(['*', '?', '['])
+                .next()
+                .unwrap()
+                .rsplit_once('/')
+                .map(|(parent, _)| parent)
+                .unwrap_or("");
+            if wildcard(&path) && parent.is_empty() {
+                return Err(unsupported(
+                    "TES wildcard outputs need a non-root literal ancestor",
+                ));
+            }
             task.outputs.push(Output {
                 url: match wildcard(&path) {
-                    true => format!("{}/", destination(objects, &format!("{prefix}/root"))?),
+                    true => format!(
+                        "{}/",
+                        destination(objects, &format!("{prefix}/root{parent}"))?
+                    ),
                     false => destination(objects, &format!("{prefix}/root{}", path))?,
                 },
-                path_prefix: wildcard(&path).then(|| "/".into()),
+                path_prefix: wildcard(&path).then(|| parent.to_owned()),
                 path,
                 kind: FileType::File,
             });
@@ -275,6 +290,7 @@ impl ObjectStage {
                 file.path
                     .strip_prefix(prefix)
                     .ok_or_else(|| storage_error("TES output path differs from path_prefix"))?
+                    .trim_start_matches('/')
             ),
             None => output.url.clone(),
         };
@@ -283,7 +299,10 @@ impl ObjectStage {
             Some(prefix) => format!(
                 "{}{}",
                 storage::address::decode(&output.url),
-                file.path.strip_prefix(prefix).unwrap()
+                file.path
+                    .strip_prefix(prefix)
+                    .unwrap()
+                    .trim_start_matches('/')
             ),
             None => storage::address::decode(&expected),
         };

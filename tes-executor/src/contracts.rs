@@ -83,12 +83,15 @@ async fn refuses_unrepresentable_tasks() {
     ));
     for (spec, staging) in cases {
         let error = stage
-            .prepare(Job {
-                name: "refused-1",
-                spec: &spec,
-                staging: &staging,
-                placement: &Placement::default(),
-            })
+            .prepare(
+                Job {
+                    name: "refused-1",
+                    spec: &spec,
+                    staging: &staging,
+                    placement: &Placement::default(),
+                },
+                false,
+            )
             .await
             .unwrap_err();
         assert!(matches!(error, ExecutorError::Unsupported(_)), "{error}");
@@ -122,12 +125,15 @@ async fn reuses_bucket_content() {
         ..Staging::default()
     };
     let task = stage
-        .prepare(Job {
-            name: "reuse-1",
-            spec: &spec,
-            staging: &staging,
-            placement: &Placement::default(),
-        })
+        .prepare(
+            Job {
+                name: "reuse-1",
+                spec: &spec,
+                staging: &staging,
+                placement: &Placement::default(),
+            },
+            false,
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -155,7 +161,7 @@ async fn recovers_lost_response() {
         .staging
         .as_ref()
         .unwrap()
-        .prepare(job)
+        .prepare(job, false)
         .await
         .unwrap();
     task.tags.insert(
@@ -205,12 +211,15 @@ async fn bounds_expanded_inputs() {
         ..Staging::default()
     };
     let error = stage
-        .prepare(Job {
-            name: "limit-1",
-            spec: &spec(true),
-            staging: &staging,
-            placement: &Placement::default(),
-        })
+        .prepare(
+            Job {
+                name: "limit-1",
+                spec: &spec(true),
+                staging: &staging,
+                placement: &Placement::default(),
+            },
+            false,
+        )
         .await
         .unwrap_err();
     assert!(matches!(error, ExecutorError::Unsupported(_)));
@@ -259,7 +268,7 @@ async fn preserves_encoded_paths() {
         staging: &staging,
         placement: &placement,
     };
-    let task = stage.prepare(job).await.unwrap();
+    let task = stage.prepare(job, false).await.unwrap();
     let path = "/iunctus/work/out/a %+#?.txt";
     let prefix = attempt_prefix(job).unwrap();
     operator

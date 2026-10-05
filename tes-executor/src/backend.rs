@@ -122,6 +122,8 @@ impl TesBackend {
         if !spec.replaces_entrypoint || spec.arguments.is_empty() {
             spec.arguments = config.command(&job.spec.arguments);
         }
+        let shell = crate::staging::shell_command(&job.spec.arguments)
+            || job.spec.arguments.is_empty() && crate::staging::shell_command(&config.cmd);
         for container in &mut spec.containers {
             let image = container.image.as_mut().ok_or(ExecutorError::NoImage)?;
             let selected = if image.platform.is_some() {
@@ -148,7 +150,7 @@ impl TesBackend {
         }
         let job = Job { spec: &spec, ..job };
         let mut task = match &self.staging {
-            Some(staging) => staging.prepare(job).await?,
+            Some(staging) => staging.prepare(job, shell).await?,
             None => task(job, root)?,
         };
         if task.inputs.len() > self.settings.max_inputs

@@ -1193,11 +1193,11 @@ impl Hook {
                     default_target = matches!(first.plain(), Value::Bool(true));
                 }
                 RuleKeyword::Shadow => {
-                    if first.as_str() == Some("minimal") {
-                        rule.shadow_minimal = true;
+                    if matches!(first.as_str(), Some("minimal" | "shallow" | "full")) {
+                        rule.shadow = first.as_str().map(str::to_owned);
                     } else if interpreter.truthy(&first)? {
                         return Err(Error::unsupported(format!(
-                            "shadow mode {} for rule {}; only 'minimal' is supported",
+                            "shadow mode {} for rule {}; only 'minimal', 'shallow' and 'full' are supported",
                             interpreter.repr(&first)?,
                             rule.name
                         )));

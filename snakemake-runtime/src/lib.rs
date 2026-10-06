@@ -30,6 +30,7 @@ mod resources;
 mod rule;
 mod schema;
 mod services;
+mod shadow;
 mod shell;
 mod sources;
 mod storage;

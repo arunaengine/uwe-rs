@@ -113,3 +113,13 @@ iunctus: not run, disk reserve
 comparison: not performed
 verdict: skipped, parity not established
 notes: After removing only completed-run images, 44.38 GiB remained free. A conservative 23 GiB allowance would leave 21.38 GiB, below the required 25 GiB reserve. The CPU test-path image upper bound is 6.542 GiB in compressed layers, allowing three times that for stored/extracted images plus 3 GiB for working files and the 30,690,729 bytes of declared data. Inactive GPU, RSEM, Sentieon, HISAT2, Kallisto, UMI, rRNA-removal, contaminant-screening, RustQC, fastp and preseq image branches are excluded from that bound. No RNA-seq image or dataset payload was downloaded; small sample sheets and manifest/header metadata were inspected.
+
+## nf-core-sarek-local-20261008: nf-core/sarek 8ccac7a, -profile test, local Docker
+native: exit 1 in 508 s after the disk watchdog sent SIGTERM, 14 partial published files
+iunctus: not run, disk reserve
+comparison: not performed, reference execution incomplete
+verdict: resource blocked, parity not established
+notes: Test reads and declared test-genome references total 32,892,911 bytes. Admission had 42.64 GiB free and a 17 GiB image/work allowance; GATK image extraction and concurrent checkout activity exceeded that allowance and triggered the 25 GiB free-space watchdog. The canceled task was GATK4_MARKDUPLICATES. Logs, output hashes and size metadata are retained; source/run/work folders were removed. This is not a pipeline or engine correctness verdict. Later runs stop at a 27 GiB guard to allow cancellation headroom above the 25 GiB reserve.
+
+## Updated release, 2026-10-08
+binary: Initial five iunctus runs used SHA-256 c641ad125854c243c9e258dadc73e97cf77eb8fc7130a58a2fd6135ba2b7a26c. After the concurrently landed e869fdf2 (empty/singleton hash sorting), later runs use a frozen release copy with SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. The earlier exit-33 records are historical and do not qualify the updated binary.

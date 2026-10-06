@@ -90,6 +90,44 @@ fn executes_service_groups() {
     assert!(script.contains("kill -TERM \"$service\""), "{script}");
 }
 
+#[test]
+fn merges_explicit_groups() {
+    for separate in [false, true] {
+        let folder = tempfile::tempdir().unwrap();
+        let image = if separate {
+            "other"
+        } else {
+            "debian:stable-slim"
+        };
+        std::fs::write(folder.path().join("Snakefile"), format!(
+            "container: 'debian:stable-slim'\nrule all:\n    input: 'last'\nrule server:\n    output: service('socket')\n    shell: 'touch socket; sleep 10000'\nrule client:\n    input: 'socket'\n    output: 'first'\n    group: 'work'\n    shell: 'touch first'\nrule last:\n    input: 'first'\n    output: 'last'\n    group: 'work'\n    container: '{image}'\n    shell: 'touch last'\n"
+        )).unwrap();
+        let launch = Launch {
+            target: folder.path().into(),
+            scratch: folder.path().join("scratch"),
+            ..Launch::default()
+        };
+        let mut driver = snakemake_runtime::driver(&launch).unwrap();
+        let made = folder.path().join("made");
+        std::fs::create_dir(&made).unwrap();
+        let mut executor = Made {
+            folder: made,
+            tasks: Vec::new(),
+        };
+        let execution = Engine::new(&mut executor).run("service", driver.as_mut());
+        assert!(execution.error.is_none(), "{:?}", execution.error);
+        assert_eq!(executor.tasks.len(), if separate { 3 } else { 2 });
+        assert_eq!(
+            executor.tasks[0].outputs,
+            if separate {
+                vec!["first"]
+            } else {
+                vec!["first", "last"]
+            }
+        );
+    }
+}
+
 const ORDERED: &str = r#"
 rule all:
     input: "final.txt"

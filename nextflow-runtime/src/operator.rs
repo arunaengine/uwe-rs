@@ -519,6 +519,8 @@ pub(crate) enum Sort {
     Natural,
     Key(Rc<Closure>),
     Compare(Rc<Closure>),
+    /// CacheHelper hash order, which is unsupported once there are two items to order.
+    Hash(String),
 }
 
 impl Sort {
@@ -564,21 +566,15 @@ impl Sort {
                     )))
                 }
             }
-            None | Some(Value::Null) => Err(Error::Unsupported {
-                message: format!(
-                    "`{operator}` sort mode 'hash' (the default); native CacheHelper hashing is not implemented"
-                ),
-                span: Default::default(),
-            }),
+            None | Some(Value::Null) => Ok(Self::Hash(format!(
+                "`{operator}` sort mode 'hash' (the default); native CacheHelper hashing is not implemented"
+            ))),
             Some(Value::String(text) | Value::GString(text))
                 if matches!(&*text, "hash" | "deep") =>
             {
-                Err(Error::Unsupported {
-                    message: format!(
-                        "`{operator}` sort mode '{text}'; native CacheHelper hashing is not implemented"
-                    ),
-                    span: Default::default(),
-                })
+                Ok(Self::Hash(format!(
+                    "`{operator}` sort mode '{text}'; native CacheHelper hashing is not implemented"
+                )))
             }
             Some(value) => Err(thrown_text(format!(
                 "Invalid `{operator}` sort option: {value}"
@@ -592,6 +588,11 @@ impl Sort {
             Self::Natural => sorted(context, items, None),
             Self::Key(closure) => sorted_keys(context, items, closure),
             Self::Compare(closure) => sorted(context, items, Some(closure)),
+            Self::Hash(_) if items.len() < 2 => Ok(items),
+            Self::Hash(message) => Err(Error::Unsupported {
+                message: message.clone(),
+                span: Default::default(),
+            }),
         }
     }
 }

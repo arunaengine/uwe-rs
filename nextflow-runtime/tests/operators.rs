@@ -716,9 +716,9 @@ fn preserves_collection_sorting() {
 fn rejects_hash_sorting() {
     for operator in ["groupTuple", "collectFile"] {
         let source = if operator == "groupTuple" {
-            "channel.of(['k', 1])"
+            "channel.of(['k', 1], ['k', 2])"
         } else {
-            "channel.of('a')"
+            "channel.of('a', 'b')"
         };
         for sort in ["hash", "deep"] {
             let error = run(&format!("{source}.{operator}(sort: '{sort}').view()")).unwrap_err();
@@ -732,8 +732,15 @@ fn rejects_hash_sorting() {
             );
         }
     }
-    let error = run("channel.of('a').collectFile().view()").unwrap_err();
+    let error = run("channel.of('a', 'b').collectFile().view()").unwrap_err();
     assert!(error.contains("sort mode 'hash' (the default)"), "{error}");
+}
+
+#[test]
+fn hashes_single_items() {
+    // nf-core templates collect one workflow summary value with the default hash order.
+    run("channel.value('a').collectFile(name: 'summary.yaml').view()").expect("one item");
+    run("channel.of(['k', 1]).groupTuple(sort: 'hash').view()").expect("one item");
 }
 
 /// Legacy syntax: a Java lambda with parameters in parentheses is a closure, as in the

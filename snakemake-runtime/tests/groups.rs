@@ -124,3 +124,131 @@ fn waits_external_inputs() {
         .unwrap();
     assert_eq!(groups.len(), 2);
 }
+
+#[test]
+fn accepts_numeric_ids() {
+    for (first, last, count) in [
+        ("0", "0", 3),
+        ("0", "False", 3),
+        ("0", "'0'", 5),
+        ("'{sample}'", "'{sample}'", 5),
+    ] {
+        let folder = tempfile::tempdir().unwrap();
+        let workflow = WORKFLOW
+            .replace("group: 'work'", &format!("group: {first}"))
+            .replace(
+                "group: lambda wildcards: 'work'",
+                &format!("group: lambda wildcards: {last}"),
+            );
+        std::fs::write(folder.path().join("Snakefile"), workflow).unwrap();
+        let launch = Launch {
+            target: folder.path().into(),
+            scratch: folder.path().join("scratch"),
+            simulated: true,
+            ..Launch::default()
+        };
+        let mut driver = snakemake_runtime::driver(&launch).unwrap();
+        let mut executor = Simulator::new(folder.path().join("made"));
+        let run = execute("group", driver.as_mut(), &mut executor);
+        assert!(run.error.is_none(), "{:?}", run.error);
+        assert_eq!(run.graph.nodes.len(), count, "{first} and {last}");
+    }
+}
+
+#[test]
+fn rejects_component_cycle() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(folder.path().join("Snakefile"), "rule all:\n    input: 'end'\nrule first:\n    output: 'start'\n    group: 'work'\n    shell: 'touch {output}'\nrule outside:\n    input: 'start'\n    output: 'outside'\n    shell: 'touch {output}'\nrule last:\n    input: 'start', 'outside'\n    output: 'end'\n    group: 'work'\n    shell: 'touch {output}'\n").unwrap();
+    let launch = Launch {
+        target: folder.path().into(),
+        scratch: folder.path().join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    };
+    let error = snakemake_runtime::driver(&launch)
+        .unwrap()
+        .start()
+        .unwrap_err();
+    assert!(!error.unsupported, "{error}");
+    assert!(error.to_string().contains("leave and re-enter"), "{error}");
+}
+
+#[test]
+fn separates_group_scripts() {
+    let folder = tempfile::tempdir().unwrap();
+    for name in ["first", "last"] {
+        let script = folder.path().join(name);
+        std::fs::create_dir(&script).unwrap();
+        std::fs::write(script.join("wrapper.py"), format!("print('{name}')\n")).unwrap();
+    }
+    let workflow = WORKFLOW
+        .replace(
+            "shell: 'echo {wildcards.sample} > {output}'",
+            "script: 'first/wrapper.py'",
+        )
+        .replace(
+            "shell: 'cat {input} > {output}'",
+            "script: 'last/wrapper.py'",
+        );
+    std::fs::write(folder.path().join("Snakefile"), workflow).unwrap();
+    let launch = Launch {
+        target: folder.path().into(),
+        scratch: folder.path().join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    };
+    let groups = snakemake_runtime::driver(&launch).unwrap().start().unwrap();
+    assert_eq!(groups.len(), 2);
+    for task in groups {
+        let scripts: Vec<_> = task
+            .inputs
+            .iter()
+            .filter(|input| input.path.starts_with(".snakemake/scripts/"))
+            .collect();
+        assert_eq!(scripts.len(), 2);
+        assert_ne!(scripts[0].path, scripts[1].path);
+        for script in scripts {
+            assert!(task.command[2].contains(&script.path));
+        }
+    }
+}
+
+#[test]
+fn groups_after_checkpoint() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        r#"
+rule all:
+    input: 'last'
+rule seed:
+    output: 'seed'
+    group: 'work'
+    shell: 'touch {output}'
+checkpoint middle:
+    input: 'seed'
+    output: 'middle'
+    shell: 'touch {output}'
+def after(wildcards):
+    return checkpoints.middle.get().output[0]
+rule last:
+    input: after, 'seed'
+    output: 'last'
+    group: 'work'
+    shell: 'touch {output}'
+"#,
+    )
+    .unwrap();
+    let launch = Launch {
+        target: folder.path().into(),
+        scratch: folder.path().join("scratch"),
+        simulated: true,
+        forceall: true,
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).unwrap();
+    let mut executor = Simulator::new(folder.path().join("made"));
+    let run = execute("group", driver.as_mut(), &mut executor);
+    assert!(run.error.is_none(), "{:?}", run.error);
+    assert_eq!(run.graph.nodes.len(), 4);
+}

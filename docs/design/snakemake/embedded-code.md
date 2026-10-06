@@ -72,3 +72,9 @@ Nextflow runs the `exec:` section of a process in its own process, as Groovy cod
 ## 7. Not built yet
 
 - A default Python image with the packages that a script or block imports (uv, as decision 19 does), for Python code without a container. It needs the network.
+
+## 8. Shadow directories
+
+`shadow: "minimal"` stages declared inputs and task code. `"shallow"` links the working directory's top-level files and directories; `"full"` creates directories in task scratch and links every file recursively, following directory symlinks and excluding `.snakemake`. Declared inputs keep their producer dependencies. Run scratch is excluded to avoid recursive staging, and symlink cycles fail explicitly.
+
+Outputs and logs of shallow and full jobs must be relative and stay inside task scratch. A shallow output below an existing top-level directory is refused because the directory link would write outside scratch; use full shadow for that layout. Full shadow omits existing output paths from the links. `copy-minimal` and other active modes remain unsupported.

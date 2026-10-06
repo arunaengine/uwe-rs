@@ -158,7 +158,7 @@ pub struct Rule {
     pub retries: Option<Value>,
     pub group: Option<Value>,
     pub localrule: bool,
-    pub shadow_minimal: bool,
+    pub shadow: Option<String>,
     pub action: Action,
     /// The f-string of a `shell:` directive, which Snakemake evaluates when the job runs,
     /// with the names of the job, like `output`.
@@ -209,7 +209,7 @@ impl Rule {
             retries: None,
             group: None,
             localrule: false,
-            shadow_minimal: false,
+            shadow: None,
             action: Action::None,
             shell_code: None,
             basedir,

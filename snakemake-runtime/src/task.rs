@@ -214,7 +214,7 @@ pub fn build(
     id: TaskId,
     attempt: u32,
 ) -> Result<(Task, serde_json::Value), Error> {
-    if rule.shadow_minimal {
+    if rule.shadow.is_some() {
         for file in job
             .input
             .values
@@ -230,7 +230,7 @@ pub fn build(
                     .starts_with(interpreter.host.cwd())
             {
                 return Err(workflow_error(format!(
-                    "File {path} references a parent directory, which is not supported for shadow: 'minimal' in rule {}",
+                    "File {path} references a parent directory, which is not supported for shadow in rule {}",
                     rule.name
                 )));
             }
@@ -747,9 +747,12 @@ pub fn build(
     let taken: Vec<&str> = (inputs.iter().map(|input| input.path.as_str()))
         .chain(outputs.iter().map(String::as_str))
         .collect();
-    if !rule.shadow_minimal {
+    if rule.shadow.is_none() {
         let sources = setting.sources.inputs(&taken);
         inputs.extend(sources);
+    }
+    if let Some(mode @ ("shallow" | "full")) = rule.shadow.as_deref() {
+        crate::shadow::stage(setting, mode, &mut inputs, &outputs, &mut command)?;
     }
     let mut environment = BTreeMap::new();
     for name in &setting.state.envvars {

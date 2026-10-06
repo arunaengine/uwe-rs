@@ -124,8 +124,6 @@ fn stages_minimal_shadow() {
 #[test]
 fn rejects_shadow_modes() {
     for directive in [
-        "shadow: 'shallow'",
-        "shadow: 'full'",
         "shadow: 'copy-minimal'",
         "shadow: True",
         "shadow: 'minimal'\n    output: '../out'",
@@ -146,5 +144,76 @@ fn rejects_shadow_modes() {
             .start()
             .expect_err("refused");
         assert_eq!(error.unsupported, !directive.contains("../out"), "{error}");
+    }
+}
+
+#[test]
+fn stages_shadow_links() {
+    for mode in ["shallow", "full"] {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(folder.path().join("data/empty")).unwrap();
+        std::fs::create_dir_all(folder.path().join(".snakemake/metadata")).unwrap();
+        std::fs::write(folder.path().join("data/value"), "data").unwrap();
+        std::fs::write(folder.path().join("extra"), "extra").unwrap();
+        std::fs::write(folder.path().join("Snakefile"), format!(
+            "rule make:\n    input: 'data/value'\n    output: 'out'\n    shadow: '{mode}'\n    shell: 'cat {{input}} extra > {{output}}'\n"
+        )).unwrap();
+        let launch = Launch {
+            target: folder.path().into(),
+            scratch: folder.path().join("scratch"),
+            ..Launch::default()
+        };
+        let task = snakemake_runtime::driver(&launch)
+            .unwrap()
+            .start()
+            .unwrap()
+            .remove(0);
+        assert!(task.inputs.iter().any(|input| input.path == "extra"));
+        assert!(task.inputs.iter().any(|input| input.path == "Snakefile"));
+        assert!(
+            !task
+                .inputs
+                .iter()
+                .any(|input| input.path.starts_with(".snakemake/metadata"))
+        );
+        if mode == "shallow" {
+            assert!(task.command[2].contains("ln -s --"));
+            assert!(
+                task.inputs
+                    .iter()
+                    .any(|input| input.path == folder.path().join("data").to_string_lossy())
+            );
+        } else {
+            assert!(
+                task.inputs
+                    .iter()
+                    .any(|input| input.path == "data/empty" && input.source.is_empty())
+            );
+        }
+    }
+}
+
+#[test]
+fn confines_shadow_outputs() {
+    for (mode, output) in [
+        ("shallow", "data/out"),
+        ("full", "/tmp/out"),
+        ("full", "../out"),
+    ] {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::create_dir(folder.path().join("data")).unwrap();
+        std::fs::write(
+            folder.path().join("Snakefile"),
+            format!(
+                "rule make:\n    output: '{output}'\n    shadow: '{mode}'\n    shell: 'true'\n"
+            ),
+        )
+        .unwrap();
+        let launch = Launch {
+            target: folder.path().into(),
+            scratch: folder.path().join("scratch"),
+            ..Launch::default()
+        };
+        assert!(snakemake_runtime::driver(&launch).unwrap().start().is_err());
     }
 }

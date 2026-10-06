@@ -616,9 +616,14 @@ impl Session {
             self.remaining.insert(*job, count);
         }
         self.roots = roots;
-        self.components =
-            crate::groups::components(&mut self.interpreter, planner, &self.order, &self.needrun)
-                .map_err(|error| driver_error(&error, &self.workdir))?;
+        self.components = crate::groups::components(
+            &mut self.interpreter,
+            planner,
+            &self.order,
+            &self.needrun,
+            &self.tasks,
+        )
+        .map_err(|error| driver_error(&error, &self.workdir))?;
         Ok(())
     }
 

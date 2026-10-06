@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use python_evaluator::Interpreter;
+use python_evaluator::{Interpreter, Key, Value};
 use workflow_graph::{Reuse, Task, TaskId};
 
 use crate::functions::{call_input_function, is_callable};
@@ -18,16 +18,23 @@ pub fn components(
     planner: &Planner,
     order: &[usize],
     needed: &HashMap<usize, bool>,
+    fixed: &HashMap<usize, TaskId>,
 ) -> Result<HashMap<usize, Rc<Vec<usize>>>, python_evaluator::Error> {
     let mut labels = HashMap::new();
     for job in order {
         let entry = &planner.jobs[*job];
         let rule = &planner.rules[entry.rule];
-        if !needed.get(job).copied().unwrap_or(false) || rule.localrule || rule.checkpoint {
+        if !needed.get(job).copied().unwrap_or(false)
+            || rule.localrule
+            || rule.checkpoint
+            || entry.incomplete
+            || fixed.contains_key(job)
+        {
             continue;
         }
         if let Some(group) = &rule.group {
-            let value = if is_callable(interpreter, group) {
+            let callable = is_callable(interpreter, group);
+            let value = if callable {
                 call_input_function(
                     interpreter,
                     group,
@@ -37,16 +44,16 @@ pub fn components(
             } else {
                 group.clone()
             };
-            if let Some(label) = value.as_str() {
-                labels.insert(
-                    *job,
+            let value = if !callable && let Some(label) = value.as_str() {
+                Value::str(
                     crate::pattern::apply(label, &entry.wildcards)
                         .map_err(crate::workflow::workflow_error)?,
-                );
-            } else if !value.is_none() {
-                return Err(python_evaluator::Error::type_error(
-                    "Group id must be a string or None",
-                ));
+                )
+            } else {
+                value
+            };
+            if !value.is_none() {
+                labels.insert(*job, Key::new(value)?);
             }
         }
     }
@@ -103,8 +110,8 @@ pub fn components(
         let mut seen = HashSet::new();
         while let Some(job) = external.pop() {
             if members.contains(&job) {
-                return Err(python_evaluator::Error::unsupported(
-                    "Group dependencies leave and re-enter the component",
+                return Err(crate::workflow::workflow_error(
+                    "Error in group: dependencies leave and re-enter the component through jobs outside the group",
                 ));
             }
             if seen.insert(job) {
@@ -119,7 +126,32 @@ pub fn components(
 }
 
 pub fn combine(members: &[Task], id: TaskId) -> Result<Task, String> {
-    let mut group = crate::services::combine(members, &[], id)?;
+    let mut members = members.to_vec();
+    let mut conflicts = HashSet::new();
+    let mut staged = HashMap::new();
+    for task in &members {
+        for input in &task.inputs {
+            if input.path.starts_with(crate::embedded::SCRIPTS_FOLDER)
+                && let Some(known) = staged.insert(input.path.clone(), input.clone())
+                && known != *input
+            {
+                conflicts.insert(input.path.clone());
+            }
+        }
+    }
+    for (number, task) in members.iter_mut().enumerate() {
+        for input in &mut task.inputs {
+            if conflicts.contains(&input.path) {
+                let old = input.path.clone();
+                let tail = old.strip_prefix(crate::embedded::SCRIPTS_FOLDER).unwrap();
+                input.path = format!("{}/{number}{tail}", crate::embedded::SCRIPTS_FOLDER);
+                for argument in &mut task.command {
+                    *argument = argument.replace(&old, &input.path);
+                }
+            }
+        }
+    }
+    let mut group = crate::services::combine(&members, &[], id)?;
     group.inputs.retain(|input| {
         !members.iter().any(|member| {
             member.outputs.iter().any(|output| {
@@ -128,7 +160,7 @@ pub fn combine(members: &[Task], id: TaskId) -> Result<Task, String> {
             })
         })
     });
-    for task in members {
+    for task in &members {
         for input in &task.inputs {
             if let Some(staged) = group.inputs.iter().find(|staged| staged.path == input.path)
                 && staged != input
@@ -143,7 +175,7 @@ pub fn combine(members: &[Task], id: TaskId) -> Result<Task, String> {
     let mut script = String::new();
     let mut duration = Some(0_u64);
     group.resources = Default::default();
-    for task in members {
+    for task in &members {
         let exports: String = task
             .environment
             .iter()

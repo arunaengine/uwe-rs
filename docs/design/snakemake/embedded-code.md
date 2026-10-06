@@ -81,7 +81,7 @@ Outputs and logs of shallow and full jobs must be relative and stay inside task 
 
 ## 9. Group jobs
 
-Jobs with the same `group:` id form one task per connected component, equivalent to Snakemake's default of one group component. String ids expand wildcards; callable ids receive wildcards. Each same-image component runs commands in dependency order in one container, with each job's environment, external inputs, declared outputs and validation. Resources cover the largest sequential job and the sum of their runtime limits. A failed component retries as a whole. Components with different images run as separate tasks and emit a debug log. Local rules and checkpoints keep separate tasks. Explicit component merging is not supported.
+Jobs with the same `group:` id form one task per connected component, equivalent to Snakemake's default of one group component. String ids expand wildcards; callable ids receive wildcards and their returned strings remain unchanged. Other hashable ids keep Python equality. Each same-image component runs commands in dependency order in one container, with each job's environment, external inputs, declared outputs and validation. Generated scripts with conflicting paths receive separate staged paths. Resources cover the largest sequential job and the sum of their runtime limits. A failed component retries as a whole. Components with different images run as separate tasks and emit a debug log. Local rules and checkpoints keep separate tasks. Dependencies that leave a group and re-enter through ungrouped jobs fail as in Snakemake. Explicit component merging is not supported.
 
 ## 10. Lifecycle shell commands
 

@@ -116,7 +116,7 @@ def command(arguments, **options):
 
 def download_funnel(root):
     metadata = json.loads(command(["curl", "-fsSL", "--max-time", "30",
-                                   "https://api.github.com/repos/calypr/funnel/releases/latest"]).stdout)
+                                   "https://api.github.com/repos/calypr/funnel/releases/tags/v0.11.14"]).stdout)
     asset = next(value for value in metadata["assets"] if value["name"].startswith("funnel-linux-amd64-")
                  and value["name"].endswith(".tar.gz"))
     archive = root / "funnel.tar.gz"

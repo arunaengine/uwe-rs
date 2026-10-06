@@ -16,3 +16,18 @@ pub use spec::{
     SpecError, TaskSpec,
 };
 pub use tree::{Tree, TreeEntry};
+
+/// Whether an image names a Conda environment that iunctus prepares, not a registry image.
+pub fn conda_image(image: &str) -> bool {
+    image.starts_with("conda-env:") || image.starts_with("conda-container:")
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn detects_conda_images() {
+        assert!(super::conda_image("conda-env:/work/env.yaml"));
+        assert!(super::conda_image("conda-container:debian|/work/env.yaml"));
+        assert!(!super::conda_image("debian:stable-slim"));
+    }
+}

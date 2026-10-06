@@ -212,7 +212,7 @@ async fn copy_out(store: &Store, source: &Source, target: &Path) -> Result<(), F
 fn images(database: &Database, run: &Run) -> Result<HashMap<String, String>, Failure> {
     let images = database.images(&run.id).map_err(broken)?;
     Ok((images.into_iter())
-        .filter(|image| image.named.starts_with("conda-env:") || image.pinned())
+        .filter(|image| task_model::conda_image(&image.named) || image.pinned())
         .map(|image| (image.named, image.ran))
         .collect())
 }

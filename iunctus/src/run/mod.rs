@@ -11,9 +11,9 @@ use crate::arguments::Arguments;
 use crate::repeat::Pinned;
 use crate::setup::Setup;
 use crate::{
-    Failure, driver, executor, failure, fetched, inputs, insight, launch, network_rule, page,
-    progress, record, report, resources, resume, run_id, sources, stop_on_interrupt,
-    target_and_language, terminal,
+    Failure, driver, executor, failure, fetched, inputs, launch, network_rule, page, progress,
+    record, report, resources, resume, run_id, sources, stop_on_interrupt, target_and_language,
+    terminal,
 };
 use run_database::Recorder;
 use run_page::Server;
@@ -174,6 +174,14 @@ fn execute_with(
         true => Some(page::start(arguments, &format!("/runs/{run}"))?),
         false => None,
     };
+    let telemetry = if real {
+        setup
+            .telemetry
+            .as_ref()
+            .and_then(|telemetry| telemetry.start(arguments, &mut recorder))
+    } else {
+        None
+    };
     // The inputs are checked before any task starts (decision 24).
     let prepared = executor(
         arguments,
@@ -316,8 +324,8 @@ fn execute_with(
         }
     }
     // Traces of simulated runs would only fill dashboards with made-up times.
-    if real {
-        insight::telemetry::after_run(arguments, &setup, &run);
+    if let Some(telemetry) = telemetry {
+        telemetry.finish();
     }
     let report = report::after_run(arguments, &run);
     match progress {

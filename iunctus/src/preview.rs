@@ -58,7 +58,7 @@ impl Previewed {
 }
 
 fn preview_image(image: &str, pins: &HashMap<String, String>) -> Option<String> {
-    if image.starts_with("conda-env:") {
+    if task_model::conda_image(image) {
         return None;
     }
     match image.contains("@sha256:") {
@@ -90,10 +90,14 @@ mod tests {
 
     #[test]
     fn ignores_conda_pins() {
-        let marker = "conda-env:/workflow/environment.yaml";
-        let pinned = format!("sha256:{}", "a".repeat(64));
-        let pins = [(marker.into(), pinned)].into();
+        for marker in [
+            "conda-env:/workflow/environment.yaml",
+            "conda-container:debian:stable-slim|/workflow/environment.yaml",
+        ] {
+            let pinned = format!("sha256:{}", "a".repeat(64));
+            let pins = [(marker.into(), pinned)].into();
 
-        assert_eq!(preview_image(marker, &pins), None);
+            assert_eq!(preview_image(marker, &pins), None, "{marker}");
+        }
     }
 }

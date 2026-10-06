@@ -26,7 +26,7 @@ pub(crate) fn real<B: executor::Backend>(
     if pinned
         .images
         .keys()
-        .any(|image| image.starts_with("conda-env:"))
+        .any(|image| task_model::conda_image(image))
     {
         return Err(Failure::setup(
             "iunctus: repeating historical Conda image pins is unsupported; run the workflow with current explicit Conda preparation inputs",

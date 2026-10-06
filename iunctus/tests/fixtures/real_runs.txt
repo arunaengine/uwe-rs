@@ -106,3 +106,10 @@ iunctus: exit 33 in 2 s, published files=1
 comparison: 2 reference files and 0 iunctus files after excluding pipeline_info/**; 0 matching digests, 2 missing, 0 extra, 0 differing contents
 verdict: reference invalid; iunctus unsupported, parity not established
 notes: Nextflow fails SAMTOOLS_FAIDX: the test profile supplies no FASTA, so the command is `samtools faidx` without an input and exits 1. Iunctus stops earlier: workflows/bamtofastq.nf:220:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. The two partial material outputs are samtools idxstats files; differing abort schedules do not establish parity. Data headers total 381538 bytes.
+
+## nf-core-rnaseq-local-20261008: nf-core/rnaseq a1fcddd, -profile test, local Docker
+native: not run, disk reserve
+iunctus: not run, disk reserve
+comparison: not performed
+verdict: skipped, parity not established
+notes: After removing only completed-run images, 44.38 GiB remained free. A conservative 23 GiB allowance would leave 21.38 GiB, below the required 25 GiB reserve. The CPU test-path image upper bound is 6.542 GiB in compressed layers, allowing three times that for stored/extracted images plus 3 GiB for working files and the 30,690,729 bytes of declared data. Inactive GPU, RSEM, Sentieon, HISAT2, Kallisto, UMI, rRNA-removal, contaminant-screening, RustQC, fastp and preseq image branches are excluded from that bound. No RNA-seq image or dataset payload was downloaded; small sample sheets and manifest/header metadata were inspected.

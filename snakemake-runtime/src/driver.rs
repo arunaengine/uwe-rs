@@ -1298,13 +1298,25 @@ impl Session {
             .planner
             .as_ref()
             .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
-        let users: Vec<usize> = (self.order.iter().copied())
+        let mut users: Vec<usize> = (self.order.iter().copied())
             .filter(|user| {
                 (planner.jobs[*user].dependencies.iter())
                     .any(|(file, producer)| *producer == job && services.contains(file))
             })
             .filter(|user| self.needrun.get(user).copied().unwrap_or(false))
             .collect();
+        let direct_users = users.clone();
+        let mut expanded = false;
+        for user in direct_users {
+            if let Some(component) = self.components.get(&user) {
+                for member in component.iter() {
+                    if !users.contains(member) {
+                        users.push(*member);
+                        expanded = true;
+                    }
+                }
+            }
+        }
         let mut connected = HashSet::from([job]);
         for member in &self.order {
             if planner.jobs[*member]
@@ -1388,6 +1400,19 @@ impl Session {
             self.signatures.insert(member, signature);
             declared.push((member, task.outputs.clone()));
             members.push(task);
+        }
+        if expanded
+            && members
+                .iter()
+                .any(|member| member.image != members[0].image)
+        {
+            tracing::debug!(
+                "Snakemake service group has different images; running explicit group members separately"
+            );
+            for (member, _) in &declared {
+                self.components.remove(member);
+            }
+            return self.service_group(job, services, retry);
         }
         let mut task =
             crate::services::combine(&members, services, id).map_err(DriverError::new)?;

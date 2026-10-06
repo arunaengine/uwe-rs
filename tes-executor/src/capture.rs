@@ -53,7 +53,7 @@ pub(crate) fn script(
     let script = script
         .strip_suffix("exit 0\n")
         .ok_or_else(|| unsupported("TES capture wrapper has no final exit"))?;
-    Ok(format!("{script}{FLATTEN}\nexit 0\n"))
+    Ok(format!("{script}{FLATTEN}\nexit \"$status\"\n"))
 }
 
 const FLATTEN: &str = r#"transfer=/iunctus/transfer
@@ -87,3 +87,53 @@ if [ "$status" -eq 0 ]; then
     [ ! -d "$control/root" ] || flatten "$control/root" ''
 fi
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use executor::Staging;
+    use task_model::{FORMAT, Placement, TaskSpec};
+
+    #[test]
+    fn preserves_command_status() {
+        let folder = tempfile::tempdir().unwrap();
+        for code in [0, 17] {
+            let spec = TaskSpec {
+                format: FORMAT,
+                arguments: vec!["sh".into(), "-c".into(), format!("exit {code}")],
+                namespace: String::new(),
+                image: None,
+                workdir: None,
+                environment: Default::default(),
+                inputs: Vec::new(),
+                outputs: Vec::new(),
+                stdin: None,
+                containers: Vec::new(),
+                replaces_entrypoint: true,
+                run_as: None,
+            };
+            let staging = Staging::default();
+            let placement = Placement::default();
+            let job = Job {
+                name: "capture",
+                spec: &spec,
+                staging: &staging,
+                placement: &placement,
+            };
+            let script = script(job, "/iunctus/work", &[], &[])
+                .unwrap()
+                .replace("/iunctus", folder.path().to_str().unwrap());
+            let path = folder.path().join("wrapper.sh");
+            std::fs::write(&path, script).unwrap();
+            let output = std::process::Command::new("sh")
+                .arg(&path)
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(code), "{output:?}");
+            assert_eq!(
+                std::fs::read_to_string(folder.path().join("control/exit")).unwrap(),
+                format!("{code}\n")
+            );
+        }
+    }
+}

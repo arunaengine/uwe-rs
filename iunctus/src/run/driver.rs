@@ -75,9 +75,16 @@ pub(crate) fn driver(
 ) -> Result<Box<dyn Driver>, DriverError> {
     match language {
         Language::Nextflow => nextflow::driver(launch, run, quiet, arguments, setup),
-        Language::Snakemake => {
-            snakemake_runtime::driver_with(launch, snakemake(arguments, setup, cancel))
-        }
+        Language::Snakemake => snakemake_runtime::driver_with_options(
+            launch,
+            snakemake(arguments, setup, cancel),
+            snakemake_runtime::RunSettings {
+                image: arguments.default_image.clone(),
+                offline: arguments.no_network,
+                rerun_triggers: arguments.rerun_triggers.clone(),
+                conda: setup.conda.is_some(),
+            },
+        ),
         Language::Cwl => {
             let downloads = cache_directory().join("downloads");
             let options = cwl_runtime::Options {

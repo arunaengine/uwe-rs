@@ -38,7 +38,7 @@ catalog/GooglingTheCancerGenome__sv-callers 1 workflow/validator/__init__.py:6: 
 catalog/GooglingTheCancerGenome__sv-gen 1 workflow/helper_functions.py:5: the workflow imports the Python package pyfaidx, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/GuttmanLab__chipdip-pipeline ok 207
 catalog/IHGGM-Aachen__CNVand ok 17
-catalog/IKIM-Essen__QC_pre_NextSeq 33 workflow/Snakefile:60: Not supported yet: commands in the onsuccess lifecycle hook require a container task (the simulated run assumed 6 input files that do not exist and that no rule makes, like path/to/read1; a real run needs them)
+catalog/IKIM-Essen__QC_pre_NextSeq ok 13
 catalog/IKIM-Essen__ResMAG ok 122
 catalog/IKIM-Essen__RiboSnake ok 59
 catalog/IKIM-Essen__uncovar 1 workflow/rules/common.smk:284: WorkflowError: InputFunctionException in rule cat_genomes (wildcards: date=SEQUENCING_DATE): EmptyDataError: No columns to parse from file (the simulated run assumed 17 input files that do not exist and that no rule makes, like results/SEQUENCING_DATE/trimmed/fastp-p
@@ -60,12 +60,12 @@ catalog/LiaOb21__colora ok 26
 catalog/LinhHo__module_area_potentials ok 1
 catalog/Louis-XIV-bis__NJ_tree_bootstrap ok 0
 catalog/MPUSP__snakemake-assembly-postprocessing ok 2
-catalog/MPUSP__snakemake-bacterial-riboseq 33 workflow/Snakefile:68: Not supported yet: commands in the onsuccess lifecycle hook require a container task
+catalog/MPUSP__snakemake-bacterial-riboseq ok 32
 catalog/MPUSP__snakemake-bacterial-rnaseq-processing ok 62
 catalog/MPUSP__snakemake-crispr-guides ok 11
 catalog/MPUSP__snakemake-ms-proteomics ok 12
 catalog/MPUSP__snakemake-ont-bacterial-variants ok 1
-catalog/MPUSP__snakemake-ont-basecalling 33 workflow/rules/common.smk:22: Not supported yet: commands in the onstart lifecycle hook require a container task
+catalog/MPUSP__snakemake-ont-basecalling 1 workflow/Snakefile:65: SystemExit: [36m
 catalog/MPUSP__snakemake-simple-mapping ok 28
 catalog/MarieRiisgaard__snakemake_usearch_primertrim_and_subset 1 workflow/Snakefile:19: FileNotFoundError: [Errno 2] No such file or directory: '.test/nanopore_run_xyz123/fastq_pass'
 catalog/Matheusdras__Snakemake-template ok 0
@@ -76,7 +76,7 @@ catalog/NCI-CGR__TriosCompass_v2 1 workflow/Snakefile:8: WorkflowError: Workflow
 catalog/NeuroGranberg__NODDIpipeline 1 workflow/rules/NODDIpipeline.smk:26: KeyError: ('sub', 'ses', 'scan', 'target', 'acq', 'suffix')
 catalog/Ovewh__ACP-haugvaldstad-et-al-2025 ok 396
 catalog/Ovewh__Climaso 1 workflow/Snakefile:139: WorkflowError: InputFunctionException in rule calculate_SW_ERF (wildcards: experiment=piClim-2xdust, vName=ERFtsw, model=EC-Earth3-AerChem, freq=Ayear): FileNotFoundError: /home/oveh/mnt/Betzy_CMIP/CMIP6/AerChemMIP/EC-Earth-Consortium/EC-Earth3-AerChem/piClim-2xdust/r1i1p1f
-catalog/PathoGenOmics-Lab__VIPERA 33 workflow/rules/fasta.smk:31: Not supported yet: shadow mode 'shallow' for rule concat_fasta; only 'minimal' is supported
+catalog/PathoGenOmics-Lab__VIPERA ok 217
 catalog/Phlya__C-integration-mapping ok 0
 catalog/Phlya__distill-reorder-C 1 https://raw.githubusercontent.com/open2c/distiller-sm/master/workflow/Snakefile:18: KeyError: 'output'
 catalog/Phlya__tagmap 1 workflow/rules/common.smk:265: WorkflowError: InputFunctionException in rule stats (wildcards: sample=clone1): JSONDecodeError: Expecting value: line 1 char 0 (the workflow read results/primer_positions.json, a task output that the simulator made without its content)
@@ -145,7 +145,7 @@ catalog/baerlachlan__smk-rnaseq-gatk-variants ok 64
 catalog/bakerwm__snakemake-rnaseq-star 1 workflow/rules/common.smk:7: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 catalog/belowlab__ukbb-phecode-mapping ok 0
 catalog/bethanyyk__DENV_simulations ok 3
-catalog/bheimbu__annoSnake 33 workflow/rules/mag_assembly_paired_end.smk:3: Not supported yet: shadow mode 'shallow' for rule MAG_metabat2; only 'minimal' is supported
+catalog/bheimbu__annoSnake ok 114
 catalog/boulardlab__3t-seq 33 Not supported yet: Snakemake profile setting 'all-temp'
 catalog/broomej__serpent-DEFUNCT ok 2
 catalog/brunosate21-a11y__Metabolic-Modeling-Workflow. ok 22
@@ -205,7 +205,7 @@ catalog/fmi-basel__ggiorget_ms2analysis ok 8
 catalog/franciscozorrilla__metaGEM 1 workflow/Snakefile:1: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/frattalab__QAPA_snakemake 1 workflow/Snakefile:6: KeyError: 'sample_sheet'
 catalog/friendsofstrandseq__ashleys-qc-pipeline 1 workflow/rules/common.smk:309: FileNotFoundError: [Errno 2] No such file or directory: '.tests/data_CHR17'
-catalog/friendsofstrandseq__mosaicatcher-pipeline 1 workflow/rules/common.smk:58: WorkflowError: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
+catalog/friendsofstrandseq__mosaicatcher-pipeline 1 workflow/rules/common.smk:583: FileNotFoundError: [Errno 2] No such file or directory: '.tests/data_CHR17'
 catalog/gabora__snakemake_template ok 0
 catalog/gabrielfranco89__fastq_to_ucram ok 19
 catalog/garrison-chen__SR-pipe ok 0
@@ -277,9 +277,9 @@ catalog/martykardos__asacphus_fire_frogs 1 workflow/rules/initialize.smk:24: Att
 catalog/massiddamt__rna_vc_docker 1 workflow/rules/common.smk:34: WorkflowError: InputFunctionException in rule merge_read1_fastq (wildcards: sample=SRR7876818): FileNotFoundError: [Errno 2] No such file or directory (path must be absolute): 'test_data/SRR7876818.L005.R1.fq.gz'
 catalog/matinnuhamunada__interproscan_helper ok 711
 catalog/mbquashie__tm ok 0
-catalog/mdondrup__admixture_simulation 33 workflow/Snakefile:24: Not supported yet: commands in the onstart lifecycle hook require a container task
+catalog/mdondrup__admixture_simulation ok 1044
 catalog/mdondrup__admixture_workflow 1 workflow/Snakefile:55: FileNotFoundError: [Errno 2] No such file or directory: 'input/selected-SNPINDEL_Ploidy2.vcf.gz'
-catalog/mdondrup__divergence_time 33 workflow/Snakefile:33: Not supported yet: commands in the onstart lifecycle hook require a container task (the simulated run assumed 6 input files that do not exist and that no rule makes, like input/selected-SNPINDEL_Ploidy2.vcf.gz; a real run needs them)
+catalog/mdondrup__divergence_time ok 6
 catalog/mdondrup__gromacs_workflow ok 10
 catalog/mdondrup__mytemplate_wf ok 10
 catalog/mdondrup__ras_meta_transcriptomics 1 workflow/Snakefile:46: FileNotFoundError: [Errno 2] No such file or directory: 'input/fastq'
@@ -289,7 +289,7 @@ catalog/mdondrup__yeast_variantcalling 1 workflow/rules/download.smk:9: FileNotF
 catalog/merfre__Adaptive_Sequencing_Analysis_Workflow 1 workflow/Snakefile:118: TypeError: sequence item 24: expected str instance, float found
 catalog/merfre__Hull_Microbiome_Cluster_Workflow ok 19
 catalog/merfre__MMCAW 1 workflow/Snakefile:63: TypeError: sequence item 31: expected str instance, float found
-catalog/metagenome-atlas__metagenome-assembly 33 workflow/rules/pre_assembly.smk:97: Not supported yet: shadow mode 'shallow' for rule merge_pairs; only 'minimal' is supported
+catalog/metagenome-atlas__metagenome-assembly ok 2
 catalog/metagenome-atlas__metagenome_instrain ok 10
 catalog/milesroberts-123__poolseq-kmers 33 Not supported yet: Snakemake profile setting 'max-jobs-per-timespan'
 catalog/milesroberts-123__slim-sweep-cnn 1 workflow/Snakefile:9: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
@@ -321,14 +321,14 @@ catalog/niekwit__chip-seq 1 workflow/scripts/general_functions.smk:319: Assertio
 catalog/niekwit__crispr-screens 1 workflow/scripts/general_functions.smk:194: ValueError: No fastq or cram files found in reads directory
 catalog/niekwit__cut_and_run 1 workflow/scripts/general_functions.smk:435: AssertionError: No fastq files found...
 catalog/niekwit__damid-seq 1 workflow/scripts/general_functions.smk:430: AssertionError: No fastq files found...
-catalog/niekwit__gps-orfeome 33 workflow/Snakefile:49: Not supported yet: commands in the onsuccess lifecycle hook require a container task
+catalog/niekwit__gps-orfeome 1 workflow/Snakefile:53: the workflow imports the Python package ngs_tracker, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/niekwit__methyl-seq 1 workflow/rules/common.smk:85: ValueError: No FASTQ (*.fastq.gz) files found in 'reads/' directory.
 catalog/niekwit__partridge-workflow 1 workflow/rules/common.smk:21: IndexError: list index out of range
 catalog/niekwit__rna-seq-salmon-deseq2 1 workflow/Snakefile:28: WorkflowError: Error validating row 0 of data frame.
-catalog/niekwit__rna-seq-star-deseq2 33 workflow/Snakefile:65: Not supported yet: commands in the onsuccess lifecycle hook require a container task
+catalog/niekwit__rna-seq-star-deseq2 1 workflow/Snakefile:69: the workflow imports the Python package ngs_tracker, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/niekwit__rna-seq-star-rmats 1 workflow/Snakefile:29: ValueError: Invalid format specifier
 catalog/niekwit__rna-seq-star-tetranscripts 1 workflow/scripts/general_functions.smk:174: AssertionError: No fastq files found ending with .fastq.gz...
-catalog/niekwit__smallRNA-seq 33 workflow/Snakefile:62: Not supported yet: commands in the onsuccess lifecycle hook require a container task (the simulated run assumed 8 input files that do not exist and that no rule makes, like reads/KO_1.filtered/KO_1.filtered.fastq.gz; a real run needs them)
+catalog/niekwit__smallRNA-seq 1 workflow/Snakefile:65: the workflow imports the Python package ngs_tracker, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime (the simulated run assumed 8 input files that do not exist and that no rule makes, like reads/KO_1.filter
 catalog/nikostr__dna-seq-deepvariant-glnexus-variant-calling 1 WorkflowError: AmbiguousRuleException: Rules fastp_se and fastp_pe are ambiguous for the file results/qc/fastp/B-2.html.
 catalog/nikostr__read-mapping ok 65
 catalog/nismod__open-gira 1 workflow/Snakefile:20: the workflow imports the Python package open_gira, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
@@ -356,7 +356,7 @@ catalog/recervictory__rna-seq-test ok 0
 catalog/regevs__tadpoles ok 0
 catalog/regulatory-genomics__hic_sm 1 workflow/rules/common.smk:38: FileNotFoundError: [Errno 2] No such file or directory: 'pep/../config/20260119_hic_sample_2.csv'
 catalog/rglez__bflow-smk ok 10
-catalog/richardstoeckl__QCforSeqCode 33 workflow/Snakefile:130: Not supported yet: shadow mode 'copy-minimal' for rule prepare16SrRNAdb; only 'minimal' is supported
+catalog/richardstoeckl__QCforSeqCode 33 workflow/Snakefile:130: Not supported yet: shadow mode 'copy-minimal' for rule prepare16SrRNAdb; only 'minimal', 'shallow' and 'full' are supported
 catalog/richardstoeckl__basecallNanopore 1 workflow/Snakefile:21: WorkflowError: A configuration file is required; use --configfile FILE.yaml
 catalog/rmFlynn__DRAM_testing_pipline ok 0
 catalog/rmFlynn__dram_validataion_pipline ok 0
@@ -365,7 +365,7 @@ catalog/rnsherpa__TLand-predict 1 workflow/Snakefile:17: FileNotFoundError: [Err
 catalog/robingarcia__test_snake ok 0
 catalog/rochevin__RNA-seq-from-SRR-single 1 workflow/rules/samtools.smk:34: SyntaxError: Expected `,`, found identifier
 catalog/rodolfobrandao8__Snakemake-Mag-Annotation ok 5
-catalog/sandragodinhosilva__melange 33 workflow/rules/ensure_download.smk:24: Not supported yet: shadow mode 'shallow' for rule download_pfam; only 'minimal' is supported
+catalog/sandragodinhosilva__melange 33 Not supported yet: Shallow shadow output inside workflow would escape the task directory through a directory symlink; use full shadow (the simulated run assumed 1 input files that do not exist and that no rule makes, like example_data/GCF_000009045.1_trialprotein-id.fa; a real run needs them)
 catalog/sanjaysgk__WES_RNA_Pipeline ok 2
 catalog/schlesnerlab__multiconDEnrich ok 13
 catalog/scholl-lab__sm-calling ok 67
@@ -392,14 +392,14 @@ catalog/snakemake-workflows__cellranger-multi 1 workflow/Snakefile:20: WorkflowE
 catalog/snakemake-workflows__cyrcular-calling ok 1
 catalog/snakemake-workflows__dna-seq-benchmark 1 workflow/rules/common.smk:456: WorkflowError: InputFunctionException in rule all (wildcards: ): JSONDecodeError: Expecting value: line 1 char 0 (the workflow read results/variants/giab-na12878-exome.truth.cov-lc_low.stats.json, a task output that the simulator made without its content)
 catalog/snakemake-workflows__dna-seq-gatk-variant-calling 1 workflow/rules/common.smk:44: WorkflowError: InputFunctionException in rule merge_variants (wildcards: ): TypeError: read_table() got an unexpected keyword argument 'squeeze' (the workflow read resources/genome.fasta.fai, a task output that the simulator made without its content)
-catalog/snakemake-workflows__dna-seq-mtb 1 https://raw.githubusercontent.com/snakemake-workflows/dna-seq-varlociraptor/v6.10.1/workflow/rules/common.smk:1309: WorkflowError: InputFunctionException in rule vembrane_table (wildcards: group=patient-a, event=somatic_or_germline_pathogenic_risk_factor_drug_response, calling_type=variants): Type
+catalog/snakemake-workflows__dna-seq-mtb 1 https://raw.githubusercontent.com/snakemake-workflows/dna-seq-varlociraptor/v6.10.1/workflow/rules/common.smk:1309: WorkflowError: InputFunctionException in rule vembrane_table (wildcards: group=patient-a, event=somatic_or_germline_impact_high_novel, calling_type=variants): TypeError: 'NoneType' o
 catalog/snakemake-workflows__dna-seq-short-read-circle-map ok 1
 catalog/snakemake-workflows__dna-seq-varlociraptor 1 workflow/rules/common.smk:1318: WorkflowError: InputFunctionException in rule vembrane_table (wildcards: group=SRR702070_group, event=some_id, calling_type=variants): TypeError: 'NoneType' object is not subscriptable (the simulated run assumed 2 input files that do not exist and that no rule makes
 catalog/snakemake-workflows__effect-size-estimation ok 11
 catalog/snakemake-workflows__microsatellite-instability-detection-with-msisensor-pro 1 workflow/rules/common.smk:76: WorkflowError: InputFunctionException in rule all (wildcards: ): KeyError: 'The configfile specifies both `aliases: matched_normal:` and `aliases: baseline:`. You must specify exactly one of these, and comment out the other, to clearly determine the mode the workflow
 catalog/snakemake-workflows__read-alignment-pangenome ok 22
 catalog/snakemake-workflows__rna-longseq-de-isoform 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile config/config.yml but it is not present or accessible (full checked path: config/config.yml).
-catalog/snakemake-workflows__rna-seq-kallisto-sleuth ok 46
+catalog/snakemake-workflows__rna-seq-kallisto-sleuth ok 44
 catalog/snakemake-workflows__rna-seq-star-deseq2 ok 75
 catalog/snakemake-workflows__rna-seq-xengsort ok 19
 catalog/snakemake-workflows__single-cell-counts-preprocessing ok 1
@@ -416,7 +416,7 @@ catalog/spjuhel__Climada_TC_TCSurge_Generation 1 workflow/Snakefile:27: KeyError
 catalog/spraeger__mutational-patterns-analysis ok 10
 catalog/t-i-r__snakemake-workflow-template ok 0
 catalog/tahiri-lab__aPhyloGeo-pipeline 1 workflow/rules/common.smk:75: WorkflowError: InputFunctionException in rule all (wildcards: ): EmptyDataError: No columns to parse from file (the workflow read results/rf_phyML.csv, a task output that the simulator made without its content)
-catalog/tavareshugo__smk-indexer ok 137
+catalog/tavareshugo__smk-indexer ok 128
 catalog/tbenavi1__RetroDetector ok 66
 catalog/tdayris__fair_bowtie2_mapping 1 https://raw.githubusercontent.com/tdayris/fair_genome_indexer/3.9.7/workflow/rules/common.smk:120: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
 catalog/tdayris__fair_cnv_facets 1 workflow/rules/common.smk:171: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
@@ -427,7 +427,7 @@ catalog/tdayris__fair_macs2_calling 1 workflow/rules/common.smk:171: AttributeEr
 catalog/tdayris__fair_rnaseq_salmon_quant 1 workflow/rules/common.smk:106: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
 catalog/thomasbtf__sars-cov-2-wbe 1 workflow/Snakefile:7: WorkflowError: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
 catalog/thomasmulvaney__snakemake-gromacs-workflow ok 10
-catalog/tmweiskittel__serpent-methylation-pipeline-cloud 33 workflow/Snakefile:916: Not supported yet: commands in the onsuccess lifecycle hook require a container task
+catalog/tmweiskittel__serpent-methylation-pipeline-cloud ok 20
 catalog/tmweiskittel__tmw_align_emseq 1 workflow/Snakefile:70: WorkflowError: InputFunctionException in rule all (wildcards: ): TypeError: 'NoneType' object is not iterable (the workflow read /home/jupyter/data/samples.csv, a task output that the simulator made without its content)
 catalog/tmweiskittel__tmw_analysis_emseq ok 244
 catalog/trickovicmatija__kingfisher_workflow 1 workflow/Snakefile:3: WorkflowError: Workflow defines configfile ../config/default_config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/default_config.yaml).
@@ -458,8 +458,8 @@ catalog/xin-huang__selscape ok 258
 catalog/yeyuan98__rna_fish_analysis ok 16
 catalog/ylab-hi__ScanNeo2 1 workflow/rules/common.smk:175: SystemExit: 1
 catalog/zavolanlab__mirflowz 1 workflow/Snakefile:23: WorkflowError: Workflow defines configfile workflow/../test/config_lint.yaml but it is not present or accessible (full checked path: test/config_lint.yaml).
-catalog/zavolanlab__zarp 33 workflow/Snakefile:1450: Not supported yet: shadow mode 'full' for rule star_rpm; only 'minimal' is supported
-catalog/zhongmicai__mosaicatcher-pipeline 1 workflow/rules/common.smk:22: WorkflowError: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
+catalog/zavolanlab__zarp ok 72
+catalog/zhongmicai__mosaicatcher-pipeline 1 workflow/rules/external_data.smk:4: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 catalog/zhuakexi__dna-seq-gatk-variant-calling ok 10
 catalog/zifornd__arrays ok 33
 catalog/ziyaipek__snakemake ok 10
@@ -512,9 +512,9 @@ tests/test_cloud_checkpoints_issue574 1 Snakefile:6: NotImplementedError: Remote
 tests/test_conda ok 7
 tests/test_conda_cmd_exe ok 7
 tests/test_conda_custom_prefix ok 4
-tests/test_conda_function 33 Snakefile:10: Not supported yet: commands in the onsuccess lifecycle hook require a container task
+tests/test_conda_function ok 5
 tests/test_conda_global 1 Snakefile:10: the workflow imports the Python package PIL, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
-tests/test_conda_named 33 Snakefile:16: Not supported yet: commands in the onsuccess lifecycle hook require a container task
+tests/test_conda_named ok 2
 tests/test_conda_pin_file ok 1
 tests/test_conda_python_3_7_script ok 1
 tests/test_conda_python_script ok 1
@@ -534,9 +534,9 @@ tests/test_core_dependent_threads ok 1
 tests/test_cwl ok 1
 tests/test_cyclic_dependency_single ok 1
 tests/test_cyclic_dependency_split ok 3
-tests/test_default_flags ok 4
+tests/test_default_flags ok 3
 tests/test_default_remote ok 7
-tests/test_default_resources ok 2
+tests/test_default_resources ok 1
 tests/test_default_storage_local_job ok 4
 tests/test_default_target ok 3
 tests/test_deferred_func_eval ok 1
@@ -546,7 +546,7 @@ tests/test_delete_temp_fs ok 3
 tests/test_deploy_hashing ok 3
 tests/test_deploy_script ok 2
 tests/test_deploy_sources ok 1
-tests/test_directory 33 Snakefile:46: Not supported yet: shadow mode 'shallow' for rule shadow; only 'minimal' is supported
+tests/test_directory ok 6
 tests/test_dryrun_executor_validation ok 2
 tests/test_dup_out_patterns 1 Snakefile:5: WorkflowError: Duplicate output file pattern in rule my_rule. First two duplicate for entries 0 and 1.
 tests/test_dynamic_container ok 6
@@ -622,16 +622,16 @@ tests/test_github_issue_4039_runtime_no_override ok 1
 tests/test_github_issue_4039_runtime_profile ok 1
 tests/test_globwildcards ok 6
 tests/test_google_lifesciences 1 Snakefile:5: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
-tests/test_group_job_fail ok 12
-tests/test_group_jobs ok 12
+tests/test_group_job_fail ok 7
+tests/test_group_jobs ok 7
 tests/test_group_jobs_attempts ok 1
 tests/test_group_jobs_resources 1 Snakefile:3: WorkflowError: resource_scopes are not supported by iunctus
-tests/test_group_parallel ok 3
-tests/test_group_temp ok 4
-tests/test_group_with_pipe ok 8
-tests/test_groupid_expand ok 5
-tests/test_groupid_expand_cluster ok 5
-tests/test_groups_out_of_jobs ok 5
+tests/test_group_parallel ok 1
+tests/test_group_temp ok 2
+tests/test_group_with_pipe ok 2
+tests/test_groupid_expand ok 2
+tests/test_groupid_expand_cluster ok 2
+tests/test_groups_out_of_jobs 1 WorkflowError: Error in group: dependencies leave and re-enter the component through jobs outside the group
 tests/test_gs_requester_pays 1 Snakefile:2: the workflow imports the Python package google, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 tests/test_handle_storage_multi_consumers ok 3
 tests/test_handover 1 Snakefile:1: WorkflowError: handover is not supported by iunctus for rule a
@@ -644,8 +644,8 @@ tests/test_inner_call ok 2
 tests/test_inoutput_is_path ok 0
 tests/test_input_generator ok 4
 tests/test_ioutils ok 7
-tests/test_issue1037 ok 2
-tests/test_issue1041 ok 3
+tests/test_issue1037 ok 1
+tests/test_issue1041 ok 2
 tests/test_issue1046 ok 2
 tests/test_issue1083 ok 1
 tests/test_issue1085 1 WorkflowError: unpack() is not allowed with params. Simply return a dictionary which can be directly .used, e.g. via {params[mykey]}. (rule test)
@@ -674,17 +674,17 @@ tests/test_issue805 1 Snakefile:6: SyntaxError: No rule keywords allowed after t
 tests/test_issue823_1 ok 3
 tests/test_issue823_2 ok 5
 tests/test_issue823_3 ok 2
-tests/test_issue850 ok 9
+tests/test_issue850 ok 3
 tests/test_issue854 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
-tests/test_issue860 ok 9
+tests/test_issue860 ok 3
 tests/test_issue894 1 Snakefile:2: AssertionError
 tests/test_issue912 ok 3
 tests/test_issue916 ok 2
-tests/test_issue930 ok 7
+tests/test_issue930 ok 5
 tests/test_issue956 ok 5
 tests/test_issue958 ok 2
 tests/test_issue_3202 ok 2
-tests/test_job_properties ok 4
+tests/test_job_properties ok 3
 tests/test_jupyter_notebook ok 5
 tests/test_jupyter_notebook_draft ok 1
 tests/test_jupyter_notebook_nbconvert ok 5
@@ -826,9 +826,9 @@ tests/test_service_jobs ok 2
 tests/test_set_resources ok 1
 tests/test_set_resources_complex ok 1
 tests/test_set_threads ok 1
-tests/test_shadow 33 Snakefile:6: Not supported yet: shadow mode 'shallow' for rule shallow; only 'minimal' is supported
-tests/test_shadow_copy 33 Snakefile:18: Not supported yet: shadow mode 'copy-minimal' for rule minimal_rel_curdir; only 'minimal' is supported
-tests/test_shadow_prefix 33 Snakefile:3: Not supported yet: shadow mode 'shallow' for rule all; only 'minimal' is supported
+tests/test_shadow ok 17
+tests/test_shadow_copy 33 Snakefile:18: Not supported yet: shadow mode 'copy-minimal' for rule minimal_rel_curdir; only 'minimal', 'shallow' and 'full' are supported
+tests/test_shadow_prefix ok 1
 tests/test_shadowed_log ok 1
 tests/test_shell ok 1
 tests/test_shell_exec ok 1

@@ -330,6 +330,7 @@ tests/test_github_issue_4039_runtime_profile	tests.py	0	evaluated
 tests/test_google_lifesciences	plain	1	failed	NotImplementedError in file "Snakefile", line 5: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_groupid_expand	plain	0	evaluated
 tests/test_groupid_expand_cluster	plain	0	evaluated
+tests/test_groups_out_of_jobs	tests.py	1	evaluated	WorkflowError:
 tests/test_gs_requester_pays	plain	1	failed	NotImplementedError in file "Snakefile", line 4: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_immediate_submit	plain	0	evaluated
 tests/test_issue1085	tests.py	1	evaluated	WorkflowError in rule test in file "Snakefile", line 6: unpack() is not allowed with params. Simply return a dictionary which can be directly .used, e.g. via {params[mykey]}. (rule test, line 6, Snakefile)

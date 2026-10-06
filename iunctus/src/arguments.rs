@@ -147,6 +147,36 @@ pub enum Resume {
     Run(String),
 }
 
+impl Arguments {
+    /// Converts CLI execution options while keeping its input syntax and presentation private.
+    pub(crate) fn run_settings(&self) -> crate::run::Settings {
+        crate::run::Settings {
+            target: self.target.clone().unwrap_or_default(),
+            language: self.language,
+            profiles: self.profiles.clone().unwrap_or_default(),
+            configs: self.configs.clone(),
+            config_file: self.config_file.clone(),
+            executor: self.executor.clone(),
+            resume: self.resume.clone(),
+            cache: !self.no_cache,
+            targets: self.targets.clone(),
+            until: self.until.clone(),
+            omit_from: self.omit_from.clone(),
+            forcerun: self.forcerun.clone(),
+            forceall: self.forceall,
+            default_image: self.default_image.clone(),
+            max_pending: self.max_pending,
+            retries: self.machine_retries,
+            retry_delay: self.retry_delay_ms.map(std::time::Duration::from_millis),
+            output_dir: self.output_dir.clone(),
+            database: self.database.clone(),
+            store: self.store.clone(),
+            cli: Some(self.clone()),
+            ..crate::run::Settings::default()
+        }
+    }
+}
+
 /// Reads the options after the command name.
 pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
     parse_for(None, arguments)

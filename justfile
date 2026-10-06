@@ -434,6 +434,10 @@ funnel-server:
 tes-test:
 	IUNCTUS_TES_SERVER=http://localhost:18000 cargo test -p tes-executor --test funnel -- --ignored
 
+# Qualifies object staging with isolated MinIO, Funnel and Docker, then removes its resources.
+tes-qualification *arguments:
+	python3 -I scripts/tes-qualification.py {{arguments}}
+
 # Starts a local RustFS (S3-compatible) with the bucket `iunctus-test` for the S3 tests.
 # `docker stop iunctus-s3` ends it.
 s3-server:

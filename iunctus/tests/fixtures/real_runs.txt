@@ -99,3 +99,10 @@ iunctus: exit 33 in 2 s, published files=1
 comparison: 27 reference files and 0 iunctus files after excluding pipeline_info/**; 0 matching digests, 27 missing, 0 extra, 0 differing contents
 verdict: unsupported, parity not established
 notes: iunctus: workflows/../subworkflows/nf-core/fasta_hmmsearch_rank_fastas/main.nf:74:5: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. Data headers total 27274 bytes.
+
+## nf-core-bamtofastq-local-20261008: nf-core/bamtofastq daf99df, -profile test, local Docker
+native: exit 1 in 18 s, 8 published files
+iunctus: exit 33 in 2 s, published files=1
+comparison: 2 reference files and 0 iunctus files after excluding pipeline_info/**; 0 matching digests, 2 missing, 0 extra, 0 differing contents
+verdict: reference invalid; iunctus unsupported, parity not established
+notes: Nextflow fails SAMTOOLS_FAIDX: the test profile supplies no FASTA, so the command is `samtools faidx` without an input and exits 1. Iunctus stops earlier: workflows/bamtofastq.nf:220:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. The two partial material outputs are samtools idxstats files; differing abort schedules do not establish parity. Data headers total 381538 bytes.

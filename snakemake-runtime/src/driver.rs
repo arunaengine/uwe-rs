@@ -1999,6 +1999,7 @@ pub struct RunSettings {
     pub image: Option<String>,
     pub offline: bool,
     pub rerun_triggers: Option<Vec<String>>,
+    pub conda: bool,
 }
 
 /// The driver of a Snakemake workflow: `launch.target` is a Snakefile, or a folder with a
@@ -2040,6 +2041,7 @@ pub fn driver_with_options(
             let open = || -> Result<Session, DriverError> {
                 let mut session = Session::new(&launch, &settings.storage)?;
                 session.rerun_triggers = options.rerun_triggers.clone();
+                session.state.borrow_mut().conda_enabled = options.conda;
                 session.acceptance = session_acceptance.clone();
                 session.deliveries = shared.clone();
                 session.files.read_outputs_through(task_files.clone());

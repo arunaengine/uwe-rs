@@ -178,7 +178,7 @@ fn skips_unexecuted_hooks() {
 }
 
 #[test]
-fn rejects_hook_commands() {
+fn runs_hook_commands() {
     for hook in ["onstart", "onsuccess", "onerror"] {
         let folder = tempfile::tempdir().expect("a folder");
         std::fs::write(
@@ -191,6 +191,7 @@ fn rejects_hook_commands() {
         let launch = Launch {
             target: folder.path().to_path_buf(),
             scratch: folder.path().join("scratch"),
+            simulated: true,
             ..Launch::default()
         };
         let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
@@ -200,25 +201,64 @@ fn rejects_hook_commands() {
         } else {
             execute("hooks", driver.as_mut(), &mut executor)
         };
-        let message = if hook == "onerror" {
-            let error = execution.failure_hook_error.expect("hook diagnostic");
-            assert!(error.unsupported);
-            error.to_string()
+        if hook == "onerror" {
+            assert!(execution.error.is_some());
+            assert!(
+                execution.failure_hook_error.is_none(),
+                "{:?}",
+                execution.failure_hook_error
+            );
         } else {
-            let error = execution.error.expect("hook diagnostic");
-            assert!(error.unsupported());
-            error.to_string()
+            assert!(execution.error.is_none(), "{:?}", execution.error);
+        }
+    }
+}
+
+#[test]
+fn diagnoses_missing_engine() {
+    for shell in [false, true] {
+        let folder = tempfile::tempdir().unwrap();
+        let hook = if shell {
+            "shell('true')"
+        } else {
+            "print('native hook')"
         };
-        assert!(
-            message.contains(hook) && message.contains("require a container task"),
-            "{message}"
-        );
-        assert!(
-            execution
-                .graph
-                .nodes
-                .iter()
-                .all(|node| node.task.step != "command")
-        );
+        std::fs::write(
+            folder.path().join("Snakefile"),
+            format!("onstart:\n    {hook}\nrule make:\n    shell: 'true'\n"),
+        )
+        .unwrap();
+        let launch = Launch {
+            target: folder.path().into(),
+            scratch: folder.path().join("scratch"),
+            ..Launch::default()
+        };
+        let settings = snakemake_runtime::Settings {
+            python: Some(snakemake_runtime::PythonContainers {
+                engine: folder
+                    .path()
+                    .join("missing.sock")
+                    .to_string_lossy()
+                    .into_owned(),
+                image: None,
+                cache: folder.path().join("cache"),
+                show_output: false,
+            }),
+            ..Default::default()
+        };
+        let mut driver = snakemake_runtime::driver_with(&launch, settings).unwrap();
+        let mut executor = Simulator::new(folder.path().join("made"));
+        let execution = execute("hooks", driver.as_mut(), &mut executor);
+        if shell {
+            let error = execution.error.unwrap();
+            assert!(
+                error
+                    .to_string()
+                    .contains("requires a local Docker or Podman engine"),
+                "{error}"
+            );
+        } else {
+            assert!(execution.error.is_none(), "{:?}", execution.error);
+        }
     }
 }

@@ -12,6 +12,7 @@ mod files;
 mod functions;
 mod git;
 mod groups;
+mod hooks;
 mod inputs;
 mod iofile;
 mod ioutils;
@@ -39,6 +40,8 @@ mod task;
 mod utils;
 mod workflow;
 
-pub use driver::{Session, Settings, driver, driver_with, find_snakefile};
+pub use driver::{
+    RunSettings, Session, Settings, driver, driver_with, driver_with_options, find_snakefile,
+};
 pub use pattern::{Matcher, Wildcards, apply as apply_wildcards, regex_text, wildcard_names};
 pub use python::{ContainerStarter, DEFAULT_IMAGE, PythonContainers};

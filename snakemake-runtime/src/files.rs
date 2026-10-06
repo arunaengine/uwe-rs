@@ -248,13 +248,11 @@ impl Host for WorkflowFiles {
     }
 
     fn run_command(&self, command: &Command) -> Result<CommandOutcome, Error> {
-        if let Some(hook) = self.lifecycle.get() {
-            return Err(Error::unsupported(format!(
-                "commands in the {hook} lifecycle hook require a container task"
-            )));
-        }
         let runner = self.commands.borrow().clone();
         match runner {
+            Some(runner) if self.lifecycle.get().is_some() => {
+                runner.run_hook(command, self.lifecycle.get().unwrap())
+            }
             Some(runner) => runner.run(command),
             None => Err(Error::unsupported(
                 "running commands while the workflow is planned",

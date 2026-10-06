@@ -82,3 +82,7 @@ Outputs and logs of shallow and full jobs must be relative and stay inside task 
 ## 9. Group jobs
 
 Jobs with the same `group:` id form one task per connected component, equivalent to Snakemake's default of one group component. String ids expand wildcards; callable ids receive wildcards. Each same-image component runs commands in dependency order in one container, with each job's environment, external inputs, declared outputs and validation. Resources cover the largest sequential job and the sum of their runtime limits. A failed component retries as a whole. Components with different images run as separate tasks and emit a debug log. Local rules and checkpoints keep separate tasks. Explicit component merging is not supported.
+
+## 10. Lifecycle shell commands
+
+`onstart`, `onsuccess` and `onerror` run native Python at Snakemake's scheduling boundary. Their `shell()` and supported subprocess calls use the local container executor, without caching, with the workflow directory mounted writable and the hook log available at its absolute path. They use the global `container:` or the configured default image. Standard output, standard error and exit status return to the native interpreter; missing programs fail at execution with the hook name, image and container error output. A simulated run skips hook commands. Hooks remain local even when rule jobs use a remote executor. Arbitrary native Python and host-only programs remain unavailable.

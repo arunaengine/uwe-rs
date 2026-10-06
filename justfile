@@ -21,6 +21,11 @@ test:
 check:
 	cargo check --workspace --all-targets --all-features --locked
 
+# Runs four demos and checks failure, resume, cancellation and simulation with local Docker.
+container-runs:
+	nice -n 19 cargo build --offline --locked -p iunctus -j 8
+	nice -n 19 python3 -I scripts/container-runs.py target/debug/iunctus
+
 # Fetches the text-only nf-core test workflows at the commits the test-workflows tests expect.
 test-workflows:
 	#!/usr/bin/env bash

@@ -1,4 +1,4 @@
-# Checks source formatting, lints, tests and documentation tests.
+# Checks source formatting, lints, tests, container runs and documentation tests.
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -52,6 +52,41 @@ jobs:
       - name: Workspace tests
         if: matrix.check == 'tests'
         run: cargo +1.97.1 test --offline --locked --workspace --all-targets --all-features -j 2
+      - name: Package container run binary
+        if: matrix.check == 'tests'
+        run: |
+          mkdir -p target/container-runs
+          cp target/debug/iunctus target/container-runs/iunctus
+          strip target/container-runs/iunctus
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: matrix.check == 'tests'
+        with:
+          name: container-run-binary
+          path: target/container-runs/
+          if-no-files-found: error
+          retention-days: 1
       - name: Doctests
         if: matrix.check == 'doctests'
         run: cargo +1.97.1 test --offline --locked --workspace --all-features --doc -j 2
+
+  container-runs:
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: container-run-binary
+          path: target/container-runs/
+      - name: Pull the single pinned image
+        run: |
+          docker info
+          image=$(python3 -I -c 'import runpy; print(runpy.run_path("scripts/container-runs.py")["IMAGE"])')
+          docker pull "$image"
+      - name: Container runs
+        run: |
+          chmod +x target/container-runs/iunctus
+          nice -n 19 python3 -I scripts/container-runs.py target/container-runs/iunctus

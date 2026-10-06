@@ -147,3 +147,14 @@ excluded: pipeline_info/** (6 files); multiqc/multiqc_report.html; multiqc/multi
 normalized: MultiQC JSON, llms-full.txt and Parquet use the exact provenance/date/path/search-pattern fields listed in the demo rerun. This case additionally normalizes numbered staging directories in report_multiqc_command and config.custom_css_files; CSS basenames and all other command arguments agree. All 187 Parquet rows agree, including matching missing-number NaNs.
 normalized: rclone/copy/Illumina_annotation-rclone-copy.log and rclone/copy/benchmark_bed-rclone-copy.log: only their leading YYYY/MM/DD HH:MM:SS log timestamps. All remaining log messages agree, including the same source-equals-destination message from the test profile.
 notes: Frozen updated release SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. Checksum/check outputs match by SHA-256. The test profile sets rclone_dry_run=true; this does not qualify real object copying. Initial refusal evidence is retained under initial/datasync, and updated logs, manifests and normalization receipts under datasync. Temporary source/run/work/cache folders are removed after recording.
+
+## nf-core-fastqrepair-local-20261008-rerun: nf-core/fastqrepair 70a3820, -profile test, local Docker
+native: exit 0 in 42 s, 71 published files
+iunctus: exit 0 in 18 s, 71 published files, all nine tasks executed without result reuse
+comparison: all 71 names agree; 31 material files match SHA-256, 32 agree after report/archive normalization, 8 report/metadata contents excluded; 0 missing, 0 extra, 0 unexplained differences
+verdict: published output parity after the stated normalization
+excluded: pipeline_info/** (6 files); QC/multiqc/multiqc_report.html; QC/multiqc/multiqc_data/multiqc.log
+normalized: QC/multiqc JSON, llms-full.txt, sources.txt, Parquet, SVG and PDF files use the exact fields/patterns listed in the demo rerun, under this pipeline's QC/multiqc/ prefix. All 79 Parquet rows agree after those normalizations.
+normalized: repaired/test_30reads_2.fastq.gz: only gzip header MTIME bytes 4-7 differ; all other compressed bytes and the decompressed FASTQ agree.
+normalized: QC/fastqc/test_30reads_2_fastqc.zip: only ZIP entry timestamps differ; all 29 member names and payloads, and all non-time ZIP metadata fields agree.
+notes: Frozen updated release SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. The repaired read payload, repair report, FastQC HTML, PNG plots and metric tables agree. Both tools report the same intentionally empty/damaged test inputs. Initial refusal evidence is under initial/fastqrepair, and updated logs/manifests/receipts under fastqrepair. Temporary source/run/work/cache folders are removed after recording.

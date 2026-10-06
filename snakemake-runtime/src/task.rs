@@ -6,7 +6,9 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use python_evaluator::ruff_text_size::Ranged;
 use python_evaluator::{Args, Error, Interpreter, Value};
+use sha2::Digest;
 use workflow_graph::{Input, Task, TaskId};
 
 use crate::embedded::{self, Context, data};
@@ -698,6 +700,13 @@ pub fn build(
         }
         _ => None,
     };
+    let software = conda.as_ref().map(|conda| {
+        let file = pattern::apply(conda, &job.wildcards).unwrap_or_else(|_| conda.clone());
+        let source = source_file(rule, &file, setting).1;
+        std::fs::read(source)
+            .ok()
+            .map(|bytes| sha2::Sha256::digest(bytes).to_vec())
+    });
     let image = match (container, conda) {
         // A rule without an action is a no-op task: no command and no image.
         _ if matches!(rule.action, Action::None) => None,
@@ -788,6 +797,7 @@ pub fn build(
         "inputs": job.input.values.iter().filter_map(Value::as_str).collect::<Vec<_>>(),
         "input_names": job.input.names,
         "input_sources": job.input.values.iter().map(|value| value.tag(crate::storage::TAG).and_then(Value::as_str)).collect::<Vec<_>>(),
+        "code": code_identity(rule, job, setting), "software": software,
     });
     Ok((
         Task {
@@ -812,6 +822,49 @@ pub fn build(
         },
         signature,
     ))
+}
+
+fn code_identity(rule: &Rule, job: &Job, setting: &TaskSetting<'_>) -> serde_json::Value {
+    let (kind, code) = match &rule.action {
+        Action::None => ("none", String::new()),
+        Action::Run(code) => ("run", code.clone()),
+        Action::Shell(value) => {
+            let code = rule
+                .shell_code
+                .as_ref()
+                .map(|code| {
+                    let range = code.expression.range();
+                    code.source.text[range.start().to_usize()..range.end().to_usize()].to_owned()
+                })
+                .or_else(|| value.as_str().map(str::to_owned))
+                .unwrap_or_default();
+            ("shell", code)
+        }
+        action => {
+            let (kind, value) = match action {
+                Action::Script(value) => ("script", value),
+                Action::Notebook(value) => ("notebook", value),
+                Action::Wrapper(value) => ("wrapper", value),
+                Action::TemplateEngine(value) => ("template", value),
+                Action::Cwl(value) => ("cwl", value),
+                _ => unreachable!(),
+            };
+            let name = value.as_str().unwrap_or_default();
+            let file = pattern::apply(name, &job.wildcards).unwrap_or_else(|_| name.into());
+            let source = source_file(rule, &file, setting).1;
+            let content = std::fs::read(source)
+                .ok()
+                .map(|bytes| sha2::Sha256::digest(bytes).to_vec());
+            (kind, format!("{name}:{content:?}"))
+        }
+    };
+    serde_json::json!([
+        kind,
+        code,
+        setting.state.shell_executable,
+        setting.state.shell_prefix,
+        setting.state.shell_suffix
+    ])
 }
 
 fn snapshot_param(value: &Value, seen: &mut HashSet<usize>) -> Option<serde_json::Value> {

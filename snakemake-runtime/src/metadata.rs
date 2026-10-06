@@ -46,7 +46,12 @@ pub(crate) fn clear_incomplete(workdir: &Path, output: &str) -> std::io::Result<
     std::fs::File::open(path.parent().unwrap_or(workdir))?.sync_all()
 }
 
-pub(crate) fn signature_changed(workdir: &Path, output: &str, current: &serde_json::Value) -> bool {
+pub(crate) fn signature_changed(
+    workdir: &Path,
+    output: &str,
+    current: &serde_json::Value,
+    triggers: Option<&[String]>,
+) -> bool {
     let Some(mut recorded) = std::fs::read(signature_path(workdir, output))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
@@ -69,6 +74,20 @@ pub(crate) fn signature_changed(workdir: &Path, output: &str, current: &serde_js
             *old = serde_json::Value::Null;
             *new = serde_json::Value::Null;
         }
+    }
+    if let Some(triggers) = triggers {
+        return triggers.iter().any(|trigger| {
+            let fields: &[&str] = match trigger.as_str() {
+                "params" => &["params", "param_names"],
+                "input" => &["inputs", "input_names", "input_sources"],
+                "software-env" => &["image", "software"],
+                "code" => &["code"],
+                _ => &[],
+            };
+            fields
+                .iter()
+                .any(|field| recorded.get(*field) != current.get(*field))
+        });
     }
     recorded != current
 }

@@ -125,6 +125,7 @@ pub struct Planner {
     pub assume_inputs: bool,
     pub forcerun: Vec<String>,
     pub forceall: bool,
+    pub mtime: bool,
     /// The directory outputs that jobs of this run made, by their absolute paths.
     pub made_folders: Vec<PathBuf>,
 }
@@ -155,6 +156,7 @@ impl Planner {
             assume_inputs,
             forcerun: Vec::new(),
             forceall: false,
+            mtime: true,
             made_folders: Vec::new(),
         }
     }
@@ -799,7 +801,7 @@ impl Planner {
                 .iter()
                 .filter(|file| own_outputs.contains(file))
                 .any(|file| !self.exists(interpreter, file));
-        needed = needed || self.has_newer_inputs(interpreter, job, &own_outputs);
+        needed = needed || (self.mtime && self.has_newer_inputs(interpreter, job, &own_outputs));
         result.insert(job, needed);
         needed
     }

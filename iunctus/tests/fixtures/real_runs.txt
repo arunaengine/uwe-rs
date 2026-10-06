@@ -168,3 +168,11 @@ excluded: pipeline_info/** (6 files); multiqc/multiqc_report.html; multiqc/multi
 normalized: MultiQC JSON, llms-full.txt and Parquet use the exact report provenance/date/path/search-pattern fields listed in the demo rerun. The Parquet contains one report row, whose complete structured content agrees after those fields and the SVG creation comment below are normalized.
 normalized: gappa/placement.heattree.log: only its Started/Finished timestamps; gappa/placement.heattree.tree.svg and its embedded MultiQC copy: only the date/time in the Created with genesis v0.30.0 comment. All other SVG bytes, including geometry, agree.
 notes: Frozen updated release SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. The placement JPLACE gzip, alignments, query/reference FASTA gzip files, all taxonomy tables and grafted trees match by SHA-256, with no row-order exception needed in this pair. Initial refusal evidence is under initial/phyloplace and updated logs/manifests/receipts under phyloplace. Temporary source/run/work/cache folders are removed after recording.
+
+## nf-core-bamtofastq-local-20261008-rerun: nf-core/bamtofastq daf99df, -profile test, local Docker
+native: exit 1 in 26 s, SAMTOOLS_FAIDX missing FASTA, 9 partial published files
+iunctus: exit 1 in 8 s, SAMTOOLS_FAIDX missing FASTA, 7 partial published files
+comparison: after pipeline_info/** is excluded, 3 reference files and 6 iunctus files; all 3 common digests agree, 0 missing, 3 extra, 0 differing common contents
+verdict: reference test profile invalid; matching process failure, complete output parity not established
+extra: fastqc/test.pre_conversion_fastqc.html; fastqc/test.pre_conversion_fastqc.zip; samtools/test.flagstat
+notes: The test profile supplies no FASTA, so both engines fail PREPARE_INDICES:SAMTOOLS_FAIDX with status 1. The frozen updated binary no longer stops at collectFile before task execution. Iunctus completed three more independent publications before cancellation; differing abort schedules explain those partial-file differences. Common idxstats and test2.flagstat files match by SHA-256. Frozen updated release SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. Initial evidence is under initial/bamtofastq, updated logs/manifests under bamtofastq. Temporary source/run/work/cache folders are removed after recording.

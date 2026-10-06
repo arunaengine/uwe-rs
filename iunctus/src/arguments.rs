@@ -50,6 +50,8 @@ pub struct Arguments {
     pub forcerun: Vec<String>,
     /// `-forceall`: rerun every job needed for the Snakemake targets.
     pub forceall: bool,
+    /// `-rerun-triggers`: Snakemake checks that can require existing outputs to run again.
+    pub rerun_triggers: Option<Vec<String>>,
     /// `-executor simulator|local|tes|slurm|kubernetes`; `None` uses config, else local for runs.
     pub executor: Option<String>,
     /// `-graph file`: where to write the execution graph.
@@ -211,6 +213,19 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
             "-stub" | "-stub-run" => parsed.stub = true,
             "-keep-going" => parsed.keep_going = true,
             "-forceall" => parsed.forceall = true,
+            "-rerun-triggers" => {
+                let triggers = value()?;
+                let names: Vec<String> = triggers.split(',').map(str::to_owned).collect();
+                if names.iter().any(|name| {
+                    !["mtime", "params", "input", "software-env", "code"].contains(&name.as_str())
+                }) {
+                    return Err(
+                        "-rerun-triggers expects mtime,params,input,software-env,code or a subset"
+                            .into(),
+                    );
+                }
+                parsed.rerun_triggers = Some(names);
+            }
             "-until" | "-omit-from" | "-forcerun" => {
                 let names = value()?;
                 if names.starts_with('-') || names.split(',').any(str::is_empty) {
@@ -549,6 +564,7 @@ const OPTIONS: &[(&str, &[&str])] = &[
         &["run", "graph", "check", "check-order"],
     ),
     ("-forceall", &["run", "graph", "check", "check-order"]),
+    ("-rerun-triggers <a,b>", &["run"]),
     ("-executor <simulator|local|tes|slurm|kubernetes>", BACKEND),
     (
         "-store <folder|address>",
@@ -693,6 +709,9 @@ fn engine_option(option: &str, language: Option<Language>) -> Option<&'static st
             "--omit-from" => "use `-omit-from rules,files`",
             "--forcerun" => "use `-forcerun rules,files`",
             "--forceall" => "use `-forceall`",
+            "--rerun-triggers" => {
+                "use `-rerun-triggers mtime,params,input,software-env,code` or a subset"
+            }
             _ => return None,
         },
         _ => return None,
@@ -1009,6 +1028,20 @@ mod tests {
         );
         assert_eq!(parsed.configs, [PathBuf::from("config.yaml")]);
         assert_eq!(parsed.language, Some(Language::Snakemake));
+    }
+
+    #[test]
+    fn parses_rerun_triggers() {
+        let parsed = parse_all(&["Snakefile", "-rerun-triggers", "mtime,code"]);
+        assert_eq!(
+            parsed.rerun_triggers,
+            Some(vec!["mtime".into(), "code".into()])
+        );
+        for value in ["", "unknown", "mtime,"] {
+            assert!(parse(&["Snakefile".into(), "-rerun-triggers".into(), value.into()]).is_err());
+        }
+        assert!(help("run").unwrap().contains("-rerun-triggers <a,b>"));
+        assert!(!help("graph").unwrap().contains("-rerun-triggers <a,b>"));
     }
 
     #[test]

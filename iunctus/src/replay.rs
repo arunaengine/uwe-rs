@@ -96,6 +96,10 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         .record(&start)
         .map_err(|error| failure(format!("iunctus: {error}")))?;
     recorder.replays(&run, task);
+    let telemetry = setup
+        .telemetry
+        .as_ref()
+        .and_then(|telemetry| telemetry.start(&arguments, &mut recorder));
     eprintln!(
         "iunctus: replaying task {task} {} of run {run} as run {id} on {executor}",
         replayed.name
@@ -116,7 +120,9 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         .run(&original.workflow, &mut driver);
     interrupt.cancel();
     crate::close(recorder);
-    super::telemetry::after_run(&arguments, &setup, &id);
+    if let Some(telemetry) = telemetry {
+        telemetry.finish();
+    }
     if driver.outcome.is_some() {
         print!("{}", report(&database, &run, &id, task, &from_store)?);
     }

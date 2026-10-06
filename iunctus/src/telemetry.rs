@@ -83,24 +83,6 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
-/// Sends the trace of a run that ended to the endpoint of the config file, when it names one.
-/// A failure is only a warning, since the run itself is over.
-pub fn after_run(arguments: &Arguments, setup: &Setup, run: &str) {
-    let Some(telemetry) = &setup.telemetry else {
-        return;
-    };
-    let sent = runs::open(arguments)
-        .and_then(|database| traces(&database, run))
-        .and_then(|requests| send(telemetry, &requests));
-    match sent {
-        Ok(sent) => tracing::info!("iunctus: {}", said(telemetry, &sent)),
-        Err(problem) => tracing::warn!(
-            "iunctus: the trace of the run was not sent: {}",
-            problem.message.trim_start_matches("iunctus: ")
-        ),
-    }
-}
-
 impl Telemetry {
     /// Starts live export. Close the recorder before finishing the handle.
     pub fn start(

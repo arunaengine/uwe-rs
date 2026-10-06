@@ -9,7 +9,61 @@ use crate::{
     Failure, cache_directory, failure, kubernetes, local, preview, resources, runner_settings,
     runs, slurm, tes,
 };
-use workflow_graph::{Executor, Simulator};
+use workflow_graph::{Attempt, ExecuteError, Executor, Files, Running, Simulator, TaskId};
+
+/// Caps task requests before backend placement, retaining completion and cleanup ownership.
+pub(crate) fn limited(
+    executor: Box<dyn Executor>,
+    cpus: Option<u32>,
+    memory: Option<u64>,
+) -> Box<dyn Executor> {
+    if cpus.is_none() && memory.is_none() {
+        return executor;
+    }
+    Box::new(Limited {
+        executor,
+        cpus,
+        memory,
+    })
+}
+
+struct Limited {
+    executor: Box<dyn Executor>,
+    cpus: Option<u32>,
+    memory: Option<u64>,
+}
+
+impl Executor for Limited {
+    fn run(&mut self, mut attempt: Attempt) -> Running {
+        let resources = &mut std::sync::Arc::make_mut(&mut attempt.task).resources;
+        if let Some(cpus) = self.cpus {
+            resources.cpus = Some(resources.cpus.unwrap_or(1.0).min(f64::from(cpus)));
+        }
+        if let Some(memory) = self.memory {
+            resources.memory_bytes = Some(resources.memory_bytes.unwrap_or(memory).min(memory));
+        }
+        self.executor.run(attempt)
+    }
+
+    fn settle(
+        &mut self,
+        task: TaskId,
+        attempt: u32,
+        accepted: bool,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<(), ExecuteError>> + Send + 'static>,
+    > {
+        self.executor.settle(task, attempt, accepted)
+    }
+
+    fn files(&self) -> Option<std::sync::Arc<dyn Files>> {
+        self.executor.files()
+    }
+
+    fn hold(&mut self) {
+        self.executor.hold();
+    }
+}
 
 /// A real executor with the settings of the command line: its line per task, whether the cache
 /// answers tasks, the share of cached tasks that run again for the reproducibility check, the
@@ -234,4 +288,56 @@ fn previewed(simulator: Simulator, arguments: &Arguments, setup: &Setup) -> Box<
         pins,
         default_image,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use workflow_graph::{Attempt, CancellationToken, Executor, Outcome, Resources, Running, Task};
+
+    struct Observed(Arc<Mutex<Resources>>);
+
+    impl Executor for Observed {
+        fn run(&mut self, attempt: Attempt) -> Running {
+            *self.0.lock().unwrap() = attempt.task.resources.clone();
+            Running::ended(Ok(Outcome::default()))
+        }
+    }
+
+    #[tokio::test]
+    async fn caps_backend_requests() {
+        for (resources, cpus) in [
+            (
+                Resources {
+                    cpus: Some(4.0),
+                    memory_bytes: Some(32 << 20),
+                    ..Resources::default()
+                },
+                2.0,
+            ),
+            (Resources::default(), 1.0),
+        ] {
+            let observed = Arc::new(Mutex::new(Resources::default()));
+            let mut executor = super::limited(
+                Box::new(Observed(observed.clone())),
+                Some(2),
+                Some(16 << 20),
+            );
+            executor
+                .run(Attempt {
+                    task: Arc::new(Task {
+                        resources,
+                        ..Task::default()
+                    }),
+                    number: 1,
+                    cancel: CancellationToken::new(),
+                })
+                .await
+                .unwrap();
+            let observed = observed.lock().unwrap();
+            assert_eq!(observed.cpus, Some(cpus));
+            assert_eq!(observed.memory_bytes, Some(16 << 20));
+        }
+    }
 }

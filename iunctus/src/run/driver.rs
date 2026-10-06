@@ -80,7 +80,12 @@ pub(crate) fn driver(
             snakemake(arguments, setup, cancel),
             snakemake_runtime::RunSettings {
                 image: arguments.default_image.clone(),
-                offline: arguments.no_network,
+                offline: super::backend::network_rule(arguments, setup).offline(
+                    &workflow_graph::Task {
+                        step: "command".into(),
+                        ..Default::default()
+                    },
+                ),
                 rerun_triggers: arguments.rerun_triggers.clone(),
                 conda: setup.conda.is_some(),
             },

@@ -200,12 +200,13 @@ impl CommandRunner {
         let id = TaskId(self.next_task.get());
         self.next_task.set(id.0 + 1);
         let task = self.task(id, command);
+        let cancel = hook_cancel(hook, &self.cancel);
         let outcome = crate::hooks::run(
             &task,
             &self.engine,
             &self.scratch,
             self.settings.offline,
-            &self.cancel,
+            &cancel,
         )?;
         if outcome.exit_code != 0 {
             eprintln!(
@@ -216,5 +217,31 @@ impl CommandRunner {
             );
         }
         Ok(outcome)
+    }
+}
+
+fn hook_cancel(hook: &str, cancel: &executor::CancellationToken) -> executor::CancellationToken {
+    if hook == "onerror" {
+        executor::CancellationToken::new()
+    } else {
+        cancel.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn isolates_error_cleanup() {
+        let work = executor::CancellationToken::new();
+        let start = hook_cancel("onstart", &work);
+        let success = hook_cancel("onsuccess", &work);
+        let error = hook_cancel("onerror", &work);
+        work.cancel();
+        assert!(start.is_cancelled());
+        assert!(success.is_cancelled());
+        assert!(!error.is_cancelled());
+        assert!(!hook_cancel("onerror", &work).is_cancelled());
     }
 }

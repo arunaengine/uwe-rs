@@ -85,7 +85,7 @@ Jobs with the same `group:` id form one task per connected component, equivalent
 
 ## 10. Lifecycle shell commands
 
-`onstart`, `onsuccess` and `onerror` run native Python at Snakemake's scheduling boundary. Their `shell()` and supported subprocess calls use the local container executor, without caching, with the workflow directory mounted writable and the hook log available at its absolute path. They use the global `container:` or the configured default image. Standard output, standard error and exit status return to the native interpreter; missing programs fail at execution with the hook name, image and container error output. A simulated run skips hook commands. Hooks remain local even when rule jobs use a remote executor. Arbitrary native Python and host-only programs remain unavailable.
+`onstart`, `onsuccess` and `onerror` run native Python at Snakemake's scheduling boundary. Their `shell()` and supported subprocess calls use the local container executor, without caching, with the workflow directory mounted writable and the hook log available at its absolute path. They use the global `container:` or the configured default image and honor the configured network policy. Standard output, standard error and exit status return to the native interpreter; missing programs fail at execution with the hook name, image and container error output. Error hooks use a separate cancellation token so cleanup still runs after the engine cancels failed jobs. A simulated run skips hook commands. Hooks remain local even when rule jobs use a remote executor. Arbitrary native Python and host-only programs remain unavailable.
 
 ## 11. Rerun triggers
 

@@ -4,12 +4,14 @@
 
 pub(crate) mod backend;
 pub(crate) mod driver;
+mod settings;
 pub(crate) mod support;
+
+pub use settings::Settings;
 
 use crate::application::{self, Description, Policy};
 use crate::arguments::Arguments;
 use crate::repeat::Pinned;
-use crate::setup::Setup;
 use crate::{
     Failure, driver, executor, failure, fetched, inputs, launch, network_rule, page, progress,
     record, report, resources, resume, run_id, sources, stop_on_interrupt, target_and_language,
@@ -17,79 +19,65 @@ use crate::{
 };
 use run_database::Recorder;
 use run_page::Server;
-use workflow_graph::{CancellationToken, Engine, Execution, Order, RunOptions};
+use workflow_graph::{Engine, Execution, Order, RunOptions};
 
-/// A workflow submission. `settings` uses the same configuration as `iunctus run`.
+/// A workflow submission using embedding settings and the shared CLI execution path.
 /// Strict admission checks typed JSON without CLI coercion or simulated assumptions.
 pub struct RunRequest {
-    pub settings: crate::RunSettings,
+    pub settings: Settings,
     pub policy: Policy,
-    /// Supplies execution setup without loading its config files or applying global defaults.
-    /// The optional local viewer still reads its own page configuration.
-    pub setup: Option<Setup>,
 }
 
 impl RunRequest {
-    /// Selects a workflow with strict admission. Set `settings.inputs` to its JSON input file.
-    pub fn new(target: impl Into<std::path::PathBuf>) -> Self {
+    /// Selects a configured workflow with strict typed JSON admission.
+    pub fn new(settings: Settings) -> Self {
         Self {
-            settings: Arguments {
-                target: Some(target.into()),
-                ..Arguments::default()
-            },
+            settings,
             policy: Policy::Strict,
-            setup: None,
         }
     }
 
     /// Runs safely inside Tokio. Drivers and the blocking engine stay on the worker thread.
     /// Dropping this future requests cancellation; the worker continues cleanup and recording.
     /// Await completion after cancelling the token to observe the final result.
-    pub async fn run(self, cancel: CancellationToken) -> Result<Run, Failure> {
-        let cancel = cancel.child_token();
+    pub async fn run(mut self) -> Result<Run, Failure> {
+        let cancel = self.settings.cancel.child_token();
         let _stop = cancel.clone().drop_guard();
-        tokio::task::spawn_blocking(move || self.run_blocking(cancel))
+        self.settings.cancel = cancel;
+        tokio::task::spawn_blocking(move || self.run_blocking())
             .await
             .map_err(|error| Failure::setup(format!("iunctus: run worker failed: {error}")))?
     }
 
     /// Blocking equivalent of `run`. Call outside an async runtime.
     /// Workflow failures are retained in `Run::execution`, together with the partial graph.
-    pub fn run_blocking(mut self, cancel: CancellationToken) -> Result<Run, Failure> {
-        if self.setup.is_none() {
-            crate::setup::Defaults::load(&self.settings)?.apply("run", &mut self.settings);
-        }
-        execute_with(
-            &self.settings,
-            true,
-            &Pinned::default(),
-            cancel.child_token(),
-            Some(self.policy),
-            self.setup,
-        )
+    pub fn run_blocking(self) -> Result<Run, Failure> {
+        execute_with(self.settings, true, &Pinned::default(), Some(self.policy))
     }
 
     /// Builds and describes the configured driver without starting tasks or recording a run.
     /// Native planning can still read files and use configured container helpers.
-    pub async fn describe(mut self, cancel: CancellationToken) -> Result<Description, Failure> {
-        let cancel = cancel.child_token();
+    pub async fn describe(mut self) -> Result<Description, Failure> {
+        let cancel = self.settings.cancel.child_token();
         let _stop = cancel.clone().drop_guard();
         tokio::task::spawn_blocking(move || {
-            if self.setup.is_none() {
-                crate::setup::Defaults::load(&self.settings)?.apply("run", &mut self.settings);
-            }
-            let setup = match self.setup {
+            let network = self.settings.network.take();
+            let (arguments, setup, _inputs) = self.settings.prepare()?;
+            let mut setup = match setup {
                 Some(setup) => setup,
-                None => Setup::load(&self.settings)?,
+                None => crate::setup::Setup::load(&arguments)?,
             };
-            let (target, language) = target_and_language(&self.settings)?;
-            let launch = launch(&self.settings, target);
+            if let Some(network) = network {
+                setup.network = network;
+            }
+            let (target, language) = target_and_language(&arguments)?;
+            let launch = launch(&arguments, target);
             let mut driver = driver(
                 language,
                 &launch,
                 &run_id(),
                 true,
-                &self.settings,
+                &arguments,
                 &setup,
                 &cancel,
             )?;
@@ -104,27 +92,38 @@ impl RunRequest {
 /// in the run database. `quiet` keeps standard output free for the graph. With `-page`, the
 /// page of the run serves from the start; the result holds it.
 pub(crate) fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, Failure> {
-    execute_with(arguments, quiet, pinned, stop_on_interrupt(), None, None)
+    let mut settings = arguments.run_settings();
+    settings.cancel = stop_on_interrupt();
+    let _stop = settings.cancel.clone().drop_guard();
+    execute_with(settings, quiet, pinned, None)
 }
 
 fn execute_with(
-    arguments: &Arguments,
+    mut settings: Settings,
     quiet: bool,
     pinned: &Pinned,
-    interrupt: CancellationToken,
     admission: Option<Policy>,
-    setup: Option<Setup>,
 ) -> Result<Run, Failure> {
+    let interrupt = settings.cancel.child_token();
     let _stop = interrupt.clone().drop_guard();
+    let network = settings.network.take();
+    let (mut arguments, setup, _inputs) = settings.prepare()?;
+    if network.is_some() {
+        arguments.no_network = false;
+    }
+    let arguments = &arguments;
     let (target, language) = target_and_language(arguments)?;
     let target = &target;
     let launch = launch(arguments, target.clone());
     let run = run_id();
     let name = arguments.executor.as_deref().unwrap_or("local");
-    let setup = match setup {
+    let mut setup = match setup {
         Some(setup) => setup,
-        None => Setup::load(arguments)?,
+        None => crate::setup::Setup::load(arguments)?,
     };
+    if let Some(network) = network {
+        setup.network = network;
+    }
     for file in &pinned.files {
         setup.storage.pin(file.clone());
     }

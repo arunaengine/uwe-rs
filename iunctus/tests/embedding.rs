@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use iunctus::{CancellationToken, Resume, RunRequest, setup::Setup};
+use iunctus::{CancellationToken, Resume, RunRequest, run::Settings, setup::Setup};
 use serde_json::json;
 
 fn request(root: &std::path::Path) -> RunRequest {
@@ -10,15 +10,13 @@ fn request(root: &std::path::Path) -> RunRequest {
     std::fs::write(&target,
         "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: echo\ninputs:\n  count: int\noutputs: []\n",
     ).unwrap();
-    let mut request = RunRequest::new(target);
+    let mut request = RunRequest::new(Settings::new(target));
     request.settings.executor = Some("simulator".into());
     request.settings.database = Some(root.join("runs.sqlite"));
     request.settings.store = Some(root.join("store").to_string_lossy().into_owned());
-    request.settings.no_cache = true;
-    request.setup = Some(Setup::default());
-    let inputs = root.join("inputs.json");
-    std::fs::write(&inputs, json!({"count": 3}).to_string()).unwrap();
-    request.settings.inputs = Some(inputs);
+    request.settings.cache = false;
+    request.settings.setup = Some(Setup::default());
+    request.settings.inputs = Some(json!({"count": 3}));
     request
 }
 
@@ -26,14 +24,14 @@ fn request(root: &std::path::Path) -> RunRequest {
 async fn defaults_to_local() {
     let root = tempfile::tempdir().unwrap();
     let mut request = request(root.path());
-    request.settings.executor = iunctus::RunSettings::default().executor;
-    request.setup.as_mut().unwrap().executors.engine = Some(
+    request.settings.executor = Settings::default().executor;
+    request.settings.setup.as_mut().unwrap().executors.engine = Some(
         root.path()
             .join("missing.sock")
             .to_string_lossy()
             .into_owned(),
     );
-    let failure = request.run(CancellationToken::new()).await.err().unwrap();
+    let failure = request.run().await.err().unwrap();
     assert!(
         failure
             .message
@@ -51,7 +49,9 @@ async fn defaults_to_local() {
 async fn records_async_runs() {
     let root = tempfile::tempdir().unwrap();
     let cancel = CancellationToken::new();
-    let run = request(root.path()).run(cancel.clone()).await.unwrap();
+    let mut submission = request(root.path());
+    submission.settings.cancel = cancel.clone();
+    let run = submission.run().await.unwrap();
     assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
     assert!(run.execution.graph.is_simulated());
     assert_eq!(run.execution.graph.nodes.len(), 1);
@@ -68,7 +68,8 @@ async fn records_async_runs() {
 
     let mut resumed = request(root.path());
     resumed.settings.resume = Some(Resume::Run(run.id.clone()));
-    let resumed = resumed.run(cancel).await.unwrap();
+    resumed.settings.cancel = cancel;
+    let resumed = resumed.run().await.unwrap();
     assert!(resumed.execution.error.is_none());
     assert_ne!(run.id, resumed.id);
     assert_eq!(
@@ -80,18 +81,11 @@ async fn records_async_runs() {
 #[tokio::test]
 async fn shares_configured_driver() {
     let root = tempfile::tempdir().unwrap();
-    let described = request(root.path())
-        .describe(CancellationToken::new())
-        .await
-        .unwrap();
+    let described = request(root.path()).describe().await.unwrap();
     assert_eq!(described.inputs.unwrap().values, json!({"count": 3}));
-    let invalid = request(root.path());
-    std::fs::write(
-        invalid.settings.inputs.as_ref().unwrap(),
-        json!({"count": "3"}).to_string(),
-    )
-    .unwrap();
-    assert!(invalid.run(CancellationToken::new()).await.is_err());
+    let mut invalid = request(root.path());
+    invalid.settings.inputs = Some(json!({"count": "3"}));
+    assert!(invalid.run().await.is_err());
 }
 
 #[tokio::test]
@@ -99,7 +93,9 @@ async fn forwards_host_cancellation() {
     let root = tempfile::tempdir().unwrap();
     let cancel = CancellationToken::new();
     cancel.cancel();
-    let run = request(root.path()).run(cancel).await.unwrap();
+    let mut request = request(root.path());
+    request.settings.cancel = cancel;
+    let run = request.run().await.unwrap();
     assert!(matches!(
         run.execution.error,
         Some(workflow_graph::ExecuteError::Cancelled)
@@ -111,10 +107,7 @@ async fn concurrent_receipts_differ() {
     let root = tempfile::tempdir().unwrap();
     let first = request(root.path());
     let second = request(root.path());
-    let (first, second) = tokio::join!(
-        first.run(CancellationToken::new()),
-        second.run(CancellationToken::new()),
-    );
+    let (first, second) = tokio::join!(first.run(), second.run(),);
     let (first, second) = (first.unwrap(), second.unwrap());
     assert!(first.execution.error.is_none());
     assert!(second.execution.error.is_none());
@@ -131,7 +124,7 @@ async fn records_target_controls() {
         "rule make:\n    output: 'out'\n    shell: 'touch {output}'\n",
     )
     .unwrap();
-    let mut request = RunRequest::new(root.path());
+    let mut request = RunRequest::new(Settings::new(root.path()));
     request.policy = iunctus::application::Policy::Relaxed;
     request.settings.executor = Some("simulator".into());
     request.settings.database = Some(root.path().join("runs.sqlite"));
@@ -139,8 +132,8 @@ async fn records_target_controls() {
     request.settings.omit_from = vec!["absent".into()];
     request.settings.forcerun = vec!["make".into()];
     request.settings.forceall = true;
-    request.setup = Some(Setup::default());
-    let run = request.run(CancellationToken::new()).await.unwrap();
+    request.settings.setup = Some(Setup::default());
+    let run = request.run().await.unwrap();
     assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
     let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
     let recorded = database.run(&run.id).unwrap().unwrap();

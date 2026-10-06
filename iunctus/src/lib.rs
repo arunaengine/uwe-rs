@@ -44,7 +44,7 @@ mod tracked;
 #[doc(hidden)]
 pub mod cli;
 
-pub use arguments::{Arguments as RunSettings, Resume};
+pub use arguments::Resume;
 pub use failure::Failure;
 pub(crate) use failure::failure;
 pub(crate) use run::backend::{executor, network_rule, recorded_workflow};

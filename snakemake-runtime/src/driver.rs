@@ -2072,6 +2072,7 @@ pub fn driver_with_options(
                 let mut session = Session::new(&launch, &settings.storage)?;
                 session.rerun_triggers = options.rerun_triggers.clone();
                 session.state.borrow_mut().conda_enabled = options.conda;
+                session.state.borrow_mut().default_image = options.image.clone();
                 session.acceptance = session_acceptance.clone();
                 session.deliveries = shared.clone();
                 session.files.read_outputs_through(task_files.clone());

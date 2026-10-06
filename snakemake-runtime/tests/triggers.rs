@@ -26,11 +26,24 @@ fn reruns(trigger: &str, change: &str, cli: Option<Vec<String>>) -> bool {
         scratch: path.join("scratch"),
         ..Launch::default()
     };
-    std::fs::write(path.join("Snakefile"), WORKFLOW).unwrap();
+    let initial = if change == "default-image" {
+        WORKFLOW.replace("    container: 'before'\n", "")
+    } else {
+        WORKFLOW.into()
+    };
+    std::fs::write(path.join("Snakefile"), &initial).unwrap();
     write(path, "in", 1);
     write(path, "other", 1);
     write(path, "raw", 1);
-    let mut driver = snakemake_runtime::driver(&launch).unwrap();
+    let mut driver = snakemake_runtime::driver_with_options(
+        &launch,
+        Default::default(),
+        snakemake_runtime::RunSettings {
+            image: (change == "default-image").then(|| "before".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let task = driver.start().unwrap().remove(0);
     driver
         .complete(Outcome {
@@ -58,6 +71,7 @@ fn reruns(trigger: &str, change: &str, cli: Option<Vec<String>>) -> bool {
             write(path, "in", 3);
             WORKFLOW.into()
         }
+        "default-image" => initial,
         _ => unreachable!(),
     };
     std::fs::write(path.join("Snakefile"), text).unwrap();
@@ -73,6 +87,7 @@ fn reruns(trigger: &str, change: &str, cli: Option<Vec<String>>) -> bool {
         Default::default(),
         snakemake_runtime::RunSettings {
             rerun_triggers: cli,
+            image: (change == "default-image").then(|| "after".into()),
             ..Default::default()
         },
     )
@@ -97,6 +112,13 @@ fn selects_signature_checks() {
 fn cli_overrides_profile() {
     assert!(!reruns("params", "params", Some(vec!["mtime".into()])));
     assert!(reruns("mtime", "params", Some(vec!["params".into()])));
+}
+
+#[test]
+fn tracks_default_image() {
+    assert!(reruns("software-env", "default-image", None));
+    assert!(!reruns("code", "default-image", None));
+    assert!(!reruns("mtime", "default-image", None));
 }
 
 #[test]

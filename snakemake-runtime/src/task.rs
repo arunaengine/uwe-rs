@@ -727,9 +727,11 @@ pub fn build(
         (Some(container), _) => Some(image_name(&container)),
         // A `run:` block runs in the Python image that the user gave, else in the default
         // image of the executor.
-        (None, None) if matches!(rule.action, Action::Run(_)) => {
-            setting.embedded.python_image.clone()
-        }
+        (None, None) if matches!(rule.action, Action::Run(_)) => setting
+            .embedded
+            .python_image
+            .clone()
+            .or_else(|| setting.state.default_image.clone()),
         (None, Some(conda)) => {
             let conda = pattern::apply(&conda, &job.wildcards).unwrap_or(conda);
             let is_file = conda.ends_with(".yaml") || conda.ends_with(".yml");
@@ -740,7 +742,7 @@ pub fn build(
             };
             Some(format!("conda-env:{reference}"))
         }
-        (None, None) => None,
+        (None, None) => setting.state.default_image.clone(),
     };
     let mut outputs: Vec<String> = Vec::new();
     for value in job.output.values.iter().chain(job.log.values.iter()) {

@@ -23,13 +23,42 @@ pub struct Local {
 
 impl Backend for Local {
     async fn pin(&self, image: &str) -> Result<Option<String>, ExecutorError> {
-        let Some(source) = image.strip_prefix("conda-env:") else {
+        let (base, source) = if let Some(value) = image.strip_prefix("conda-container:") {
+            let pair: [String; 2] = serde_json::from_str(value).map_err(|error| {
+                ExecutorError::Unsupported(format!("Invalid Conda container reference: {error}"))
+            })?;
+            (Some(pair[0].clone()), pair[1].clone())
+        } else if let Some(source) = image.strip_prefix("conda-env:") {
+            (None, source.to_owned())
+        } else {
             return self.backend.pin(image).await;
         };
+        if let Some(base) = &base
+            && self.config.is_none()
+        {
+            return self.backend.pin(base).await;
+        }
         let config = self.config.clone().ok_or_else(|| ExecutorError::Unsupported(
             "Conda rules require explicit [conda] configuration with a pinned micromamba base, target capabilities, repodata and packages".into(),
         ))?;
-        let source = source.to_owned();
+        let base = if let Some(base) = base {
+            let pinned = self.backend.pin(&base).await?.ok_or_else(|| {
+                ExecutorError::Unsupported(
+                    "Conda container base must have a manifest digest".into(),
+                )
+            })?;
+            if pinned.rsplit_once("@sha256:").map(|(_, digest)| digest)
+                != config
+                    .base
+                    .rsplit_once("@sha256:")
+                    .map(|(_, digest)| digest)
+            {
+                return Err(ExecutorError::Unsupported("Conda rule container must match [conda].base, whose target capabilities describe that exact image".into()));
+            }
+            Some(pinned)
+        } else {
+            None
+        };
         let cancel = CancellationToken::new();
         let _cancel_on_drop = cancel.clone().drop_guard();
         let failed =
@@ -70,6 +99,17 @@ impl Backend for Local {
             })
             .await
             .map_err(|_| failed("source preparation exceeded 300 seconds".into()))??;
+            let preparation = if let Some(base) = &base {
+                conda_environment::ImagePreparation::with_installer(
+                    preparation.lock(),
+                    base,
+                    &config.platform,
+                    &config.capabilities,
+                )
+                .map_err(|error| failed(error.to_string()))?
+            } else {
+                preparation
+            };
             let limits = CacheLimits {
                 build: BuildLimits {
                     context_bytes: 256 << 20,

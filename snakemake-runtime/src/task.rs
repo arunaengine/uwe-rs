@@ -710,6 +710,20 @@ pub fn build(
     let image = match (container, conda) {
         // A rule without an action is a no-op task: no command and no image.
         _ if matches!(rule.action, Action::None) => None,
+        (Some(container), Some(conda)) if setting.state.conda_enabled => {
+            let conda = pattern::apply(&conda, &job.wildcards).unwrap_or(conda);
+            let reference = if (conda.ends_with(".yaml") || conda.ends_with(".yml"))
+                && !conda.contains("://")
+            {
+                source_file(rule, &conda, setting).1
+            } else {
+                conda
+            };
+            Some(format!(
+                "conda-container:{}",
+                serde_json::json!([image_name(&container), reference])
+            ))
+        }
         (Some(container), _) => Some(image_name(&container)),
         // A `run:` block runs in the Python image that the user gave, else in the default
         // image of the executor.

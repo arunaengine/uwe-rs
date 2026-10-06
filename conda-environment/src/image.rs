@@ -146,6 +146,43 @@ impl ImagePreparation {
         &self.lock
     }
 
+    /// Adds a pinned micromamba installer without changing the target base or capabilities.
+    pub fn with_installer(
+        lock: &Lock,
+        base: &str,
+        platform: &str,
+        capabilities: &[VirtualPackage],
+    ) -> io::Result<Self> {
+        let mut preparation = Self::new(lock, base, platform, capabilities)?;
+        let digest = match platform {
+            "linux/amd64" => "955819619f303e2aa1dc1ba89beefe7f326a378b3d0782a4a0d28b1cf11b68b6",
+            "linux/arm64" | "linux/arm64/v8" => {
+                "555746adba7e231c903aab4f59d51a4b11ad35bc1cab50e3d78024652508bd64"
+            }
+            "linux/ppc64le" => "7c3ba4c2ccab952c235b34798ff7e3cb6aea912a7876386b95fe993d1207a926",
+            _ => {
+                return Err(invalid(
+                    "pinned micromamba installer is unavailable for this platform",
+                ));
+            }
+        };
+        preparation.recipe = format!(
+            "FROM --platform={platform} docker.io/mambaorg/micromamba:2.3.2@sha256:{digest} AS iunctus_installer\n{}",
+            preparation.recipe.replacen("USER root\n", "USER root\nCOPY --from=iunctus_installer /bin/micromamba /usr/local/bin/micromamba\n", 1)
+                .replace("RUN micromamba", "RUN /usr/local/bin/micromamba")
+                .replace("&& micromamba clean", "&& /usr/local/bin/micromamba clean")
+        );
+        let identity = serde_json::to_vec(&(
+            lock.digest(),
+            &preparation.base,
+            platform,
+            &preparation.recipe,
+        ))
+        .map_err(io::Error::other)?;
+        preparation.digest = format!("sha256:{}", hex(Sha256::digest(&identity).as_slice()));
+        Ok(preparation)
+    }
+
     pub fn digest(&self) -> &str {
         &self.digest
     }
@@ -358,5 +395,47 @@ impl Read for Hashed {
         self.digest.update(&bytes[..count]);
         self.size += count as u64;
         Ok(count)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pins_installer_recipe() {
+        let lock = Lock {
+            format: FORMAT,
+            platform: "linux-64".into(),
+            channels: vec![],
+            specs: vec![],
+            pip: vec![],
+            packages: vec![],
+            virtual_packages: Some(vec![]),
+        };
+        for name in ["debian", "mambaorg/micromamba"] {
+            let base = format!("{name}@sha256:{}", "a".repeat(64));
+            let original = ImagePreparation::new(&lock, &base, "linux/amd64", &[]).unwrap();
+            let prepared =
+                ImagePreparation::with_installer(&lock, &base, "linux/amd64", &[]).unwrap();
+            assert_eq!(prepared.base(), original.base());
+            assert_ne!(prepared.digest(), original.digest());
+            assert_ne!(prepared.recipe_digest(), original.recipe_digest());
+            assert!(prepared.recipe().contains("micromamba:2.3.2@sha256:955819619f303e2aa1dc1ba89beefe7f326a378b3d0782a4a0d28b1cf11b68b6"));
+            assert!(prepared.recipe().contains(
+                "COPY --from=iunctus_installer /bin/micromamba /usr/local/bin/micromamba"
+            ));
+            assert!(
+                prepared
+                    .recipe()
+                    .contains(&format!("FROM --platform=linux/amd64 {base}"))
+            );
+            assert_eq!(
+                original.digest(),
+                ImagePreparation::new(&lock, &base, "linux/amd64", &[])
+                    .unwrap()
+                    .digest()
+            );
+        }
     }
 }

@@ -262,6 +262,7 @@ pub struct State {
     /// Wildcard constraints of the main workflow.
     pub global_constraints: IndexMap<String, String>,
     pub global_conda: Option<Value>,
+    pub conda_enabled: bool,
     pub config: Value,
     pub overwrite_config: Value,
     pub overwrite_configfiles: Vec<String>,
@@ -312,6 +313,7 @@ impl State {
             default_target: None,
             global_constraints: IndexMap::new(),
             global_conda: None,
+            conda_enabled: false,
             config: Value::dict(Dict::default()),
             overwrite_config: Value::dict(Dict::default()),
             overwrite_configfiles: Vec::new(),

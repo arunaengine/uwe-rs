@@ -1516,8 +1516,10 @@ dependencies = [
 name = "executor"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "bollard",
  "conda-environment",
+ "config-file",
  "content-store",
  "futures-util",
  "reqwest",
@@ -2531,11 +2533,14 @@ dependencies = [
  "cwl-runtime",
  "executor",
  "fancy-regex 0.19.2",
+ "flate2",
  "input-schema",
  "jiff",
  "kubernetes-executor",
  "nextflow-evaluator",
+ "nextflow-parser",
  "nextflow-runtime",
+ "reqwest",
  "run-crate",
  "run-database",
  "run-page",
@@ -2546,6 +2551,7 @@ dependencies = [
  "slurm-executor",
  "snakemake-runtime",
  "storage",
+ "tar",
  "task-model",
  "task-runner",
  "tempfile",

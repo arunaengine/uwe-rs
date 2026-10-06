@@ -25,6 +25,7 @@ sha1.workspace = true
 sha2.workspace = true
 snakemake-parser.workspace = true
 storage.workspace = true
+task-model.workspace = true
 tracing.workspace = true
 workflow-graph.workspace = true
 

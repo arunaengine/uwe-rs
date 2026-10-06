@@ -1965,6 +1965,13 @@ pub struct Settings {
     pub cancel: executor::CancellationToken,
 }
 
+/// Runtime options supplied by the CLI in addition to workflow profile defaults.
+#[derive(Clone, Debug, Default)]
+pub struct RunSettings {
+    pub image: Option<String>,
+    pub offline: bool,
+}
+
 /// The driver of a Snakemake workflow: `launch.target` is a Snakefile, or a folder with a
 /// `Snakefile` or `workflow/Snakefile`, which is then the working directory.
 pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
@@ -1973,6 +1980,14 @@ pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
 
 /// The driver of a Snakemake workflow with settings, like the Python container.
 pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver>, DriverError> {
+    driver_with_options(launch, settings, RunSettings::default())
+}
+
+pub fn driver_with_options(
+    launch: &Launch,
+    settings: Settings,
+    options: RunSettings,
+) -> Result<Box<dyn Driver>, DriverError> {
     let (requests, incoming) = channel::<Request>();
     let (outgoing, replies) = channel::<Reply>();
     let (inputs_outgoing, inputs) = channel::<InputsReply>();
@@ -2005,6 +2020,15 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
                     channel: channel.clone(),
                     next_task: session.next_task.clone(),
                     state: session.state.clone(),
+                    settings: options.clone(),
+                    engine: settings
+                        .python
+                        .as_ref()
+                        .map(|python| python.engine.clone())
+                        .unwrap_or_default(),
+                    scratch: launch.scratch.clone(),
+                    simulated: launch.simulated,
+                    cancel: settings.cancel.clone(),
                 }));
                 Ok(session)
             };

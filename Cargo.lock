@@ -5601,6 +5601,7 @@ dependencies = [
  "sha2 0.11.0",
  "snakemake-parser",
  "storage",
+ "task-model",
  "tracing",
  "tempfile",
  "workflow-graph",

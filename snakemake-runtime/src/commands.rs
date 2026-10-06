@@ -74,6 +74,11 @@ pub struct CommandRunner {
     /// The number of the next task, shared with the session.
     pub next_task: Rc<Cell<u64>>,
     pub state: Rc<RefCell<State>>,
+    pub settings: crate::driver::RunSettings,
+    pub engine: String,
+    pub scratch: PathBuf,
+    pub simulated: bool,
+    pub cancel: executor::CancellationToken,
 }
 
 fn ended() -> Error {
@@ -89,7 +94,12 @@ impl CommandRunner {
             .first()
             .and_then(|modifier| modifier.container.as_ref())
             .and_then(|container| container.as_str().map(crate::task::image_name))
-            .unwrap_or_else(|| DEFAULT_IMAGE.to_owned())
+            .unwrap_or_else(|| {
+                self.settings
+                    .image
+                    .clone()
+                    .unwrap_or_else(|| DEFAULT_IMAGE.to_owned())
+            })
     }
 
     fn task(&self, id: TaskId, command: &Command) -> Task {
@@ -181,5 +191,30 @@ impl CommandRunner {
                 }
             }
         }
+    }
+
+    pub fn run_hook(&self, command: &Command, hook: &str) -> Result<CommandOutcome, Error> {
+        if self.simulated {
+            return Ok(CommandOutcome::default());
+        }
+        let id = TaskId(self.next_task.get());
+        self.next_task.set(id.0 + 1);
+        let task = self.task(id, command);
+        let outcome = crate::hooks::run(
+            &task,
+            &self.engine,
+            &self.scratch,
+            self.settings.offline,
+            &self.cancel,
+        )?;
+        if outcome.exit_code != 0 {
+            eprintln!(
+                "{hook} hook command in {} exited with {}:\n{}",
+                task.image.as_deref().unwrap_or(DEFAULT_IMAGE),
+                outcome.exit_code,
+                String::from_utf8_lossy(&outcome.stderr)
+            );
+        }
+        Ok(outcome)
     }
 }

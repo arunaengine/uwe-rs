@@ -158,3 +158,13 @@ normalized: QC/multiqc JSON, llms-full.txt, sources.txt, Parquet, SVG and PDF fi
 normalized: repaired/test_30reads_2.fastq.gz: only gzip header MTIME bytes 4-7 differ; all other compressed bytes and the decompressed FASTQ agree.
 normalized: QC/fastqc/test_30reads_2_fastqc.zip: only ZIP entry timestamps differ; all 29 member names and payloads, and all non-time ZIP metadata fields agree.
 notes: Frozen updated release SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. The repaired read payload, repair report, FastQC HTML, PNG plots and metric tables agree. Both tools report the same intentionally empty/damaged test inputs. Initial refusal evidence is under initial/fastqrepair, and updated logs/manifests/receipts under fastqrepair. Temporary source/run/work/cache folders are removed after recording.
+
+## nf-core-phyloplace-local-20261008-rerun: nf-core/phyloplace 68db179, -profile test, local Docker
+native: exit 0 in 52 s, 33 published files
+iunctus: exit 0 in 14 s, 33 published files, all eight tasks executed without result reuse
+comparison: all 33 names agree; 20 material files match SHA-256, 5 agree after report normalization, 8 report/metadata contents excluded; 0 missing, 0 extra, 0 unexplained differences
+verdict: published output parity after the stated normalization
+excluded: pipeline_info/** (6 files); multiqc/multiqc_report.html; multiqc/multiqc_data/multiqc.log
+normalized: MultiQC JSON, llms-full.txt and Parquet use the exact report provenance/date/path/search-pattern fields listed in the demo rerun. The Parquet contains one report row, whose complete structured content agrees after those fields and the SVG creation comment below are normalized.
+normalized: gappa/placement.heattree.log: only its Started/Finished timestamps; gappa/placement.heattree.tree.svg and its embedded MultiQC copy: only the date/time in the Created with genesis v0.30.0 comment. All other SVG bytes, including geometry, agree.
+notes: Frozen updated release SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. The placement JPLACE gzip, alignments, query/reference FASTA gzip files, all taxonomy tables and grafted trees match by SHA-256, with no row-order exception needed in this pair. Initial refusal evidence is under initial/phyloplace and updated logs/manifests/receipts under phyloplace. Temporary source/run/work/cache folders are removed after recording.

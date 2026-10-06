@@ -123,3 +123,17 @@ notes: Test reads and declared test-genome references total 32,892,911 bytes. Ad
 
 ## Updated release, 2026-10-08
 binary: Initial five iunctus runs used SHA-256 c641ad125854c243c9e258dadc73e97cf77eb8fc7130a58a2fd6135ba2b7a26c. After the concurrently landed e869fdf2 (empty/singleton hash sorting), later runs use a frozen release copy with SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. The earlier exit-33 records are historical and do not qualify the updated binary.
+
+## nf-core-demo-local-20261008-rerun: nf-core/demo 555d145, -profile test, local Docker
+native: exit 0 in 34 s, 76 published files
+iunctus: exit 0 in 42 s, 76 published files, all eight tasks executed without result reuse
+comparison: all 76 names agree; 40 material files match SHA-256, 28 agree after report normalization, 8 report/metadata contents excluded; 0 missing, 0 extra, 0 unexplained differences
+verdict: published output parity after the exclusions and normalizations below
+excluded: pipeline_info/** (6 files); multiqc/multiqc_report.html; multiqc/multiqc_data/multiqc.log
+normalized: multiqc/multiqc_data/multiqc_data.json: report_creation_date, config_output_dir, config_analysis_dir_abs and source-directory paths in report_data_sources. Every other JSON field agrees.
+normalized: multiqc/multiqc_data/multiqc.parquet: creation_date, plot_input_data.creation_date, source-directory paths in data_sources, unordered config.sp search-pattern lists (contents, exclude_contents, exclude_fn), and custom methods/summary provenance. All 108 rows and scientific values agree.
+normalized: multiqc/multiqc_data/llms-full.txt and Parquet custom methods/summary content: engine command, trace_report_suffix, configFiles, launchDir, profile, runName, workDir. All other text agrees.
+normalized: multiqc/multiqc_data/multiqc_sources.txt: source-directory paths and source-row order; sample names and source basenames agree.
+normalized: multiqc/multiqc_plots/svg/*.svg (12 files): random six-hex Plotly IDs with defs-, clip, trace and legend prefixes, and XML attribute order; canonical SVG content agrees.
+normalized: multiqc/multiqc_plots/pdf/*.pdf (12 files): PDF creation/modification metadata; extracted text agrees, and corresponding PNG bytes and canonical SVG geometry agree.
+notes: Frozen updated binary SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. The original exit-33 failure was removed by the concurrently landed e869fdf2; no further engine fix was needed. FastQC HTML, FASTQ files, all PNG plots and metric tables match by SHA-256. Initial evidence is retained under initial/demo; rerun logs, complete manifests and normalization receipts are retained under demo. Temporary run/source/work/cache folders are removed after recording.

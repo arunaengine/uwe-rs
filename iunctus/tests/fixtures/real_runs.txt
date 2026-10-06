@@ -137,3 +137,13 @@ normalized: multiqc/multiqc_data/multiqc_sources.txt: source-directory paths and
 normalized: multiqc/multiqc_plots/svg/*.svg (12 files): random six-hex Plotly IDs with defs-, clip, trace and legend prefixes, and XML attribute order; canonical SVG content agrees.
 normalized: multiqc/multiqc_plots/pdf/*.pdf (12 files): PDF creation/modification metadata; extracted text agrees, and corresponding PNG bytes and canonical SVG geometry agree.
 notes: Frozen updated binary SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. The original exit-33 failure was removed by the concurrently landed e869fdf2; no further engine fix was needed. FastQC HTML, FASTQ files, all PNG plots and metric tables match by SHA-256. Initial evidence is retained under initial/demo; rerun logs, complete manifests and normalization receipts are retained under demo. Temporary run/source/work/cache folders are removed after recording.
+
+## nf-core-datasync-local-20261008-rerun: nf-core/datasync d25e58a, -profile test, local Docker
+native: exit 0 in 82 s, 33 published files
+iunctus: exit 0 in 14 s, 33 published files, all seven tasks executed without result reuse
+comparison: all 33 names agree; 20 material files match SHA-256, 5 agree after report normalization, 8 report/metadata contents excluded; 0 missing, 0 extra, 0 unexplained differences
+verdict: published output parity for the pipeline's unchanged dry-run test profile
+excluded: pipeline_info/** (6 files); multiqc/multiqc_report.html; multiqc/multiqc_data/multiqc.log
+normalized: MultiQC JSON, llms-full.txt and Parquet use the exact provenance/date/path/search-pattern fields listed in the demo rerun. This case additionally normalizes numbered staging directories in report_multiqc_command and config.custom_css_files; CSS basenames and all other command arguments agree. All 187 Parquet rows agree, including matching missing-number NaNs.
+normalized: rclone/copy/Illumina_annotation-rclone-copy.log and rclone/copy/benchmark_bed-rclone-copy.log: only their leading YYYY/MM/DD HH:MM:SS log timestamps. All remaining log messages agree, including the same source-equals-destination message from the test profile.
+notes: Frozen updated release SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. Checksum/check outputs match by SHA-256. The test profile sets rclone_dry_run=true; this does not qualify real object copying. Initial refusal evidence is retained under initial/datasync, and updated logs, manifests and normalization receipts under datasync. Temporary source/run/work/cache folders are removed after recording.

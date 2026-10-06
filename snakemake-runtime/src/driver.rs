@@ -114,6 +114,7 @@ pub struct Session {
     acceptance: Arc<Mutex<HashSet<(TaskId, u32)>>>,
     hooks_started: bool,
     hooks_finished: bool,
+    rerun_triggers: Option<Vec<String>>,
 }
 
 struct SignaturePublication {
@@ -212,6 +213,7 @@ impl Session {
             acceptance: Arc::default(),
             hooks_started: false,
             hooks_finished: false,
+            rerun_triggers: None,
         })
     }
 
@@ -258,7 +260,7 @@ impl Session {
     pub fn evaluate(&mut self) -> Result<(), DriverError> {
         // The profiles of the launch, else the workflow profile that Snakemake finds by itself,
         // give config files and values unless the launch does.
-        let profile = if self.launch.profiles.is_empty() {
+        let mut profile = if self.launch.profiles.is_empty() {
             match crate::profile::find(&self.workdir, &self.snakefile) {
                 Some(folder) => crate::profile::Profile::load(&mut self.interpreter, &folder),
                 None => Ok(crate::profile::Profile::default()),
@@ -280,6 +282,10 @@ impl Session {
             crate::profile::Profile::given(&mut self.interpreter, &paths)
         }
         .map_err(|error| self.error(&error))?;
+        if let Some(triggers) = &self.rerun_triggers {
+            crate::profile::validate_triggers(triggers).map_err(|error| self.error(&error))?;
+            profile.rerun_triggers = Some(triggers.clone());
+        }
         let launch_configs: Vec<PathBuf> = self
             .launch
             .configs
@@ -385,6 +391,13 @@ impl Session {
         });
         planner.forcerun = forcerun;
         planner.forceall = self.launch.forceall;
+        planner.mtime = self
+            .state
+            .borrow()
+            .profile
+            .rerun_triggers
+            .as_ref()
+            .is_none_or(|triggers| triggers.iter().any(|trigger| trigger == "mtime"));
         let roots = match planner.plan_targets(&mut self.interpreter, &targets, &until, &omit_from)
         {
             Ok(roots) => roots,
@@ -432,6 +445,16 @@ impl Session {
                     self.needrun.insert(*job, true);
                     continue;
                 }
+                if self
+                    .state
+                    .borrow()
+                    .profile
+                    .rerun_triggers
+                    .as_ref()
+                    .is_some_and(|triggers| triggers.iter().all(|trigger| trigger == "mtime"))
+                {
+                    continue;
+                }
                 if !outputs
                     .iter()
                     .any(|output| crate::metadata::signature_path(&self.workdir, output).exists())
@@ -458,7 +481,12 @@ impl Session {
                 )
                 .map_err(|error| driver_error(&error, &self.workdir))?;
                 if outputs.iter().any(|output| {
-                    crate::metadata::signature_changed(&self.workdir, output, &signature)
+                    crate::metadata::signature_changed(
+                        &self.workdir,
+                        output,
+                        &signature,
+                        state.profile.rerun_triggers.as_deref(),
+                    )
                 }) {
                     self.needrun.insert(*job, true);
                     self.signatures.insert(*job, signature);
@@ -1970,6 +1998,7 @@ pub struct Settings {
 pub struct RunSettings {
     pub image: Option<String>,
     pub offline: bool,
+    pub rerun_triggers: Option<Vec<String>>,
 }
 
 /// The driver of a Snakemake workflow: `launch.target` is a Snakefile, or a folder with a
@@ -2010,6 +2039,7 @@ pub fn driver_with_options(
             let channel = Rc::new(Channel::new(incoming, outgoing));
             let open = || -> Result<Session, DriverError> {
                 let mut session = Session::new(&launch, &settings.storage)?;
+                session.rerun_triggers = options.rerun_triggers.clone();
                 session.acceptance = session_acceptance.clone();
                 session.deliveries = shared.clone();
                 session.files.read_outputs_through(task_files.clone());

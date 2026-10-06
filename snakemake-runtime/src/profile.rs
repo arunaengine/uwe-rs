@@ -21,6 +21,21 @@ pub struct Profile {
     /// `set-threads:` as rule and value.
     pub set_threads: Vec<(String, String)>,
     pub retries: Option<u32>,
+    pub rerun_triggers: Option<Vec<String>>,
+}
+
+pub const RERUN_TRIGGERS: [&str; 5] = ["mtime", "params", "input", "software-env", "code"];
+
+pub fn validate_triggers(triggers: &[String]) -> Result<(), Error> {
+    if let Some(trigger) = triggers
+        .iter()
+        .find(|trigger| !RERUN_TRIGGERS.contains(&trigger.as_str()))
+    {
+        return Err(workflow_error(format!(
+            "Invalid rerun trigger '{trigger}'; expected mtime, params, input, software-env or code"
+        )));
+    }
+    Ok(())
 }
 
 /// The folder of the workflow profile, as Snakemake looks for it: `profiles/default` in the
@@ -146,6 +161,9 @@ impl Profile {
         if other.retries.is_some() {
             self.retries = other.retries;
         }
+        if other.rerun_triggers.is_some() {
+            self.rerun_triggers = other.rerun_triggers;
+        }
     }
 
     /// Reads the settings of a profile folder.
@@ -188,6 +206,19 @@ impl Profile {
                     profile.default_resources = pairs(interpreter, &value)?
                 }
                 "set-threads" => profile.set_threads = pairs(interpreter, &value)?,
+                "rerun-triggers" => {
+                    let values = if let Some(text) = value.as_str() {
+                        text.split_whitespace().map(str::to_owned).collect()
+                    } else {
+                        interpreter
+                            .iterate(&value)?
+                            .iter()
+                            .map(|value| interpreter.to_str(value))
+                            .collect::<Result<Vec<_>, _>>()?
+                    };
+                    validate_triggers(&values)?;
+                    profile.rerun_triggers = Some(values);
+                }
                 "retries" | "restart-times" => {
                     profile.retries = Some(
                         value
@@ -257,8 +288,7 @@ impl Profile {
                 | "reason"
                 | "keep-going"
                 | "rerun-incomplete"
-                | "keep-incomplete"
-                | "rerun-triggers" => {}
+                | "keep-incomplete" => {}
                 key => {
                     return Err(Error::unsupported(format!(
                         "Snakemake profile setting '{key}'"

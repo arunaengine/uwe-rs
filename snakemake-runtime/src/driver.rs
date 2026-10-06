@@ -72,6 +72,7 @@ pub struct Session {
     /// The tasks of service jobs with the jobs that use them, which run as one task: each
     /// job with the outputs that it declared (`services`).
     groups: HashMap<TaskId, Vec<(usize, Vec<String>)>>,
+    components: HashMap<usize, Rc<Vec<usize>>>,
     done: HashSet<usize>,
     outstanding: usize,
     /// The number of the next task, which commands of workflow code share.
@@ -186,6 +187,7 @@ impl Session {
             tasks: HashMap::new(),
             jobs_of_tasks: HashMap::new(),
             groups: HashMap::new(),
+            components: HashMap::new(),
             done: HashSet::new(),
             outstanding: 0,
             next_task: Rc::new(Cell::new(1)),
@@ -586,6 +588,9 @@ impl Session {
             self.remaining.insert(*job, count);
         }
         self.roots = roots;
+        self.components =
+            crate::groups::components(&mut self.interpreter, planner, &self.order, &self.needrun)
+                .map_err(|error| driver_error(&error, &self.workdir))?;
         Ok(())
     }
 
@@ -622,6 +627,15 @@ impl Session {
                 candidates.push(producer);
             }
         }
+        let anchors: Vec<usize> = candidates
+            .iter()
+            .filter_map(|job| self.components.get(job)?.first().copied())
+            .collect();
+        for anchor in anchors {
+            if !candidates.contains(&anchor) {
+                candidates.push(anchor);
+            }
+        }
         let mut tasks = Vec::new();
         for job in candidates {
             if !self.needrun.get(&job).copied().unwrap_or(false) || self.tasks.contains_key(&job) {
@@ -642,6 +656,21 @@ impl Session {
                 tasks.extend(self.service_group(job, &services, None)?);
                 continue;
             }
+            if let Some(members) = self.components.get(&job).cloned()
+                && members.len() > 1
+            {
+                if members.first() == Some(&job) {
+                    tasks.extend(self.rule_group(&members, None)?);
+                }
+                if self.components.contains_key(&job) {
+                    continue;
+                }
+            }
+            let planner = self
+                .planner
+                .as_ref()
+                .ok_or_else(|| DriverError::new("No Snakemake plan"))?;
+            let entry = &planner.jobs[job];
             let prepared = self.prepared.remove(&job);
             let id = prepared.as_ref().map_or_else(
                 || {
@@ -1378,7 +1407,89 @@ impl Session {
             return Ok(None);
         }
         let services = crate::services::service_files(&planner.jobs[*job]);
+        if services.is_empty() {
+            let jobs = members.iter().map(|(job, _)| *job).collect::<Vec<_>>();
+            return self.rule_group(&jobs, Some(id));
+        }
         self.service_group(*job, &services, Some(id))
+    }
+
+    fn rule_group(
+        &mut self,
+        jobs: &[usize],
+        retry: Option<TaskId>,
+    ) -> Result<Option<Task>, DriverError> {
+        let planner = self
+            .planner
+            .as_ref()
+            .ok_or_else(|| DriverError::new("No Snakemake plan"))?;
+        if retry.is_none()
+            && jobs.iter().any(|job| {
+                planner.jobs[*job].incomplete
+                    || self.tasks.contains_key(job)
+                    || planner.jobs[*job].dependencies.iter().any(|(_, producer)| {
+                        !jobs.contains(producer)
+                            && self.needrun.get(producer).copied().unwrap_or(false)
+                            && !self.done.contains(producer)
+                    })
+            })
+        {
+            return Ok(None);
+        }
+        let id = retry.unwrap_or_else(|| {
+            let id = TaskId(self.next_task.get());
+            self.next_task.set(id.0 + 1);
+            id
+        });
+        let attempt = retry.map_or(1, |_| self.attempts.get(&jobs[0]).copied().unwrap_or(1) + 1);
+        let mut members = Vec::new();
+        let mut declared = Vec::new();
+        for job in jobs {
+            let entry = &planner.jobs[*job];
+            let state = self.state.borrow();
+            let setting = crate::task::TaskSetting {
+                state: &state,
+                files: &self.files,
+                workdir: &self.workdir,
+                embedded: &self.embedded,
+                sources: &self.sources,
+            };
+            let (task, signature) = crate::task::build(
+                &mut self.interpreter,
+                &setting,
+                &planner.rules[entry.rule],
+                entry,
+                id,
+                attempt,
+            )
+            .map_err(|error| driver_error(&error, &self.workdir))?;
+            self.signatures.insert(*job, signature);
+            declared.push((*job, task.outputs.clone()));
+            members.push(task);
+        }
+        if members
+            .iter()
+            .any(|member| member.image != members[0].image)
+        {
+            tracing::debug!(jobs = ?jobs, "Snakemake group uses different images; running separate tasks");
+            for job in jobs {
+                self.components.remove(job);
+            }
+            return Ok(None);
+        }
+        let mut task = crate::groups::combine(&members, id).map_err(DriverError::new)?;
+        if retry.is_some() || jobs.iter().any(|job| self.forced.contains(job)) {
+            task.reuse = workflow_graph::Reuse::Denied;
+        }
+        for job in jobs {
+            self.planner.as_mut().unwrap().fixed.insert(*job);
+            self.tasks.insert(*job, id);
+            self.attempts.insert(*job, attempt);
+        }
+        self.jobs_of_tasks.insert(id, jobs[0]);
+        self.groups.insert(id, declared);
+        self.outstanding += 1;
+        Ok(Some(task))
     }
 
     /// Whether the run ends after a failed job: the running jobs end, and no other job starts.

@@ -78,3 +78,7 @@ Nextflow runs the `exec:` section of a process in its own process, as Groovy cod
 `shadow: "minimal"` stages declared inputs and task code. `"shallow"` links the working directory's top-level files and directories; `"full"` creates directories in task scratch and links every file recursively, following directory symlinks and excluding `.snakemake`. Declared inputs keep their producer dependencies. Run scratch is excluded to avoid recursive staging, and symlink cycles fail explicitly.
 
 Outputs and logs of shallow and full jobs must be relative and stay inside task scratch. A shallow output below an existing top-level directory is refused because the directory link would write outside scratch; use full shadow for that layout. Full shadow omits existing output paths from the links. `copy-minimal` and other active modes remain unsupported.
+
+## 9. Group jobs
+
+Jobs with the same `group:` id form one task per connected component, equivalent to Snakemake's default of one group component. String ids expand wildcards; callable ids receive wildcards. Each same-image component runs commands in dependency order in one container, with each job's environment, external inputs, declared outputs and validation. Resources cover the largest sequential job and the sum of their runtime limits. A failed component retries as a whole. Components with different images run as separate tasks and emit a debug log. Local rules and checkpoints keep separate tasks. Explicit component merging is not supported.

@@ -11,6 +11,7 @@ mod embedded;
 mod files;
 mod functions;
 mod git;
+mod groups;
 mod inputs;
 mod iofile;
 mod ioutils;

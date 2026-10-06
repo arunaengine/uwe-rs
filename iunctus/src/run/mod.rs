@@ -8,6 +8,8 @@ mod settings;
 pub(crate) mod support;
 
 pub use settings::Settings;
+pub use task_runner::NetworkRule;
+pub use workflow_graph::Language;
 
 use crate::application::{self, Description, Policy};
 use crate::arguments::Arguments;
@@ -94,7 +96,6 @@ impl RunRequest {
 pub(crate) fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, Failure> {
     let mut settings = arguments.run_settings();
     settings.cancel = stop_on_interrupt();
-    let _stop = settings.cancel.clone().drop_guard();
     execute_with(settings, quiet, pinned, None)
 }
 
@@ -104,9 +105,15 @@ fn execute_with(
     pinned: &Pinned,
     admission: Option<Policy>,
 ) -> Result<Run, Failure> {
-    let interrupt = settings.cancel.child_token();
+    let interrupt = if settings.cli.is_some() {
+        settings.cancel.clone()
+    } else {
+        settings.cancel.child_token()
+    };
     let _stop = interrupt.clone().drop_guard();
     let network = settings.network.take();
+    let cpus = settings.cpus;
+    let memory = settings.memory_bytes;
     let (mut arguments, setup, _inputs) = settings.prepare()?;
     if network.is_some() {
         arguments.no_network = false;
@@ -247,7 +254,7 @@ fn execute_with(
         tracing::info!("iunctus: the run records no files of its workflow, as {reason}");
     }
     let taken = resume::Taken::default();
-    let mut executor = match reusable {
+    let executor = match reusable {
         Some(reusable) => {
             let mode = if real {
                 resume::Mode::Real
@@ -266,6 +273,7 @@ fn execute_with(
         }
         None => executor,
     };
+    let mut executor = backend::limited(executor, cpus, memory);
     // A real executor runs every task that can run, and the pool of its machine or cluster
     // sets how many run at once. The simulator runs one at a time, in the order asked.
     let options = RunOptions {

@@ -42,6 +42,10 @@ pub struct Settings {
     pub default_image: Option<String>,
     /// Overrides the network policy from `setup` or configuration files.
     pub network: Option<task_runner::NetworkRule>,
+    /// Maximum CPUs per task, at least one; backend allocation may be smaller.
+    pub cpus: Option<u32>,
+    /// Maximum memory per task, at least 6 MiB, including tasks without a memory request.
+    pub memory_bytes: Option<u64>,
     pub max_pending: Option<usize>,
     /// Machine retries, defaulting to configuration or two retries.
     pub retries: Option<u32>,
@@ -78,6 +82,8 @@ impl Default for Settings {
             forceall: false,
             default_image: None,
             network: None,
+            cpus: None,
+            memory_bytes: None,
             max_pending: None,
             retries: None,
             retry_delay: None,
@@ -102,6 +108,11 @@ impl Settings {
         mut self,
     ) -> Result<(Arguments, Option<Setup>, Option<tempfile::NamedTempFile>), Failure> {
         let cli = self.cli.is_some();
+        if self.cpus == Some(0) || self.memory_bytes.is_some_and(|bytes| bytes < 6 << 20) {
+            return Err(Failure::usage(
+                "iunctus: resource limits require at least one CPU and 6 MiB of memory",
+            ));
+        }
         let mut arguments = self.cli.take().unwrap_or_default();
         arguments.target = (!self.target.as_os_str().is_empty()).then_some(self.target);
         arguments.language = self.language;

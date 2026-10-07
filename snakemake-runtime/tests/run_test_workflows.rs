@@ -294,6 +294,8 @@ fn child(name: &str, folder: &Path, outcome: &Path) -> String {
         .env("SNAKEMAKE_RUN_ONE", folder)
         .env("SNAKEMAKE_RUN_OUTCOME", outcome)
         .env("SNAKEMAKE_RUN_SCRATCH", scratch.path())
+        // Some workflows require `envvars: "LC_CTYPE"`; a fixed value keeps records stable.
+        .env("LC_CTYPE", "C.UTF-8")
         .current_dir(workdir)
         .output()
         .expect("runs the test binary");

@@ -358,6 +358,11 @@ impl Interpreter<'_> {
                 set.borrow_mut().items.clear();
                 Value::Null
             }
+            ("unique", []) => {
+                let kept = unique(&items, |a, b| Ok(a.coerced_equals(b)))?;
+                set.borrow_mut().items = kept.into_iter().map(Key).collect();
+                Value::Set(set.clone())
+            }
             ("sort" | "toSorted", rest) => {
                 let mut sorted = items;
                 match rest {

@@ -88,6 +88,25 @@ fn orders_java_sets() {
 }
 
 #[test]
+fn set_unique_mutates() {
+    assert_eq!(
+        value(
+            "def s = new LinkedHashSet([2, 1, 1.0, 1L])\n\
+             def r = s.unique()\ns << 3\n[s, r, r.getClass().getSimpleName()]"
+        ),
+        "[[2, 1, 3], [2, 1, 3], LinkedHashSet]"
+    );
+    assert_eq!(
+        value("def h = new HashSet([1, 1.0, 1L])\n[h.unique(), h.getClass().getSimpleName()]"),
+        "[[1], HashSet]"
+    );
+    assert_eq!(
+        value("def m = [sample: 'x', fastq_1: 'a']\n(m.keySet() + ['sample']).unique()"),
+        "[sample, fastq_1]"
+    );
+}
+
+#[test]
 fn preserves_filtered_collections() {
     assert_eq!(
         value(

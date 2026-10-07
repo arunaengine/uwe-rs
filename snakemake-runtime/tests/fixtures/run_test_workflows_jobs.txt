@@ -4,10 +4,11 @@
 # openpyxl, pyarrow, ruamel.yaml, snakemake-storage-plugin-http,
 # snakemake-storage-plugin-s3 and snakemake-executor-plugin-slurm.
 # --resume completed the interrupted folder-name lookup without repeating completed rows.
+# Retried only test_params_pickling and test_validate with the same cached dependencies plus --with polars.
 # Targets, configfiles, config, profiles and working directory: run_test_workflows_launches.txt.
 # Each workflow uses a fresh copy; no force flags or missing-input placeholders were added.
 # Tab-separated workflow, launch, exit code, JSON per-rule counts (including total), error.
-# All 640 recorded ok workflows were attempted; 529 have tables, 111 have null counts.
+# All 640 recorded ok workflows were attempted; 531 have tables, 109 have null counts.
 # Thirteen complete tables precede resource or shell-format errors; their exit codes remain nonzero.
 catalog/3d-omics__hg_genotype	plain	0	{"align__bwamem2__index": 1, "align__bwamem2__map": 3, "align__mark_duplicates": 2, "align__multiqc": 1, "align__reads": 3, "align__recalibrate__applybqsr": 2, "align__recalibrate__baserecalibrator": 2, "all": 1, "annotate__multiqc": 1, "annotate__vep": 2, "annotate__vep__download_cache": 1, "annotate__vep__download_plugins": 1, "annotate__vep__tmp_vcf": 2, "helpers__bcftools__index__vcfgz_tbi": 3, "helpers__fastqc": 6, "helpers__htslib__tabix__gtfgz": 1, "helpers__samtools__dict__fa.gz": 1, "helpers__samtools__faidx__fa.gz": 1, "helpers__samtools__index__cram": 7, "helpers__samtools__stats_cram": 7, "reference__recompress__fasta": 1, "reference__recompress__gtf": 1, "reference__recompress__vcf": 1, "swaps__multiqc": 1, "swaps__somalier__extract": 1, "swaps__somalier__find_sites": 1, "swaps__somalier__relate": 1, "total": 61, "variants__filter__merge_vcfs": 1, "variants__filter__select_variants": 2, "variants__filter__variant_filtration": 2, "variants__genotype__merge_vcfs": 1}
 catalog/Addimator__varlociraptor-copy-number-variants	plain	1	null	MissingInputException in rule genome_index in file "workflow/rules/fake_data.smk", line 18: Missing input files for rule genome_index:
@@ -525,7 +526,7 @@ tests/test_output_file_cache	plain	0	{"a": 1, "all": 1, "b": 1, "c": 2, "total":
 tests/test_output_file_cache_storage	plain	0	{"a": 1, "all": 1, "b": 1, "c": 2, "total": 5}
 tests/test_params	plain	0	{"1": 1, "2": 1, "total": 2}
 tests/test_params_empty_inherit	plain	0	{"all": 1, "child": 1, "total": 2}
-tests/test_params_pickling	plain	1	null	ModuleNotFoundError in file "Snakefile", line 3: No module named 'polars'
+tests/test_params_pickling	plain	0	{"a": 1, "total": 1}
 tests/test_paramspace	plain	0	{"all": 1, "plot_default": 2, "plot_empty": 2, "plot_filenamesep": 2, "plot_full": 2, "plot_full_reorder": 2, "plot_one": 2, "plot_sep": 2, "plot_sep_and_pattern": 2, "plot_two": 2, "simulate_default": 2, "simulate_empty": 2, "simulate_filenamesep": 2, "simulate_full": 2, "simulate_full_reorder": 2, "simulate_one": 2, "simulate_sep": 2, "simulate_sep_and_pattern": 2, "simulate_two": 2, "total": 37}
 tests/test_paramspace_single_wildcard	plain	0	{"all": 1, "plot_default": 2, "plot_empty": 2, "plot_filenamesep": 2, "plot_full": 2, "plot_full_reorder": 2, "plot_one": 2, "plot_sep": 2, "plot_sep_and_pattern": 2, "plot_two": 2, "simulate_default": 2, "simulate_empty": 2, "simulate_filenamesep": 2, "simulate_full": 2, "simulate_full_reorder": 2, "simulate_one": 2, "simulate_sep": 2, "simulate_sep_and_pattern": 2, "simulate_two": 2, "total": 37}
 tests/test_parser	plain	0	{"total": 0}
@@ -640,7 +641,7 @@ tests/test_update_flag_fail	tests.py	0	{"a": 1, "total": 1}
 tests/test_update_flag_fail_cleanup	tests.py	0	{"a": 1, "total": 1}
 tests/test_url_include	plain	0	{"6": 1, "compute1": 1, "compute2": 3, "gather": 1, "other": 1, "total": 7}
 tests/test_use_rule_same_module	tests.py	0	{"a": 1, "b": 1, "total": 2}
-tests/test_validate	plain	1	null	ModuleNotFoundError in file "Snakefile", line 4: No module named 'polars'
+tests/test_validate	plain	0	{"all": 1, "test_a": 2, "total": 3}
 tests/test_wildcard_count_ambiguity	plain	0	{"all": 1, "b": 1, "total": 2}
 tests/test_wildcard_keyword	plain	0	{"all": 1, "ambigouslog": 1, "globalwildcard": 1, "infile": 3, "localwildcard": 1, "stringwildcard": 1, "total": 8}
 tests/test_workflow_profile	tests.py	0	{"a": 1, "total": 1}

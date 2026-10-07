@@ -20,7 +20,7 @@ pub use cache::{CachedImage, IMAGE_CACHE_NAMESPACE, ImageBuild, ImageBuildClaim,
 pub use environment::{Environment, EnvironmentError};
 pub use fetch::{fetch_packages, fetch_repodata};
 pub use image::{BuiltImage, CompletedImage, IMAGE_RECEIPT_FORMAT, ImagePreparation};
-pub use lock::{FORMAT, Lock, Package, VirtualPackage, base};
+pub use lock::{FORMAT, Lock, Package, PipLock, PipPackage, VirtualPackage, base};
 pub use repodata::{Index, Record, channels, repodata_path, valid_channel};
 pub use spec::{MatchSpec, SpecError};
 pub use version::{Version, VersionSpec};
@@ -156,6 +156,7 @@ fn lock_inner(
             .map(ToString::to_string)
             .collect(),
         pip: environment.pip.clone(),
+        pypi: None,
         packages: records.iter().map(Package::of).collect(),
         virtual_packages,
     })

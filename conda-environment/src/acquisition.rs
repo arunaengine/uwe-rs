@@ -156,6 +156,7 @@ impl Acquisition {
                 .map(ToString::to_string)
                 .collect(),
             pip: vec![],
+            pypi: None,
             packages,
             virtual_packages,
         })

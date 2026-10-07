@@ -27,7 +27,7 @@ pub struct Lock {
     pub channels: Vec<String>,
     /// The match specs of the environment file.
     pub specs: Vec<String>,
-    /// The packages that `pip` installs, which the lock does not pin yet.
+    /// The original pip requirements from the environment file.
     pub pip: Vec<String>,
     /// The packages, sorted by name.
     pub packages: Vec<Package>,
@@ -35,6 +35,29 @@ pub struct Lock {
     /// An empty list explicitly means that no virtual packages are present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub virtual_packages: Option<Vec<VirtualPackage>>,
+    /// Exact pip artifacts, absent in historical and Conda-only locks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pypi: Option<PipLock>,
+}
+
+/// Versioned pip resolution for the lock's platform and exact Conda Python.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PipLock {
+    pub format: u32,
+    pub python: String,
+    pub packages: Vec<PipPackage>,
+}
+
+/// One hash-pinned wheel or source distribution, sorted by normalized project name.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PipPackage {
+    pub name: String,
+    pub version: String,
+    pub file: String,
+    pub url: String,
+    pub sha256: String,
 }
 
 /// A locked package.

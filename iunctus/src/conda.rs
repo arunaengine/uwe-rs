@@ -135,6 +135,7 @@ impl Config {
             channels: vec![],
             specs: vec![],
             pip: vec![],
+            pypi: None,
             packages: vec![],
             virtual_packages: Some(configured.capabilities.clone()),
         };

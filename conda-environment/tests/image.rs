@@ -34,6 +34,7 @@ fn locked() -> Lock {
         channels: vec!["A".into()],
         specs: vec!["foo".into()],
         pip: vec![],
+        pypi: None,
         packages: vec![Package {
             name: "foo".into(),
             version: "1.0".into(),

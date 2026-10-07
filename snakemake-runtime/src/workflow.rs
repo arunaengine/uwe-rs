@@ -40,7 +40,10 @@ pub fn workflow_error(message: impl Into<String>) -> Error {
 /// A file of a rule with its path variables replaced; other values stay as they are.
 pub fn apply_pathvars(pathvars: &Pathvars, value: &Value) -> Result<Value, Error> {
     match value.as_str() {
-        Some(text) => Ok(retag(value, Value::str(pathvars.apply(text)?))),
+        Some(text) => Ok(retag(
+            value,
+            Value::str(pathvars.apply(text.trim_end_matches('/'))?),
+        )),
         None => Ok(value.clone()),
     }
 }

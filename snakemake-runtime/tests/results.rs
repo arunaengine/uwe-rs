@@ -8,6 +8,47 @@ use workflow_graph::{
     Attempt, Engine, Event, Executor, Launch, Observer, Outcome, OutputFile, Running,
 };
 
+#[test]
+fn matches_directory_slashes() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        r#"
+rule all:
+    input: "first/", lambda wildcards: "second/", "third"
+rule first:
+    output: directory("first")
+    shell: "mkdir {output}"
+rule second:
+    output: directory("second/")
+    shell: "mkdir {output}"
+rule third:
+    output: directory("third/")
+    shell: "mkdir {output}"
+"#,
+    )
+    .unwrap();
+    let launch = Launch {
+        target: folder.path().into(),
+        scratch: folder.path().join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).unwrap();
+    let mut executor = workflow_graph::Simulator::new(folder.path().join("simulator"));
+    let result = workflow_graph::execute("slashes", driver.as_mut(), &mut executor);
+    assert!(result.error.is_none(), "{:?}", result.error);
+    let mut rules: Vec<_> = result
+        .graph
+        .nodes
+        .iter()
+        .map(|node| node.task.step.as_str())
+        .collect();
+    rules.sort();
+    assert_eq!(rules, ["all", "first", "second", "third"]);
+    assert_eq!(result.graph.nodes.last().unwrap().task.inputs.len(), 3);
+}
+
 const SNAKEFILE: &str = r#"
 rule all:
     input: "final.txt"

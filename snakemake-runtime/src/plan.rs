@@ -996,7 +996,7 @@ fn add_function_result(
                 )));
             }
         };
-        let text = pathvars.apply(&text)?;
+        let text = pathvars.apply(text.trim_end_matches('/'))?;
         let filled = pattern::apply(&text, wildcards).unwrap_or(text);
         let mut value = match crate::workflow::module_path(function, &filled) {
             Some(modified) if modified != filled && file.tag("path_modified").is_none() => {

@@ -30,6 +30,8 @@ pub enum State {
     Yaml,
     /// `java.net.URI`, by its text.
     Uri(Rc<str>),
+    /// `java.util.UUID`, with immutable identifier bits.
+    Uuid(uuid::Uuid),
     /// An input stream or reader over bytes that were read at once, as `newInputStream()`,
     /// `GZIPInputStream` and readers give it, with the position of the next byte.
     Stream(Rc<[u8]>, usize),

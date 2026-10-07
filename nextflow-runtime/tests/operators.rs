@@ -248,6 +248,14 @@ fn flattening() {
 }
 
 #[test]
+fn flattens_null_positions() {
+    assert_eq!(
+        lines("channel.of([1, null, [2, null, 3]]).flatten().collate(5).view()"),
+        ["[1, null, 2, null, 3]"]
+    );
+}
+
+#[test]
 fn gathering() {
     assert_eq!(lines("channel.of(1, 2, 3).collect().view()"), ["[1, 2, 3]"]);
     assert_eq!(

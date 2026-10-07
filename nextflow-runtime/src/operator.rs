@@ -129,6 +129,9 @@ impl Behaviour for Single {
                     context.emit(self.output, value);
                 }
                 Each::Flatten => {
+                    if matches!(value, Value::Null) {
+                        continue;
+                    }
                     let mut leaves = Vec::new();
                     flatten(value, &mut leaves);
                     for leaf in leaves {
@@ -790,10 +793,9 @@ fn elements(value: Value) -> Vec<Value> {
     }
 }
 
-/// The leaves of nested lists and sets; maps stay whole and `null` gives nothing.
+/// The leaves of nested lists and sets, including nulls; maps stay whole.
 fn flatten(value: Value, leaves: &mut Vec<Value>) {
     match value {
-        Value::Null => {}
         Value::List(list) => {
             for item in list.borrow().items.clone() {
                 flatten(item, leaves);

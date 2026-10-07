@@ -89,6 +89,47 @@ async fn shares_configured_driver() {
 }
 
 #[tokio::test]
+async fn validates_then_runs() {
+    use iunctus::application::Policy;
+    use iunctus::forms::{Form, ValidationResponse};
+
+    let root = tempfile::tempdir().unwrap();
+    let form = Form::new(
+        request(root.path()).describe().await.unwrap(),
+        Policy::Strict,
+    )
+    .unwrap();
+    let ValidationResponse::Checked(checked) = form.validate_response(json!({"count": 7})) else {
+        panic!("the driver provides a form");
+    };
+    assert!(checked.accepted);
+    let mut request = request(root.path());
+    request.settings.inputs = Some(checked.values.clone());
+    let run = request.run().await.unwrap();
+    assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+    assert_eq!(run.execution.graph.nodes.len(), 1);
+    let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
+    assert_eq!(
+        database.run_inputs(&run.id).unwrap().unwrap().values,
+        checked.values
+    );
+}
+
+#[tokio::test]
+async fn params_keep_types() {
+    let root = tempfile::tempdir().unwrap();
+    let mut valid = request(root.path());
+    valid.settings.params.insert("count".into(), json!(7));
+    assert_eq!(
+        valid.describe().await.unwrap().inputs.unwrap().values,
+        json!({"count": 7})
+    );
+    let mut invalid = request(root.path());
+    invalid.settings.params.insert("count".into(), json!("7"));
+    assert!(invalid.run().await.is_err());
+}
+
+#[tokio::test]
 async fn forwards_host_cancellation() {
     let root = tempfile::tempdir().unwrap();
     let cancel = CancellationToken::new();

@@ -4,7 +4,10 @@
 
 use std::io::{self, Write};
 
-use conda_environment::{Lock, Package, PipError, VirtualPackage, lock_pip, validate_pip};
+use conda_environment::{
+    Environment, ImagePreparation, Lock, Package, PipError, VirtualPackage, fetch_packages,
+    lock_pip, lock_with_cache, validate_pip,
+};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 
@@ -22,7 +25,8 @@ impl Index {
     fn add(&self, file: &str, metadata: &str) {
         let name = metadata
             .lines()
-            .find_map(|line| line.strip_prefix("Name: "))
+            .filter_map(|line| line.split_once(": "))
+            .find_map(|(name, value)| name.eq_ignore_ascii_case("name").then_some(value))
             .unwrap();
         let path = self.root.path().join(format!("simple/{name}/index.json"));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -129,6 +133,9 @@ fn locked(requirements: &[&str]) -> Lock {
 fn locks_dependency_closure() {
     let index = Index::new();
     index.add("alpha-1-py3-none-any.whl", "Metadata-Version: 2.3\nName: alpha\nVersion: 1\nProvides-Extra: feature\nRequires-Dist: beta>=1\nRequires-Dist: extra==1; extra == 'feature'\nRequires-Dist: missing; sys_platform == 'win32'\n");
+    index.modify("alpha", |project| {
+        project["files"][0]["dist-info-metadata"] = project["files"][0]["core-metadata"].clone();
+    });
     index.add("beta-1-py3-none-any.whl", "Name: beta\nVersion: 1\n");
     index.add(
         "beta-2-py3-none-any.whl",
@@ -185,6 +192,7 @@ fn rejects_unsupported_inputs() {
     for text in [
         "-e .",
         "./local",
+        "local.whl",
         "/tmp/local",
         "git+https://example.org/project",
         "alpha @ https://example.org/a.whl",
@@ -297,5 +305,200 @@ fn requires_source_tools() {
             .unwrap_err()
             .to_string()
             .contains("dynamic source metadata")
+    );
+}
+
+#[test]
+fn builds_pinned_context() {
+    let index = Index::new();
+    index.add("alpha-1-py3-none-any.whl", "Name: alpha\nVersion: 1\n");
+    let mut lock = index.resolve(&["alpha"]).unwrap();
+    for package in &mut lock.packages {
+        package.sha256 = Some(hash(b"Conda bytes"));
+    }
+    let folder = tempfile::tempdir().unwrap();
+    fetch_packages(&lock, folder.path(), |url, out| {
+        if url.starts_with("https://conda.example/") {
+            out.write_all(b"Conda bytes")
+        } else {
+            out.write_all(&index.fetch(url)?)
+        }
+    })
+    .unwrap();
+    let base = format!("micromamba@sha256:{}", "a".repeat(64));
+    let capabilities = lock.virtual_packages.as_ref().unwrap();
+    let preparation = ImagePreparation::new(&lock, &base, "linux/amd64", capabilities).unwrap();
+    assert!(
+        preparation
+            .recipe()
+            .contains("--no-index --no-deps --no-build-isolation")
+    );
+    assert!(preparation.recipe().contains("--require-hashes"));
+    assert!(
+        preparation.recipe().find("micromamba create").unwrap()
+            < preparation.recipe().find("python -m pip").unwrap()
+    );
+    let mut bytes = Vec::new();
+    preparation
+        .write_context(folder.path(), &mut bytes)
+        .unwrap();
+    let mut archive = tar::Archive::new(bytes.as_slice());
+    let mut requirements = None;
+    for entry in archive.entries().unwrap() {
+        let mut entry = entry.unwrap();
+        if entry.path().unwrap().as_ref() == std::path::Path::new("pip.txt") {
+            let mut text = String::new();
+            std::io::Read::read_to_string(&mut entry, &mut text).unwrap();
+            requirements = Some(text);
+        }
+    }
+    let package = &lock.pypi.as_ref().unwrap().packages[0];
+    assert_eq!(
+        requirements.unwrap(),
+        format!(
+            "file:///tmp/iunctus-pip-packages/0/{} --hash=sha256:{}\n",
+            package.file, package.sha256
+        )
+    );
+    std::fs::write(folder.path().join(&package.sha256), b"corrupt wheel").unwrap();
+    assert!(
+        preparation
+            .write_context(folder.path(), &mut Vec::new())
+            .is_err()
+    );
+    let digest = preparation.digest().to_owned();
+    lock.pypi.as_mut().unwrap().packages[0].sha256 = "b".repeat(64);
+    assert_ne!(
+        ImagePreparation::new(
+            &lock,
+            &base,
+            "linux/amd64",
+            lock.virtual_packages.as_ref().unwrap()
+        )
+        .unwrap()
+        .digest(),
+        digest
+    );
+    lock.pypi.as_mut().unwrap().format = 2;
+    assert!(
+        ImagePreparation::new(
+            &lock,
+            &base,
+            "linux/amd64",
+            lock.virtual_packages.as_ref().unwrap()
+        )
+        .is_err()
+    );
+    lock.pypi = None;
+    assert!(
+        ImagePreparation::new(
+            &lock,
+            &base,
+            "linux/amd64",
+            lock.virtual_packages.as_ref().unwrap()
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn reuses_offline_metadata() {
+    let index = Index::new();
+    index.add("alpha-1-py3-none-any.whl", "Name: alpha\nVersion: 1\n");
+    let cache = tempfile::tempdir().unwrap();
+    let mut lock = locked(&["alpha"]);
+    lock_pip(&mut lock, |url| {
+        let bytes = index.fetch(url)?;
+        let folder = cache.path().join("pypi");
+        std::fs::create_dir_all(&folder)?;
+        std::fs::write(folder.join(hash(url.as_bytes())), &bytes)?;
+        Ok(bytes)
+    })
+    .unwrap();
+    let snapshot = tempfile::tempdir().unwrap();
+    let folder = snapshot.path().join("fixture");
+    for subdir in ["linux-64", "noarch"] {
+        std::fs::create_dir_all(folder.join(subdir)).unwrap();
+    }
+    let records = json!({"packages": {
+        "python-3.12.8-0.conda": {"name":"python", "version":"3.12.8", "build":"0", "build_number":0, "subdir":"linux-64", "depends":[], "sha256":"a".repeat(64)},
+        "pip-24.3.1-0.conda": {"name":"pip", "version":"24.3.1", "build":"0", "build_number":0, "subdir":"linux-64", "depends":["python >=3.12,<3.13"], "sha256":"a".repeat(64)}
+    }});
+    std::fs::write(folder.join("linux-64/repodata.json"), records.to_string()).unwrap();
+    std::fs::write(folder.join("noarch/repodata.json"), "{}").unwrap();
+    let environment = Environment::parse(
+        "channels: [fixture]\ndependencies:\n  - python=3.12\n  - pip: [alpha]\n",
+    )
+    .unwrap();
+    let cached =
+        lock_with_cache(&environment, snapshot.path(), "linux-64", &[], cache.path()).unwrap();
+    assert_eq!(cached.pypi, lock.pypi);
+    assert_eq!(
+        cached
+            .packages
+            .iter()
+            .map(|package| package.name.as_str())
+            .collect::<Vec<_>>(),
+        ["pip", "python"]
+    );
+    assert!(
+        lock_with_cache(
+            &environment,
+            snapshot.path(),
+            "linux-64",
+            &[],
+            tempfile::tempdir().unwrap().path()
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("offline mode forbids")
+    );
+}
+
+#[test]
+fn reads_metadata_headers() {
+    let index = Index::new();
+    index.add(
+        "alpha-1-py3-none-any.whl",
+        "nAmE: alpha\nvErSiOn: 1\nrEqUirEs-DiSt: beta==1\n",
+    );
+    index.add("beta-1-py3-none-any.whl", "Name: beta\nVersion: 1\n");
+    assert_eq!(
+        index
+            .resolve(&["alpha"])
+            .unwrap()
+            .pypi
+            .unwrap()
+            .packages
+            .len(),
+        2
+    );
+    index.add(
+        "alpha-2-py3-none-any.whl",
+        "Name: alpha\nVersion: 2\nRequires-Python: >=3.12\nRequires-Python: >=3.13\n",
+    );
+    assert!(
+        index
+            .resolve(&["alpha"])
+            .unwrap_err()
+            .to_string()
+            .contains("duplicate requires-python")
+    );
+}
+
+#[test]
+fn unions_extra_dependencies() {
+    let index = Index::new();
+    index.add("alpha-1-py3-none-any.whl", "Name: alpha\nVersion: 1\nProvides-Extra: first\nProvides-Extra: second\nRequires-Dist: beta==1; extra != 'first'\nRequires-Dist: missing; extra == 'first' and extra == 'second'\n");
+    index.add("beta-1-py3-none-any.whl", "Name: beta\nVersion: 1\n");
+    let lock = index.resolve(&["alpha[first,second]"]).unwrap();
+    assert_eq!(
+        lock.pypi
+            .unwrap()
+            .packages
+            .iter()
+            .map(|package| package.name.as_str())
+            .collect::<Vec<_>>(),
+        ["alpha", "beta"]
     );
 }

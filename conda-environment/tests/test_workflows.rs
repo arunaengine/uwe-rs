@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use conda_environment::Environment;
+use conda_environment::{Environment, validate_pip};
 
 /// The environment files below a folder.
 fn environment_files(folder: &Path, found: &mut Vec<PathBuf>) -> std::io::Result<()> {
@@ -61,6 +61,7 @@ fn reads_workflow_environments() {
         })
         .collect();
     let (mut read, mut specs, mut pip) = (0, 0, 0);
+    let (mut conda_only, mut pip_supported, mut pip_refused) = (0, 0, 0);
     let mut failures: BTreeMap<String, String> = BTreeMap::new();
     for file in &files {
         let text = std::fs::read_to_string(file)
@@ -70,6 +71,13 @@ fn reads_workflow_environments() {
                 read += 1;
                 specs += environment.dependencies.len();
                 pip += environment.pip.len();
+                if environment.pip.is_empty() {
+                    conda_only += 1;
+                } else if validate_pip(&environment.pip).is_ok() {
+                    pip_supported += 1;
+                } else {
+                    pip_refused += 1;
+                }
             }
             Err(error) => {
                 let message = error.to_string();
@@ -81,6 +89,10 @@ fn reads_workflow_environments() {
     println!(
         "{} environment files: {read} read, with {specs} match specs and {pip} pip packages",
         files.len()
+    );
+    println!(
+        "locking input acceptance: {conda_only} Conda-only before, {} after ({pip_supported} supported pip environments, {pip_refused} pip refusals); resolution and builds are not part of this inventory",
+        conda_only + pip_supported
     );
     assert_eq!(
         failures, expected,

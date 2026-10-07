@@ -71,6 +71,40 @@ rule finish:
     }
 }
 
+#[test]
+fn reuses_checkpoint_results() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        r#"
+def chosen(wildcards):
+    return checkpoints.seed.get().output[0]
+rule all:
+    input: "final"
+checkpoint seed:
+    output: "choice"
+    shell: "touch {output}"
+rule finish:
+    input: chosen
+    output: "final"
+    shell: "cp {input} {output}"
+"#,
+    )
+    .unwrap();
+    std::fs::write(folder.path().join("final"), "current").unwrap();
+    let launch = Launch {
+        target: folder.path().into(),
+        scratch: folder.path().join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).unwrap();
+    let mut executor = Simulator::new(folder.path().join("simulator"));
+    let result = execute("checkpoint", driver.as_mut(), &mut executor);
+    assert!(result.error.is_none(), "{:?}", result.error);
+    assert!(result.graph.nodes.is_empty());
+}
+
 /// The steps that a simulated run of the folder runs, with Snakemake's record of `copy.txt`
 /// when given.
 fn steps(input_age: u64, record: Option<&str>) -> Vec<String> {

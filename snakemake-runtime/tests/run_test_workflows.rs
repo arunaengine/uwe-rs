@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
@@ -165,7 +166,7 @@ fn shuffle_seed() -> u64 {
 /// The outcome of one run in this process, as the fixture line records it, and the counts of
 /// the inputs and the outputs of the workflow, which the run describes first, as the binary
 /// does.
-fn run(folder: &Path, launching: &Launching, scratch: &Path) -> (String, String, String) {
+fn run(folder: &Path, launching: &Launching, scratch: &Path) -> (String, String, String, String) {
     // Files on the web, like remote modules, are downloaded once for all runs.
     if let Some(root) = std::env::var_os("SNAKEMAKE_TEST_WORKFLOWS") {
         let downloads = Path::new(&root).join("downloads");
@@ -178,7 +179,7 @@ fn run(folder: &Path, launching: &Launching, scratch: &Path) -> (String, String,
         Ok(driver) => driver,
         Err(error) => {
             let outcome = format!("{} {error}", if error.unsupported { 33 } else { 1 });
-            return (outcome.clone(), outcome.clone(), outcome);
+            return (outcome.clone(), outcome.clone(), outcome, String::new());
         }
     };
     let inputs = match driver.inputs() {
@@ -209,7 +210,17 @@ fn run(folder: &Path, launching: &Launching, scratch: &Path) -> (String, String,
         None => format!("ok {}", execution.graph.nodes.len()),
         Some(error) => format!("{} {error}", if error.unsupported() { 33 } else { 1 }),
     };
-    (outcome, inputs, outputs)
+    let mut jobs = BTreeMap::<String, usize>::new();
+    for node in &execution.graph.nodes {
+        *jobs.entry(node.task.step.clone()).or_default() += 1;
+    }
+    jobs.insert("total".into(), execution.graph.nodes.len());
+    (
+        outcome,
+        inputs,
+        outputs,
+        serde_json::to_string(&jobs).unwrap(),
+    )
 }
 
 /// The file next to the outcome of a child that holds the counts of the inputs.
@@ -255,8 +266,10 @@ fn run_one() {
     let scratch = std::env::var_os("SNAKEMAKE_RUN_SCRATCH").map(PathBuf::from);
     let own = tempfile::tempdir().expect("a temporary directory");
     let scratch = scratch.unwrap_or_else(|| own.path().to_path_buf());
-    let (result, inputs, outputs) = run(&folder, &Launching::of(&name.to_string_lossy()), &scratch);
+    let (result, inputs, outputs, jobs) =
+        run(&folder, &Launching::of(&name.to_string_lossy()), &scratch);
     let outcome = PathBuf::from(outcome);
+    std::fs::write(outcome.with_extension("jobs"), jobs).expect("writes the rule counts");
     std::fs::write(outputs_file(&outcome), outputs).expect("writes the outputs");
     std::fs::write(inputs_file(&outcome), clean(&inputs, &folder)).expect("writes the inputs");
     std::fs::write(outcome, clean(&result, &folder)).expect("writes the outcome");
@@ -445,6 +458,7 @@ fn matches_recorded_workflows() {
     let results: Mutex<Vec<Option<String>>> = Mutex::new(vec![None; workflows.len()]);
     let inputs: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
     let outputs: Mutex<Vec<OutputCounts>> = Mutex::new(Vec::new());
+    let jobs: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());
     let threads = std::thread::available_parallelism()
         .map_or(4, |count| count.get())
         .min(4);
@@ -458,6 +472,11 @@ fn matches_recorded_workflows() {
                     };
                     let file = outcomes.path().join(index.to_string());
                     let outcome = child(name, folder, &file);
+                    if outcome.starts_with("ok") {
+                        let counts = std::fs::read_to_string(file.with_extension("jobs"))
+                            .expect("the planned rule counts");
+                        jobs.lock().expect("the jobs").insert(name.clone(), counts);
+                    }
                     let counts = std::fs::read_to_string(inputs_file(&file))
                         .unwrap_or_else(|_| outcome.clone());
                     inputs
@@ -484,6 +503,10 @@ fn matches_recorded_workflows() {
                 .flatten(),
         )
         .collect();
+    let jobs = jobs.into_inner().expect("the jobs");
+    if let Ok(path) = std::env::var("SNAKEMAKE_JOB_RECORD") {
+        std::fs::write(path, serde_json::to_string_pretty(&jobs).unwrap()).unwrap();
+    }
     if !containers() {
         let mut inputs = inputs.into_inner().expect("the inputs");
         let outputs = outputs.into_inner().expect("the outputs");
@@ -548,6 +571,118 @@ fn matches_recorded_workflows() {
         "{} workflows disagree with tests/fixtures/run_test_workflows_rejected.txt:\n{}",
         problems.len(),
         problems.join("\n")
+    );
+    if !containers() {
+        compare_jobs(&fixtures, &jobs);
+    }
+}
+
+/// Compares real dry-run jobs with simulated tasks, retaining only exact documented differences.
+fn compare_jobs(fixtures: &Path, jobs: &BTreeMap<String, String>) {
+    let oracle = std::fs::read_to_string(fixtures.join("run_test_workflows_jobs.txt"))
+        .expect("the real Snakemake rule counts");
+    let expected = std::fs::read_to_string(fixtures.join("job_differences.txt"))
+        .expect("the documented job differences");
+    let documented: Vec<_> = records(&expected).collect();
+    let mut problems = Vec::new();
+    let mut matched = 0;
+    let mut compared = 0;
+    let mut unavailable = 0;
+    let mut errors = 0;
+    for (name, planned) in jobs {
+        let Some(fields) = records(&oracle).find(|fields| fields[0] == name) else {
+            problems.push(format!("{name}: no real Snakemake record"));
+            continue;
+        };
+        if fields[3] == "null" {
+            unavailable += 1;
+            eprintln!(
+                "{name}: oracle unavailable: {}",
+                fields.get(4).unwrap_or(&"")
+            );
+            continue;
+        }
+        errors += usize::from(fields[2] != "0");
+        compared += 1;
+        let actual: BTreeMap<String, usize> = serde_json::from_str(planned).unwrap();
+        let real: BTreeMap<String, usize> = serde_json::from_str(fields[3]).unwrap();
+        let record = documented.iter().find(|fields| fields[0] == name);
+        if actual == real {
+            matched += 1;
+            if record.is_some() {
+                problems.push(format!("{name}: obsolete documented difference"));
+            }
+            continue;
+        }
+        if let Some(record) = record {
+            let allowed: BTreeMap<String, usize> = serde_json::from_str(record[1]).unwrap();
+            let reference: BTreeMap<String, usize> = serde_json::from_str(record[2]).unwrap();
+            if actual == allowed
+                && real == reference
+                && record.get(3).is_some_and(|reason| !reason.is_empty())
+            {
+                continue;
+            }
+        }
+        let mut rules: Vec<_> = actual.keys().chain(real.keys()).collect();
+        rules.sort();
+        rules.dedup();
+        let differences: Vec<_> = rules
+            .into_iter()
+            .filter(|rule| actual.get(*rule) != real.get(*rule))
+            .map(|rule| {
+                format!(
+                    "{rule}: planned {}, Snakemake {}",
+                    actual.get(rule).unwrap_or(&0),
+                    real.get(rule).unwrap_or(&0)
+                )
+            })
+            .collect();
+        problems.push(format!("{name}: {}", differences.join(", ")));
+    }
+    eprintln!(
+        "{matched} exact matches of {compared} compared workflows; {unavailable} without oracle counts; {errors} oracle errors after job statistics"
+    );
+    assert!(
+        problems.is_empty(),
+        "job count differences:\n{}",
+        problems.join("\n")
+    );
+}
+
+#[test]
+#[should_panic(expected = "first: planned 1, Snakemake 0")]
+fn rejects_rule_differences() {
+    let fixtures = tempfile::tempdir().unwrap();
+    std::fs::write(
+        fixtures.path().join("run_test_workflows_jobs.txt"),
+        "example\tplain\t1\t{\"second\":1,\"total\":1}\tformatting failed\n",
+    )
+    .unwrap();
+    std::fs::write(fixtures.path().join("job_differences.txt"), "").unwrap();
+    compare_jobs(
+        fixtures.path(),
+        &BTreeMap::from([("example".into(), "{\"first\":1,\"total\":1}".into())]),
+    );
+}
+
+#[test]
+#[should_panic(expected = "second: planned 0, Snakemake 2")]
+fn rejects_changed_differences() {
+    let fixtures = tempfile::tempdir().unwrap();
+    std::fs::write(
+        fixtures.path().join("run_test_workflows_jobs.txt"),
+        "example\tplain\t0\t{\"second\":2,\"total\":2}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        fixtures.path().join("job_differences.txt"),
+        "example\t{\"first\":1,\"total\":1}\t{\"second\":1,\"total\":1}\tGrouped tasks.\n",
+    )
+    .unwrap();
+    compare_jobs(
+        fixtures.path(),
+        &BTreeMap::from([("example".into(), "{\"first\":1,\"total\":1}".into())]),
     );
 }
 

@@ -7,7 +7,8 @@
 # Targets, configfiles, config, profiles and working directory: run_test_workflows_launches.txt.
 # Each workflow uses a fresh copy; no force flags or missing-input placeholders were added.
 # Tab-separated workflow, launch, exit code, JSON per-rule counts (including total), error.
-# Catalog recording: 267 workflows; test workflow records follow separately.
+# All 640 recorded ok workflows were attempted; 529 have tables, 111 have null counts.
+# Thirteen complete tables precede resource or shell-format errors; their exit codes remain nonzero.
 catalog/3d-omics__hg_genotype	plain	0	{"align__bwamem2__index": 1, "align__bwamem2__map": 3, "align__mark_duplicates": 2, "align__multiqc": 1, "align__reads": 3, "align__recalibrate__applybqsr": 2, "align__recalibrate__baserecalibrator": 2, "all": 1, "annotate__multiqc": 1, "annotate__vep": 2, "annotate__vep__download_cache": 1, "annotate__vep__download_plugins": 1, "annotate__vep__tmp_vcf": 2, "helpers__bcftools__index__vcfgz_tbi": 3, "helpers__fastqc": 6, "helpers__htslib__tabix__gtfgz": 1, "helpers__samtools__dict__fa.gz": 1, "helpers__samtools__faidx__fa.gz": 1, "helpers__samtools__index__cram": 7, "helpers__samtools__stats_cram": 7, "reference__recompress__fasta": 1, "reference__recompress__gtf": 1, "reference__recompress__vcf": 1, "swaps__multiqc": 1, "swaps__somalier__extract": 1, "swaps__somalier__find_sites": 1, "swaps__somalier__relate": 1, "total": 61, "variants__filter__merge_vcfs": 1, "variants__filter__select_variants": 2, "variants__filter__variant_filtration": 2, "variants__genotype__merge_vcfs": 1}
 catalog/Addimator__varlociraptor-copy-number-variants	plain	1	null	MissingInputException in rule genome_index in file "workflow/rules/fake_data.smk", line 18: Missing input files for rule genome_index:
 catalog/AllenInstitute__Bulk-RNA-Snakeline	catalog	1	null	MissingInputException in rule cutadapt in file "workflow/rules/trim.smk", line 1: Missing input files for rule cutadapt:
@@ -275,3 +276,376 @@ catalog/zavolanlab__zarp	plain	1	null	MissingInputException in rule start in fil
 catalog/zhuakexi__dna-seq-gatk-variant-calling	plain	0	{"bwa_index": 1, "genome_dict": 1, "genome_faidx": 1, "get_genome": 1, "get_known_variation": 1, "get_vep_cache": 1, "get_vep_plugins": 1, "prepare_ref": 1, "remove_iupac_codes": 1, "tabix_known_variants": 1, "total": 10}
 catalog/zifornd__arrays	ci	0	{"all": 1, "annotate": 1, "annotation": 1, "boxplot": 1, "contrasts": 1, "correct": 1, "dens": 1, "design": 1, "filter": 1, "goana": 2, "heatmap": 2, "hist": 1, "hm": 1, "import": 1, "limma": 1, "ma": 1, "mds": 1, "msd": 1, "normalize": 1, "organism": 1, "pca": 1, "platform": 1, "pvalue": 2, "rle": 1, "topgo": 2, "toptable": 2, "total": 33, "volcano": 2}
 catalog/ziyaipek__snakemake	plain	0	{"all": 1, "fastqc": 4, "get_genome": 1, "multiqc": 1, "simulate_reads": 2, "total": 10, "validate_genome": 1}
+tests/knapsack	plain	0	{"bwa_mature": 2, "cutadapt": 2, "gzip": 2, "mapmature_all": 1, "total": 7}
+tests/profile	plain	0	{"2": 1000, "3": 1000, "4": 1000, "5": 1000, "all": 1, "total": 4001}
+tests/test01	plain	0	{"rule1": 1, "rule2": 1, "total": 2}
+tests/test02	plain	0	{"all": 1, "rule1": 1, "rule2": 1, "total": 3}
+tests/test03	tests.py	0	{"rule1": 1, "total": 1}
+tests/test04	tests.py	0	{"rule2": 1, "total": 1}
+tests/test05	plain	0	{"all": 1, "compute1": 1, "compute2": 3, "gather": 1, "other": 1, "total": 7}
+tests/test06	tests.py	0	{"total": 1, "wildcards": 1}
+tests/test07	tests.py	0	{"rule1": 1, "rule2": 1, "total": 2}
+tests/test08	tests.py	0	{"rule1": 2, "rule2": 2, "total": 4}
+tests/test09	tests.py	0	{"rule1": 1, "rule2": 1, "total": 2}
+tests/test10	plain	0	{"rule1": 1, "total": 1}
+tests/test11	plain	0	{"1": 1, "2": 1, "total": 2}
+tests/test12	plain	0	{"rule1": 1, "rule2": 1, "total": 2}
+tests/test13	plain	0	{"all": 1, "postprocess": 1, "run_algo1": 1, "total": 3}
+tests/test15	plain	0	{"a": 1, "total": 1}
+tests/testHighWorkload	plain	0	{"all": 1, "create_tree": 11, "extract_mismatch_counts": 11, "total": 23}
+tests/test_(with_parenthese's)	plain	0	{"1": 1, "total": 1}
+tests/test_access_patterns	plain	0	{"a": 1, "all": 1, "b": 2, "c": 2, "d": 2, "e": 2, "f": 2, "total": 12}
+tests/test_all_temp	plain	0	{"a": 1, "all": 1, "b": 1, "total": 3}
+tests/test_ancient	tests.py	0	{"b": 1, "total": 1}
+tests/test_ancient_cli	plain	0	{"A": 1, "B": 1, "all": 1, "total": 3}
+tests/test_ancient_dag	plain	0	{"A": 1, "B": 20, "C": 1, "D": 1, "all": 1, "total": 24}
+tests/test_archive	plain	0	{"a": 1, "total": 1}
+tests/test_azure_batch	plain	0	{"all": 1, "total": 2, "write_test": 1}
+tests/test_bash	plain	0	{"a": 1, "total": 1}
+tests/test_batch	plain	0	{"aggregate": 1, "all": 1, "feed": 3, "independent": 1, "total": 6}
+tests/test_batch_final	plain	0	{"aggregate": 1, "all": 1, "feed": 3, "independent": 1, "total": 6}
+tests/test_benchmark	plain	0	{"all": 1, "bench_run": 1, "bench_run_shell": 1, "bench_script": 1, "bench_shell": 1, "total": 5}
+tests/test_benchmark_jsonl	plain	0	{"all": 1, "bench_run": 1, "bench_run_shell": 1, "bench_script": 1, "bench_shell": 1, "total": 5}
+tests/test_cache_multioutput	plain	0	{"a": 1, "total": 1}
+tests/test_callable	plain	0	{"all": 1, "rule1": 1, "rule2": 1, "total": 3}
+tests/test_censored_path	plain	1	null	InvalidPluginException in file "Snakefile", line 1: Error loading Snakemake plugin xrootd: The package snakemake-storage-plugin-xrootd is not installed.
+tests/test_checkpoint_allowed_rules	tests.py	0	{"a": 1, "c": 1, "total": 2}
+tests/test_checkpoint_missing_output	plain	0	{"aggregate": 1, "all": 1, "checkpoint_test": 1, "total": 3}
+tests/test_checkpoint_omit_from	plain	0	{"A1": 1, "A2": 1, "B1": 1, "B2": 1, "C1": 1, "C2": 1, "all": 1, "total": 7}
+tests/test_checkpoint_open	plain	0	{"a": 1, "b": 1, "total": 2}
+tests/test_checkpoint_rerun	plain	0	{"a1": 1, "aggregate": 1, "b": 1, "total": 3}
+tests/test_checkpoint_running_job_storage_race	plain	0	{"all": 1, "combine": 1, "make_chunk": 1, "slow_storage_job": 1, "total": 4}
+tests/test_checkpoint_until	plain	0	{"A1": 1, "A2": 1, "B1": 1, "B2": 1, "C1": 1, "C2": 1, "all": 1, "total": 7}
+tests/test_checkpoints	plain	0	{"aggregate": 2, "all": 1, "somestep": 2, "total": 5}
+tests/test_checkpoints_dir	plain	0	{"aggregate": 2, "all": 1, "clustering": 2, "total": 5}
+tests/test_checkpoints_many	plain	0	{"all": 1, "before": 1, "collect": 1, "first": 1, "total": 4}
+tests/test_conda	plain	0	{"a": 3, "all": 1, "b": 3, "total": 7}
+tests/test_conda_cmd_exe	plain	0	{"a": 3, "all": 1, "b": 3, "total": 7}
+tests/test_conda_custom_prefix	plain	0	{"a": 3, "all": 1, "total": 4}
+tests/test_conda_function	plain	1	null	InputFunctionException in rule a in file "Snakefile", line 25: Error:
+tests/test_conda_named	plain	1	null	CalledProcessError in file "Snakefile", line 6: Command 'set -euo pipefail;  conda create -y -n xxx-test-env -c conda-forge --override-channels ripgrep==13.0.0' returned non-zero exit status 127.
+tests/test_conda_pin_file	plain	0	{"a": 1, "total": 1}
+tests/test_conda_python_3_7_script	plain	0	{"random_python_conda_script": 1, "total": 1}
+tests/test_conda_python_script	plain	0	{"random_python_conda_script": 1, "total": 1}
+tests/test_conda_run	plain	0	{"random_python_conda_script": 1, "total": 1}
+tests/test_conditional	tests.py	0	{"1": 1, "2": 1, "3": 1, "4": 1, "total": 4}
+tests/test_config	plain	0	{"1": 1, "total": 1}
+tests/test_config_merging	tests.py	0	{"dump_config": 1, "total": 1}
+tests/test_config_replacing	tests.py	0	{"all": 1, "create": 1, "total": 2}
+tests/test_config_replacing_nocli	plain	0	{"all": 1, "create": 1, "total": 2}
+tests/test_config_yte	plain	0	{"a": 1, "total": 1}
+tests/test_container	plain	0	{"a": 1, "total": 1}
+tests/test_containerize_checkpoint	plain	0	{"a": 1, "aggregate": 1, "all": 1, "b": 1, "total": 4}
+tests/test_containerized	plain	0	{"a": 1, "total": 1}
+tests/test_converting_path_for_r_script	plain	0	{"all": 1, "step1": 1, "total": 2}
+tests/test_core_dependent_threads	plain	0	{"a": 1, "total": 1}
+tests/test_cwl	plain	0	{"a": 1, "total": 1}
+tests/test_cyclic_dependency_single	plain	0	{"total": 0}
+tests/test_cyclic_dependency_split	plain	0	{"all": 1, "b": 1, "c": 1, "total": 3}
+tests/test_default_flags	plain	0	{"a": 1, "all": 1, "b": 1, "c": 1, "total": 4}
+tests/test_default_remote	plain	0	{"a": 1, "all": 1, "b": 1, "base": 1, "c": 1, "d": 1, "e": 1, "total": 7}
+tests/test_default_resources	plain	1	{"a": 1, "b": 1, "total": 2}	RuleException in rule a in file "Snakefile", line 2: AttributeError: 'ResourceList' object has no attribute 'mem_mb', when formatting the following:
+tests/test_default_storage_local_job	plain	0	{"a": 1, "all": 1, "b": 1, "c": 1, "total": 4}
+tests/test_default_target	plain	0	{"a": 2, "b": 1, "total": 3}
+tests/test_deferred_func_eval	plain	0	{"a": 1, "total": 1}
+tests/test_delete_all_output	plain	0	{"all": 1, "delete_all_output": 1, "delete_temp_output": 1, "total": 3}
+tests/test_delete_output	plain	0	{"main": 1, "make_the_dir": 1, "make_the_file": 1, "make_the_links": 1, "total": 4}
+tests/test_delete_temp_fs	plain	0	{"all": 1, "first": 1, "second": 1, "total": 3}
+tests/test_deploy_hashing	plain	0	{"a": 1, "all": 1, "b": 1, "total": 3}
+tests/test_deploy_script	plain	0	{"a": 1, "all": 1, "total": 2}
+tests/test_deploy_sources	plain	0	{"a": 1, "total": 1}
+tests/test_directory	tests.py	0	{"child_to_input": 1, "downstream": 1, "normal": 1, "not_child_to_other": 1, "symlinked_input": 1, "symlinked_output": 1, "total": 6}
+tests/test_dryrun_executor_validation	plain	0	{"a": 1, "all": 1, "total": 2}
+tests/test_dynamic_container	plain	0	{"a": 1, "b": 2, "c": 2, "d": 1, "total": 6}
+tests/test_empty_include	plain	0	{"total": 0}
+tests/test_ensure	tests.py	0	{"b": 1, "c": 1, "total": 2}
+tests/test_env_modules	plain	0	{"a": 1, "total": 1}
+tests/test_exists	plain	0	{"total": 0}
+tests/test_expand_list_of_functions	plain	0	{"all": 1, "total": 1}
+tests/test_failed_intermediate	tests.py	0	{"a": 1, "all": 1, "b": 1, "total": 3}
+tests/test_filegraph	plain	0	{"all": 1, "data": 4, "total": 6, "visualization": 1}
+tests/test_filesep_windows	tests.py	0	{"a": 2, "b": 2, "total": 4}
+tests/test_format_params	plain	0	{"a": 1, "total": 1}
+tests/test_format_wildcards	plain	0	{"a": 1, "all": 1, "total": 2}
+tests/test_fstring	tests.py	0	{"total": 1, "unit1": 1}
+tests/test_function_f_string	plain	0	{"total": 0}
+tests/test_function_f_string_newline	plain	0	{"total": 0}
+tests/test_get_log_both	plain	0	{"1": 1, "total": 1}
+tests/test_get_log_complex	plain	0	{"1": 1, "total": 1}
+tests/test_get_log_none	plain	0	{"1": 1, "total": 1}
+tests/test_get_log_stderr	plain	0	{"1": 1, "total": 1}
+tests/test_get_log_stdout	plain	0	{"1": 1, "total": 1}
+tests/test_github_issue105	plain	0	{"a": 1, "all": 1, "b": 1, "total": 3}
+tests/test_github_issue1069	plain	0	{"a": 1, "total": 1}
+tests/test_github_issue1158	plain	0	{"Test": 1, "total": 1}
+tests/test_github_issue1261	tests.py	0	{"A": 1, "B": 1, "all": 1, "total": 3}
+tests/test_github_issue1266	plain	0	{"a": 1, "total": 1}
+tests/test_github_issue1384	plain	0	{"all": 1, "bar": 1, "foo": 1, "total": 3}
+tests/test_github_issue1389	tests.py	0	{"a": 1, "all": 1, "b": 1, "total": 3}
+tests/test_github_issue1396	plain	0	{"all": 1, "make_files": 1, "total": 2}
+tests/test_github_issue1460	plain	0	{"all": 1, "create": 1, "intermediate": 1, "total": 3}
+tests/test_github_issue1498	plain	0	{"all": 1, "all_impl": 1, "other_a": 1, "other_b": 1, "total": 4}
+tests/test_github_issue1500	plain	0	{"all": 1, "test1_a": 1, "test2_a": 1, "total": 3}
+tests/test_github_issue1542	plain	0	{"all": 1, "b": 1, "total": 2}
+tests/test_github_issue1550	plain	0	{"a": 1, "all": 1, "total": 2}
+tests/test_github_issue1618	plain	0	{"all": 1, "b": 1, "total": 2}
+tests/test_github_issue1818	plain	0	{"total": 0}
+tests/test_github_issue1882	plain	0	{"all": 1, "total": 1}
+tests/test_github_issue2142	plain	0	{"A": 1, "all": 1, "total": 2}
+tests/test_github_issue2213	plain	0	{"all": 1, "compress_vcf": 1, "some_rule": 1, "total": 3}
+tests/test_github_issue2255	plain	0	{"all": 1, "total": 3, "touch": 1, "touche_test": 1}
+tests/test_github_issue2732	plain	0	{"a": 1, "all": 1, "b1": 1, "b2": 1, "total": 4}
+tests/test_github_issue3213	plain	0	{"all": 1, "file_a": 1, "file_b": 1, "total": 3}
+tests/test_github_issue3271	plain	0	{"a": 1, "total": 1}
+tests/test_github_issue3556	plain	0	{"A": 1, "B": 4, "C": 1, "D": 1, "all": 1, "total": 8}
+tests/test_github_issue3687	plain	0	{"all": 1, "link_to_D": 1, "make_file": 1, "total": 3}
+tests/test_github_issue3913	plain	0	{"do_something": 2, "final": 1, "prepare": 1, "total": 4}
+tests/test_github_issue4003	plain	0	{"all": 1, "test_expect_fail": 1, "test_expect_fail_script": 1, "test_with_default_name": 1, "test_with_non_default_name": 1, "test_with_non_default_non_name": 1, "total": 6}
+tests/test_github_issue413	plain	0	{"all": 1, "make_other_file": 1, "total": 2}
+tests/test_github_issue456	plain	0	{"all": 1, "total": 1}
+tests/test_github_issue52	plain	0	{"A": 1, "All": 1, "C": 1, "total": 3}
+tests/test_github_issue627	plain	0	{"1": 1, "total": 1}
+tests/test_github_issue640	tests.py	0	{"all": 1, "total": 1}
+tests/test_github_issue672	plain	0	{"2": 1, "3": 1, "4": 1, "5": 1, "all": 1, "total": 5}
+tests/test_github_issue727	plain	0	{"all": 1, "checkpoint1": 1, "final_rule": 1, "rule1": 1, "total": 4}
+tests/test_github_issue78	plain	0	{"a": 1, "all": 1, "b": 1, "c": 1, "singularity_ok": 1, "total": 5}
+tests/test_github_issue806	tests.py	0	{"all": 1, "corpus": 1, "shard": 2, "total": 4}
+tests/test_github_issue929	tests.py	0	{"childrule_2": 1, "total": 1}
+tests/test_github_issue988	plain	0	{"all": 1, "make_files": 1, "multiple": 1, "total": 3}
+tests/test_github_issue_14	plain	0	{"all": 1, "test_github_issue_14": 1, "total": 2}
+tests/test_github_issue_3265_respect_dryrun_delete_all	plain	0	{"all": 1, "delete_all_output": 1, "delete_temp_output": 1, "total": 3}
+tests/test_github_issue_4039_mem_cli	plain	0	{"echo_mem": 1, "total": 1}
+tests/test_github_issue_4039_runtime_cli	plain	0	{"echo_runtime": 1, "total": 1}
+tests/test_github_issue_4039_runtime_no_override	plain	0	{"echo_runtime": 1, "total": 1}
+tests/test_github_issue_4039_runtime_profile	tests.py	0	{"echo_runtime": 1, "total": 1}
+tests/test_globwildcards	plain	0	{"2": 3, "3": 2, "all": 1, "total": 6}
+tests/test_group_job_fail	tests.py	0	{"a": 5, "all": 1, "b": 5, "c": 1, "total": 12}
+tests/test_group_jobs	plain	0	{"a": 5, "all": 1, "b": 5, "c": 1, "total": 12}
+tests/test_group_jobs_attempts	plain	0	{"a": 1, "total": 1}
+tests/test_group_parallel	plain	0	{"a": 1, "all": 1, "b": 1, "total": 3}
+tests/test_group_temp	plain	0	{"a": 1, "all": 1, "b": 1, "c": 1, "total": 4}
+tests/test_group_with_pipe	plain	1	{"a": 2, "a_1": 2, "all": 1, "b": 2, "c": 1, "total": 8}	WorkflowError: Error grouping resources in group '0': Not enough resources were provided. This error is typically caused by a Pipe group requiring too many resources. Note that resources are summed across every member of the pipe group, except for ['runtime'], which is calculated via max(). Excess R
+tests/test_groupid_expand	plain	0	{"all": 1, "consumer": 3, "grouplocal": 3, "total": 7}
+tests/test_groupid_expand_cluster	plain	0	{"all": 1, "consumer": 3, "grouplocal": 3, "total": 7}
+tests/test_handle_storage_multi_consumers	plain	1	null	MissingInputException in rule a in file "Snakefile", line 7: Missing input files for rule a:
+tests/test_immediate_submit	plain	0	{"all": 1, "make_output": 1, "test_array": 2, "total": 4}
+tests/test_immediate_submit_without_shared_fs	plain	0	{"all": 1, "count": 5, "produce": 5, "sum": 1, "total": 12}
+tests/test_incomplete_params	plain	0	{"a": 1, "b": 1, "total": 2}
+tests/test_inferred_resources	plain	0	{"a": 1, "total": 1}
+tests/test_inferred_resources_mib	plain	0	{"a": 1, "total": 1}
+tests/test_inner_call	plain	0	{"all": 1, "b": 1, "total": 2}
+tests/test_inoutput_is_path	plain	0	{"total": 0}
+tests/test_input_generator	plain	0	{"main": 1, "test1": 1, "test2": 1, "test3": 1, "total": 4}
+tests/test_ioutils	plain	0	{"a": 1, "all": 1, "b": 1, "c": 2, "e": 1, "item_access": 1, "total": 7}
+tests/test_issue1037	tests.py	0	{"done2": 1, "step1": 1, "total": 2}
+tests/test_issue1041	plain	0	{"all": 1, "split": 1, "start": 1, "total": 3}
+tests/test_issue1046	plain	0	{"all": 1, "test": 1, "total": 2}
+tests/test_issue1083	plain	0	{"1": 1, "total": 1}
+tests/test_issue1092	plain	0	{"aggregate": 1, "all": 1, "clustering": 1, "total": 3}
+tests/test_issue1093	plain	0	{"aggregate": 1, "all": 1, "clustering": 1, "total": 3}
+tests/test_issue1281	plain	0	{"all": 1, "test": 2, "test2": 2, "total": 5}
+tests/test_issue1284	plain	0	{"all": 1, "check1": 1, "check2": 1, "r1": 1, "total": 4}
+tests/test_issue1331	plain	1	{"align": 6, "all": 1, "sort": 6, "total": 19, "trimming": 6}	WorkflowError: Error grouping resources in group '9f569f15-52e9-4765-b433-2a4c91a3c5c3': Not enough resources were provided. This error is typically caused by a Pipe group requiring too many resources. Note that resources are summed across every member of the pipe group, except for ['runtime'], whic
+tests/test_issue2685	plain	0	{"a": 1, "b": 1, "total": 2}
+tests/test_issue2826_failed_binary_logs	tests.py	0	{"1": 1, "total": 1}
+tests/test_issue3338	tests.py	0	{"a": 1, "all": 1, "b": 1, "b_pos": 1, "other_test": 1, "other_test_no_pos": 1, "total": 6}
+tests/test_issue3361_fail	tests.py	0	{"all": 1, "copy_in_container": 1, "total": 2}
+tests/test_issue3361_pass	tests.py	0	{"all": 1, "copy_in_container": 1, "total": 2}
+tests/test_issue381	plain	0	{"all": 1, "b": 1, "total": 2}
+tests/test_issue3922	plain	0	{"a": 1, "all": 1, "b": 1, "c": 3, "d": 1, "e": 1, "total": 8}
+tests/test_issue3958	tests.py	0	{"all": 1, "test_apptainer_storage": 1, "total": 2}
+tests/test_issue3970	plain	0	{"all": 1, "one": 1, "total": 3, "two": 1}
+tests/test_issue471	plain	0	{"a": 1, "all": 1, "total": 2}
+tests/test_issue584	plain	0	{"all": 1, "generate": 1, "total": 2}
+tests/test_issue612	plain	0	{"A": 1, "total": 1}
+tests/test_issue635	plain	0	{"all": 1, "rmd": 1, "total": 2}
+tests/test_issue823_1	plain	0	{"a": 1, "all": 1, "b": 1, "total": 3}
+tests/test_issue823_2	plain	1	{"a": 1, "all": 1, "b1": 1, "b2": 1, "c": 1, "total": 5}	WorkflowError: Error grouping resources in group 'a4fc3e70-ebe0-4603-b73b-ddf636c7edbe': Not enough resources were provided. This error is typically caused by a Pipe group requiring too many resources. Note that resources are summed across every member of the pipe group, except for ['runtime'], whic
+tests/test_issue823_3	plain	0	{"a": 1, "all": 1, "total": 2}
+tests/test_issue850	plain	0	{"5": 1, "6": 1, "a": 4, "b": 1, "c": 1, "done": 1, "total": 9}
+tests/test_issue860	tests.py	0	{"4": 1, "5": 1, "a": 4, "b": 1, "c": 1, "done": 1, "total": 9}
+tests/test_issue912	plain	0	{"all": 1, "rule1": 1, "rule2": 1, "total": 3}
+tests/test_issue916	plain	0	{"all": 1, "testIssue916": 1, "total": 2}
+tests/test_issue930	plain	0	{"a": 2, "all": 1, "b": 2, "build_index": 1, "c": 1, "total": 7}
+tests/test_issue956	plain	0	{"all": 1, "generate_final_results": 2, "make_A": 1, "make_B": 1, "total": 5}
+tests/test_issue958	plain	0	{"all": 1, "g_make_b_from_a": 1, "total": 2}
+tests/test_issue_3202	plain	0	{"all": 1, "run_in_container_and_conda": 1, "total": 2}
+tests/test_job_properties	plain	0	{"a": 1, "all": 1, "b": 1, "c": 1, "total": 4}
+tests/test_jupyter_notebook	plain	0	{"all": 1, "bar": 1, "baz": 1, "foo": 1, "total": 5, "wild": 1}
+tests/test_jupyter_notebook_draft	tests.py	1	null	FileNotFoundError: [Errno 2] No such file or directory: 'Notebook.py.ipynb'
+tests/test_jupyter_notebook_nbconvert	plain	0	{"all": 1, "bar": 1, "baz": 1, "foo": 1, "total": 5, "wild": 1}
+tests/test_keyword_list	plain	0	{"1": 1, "total": 1}
+tests/test_lazy_resources	plain	1	{"all": 1, "bar": 1, "foo": 1, "total": 3}	InputFunctionException in rule bar in file "Snakefile", line 20: Error:
+tests/test_list_untracked	plain	0	{"run_test": 1, "total": 1}
+tests/test_load_metawrapper	plain	0	{"all": 1, "star_index": 1, "test": 1, "total": 3}
+tests/test_local_import	plain	0	{"1": 1, "total": 1}
+tests/test_localrule	tests.py	0	{"a": 2, "total": 2}
+tests/test_log_input	plain	0	{"a": 1, "all": 1, "b": 1, "total": 3}
+tests/test_long_shell	plain	0	{"1": 1, "total": 1}
+tests/test_match_by_wildcard_names	plain	0	{"a": 1, "all": 1, "b": 1, "total": 3}
+tests/test_metadata_migration	plain	0	{"a": 1, "total": 1}
+tests/test_missing_file_dryrun	tests.py	1	null	MissingInputException in rule merge_unit_basecalls in file "Snakefile", line 8: Missing input files for rule merge_unit_basecalls:
+tests/test_module_checkpoint	plain	0	{"all": 1, "test_a_aggregate": 1, "test_a_somestep": 1, "test_b_aggregate": 1, "test_b_somestep": 1, "total": 5}
+tests/test_module_global_container	plain	0	{"a": 1, "all": 1, "total": 2}
+tests/test_module_input_func	plain	0	{"all": 1, "mod1_txt": 1, "total": 2}
+tests/test_module_nested	plain	0	{"B_A_run": 1, "B_all": 1, "total": 2}
+tests/test_module_no_prefixing_modified_paths	tests.py	0	{"module1_a": 1, "module2_c": 1, "total": 2}
+tests/test_module_onerror	tests.py	0	{"all": 1, "module1_a": 1, "module2_a": 1, "total": 3}
+tests/test_module_onstart_not_in_main_snakefile	plain	0	{"all": 1, "module1_a": 1, "module2_a": 1, "total": 3}
+tests/test_module_onstart_onsuccess	plain	0	{"all": 1, "module1_a": 1, "module2_a": 1, "total": 3}
+tests/test_module_report	plain	0	{"total": 0}
+tests/test_module_wildcard_constraints	plain	0	{"a": 1, "all": 1, "b": 1, "total": 3}
+tests/test_module_with_script	plain	0	{"total": 2, "with_script_2": 1, "with_script_all": 1}
+tests/test_module_workflow_snakefile_usage	plain	0	{"a": 1, "total": 1}
+tests/test_modules_all	tests.py	0	{"all": 1, "test_a": 1, "test_b": 1, "test_c_tsv": 1, "test_c_txt": 1, "total": 5}
+tests/test_modules_all_exclude	tests.py	0	{"a": 1, "all": 1, "c": 1, "total": 3}
+tests/test_modules_dynamic	tests.py	0	{"all": 1, "total": 9, "use_as_1a": 1, "use_as_1b": 1, "use_as_1c_tsv": 1, "use_as_1c_txt": 1, "use_as_2a": 1, "use_as_2b": 1, "use_as_2c_tsv": 1, "use_as_2c_txt": 1}
+tests/test_modules_dynamic_import_rules	tests.py	0	{"all": 1, "b": 1, "c": 1, "d": 1, "rule_a": 1, "total": 5}
+tests/test_modules_dynamic_module_as_alias	tests.py	0	{"all": 1, "module1a": 1, "module1b": 1, "module1c_tsv": 1, "module1c_txt": 1, "module2a": 1, "module2b": 1, "module2c_tsv": 1, "module2c_txt": 1, "total": 9}
+tests/test_modules_dynamic_no_as	tests.py	0	{"all": 1, "module1_a": 1, "module1_b": 1, "module1_c_tsv": 1, "module1_c_txt": 1, "module2_a": 1, "module2_b": 1, "module2_c_tsv": 1, "module2_c_txt": 1, "total": 9}
+tests/test_modules_meta_wrapper	tests.py	0	{"bwa_mem": 1, "samtools_index": 1, "total": 2}
+tests/test_modules_name	tests.py	0	{"all": 1, "test_a": 1, "test_b": 1, "test_c_tsv": 1, "test_c_txt": 1, "total": 5}
+tests/test_modules_peppy	tests.py	0	{"a": 1, "total": 1}
+tests/test_modules_prefix	tests.py	0	{"a": 1, "total": 1}
+tests/test_modules_prefix_local	tests.py	0	{"module1_a": 1, "total": 1}
+tests/test_modules_ruledeps_inheritance	plain	0	{"all": 1, "somemodule_a": 1, "somemodule_b": 1, "somemodule_c": 1, "someothermodule_a": 1, "total": 5}
+tests/test_modules_semi_dynamic	tests.py	0	{"all": 1, "test1a": 1, "test1b": 1, "test1c_tsv": 1, "test1c_txt": 1, "test2a": 1, "test2b": 1, "test2c_tsv": 1, "test2c_txt": 1, "total": 9}
+tests/test_modules_specific	tests.py	0	{"test_a": 1, "total": 1}
+tests/test_multicomp_group_jobs	plain	0	{"a": 10, "all": 1, "b": 10, "c": 1, "total": 22}
+tests/test_multiext	plain	0	{"a": 1, "total": 1}
+tests/test_multiext_named	plain	0	{"a": 1, "all": 1, "total": 2}
+tests/test_multiple_includes	plain	0	{"all": 1, "test_rule": 1, "test_second_rule": 1, "test_third_rule": 1, "total": 4}
+tests/test_name_override	plain	0	{"all": 1, "generate_out": 1, "name2": 1, "total": 3}
+tests/test_no_temp	plain	0	{"all": 1, "create_a": 1, "create_b": 1, "total": 3}
+tests/test_no_workflow_profile	tests.py	0	{"a": 1, "total": 1}
+tests/test_nodelocal	plain	0	{"all": 1, "consume_nodelocal": 1, "create_nodelocal_persist": 1, "create_nodelocal_temp": 1, "total": 4}
+tests/test_nonstr_params	plain	0	{"1": 1, "total": 1}
+tests/test_omitfrom	plain	0	{"all": 1, "final_wildcard": 2, "first_wildcard": 2, "independent": 1, "levelone": 1, "levelthree": 1, "leveltwo_first": 1, "leveltwo_second": 1, "second_wildcard": 2, "total": 14, "zeroth_wildcard": 2}
+tests/test_output_file_cache	plain	0	{"a": 1, "all": 1, "b": 1, "c": 2, "total": 5}
+tests/test_output_file_cache_storage	plain	0	{"a": 1, "all": 1, "b": 1, "c": 2, "total": 5}
+tests/test_params	plain	0	{"1": 1, "2": 1, "total": 2}
+tests/test_params_empty_inherit	plain	0	{"all": 1, "child": 1, "total": 2}
+tests/test_params_pickling	plain	1	null	ModuleNotFoundError in file "Snakefile", line 3: No module named 'polars'
+tests/test_paramspace	plain	0	{"all": 1, "plot_default": 2, "plot_empty": 2, "plot_filenamesep": 2, "plot_full": 2, "plot_full_reorder": 2, "plot_one": 2, "plot_sep": 2, "plot_sep_and_pattern": 2, "plot_two": 2, "simulate_default": 2, "simulate_empty": 2, "simulate_filenamesep": 2, "simulate_full": 2, "simulate_full_reorder": 2, "simulate_one": 2, "simulate_sep": 2, "simulate_sep_and_pattern": 2, "simulate_two": 2, "total": 37}
+tests/test_paramspace_single_wildcard	plain	0	{"all": 1, "plot_default": 2, "plot_empty": 2, "plot_filenamesep": 2, "plot_full": 2, "plot_full_reorder": 2, "plot_one": 2, "plot_sep": 2, "plot_sep_and_pattern": 2, "plot_two": 2, "simulate_default": 2, "simulate_empty": 2, "simulate_filenamesep": 2, "simulate_full": 2, "simulate_full_reorder": 2, "simulate_one": 2, "simulate_sep": 2, "simulate_sep_and_pattern": 2, "simulate_two": 2, "total": 37}
+tests/test_parser	plain	0	{"total": 0}
+tests/test_parsing_terminal_comment_following_statement	plain	0	{"all": 1, "total": 1}
+tests/test_path_with_spaces	plain	0	{"default": 1, "total": 1}
+tests/test_pathlib	plain	0	{"all": 1, "input_Path": 1, "input_Path_output_protected": 1, "input_Path_output_temp": 1, "input_function_unpacking": 1, "input_other_rule_output": 1, "total": 6}
+tests/test_pathlib_missing_file	tests.py	1	null	MissingInputException in rule input_nonexistent_Path in file "Snakefile", line 15: Missing input files for rule input_nonexistent_Path:
+tests/test_pathvars	plain	0	{"a": 2, "all": 1, "b": 2, "c": 2, "total": 7}
+tests/test_pathvars_modules	plain	0	{"a": 1, "all": 1, "foo2_a": 1, "foo2_b": 1, "foo3_a": 1, "foo3_b": 1, "foo_a": 1, "foo_b": 1, "total": 8}
+tests/test_pathvars_storage	plain	1	null	MissingInputException in rule a in file "Snakefile", line 10: Missing input files for rule a:
+tests/test_pep_pathlib	plain	1	null	WorkflowError in file "Snakefile", line 6: For PEP schema support, please install eido.
+tests/test_peppy	plain	1	null	WorkflowError in file "Snakefile", line 4: For PEP schema support, please install eido.
+tests/test_persistence_backend_db_run_directive_concurrency	plain	0	{"all": 1, "foo": 100, "total": 101}
+tests/test_pipes	plain	1	{"a": 2, "all": 1, "b": 2, "total": 5}	WorkflowError: Error grouping resources in group 'f9ee64c0-0bec-4fa0-be67-6257791221ad': Not enough resources were provided. This error is typically caused by a Pipe group requiring too many resources. Note that resources are summed across every member of the pipe group, except for ['runtime'], whic
+tests/test_pipes2	plain	1	{"all": 1, "one": 1, "total": 3, "two": 1}	WorkflowError: Error grouping resources in group 'a91dcedf-d15b-4440-81a8-3e5ef9452f18': Not enough resources were provided. This error is typically caused by a Pipe group requiring too many resources. Note that resources are summed across every member of the pipe group, except for ['runtime'], whic
+tests/test_pipes_fail	tests.py	1	{"a": 2, "all": 1, "b": 2, "total": 5}	WorkflowError: Error grouping resources in group '1289d458-bf2d-4c06-8639-9099ab8b0252': Not enough resources were provided. This error is typically caused by a Pipe group requiring too many resources. Note that resources are summed across every member of the pipe group, except for ['runtime'], whic
+tests/test_pipes_multiple	plain	1	{"a": 2, "all": 1, "b": 2, "c": 1, "total": 6}	WorkflowError: Error grouping resources in group '2d06198c-93ef-4b26-915a-8f468d4d63ea': Not enough resources were provided. This error is typically caused by a Pipe group requiring too many resources. Note that resources are summed across every member of the pipe group, except for ['runtime'], whic
+tests/test_prebuilt_conda_script	plain	0	{"all": 1, "test_prebuilt_conda_script": 1, "total": 2}
+tests/test_priority	plain	0	{"a": 1, "all": 1, "all_params_priority": 1, "attempt_priority": 1, "echo": 5, "float_priority": 1, "input_priority": 1, "rulename_priority": 1, "total": 12}
+tests/test_profile_double_dash	tests.py	0	{"one": 1, "total": 1}
+tests/test_profile_filename	plain	0	{"1": 1, "total": 1}
+tests/test_profile_multiple	plain	0	{"1": 1, "total": 1}
+tests/test_profile_new	plain	0	{"1": 1, "total": 1}
+tests/test_profile_none	plain	0	{"1": 1, "total": 1}
+tests/test_profile_old	plain	0	{"1": 1, "total": 1}
+tests/test_profile_with_env_var	plain	0	{"1": 1, "total": 1}
+tests/test_protected_symlink_output	plain	0	{"main": 1, "total": 1}
+tests/test_python_import_from_github_module	plain	1	null	WorkflowError in file "Snakefile", line 18: Failed to get mtime of git source file f4d5854841d79e0393d118745c7dbe856268ed59:tests/test_python_import_from_github_module/minimal_module/Snakefile
+tests/test_queue_input	plain	0	{"all": 1, "total": 1}
+tests/test_r_wrapper	plain	0	{"r_wrapper": 1, "total": 1}
+tests/test_report	plain	0	{"a": 1, "all": 1, "total": 2}
+tests/test_report_after_run	plain	0	{"a": 1, "all": 1, "b": 1, "c": 10, "d": 1, "e": 1, "total": 15}
+tests/test_report_dir	plain	0	{"total": 0}
+tests/test_report_dir_but_file	plain	0	{"a": 1, "total": 1}
+tests/test_report_display_code	plain	0	{"a": 1, "all": 1, "b": 1, "bgzip": 1, "total": 4}
+tests/test_report_href	plain	0	{"a": 1, "total": 1}
+tests/test_report_metadata	plain	0	{"a": 1, "total": 1}
+tests/test_report_zip	plain	0	{"a": 1, "all": 1, "total": 2}
+tests/test_resource_quoting	tests.py	0	{"a": 1, "total": 1}
+tests/test_resource_string_in_cli_or_profile	plain	0	{"all": 1, "test1": 1, "total": 2}
+tests/test_resource_tbdstring	plain	0	{"all": 1, "test1": 1, "total": 2}
+tests/test_restartable_job_cmd_exit_1	plain	0	{"all": 1, "fails_sometimes": 1, "total": 2}
+tests/test_restartable_job_qsub_exit_1	plain	0	{"all": 1, "fails_sometimes": 1, "total": 2}
+tests/test_retries	plain	0	{"a": 1, "total": 1}
+tests/test_retries_not_overriden	tests.py	0	{"a": 1, "total": 1}
+tests/test_rule_defined_in_for_loop	plain	0	{"2": 1, "all": 1, "total": 2}
+tests/test_rule_inheritance_globals	tests.py	0	{"total": 0}
+tests/test_ruledag	plain	0	{"all": 1, "rule1": 5, "rule2": 5, "rule3": 5, "total": 16}
+tests/test_ruledeps	plain	0	{"a": 1, "all": 1, "b": 1, "d": 1, "total": 4}
+tests/test_run_namedlist	plain	0	{"1": 1, "total": 1}
+tests/test_runtime_conversion_from_workflow_profile	tests.py	0	{"a": 1, "total": 1}
+tests/test_same_wildcard	plain	0	{"1": 1, "2": 1, "total": 2}
+tests/test_scatter_gather	plain	0	{"all": 1, "gather": 1, "intermediate": 8, "split": 1, "total": 11}
+tests/test_scatter_gather_multiple_processes	plain	0	{"all": 1, "gather_a": 1, "gather_b": 1, "intermediate_a": 4, "intermediate_b": 3, "split_a": 1, "split_b": 1, "total": 12}
+tests/test_scheduler_sequential_all_cores	plain	0	{"a": 2, "all": 1, "total": 3}
+tests/test_script	plain	0	{"2": 1, "3": 1, "4": 1, "5": 1, "all": 1, "bash": 1, "julia": 1, "total": 7}
+tests/test_script_hy	plain	0	{"all": 1, "test_hy": 1, "total": 2}
+tests/test_script_import_snakemake_obj	plain	0	{"a": 1, "total": 1}
+tests/test_script_pre_py39	plain	0	{"a": 1, "total": 1}
+tests/test_script_py	plain	0	{"2": 1, "3": 1, "all": 1, "total": 3}
+tests/test_script_rs	plain	0	{"all": 1, "manifest_doc": 1, "manifest_outer_line_doc": 1, "python": 1, "simple": 1, "total": 5}
+tests/test_script_xsh	plain	0	{"all": 1, "test_xonsh": 1, "total": 2}
+tests/test_service_jobs	plain	1	{"a": 1, "all": 1, "b": 1, "c": 1, "total": 4}	WorkflowError: Error grouping resources in group 'e6d0636c-773e-4816-b094-2969d6c6359b': Not enough resources were provided. This error is typically caused by a Pipe group requiring too many resources. Note that resources are summed across every member of the pipe group, except for ['runtime'], whic
+tests/test_set_resources	plain	0	{"a": 1, "total": 1}
+tests/test_set_resources_complex	tests.py	0	{"a": 1, "total": 1}
+tests/test_set_threads	plain	0	{"a": 1, "total": 1}
+tests/test_shadow	plain	0	{"absolute_link": 1, "absolute_stat": 1, "all": 1, "benchmark": 1, "benchmark_stat": 1, "full": 1, "log_stat": 1, "minimal_absolute": 1, "minimal_huge_cmd": 1, "minimal_ok": 1, "minimal_rel_curdir": 1, "minimal_rel_subdir": 1, "minimal_setup": 1, "minimal_symbolic": 1, "protected": 1, "shallow": 1, "total": 17, "touch": 1}
+tests/test_shadow_prefix	plain	0	{"all": 1, "total": 1}
+tests/test_shadowed_log	plain	0	{"all": 1, "total": 1}
+tests/test_shell	plain	0	{"1": 1, "total": 1}
+tests/test_shell_exec	plain	0	{"a": 1, "total": 1}
+tests/test_singularity	plain	0	{"a": 1, "b": 1, "total": 2}
+tests/test_singularity_conda	plain	0	{"a": 1, "total": 1}
+tests/test_singularity_global	plain	0	{"a": 1, "total": 1}
+tests/test_singularity_module	tests.py	1	null	WorkflowError: Invalid singularity image URL containing whitespace.
+tests/test_singularity_none	plain	0	{"a": 1, "total": 1}
+tests/test_singularity_source_cache	plain	0	{"a": 1, "total": 1}
+tests/test_slurm_mpi	plain	0	{"all": 1, "calc_pi": 1, "compile": 1, "total": 3}
+tests/test_solver	plain	0	{"a": 1, "all": 1, "b": 1, "total": 3}
+tests/test_source_path	tests.py	0	{"a": 1, "total": 1}
+tests/test_source_path_rerun	plain	0	{"a": 1, "all": 1, "b": 1, "total": 3}
+tests/test_spaces_in_fnames	tests.py	0	{"indelrealigner": 1, "indexbam": 1, "realignertargetcreator": 1, "total": 3}
+tests/test_speed	plain	0	{"a": 100, "all": 1, "b": 100, "c": 100, "total": 301}
+tests/test_storage_cleanup_local	plain	0	{"a": 1, "b": 1, "total": 2}
+tests/test_storage_localrule	plain	0	{"a": 1, "b": 1, "total": 2}
+tests/test_storage_noretrieve_dryrun	plain	1	null	InvalidPluginException in file "Snakefile", line 2: Error loading Snakemake plugin fs: The package snakemake-storage-plugin-fs is not installed.
+tests/test_strict_mode	tests.py	0	{"a": 1, "total": 1}
+tests/test_subpath	plain	0	{"a": 1, "all": 1, "total": 2}
+tests/test_symlink_temp	tests.py	0	{"all": 1, "four": 2, "one": 2, "three": 2, "total": 9, "two": 2}
+tests/test_symlink_time_handling	plain	0	{"main": 1, "make_output": 1, "total": 2}
+tests/test_temp	tests.py	0	{"indelrealigner": 1, "indexbam": 1, "realignertargetcreator": 1, "total": 3}
+tests/test_temp_and_all_input	plain	0	{"a": 1, "all": 1, "total": 2}
+tests/test_temp_checkpoint	plain	0	{"aggregate": 3, "all": 1, "somestep": 3, "temp": 3, "total": 10}
+tests/test_temp_expand	plain	0	{"1": 1, "2": 1, "total": 2}
+tests/test_template_engine	plain	0	{"all": 1, "render_jinja2_template": 1, "render_yte_template": 1, "total": 3}
+tests/test_tes	plain	0	{"all": 1, "total": 1}
+tests/test_threads	plain	0	{"a": 1, "total": 1}
+tests/test_threads0	plain	0	{"a": 1, "total": 1}
+tests/test_tmpdir	plain	0	{"a": 1, "b": 1, "total": 2}
+tests/test_toposort	plain	0	{"total": 0}
+tests/test_touch	plain	0	{"all": 1, "name": 1, "total": 2}
+tests/test_touch_pipeline_with_temp_dir	plain	0	{"total": 0}
+tests/test_touch_with_directories	plain	0	{"a": 1, "total": 1}
+tests/test_uncreatable_checkpoint_input	plain	0	{"all": 1, "i": 2, "total": 3}
+tests/test_unlock	plain	0	{"all": 1, "total": 1}
+tests/test_unpack_dict	plain	0	{"all": 1, "copy_files": 1, "total": 2}
+tests/test_unpack_list	plain	0	{"all": 1, "copy_files": 1, "total": 2}
+tests/test_until	plain	0	{"all": 1, "final_wildcard": 2, "first_wildcard": 2, "independent": 1, "levelone": 1, "levelthree": 1, "leveltwo_first": 1, "leveltwo_second": 1, "second_wildcard": 2, "total": 14, "zeroth_wildcard": 2}
+tests/test_update_config	plain	0	{"all": 1, "cp": 1, "echo": 1, "total": 3}
+tests/test_update_flag	plain	0	{"a": 1, "all": 1, "b": 1, "total": 3}
+tests/test_update_flag_fail	tests.py	0	{"a": 1, "total": 1}
+tests/test_update_flag_fail_cleanup	tests.py	0	{"a": 1, "total": 1}
+tests/test_url_include	plain	0	{"6": 1, "compute1": 1, "compute2": 3, "gather": 1, "other": 1, "total": 7}
+tests/test_use_rule_same_module	tests.py	0	{"a": 1, "b": 1, "total": 2}
+tests/test_validate	plain	1	null	ModuleNotFoundError in file "Snakefile", line 4: No module named 'polars'
+tests/test_wildcard_count_ambiguity	plain	0	{"all": 1, "b": 1, "total": 2}
+tests/test_wildcard_keyword	plain	0	{"all": 1, "ambigouslog": 1, "globalwildcard": 1, "infile": 3, "localwildcard": 1, "stringwildcard": 1, "total": 8}
+tests/test_workflow_profile	tests.py	0	{"a": 1, "total": 1}
+tests/test_workflow_profile_cli_overwrite	tests.py	1	{"a": 1, "total": 1}	RuleException in rule a in file "workflow/Snakefile", line 1: AttributeError: 'ResourceList' object has no attribute 'mem_mb', when formatting the following:
+tests/test_workflow_profile_relative_filename	tests.py	0	{"a": 1, "total": 1}
+tests/test_workflow_profile_relative_path	tests.py	1	{"a": 1, "total": 1}	RuleException in rule a in file "workflow/Snakefile", line 1: AttributeError: 'ResourceList' object has no attribute 'foo', when formatting the following:
+tests/test_wrapper	plain	0	{"compress_vcf": 1, "total": 1}
+tests/test_yaml_config	plain	0	{"1": 1, "total": 1}

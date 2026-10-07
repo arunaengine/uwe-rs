@@ -13,6 +13,11 @@ publish.workspace = true
 
 [dependencies]
 content-store.workspace = true
+pep440_rs.workspace = true
+pep508_rs.workspace = true
+flate2.workspace = true
+toml = { workspace = true, features = ["serde"] }
+zip.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rattler_conda_types.workspace = true

@@ -157,6 +157,52 @@ rule finish:
     }
 }
 
+#[test]
+fn prefers_existing_inputs() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        r#"
+rule all:
+    input: "final"
+rule seed:
+    input: "absent"
+    output: "seed"
+    script: "seed.py"
+rule finish:
+    input: "seed"
+    output: "final"
+    shell: "cp {input} {output}"
+"#,
+    )
+    .unwrap();
+    std::fs::write(folder.path().join("seed"), "existing").unwrap();
+    let file = std::fs::File::options()
+        .write(true)
+        .open(folder.path().join("seed"))
+        .unwrap();
+    file.set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(100))
+        .unwrap();
+    std::fs::write(folder.path().join("seed.py"), "print('changed')").unwrap();
+    let launch = Launch {
+        target: folder.path().into(),
+        scratch: folder.path().join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).unwrap();
+    let mut executor = Simulator::new(folder.path().join("simulator"));
+    let result = execute("existing", driver.as_mut(), &mut executor);
+    assert!(result.error.is_none(), "{:?}", result.error);
+    let rules: Vec<_> = result
+        .graph
+        .nodes
+        .iter()
+        .map(|node| node.task.step.as_str())
+        .collect();
+    assert_eq!(rules, ["finish", "all"]);
+}
+
 /// The steps that a simulated run of the folder runs, with Snakemake's record of `copy.txt`
 /// when given.
 fn steps(input_age: u64, record: Option<&str>) -> Vec<String> {

@@ -485,6 +485,10 @@ impl Planner {
         // order decides. Among jobs that need assumed inputs, which Snakemake would not
         // consider, the one with the shortest wildcard values wins.
         let exact = producers.iter().any(|(_, job, _)| !self.jobs[*job].assumed);
+        if !exact && self.exists(interpreter, file) {
+            self.producers.insert(file.to_owned(), None);
+            return Ok(None);
+        }
         let mut viable: Vec<(usize, usize, usize)> = producers
             .into_iter()
             .filter(|(_, job, _)| !exact || !self.jobs[*job].assumed)

@@ -930,8 +930,10 @@ dependencies = [
 name = "conda-environment"
 version = "0.1.0"
 dependencies = [
+ "bollard",
  "content-store",
  "flate2",
+ "futures-util",
  "pep440_rs",
  "pep508_rs",
  "rattler_conda_types",

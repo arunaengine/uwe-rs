@@ -22,8 +22,10 @@ pub(crate) struct Artifact {
     python: Option<String>,
     #[serde(default)]
     yanked: serde_json::Value,
-    #[serde(default, rename = "core-metadata", alias = "dist-info-metadata")]
+    #[serde(default, rename = "core-metadata")]
     metadata: serde_json::Value,
+    #[serde(default, rename = "dist-info-metadata")]
+    legacy_metadata: serde_json::Value,
 }
 
 #[derive(Clone)]
@@ -90,6 +92,7 @@ impl Artifact {
             metadata: self
                 .metadata
                 .get("sha256")
+                .or_else(|| self.legacy_metadata.get("sha256"))
                 .and_then(serde_json::Value::as_str)
                 .filter(|hash| valid_hash(hash))
                 .map(str::to_owned),
@@ -124,15 +127,20 @@ pub(crate) fn metadata(
         archive_metadata(&bytes, &package.file)?
     };
     let fields = fields(&bytes)?;
+    for name in ["name", "version", "requires-python", "metadata-version"] {
+        if fields.get(name).is_some_and(|values| values.len() > 1) {
+            return Err(PipError::Metadata(format!("duplicate {name} metadata")));
+        }
+    }
     if fields
-        .get("Name")
+        .get("name")
         .and_then(|values| values.first())
         .and_then(|name| name.parse::<pep508_rs::PackageName>().ok())
         .as_ref()
         .map(|name| name.as_ref())
         != Some(package.name.as_str())
         || fields
-            .get("Version")
+            .get("version")
             .and_then(|values| values.first())
             .and_then(|version| version.parse::<Version>().ok())
             .as_ref()
@@ -145,7 +153,7 @@ pub(crate) fn metadata(
     }
     if source {
         let version = fields
-            .get("Metadata-Version")
+            .get("metadata-version")
             .and_then(|values| values.first())
             .map(String::as_str)
             .unwrap_or("");
@@ -153,7 +161,7 @@ pub(crate) fn metadata(
             .parse::<Version>()
             .ok()
             .is_none_or(|version| version < "2.2".parse().expect("fixed version"))
-            || fields.get("Dynamic").is_some_and(|values| {
+            || fields.get("dynamic").is_some_and(|values| {
                 values.iter().any(|value| {
                     [
                         "requires-dist",
@@ -176,13 +184,13 @@ pub(crate) fn metadata(
         }
     }
     let requires = fields
-        .get("Requires-Dist")
+        .get("requires-dist")
         .into_iter()
         .flatten()
         .map(|text| requirement(text))
         .collect::<Result<_, _>>()?;
     let extras = fields
-        .get("Provides-Extra")
+        .get("provides-extra")
         .into_iter()
         .flatten()
         .map(|text| {
@@ -191,7 +199,7 @@ pub(crate) fn metadata(
         })
         .collect::<Result<_, _>>()?;
     let python = fields
-        .get("Requires-Python")
+        .get("requires-python")
         .and_then(|values| values.first())
         .map(|text| {
             text.parse()
@@ -333,7 +341,7 @@ fn fields(bytes: &[u8]) -> Result<BTreeMap<String, Vec<String>>, PipError> {
             let (key, value) = line
                 .split_once(':')
                 .ok_or_else(|| PipError::Metadata("invalid metadata header".into()))?;
-            previous = key.to_owned();
+            previous = key.to_ascii_lowercase();
             fields
                 .entry(previous.clone())
                 .or_default()

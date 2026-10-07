@@ -3,13 +3,14 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::fmt;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use rattler_conda_types::{Channel, ChannelConfig, GenericVirtualPackage, Subdir};
 use rattler_repodata_gateway::{ChannelRelationsMode, Gateway, fetch::CacheAction};
+use sha2::{Digest as _, Sha256};
 use tokio::sync::Mutex;
 
 use crate::{Environment, Lock, LockError, Package, Record, VirtualPackage, base, channels};
@@ -70,9 +71,8 @@ impl Acquisition {
         platform: &str,
         capabilities: Option<&[VirtualPackage]>,
     ) -> Result<Lock, LockError> {
-        if !environment.pip.is_empty() {
-            return Err(LockError::Pip);
-        }
+        crate::validate_pip(&environment.pip)?;
+        let specs = crate::conda_specs(environment);
         let virtual_packages = crate::validate_capabilities(capabilities)?;
         let channels = channels(&environment.channels);
         let platform: Subdir = platform
@@ -89,14 +89,13 @@ impl Acquisition {
                     .map_err(|error| LockError::Acquisition(error.to_string()))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let _request = self.requests.lock().await;
+        let request = self.requests.clone().lock_owned().await;
         let query = self
             .gateway
             .query(
                 sources,
                 [platform, Subdir::NoArch],
-                environment
-                    .dependencies
+                specs
                     .iter()
                     .filter(|spec| !spec.name.starts_with("__"))
                     .map(|spec| spec.native.clone()),
@@ -124,7 +123,7 @@ impl Acquisition {
             .collect();
         let records = crate::solve::resolve(
             query.iter().map(|bucket| bucket.iter().collect()).collect(),
-            &environment.dependencies,
+            &specs,
             capabilities,
             &channels,
         )?;
@@ -146,7 +145,7 @@ impl Acquisition {
                     .map_err(|error| LockError::Acquisition(error.to_string()))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(Lock {
+        let mut lock = Lock {
             format: crate::FORMAT,
             platform: platform.to_string(),
             channels,
@@ -155,11 +154,23 @@ impl Acquisition {
                 .iter()
                 .map(ToString::to_string)
                 .collect(),
-            pip: vec![],
+            pip: environment.pip.clone(),
             pypi: None,
             packages,
             virtual_packages,
-        })
+        };
+        if !lock.pip.is_empty() {
+            let cache = self.cache.clone();
+            let offline = self.offline;
+            lock = tokio::task::spawn_blocking(move || {
+                let _request = request;
+                lock_pip_cached(&mut lock, &cache, offline)?;
+                Ok::<_, LockError>(lock)
+            })
+            .await
+            .map_err(|error| LockError::Acquisition(error.to_string()))??;
+        }
+        Ok(lock)
     }
 
     /// Reuses verified bytes or streams packages serially into the SHA-256 cache.
@@ -176,13 +187,13 @@ impl Acquisition {
         }
         std::fs::create_dir_all(folder)?;
         let mut paths = Vec::new();
-        for package in &lock.packages {
-            let digest = crate::fetch::package_digest(package)?;
+        let artifacts = crate::fetch::artifacts(lock)?;
+        for (url, digest) in artifacts {
             let path = folder.join(&digest);
             if crate::fetch::verify(&path, &digest).is_err() {
                 let mut response = self
                     .client
-                    .get(&package.url)
+                    .get(url)
                     .send()
                     .await
                     .map_err(io::Error::other)?
@@ -204,4 +215,73 @@ impl Acquisition {
         }
         Ok(paths)
     }
+}
+
+pub(crate) fn lock_pip_cached(
+    lock: &mut Lock,
+    folder: &Path,
+    offline: bool,
+) -> Result<(), LockError> {
+    if lock.pip.is_empty() {
+        return Ok(());
+    }
+    let client = if offline {
+        None
+    } else {
+        Some(
+            reqwest::blocking::Client::builder()
+                .https_only(true)
+                .connect_timeout(Duration::from_secs(30))
+                .timeout(Duration::from_secs(300))
+                .build()
+                .map_err(|error| LockError::Acquisition(error.to_string()))?,
+        )
+    };
+    let folder = folder.join("pypi");
+    crate::lock_pip(lock, |url| {
+        let key: String = Sha256::digest(url.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let path = folder.join(key);
+        if (offline || !url.starts_with("https://pypi.org/simple/")) && path.is_file() {
+            return limited(std::fs::File::open(path)?);
+        }
+        let client = client.as_ref().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("pip metadata is not cached and offline mode forbids downloading: {url}"),
+            )
+        })?;
+        let response = client
+            .get(url)
+            .header(
+                reqwest::header::ACCEPT,
+                "application/vnd.pypi.simple.v1+json",
+            )
+            .send()
+            .map_err(io::Error::other)?
+            .error_for_status()
+            .map_err(io::Error::other)?;
+        let bytes = limited(response)?;
+        std::fs::create_dir_all(&folder)?;
+        let mut temporary = tempfile::NamedTempFile::new_in(&folder)?;
+        temporary.write_all(&bytes)?;
+        temporary.as_file().sync_all()?;
+        temporary.persist(path).map_err(|error| error.error)?;
+        Ok(bytes)
+    })?;
+    Ok(())
+}
+
+fn limited(reader: impl Read) -> io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    reader.take((64 << 20) + 1).read_to_end(&mut bytes)?;
+    if bytes.len() > 64 << 20 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "pip metadata or artifact exceeds 64 MiB locking limit",
+        ));
+    }
+    Ok(bytes)
 }

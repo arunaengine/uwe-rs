@@ -154,9 +154,14 @@ fn pair(text: &str) -> Option<(u64, u64)> {
 }
 
 pub(crate) fn requirement(text: &str) -> Result<Requirement, PipError> {
-    if text.trim().starts_with('-') || text.contains(['\n', '\r']) {
+    if text.trim().starts_with('-')
+        || text.contains(['\n', '\r'])
+        || [".whl", ".tar.gz", ".zip"]
+            .iter()
+            .any(|suffix| text.trim().ends_with(suffix))
+    {
         return Err(unsupported(format!(
-            "pip options and editable installs are unsupported: {text:?}"
+            "pip options, editable installs and local archives are unsupported: {text:?}"
         )));
     }
     let requirement: Requirement = text

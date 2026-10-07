@@ -507,12 +507,13 @@ fn permits_lower_channels() {
 }
 
 #[test]
-fn rejects_pip_requirements() {
+fn rejects_pip_options() {
     let environment =
-        Environment::parse("dependencies:\n  - pip:\n    - requests==2.32\n").unwrap();
+        Environment::parse("dependencies:\n  - pip:\n    - '--index-url https://example.org'\n")
+            .unwrap();
     assert!(matches!(
         lock(&environment, Path::new("missing"), "linux-64"),
-        Err(LockError::Pip)
+        Err(LockError::Pip(conda_environment::PipError::Unsupported(_)))
     ));
 }
 

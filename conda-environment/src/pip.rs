@@ -144,7 +144,13 @@ impl<F: FnMut(&str) -> io::Result<Vec<u8>>> Resolver<'_, F> {
                 }
                 changed = true;
                 for dependency in &package.metadata.requires {
-                    if dependency.marker.evaluate(&self.target.markers, &extras) {
+                    if dependency.marker.evaluate(&self.target.markers, &[])
+                        || extras.iter().any(|extra| {
+                            dependency
+                                .marker
+                                .evaluate(&self.target.markers, std::slice::from_ref(extra))
+                        })
+                    {
                         required
                             .entry(dependency.name.to_string())
                             .or_default()

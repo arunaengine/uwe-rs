@@ -40,7 +40,7 @@ catalog/GuttmanLab__chipdip-pipeline ok 207
 catalog/IHGGM-Aachen__CNVand ok 17
 catalog/IKIM-Essen__QC_pre_NextSeq ok 13
 catalog/IKIM-Essen__ResMAG ok 122
-catalog/IKIM-Essen__RiboSnake ok 59
+catalog/IKIM-Essen__RiboSnake ok 66
 catalog/IKIM-Essen__uncovar 1 workflow/rules/common.smk:284: WorkflowError: InputFunctionException in rule cat_genomes (wildcards: date=SEQUENCING_DATE): EmptyDataError: No columns to parse from file (the simulated run assumed 17 input files that do not exist and that no rule makes, like results/SEQUENCING_DATE/trimmed/fastp-p
 catalog/IMS-Bio2Core-Facility__GTExSnake ok 4
 catalog/IMS-Bio2Core-Facility__polya_liftover ok 19
@@ -74,7 +74,7 @@ catalog/MathiasEskildsen__ONT_RNA-seq_wf 1 workflow/Snakefile:13: FileNotFoundEr
 catalog/MethyleneBlues__Snake ok 10
 catalog/NCI-CGR__TriosCompass_v2 1 workflow/Snakefile:8: WorkflowError: Workflow defines configfile workflow/../config/config.yaml but it is not present or accessible (full checked path: config/config.yaml).
 catalog/NeuroGranberg__NODDIpipeline 1 workflow/rules/NODDIpipeline.smk:26: KeyError: ('sub', 'ses', 'scan', 'target', 'acq', 'suffix')
-catalog/Ovewh__ACP-haugvaldstad-et-al-2025 ok 396
+catalog/Ovewh__ACP-haugvaldstad-et-al-2025 ok 413
 catalog/Ovewh__Climaso 1 workflow/Snakefile:139: WorkflowError: InputFunctionException in rule calculate_SW_ERF (wildcards: experiment=piClim-2xdust, vName=ERFtsw, model=EC-Earth3-AerChem, freq=Ayear): FileNotFoundError: /home/oveh/mnt/Betzy_CMIP/CMIP6/AerChemMIP/EC-Earth-Consortium/EC-Earth3-AerChem/piClim-2xdust/r1i1p1f
 catalog/PathoGenOmics-Lab__VIPERA ok 217
 catalog/Phlya__C-integration-mapping ok 0
@@ -89,7 +89,7 @@ catalog/Sara-Morsy__metaomic-workflow ok 0
 catalog/SarahSaadain__Single_Copy_Gene_Selector 1 workflow/rules/initialize_pipeline.smk:126: KeyError: 'CONDA_DEFAULT_ENV'
 catalog/SarahSaadain__pastForward 1 workflow/rules/initialize.smk:42: WorkflowError: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
 catalog/SchlossLab__mikropml-snakemake-workflow ok 95
-catalog/SchlossLab__mothur-snakemake-workflow ok 13
+catalog/SchlossLab__mothur-snakemake-workflow ok 2
 catalog/ShaolinXU__snakemake_repo ok 0
 catalog/SichongP__atac-seq ok 737
 catalog/Siffreya__MKD_eDNA_biodiversity ok 10
@@ -237,7 +237,7 @@ catalog/jma1991__rnaseq 1 workflow/Snakefile:10: WorkflowError: Error validating
 catalog/johnne__map_metaT 1 workflow/scripts/common.py:7: FileNotFoundError: [Errno 2] No such file or directory: 'samples.tsv'
 catalog/johnne__mytestworkflow ok 10
 catalog/joyling93__sc10x_wf ok 31
-catalog/jsquaredosquared__novocraft-sv-benchmarking ok 63
+catalog/jsquaredosquared__novocraft-sv-benchmarking ok 0
 catalog/juliawiggeshoff__AugusMake 1 workflow/Snakefile:17: SyntaxError: Expected a newline after line continuation character
 catalog/kaminosekai54__snakemakeTest ok 0
 catalog/karltayeb__laplace-bfs 1 workflow/rules/single_causal_glm_simulations.smk:61: FileNotFoundError: [Errno 2] No such file or directory: 'output/single_variable_selection/'
@@ -255,7 +255,7 @@ catalog/kpalin__ONT_hg_somatic ok 0
 catalog/kreczko__cms-public-tutorial-snakemake ok 0
 catalog/kvntrc__snakemake_template ok 0
 catalog/lacklab__MuSTARRd ok 56
-catalog/lacklab__epens-snakemake ok 187
+catalog/lacklab__epens-snakemake ok 199
 catalog/lasyaa418__control-of-latent-dynamics 1 workflow/Snakefile:7: ModuleNotFoundError: No module named 'src'
 catalog/liezeltamon__single-cell-preprocess 1 workflow/Snakefile:12: the workflow imports the Python package utils, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/loganylchen__NanoInsight 1 WorkflowError: RuleException in rule merge_ref_and_fusions_aeron in file workflow/rules/fusion/aeron.smk, line 195: AttributeError: 'InputFiles' object has no attribute 'fusions', when formatting the shell command (the simulated run assumed 3 input files that do not exist and that no rule makes, l
@@ -369,7 +369,7 @@ catalog/sandragodinhosilva__melange 33 Not supported yet: Shallow shadow output 
 catalog/sanjaysgk__WES_RNA_Pipeline ok 2
 catalog/schlesnerlab__multiconDEnrich ok 13
 catalog/scholl-lab__sm-calling ok 67
-catalog/seankmartin__atn-sub-lfp-workflow ok 23
+catalog/seankmartin__atn-sub-lfp-workflow ok 26
 catalog/semenko__serpent-methylation-pipeline 1 task get_reference_genome (DATA_PATH=workflow/../data): simulated path `home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/semenko__serpent-methylation-pipeline/workflow/../data/reference/GRCh38.fna` must stay inside its work directory without symlinks
 catalog/seung1yoo__snakemake-s3-prototype ok 0
 catalog/sgallegosperez8__practice ok 10
@@ -431,7 +431,7 @@ catalog/tmweiskittel__serpent-methylation-pipeline-cloud ok 20
 catalog/tmweiskittel__tmw_align_emseq 1 workflow/Snakefile:70: WorkflowError: InputFunctionException in rule all (wildcards: ): TypeError: 'NoneType' object is not iterable (the workflow read /home/jupyter/data/samples.csv, a task output that the simulator made without its content)
 catalog/tmweiskittel__tmw_analysis_emseq ok 244
 catalog/trickovicmatija__kingfisher_workflow 1 workflow/Snakefile:3: WorkflowError: Workflow defines configfile ../config/default_config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/default_config.yaml).
-catalog/tucca-cellag__tucca-rna-seq ok 90
+catalog/tucca-cellag__tucca-rna-seq ok 91
 catalog/tud-mchen6__module_gh2_prod ok 1
 catalog/ubercomrade__cut_and_run_analysis ok 0
 catalog/usnistgov__defrabb ok 82
@@ -532,7 +532,7 @@ tests/test_convert_to_cwl 1 Snakefile:39: SyntaxError: Keyword version is deprec
 tests/test_converting_path_for_r_script ok 2
 tests/test_core_dependent_threads ok 1
 tests/test_cwl ok 1
-tests/test_cyclic_dependency_single ok 1
+tests/test_cyclic_dependency_single ok 0
 tests/test_cyclic_dependency_split ok 3
 tests/test_default_flags ok 3
 tests/test_default_remote ok 7
@@ -588,7 +588,7 @@ tests/test_github_issue1500 ok 3
 tests/test_github_issue1542 ok 2
 tests/test_github_issue1550 ok 2
 tests/test_github_issue1618 ok 2
-tests/test_github_issue1818 ok 1
+tests/test_github_issue1818 ok 0
 tests/test_github_issue1882 ok 1
 tests/test_github_issue2142 ok 2
 tests/test_github_issue2154 1 WorkflowError: Resource 'runtime' with value '00:30:00' could not be parsed as minutes
@@ -712,7 +712,7 @@ tests/test_module_no_prefixing_modified_paths ok 2
 tests/test_module_onerror ok 3
 tests/test_module_onstart_not_in_main_snakefile ok 3
 tests/test_module_onstart_onsuccess ok 3
-tests/test_module_report ok 13
+tests/test_module_report ok 0
 tests/test_module_wildcard_constraints ok 3
 tests/test_module_with_script ok 2
 tests/test_module_workflow_snakefile_usage ok 1
@@ -869,7 +869,7 @@ tests/test_tibanna 1 Snakefile:13: NotImplementedError: Remote providers have be
 tests/test_tmpdir ok 2
 tests/test_toposort ok 0
 tests/test_touch ok 2
-tests/test_touch_pipeline_with_temp_dir ok 3
+tests/test_touch_pipeline_with_temp_dir ok 0
 tests/test_touch_with_directories ok 1
 tests/test_uncreatable_checkpoint_input ok 3
 tests/test_unlock ok 1

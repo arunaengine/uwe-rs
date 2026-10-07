@@ -22,6 +22,16 @@ impl Interpreter<'_> {
         span: Span,
     ) -> Result<Option<Value>, Error> {
         Ok(Some(match (class, name, arguments) {
+            ("UUID", "randomUUID", []) => uuid_object(uuid::Uuid::new_v4()),
+            ("UUID", "fromString", [Value::String(text) | Value::GString(text)]) => {
+                uuid_object(parse_uuid(text).at(span)?)
+            }
+            ("UUID", "fromString", [Value::Null]) => {
+                return Err(super::super::thrown(
+                    crate::exception::Exception::new("NullPointerException", "UUID text is null"),
+                    span,
+                ));
+            }
             ("Pattern", "compile", [text]) => {
                 let pattern = crate::regex::Pattern::new(&text.to_string()).at(span)?;
                 Value::Pattern(std::rc::Rc::new(pattern))
@@ -259,4 +269,40 @@ fn text_object(class: &'static str, text: &str) -> Value {
             state: State::Text(text.into()),
         },
     )))
+}
+
+fn uuid_object(value: uuid::Uuid) -> Value {
+    Value::Object(std::rc::Rc::new(std::cell::RefCell::new(
+        crate::value::Object {
+            class: "java.util.UUID",
+            state: State::Uuid(value),
+        },
+    )))
+}
+
+fn parse_uuid(text: &str) -> Result<uuid::Uuid, crate::exception::Exception> {
+    let parts: Vec<_> = text.split('-').collect();
+    if text.len() > 36 || parts.len() != 5 {
+        return Err(crate::exception::Exception::new(
+            "IllegalArgumentException",
+            format!("Invalid UUID string: {text}"),
+        ));
+    }
+    let parts: Vec<_> = parts
+        .iter()
+        .map(|part| {
+            i64::from_str_radix(part, 16)
+                .map(|value| value as u64)
+                .map_err(|_| {
+                    crate::exception::Exception::new(
+                        "NumberFormatException",
+                        format!("Invalid UUID component: {part}"),
+                    )
+                })
+        })
+        .collect::<Result<_, _>>()?;
+    Ok(uuid::Uuid::from_u64_pair(
+        ((parts[0] & 0xffffffff) << 32) | ((parts[1] & 0xffff) << 16) | (parts[2] & 0xffff),
+        ((parts[3] & 0xffff) << 48) | (parts[4] & 0xffffffffffff),
+    ))
 }

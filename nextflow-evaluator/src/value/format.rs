@@ -133,6 +133,7 @@ impl Value {
                 super::State::Uri(text) | super::State::Locale(text) | super::State::Text(text) => {
                     out.push_str(text)
                 }
+                super::State::Uuid(value) => out.push_str(&value.to_string()),
                 super::State::Bytes(bytes) => {
                     let items: Vec<String> = bytes.iter().map(|b| (*b as i8).to_string()).collect();
                     out.push_str(&format!("[{}]", items.join(", ")));

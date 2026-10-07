@@ -103,7 +103,12 @@ impl Value {
             (Value::Duration(left), Value::Duration(right)) => left == right,
             (Value::Character(left), Value::Character(right)) => left == right,
             (Value::Closure(left), Value::Closure(right)) => Rc::ptr_eq(left, right),
-            (Value::Object(left), Value::Object(right)) => Rc::ptr_eq(left, right),
+            (Value::Object(left), Value::Object(right)) => {
+                match (&left.borrow().state, &right.borrow().state) {
+                    (super::State::Uuid(a), super::State::Uuid(b)) => a == b,
+                    _ => Rc::ptr_eq(left, right),
+                }
+            }
             (Value::Exception(left), Value::Exception(right)) => Rc::ptr_eq(left, right),
             (Value::Pattern(left), Value::Pattern(right)) => Rc::ptr_eq(left, right),
             (Value::Matcher(left), Value::Matcher(right)) => Rc::ptr_eq(left, right),
@@ -169,7 +174,13 @@ impl Value {
             Value::Class(name) => string_hash(name),
             // Other objects keep the identity hash, which only needs to be consistent.
             Value::Closure(closure) => Rc::as_ptr(closure) as usize as i32,
-            Value::Object(object) => Rc::as_ptr(object) as usize as i32,
+            Value::Object(object) => match &object.borrow().state {
+                super::State::Uuid(value) => {
+                    let (high, low) = value.as_u64_pair();
+                    long_hash((high ^ low) as i64)
+                }
+                _ => Rc::as_ptr(object) as usize as i32,
+            },
             Value::Exception(exception) => Rc::as_ptr(exception) as usize as i32,
             Value::Pattern(pattern) => Rc::as_ptr(pattern) as usize as i32,
             Value::Matcher(matcher) => Rc::as_ptr(matcher) as usize as i32,

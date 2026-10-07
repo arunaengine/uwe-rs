@@ -40,6 +40,56 @@ fn fails(source: &str) -> String {
 }
 
 #[test]
+fn uuids_are_random() {
+    let text =
+        run("def f() { (1..64).collect { java.util.UUID.randomUUID().toString() }.join('|') }");
+    let values: Vec<_> = text.split('|').collect();
+    assert_eq!(values.len(), 64);
+    for value in &values {
+        assert_eq!(value.len(), 36);
+        for (index, byte) in value.bytes().enumerate() {
+            if [8, 13, 18, 23].contains(&index) {
+                assert_eq!(byte, b'-');
+            } else {
+                assert!(byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+            }
+        }
+        assert_eq!(value.as_bytes()[14], b'4');
+        assert!(b"89ab".contains(&value.as_bytes()[19]));
+    }
+    let unique: std::collections::HashSet<_> = values.into_iter().collect();
+    assert_eq!(unique.len(), 64);
+}
+
+#[test]
+fn uuid_parses_values() {
+    assert_eq!(
+        run("def f() {\n\
+             def a = UUID.fromString('AABBCCDD-1234-4567-89AB-0123456789AB')\n\
+             def b = java.util.UUID.fromString(a.toString())\n\
+             [a.toString(), a.class.name, a == b, a.equals(b), a === b,\n\
+              a.equals(a.toString()), a.hashCode(), [a, b].toSet().size(),\n\
+              [(a): 'found'][b], UUID.fromString('+1-2-3-4-5').toString()]\n\
+             }"),
+        "[aabbccdd-1234-4567-89ab-0123456789ab, java.util.UUID, true, true, false, false, 1950548274, 1, found, 00000001-0002-0003-0004-000000000005]"
+    );
+    for text in [
+        "12345678123412341234123456789abc",
+        "{12345678-1234-1234-1234-123456789abc}",
+        "urn:uuid:12345678-1234-1234-1234-123456789abc",
+    ] {
+        assert!(
+            fails(&format!("def f() {{ UUID.fromString('{text}') }}"))
+                .starts_with("IllegalArgumentException:")
+        );
+    }
+    assert!(
+        fails("def f() { UUID.fromString('g-2-3-4-5') }").starts_with("NumberFormatException:")
+    );
+    assert!(fails("def f() { UUID.fromString(null) }").starts_with("NullPointerException:"));
+}
+
+#[test]
 fn returns_last_statement() {
     assert_eq!(
         run("def f() { g(0) }\ndef g(x) { if( x ) { 'yes' } else { 'no' } }"),

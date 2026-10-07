@@ -22,6 +22,55 @@ rule keep:
     shell: "cat {input} > {output}"
 "#;
 
+#[test]
+fn reuses_missing_intermediates() {
+    for final_exists in [true, false] {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::write(
+            folder.path().join("Snakefile"),
+            r#"
+rule all:
+    input: "final"
+rule seed:
+    output: temp("intermediate")
+    shell: "touch {output}"
+rule finish:
+    input: "intermediate"
+    output: "final"
+    shell: "cp {input} {output}"
+"#,
+        )
+        .unwrap();
+        if final_exists {
+            std::fs::write(folder.path().join("final"), "current").unwrap();
+        }
+        let launch = Launch {
+            target: folder.path().into(),
+            scratch: folder.path().join("scratch"),
+            simulated: true,
+            ..Launch::default()
+        };
+        let mut driver = snakemake_runtime::driver(&launch).unwrap();
+        let mut executor = Simulator::new(folder.path().join("simulator"));
+        let result = execute("intermediates", driver.as_mut(), &mut executor);
+        assert!(result.error.is_none(), "{:?}", result.error);
+        let rules: Vec<_> = result
+            .graph
+            .nodes
+            .iter()
+            .map(|node| node.task.step.as_str())
+            .collect();
+        assert_eq!(
+            rules,
+            if final_exists {
+                vec![]
+            } else {
+                vec!["seed", "finish", "all"]
+            }
+        );
+    }
+}
+
 /// The steps that a simulated run of the folder runs, with Snakemake's record of `copy.txt`
 /// when given.
 fn steps(input_age: u64, record: Option<&str>) -> Vec<String> {
@@ -70,7 +119,7 @@ fn steps(input_age: u64, record: Option<&str>) -> Vec<String> {
 fn reruns_newer_inputs() {
     // Snakemake 9.27 runs `copy` again for an input newer than its output, not `keep`.
     assert_eq!(steps(10, None), ["all", "copy"]);
-    assert_eq!(steps(1000, None), ["all"]);
+    assert!(steps(1000, None).is_empty());
 }
 
 #[test]
@@ -79,7 +128,7 @@ fn reuses_identical_inputs() {
     let digest = "73cb3858a687a8494ca3323053016282f3dad39d42cf62ca4e79dda2aac7d9ac";
     let same = format!(r#"{{"input_checksums": {{"in.txt": "{digest}"}}}}"#);
     let other = r#"{"input_checksums": {"in.txt": "sha256:00"}}"#;
-    assert_eq!(steps(10, Some(&same)), ["all"]);
+    assert!(steps(10, Some(&same)).is_empty());
     assert_eq!(steps(10, Some(other)), ["all", "copy"]);
 }
 

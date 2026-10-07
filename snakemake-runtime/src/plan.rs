@@ -766,7 +766,35 @@ impl Planner {
     pub fn needrun(&self, interpreter: &Interpreter, roots: &[usize]) -> HashMap<usize, bool> {
         let mut result: HashMap<usize, bool> = HashMap::new();
         for root in roots {
-            self.visit_needrun(interpreter, *root, &mut result, &mut HashSet::new());
+            self.visit_needrun(interpreter, *root, roots, &mut result, &mut HashSet::new());
+        }
+        let mut consumers: HashMap<usize, Vec<(usize, &str)>> = HashMap::new();
+        for job in self.ordered_jobs(roots) {
+            for (file, dependency) in &self.jobs[job].dependencies {
+                consumers.entry(*dependency).or_default().push((job, file));
+            }
+        }
+        let mut pending: Vec<usize> = result
+            .iter()
+            .filter_map(|(job, needed)| needed.then_some(*job))
+            .collect();
+        while let Some(job) = pending.pop() {
+            for (file, dependency) in &self.jobs[job].dependencies {
+                if !self.exists(interpreter, file) && !result[dependency] {
+                    result.insert(*dependency, true);
+                    pending.push(*dependency);
+                }
+            }
+            for (consumer, file) in consumers.get(&job).into_iter().flatten() {
+                let ancient =
+                    self.jobs[*consumer].input.values.iter().any(|value| {
+                        value.as_str() == Some(*file) && value.tag("ancient").is_some()
+                    });
+                if !result[consumer] && !(ancient && self.exists(interpreter, file)) {
+                    result.insert(*consumer, true);
+                    pending.push(*consumer);
+                }
+            }
         }
         result
     }
@@ -775,6 +803,7 @@ impl Planner {
         &self,
         interpreter: &Interpreter,
         job: usize,
+        roots: &[usize],
         result: &mut HashMap<usize, bool>,
         visiting: &mut HashSet<usize>,
     ) -> bool {
@@ -785,8 +814,15 @@ impl Planner {
             return false;
         }
         let mut needed = self.forceall || self.matches_targets(job, &self.forcerun);
-        for (_, dependency) in &self.jobs[job].dependencies {
-            needed |= self.visit_needrun(interpreter, *dependency, result, visiting);
+        for (file, dependency) in &self.jobs[job].dependencies {
+            let upstream = self.visit_needrun(interpreter, *dependency, roots, result, visiting);
+            let ancient = self.jobs[job]
+                .input
+                .values
+                .iter()
+                .any(|value| value.as_str() == Some(file) && value.tag("ancient").is_some());
+            needed |= (upstream || self.fixed.contains(dependency))
+                && !(ancient && self.exists(interpreter, file));
         }
         let outputs = self.jobs[job].output_files();
         let own_outputs: Vec<String> = self.jobs[job]
@@ -795,12 +831,24 @@ impl Planner {
             .iter()
             .filter_map(|value| value.as_str().map(str::to_owned))
             .collect();
-        needed |= own_outputs.is_empty()
+        let target = roots.contains(&job);
+        let no_output = own_outputs.is_empty()
+            && target
+            && (!matches!(
+                self.rules[self.jobs[job].rule].action,
+                crate::rule::Action::None
+            ) || self.jobs[job].input.values.is_empty()
+                || self.jobs[job]
+                    .input_files()
+                    .iter()
+                    .any(|file| !self.exists(interpreter, file)));
+        needed |= no_output
             || self.jobs[job].incomplete
-            || outputs
-                .iter()
-                .filter(|file| own_outputs.contains(file))
-                .any(|file| !self.exists(interpreter, file));
+            || target
+                && outputs
+                    .iter()
+                    .filter(|file| own_outputs.contains(file))
+                    .any(|file| !self.exists(interpreter, file));
         needed = needed || (self.mtime && self.has_newer_inputs(interpreter, job, &own_outputs));
         result.insert(job, needed);
         needed

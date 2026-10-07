@@ -15,6 +15,7 @@ fn preparation(base: char) -> ImagePreparation {
         channels: vec![],
         specs: vec![],
         pip: vec![],
+        pypi: None,
         packages: vec![],
         virtual_packages: Some(vec![]),
     };

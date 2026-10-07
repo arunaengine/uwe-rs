@@ -18,6 +18,7 @@ fn fixture(bytes: &[u8]) -> Lock {
         channels: vec![],
         specs: vec![],
         pip: vec![],
+        pypi: None,
         virtual_packages: Some(vec![]),
         packages: vec![Package {
             name: "fixture".into(),

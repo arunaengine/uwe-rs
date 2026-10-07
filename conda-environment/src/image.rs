@@ -66,7 +66,7 @@ pub struct ImagePreparation {
 
 impl ImagePreparation {
     /// Binds a lock to an immutable base, explicit OCI platform and authoritative target
-    /// capabilities. Pip requirements and legacy unknown capability compatibility are refused.
+    /// capabilities. Unpinned pip requirements and unknown capability compatibility are refused.
     pub fn new(
         lock: &Lock,
         resolved_base: &str,
@@ -102,11 +102,12 @@ impl ImagePreparation {
                 "lock capabilities must match authoritative target metadata",
             ));
         }
-        if lock.format != FORMAT || !lock.pip.is_empty() {
+        if lock.format != FORMAT {
             return Err(invalid(
                 "image preparation needs a supported lock without unpinned pip requirements",
             ));
         }
+        let pip = lock.pip_packages()?;
         for package in &lock.packages {
             if !package.sha256.as_deref().is_some_and(valid_digest)
                 || !package
@@ -122,7 +123,7 @@ impl ImagePreparation {
             }
         }
         let base = format!("{name}@sha256:{}", base_digest.to_ascii_lowercase());
-        let recipe = format!(
+        let mut recipe = format!(
             "# iunctus Conda image recipe 1\nFROM --platform={platform} {base}\n\
              USER root\nCOPY packages /tmp/iunctus-conda-packages\n\
              COPY explicit.txt /tmp/iunctus-conda-explicit.txt\n\
@@ -130,6 +131,12 @@ impl ImagePreparation {
              && micromamba clean --all --yes && rm -rf /tmp/iunctus-conda-packages /tmp/iunctus-conda-explicit.txt\n\
              ENV PATH=/opt/iunctus/bin:$PATH\nENTRYPOINT []\n"
         );
+        if !pip.is_empty() {
+            recipe.push_str("COPY pip /tmp/iunctus-pip-packages\nCOPY pip.txt /tmp/iunctus-pip.txt\n\
+                RUN /opt/iunctus/bin/python -m pip --isolated install --no-index --no-deps --no-build-isolation \
+                --require-hashes --disable-pip-version-check -r /tmp/iunctus-pip.txt \
+                && rm -rf /tmp/iunctus-pip-packages /tmp/iunctus-pip.txt\n");
+        }
         let identity = serde_json::to_vec(&(lock.digest(), &base, platform, &recipe))
             .map_err(io::Error::other)?;
         let digest = format!("sha256:{}", hex(Sha256::digest(&identity).as_slice()));
@@ -235,17 +242,42 @@ impl ImagePreparation {
             ));
         }
         append(&mut archive, "explicit.txt", explicit.as_bytes())?;
+        let pip = self.lock.pip_packages()?;
+        if !pip.is_empty() {
+            let mut requirements = String::new();
+            for (index, package) in pip.iter().enumerate() {
+                requirements.push_str(&format!(
+                    "file:///tmp/iunctus-pip-packages/{index}/{} --hash=sha256:{}\n",
+                    package.file, package.sha256
+                ));
+            }
+            append(&mut archive, "pip.txt", requirements.as_bytes())?;
+        }
         if self.lock.packages.is_empty() {
             let mut header = header(0);
             header.set_entry_type(tar::EntryType::Directory);
             header.set_mode(0o755);
             archive.append_data(&mut header, "packages", io::empty())?;
         }
-        for (index, package) in self.lock.packages.iter().enumerate() {
-            let expected = package
-                .sha256
-                .as_deref()
-                .ok_or_else(|| invalid("missing package digest"))?;
+        let files = self
+            .lock
+            .packages
+            .iter()
+            .enumerate()
+            .map(|(index, package)| {
+                (
+                    format!("packages/{index}/{}", package.file),
+                    package.sha256.as_deref(),
+                )
+            })
+            .chain(pip.iter().enumerate().map(|(index, package)| {
+                (
+                    format!("pip/{index}/{}", package.file),
+                    Some(package.sha256.as_str()),
+                )
+            }));
+        for (name, expected) in files {
+            let expected = expected.ok_or_else(|| invalid("missing package digest"))?;
             let file = File::open(package_cache.join(expected.to_ascii_lowercase()))?;
             let size = file.metadata()?.len();
             let mut reader = Hashed {
@@ -253,11 +285,7 @@ impl ImagePreparation {
                 digest: Sha256::new(),
                 size: 0,
             };
-            archive.append_data(
-                &mut header(size),
-                format!("packages/{index}/{}", package.file),
-                &mut reader,
-            )?;
+            archive.append_data(&mut header(size), name, &mut reader)?;
             if reader.size != size
                 || !hex(reader.digest.finalize().as_slice()).eq_ignore_ascii_case(expected)
             {

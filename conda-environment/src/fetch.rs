@@ -56,19 +56,26 @@ pub fn fetch_packages(
     mut fetch: impl FnMut(&str, &mut dyn Write) -> io::Result<()>,
 ) -> io::Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
-    for package in &lock.packages {
-        let digest = package_digest(package)?;
+    for (url, digest) in artifacts(lock)? {
         let path = folder.join(&digest);
         if verify(&path, &digest).is_err() {
-            publish(
-                &path,
-                |out| fetch(&package.url, out),
-                |path| verify(path, &digest),
-            )?;
+            publish(&path, |out| fetch(url, out), |path| verify(path, &digest))?;
         }
         paths.push(path);
     }
     Ok(paths)
+}
+
+pub(crate) fn artifacts(lock: &Lock) -> io::Result<Vec<(&str, String)>> {
+    let mut artifacts = lock
+        .packages
+        .iter()
+        .map(|package| package_digest(package).map(|digest| (package.url.as_str(), digest)))
+        .collect::<io::Result<Vec<_>>>()?;
+    for package in lock.pip_packages()? {
+        artifacts.push((package.url.as_str(), package.sha256.to_ascii_lowercase()));
+    }
+    Ok(artifacts)
 }
 
 pub(crate) fn package_digest(package: &crate::Package) -> io::Result<String> {

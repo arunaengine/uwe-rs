@@ -117,6 +117,52 @@ pub fn base(channel: &str) -> String {
 }
 
 impl Lock {
+    /// Checks versioned pip pins before acquisition or image preparation.
+    pub fn pip_packages(&self) -> std::io::Result<&[PipPackage]> {
+        let invalid = |message| std::io::Error::new(std::io::ErrorKind::InvalidData, message);
+        let Some(pypi) = &self.pypi else {
+            return if self.pip.is_empty() {
+                Ok(&[])
+            } else {
+                Err(invalid(
+                    "pip requirements need a versioned hash-pinned lock",
+                ))
+            };
+        };
+        let target = crate::pypi::Target::new(self).map_err(std::io::Error::other)?;
+        if pypi.format != 1 || pypi.python != target.python.to_string() {
+            return Err(invalid("unsupported pip lock format or mismatched Python"));
+        }
+        for (index, package) in pypi.packages.iter().enumerate() {
+            let version = package.version.parse::<pep440_rs::Version>().ok();
+            let name = package.name.parse::<pep508_rs::PackageName>().ok();
+            let source = package.file.ends_with(".tar.gz") || package.file.ends_with(".zip");
+            if !crate::distribution::valid_hash(&package.sha256)
+                || !crate::distribution::safe_file(&package.file)
+                || !reqwest::Url::parse(&package.url)
+                    .is_ok_and(|url| crate::distribution::safe_url(&url))
+                || version.is_none()
+                || name.as_ref().map(|name| name.as_ref()) != Some(package.name.as_str())
+                || (!source && target.wheel(&package.file) != version)
+                || (index > 0 && pypi.packages[index - 1].name >= package.name)
+            {
+                return Err(invalid(
+                    "pip lock needs sorted unique compatible artifacts with HTTPS URLs and SHA-256",
+                ));
+            }
+            if source
+                && ["setuptools", "wheel"]
+                    .iter()
+                    .any(|name| !self.packages.iter().any(|package| package.name == *name))
+            {
+                return Err(invalid(
+                    "pip source distribution requires locked setuptools and wheel build tools",
+                ));
+            }
+        }
+        Ok(&pypi.packages)
+    }
+
     /// `sha256:<hex>` of the lock as JSON, which names the environment.
     pub fn digest(&self) -> String {
         // Serializing a lock cannot fail: its fields are texts and lists.
@@ -129,6 +175,7 @@ impl Lock {
 
     /// The explicit list that conda and micromamba install from without solving:
     /// `@EXPLICIT`, then the address of each package with its MD5 digest.
+    /// Pip packages require the separate hash-pinned installation used by image preparation.
     pub fn explicit(&self) -> String {
         let mut text = format!("# platform: {}\n@EXPLICIT\n", self.platform);
         for package in &self.packages {

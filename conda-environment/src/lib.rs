@@ -32,8 +32,8 @@ pub use version::{Version, VersionSpec};
 /// Why an environment cannot be locked.
 #[derive(Debug, thiserror::Error)]
 pub enum LockError {
-    #[error("pip requirements cannot be locked; Conda preparation refuses pip sections")]
-    Pip,
+    #[error(transparent)]
+    Pip(#[from] PipError),
     #[error("Conda acquisition: {0}")]
     Acquisition(String),
     #[error("Conda solver: {0}")]
@@ -108,7 +108,7 @@ pub fn platform() -> String {
 /// Target compatibility stays unknown and capability dependencies require explicit packages.
 /// Use [`lock_with_virtual`] to check authoritative target capabilities.
 pub fn lock(environment: &Environment, folder: &Path, platform: &str) -> Result<Lock, LockError> {
-    lock_inner(environment, folder, platform, None)
+    lock_inner(environment, folder, platform, None, folder)
 }
 
 /// Locks with authoritative capabilities of the target container, including version and
@@ -119,7 +119,18 @@ pub fn lock_with_virtual(
     platform: &str,
     capabilities: &[VirtualPackage],
 ) -> Result<Lock, LockError> {
-    lock_inner(environment, folder, platform, Some(capabilities))
+    lock_inner(environment, folder, platform, Some(capabilities), folder)
+}
+
+/// Resolves a local repodata snapshot while retaining the persistent offline PyPI cache.
+pub fn lock_with_cache(
+    environment: &Environment,
+    folder: &Path,
+    platform: &str,
+    capabilities: &[VirtualPackage],
+    cache: &Path,
+) -> Result<Lock, LockError> {
+    lock_inner(environment, folder, platform, Some(capabilities), cache)
 }
 
 fn lock_inner(
@@ -127,10 +138,10 @@ fn lock_inner(
     folder: &Path,
     platform: &str,
     capabilities: Option<&[VirtualPackage]>,
+    cache: &Path,
 ) -> Result<Lock, LockError> {
-    if !environment.pip.is_empty() {
-        return Err(LockError::Pip);
-    }
+    validate_pip(&environment.pip)?;
+    let specs = conda_specs(environment);
     let virtual_packages = validate_capabilities(capabilities)?;
     let virtual_records: Option<Vec<Record>> = virtual_packages.as_ref().map(|packages| {
         packages
@@ -145,12 +156,8 @@ fn lock_inner(
     });
     let channels = channels(&environment.channels);
     let index = Index::load(folder, &channels, platform)?;
-    let records = solve::solve(
-        &index,
-        &environment.dependencies,
-        virtual_records.as_deref(),
-    )?;
-    Ok(Lock {
+    let records = solve::solve(&index, &specs, virtual_records.as_deref())?;
+    let mut lock = Lock {
         format: FORMAT,
         platform: platform.to_owned(),
         channels,
@@ -163,7 +170,17 @@ fn lock_inner(
         pypi: None,
         packages: records.iter().map(Package::of).collect(),
         virtual_packages,
-    })
+    };
+    acquisition::lock_pip_cached(&mut lock, cache, true)?;
+    Ok(lock)
+}
+
+pub(crate) fn conda_specs(environment: &Environment) -> Vec<MatchSpec> {
+    let mut specs = environment.dependencies.clone();
+    if !environment.pip.is_empty() && !specs.iter().any(|spec| spec.name == "pip") {
+        specs.push(MatchSpec::parse("pip").expect("fixed pip spec"));
+    }
+    specs
 }
 
 pub(crate) fn validate_capabilities(

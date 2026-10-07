@@ -177,11 +177,12 @@ impl Config {
                 std::fs::write(target, bytes)?;
             }
         }
-        let lock = conda_environment::lock_with_virtual(
+        let lock = conda_environment::lock_with_cache(
             &environment,
             snapshot.path(),
             platform,
             &self.capabilities,
+            &self.repodata,
         )
         .map_err(io::Error::other)?;
         ImagePreparation::new(&lock, &self.base, &self.platform, &self.capabilities)
@@ -214,11 +215,7 @@ impl Config {
         let bytes = bounded_bytes(Path::new(source), 1024 * 1024)?;
         let text = std::str::from_utf8(&bytes).map_err(io::Error::other)?;
         let mut environment = Environment::parse(text).map_err(io::Error::other)?;
-        if !environment.pip.is_empty() {
-            return Err(io::Error::other(
-                "Conda image preparation refuses pip sections because pip requirements cannot be locked",
-            ));
-        }
+        conda_environment::validate_pip(&environment.pip).map_err(io::Error::other)?;
         if environment.channels.is_empty() {
             environment.channels.push(DEFAULT_CHANNEL.into());
         }
@@ -317,7 +314,31 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
                 .join()
         })
         .map_err(|_| failure("Conda lock worker failed"))?
-        .map_err(|error| failure(error.to_string()))?;
+        .map_err(|error| {
+            if error
+                .get_ref()
+                .and_then(|error| error.downcast_ref::<LockError>())
+                .is_some_and(|error| {
+                    matches!(
+                        error,
+                        LockError::Pip(conda_environment::PipError::Unsupported(_))
+                    )
+                })
+                || error
+                    .get_ref()
+                    .and_then(|error| error.downcast_ref::<conda_environment::PipError>())
+                    .is_some_and(|error| {
+                        matches!(error, conda_environment::PipError::Unsupported(_))
+                    })
+            {
+                return Failure {
+                    message: error.to_string(),
+                    code: crate::failure::UNSUPPORTED,
+                    after: vec![],
+                };
+            }
+            failure(error.to_string())
+        })?;
         preparation.lock().clone()
     } else {
         conda_environment::lock(&environment, &folder, &platform)
@@ -330,6 +351,15 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let explicit = output
         .extension()
         .is_some_and(|extension| extension == "txt");
+    if explicit && !lock.pip.is_empty() {
+        return Err(Failure {
+            message:
+                "pip locks require JSON output; a Conda explicit list cannot preserve pip pins"
+                    .into(),
+            code: crate::failure::UNSUPPORTED,
+            after: vec![],
+        });
+    }
     let written = match explicit {
         true => lock.explicit(),
         false => format!("{}\n", json(&lock)),
@@ -363,9 +393,15 @@ fn json(lock: &Lock) -> String {
 fn locked(file: &Path, error: LockError) -> Failure {
     let message = format!("iunctus: {}: {error}", file.display());
     match error {
+        LockError::Pip(conda_environment::PipError::Unsupported(_)) => Failure {
+            message,
+            code: crate::failure::UNSUPPORTED,
+            after: vec![],
+        },
         LockError::MissingRepodata { .. }
         | LockError::Io { .. }
         | LockError::Repodata { .. }
+        | LockError::Pip(conda_environment::PipError::Io(_))
         | LockError::Acquisition(_) => Failure::setup(message),
         _ => failure(message),
     }
@@ -439,7 +475,7 @@ mod tests {
                     .contains("local YAML")
             );
         }
-        std::fs::write(&file, "dependencies:\n  - pip:\n    - unpinned\n").unwrap();
+        std::fs::write(&file, "dependencies:\n  - pip:\n    - '-e .'\n").unwrap();
         assert!(
             config
                 .preparation(file.to_str().unwrap())

@@ -218,15 +218,39 @@ fn validates_target_capabilities() {
     }
     std::fs::write(
         root.join("env.yaml"),
-        "dependencies:\n  - pip:\n    - requests==2.32\n",
+        "dependencies:\n  - pip:\n    - '-e .'\n",
     )
     .unwrap();
     let (code, _, error) = lock(
         root,
         &["env.yaml", "-iunctus-config", config.to_str().unwrap()],
     );
-    assert_eq!(code, 1);
+    assert_eq!(code, 33);
     assert!(error.contains("pip"), "{error}");
+}
+
+#[test]
+fn rejects_pip_forms() {
+    let folder = tempfile::tempdir().unwrap();
+    for requirement in [
+        "-e .",
+        "./local",
+        "local.whl",
+        "/tmp/local",
+        "git+https://example.org/project",
+        "alpha @ https://example.org/a.whl",
+        "--index-url https://example.org",
+        "--extra-index-url https://example.org",
+    ] {
+        std::fs::write(
+            folder.path().join("env.yaml"),
+            format!("dependencies:\n  - pip:\n    - {requirement:?}\n"),
+        )
+        .unwrap();
+        let (code, _, error) = lock(folder.path(), &["env.yaml", "-platform", "linux-64"]);
+        assert_eq!(code, 33, "{requirement}: {error}");
+        assert!(error.contains("pip"), "{error}");
+    }
 }
 
 #[test]

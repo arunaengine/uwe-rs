@@ -843,7 +843,7 @@ impl Planner {
                     .iter()
                     .any(|file| !self.exists(interpreter, file)));
         needed |= no_output
-            || self.jobs[job].incomplete
+            || target && self.jobs[job].incomplete
             || target
                 && outputs
                     .iter()

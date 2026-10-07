@@ -73,6 +73,7 @@ pub struct Nextflow {
     requests: HashMap<TaskId, TaskRequest>,
     /// The variables of the config's `env` scope, which every task gets.
     environment: BTreeMap<String, String>,
+    project_bin: Option<PathBuf>,
     /// What the run noted since the engine last asked: files it read, listed or spread.
     notes: Vec<Note>,
     /// The registry of the container engine, like `docker.registry`, for images without one.
@@ -115,6 +116,7 @@ impl Nextflow {
             run: None,
             requests: HashMap::new(),
             environment: BTreeMap::new(),
+            project_bin: None,
             notes: Vec::new(),
             registry: None,
             reports: None,
@@ -274,6 +276,25 @@ impl Nextflow {
             .into_iter()
             .map(|request| {
                 let mut task = task(&request, &self.environment)?;
+                if request.made.is_none()
+                    && let Some(bin) = &self.project_bin
+                {
+                    task.inputs.push(Input {
+                        path: ".command.bin".into(),
+                        source: bin.to_string_lossy().into_owned(),
+                        directory: true,
+                        ..Default::default()
+                    });
+                    task.inputs.push(Input {
+                        path: ".command.run".into(),
+                        content: Some(
+                            "export PATH=\"$PWD/.command.bin:$PATH\"\nexec \"$@\"\n".into(),
+                        ),
+                        ..Default::default()
+                    });
+                    task.command
+                        .splice(0..0, ["/bin/sh".into(), ".command.run".into()]);
+                }
                 let registry = self.registry.as_deref();
                 task.image = (task.image).map(|image| with_registry(&image, registry));
                 for input in &task.inputs {
@@ -304,6 +325,8 @@ impl Driver for Nextflow {
     fn start(&mut self) -> Result<Vec<Task>, DriverError> {
         self.load()?;
         let loaded = self.loaded.take().ok_or_else(not_started)?;
+        let bin = loaded.project.join("bin");
+        self.project_bin = bin.is_dir().then_some(bin);
         let config = &loaded.config;
         self.environment = environment(config);
         let engine = self

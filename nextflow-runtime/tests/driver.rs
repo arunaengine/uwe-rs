@@ -118,6 +118,54 @@ fn builds_task_graph() {
     assert!(document.is_file());
 }
 
+#[cfg(unix)]
+#[test]
+fn bin_helpers_run() {
+    use std::os::unix::fs::PermissionsExt;
+
+    for status in [0, 17] {
+        let directory = tempfile::tempdir().unwrap();
+        let project = directory.path().join("project 'space");
+        let bin = project.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let helper = bin.join("helper-tool");
+        std::fs::write(
+            &helper,
+            format!("#!/bin/sh\nprintf 'ready\\n'\nexit {status}\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(
+            project.join("main.nf"),
+            "process HELP {\n container 'debian:stable-slim'\n script:\n 'helper-tool'\n}\nworkflow { HELP() }",
+        )
+        .unwrap();
+        let mut driver = nextflow_runtime::driver(&Launch {
+            target: project,
+            ..Launch::default()
+        })
+        .unwrap();
+        let task = driver.start().unwrap().remove(0);
+        let work = directory.path().join("work 'space");
+        std::fs::create_dir(&work).unwrap();
+        for input in &task.inputs {
+            let path = work.join(&input.path);
+            if input.directory {
+                std::os::unix::fs::symlink(&input.source, &path).unwrap();
+            } else {
+                std::fs::write(path, input.content.as_ref().unwrap()).unwrap();
+            }
+        }
+        let result = std::process::Command::new(&task.command[0])
+            .args(&task.command[1..])
+            .current_dir(work)
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(status), "{:?}", result);
+        assert_eq!(result.stdout, b"ready\n");
+    }
+}
+
 #[test]
 fn copies_staged_inputs() {
     let directory = tempfile::tempdir().expect("a temporary directory");

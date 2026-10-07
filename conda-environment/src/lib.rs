@@ -4,10 +4,13 @@
 
 mod acquisition;
 mod cache;
+mod distribution;
 mod environment;
 mod fetch;
 mod image;
 mod lock;
+mod pip;
+mod pypi;
 mod repodata;
 mod solve;
 mod spec;
@@ -21,6 +24,7 @@ pub use environment::{Environment, EnvironmentError};
 pub use fetch::{fetch_packages, fetch_repodata};
 pub use image::{BuiltImage, CompletedImage, IMAGE_RECEIPT_FORMAT, ImagePreparation};
 pub use lock::{FORMAT, Lock, Package, PipLock, PipPackage, VirtualPackage, base};
+pub use pip::{PipError, lock_pip, validate_pip};
 pub use repodata::{Index, Record, channels, repodata_path, valid_channel};
 pub use spec::{MatchSpec, SpecError};
 pub use version::{Version, VersionSpec};

@@ -105,6 +105,58 @@ rule finish:
     assert!(result.graph.nodes.is_empty());
 }
 
+#[test]
+fn reruns_newer_scripts() {
+    for trigger in [None, Some("code"), Some("mtime")] {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::write(
+            folder.path().join("Snakefile"),
+            r#"
+rule all:
+    input: "final"
+rule finish:
+    output: "final"
+    script: "make.py"
+"#,
+        )
+        .unwrap();
+        std::fs::write(folder.path().join("final"), "current").unwrap();
+        let file = std::fs::File::options()
+            .write(true)
+            .open(folder.path().join("final"))
+            .unwrap();
+        file.set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(100))
+            .unwrap();
+        std::fs::write(folder.path().join("make.py"), "print('changed')").unwrap();
+        let mut profiles = Vec::new();
+        if let Some(trigger) = trigger {
+            let profile = folder.path().join("profile");
+            std::fs::create_dir(&profile).unwrap();
+            std::fs::write(
+                profile.join("config.yaml"),
+                format!("rerun-triggers: [{trigger}]\n"),
+            )
+            .unwrap();
+            profiles.push(profile.to_string_lossy().into_owned());
+        }
+        let launch = Launch {
+            target: folder.path().into(),
+            scratch: folder.path().join("scratch"),
+            profiles,
+            simulated: true,
+            ..Launch::default()
+        };
+        let mut driver = snakemake_runtime::driver(&launch).unwrap();
+        let mut executor = Simulator::new(folder.path().join("simulator"));
+        let result = execute("script", driver.as_mut(), &mut executor);
+        assert!(result.error.is_none(), "{:?}", result.error);
+        assert_eq!(
+            result.graph.nodes.len(),
+            if trigger == Some("mtime") { 0 } else { 2 }
+        );
+    }
+}
+
 /// The steps that a simulated run of the folder runs, with Snakemake's record of `copy.txt`
 /// when given.
 fn steps(input_age: u64, record: Option<&str>) -> Vec<String> {

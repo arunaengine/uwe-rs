@@ -398,6 +398,13 @@ impl Session {
             .rerun_triggers
             .as_ref()
             .is_none_or(|triggers| triggers.iter().any(|trigger| trigger == "mtime"));
+        planner.code = self
+            .state
+            .borrow()
+            .profile
+            .rerun_triggers
+            .as_ref()
+            .is_none_or(|triggers| triggers.iter().any(|trigger| trigger == "code"));
         let roots = match planner.plan_targets(&mut self.interpreter, &targets, &until, &omit_from)
         {
             Ok(roots) => roots,

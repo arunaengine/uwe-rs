@@ -126,6 +126,7 @@ pub struct Planner {
     pub forcerun: Vec<String>,
     pub forceall: bool,
     pub mtime: bool,
+    pub code: bool,
     /// The directory outputs that jobs of this run made, by their absolute paths.
     pub made_folders: Vec<PathBuf>,
 }
@@ -157,6 +158,7 @@ impl Planner {
             forcerun: Vec::new(),
             forceall: false,
             mtime: true,
+            code: true,
             made_folders: Vec::new(),
         }
     }
@@ -850,8 +852,36 @@ impl Planner {
                     .filter(|file| own_outputs.contains(file))
                     .any(|file| !self.exists(interpreter, file));
         needed = needed || (self.mtime && self.has_newer_inputs(interpreter, job, &own_outputs));
+        needed = needed || (self.code && self.has_newer_code(interpreter, job, &own_outputs));
         result.insert(job, needed);
         needed
+    }
+
+    fn has_newer_code(&self, interpreter: &Interpreter, job: usize, outputs: &[String]) -> bool {
+        let rule = &self.rules[self.jobs[job].rule];
+        let script = match &rule.action {
+            crate::rule::Action::Script(script) | crate::rule::Action::Notebook(script) => script,
+            _ => return false,
+        };
+        let Some(script) = script.as_str().filter(|script| !script.contains("://")) else {
+            return false;
+        };
+        let Ok(script) = pattern::apply(script, &self.jobs[job].wildcards) else {
+            return false;
+        };
+        let path = interpreter
+            .host
+            .resolve(&rule.basedir.join(script).to_string_lossy());
+        let Some(script) = interpreter.host.stat(&path) else {
+            return false;
+        };
+        outputs.iter().any(|output| {
+            let path = interpreter.host.resolve(output);
+            interpreter
+                .host
+                .stat(&path)
+                .is_some_and(|output| output.modified <= script.modified)
+        })
     }
 
     /// Snakemake's `mtime` trigger: a job runs again when an input that is not `ancient` is

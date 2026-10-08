@@ -57,7 +57,6 @@ process {
 #[test]
 fn rejects_publish_options() {
     for (option, diagnostic) in [
-        ("mode: 'move'", "publish mode `move`"),
         ("failOnError: false", "publishDir option `failOnError`"),
         ("failOnError: 'false'", "publishDir option `failOnError`"),
         ("failOnError: 1", "publishDir option `failOnError`"),
@@ -129,6 +128,44 @@ impl Observer for Deliveries {
             let target = target.strip_prefix(&self.1).unwrap_or(target);
             self.0.push((target.display().to_string(), delivery.mode));
         }
+    }
+}
+
+#[test]
+fn copies_move_outputs() {
+    for configured in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        let script = if configured {
+            PIPELINE.to_owned()
+        } else {
+            PIPELINE.replace("mode: 'copy'", "mode: 'move'")
+        };
+        let config = if configured {
+            CONFIG.replace("mode: 'rellink'", "mode: 'move'")
+        } else {
+            CONFIG.to_owned()
+        };
+        std::fs::write(directory.path().join("main.nf"), script).unwrap();
+        std::fs::write(directory.path().join("nextflow.config"), config).unwrap();
+        let mut driver = nextflow_runtime::driver(&Launch {
+            target: directory.path().to_owned(),
+            simulated: true,
+            ..Launch::default()
+        })
+        .unwrap();
+        let mut executor = Simulator::new(directory.path().join("simulator"));
+        let mut deliveries = Deliveries(Vec::new(), std::env::current_dir().unwrap());
+        let execution = Engine::new(&mut executor)
+            .observer(&mut deliveries)
+            .run("main.nf", driver.as_mut());
+        assert!(execution.error.is_none(), "{:?}", execution.error);
+        let target = if configured {
+            "results/configured/copy.txt"
+        } else {
+            "results/made/a.txt"
+        };
+        assert!(deliveries.0.contains(&(target.into(), DeliveryMode::Copy)));
+        assert_eq!(execution.graph.nodes.len(), 2);
     }
 }
 

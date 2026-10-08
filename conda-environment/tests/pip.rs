@@ -328,6 +328,13 @@ fn builds_pinned_context() {
     let base = format!("micromamba@sha256:{}", "a".repeat(64));
     let capabilities = lock.virtual_packages.as_ref().unwrap();
     let preparation = ImagePreparation::new(&lock, &base, "linux/amd64", capabilities).unwrap();
+    let combined =
+        ImagePreparation::with_installer(&lock, &base, "linux/amd64", capabilities).unwrap();
+    assert!(combined.recipe().contains("--require-hashes"));
+    combined
+        .write_context(folder.path(), &mut Vec::new())
+        .unwrap();
+
     assert!(
         preparation
             .recipe()

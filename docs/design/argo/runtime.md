@@ -248,13 +248,22 @@ The check is part of the checks at submission (section 4.1), so it covers every 
 
 ### 11.2 Fields that are left out
 
-Fields that only tell Kubernetes where and how to run a pod do not change what a task computes. They are left out with a warning: `podSpecPatch`, `nodeSelector`, `tolerations`, `affinity`, the fields of a `securityContext` other than `runAsUser` and `runAsGroup` (decision 28: no container gets more than the least permissions), `serviceAccountName`, `automountServiceAccountToken`, `priorityClassName`, `schedulerName`, `hostAliases`, `dnsConfig`, `dnsPolicy`, `hostNetwork`, `imagePullSecrets`, `imagePullPolicy`, `podGC`, `podMetadata`, `podDisruptionBudget`, `ttlStrategy`, `metrics`, `archiveLocation`, `artifactGC`, `volumeClaimGC`, `executor`, `memoize` and `synchronization`.
+Fields that only tell Kubernetes where and how to run a pod do not change what a task computes. They are left out with a warning: `podSpecPatch`, `nodeSelector`, `tolerations`, `affinity`, the fields of a `securityContext` other than `runAsUser` and `runAsGroup` (decision 28: no container gets more than the least permissions), `serviceAccountName`, `automountServiceAccountToken`, `priorityClassName`, `schedulerName`, `hostAliases`, `dnsConfig`, `dnsPolicy`, `hostNetwork`, `imagePullSecrets`, `imagePullPolicy`, `podGC`, `podMetadata`, `podDisruptionBudget`, `ttlStrategy`, `metrics`, `archiveLocation`, `artifactGC`, `volumeClaimGC`, `executor` and `memoize`.
 
 Init containers are no such field: they run as tasks (section 11.8).
 
 Container `readinessProbe` settings are accepted as a no-op wherever they appear, including main containers, scripts, init containers, sidecars and container sets: readiness only reports whether a container can receive traffic, and never stops or restarts it. Sidecars remain unsupported under decision 18. Container `livenessProbe`, `startupProbe`, lifecycle hooks, restart policies and rules, and resize policies remain refused because they can run, stop or restart commands.
 
 ### 11.3 ConfigMaps
+
+Workflow and template `synchronization` use mutexes and semaphores shared by the run and
+its child workflows. All locks of a node are acquired together, in arrival order, and
+released when the node ends; retry nodes hold their locks across attempts and backoff.
+Lock namespaces remain distinct. Database synchronization remains refused.
+Semaphore `configMapKeyRef` reads a positive integer from a loaded ConfigMap's `data`.
+Supply the ConfigMap in the workflow file or with `-config`. For an inline iunctus limit,
+add `limit: 2` beside `name` and `key` in the reference. Missing sources fail with the
+ConfigMap name, namespace and key; no Kubernetes request or guessed limit is used.
 
 ConfigMaps come from the same documents as templates: the workflow file, the configs and the repository (section 3). They give:
 

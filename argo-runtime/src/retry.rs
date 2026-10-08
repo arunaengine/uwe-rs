@@ -98,6 +98,9 @@ impl Run {
             return Ok(());
         };
         check_strategy(&call.strategy)?;
+        if !self.lock_template(index, &call.processed)? {
+            return Ok(());
+        }
         let limit = call
             .strategy
             .limit
@@ -222,6 +225,7 @@ impl Run {
         let template_name = self.nodes[index].template.clone();
         locals.insert("pod.name".to_owned(), self.pod_name(&name, &template_name));
         let mut node = call.processed.node.clone();
+        crate::run::remove_key(&mut node, "synchronization");
         let variables = Variables::new(locals);
         replace_node(&mut node, &variables, true).map_err(Failure::error)?;
         let processed = match decode::<Template>(&node) {

@@ -63,16 +63,10 @@ impl Run {
                 }
             }
         }
-        for (field, what) in [
-            (
-                "memoize",
-                "memoize is left out: tasks use the native content-addressed cache",
-            ),
-            (
-                "synchronization",
-                "synchronization is left out: one run holds no locks",
-            ),
-        ] {
+        for (field, what) in [(
+            "memoize",
+            "memoize is left out: tasks use the native content-addressed cache",
+        )] {
             if node
                 .get(field)
                 .is_some_and(|value| value.value != Yaml::Null)

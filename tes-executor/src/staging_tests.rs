@@ -288,6 +288,101 @@ fn backend(server: &Server, root: &Path, source: &Store, objects: &Store) -> Tes
 }
 
 #[tokio::test]
+async fn preserves_sibling_objects() {
+    let folder = tempfile::tempdir().unwrap();
+    let parent = folder.path().join("source");
+    std::fs::create_dir_all(parent.join("database")).unwrap();
+    std::fs::write(parent.join("settings.conf"), b"database").unwrap();
+    std::fs::write(parent.join("database/model"), b"verified").unwrap();
+    std::fs::write(parent.join("secret"), b"undeclared").unwrap();
+    let (operator, objects, source) = stores();
+    let server = server(operator.clone(), objects.clone(), "COMPLETE").await;
+    let backend = backend(&server, folder.path(), &source, &objects);
+    let content = source
+        .put_content(b"verified".to_vec().into())
+        .await
+        .unwrap();
+    let digest = source
+        .put_tree(&task_model::Tree {
+            entries: vec![task_model::TreeEntry::File {
+                path: "model".into(),
+                digest: content,
+                size: 8,
+                executable: false,
+            }],
+        })
+        .await
+        .unwrap();
+    let mut spec = spec(true);
+    spec.inputs = vec![
+        InputFile {
+            path: "settings.conf".into(),
+            kind: FileKind::File,
+            digest: Digest::sha256(b"database"),
+            executable: false,
+            writable: false,
+        },
+        InputFile {
+            path: "database".into(),
+            kind: FileKind::Directory,
+            digest,
+            executable: false,
+            writable: false,
+        },
+    ];
+    let staging = Staging {
+        inputs: vec![
+            Staged {
+                path: "settings.conf".into(),
+                source: parent.join("settings.conf"),
+                ..Staged::default()
+            },
+            Staged {
+                path: "database".into(),
+                source: parent.join("database"),
+                directory: true,
+                ..Staged::default()
+            },
+        ],
+        ..Staging::default()
+    };
+    let placement = Placement::default();
+    backend
+        .run(
+            Job {
+                name: "siblings",
+                spec: &spec,
+                staging: &staging,
+                placement: &placement,
+            },
+            &CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    let task = server.documents.lock().unwrap()[0].clone();
+    let restored = folder.path().join("restored");
+    for input in task["inputs"].as_array().unwrap() {
+        let Some(relative) = input["path"]
+            .as_str()
+            .unwrap()
+            .strip_prefix("/iunctus/work/")
+        else {
+            continue;
+        };
+        let path = restored.join(relative);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let key = objects.location_of(input["url"].as_str().unwrap()).unwrap();
+        std::fs::write(path, operator.read(&key).await.unwrap().to_vec()).unwrap();
+    }
+    let config = std::fs::canonicalize(restored.join("settings.conf")).unwrap();
+    assert_eq!(
+        std::fs::read(config.parent().unwrap().join("database/model")).unwrap(),
+        b"verified"
+    );
+    assert!(!restored.join("secret").exists());
+}
+
+#[tokio::test]
 async fn restores_object_outputs() {
     let folder = tempfile::tempdir().unwrap();
     let (operator, objects, source) = stores();

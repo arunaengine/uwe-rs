@@ -136,7 +136,7 @@ The explicitly enabled `real_conda_rule_reuses_its_image_after_package_cache_evi
 
 This qualifies one small offline local environment and its image reuse. BuildKit, online acquisition, pip locking, remote Conda executors, rootless engines, other platforms, large environments and complete language/backend parity remain open.
 
-Aruna integration uses the generic TES executor plus S3 storage; TES-over-S3 staging is still being implemented.
+Aruna integration uses the generic TES executor plus S3 storage; object-store staging is implemented, with the local qualification recorded below.
 
 ## Local nf-core execution qualification, 2026-10-08
 
@@ -144,11 +144,63 @@ Sequential real runs use Nextflow 26.04.6 as the reference and the release iunct
 
 | Pipeline | Revision | Nextflow | iunctus | Verdict and remaining difference |
 | --- | --- | --- | --- | --- |
-| demo | 555d145 | Exit 0, 76 files | Exit 33, 1 file | Explicit default `collectFile` hash-sort refusal at workflows/demo.nf:91; 70 material files missing. |
-| datasync | d25e58a | Exit 0, 33 files | Exit 33, 1 file | Default `collectFile` hash sorting refused at workflows/datasync.nf:209; 27 material files missing. |
-| fastqrepair | 70a3820 | Exit 0, 71 files | Exit 33, files=1 | unsupported, parity not established; 65 material files missing. Default `collectFile` hash sorting refused at workflows/fastqrepair.nf:161:45. |
-| phyloplace | 68db179 | Exit 0, 33 files | Exit 33, files=1 | unsupported, parity not established; 27 material files missing. Default `collectFile` hash sorting refused at workflows/../subworkflows/nf-core/fasta_hmmsearch_rank_fastas/main.nf:74:5. |
-| bamtofastq | daf99df | Exit 1, 8 files | Exit 33, files=1 | Reference test profile lacks FASTA for SAMTOOLS_FAIDX. Iunctus refuses default `collectFile` hash sorting at workflows/bamtofastq.nf:220; parity is unqualified. |
+| demo | 555d145 | Exit 0, 76 files | Exit 0, 76 files | Updated release: all names agree, 40 material byte matches and 28 normalized report matches; no unexplained difference. |
+| datasync | d25e58a | Exit 0, 33 files | Exit 0, 33 files | Updated release: 20 material byte matches and 5 normalized report matches; unchanged dry-run test profile, no unexplained difference. |
+| fastqrepair | 70a3820 | Exit 0, 71 files | Exit 0, 71 files | Updated release: 31 material byte matches and 32 normalized report/archive matches; repaired FASTQ payload and all 29 FastQC ZIP members agree. |
+| phyloplace | 68db179 | Exit 0, 33 files | Exit 0, 33 files | Updated release: 20 material byte matches and 5 normalized report matches; placements, alignments, taxonomy tables and grafted trees match by SHA-256. |
+| bamtofastq | daf99df | Exit 1, 9 partial files | Exit 1, 7 partial files | Updated release: same missing-FASTA SAMTOOLS_FAIDX failure. Three common material digests agree; three additional iunctus publications reflect abort order. Reference profile is invalid. |
 | rnaseq | a1fcddd | Not run | Not run | Disk skip: 44.38 GiB free minus a 23 GiB allowance leaves 21.38 GiB, below the 25 GiB reserve. |
+| sarek | 8ccac7a | Not run: disk limit | Not run: disk limit | Incomplete reference attempt stopped at the 25 GiB guard; admission had 42.64 GiB free and a 17 GiB allowance. Fourteen partial files are recorded separately. |
+| methylseq | cc11bd9 | Exit 0 with legacy parser, 216 files; default v2 config fails | Exit 0, 216 files | All 36 tasks real; 122 material byte matches and 85 normalized report/archive matches. Default parser requires an absent upstream AWS include. |
+| fetchngs | 955c892 | Retry exit 0, 59 files | Last run exit 33, 40 partial files; post-UUID rerun skipped | Project-bin, Set.unique and UUID support fixed. Thirty-eight common byte matches and one metadata row-order match; full parity is unqualified because removed inputs would need downloading again. |
+| nanoseq | 95ef67c | Both parsers exit 1 before execution; legacy JSON-schema classes unavailable | Exit 33, 12 partial files after nested-null fix | Tuple-index bug fixed; genome indexing/alignment now run. Explicit multi-item collectFile hash-sort refusal remains; no complete reference comparison. |
+| viralrecon | test profile | Exit 0 with legacy parser, 691 files | Exit 0 after fix 62726259, 678 files | The first iunctus run exposed a staging defect: declared inputs from one folder were split, so a tool could not find its data next to its config. The rerun ran offline with the reference databases passed as parameters, which skips two database update tasks. A file by file comparison was not completed. |
+| taxprofiler | 3ed8f1e | Not run | Not run | User stopped new pipeline downloads; no data/image requests or tasks started. |
 
-The only comparison exclusion is `pipeline_info/**`; date-bearing filenames are normalized to `<time>`. Scientific outputs, FastQC reports, MultiQC data and plots remain in the comparison. Complete output hashes, names and logs are retained in the locally excluded `.claude/production-readiness-evidence/nfcore-20261008/`; per-pipeline source, run, work and cache folders are removed after recording. These refusals leave local nf-core output parity open. The older SLURM records predate the explicit hash-sort refusal and do not qualify the current revision.
+The initial comparison excludes `pipeline_info/**`; date-bearing filenames are normalized to `<time>`. Scientific outputs, FastQC reports, MultiQC data and plots remain in the comparison. Complete output hashes, names and logs are retained in the locally excluded `.claude/production-readiness-evidence/nfcore-20261008/`; per-pipeline source, run, work and cache folders are removed after recording. The first five iunctus results used release SHA-256 `c641ad125854c243c9e258dadc73e97cf77eb8fc7130a58a2fd6135ba2b7a26c`, before `e869fdf2` allowed empty and singleton hash-sorted collections. Reruns use a frozen copy of the updated release, SHA-256 `23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff`. Earlier refusals and older SLURM records do not qualify that updated binary.
+
+The demo rerun additionally excludes MultiQC HTML and log contents. Its JSON differs only in creation time and source/output paths. All 108 Parquet rows agree after creation-time, path, search-pattern order and custom run-provenance normalization. Twelve SVG plots agree after random Plotly IDs and attribute order are normalized; PDF plot text agrees with identical PNG and canonical SVG counterparts. Exact file patterns and fields are listed in the rerun record in `iunctus/tests/fixtures/real_runs.txt`. FASTQ files, FastQC HTML, PNG plots and metric tables match by SHA-256.
+
+Datasync's updated rerun executes all seven tasks and publishes all 33 reference filenames. Checksum/check outputs match by SHA-256. Differences are only rclone log timestamps, MultiQC report provenance and numbered staging directories for the same CSS basename; all 187 Parquet rows agree after the stated normalization. Its unchanged test profile enables `rclone_dry_run`, so this qualifies that profile rather than real object copying.
+
+Fastqrepair's updated rerun executes all nine tasks and publishes all 71 reference filenames. The repaired FASTQ differs only in gzip MTIME, and the FastQC ZIP only in entry timestamps; all 29 member payloads agree. The repair report, FastQC HTML, PNG plots and metric tables match by SHA-256, and all 79 Parquet rows agree after report normalization.
+
+Phyloplace's updated rerun executes all eight tasks and publishes all 33 reference filenames. Placement JPLACE, alignments, query/reference FASTA archives, taxonomy tables and grafted trees match by SHA-256. Additional differences are only Gappa start/finish times and a Genesis creation-time SVG comment, including its embedded MultiQC copy; all other SVG bytes agree.
+
+Bamtofastq's updated rerun fails SAMTOOLS_FAIDX with status 1 in both engines because the unchanged test profile supplies no FASTA. The three common material outputs match by SHA-256. Three extra iunctus publications are explained by independent tasks finishing before cancellation; an invalid reference profile cannot qualify complete output parity.
+
+Methylseq qualifies against Nextflow 26.04.6 with `NXF_SYNTAX_PARSER=v1`: the default v2 parser validates an inactive AWS include absent from the pinned upstream tree. No workflow file was fabricated or changed. All 216 published names agree, including byte-identical BAMs/indices and 40 methylation-call/coverage/bedGraph/mbias/splitting files. All 158 Parquet rows agree after report normalization. Remaining report differences are genome paths, timing, named adapter-count display order, archive timestamps and sample-axis order, with every sample/value association retained. Its topic `distinct()` suppresses only adjacent duplicates, so completion order also changes repeated identical version blocks in excluded pipeline metadata. Exact fields and receipts are in the fixture record.
+
+Fetchngs's accession/GEO size inspection found about 0.92 GiB of FASTQ payload. The reference progressed through metadata and most read downloads, then the 27 GiB disk guard stopped the remaining large transfer because shared build artifacts consumed the headroom. Its 47 partial files are recorded, and its 1.5 GiB temporary case was removed. No iunctus run was started below the reserve; this is a resource block rather than an engine verdict.
+
+After the reviewer reclaimed stale build executables, fetchngs's reference retry completed with 59 files. Real iunctus exposed missing project-bin staging (9222831, 184 runtime tests) and missing zero-argument Set.unique (4e38cd4, 198 evaluator tests). Each new regression failed before its fix and passed afterward; affected Clippy, formatting and the style gate passed. The rebuilt release SHA-256 is `84b4d99a763d547d231edb0ae7c374b3ec8b3ac50c124d6f03182a3fa4f39a04`. Its final run executes 29 tasks before the clear UUID.randomUUID refusal in the SRA settings module; no fake GUID or JVM fallback is used. Fifteen common FASTQs and MD5s match by SHA-256; the remaining metadata difference is row order. Full fetchngs parity remains open.
+
+Nanoseq's old Groovy schema library cannot compile on the reference installation because its Everit/org.json classes are unavailable. A small native operator probe nevertheless isolated and verified a real Rust bug: nested nulls were dropped during flattening, shifting tuple fields. Fix 8dcc32d restores native positions without accepting Boolean path values; its regression and all 185 runtime tests, Clippy, formatting and style passed. The rebuilt release SHA-256 is `cb90b70dcdccc5c869a3a1ee2e612bbc82ea9ef1f0d30f83a56a8421e118c89d`. Nanoseq then reaches genome indexing, minimap2, BAM sorting/indexing and a clear multi-item collectFile hash-sort refusal. Its 12 partial outputs do not qualify full pipeline parity.
+
+Fix e2105457 adds UUID version 4 generation from the existing locked OS random source, parsing, lowercase formatting and Java equality/hash semantics. Both focused regressions failed before the fix and passed afterward; all 200 evaluator tests, Clippy, formatting, style and the release build passed. The user then limited further downloads. Fetchngs's temporary inputs had already been removed, so its post-UUID real rerun is skipped rather than downloading about 0.92 GiB again. Taxprofiler and other new candidates are not started. These source checks do not establish complete fetchngs output parity.
+
+## Local TES object staging qualification, 2026-10-08
+
+Real runs used Funnel 0.11.14 (commit `2e54ad74`), MinIO `RELEASE.2025-09-07T16-13-09Z` (commit `07c3a429`) and Docker Engine 29.8.2 on Linux x86_64. Funnel used its local Docker compute backend and GenericS3 storage. Both services ran from binaries under `/tmp`, without installation or root commands. MinIO came from the official 39 MB Debian package, extracted with `ar`; Funnel's latest release archive was 66 MB. Downloads were sequential. Each executor had a fresh local content store; all TES task inputs and outputs used S3 FILE staging.
+
+| Check | Result | Evidence and limits |
+| --- | --- | --- |
+| Snakemake parity | Passed | `demo/snakemake/hello.smk`, five tasks; `hello/all.txt` matched the local executor byte for byte. |
+| Nextflow parity | Passed | `demo/nextflow/main.nf`, four tasks; complete greeting lines matched byte for byte, compared without task completion order. The task image was overridden to the existing `debian:stable-slim`. |
+| CWL parity | Passed | A tool read a nested file from a Directory input and returned `out/*.txt`; exported output matched local bytes. |
+| Resume | Passed | `-resume` for all three workflows reused the cache and created no new TES tasks. |
+| Failing command | Passed | `exit 17` produced `EXECUTOR_ERROR`, one TES task and no retry. |
+| Ctrl-C | Passed | A running 120-second task became `CANCELED`. |
+| Coordinator restart | Passed | After SIGKILL, the next run canceled the recorded orphan before starting a fresh attempt. |
+| Idempotency tag | Server limitation | Replaying the identical request with `qualification/idempotency` returned different task IDs. Funnel 0.11.14 does not deduplicate by this tag. Lost-response replay cannot be qualified against this server. |
+
+The real failure check found that the object capture wrapper always returned zero, so Funnel marked failed shell commands `COMPLETE`. Commit `2825757d` preserves the command's exit status. Its non-ignored regression executes the generated wrapper for status 0 and 17. All 26 non-ignored TES tests and TES Clippy passed; the style checker reported zero errors. The repeatable recipe is committed as `8a4c2ea9`. The final run used frozen binary SHA-256 `757e110a7007404a9a24c3ca442e024a5ad1c64430a4953fd4711e5a6ba0ac66`.
+
+Repeat from the repository root with a reachable local Docker engine, Linux x86_64, Python 3.11 or newer, `curl` and `ar`, and the existing `debian:stable-slim` task image:
+
+```sh
+nice -n 19 cargo build -p iunctus -j 8 --locked
+just tes-qualification --report /tmp/tes-qualification.json
+```
+
+The recipe downloads the pinned Funnel 0.11.14 release and the pinned MinIO package into a temporary folder, starts both services on local ports, provisions its bucket, runs the checks, and removes its service processes, labeled task containers and temporary folders. Existing Docker images and volumes are preserved. `--funnel /path/to/funnel --minio /path/to/minio` reuses binaries; `--binary /path/to/iunctus` selects another build. It freezes the selected binary before running tasks, so concurrent builds cannot replace it during qualification. The optional report records versions, the checkout revision, the binary SHA-256 and outcomes. These small local cases do not qualify another TES deployment, authentication, immutable S3 versions, rootless engines or atomic server deduplication.

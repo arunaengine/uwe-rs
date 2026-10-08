@@ -95,7 +95,7 @@ The profile key `rerun-triggers` accepts Snakemake's list or whitespace-separate
 
 With `[conda]` configured, a rule with both `conda:` and `container:` locks its environment for the configured target and builds the environment on that rule's image. The rule image's manifest digest must match `[conda].base`, so the supplied target capabilities describe the actual base. The recipe obtains micromamba 2.3.2 from a platform-specific SHA-256 pinned installer image during the container build and copies its binary into the rule base. It supports bases with or without micromamba. Installer version, digest, recipe, environment lock, target platform and rule base all enter the preparation identity. Existing Conda-only preparation identities remain unchanged; combined recipes use their own identity even when the base already has micromamba. Without `[conda]`, combined directives retain container-only execution.
 
-Combined preparation is local only. Pip sections, named host environments, remote YAML sources, different rule base digests without matching capability configuration, and installer platforms other than amd64, arm64 and ppc64le remain unsupported. Package installation stays offline; a cold build may acquire the pinned installer image unless it is already local. No host Conda or micromamba is installed.
+Combined preparation is local only. Named host environments, remote YAML sources, different rule base digests without matching capability configuration, and installer platforms other than amd64, arm64 and ppc64le remain unsupported. Package installation stays offline; a cold build may acquire the pinned installer image unless it is already local. No host Conda or micromamba is installed.
 
 ## 13. FIFO outputs
 

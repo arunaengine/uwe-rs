@@ -239,3 +239,9 @@ completed-image receipt and native output.
   build to one CPU and 1 GiB memory, and removes its images. This test passed on 2026-10-08
   with Python 3.12.15, 27 Conda packages and five pip packages; output included
   `Successfully built 7e5354c689ad` and `requests=2.32.3`.
+
+Combined `conda:` and `container:` rules use the rule image as their base and
+copy a pinned micromamba installer into it. The manifest must still match the
+configured target: the supplied virtual packages describe that exact image.
+Removing this check could solve for libc or other capabilities absent from the
+rule image. Repository aliases with the same manifest digest are accepted.

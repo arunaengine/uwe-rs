@@ -183,6 +183,28 @@ fn binds_preparation_identity() {
 }
 
 #[test]
+fn binds_combined_bases() {
+    let lock = locked();
+    let first =
+        ImagePreparation::with_installer(&lock, &base(), "linux/amd64", &capabilities()).unwrap();
+    assert!(
+        first
+            .recipe()
+            .contains("COPY --from=iunctus_installer /bin/micromamba")
+    );
+    assert!(first.recipe().contains(&base()));
+    let other = format!("other@sha256:{}", "b".repeat(64));
+    let second =
+        ImagePreparation::with_installer(&lock, &other, "linux/amd64", &capabilities()).unwrap();
+    assert_eq!(second.base(), other);
+    assert_ne!(first.digest(), second.digest());
+    assert!(
+        ImagePreparation::with_installer(&lock, &other, "linux/arm64", &capabilities()).is_err()
+    );
+    assert!(ImagePreparation::with_installer(&lock, &other, "linux/amd64", &[]).is_err());
+}
+
+#[test]
 fn binds_receipt_provenance() {
     let preparation =
         ImagePreparation::new(&locked(), &base(), "linux/amd64", &capabilities()).unwrap();

@@ -115,6 +115,7 @@ fn bounds_retry_attempt() {
         .unwrap()
         .remove(0);
     let node = run.tasks[&second.id].0;
+    assert_eq!(second.resources.time_seconds, Some(5));
     assert_eq!(
         run.deadlines[&node].at,
         run.nodes[1].started_at + Duration::from_secs(5)
@@ -196,4 +197,61 @@ fn suspend_allows_siblings() {
     assert_eq!(next.len(), 1);
     assert!(next[0].name.ends_with("after"));
     assert_eq!(next[0].after, vec![tasks[0].id]);
+}
+
+#[test]
+fn retry_pending_expires() {
+    let mut run = run(
+        "  templates:\n  - name: main\n    steps:\n    - - {name: holder, template: holder}\n      - {name: waiter, template: waiter}\n  - name: holder\n    synchronization: {mutexes: [{name: shared}]}\n    container: {image: debian:stable-slim}\n  - name: waiter\n    timeout: 1s\n    retryStrategy: {limit: 1}\n    synchronization: {mutexes: [{name: shared}]}\n    container: {image: debian:stable-slim}\n",
+    );
+    let first = run.operate().unwrap();
+    assert_eq!(first.len(), 1);
+    let deadline = run.wake_at().unwrap();
+    assert!(run.wake(deadline).unwrap().is_empty());
+    assert!(run.cancellations().is_empty());
+    assert!(
+        run.complete(Outcome {
+            id: first[0].id,
+            ..Outcome::default()
+        })
+        .unwrap()
+        .is_empty()
+    );
+    assert!(run.result().unwrap_err().contains("timeout"));
+}
+
+#[test]
+fn timeout_cancels_retry() {
+    let mut run = run(
+        "  templates:\n  - name: main\n    timeout: 1s\n    retryStrategy: {limit: 2}\n    container: {image: debian:stable-slim}\n",
+    );
+    let first = run.operate().unwrap().remove(0);
+    let origin = run.clock;
+    run.clock += Duration::from_millis(500);
+    let second = run
+        .complete(Outcome {
+            id: first.id,
+            exit_code: 1,
+            ..Outcome::default()
+        })
+        .unwrap()
+        .remove(0);
+    assert!(
+        run.wake(origin + Duration::from_secs(1))
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(run.cancellations(), vec![second.id]);
+    assert_eq!(run.nodes[0].phase, Phase::Running);
+    assert!(
+        run.complete(Outcome {
+            id: second.id,
+            error: Some(TaskError::Cancelled),
+            ..Outcome::default()
+        })
+        .unwrap()
+        .is_empty()
+    );
+    assert_eq!(run.nodes[0].message, "timeout");
+    assert_eq!(run.nodes[0].children.len(), 2);
 }

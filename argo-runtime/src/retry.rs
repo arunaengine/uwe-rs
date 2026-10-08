@@ -98,6 +98,20 @@ impl Run {
             return Ok(());
         };
         check_strategy(&call.strategy)?;
+        if let Some(message) = self.expired.get(&index).cloned() {
+            if self.nodes[index]
+                .children
+                .iter()
+                .all(|&child| self.nodes[child].phase.fulfilled())
+            {
+                self.expired.remove(&index);
+                self.first_failure = Some(message.clone());
+                self.fail(index, Phase::Failed, message);
+            }
+            return Ok(());
+        }
+        self.nodes[index].processed = Some(Rc::clone(&call.processed));
+        self.arm_template(index)?;
         if !self.lock_template(index, &call.processed)? {
             return Ok(());
         }

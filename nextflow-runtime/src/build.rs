@@ -386,6 +386,7 @@ impl Host for Builder<'_> {
             settings: Rc::new(settings),
             rounds: 0,
             tasks: 0,
+            max_forks: None,
             poisoned: false,
             pending: Default::default(),
             each_round: None,

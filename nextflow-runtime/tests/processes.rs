@@ -80,6 +80,93 @@ fn run(source: &str, options: &Options) -> Result<(Vec<TaskRequest>, String), St
 const DOUBLE: &str = "process DOUBLE {\n    input:\n    val x\n    output:\n    val y\n    script:\n    y = x * 2\n    \"echo ${x}\"\n}\n";
 
 #[test]
+fn limits_process_tasks() {
+    for configured in [false, true] {
+        let source = "process P {\n maxForks 1\n input:\n val x\n output:\n val x\n script:\n 'true'\n}\nprocess Q {\n input:\n val x\n script:\n 'true'\n}\nworkflow {\n P(channel.of(1, 2, 3, 4)).view()\n Q(channel.of(5, 6, 7))\n}";
+        let parsed = parse_script(source);
+        let module = Rc::new(lower_module(&parsed.tree, source).unwrap());
+        let options = Options {
+            config: if configured {
+                config("process { withName: P { maxForks = 2 } }")
+            } else {
+                nextflow_config::Config::default()
+            },
+            ..Options::default()
+        };
+        let limit = if configured { 2 } else { 1 };
+        let mut output = Output::default();
+        let (mut run, mut queue) = Run::start(&module, &options, &mut output).unwrap();
+        assert_eq!(
+            queue.iter().filter(|task| &*task.process == "P").count(),
+            limit
+        );
+        assert_eq!(queue.iter().filter(|task| &*task.process == "Q").count(), 3);
+        let mut completed = 0;
+        while !queue.is_empty() {
+            let request = queue.remove(0);
+            queue.extend(
+                run.complete(
+                    TaskOutcome {
+                        id: request.id,
+                        ..TaskOutcome::default()
+                    },
+                    &mut output,
+                )
+                .unwrap(),
+            );
+            assert!(queue.iter().filter(|task| &*task.process == "P").count() <= limit);
+            completed += 1;
+        }
+        run.finish(&mut output).unwrap();
+        assert_eq!(completed, 7);
+        assert_eq!(output.0, "1\n2\n3\n4\n");
+    }
+}
+
+#[test]
+fn limits_each_retries() {
+    let source = "process P {\n maxForks 1\n errorStrategy 'retry'\n maxRetries 1\n input:\n each x\n output:\n val x\n script:\n 'true'\n}\nworkflow { P([1, 2, 3]).view() }";
+    let parsed = parse_script(source);
+    let module = Rc::new(lower_module(&parsed.tree, source).unwrap());
+    let mut output = Output::default();
+    let (mut run, mut queue) = Run::start(&module, &Options::default(), &mut output).unwrap();
+    assert_eq!(queue.len(), 1);
+    let first = queue.remove(0);
+    let retry = run
+        .complete(
+            TaskOutcome {
+                id: first.id,
+                exit_status: 1,
+                ..TaskOutcome::default()
+            },
+            &mut output,
+        )
+        .unwrap();
+    assert_eq!(retry.len(), 1);
+    assert_eq!(retry[0].id, first.id);
+    assert_eq!(retry[0].attempt, 2);
+    queue.extend(retry);
+    let mut completed = 0;
+    while let Some(request) = queue.pop() {
+        queue.extend(
+            run.complete(
+                TaskOutcome {
+                    id: request.id,
+                    ..TaskOutcome::default()
+                },
+                &mut output,
+            )
+            .unwrap(),
+        );
+        assert!(queue.len() <= 1);
+        completed += 1;
+    }
+    run.finish(&mut output).unwrap();
+    assert_eq!(completed, 3);
+    assert!(output.0.ends_with("1\n2\n3\n"));
+}
+
+#[test]
 fn rejects_active_directives() {
     for (name, value) in [
         ("beforeScript", "'touch required'"),
@@ -87,7 +174,6 @@ fn rejects_active_directives() {
         ("fair", "true"),
         ("maxErrors", "2"),
         ("storeDir", "'stored'"),
-        ("maxForks", "2"),
         ("containerOptions", "'--privileged'"),
         ("clusterOptions", "'--exclusive'"),
         ("queue", "'batch'"),

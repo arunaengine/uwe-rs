@@ -33,6 +33,7 @@ const HANDLED_DIRECTIVES: &[&str] = &[
     "errorStrategy",
     "ext",
     "label",
+    "maxForks",
     "maxRetries",
     "memory",
     "publishDir",
@@ -56,7 +57,6 @@ const REFUSED_DIRECTIVES: &[&str] = &[
     "hints",
     "machineType",
     "maxErrors",
-    "maxForks",
     "maxSubmitAwait",
     "module",
     "penv",
@@ -133,6 +133,7 @@ pub(crate) struct ProcessNode {
     pub rounds: u32,
     /// The number of tasks started, which gives each task its index.
     pub tasks: u32,
+    pub max_forks: Option<usize>,
     /// Whether an input closed, so no more rounds start.
     pub poisoned: bool,
     /// The tasks in flight.
@@ -175,6 +176,12 @@ impl Behaviour for ProcessNode {
     }
 
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
+        if self
+            .max_forks
+            .is_some_and(|limit| self.pending.len() >= limit)
+        {
+            return Ok(State::Running);
+        }
         if self.each_round.is_some() {
             self.start_each_task(context)?;
             context.again_first();
@@ -407,6 +414,14 @@ impl ProcessNode {
         let ext = ext_map(&self.settings)?;
         let base = task_object(&self.name, index, attempt, None, &[], &ext);
         let directives = self.directives(interpreter, &mut frame, &base)?;
+        if index == 1 && attempt == 1 {
+            self.max_forks = directives
+                .iter()
+                .find(|directive| &*directive.name == "maxForks")
+                .and_then(|directive| directive.arguments.last())
+                .and_then(|value| value.to_string().parse().ok())
+                .filter(|limit| *limit > 0);
+        }
         let task = task_object(&self.name, index, attempt, None, &directives, &ext);
         if let (Some(work_dir), Value::Map(map)) = (&work_dir, &task) {
             let path = PathValue::parse(&work_dir.to_string_lossy(), "/");

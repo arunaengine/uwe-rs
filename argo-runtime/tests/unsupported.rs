@@ -112,8 +112,8 @@ fn rejects_liveness_probes() {
 #[test]
 fn rejects_retry_controls() {
     for strategy in [
-        "backoff: {duration: 5s, maxDuration: 30s}",
-        "retryPolicy: OnTransientError",
+        "backoff: {duration: invalid}",
+        "retryPolicy: invalid",
         "limit: -1",
         "limit: invalid",
     ] {
@@ -126,7 +126,7 @@ fn rejects_retry_controls() {
             ),
         ] {
             let error = start_error(&spec);
-            assert_eq!(error.unsupported, !strategy.starts_with("limit"), "{error}");
+            assert!(!error.unsupported, "{error}");
             assert!(
                 error.message.contains("retry") || error.message.contains("Retry"),
                 "{error}"

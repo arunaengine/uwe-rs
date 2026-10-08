@@ -256,6 +256,10 @@ impl Run {
         let Some(main) = outcomes.first().cloned() else {
             return Ok(());
         };
+        if main.error.is_some() {
+            self.fail(index, Phase::Error, main.stderr);
+            return Ok(());
+        }
         // The exit code of the main container; a container set fails when any of its
         // containers failed, with the message of the first by name, as Argo sorts them.
         let own = |outcome: &Outcome| match outcome.containers.first() {
@@ -480,6 +484,10 @@ impl Run {
             self.fail(index, Phase::Error, message);
             return Ok(());
         }
+        if outcome.error.is_some() {
+            self.fail(index, Phase::Error, outcome.stderr);
+            return Ok(());
+        }
         if outcome.exit_code != 0 {
             let node = &self.nodes[index];
             let container = match &node.processed {
@@ -491,7 +499,7 @@ impl Run {
                 None => String::new(),
             };
             let message = format!("{container}: Error (exit code {})", outcome.exit_code);
-            self.fail(index, Phase::Failed, message);
+            self.fail(index, Phase::Error, message);
             return Ok(());
         }
         self.start_pod(index)

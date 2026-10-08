@@ -154,9 +154,19 @@ fn quantity_bytes(text: &str) -> Option<u64> {
 
 /// Seconds of a duration like `30s`, `5m`, `1h30m` or a plain number of seconds.
 pub(crate) fn duration_seconds(text: &str) -> Option<u64> {
+    let duration = duration(text)?;
+    duration
+        .as_secs()
+        .checked_add(u64::from(duration.subsec_nanos() > 0))
+}
+
+pub(crate) fn duration(text: &str) -> Option<std::time::Duration> {
     let text = text.trim();
     if let Ok(seconds) = text.parse::<u64>() {
-        return Some(seconds);
+        return Some(std::time::Duration::from_secs(seconds));
+    }
+    if text.is_empty() {
+        return None;
     }
     let mut total = 0f64;
     let mut number = String::new();
@@ -167,7 +177,7 @@ pub(crate) fn duration_seconds(text: &str) -> Option<u64> {
             continue;
         }
         let mut unit = character.to_string();
-        if character == 'm' && characters.peek() == Some(&'s') {
+        if matches!(character, 'm' | 'u' | 'n' | 'µ' | 'μ') && characters.peek() == Some(&'s') {
             unit.push('s');
             characters.next();
         }
@@ -179,13 +189,15 @@ pub(crate) fn duration_seconds(text: &str) -> Option<u64> {
                 "m" => 60.0,
                 "s" => 1.0,
                 "ms" => 0.001,
+                "us" | "µs" | "μs" => 0.000_001,
+                "ns" => 0.000_000_001,
                 _ => return None,
             };
     }
     if !number.is_empty() {
         return None;
     }
-    Some(total.ceil() as u64)
+    std::time::Duration::try_from_secs_f64(total).ok()
 }
 
 #[cfg(test)]

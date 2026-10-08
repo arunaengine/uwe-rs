@@ -161,6 +161,41 @@ impl Driver for ArgoDriver {
         self.acceptance.remove(&(task, attempt))
     }
 
+    fn wake_at(&self) -> Option<std::time::Instant> {
+        let run = self.run.as_ref()?;
+        let next = run.wake_at()?;
+        Some(if run.options.assume_inputs {
+            std::time::Instant::now()
+        } else {
+            next
+        })
+    }
+
+    fn wake(&mut self) -> Result<Vec<Task>, DriverError> {
+        let run = self
+            .run
+            .as_mut()
+            .ok_or_else(|| DriverError::new("the run has not started"))?;
+        let now = if run.options.assume_inputs {
+            run.wake_at().unwrap_or(run.clock)
+        } else {
+            std::time::Instant::now()
+        };
+        run.wake(now).map_err(driver_error)
+    }
+
+    fn handles_error(
+        &self,
+        _task: workflow_graph::TaskId,
+        error: &workflow_graph::ExecuteError,
+    ) -> bool {
+        matches!(
+            error,
+            workflow_graph::ExecuteError::Machine { .. }
+                | workflow_graph::ExecuteError::Executor { .. }
+        )
+    }
+
     /// Ends the run, and delivers the output artifacts of its steps to the results folder.
     fn finish(&mut self) -> Result<(), DriverError> {
         let Some(run) = &self.run else {

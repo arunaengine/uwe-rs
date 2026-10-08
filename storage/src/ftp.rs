@@ -106,12 +106,18 @@ impl Ftp {
         let found = match session.size(&parts.path).await {
             Ok(size) => Some(Metadata {
                 directory: false,
+                modified: session
+                    .mdtm(&parts.path)
+                    .await
+                    .ok()
+                    .and_then(|time| u64::try_from(time.and_utc().timestamp()).ok()),
                 size: size as u64,
                 version: None,
             }),
             // A directory has no size, and the server can change into it.
             Err(_) => session.cwd(&parts.path).await.ok().map(|()| Metadata {
                 directory: true,
+                modified: None,
                 size: 0,
                 version: None,
             }),

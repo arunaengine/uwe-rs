@@ -37,6 +37,14 @@ fn folder_of(parts: &[&str]) -> PathBuf {
 }
 
 impl Mirrors {
+    pub fn stat(&self, address: &str) -> Result<Option<storage::Metadata>, StorageError> {
+        self.storage.stat(address)
+    }
+
+    pub fn stored(&self, address: &str) -> Result<PathBuf, StorageError> {
+        self.storage.fetch(address, &self.downloads)
+    }
+
     pub fn new(downloads: PathBuf, storage: &Storage) -> Mirrors {
         Mirrors {
             downloads,

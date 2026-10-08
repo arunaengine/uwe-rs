@@ -106,3 +106,19 @@ The first member failure stops the other process groups and fails the task.
 Retries repeat the whole component. FIFO paths are temporary and are never
 stored or delivered. Different images are refused because the jobs must run
 together. Snakemake's restrictions on `run:` and multiple pipe consumers remain.
+
+## 14. Storage providers
+
+`storage.s3`, `storage.gcs`, `storage.azure`, `storage.http`, `storage.ftp` and
+`storage.fs` map to iunctus storage providers. A `storage:` directive can register
+a tag for a provider. Profile `default-storage-provider` and
+`default-storage-prefix` map ordinary inputs and outputs, except `local()` paths.
+Credentials and endpoints come from iunctus storage configuration. Real planning
+checks provider existence and modification times, independently of ETags.
+Inputs enter the content store before execution; completed outputs are uploaded
+through the usual delivery path. HTTP and FTP providers support inputs only;
+outputs need a writable object or filesystem provider. Simulation retains
+assumed-input planning and does not contact remote providers.
+
+SFTP, XRootD, Zenodo, iRODS and other unmapped plugins are refused, along with
+plugin-specific credential options. Configure the mapped provider in iunctus.

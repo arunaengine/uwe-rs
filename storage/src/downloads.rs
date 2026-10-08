@@ -183,6 +183,7 @@ impl Storage {
         if let Some(pinned) = self.inner.journal.pinned(target) {
             return Ok(Some(Metadata {
                 directory: false,
+                modified: None,
                 size: pinned.size,
                 version: pinned.version,
             }));
@@ -208,6 +209,7 @@ fn known(bundle: &Path) -> Option<Metadata> {
     {
         return Some(Metadata {
             directory: false,
+            modified: None,
             size: found.len(),
             version: std::fs::read_to_string(copy.with_extension("version"))
                 .ok()
@@ -218,11 +220,13 @@ fn known(bundle: &Path) -> Option<Metadata> {
     match noted.trim().split_once(' ') {
         Some(("file", size)) => Some(Metadata {
             directory: false,
+            modified: None,
             size: size.parse().ok()?,
             version: None,
         }),
         None if noted.trim() == "directory" => Some(Metadata {
             directory: true,
+            modified: None,
             size: 0,
             version: None,
         }),
@@ -264,6 +268,7 @@ mod tests {
         assert_eq!(size(known(&bundle(copied))), Some((false, 5)));
         let file = Metadata {
             directory: false,
+            modified: None,
             size: 42,
             version: None,
         };
@@ -271,6 +276,7 @@ mod tests {
         assert_eq!(size(known(&bundle(found))), Some((false, 42)));
         let directory = Metadata {
             directory: true,
+            modified: None,
             size: 0,
             version: None,
         };

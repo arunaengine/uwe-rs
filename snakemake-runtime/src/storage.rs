@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;
+use std::cell::RefCell;
+use std::rc::Weak;
 
 use python_evaluator::{Args, Error, Interpreter, Native, Value};
 
@@ -24,7 +26,10 @@ pub fn check_provider(provider: Option<&str>) -> Result<(), Error> {
         Some(provider) if provider != provider.to_lowercase() => {
             Err(workflow_error("Storage provider must be lowercase."))
         }
-        Some(_) => Ok(()),
+        Some("s3" | "gcs" | "azure" | "http" | "ftp" | "fs") => Ok(()),
+        Some(provider) => Err(Error::unsupported(format!(
+            "Snakemake storage plugin '{provider}'; mapped providers are s3, gcs, azure, http, ftp and fs; sftp, xrootd, zenodo and irods are unavailable"
+        ))),
     }
 }
 
@@ -41,7 +46,7 @@ fn infer_provider(query: &str) -> Result<&'static str, Error> {
         "root" | "roots" | "xroot" => "xrootd",
         "zenodo" => "zenodo",
         "irods" => "irods",
-        "" => "fs",
+        "" | "file" => "fs",
         _ => {
             return Err(workflow_error(format!(
                 "No storage provider found for query {query}. Either install the required storage plugin or check your query. Also consider to explicitly specify the storage provider to get a more informative error message."
@@ -64,7 +69,7 @@ fn local_suffix(query: &str) -> String {
 
 /// A file in storage: its local path, with the storage address as a tag, and the flags of
 /// the query.
-fn storage_object(
+pub fn storage_object(
     interpreter: &mut Interpreter,
     query: &Value,
     provider: Option<&str>,
@@ -82,13 +87,51 @@ fn storage_object(
         Some(name) => name.to_owned(),
         None => infer_provider(&text)?.to_owned(),
     };
+    check_provider(Some(&name))?;
+    let address = match (name.as_str(), text.split_once("://")) {
+        ("fs", None) => format!("file://{}", interpreter.host.resolve(&text).display()),
+        ("gcs", Some(("gcs", rest))) => format!("gs://{rest}"),
+        ("s3" | "gcs" | "azure" | "ftp", None) => {
+            format!("{}://{text}", if name == "gcs" { "gs" } else { &name })
+        }
+        ("http", None) => {
+            return Err(workflow_error(
+                "HTTP storage needs an http:// or https:// query",
+            ));
+        }
+        _ => text.clone(),
+    };
     let local = format!("{LOCAL_PREFIX}/{name}/{}", local_suffix(&text));
     let object = crate::rule::retag(query, Value::str(local));
-    Ok(object.with_tag(TAG, Value::str(text)))
+    Ok(object.with_tag(TAG, Value::str(address)))
+}
+
+pub fn default_file(
+    interpreter: &mut Interpreter,
+    value: &Value,
+    provider: &str,
+    prefix: &str,
+) -> Result<Value, Error> {
+    if value.tag(TAG).is_some() || value.tag("local").is_some() {
+        return Ok(value.clone());
+    }
+    let query = interpreter.to_str(value)?;
+    let query = if prefix.is_empty() || query.contains("://") {
+        query
+    } else {
+        format!("{}/{query}", prefix.trim_end_matches('/'))
+    };
+    storage_object(
+        interpreter,
+        &crate::rule::retag(value, Value::str(query)),
+        Some(provider),
+    )
 }
 
 /// The `storage` global: `storage(query)` and `storage.<name>(query)`.
-pub struct StorageRegistry;
+pub struct StorageRegistry {
+    pub state: Weak<RefCell<crate::workflow::State>>,
+}
 
 impl Native for StorageRegistry {
     fn type_name(&self) -> &str {
@@ -112,7 +155,18 @@ impl Native for StorageRegistry {
         let query = args
             .take(0, "query")
             .ok_or_else(|| Error::type_error("storage() missing 1 required argument: 'query'"))?;
-        storage_object(interpreter, &query, None).map(Some)
+        let state = self.state.upgrade();
+        let profile = state.as_ref().map(|state| state.borrow().profile.clone());
+        match profile.and_then(|profile| {
+            profile
+                .storage_provider
+                .map(|provider| (provider, profile.storage_prefix))
+        }) {
+            Some((provider, prefix)) => {
+                default_file(interpreter, &query, &provider, &prefix).map(Some)
+            }
+            None => storage_object(interpreter, &query, None).map(Some),
+        }
     }
 
     fn get_attribute(
@@ -121,7 +175,12 @@ impl Native for StorageRegistry {
         _: &Value,
         name: &str,
     ) -> Result<Option<Value>, Error> {
-        let name = name.to_owned();
+        let name = self
+            .state
+            .upgrade()
+            .and_then(|state| state.borrow().storage_providers.get(name).cloned())
+            .unwrap_or_else(|| name.to_owned());
+        check_provider(Some(&name))?;
         Ok(Some(Value::builtin(
             &name.clone(),
             move |interpreter, mut args| {

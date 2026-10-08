@@ -211,6 +211,7 @@ pub(crate) struct Run {
     pub stopped: bool,
     pub expired: HashMap<usize, String>,
     pub cancel_tasks: Vec<TaskId>,
+    pub locks: Rc<std::cell::RefCell<crate::sync::Locks>>,
 }
 
 /// The text of an output file of a task, read through `files` when the run has them.
@@ -342,6 +343,7 @@ impl Run {
             stopped: false,
             expired: HashMap::new(),
             cancel_tasks: Vec::new(),
+            locks: Rc::new(std::cell::RefCell::new(crate::sync::Locks::default())),
             store: HashMap::new(),
             volumes: Volumes::new(),
             claims: BTreeSet::new(),
@@ -445,6 +447,12 @@ impl Run {
 
     fn pass(&mut self) -> Result<()> {
         self.expire();
+        for child in 0..self.children.len() {
+            self.step_child(child, Run::operate)?;
+        }
+        if !self.stopped && !self.lock_workflow()? {
+            return Ok(());
+        }
         let root = match self.root {
             Some(root) => {
                 if !self.nodes[root].phase.fulfilled() {
@@ -482,6 +490,9 @@ impl Run {
                 .all(|&index| self.nodes[index].phase.fulfilled())
         {
             self.workflow_limit = None;
+            self.locks
+                .borrow_mut()
+                .release(&format!("workflow:{}", self.workflow_name));
         }
         Ok(())
     }
@@ -597,6 +608,9 @@ impl Run {
         if !self.admit_template(index) {
             return Ok(());
         }
+        if !self.lock_template(index, &processed)? {
+            return Ok(());
+        }
         if self.nodes[index].phase == Phase::Pending
             && matches!(kind, NodeKind::Steps | NodeKind::Dag)
         {
@@ -631,6 +645,9 @@ impl Run {
 
     /// Goes on with a node that runs.
     pub fn reenter(&mut self, index: usize) -> Result<()> {
+        if self.nodes[index].kind == NodeKind::Retry {
+            return self.continue_retry(index);
+        }
         if self.nodes[index].phase == Phase::Pending {
             if let Some(processed) = self.nodes[index].processed.clone() {
                 return self.start_node(index, processed);
@@ -977,6 +994,7 @@ impl Run {
 
     pub fn set_phase(&mut self, index: usize, phase: Phase, message: String) {
         if phase.fulfilled() {
+            self.locks.borrow_mut().release(&self.nodes[index].id);
             self.deadlines.remove(&index);
             for (_, active) in self.resource_admissions.remove(&index).unwrap_or_default() {
                 active.set(active.get() - 1);

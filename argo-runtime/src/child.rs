@@ -155,6 +155,7 @@ impl Run {
                 run.nesting = self.nesting + 1;
                 run.inbound = self.nodes[index].inbound.clone();
                 run.files = self.files.clone();
+                run.locks = Rc::clone(&self.locks);
                 self.children.push(Child {
                     name,
                     manifest,
@@ -192,8 +193,8 @@ impl Run {
         let name = entry.name.clone();
         let warnings = entry.run.warnings[entry.warned..].to_vec();
         entry.warned = entry.run.warnings.len();
+        self.changed |= !tasks.is_empty();
         self.emitted.extend(tasks);
-        self.changed = true;
         for warning in warnings {
             self.warn(format!("workflow {name}: {warning}"));
         }
@@ -212,7 +213,8 @@ impl Run {
 
     /// Whether tasks of this run or of its children are still out.
     pub(crate) fn busy(&self) -> bool {
-        !self.tasks.is_empty()
+        (self.root.is_none() && self.spec.synchronization.is_some())
+            || !self.tasks.is_empty()
             || self.nodes.iter().any(|node| node.phase == Phase::Pending)
             || self.children.iter().any(|child| child.run.busy())
     }

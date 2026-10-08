@@ -215,7 +215,6 @@ impl<'a> Check<'a> {
             })?;
         }
         for (field, present) in [
-            ("synchronization", spec.synchronization.is_some()),
             (
                 "artifactRepositoryRef",
                 spec.artifact_repository_ref.is_some(),
@@ -240,6 +239,12 @@ impl<'a> Check<'a> {
                 self.unsupported = true;
                 return Err(format!("spec.{field} is not supported"));
             }
+        }
+        if let Some(node) = &spec.synchronization {
+            crate::sync::check(node).map_err(|failure| {
+                self.unsupported = failure.unsupported;
+                failure.message
+            })?;
         }
         if let Some(value) = &spec.active_deadline_seconds
             && !crate::tags::has_tag(&value.0)

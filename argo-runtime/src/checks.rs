@@ -96,6 +96,11 @@ pub(crate) fn process_args(template: &Template, supplied: Supplied) -> Result<()
 /// See `docs/design/argo/runtime.md` for the full contract.
 pub(crate) fn cluster_only(template: &Template) -> Option<String> {
     let name = &template.name;
+    if let Some(node) = &template.synchronization
+        && let Err(error) = crate::sync::check(node)
+    {
+        return Some(error.message);
+    }
     for artifact in template
         .inputs
         .artifacts
@@ -164,7 +169,6 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
         }
     }
     for (field, present) in [
-        ("synchronization", template.synchronization.is_some()),
         ("suspend", template.suspend.is_some()),
         ("podSpecPatch", template.pod_spec_patch.is_some()),
         ("podResources", template.pod_resources.is_some()),

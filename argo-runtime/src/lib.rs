@@ -30,6 +30,7 @@ mod scope;
 pub mod sprig;
 mod start;
 mod steps;
+mod sync;
 pub mod tags;
 mod time;
 mod timers;

@@ -517,6 +517,10 @@ async fn create_id(
         Ok(Some(result)) => result,
         Ok(None) => Err(ProcessError::Ended { stderr: Vec::new() }),
         Err(error) => {
+            // Creation can finish after cancellation; wait for its owned ID before returning.
+            if let Ok(Some(Ok(id))) = tokio::time::timeout(STOP_GRACE, receiver.recv()).await {
+                remove_async(engine.client(), &id).await;
+            }
             receiver.close();
             if let Ok(Ok(id)) = receiver.try_recv() {
                 remove_async(engine.client(), &id).await;
@@ -830,6 +834,8 @@ mod tests {
         let socket = folder.path().join("engine.sock");
         let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
         listener.set_nonblocking(true).unwrap();
+        let removed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let observed = removed.clone();
         let server = std::thread::spawn(move || {
             let mut requests = Vec::new();
             let deadline = std::time::Instant::now() + Duration::from_secs(2);
@@ -870,6 +876,9 @@ mod tests {
                 } else {
                     "{}"
                 };
+                if first.starts_with("DELETE ") {
+                    observed.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
                 write!(
                     stream,
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -899,6 +908,10 @@ mod tests {
         )
         .await;
         assert!(matches!(result, Err(ProcessError::Cancelled)));
+        assert!(
+            removed.load(std::sync::atomic::Ordering::SeqCst),
+            "creation cleanup must finish before returning"
+        );
         let requests = tokio::time::timeout(
             Duration::from_secs(2),
             tokio::task::spawn_blocking(move || server.join().unwrap()),

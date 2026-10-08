@@ -104,7 +104,9 @@ impl Acquisition {
             .channel_notices(false)
             .channel_relations(ChannelRelationsMode::Disabled)
             .await
-            .map_err(|error| LockError::Acquisition(error.to_string()))?;
+            .map_err(|error| LockError::Acquisition(if self.offline {
+                format!("{error}; offline Conda metadata cache is incomplete at {}. Populate it with a network-enabled run using [conda].offline = false, or supply prepared channel repodata.json files in [conda].repodata before rerunning offline", self.cache.display())
+            } else { error.to_string() }))?;
         let capabilities = virtual_packages
             .as_deref()
             .unwrap_or_default()
@@ -181,7 +183,10 @@ impl Acquisition {
             return crate::fetch_packages(lock, folder, |_, _| {
                 Err(io::Error::new(
                     io::ErrorKind::NotFound,
-                    "Conda package is not cached and offline mode forbids downloading",
+                    format!(
+                        "Conda package is not cached and offline mode forbids downloading. Populate {} with a network-enabled run using [conda].offline = false, or copy verified package bytes under their SHA-256 filenames into [conda].packages before rerunning offline",
+                        folder.display()
+                    ),
                 ))
             });
         }
@@ -284,4 +289,85 @@ fn limited(reader: impl Read) -> io::Result<Vec<u8>> {
         ));
     }
     Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{BufRead, BufReader};
+
+    #[tokio::test]
+    async fn fetches_local_packages() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/package.conda", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    reader.read_line(&mut line).unwrap();
+                    if line.trim().is_empty() {
+                        break;
+                    }
+                }
+                stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nbytes",
+                    )
+                    .unwrap();
+            }
+        });
+        let cache = tempfile::tempdir().unwrap();
+        let digest: String = Sha256::digest(b"bytes")
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let mut lock = Lock {
+            format: crate::FORMAT,
+            platform: "linux-64".into(),
+            channels: vec![],
+            specs: vec![],
+            pip: vec![],
+            pypi: None,
+            virtual_packages: Some(vec![]),
+            packages: vec![crate::Package {
+                name: "fixture".into(),
+                version: "1".into(),
+                build: "0".into(),
+                channel: "fixture".into(),
+                subdir: "noarch".into(),
+                file: "fixture-1-0.conda".into(),
+                url,
+                sha256: Some(digest.clone()),
+                md5: None,
+            }],
+        };
+        let mut acquisition = Acquisition::new(cache.path(), false).unwrap();
+        // Only this test client accepts loopback HTTP; production acquisition requires HTTPS.
+        acquisition.client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let paths = acquisition
+            .fetch_packages(&lock, cache.path())
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&paths[0]).unwrap(), b"bytes");
+        assert_eq!(
+            acquisition
+                .fetch_packages(&lock, cache.path())
+                .await
+                .unwrap(),
+            paths
+        );
+        lock.packages[0].sha256 = Some("a".repeat(64));
+        let error = acquisition
+            .fetch_packages(&lock, cache.path())
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("SHA-256 mismatch"));
+        server.join().unwrap();
+        assert!(!cache.path().join("a".repeat(64)).exists());
+        assert_eq!(std::fs::read(cache.path().join(digest)).unwrap(), b"bytes");
+        assert_eq!(std::fs::read_dir(cache.path()).unwrap().count(), 1);
+    }
 }

@@ -29,8 +29,12 @@ fn repodata(cache: &Path) {
 }
 
 fn lock(folder: &Path, arguments: &[&str]) -> (i32, String, String) {
+    let config = folder.join("offline.toml");
+    std::fs::write(&config, "[network]\ndefault = 'none'\n").unwrap();
     let output = common::command()
         .arg("lock-environment")
+        .arg("-iunctus-config")
+        .arg(&config)
         .args(arguments)
         .current_dir(folder)
         .env("XDG_CACHE_HOME", folder.join("cache"))

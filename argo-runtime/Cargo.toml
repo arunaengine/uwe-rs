@@ -13,12 +13,16 @@ publish.workspace = true
 
 [dependencies]
 argo-parser.workspace = true
+flate2.workspace = true
 input-schema.workspace = true
 jiff.workspace = true
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tar.workspace = true
+tempfile.workspace = true
 workflow-graph.workspace = true
+zip.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

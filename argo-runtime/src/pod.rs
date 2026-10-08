@@ -390,10 +390,19 @@ impl Run {
                 directory: found.directory,
             };
             // A later task that reads the same location reads this output.
-            if let Ok(declared) = self.artifact_value(artifact)
+            let plain = argo_parser::model::Artifact {
+                archive: None,
+                ..artifact.clone()
+            };
+            let archived = self.archive_output(index, artifact, &found.location)?;
+            if let Ok(declared) = self.artifact_value(&plain)
                 && let Some(Location::Url(url)) = declared.location
             {
-                self.store.insert(url, found.location.clone().into());
+                self.store
+                    .insert(url.clone(), found.location.clone().into());
+                if artifact.s3.is_some() {
+                    self.artifact_delivery(url, archived);
+                }
             }
             if !artifact.global_name.is_empty() {
                 self.global_artifacts.insert(

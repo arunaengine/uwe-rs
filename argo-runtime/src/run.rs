@@ -212,6 +212,9 @@ pub(crate) struct Run {
     pub expired: HashMap<usize, String>,
     pub cancel_tasks: Vec<TaskId>,
     pub locks: Rc<std::cell::RefCell<crate::sync::Locks>>,
+    pub archives: Option<tempfile::TempDir>,
+    pub packed: HashMap<(usize, String), PathBuf>,
+    pub deliveries: Vec<workflow_graph::Delivery>,
 }
 
 /// The text of an output file of a task, read through `files` when the run has them.
@@ -230,9 +233,18 @@ impl Run {
     /// node and the name of the artifact.
     pub(crate) fn output_artifacts(&self) -> Vec<(&str, &str, &std::path::Path)> {
         let mut found = Vec::new();
-        for node in self.nodes.iter().filter(|node| node.kind == NodeKind::Pod) {
+        for (index, node) in self
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, node)| node.kind == NodeKind::Pod)
+        {
             for artifact in &node.outputs.artifacts {
                 if let Some(Location::File(path)) = &artifact.location {
+                    let path = self
+                        .packed
+                        .get(&(index, artifact.name.clone()))
+                        .unwrap_or(path);
                     found.push((node.name.as_str(), artifact.name.as_str(), path.as_path()));
                 }
             }
@@ -344,6 +356,9 @@ impl Run {
             expired: HashMap::new(),
             cancel_tasks: Vec::new(),
             locks: Rc::new(std::cell::RefCell::new(crate::sync::Locks::default())),
+            archives: None,
+            packed: HashMap::new(),
+            deliveries: Vec::new(),
             store: HashMap::new(),
             volumes: Volumes::new(),
             claims: BTreeSet::new(),

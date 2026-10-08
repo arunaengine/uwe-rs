@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod archives;
 mod checks;
 mod child;
 mod claims;
@@ -229,7 +230,11 @@ impl Driver for ArgoDriver {
     }
 
     fn deliveries(&mut self) -> Vec<Delivery> {
-        std::mem::take(&mut self.deliveries)
+        let mut deliveries = std::mem::take(&mut self.deliveries);
+        if let Some(run) = &mut self.run {
+            deliveries.extend(run.take_deliveries());
+        }
+        deliveries
     }
 
     fn notes(&mut self) -> Vec<Note> {

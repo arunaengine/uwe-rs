@@ -125,13 +125,16 @@ name = "argo-runtime"
 version = "0.1.0"
 dependencies = [
  "argo-parser",
+ "flate2",
  "input-schema",
  "jiff",
  "regex",
  "serde",
  "serde_json",
+ "tar",
  "tempfile",
  "workflow-graph",
+ "zip",
 ]
 
 [[package]]

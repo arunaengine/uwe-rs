@@ -5,6 +5,7 @@
 # First run
 
 Complete [installation](install.md) first. Start in an empty working folder.
+Read [Known pitfalls](pitfalls.md) for beta limits and workarounds.
 Create `main.nf`:
 
 ```sh

@@ -17,6 +17,7 @@ Start with the [user guide](guide/first-run.md). It covers
 [storage](guide/storage.md), [troubleshooting](guide/troubleshooting.md) and
 [embedding](guide/embedding.md). Release changes are in the
 [changelog](../CHANGELOG.md).
+Read [Known pitfalls](guide/pitfalls.md) before relying on beta results.
 
 From the checkout, with the binary installed and Docker or Podman ready:
 

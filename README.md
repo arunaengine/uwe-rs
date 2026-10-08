@@ -10,6 +10,16 @@ Aruna integration uses the generic TES executor with object-store staging throug
 
 This is a development release. Implemented features and passing local checks do not establish production readiness or full language parity. Read the [support matrix and operator notes](docs/support.md) before selecting a backend.
 
+## Known pitfalls
+
+- The default executor needs Docker or Podman. `-executor simulator` makes up outputs and can publish them; use separate folders and verify real results.
+- Language support is a native subset. Nextflow work and resume layouts, Python package boundaries and Argo cluster controls differ from the original engines.
+- Conda prepares local container images. Remote preparation and editable, local or VCS pip requirements are unsupported.
+- Published links can depend on retained store data. Cache contents and engine images grow; preview retention before removing results.
+- Real qualification is selective. Large pipeline comparisons, real CWL conformance, rootless engines and current SLURM/Kubernetes qualification remain incomplete.
+
+Read the full [known pitfalls page](docs/guide/pitfalls.md) for causes, workarounds, security limits and recorded qualification gaps.
+
 ## Build and install from source
 
 Start in a checkout of the revision you intend to use. Install Rust through your usual toolchain setup and provide native build tools, including a C compiler. [rust-toolchain.toml](rust-toolchain.toml) pins Rust 1.97.1; [Cargo.lock](Cargo.lock) pins dependencies.

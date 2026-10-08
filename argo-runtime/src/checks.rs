@@ -115,7 +115,6 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
         .inputs
         .artifacts
         .iter()
-        .chain(&template.outputs.artifacts)
         .chain(
             template
                 .steps
@@ -136,8 +135,10 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
         }
     }
     for artifact in &template.outputs.artifacts {
-        if artifact.s3.is_some()
-            || artifact.gcs.is_some()
+        if let Err(failure) = crate::archives::check(artifact) {
+            return Some(failure.message);
+        }
+        if artifact.gcs.is_some()
             || artifact.azure.is_some()
             || artifact.http.is_some()
             || artifact.artifactory.is_some()

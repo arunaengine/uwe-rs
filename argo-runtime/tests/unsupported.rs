@@ -250,7 +250,7 @@ fn rejects_transfer_options() {
         "{error}"
     );
     let error = start_error(
-        "  templates:\n  - name: main\n    container: {image: alpine}\n    outputs: {artifacts: [{name: output, path: /out, s3: {bucket: data, key: output}}]}\n",
+        "  templates:\n  - name: main\n    container: {image: alpine}\n    outputs: {artifacts: [{name: output, path: /out, gcs: {bucket: data, key: output}}]}\n",
     );
     assert!(
         error.unsupported && error.message.contains("uploads"),

@@ -67,7 +67,11 @@ fn rejects_template_controls() {
             );
         }
     }
-    assert!(start_error("  templates:\n  - name: main\n    suspend: {duration: 5s}\n").unsupported);
+    assert!(
+        start_error("  templates:\n  - name: main\n    suspend: {}\n")
+            .message
+            .contains("manual resume")
+    );
 }
 
 #[test]

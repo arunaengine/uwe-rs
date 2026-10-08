@@ -101,6 +101,16 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
     {
         return Some(error.message);
     }
+    if template.suspend.as_ref().is_some_and(|suspend| {
+        suspend
+            .duration
+            .as_ref()
+            .is_none_or(|duration| duration.0.is_empty())
+    }) {
+        return Some(format!(
+            "template {name}: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes"
+        ));
+    }
     for artifact in template
         .inputs
         .artifacts
@@ -169,7 +179,6 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
         }
     }
     for (field, present) in [
-        ("suspend", template.suspend.is_some()),
         ("podSpecPatch", template.pod_spec_patch.is_some()),
         ("podResources", template.pod_resources.is_some()),
         ("resourceClaims", template.resource_claims.is_some()),

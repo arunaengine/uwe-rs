@@ -24,6 +24,8 @@ use crate::strategy::{self, Strategy};
 
 const HANDLED_DIRECTIVES: &[&str] = &[
     "accelerator",
+    "afterScript",
+    "beforeScript",
     "cache",
     "container",
     "cpus",
@@ -45,8 +47,6 @@ const HANDLED_DIRECTIVES: &[&str] = &[
 ];
 
 const REFUSED_DIRECTIVES: &[&str] = &[
-    "afterScript",
-    "beforeScript",
     "conda",
     "containerOptions",
     "fair",

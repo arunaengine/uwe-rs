@@ -522,8 +522,7 @@ pub(crate) enum Sort {
     Natural,
     Key(Rc<Closure>),
     Compare(Rc<Closure>),
-    /// CacheHelper hash order, which is unsupported once there are two items to order.
-    Hash(String),
+    Hash(bool),
 }
 
 impl Sort {
@@ -569,15 +568,11 @@ impl Sort {
                     )))
                 }
             }
-            None | Some(Value::Null) => Ok(Self::Hash(format!(
-                "`{operator}` sort mode 'hash' (the default); native CacheHelper hashing is not implemented"
-            ))),
+            None | Some(Value::Null) => Ok(Self::Hash(false)),
             Some(Value::String(text) | Value::GString(text))
                 if matches!(&*text, "hash" | "deep") =>
             {
-                Ok(Self::Hash(format!(
-                    "`{operator}` sort mode '{text}'; native CacheHelper hashing is not implemented"
-                )))
+                Ok(Self::Hash(&*text == "deep"))
             }
             Some(value) => Err(thrown_text(format!(
                 "Invalid `{operator}` sort option: {value}"
@@ -592,10 +587,17 @@ impl Sort {
             Self::Key(closure) => sorted_keys(context, items, closure),
             Self::Compare(closure) => sorted(context, items, Some(closure)),
             Self::Hash(_) if items.len() < 2 => Ok(items),
-            Self::Hash(message) => Err(Error::Unsupported {
-                message: message.clone(),
-                span: Default::default(),
-            }),
+            Self::Hash(deep) => {
+                let mut keyed = Vec::with_capacity(items.len());
+                for item in items {
+                    keyed.push((
+                        crate::hash::key(&item, context.interpreter.host(), *deep)?,
+                        item,
+                    ));
+                }
+                keyed.sort_by_key(|(key, _)| *key);
+                Ok(keyed.into_iter().map(|(_, item)| item).collect())
+            }
         }
     }
 }

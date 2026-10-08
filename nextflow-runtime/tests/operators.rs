@@ -721,27 +721,17 @@ fn preserves_collection_sorting() {
 }
 
 #[test]
-fn rejects_hash_sorting() {
-    for operator in ["groupTuple", "collectFile"] {
-        let source = if operator == "groupTuple" {
-            "channel.of(['k', 1], ['k', 2])"
-        } else {
-            "channel.of('a', 'b')"
-        };
-        for sort in ["hash", "deep"] {
-            let error = run(&format!("{source}.{operator}(sort: '{sort}').view()")).unwrap_err();
-            assert!(
-                error.contains(&format!("`{operator}` sort mode '{sort}'")),
-                "{error}"
-            );
-            assert!(
-                error.contains("native CacheHelper hashing is not implemented"),
-                "{error}"
-            );
-        }
+fn matches_hash_sorting() {
+    for sort in ["hash", "deep"] {
+        assert_eq!(
+            lines(&format!(
+                "channel.of(['k', 'a'], ['k', 'b'], ['k', 'c'], ['k', 'alpha'], ['k', 'beta'], ['k', 'é'], ['k', '😀'], ['k', '']).groupTuple(sort: '{sort}').view()"
+            )),
+            ["[k, [é, a, c, 😀, , b, alpha, beta]]"]
+        );
+        assert_eq!(run(&format!("channel.of('a','b','c','alpha','beta','é','😀','').collectFile(sort: '{sort}', newLine: true).view {{ it.text }}")).unwrap(), "é\na\nc\n😀\n\nb\nalpha\nbeta\n\n");
     }
-    let error = run("channel.of('a', 'b').collectFile().view()").unwrap_err();
-    assert!(error.contains("sort mode 'hash' (the default)"), "{error}");
+    assert_eq!(run("channel.of('a','b','c','alpha','beta','é','😀','').collectFile(newLine: true).view { it.text }").unwrap(), "é\na\nc\n😀\n\nb\nalpha\nbeta\n\n");
 }
 
 #[test]

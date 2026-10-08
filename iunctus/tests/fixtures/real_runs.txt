@@ -224,3 +224,79 @@ native: not run, user's download limit
 iunctus: not run, user's download limit
 verdict: not qualified
 notes: The cached test configuration was inspected locally. No data/image size requests, pipeline downloads or tasks were started before the user stopped new pipeline qualification.
+
+## Cluster Apptainer qualification, 2026-10-08 (UTC)
+source: immutable export of feat/beta-readiness revision 22daad0873ecbfe92b95e111f1277baa829d506c; later branch changes are outside these runs
+binary: static musl release SHA-256 ce8f00893912b54a8b11ea56166080d8a31e849a4aa54e01df720a621fb2270f
+build: locally, CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=<repository>/target/cluster-20261008 nice cargo build --release --locked --manifest-path <immutable-export>/Cargo.toml -p iunctus -j 8 --target x86_64-unknown-linux-musl
+native-build: the requested GNU release build passed locally; SHA-256 4358d3002157ffb988b874563ce5a34181544e13b329a0ca4977bf9cdd377085; cluster startup failed before submission because its cosh/sinh imports require GLIBC_2.44 while Debian 13 provides glibc 2.41
+execution: drivers, direct Apptainer references, Snakemake references and downloads on worm.intra; task jobs on partition bcf, excluding rs700-bcf-3.intra as in demo/bcf-config.toml; cli.intra used only for the initial squeue query
+reference: Apptainer 1.3.6 for the four demos; Snakemake 9.27.0 with test.out --cores 3 --sdm apptainer for three upstream shell workflows
+isolation: private config, store, database, scratch, temporary folders and Apptainer cache under /vol/cb/projects/iunctus/no_backup/beta-20261008-2129/; existing SIFs reused through task-local hard links
+evidence: cluster beta-20261008-2129/evidence/ and locally excluded .claude/production-readiness-evidence/cluster-20261008/evidence/ retain commands, logs, manifests, database rows, job scripts, accounting and checksums; all 152 copied evidence files verified by SHA-256
+setup: invalid initial harness runs copied old demo outputs or failed before submission at a wrapper quoting error; native Snakemake initially consumed test.out as a --sdm value. Corrected runs use committed demo inputs and valid arguments; initial logs are retained and excluded from verdicts.
+
+## demo-snakemake-slurm-20261008: demo/snakemake/hello.smk
+native: direct Apptainer execution on worm.intra, exit 0, five greeting/collection files
+iunctus: exit 0 in 42 s, six logical tasks, five task jobs and one image-pull job; no result reuse
+jobs: 37373003 (image pull), 37373004, 37373005, 37373006, 37373007, 37373008
+comparison: all five output names and SHA-256 digests agree
+verdict: output byte parity
+
+## demo-nextflow-slurm-20261008: demo/nextflow/main.nf
+native: four direct Apptainer echo commands on worm.intra, all exit 0
+iunctus: exit 0 in 11 s, four task jobs, no result reuse
+jobs: 37373009, 37373010, 37373011, 37373012
+comparison: all four task stdout byte strings agree; parallel arrival order is ignored
+verdict: output byte parity
+
+## demo-cwl-slurm-20261008: demo/cwl/directory-copy.cwl
+native: direct Apptainer directory copy on worm.intra, exit 0, first.txt and second.txt
+iunctus: exit 0 in 5 s, one task job, Directory input and two wildcard File outputs; -output-dir out
+jobs: 37373013
+comparison: both published names and SHA-256 digests agree
+verdict: output byte parity
+
+## demo-argo-slurm-20261008: demo/argo/dag-diamond.yaml
+native: four direct Apptainer echo commands on worm.intra, all exit 0
+iunctus: exit 0 in 13 s, four DAG task jobs
+jobs: 37373014, 37373015, 37373016, 37373017
+comparison: all four task stdout byte strings agree; parallel arrival order is ignored
+verdict: output byte parity
+
+## failure-slurm-20261008: Nextflow container command exit 7
+iunctus: driver exit 1 in 4 s; exactly one attempt, task exit 7, retried=0; -machine-retries 0 and default process termination policy
+jobs: 37373018
+verdict: task failure propagated without retry
+notes: sacct records COMPLETED and 0:0 for the batch wrapper. executor/src/wrapper.rs stores the tool exit and intentionally exits 0 after collecting the result. Scheduler accounting alone does not report task failure; the run database records exit 7 and rejected acceptance.
+
+## cancel-slurm-20261008: Ctrl-C during a running Nextflow container task
+iunctus: driver exit 130 in 35 s after SIGINT; sacct records job 37373019 CANCELLED by 10157 and its batch step CANCELLED with 0:9
+jobs: 37373019
+verdict: owned job cancelled, no foreign job targeted
+notes: The guard checked squeue -u $USER before all 29 bounded scancel requests, each restricted to recorded job 37373019 and its job name. All 13 foreign queue records are identical before and after qualification.
+
+## resume-slurm-20261008: demo/nextflow/main.nf -resume
+iunctus: exit 0 in 2 s, all four attempts reused=cache, zero new batch jobs
+verdict: all four prior results reused
+
+## snakemake-public-slurm-20261008: snakemake/snakemake v9.27.0 tests/test02, test03, test04
+source: ca4a76228e1c2abed063e07cbe7af7c8ea3269f9; all three Snakefile digests match the pinned local sources; existing tiny inputs used
+native: Snakemake 9.27.0, exit 0 for each, 2 s each; --sdm apptainer passed, but these rules use shell commands without container directives
+iunctus: exit 0 for each, 8 s, 4 s and 6 s; -executor slurm -default-image debian:stable-slim -max-pending 3 -no-cache
+jobs: test02 37373020, 37373021; test03 37373022; test04 37373023
+comparison: test02 matches logs/test.log, test.inter and test.out; test03 and test04 each match test.out. All five generated file names and SHA-256 digests agree; zero missing, extra or differing files. Native .snakemake metadata and unchanged source/input files are outside the generated-output comparison.
+verdict: output byte parity against real Snakemake
+
+## nf-core-demo-slurm-20261008-limit: nf-core/demo 1.2.0
+source: 32893afef8076a03a2767a020b3f0cab2e0b40b2, unchanged conf/test.config
+native: Nextflow 26.04.6 installed and version verified, pipeline not run
+iunctus: pipeline not run
+verdict: not qualified, case skipped under the pathogen restriction
+notes: The pinned test profile points to nf-core/test-datasets/viralrecon. In the absence of clarification, the user's restriction was applied to these test inputs. No replacement data, pipeline edits or report normalization were used.
+
+## Cluster cleanup and download accounting, 2026-10-08 (UTC)
+downloads: estimated 109928136 bytes (104.84 MiB), comprising 80084338 bytes of unique retained package/bootstrap payloads and 29843798 bytes of advertised Debian image blobs. Request headers, retransmission and uncached registry metadata are not measured. One new SIF was pulled; pre-existing images were reused.
+proxy: one Nextflow version probe downloaded a 42337859-byte JAR before proxy variables were set and wrote its default home cache; this setup error was disclosed, the JAR was moved into the dated folder, and that task-created home version folder was removed. Subsequent network calls used the required proxy.
+cleanup: all 21 recorded jobs, 37373003 through 37373023, are terminal; none is queued or running. The only cancellation target was 37373019. Large data, source copies, tools, reference environments, temporary folders, stores and Apptainer caches created for this task were removed; only the small evidence folder remains on the cluster.
+local: only small logs/manifests were copied back. Temporary transfer and immutable-source folders were removed; Cargo artifacts under target/ were retained as instructed. No source changes or unrelated cleanup were included.

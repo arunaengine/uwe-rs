@@ -117,6 +117,8 @@ pub(crate) struct NodeStatus {
     pub retry: Option<Rc<RetryCall>>,
     pub started: Timestamp,
     pub finished: Option<Timestamp>,
+    pub started_at: std::time::Instant,
+    pub finished_at: Option<std::time::Instant>,
     /// The mounts whose files go into their volumes when the node's tasks end.
     pub written: Vec<Written>,
 }

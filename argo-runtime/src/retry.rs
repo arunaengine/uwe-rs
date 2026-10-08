@@ -13,20 +13,9 @@ use crate::run::{Call, Failure, Processed, Result, Run};
 use crate::tags::{Variables, replace_node};
 
 pub(crate) fn check_strategy(strategy: &argo_parser::model::RetryStrategy) -> Result<()> {
-    if strategy
-        .backoff
-        .as_ref()
-        .and_then(|backoff| backoff.get("maxDuration"))
-        .is_some_and(|duration| !crate::run::scalar_text(duration).is_empty())
-        || strategy.retry_policy == "OnTransientError"
-    {
-        return Err(Failure::unsupported(
-            "retryStrategy backoff.maxDuration and OnTransientError are not supported",
-        ));
-    }
     if !matches!(
         strategy.retry_policy.as_str(),
-        "" | "Always" | "OnError" | "OnFailure"
+        "" | "Always" | "OnError" | "OnFailure" | "OnTransientError"
     ) {
         return Err(Failure::error(format!(
             "{} is not a valid RetryPolicy",
@@ -41,7 +30,65 @@ pub(crate) fn check_strategy(strategy: &argo_parser::model::RetryStrategy) -> Re
             "retryStrategy.limit must be a nonnegative integer",
         ));
     }
+    if let Some(backoff) = &strategy.backoff {
+        for key in ["duration", "cap", "maxDuration"] {
+            let text = backoff
+                .get(key)
+                .map(crate::run::scalar_text)
+                .unwrap_or_default();
+            if crate::tags::has_tag(&text) {
+                continue;
+            }
+            if key == "duration" || !text.is_empty() {
+                parse_duration(&text).map_err(|failure| {
+                    Failure::error(format!("retryStrategy.backoff.{key}: {}", failure.message))
+                })?;
+            }
+        }
+        if let Some(factor) = backoff.get("factor") {
+            let text = crate::run::scalar_text(factor);
+            if !crate::tags::has_tag(&text) && text.parse::<i32>().is_err() {
+                return Err(Failure::error(
+                    "retryStrategy.backoff.factor must be an integer",
+                ));
+            }
+        }
+    }
     Ok(())
+}
+
+#[cfg(test)]
+#[path = "retry_tests.rs"]
+mod tests;
+
+fn parse_duration(text: &str) -> Result<std::time::Duration> {
+    crate::resources::duration(text)
+        .ok_or_else(|| Failure::error(format!("invalid duration {text}")))
+}
+
+fn backoff_delay(backoff: &argo_parser::Node, attempts: usize) -> Result<std::time::Duration> {
+    let text = |key| {
+        backoff
+            .get(key)
+            .map(crate::run::scalar_text)
+            .unwrap_or_default()
+    };
+    let base = parse_duration(&text("duration"))?;
+    let factor = match text("factor").as_str() {
+        "" => 1,
+        value => value
+            .parse::<i32>()
+            .map_err(|_| Failure::error("retryStrategy.backoff.factor must be an integer"))?
+            .max(1),
+    };
+    let multiplier = (factor as f64).powf(attempts.saturating_sub(1) as f64);
+    let seconds = (base.as_secs_f64() * multiplier).min(i64::MAX as f64 / 1e9);
+    let delay = std::time::Duration::try_from_secs_f64(seconds)
+        .map_err(|_| Failure::error("retryStrategy backoff overflow"))?;
+    match text("cap").as_str() {
+        "" => Ok(delay),
+        cap => Ok(delay.min(parse_duration(cap)?)),
+    }
 }
 
 impl Run {
@@ -77,7 +124,13 @@ impl Run {
             };
             let retry = match phase {
                 Phase::Failed => matches!(policy, "OnFailure" | "Always"),
-                Phase::Error => matches!(policy, "OnError" | "Always" | "OnTransientError"),
+                Phase::Error => {
+                    matches!(policy, "OnError" | "Always")
+                        || (policy == "OnTransientError"
+                            && self.nodes[last].outcomes.iter().flatten().any(|outcome| {
+                                outcome.error == Some(workflow_graph::TaskError::Transient)
+                            }))
+                }
                 _ => false,
             };
             let mut retry = retry && limit.is_none_or(|limit| attempts <= limit);
@@ -119,6 +172,46 @@ impl Run {
                 };
                 self.set_phase(index, phase, message);
                 return Ok(());
+            }
+            if let Some(backoff) = &call.strategy.backoff {
+                let mut backoff = backoff.clone();
+                replace_node(&mut backoff, &Variables::new(self.globals.clone()), false)
+                    .map_err(Failure::error)?;
+                let delay = backoff_delay(&backoff, attempts)?;
+                let ended = self.nodes[last].finished_at.unwrap_or(self.clock);
+                let waiting = ended
+                    .checked_add(delay)
+                    .ok_or_else(|| Failure::error("retryStrategy backoff overflow"))?;
+                let maximum = backoff
+                    .get("maxDuration")
+                    .map(crate::run::scalar_text)
+                    .filter(|text| !text.is_empty())
+                    .map(|text| parse_duration(&text))
+                    .transpose()?;
+                if let Some(maximum) = maximum {
+                    let first = self.nodes[index].children[0];
+                    let deadline = self.nodes[first]
+                        .started_at
+                        .checked_add(maximum)
+                        .ok_or_else(|| Failure::error("retryStrategy maxDuration overflow"))?;
+                    let message = if self.clock >= deadline {
+                        Some("Max duration limit exceeded")
+                    } else if waiting > deadline {
+                        Some("Backoff would exceed max duration limit")
+                    } else {
+                        None
+                    };
+                    if let Some(message) = message {
+                        self.first_failure = Some(message.into());
+                        self.set_phase(index, phase, message.into());
+                        return Ok(());
+                    }
+                }
+                if self.clock < waiting {
+                    self.waits.insert(index, waiting);
+                    return Ok(());
+                }
+                self.waits.remove(&index);
             }
         }
         // A new attempt, which sees its number as `retries`.

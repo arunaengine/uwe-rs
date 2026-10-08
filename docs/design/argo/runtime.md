@@ -137,7 +137,7 @@ The Sprig subset covers what the test workflows use and what is cheap to add alo
 | Loops | `withItems`, `withParam` and `withSequence` give one node per item, named `name(index:description)`. An empty loop gives a skipped node. A `withParam` that does not parse is ignored when `when` is false. |
 | `continueOn` | `failed` and `error` let the run go on after a failed step or task. |
 | `failFast` | Only changes the assessment of the DAG, as in Argo. `-keep-going` turns it off where a DAG does not set it. |
-| Retries | A retry node holds attempts named `name(n)`. The policy, the limit and the retry expression decide whether another attempt runs. Backoff is not waited for. With the simulator every task succeeds, so each retry node has one attempt. |
+| Retries | A retry node holds attempts named `name(n)`. Policy, limit and expression decide each retry. Backoff uses asynchronous engine wakeups with duration, integer factor and cap. `maxDuration` bounds the retry sequence from its first attempt. Machine failures are transient; other executor failures are errors. Simulated delays advance virtual time. |
 | Exit handlers | `onExit` of the workflow and the `exit` hook run after the entrypoint, with `workflow.status` and `workflow.failures`. The exit hooks of steps and tasks run after their node. |
 | Lifecycle hooks | Hooks of the workflow and of steps and tasks run when their `expression` holds. |
 | `suspend` | Completes at once, as if `argo resume` came. Supplied output parameters take their default, or the first `enum` value, or stay empty with a warning. |
@@ -315,7 +315,7 @@ Init containers run as their own tasks before the task they belong to, one after
 - Tags of `tasks.` and `steps.` that stay unresolved in a simulated run stay literal. Argo would requeue the node until they resolve, or fail it.
 - A `when` that cannot be decided skips the step instead of failing it.
 - `suspend` never waits.
-- Retries do not wait for their backoff, and the retries of a container set do not wait for their `duration`.
+- The retries inside a container set do not wait for their `duration`.
 - The containers of a container set see all volumes that any of them mounts, at the same paths, and the work directory of the task. In Argo each container sees only its own mounts. A volume that containers of one set mount at different paths is one folder at each path, not one shared folder.
 - On TES the containers of a set run one after the other (section 8.2).
 - The containers of a set run as the user of the main container. Apptainer runs every container as the user who calls it, so on SLURM with Apptainer a `runAsUser` has no effect and a step may not write where only root may (decision 28).

@@ -204,6 +204,8 @@ pub(crate) struct Run {
     /// The files of the tasks, where a real executor keeps them; outputs that the run reads,
     /// like output parameters, are read through them.
     pub files: Option<std::sync::Arc<dyn Files>>,
+    pub clock: std::time::Instant,
+    pub waits: HashMap<usize, std::time::Instant>,
 }
 
 /// The text of an output file of a task, read through `files` when the run has them.
@@ -328,6 +330,8 @@ impl Run {
             warnings: Vec::new(),
             notes: Vec::new(),
             files: None,
+            clock: std::time::Instant::now(),
+            waits: HashMap::new(),
             store: HashMap::new(),
             volumes: Volumes::new(),
             claims: BTreeSet::new(),
@@ -393,6 +397,9 @@ impl Run {
 
     /// Runs passes until one changes nothing, then hands out the tasks asked for.
     pub fn operate(&mut self) -> Result<Vec<Task>> {
+        if !self.options.assume_inputs {
+            self.clock = std::time::Instant::now();
+        }
         loop {
             self.changed = false;
             self.pass()?;
@@ -401,6 +408,22 @@ impl Run {
             }
         }
         Ok(std::mem::take(&mut self.emitted))
+    }
+
+    pub fn wake_at(&self) -> Option<std::time::Instant> {
+        self.waits
+            .values()
+            .copied()
+            .chain(self.children.iter().filter_map(|child| child.run.wake_at()))
+            .min()
+    }
+
+    pub fn wake(&mut self, now: std::time::Instant) -> Result<Vec<Task>> {
+        self.clock = self.clock.max(now);
+        for child in 0..self.children.len() {
+            self.step_child(child, |run| run.wake(now))?;
+        }
+        self.operate()
     }
 
     fn pass(&mut self) -> Result<()> {
@@ -882,6 +905,8 @@ impl Run {
             retry: None,
             started: self.options.now.unwrap_or_else(Timestamp::now),
             finished: None,
+            started_at: self.clock,
+            finished_at: None,
             written: Vec::new(),
         });
         self.names.insert(name.to_owned(), index);
@@ -924,6 +949,8 @@ impl Run {
             node.phase = phase;
             node.message = message;
             if phase.fulfilled() {
+                node.finished_at = Some(self.clock);
+                self.waits.remove(&index);
                 node.finished = Some(
                     node.outcomes
                         .iter()
@@ -1023,6 +1050,9 @@ impl Run {
 
     /// Takes the outcome of a task.
     pub fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>> {
+        if !self.options.assume_inputs {
+            self.clock = std::time::Instant::now();
+        }
         let identity = (outcome.id, outcome.attempt);
         self.acceptance.remove(&identity);
         let Some((index, slot)) = self.tasks.remove(&outcome.id) else {

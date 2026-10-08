@@ -217,10 +217,6 @@ impl<'a> Check<'a> {
         for (field, present) in [
             ("synchronization", spec.synchronization.is_some()),
             (
-                "activeDeadlineSeconds",
-                spec.active_deadline_seconds.is_some(),
-            ),
-            (
                 "artifactRepositoryRef",
                 spec.artifact_repository_ref.is_some(),
             ),
@@ -244,6 +240,11 @@ impl<'a> Check<'a> {
                 self.unsupported = true;
                 return Err(format!("spec.{field} is not supported"));
             }
+        }
+        if let Some(value) = &spec.active_deadline_seconds
+            && !crate::tags::has_tag(&value.0)
+        {
+            crate::timers::seconds(&value.0, true).map_err(|failure| failure.message)?;
         }
         if let Some(defaults) = &spec.template_defaults
             && let Some(reason) = cluster_only(defaults)
@@ -406,7 +407,11 @@ impl<'a> Check<'a> {
                 };
                 return Err(format!("{kind} template doesn't support timeout field"));
             }
-            if timeout.0.trim().parse::<i64>().is_ok() {
+            if !crate::tags::has_tag(&timeout.0)
+                && !timeout.0.is_empty()
+                && (timeout.0.trim().parse::<i64>().is_ok()
+                    || crate::resources::duration(&timeout.0).is_none())
+            {
                 return Err(format!("{name} has invalid duration format in timeout"));
             }
         }
@@ -421,6 +426,11 @@ impl<'a> Check<'a> {
             return Err(format!(
                 "templates.{name}.activeDeadlineSeconds is only valid for leaf templates"
             ));
+        }
+        if let Some(value) = &template.active_deadline_seconds
+            && !crate::tags::has_tag(&value.0)
+        {
+            crate::timers::seconds(&value.0, false).map_err(|failure| failure.message)?;
         }
         if !template.steps.is_empty() {
             self.steps(template, base)

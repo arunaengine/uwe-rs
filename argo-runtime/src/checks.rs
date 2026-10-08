@@ -171,18 +171,6 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
         ("resourceClaims", template.resource_claims.is_some()),
         ("pendingTimeout", template.pending_timeout.is_some()),
         ("archiveLocation", template.archive_location.is_some()),
-        (
-            "timeout",
-            template.timeout.is_some() && template.steps.is_empty() && template.dag.is_none(),
-        ),
-        (
-            "activeDeadlineSeconds",
-            template.active_deadline_seconds.is_some()
-                && (!template.init_containers.is_empty()
-                    || (template.container.is_none()
-                        && template.script.is_none()
-                        && template.container_set.is_none())),
-        ),
     ] {
         if present {
             return Some(format!("template {name}: `{field}` is not supported"));

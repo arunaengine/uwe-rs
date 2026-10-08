@@ -23,7 +23,6 @@ fn start_error(spec: &str) -> DriverError {
 fn rejects_workflow_controls() {
     for field in [
         "synchronization: {mutexes: [{name: lock}]}",
-        "activeDeadlineSeconds: 5",
         "artifactRepositoryRef: {configMap: artifacts}",
         "podSpecPatch: '{}'",
         "podResources: {}",
@@ -183,10 +182,10 @@ fn requests_respect_limits() {
 #[test]
 fn rejects_node_deadlines() {
     for spec in [
-        "  templates:\n  - name: main\n    timeout: 5s\n    container: {image: alpine}\n",
-        "  templates:\n  - name: main\n    activeDeadlineSeconds: 5\n    initContainers: [{name: init, image: alpine}]\n    container: {image: alpine}\n",
+        "  templates:\n  - name: main\n    timeout: invalid\n    container: {image: alpine}\n",
+        "  templates:\n  - name: main\n    activeDeadlineSeconds: -1\n    container: {image: alpine}\n",
     ] {
-        assert!(start_error(spec).unsupported);
+        assert!(!start_error(spec).unsupported);
     }
     for count in ["0", "-1", "invalid"] {
         let error = start_error(&format!(

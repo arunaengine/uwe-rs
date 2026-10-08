@@ -206,6 +206,11 @@ pub(crate) struct Run {
     pub files: Option<std::sync::Arc<dyn Files>>,
     pub clock: std::time::Instant,
     pub waits: HashMap<usize, std::time::Instant>,
+    pub deadlines: HashMap<usize, crate::timers::Limit>,
+    pub workflow_limit: Option<std::time::Instant>,
+    pub stopped: bool,
+    pub expired: HashMap<usize, String>,
+    pub cancel_tasks: Vec<TaskId>,
 }
 
 /// The text of an output file of a task, read through `files` when the run has them.
@@ -332,6 +337,11 @@ impl Run {
             files: None,
             clock: std::time::Instant::now(),
             waits: HashMap::new(),
+            deadlines: HashMap::new(),
+            workflow_limit: None,
+            stopped: false,
+            expired: HashMap::new(),
+            cancel_tasks: Vec::new(),
             store: HashMap::new(),
             volumes: Volumes::new(),
             claims: BTreeSet::new(),
@@ -349,6 +359,7 @@ impl Run {
             run.warn(warning);
         }
         run.set_globals(metadata.as_ref());
+        run.arm_workflow()?;
         run.warn_ignored(&spec_node);
         let mut artifacts = Vec::new();
         for artifact in run.spec.arguments.artifacts.clone() {
@@ -414,8 +425,14 @@ impl Run {
         self.waits
             .values()
             .copied()
+            .chain(self.deadlines.values().map(|limit| limit.at))
+            .chain(self.workflow_limit)
             .chain(self.children.iter().filter_map(|child| child.run.wake_at()))
             .min()
+    }
+
+    pub fn active_tasks(&self) -> bool {
+        !self.tasks.is_empty() || self.children.iter().any(|child| child.run.active_tasks())
     }
 
     pub fn wake(&mut self, now: std::time::Instant) -> Result<Vec<Task>> {
@@ -427,6 +444,7 @@ impl Run {
     }
 
     fn pass(&mut self) -> Result<()> {
+        self.expire();
         let root = match self.root {
             Some(root) => {
                 if !self.nodes[root].phase.fulfilled() {
@@ -453,7 +471,19 @@ impl Run {
             return Ok(());
         }
         self.workflow_hooks(true)?;
-        self.exit_handler(root)
+        self.exit_handler(root)?;
+        if !self.busy()
+            && self
+                .exit_node
+                .is_none_or(|index| self.nodes[index].phase.fulfilled())
+            && self
+                .hook_nodes
+                .iter()
+                .all(|&index| self.nodes[index].phase.fulfilled())
+        {
+            self.workflow_limit = None;
+        }
+        Ok(())
     }
 
     /// Calls a template: the node exists already and goes on, or it is made now.
@@ -470,6 +500,14 @@ impl Run {
                 self.reenter(index)?;
             }
             return Ok(index);
+        }
+        if self.stopped && !name.contains(".onExit") {
+            return Ok(self.end_node(
+                name,
+                Phase::Failed,
+                call,
+                "Step exceeded its deadline".into(),
+            ));
         }
         if call.depth > MAX_DEPTH {
             let template = holder
@@ -555,6 +593,7 @@ impl Run {
         };
         self.nodes[index].kind = kind;
         self.nodes[index].processed = Some(Rc::clone(&processed));
+        self.arm_template(index)?;
         if !self.admit_template(index) {
             return Ok(());
         }
@@ -814,6 +853,7 @@ impl Run {
 
     /// Asks for a task of a node; its outcome comes back to the node.
     pub fn ask(&mut self, index: usize, task: Task) {
+        self.arm_active(index);
         let limits = self.admission_limits();
         for (_, active) in &limits {
             active.set(active.get() + 1);
@@ -907,6 +947,7 @@ impl Run {
             finished: None,
             started_at: self.clock,
             finished_at: None,
+            retry_limit: None,
             written: Vec::new(),
         });
         self.names.insert(name.to_owned(), index);
@@ -936,6 +977,7 @@ impl Run {
 
     pub fn set_phase(&mut self, index: usize, phase: Phase, message: String) {
         if phase.fulfilled() {
+            self.deadlines.remove(&index);
             for (_, active) in self.resource_admissions.remove(&index).unwrap_or_default() {
                 active.set(active.get() - 1);
             }
@@ -1096,7 +1138,9 @@ impl Run {
         if ready {
             let kind = self.nodes[index].kind;
             let initializing = self.initializing(index);
-            if kind == NodeKind::Plugin {
+            if let Some(message) = self.expired.remove(&index) {
+                self.fail(index, Phase::Failed, message);
+            } else if kind == NodeKind::Plugin {
                 self.finish_plugin(index)?;
             } else if initializing {
                 self.finish_init(index)?;

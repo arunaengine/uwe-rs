@@ -1,8 +1,7 @@
 # Pipelines whose `iunctus config -profile test` does not equal the recorded `nextflow config`:
 # pipeline, what differs, why. Every pipeline not listed must give the same output.
-pathogensurveillance different `nextflow config` shows missing secrets as text like 'secrets.KEY', a run and iunctus give null
+pathogensurveillance unsupported reading Nextflow secrets requires its secret store; iunctus refuses these reads explicitly
 methylseq accepted `nextflow config` rejects includes of files that the text-only test workflows lack, even in unselected profiles
-seqsubmit accepted `nextflow config` rejects includes of files that the text-only test workflows lack, even in unselected profiles
 atacseq accepted legacy config syntax that the strict parser rejects, run with its legacy meaning (decision 14)
 bactmap accepted legacy config syntax that the strict parser rejects, run with its legacy meaning (decision 14)
 cageseq accepted legacy config syntax that the strict parser rejects, run with its legacy meaning (decision 14)

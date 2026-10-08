@@ -27,14 +27,20 @@ Add `$HOME/.local/bin` to your `PATH` if needed. Record the source commit and th
 ## First run
 
 ```sh
-iunctus check main.nf
+iunctus --version
 iunctus check-machine
-iunctus run main.nf                       # real local container execution
-iunctus run main.nf -executor simulator   # synthetic outputs without task containers
+iunctus run demo/snakemake/hello.smk
+iunctus runs
 ```
 
-For real local runs, Docker or Podman must expose its engine socket. A workflow task without an image needs `-default-image <image>`. Conda currently parses and locks environments; the Conda-to-image builder is unfinished. Task and package execution stays in containers, including dependencies that the workflow would normally find on its host.
+Run these commands from the checkout after installing the binary. Docker or Podman
+must expose its engine socket. The example uses a Debian image and writes greetings
+under `demo/snakemake/hello/`. Use `-executor simulator` in a separate copy for
+made-up outputs without task containers.
 
-Remote executors need their configuration and shared-path prerequisites. The run page defaults to `127.0.0.1`; choosing another address makes run information available to clients that can reach it. This application follows a trusted local workflow model and runs under the caller's configured filesystem and executor permissions.
+Follow the [user guide](docs/guide/first-run.md) for a local Nextflow example,
+repository runs, resume and repeat. See [installation](docs/guide/install.md),
+[executor setup](docs/guide/executors.md) and the
+[configuration reference](docs/guide/configuration.md).
 
 See [commands and configuration](docs/README.md), [executor setup](docs/design/executors.md), [support and recovery](docs/support.md) and the [roadmap](docs/roadmap.md). The project license expression is `MIT OR Apache-2.0`; bundled upstream examples retain their own notices.

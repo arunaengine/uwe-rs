@@ -8,18 +8,28 @@ iunctus is a native Rust application. It reads Nextflow, Snakemake, CWL and Argo
 
 This folder holds the research and the design behind the code. The research was checked on 2026-09-27.
 
-## Getting started
+## First run
 
-A laptop needs the `iunctus` binary and Docker or Podman, nothing else: no Java, no Python, no config file.
+Start with the [user guide](guide/first-run.md). It covers
+[installation](guide/install.md), [Nextflow](guide/nextflow.md),
+[Snakemake](guide/snakemake.md), [CWL and Argo](guide/cwl-argo.md),
+[executors](guide/executors.md), [configuration](guide/configuration.md),
+[storage](guide/storage.md), [troubleshooting](guide/troubleshooting.md) and
+[embedding](guide/embedding.md). Release changes are in the
+[changelog](../CHANGELOG.md).
+
+From the checkout, with the binary installed and Docker or Podman ready:
 
 ```sh
-iunctus check-machine                        # what is ready for real runs, and what to install or set
-iunctus check main.nf                        # what would stop a real run of the workflow, found at once
-iunctus run main.nf                          # a real run in Docker or Podman
-iunctus run main.nf -executor simulator      # a simulated run with made-up outputs
+iunctus --version
+iunctus check-machine
+iunctus run demo/snakemake/hello.smk
+iunctus runs
 ```
 
-With Podman, turn on its socket once: `systemctl --user enable --now podman.socket`. Tasks whose workflow names no container image need one: add `-default-image <image>`. Every error says where it is and what to do, and `iunctus check-machine` and `iunctus check` list every problem at once ([errors, exit codes and checks](design/checks.md)). A config file is needed only for private storage and for the TES, SLURM and Kubernetes executors ([the config file and storage providers](design/storage.md), [executors](design/executors.md)).
+The example writes greetings under `demo/snakemake/hello/`.
+Use a separate copy with `-executor simulator` for made-up outputs.
+The guide explains engine setup and the differences from each workflow engine.
 
 ## The command
 

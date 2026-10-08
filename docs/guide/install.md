@@ -22,8 +22,8 @@ iunctus --version
 iunctus check-machine
 ```
 
-The current source binary prints `iunctus 0.1.0`. The beta changelog is unreleased;
-its heading does not change the compiled package version.
+The binary prints `iunctus 0.1.0`. The version stays 0.1.0 during the beta;
+the changelog lists the changes that are not yet released.
 Building may download the toolchain and dependencies.
 
 For local runs, start Docker or enable Podman's API socket:

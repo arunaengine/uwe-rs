@@ -4,7 +4,7 @@
 
 # Changelog
 
-## 0.2.0-beta.1 (unreleased)
+## Unreleased (version 0.1.0)
 
 Changes since `945ad6c1`, grouped by language and area.
 This heading does not change the current binary version, which remains 0.1.0.

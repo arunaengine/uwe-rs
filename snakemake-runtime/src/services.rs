@@ -139,7 +139,7 @@ fn subshell(task: &Task, before: &str) -> String {
 
 /// What a group asks for: the CPUs and memory of all its jobs, which run at once, and the
 /// consumer critical path or service budget, whichever is longer.
-fn resources(members: &[Task]) -> Resources {
+pub(crate) fn resources(members: &[Task]) -> Resources {
     let mut sum = Resources::default();
     for task in members {
         let own = &task.resources;

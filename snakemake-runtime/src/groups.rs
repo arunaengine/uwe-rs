@@ -125,7 +125,12 @@ pub fn components(
     Ok(result)
 }
 
-pub fn combine(members: &[Task], id: TaskId) -> Result<Task, String> {
+pub fn combine(
+    members: &[Task],
+    id: TaskId,
+    pipes: &[String],
+    services: &[String],
+) -> Result<Task, String> {
     let mut members = members.to_vec();
     let mut conflicts = HashSet::new();
     let mut staged = HashMap::new();
@@ -151,7 +156,8 @@ pub fn combine(members: &[Task], id: TaskId) -> Result<Task, String> {
             }
         }
     }
-    let mut group = crate::services::combine(&members, &[], id)?;
+    let transient: Vec<_> = pipes.iter().chain(services).cloned().collect();
+    let mut group = crate::services::combine(&members, &transient, id)?;
     group.inputs.retain(|input| {
         !members.iter().any(|member| {
             member.outputs.iter().any(|output| {
@@ -209,7 +215,15 @@ pub fn combine(members: &[Task], id: TaskId) -> Result<Task, String> {
         }
     }
     group.resources.time_seconds = duration;
-    group.command = vec!["sh".into(), "-c".into(), script.clone()];
+    if !pipes.is_empty() {
+        script = crate::pipes::script(&members, pipes, services);
+        group.resources = crate::services::resources(&members);
+    }
+    group.command = vec![
+        if pipes.is_empty() { "sh" } else { "bash" }.into(),
+        "-c".into(),
+        script.clone(),
+    ];
     group.script = Some(script);
     Ok(group)
 }

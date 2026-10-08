@@ -29,6 +29,15 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn for_network(&self, offline: bool) -> io::Result<Self> {
+        let mut configured = self.clone();
+        if offline && !configured.offline {
+            configured.offline = true;
+            configured.acquisition = conda_environment::Acquisition::new(&self.repodata, true)?;
+        }
+        Ok(configured)
+    }
+
     pub fn read(config: &ConfigFile) -> Result<Option<Self>, ConfigError> {
         let Some(table) = config.section("conda")? else {
             return Ok(None);
@@ -42,7 +51,14 @@ impl Config {
             "repodata",
             "packages",
         ])?;
-        let offline = table.flag("offline")?.unwrap_or(true);
+        let offline = table.flag("offline")?.unwrap_or(false)
+            || config
+                .section("network")?
+                .map(|section| section.text("default"))
+                .transpose()?
+                .flatten()
+                .as_deref()
+                == Some("none");
         if table.text("installer")?.as_deref() != Some("micromamba") {
             return Err(table.invalid(
                 "installer",
@@ -269,8 +285,11 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     }
     let configuration = ConfigFile::load(arguments.config_file.as_deref())
         .map_err(|error| Failure::setup(error.to_string()))?;
-    let configured =
-        Config::read(&configuration).map_err(|error| Failure::setup(error.to_string()))?;
+    let configured = Config::read(&configuration)
+        .map_err(|error| Failure::setup(error.to_string()))?
+        .map(|config| config.for_network(arguments.no_network))
+        .transpose()
+        .map_err(|error| Failure::setup(error.to_string()))?;
     let platform = arguments.platform.clone().unwrap_or_else(|| {
         configured
             .as_ref()
@@ -341,8 +360,37 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         })?;
         preparation.lock().clone()
     } else {
-        conda_environment::lock(&environment, &folder, &platform)
-            .map_err(|error| locked(file, error))?
+        let offline = arguments.no_network
+            || configuration
+                .section("network")
+                .map_err(|error| Failure::setup(error.to_string()))?
+                .map(|section| section.text("default"))
+                .transpose()
+                .map_err(|error| Failure::setup(error.to_string()))?
+                .flatten()
+                .as_deref()
+                == Some("none");
+        if offline {
+            conda_environment::lock(&environment, &folder, &platform)
+                .map_err(|error| locked(file, error))?
+        } else {
+            std::thread::scope(|scope| {
+                scope
+                    .spawn(|| {
+                        let runtime = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .map_err(|error| Failure::setup(error.to_string()))?;
+                        let acquisition = conda_environment::Acquisition::new(&folder, false)
+                            .map_err(|error| Failure::setup(error.to_string()))?;
+                        runtime
+                            .block_on(acquisition.lock(&environment, &platform, None))
+                            .map_err(|error| locked(file, error))
+                    })
+                    .join()
+            })
+            .map_err(|_| failure("Conda lock worker failed"))??
+        }
     };
     let Some(output) = &arguments.output else {
         println!("{}", json(&lock));
@@ -411,6 +459,36 @@ fn locked(file: &Path, error: LockError) -> Failure {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn selects_acquisition_policy() {
+        let folder = tempfile::tempdir().unwrap();
+        let root = folder.path();
+        let base = format!("mamba@sha256:{}", "a".repeat(64));
+        std::fs::write(
+            root.join("target.json"),
+            json!({"base":base,"platform":"linux/amd64","virtual_packages":[]}).to_string(),
+        )
+        .unwrap();
+        let settings = format!(
+            "[conda]\nbase = {base:?}\nplatform = 'linux/amd64'\ninstaller = 'micromamba'\ncapabilities = '{}/target.json'\nrepodata = '{}/repodata'\npackages = '{}/packages'\n",
+            root.display(),
+            root.display(),
+            root.display()
+        );
+        for (extra, offline) in [
+            ("", false),
+            ("offline = true\n", true),
+            ("offline = false\n[network]\ndefault = 'none'\n", true),
+        ] {
+            let file = ConfigFile::parse(&format!("{settings}{extra}"), &root.join("iunctus.toml"))
+                .unwrap();
+            let config = Config::read(&file).unwrap().unwrap();
+            assert_eq!(config.offline, offline);
+            assert!(config.for_network(true).unwrap().offline);
+            assert_eq!(config.for_network(false).unwrap().offline, offline);
+        }
+    }
 
     #[test]
     fn rejects_fifo_sources() {

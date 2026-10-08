@@ -1,4 +1,4 @@
-//! Cached acquisition and one opt-in HTTPS smoke test.
+//! Cached acquisition, offline cache guidance, and opt-in HTTPS verification.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -77,23 +77,26 @@ async fn verifies_cached_packages() {
     }
     std::fs::write(&path, b"corrupt").unwrap();
     let acquisition = Acquisition::new(cache.path(), true).unwrap();
-    assert!(
-        acquisition
-            .fetch_packages(&lock, cache.path())
-            .await
-            .is_err()
-    );
+    let error = acquisition
+        .fetch_packages(&lock, cache.path())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("[conda].packages"));
+    assert!(error.to_string().contains("SHA-256 filenames"));
     assert_eq!(std::fs::read(path).unwrap(), b"corrupt");
     let environment =
         Environment::parse("channels: [conda-forge]\ndependencies: [tzdata]\n").unwrap();
-    assert!(matches!(
-        acquisition.lock(&environment, "linux-64", Some(&[])).await,
-        Err(LockError::Acquisition(_))
-    ));
+    let error = acquisition
+        .lock(&environment, "linux-64", Some(&[]))
+        .await
+        .unwrap_err();
+    assert!(matches!(error, LockError::Acquisition(_)));
+    assert!(error.to_string().contains("[conda].repodata"));
+    assert!(error.to_string().contains("network-enabled run"));
 }
 
 #[tokio::test]
-#[ignore = "requires HTTPS access to conda-forge; serial repodata and package smoke test"]
+#[ignore = "requires HTTPS access to conda-forge; serial repodata and package verification"]
 async fn reuses_offline_acquisitions() {
     let cache = tempfile::tempdir().unwrap();
     let acquisition = Acquisition::new(cache.path(), false).unwrap();

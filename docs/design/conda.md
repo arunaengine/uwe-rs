@@ -57,18 +57,19 @@ The resolver reads the repodata of each channel and platform from the cache fold
 channel serves, like `https://conda.anaconda.org/conda-forge/linux-64/repodata.json`, or
 `https://repo.anaconda.com/pkgs/main/linux-64/repodata.json` for Anaconda's own channels.
 
-With `[conda] offline = false`, `rattler_repodata_gateway` fetches requested package names
-and their dependency closure over HTTPS. It supports sharded and zstd repodata with fallback
+By default, or with `[conda] offline = false`, `rattler_repodata_gateway` fetches requested
+package names and their dependency closure over HTTPS. It supports sharded and zstd repodata with fallback
 to ordinary repodata, and keeps metadata under `<repodata>/gateway/`. Cloned acquisition
 handles share a Conda HTTP client and serialize requests. Package downloads also use this
 client, verify SHA-256 before atomic publication, and reuse verified cached bytes. Connect
 and request deadlines are 30 and 300 seconds; an individual package is limited to 4 GiB.
 
-With `offline = true` (the default), prepared JSON files remain supported. If a prepared file
+With `offline = true`, prepared JSON files remain supported. If a prepared file
 is missing, configured workflows and lock commands can use previously cached gateway
 metadata, including stale metadata, without downloading. Packages must already be cached
-for a cold build. The unconfigured lock command remains offline and reports missing JSON
-files with their addresses and cache paths.
+for a cold build. The unconfigured lock command uses cached HTTPS acquisition unless the
+network configuration is offline. Offline locking reports missing JSON files with their
+addresses and cache paths.
 
 Channel names work as in conda: `defaults` stands for `pkgs/main` and `pkgs/r`, and
 `nodefaults` for none. An environment file without channels gets `conda-forge`, as Miniforge
@@ -150,7 +151,8 @@ iunctus lock-environment <conda environment file> [-platform <name>] [-output <f
   file; a name that ends in `.txt` gets the explicit list. The command then prints the number
   of packages and the digest of the environment.
 - A configured lock uses the exact target capabilities and acquisition policy below. Without
-  configuration it reads only local JSON and infers no virtual packages.
+  configuration it uses cached HTTPS acquisition, or local JSON when offline, and infers
+  no virtual packages.
 - Pip locks require JSON output. A `.txt` explicit list cannot preserve pip pins and is
   refused with exit code 33 for an environment containing pip requirements.
 
@@ -186,7 +188,7 @@ Configure the local path explicitly in the existing iunctus TOML file:
 base = "registry/micromamba@sha256:<selected-platform-manifest>"
 platform = "linux/amd64"
 installer = "micromamba"
-offline = false # true requires cached Conda and pip metadata and package bytes
+offline = false # default; true requires cached metadata and package bytes
 capabilities = "/srv/iunctus/conda/target.json"
 repodata = "/srv/iunctus/conda/repodata"
 packages = "/srv/iunctus/conda/packages"
@@ -196,6 +198,12 @@ Replace the base placeholder with a real pinned manifest. The base must already 
 Micromamba. The capability JSON has exactly `base`, `platform` and `virtual_packages`; each
 package has `name`, `version` and `build`. Its base/platform must match the configuration.
 These are trusted operator inputs obtained from the target container or deployment metadata.
+
+Online HTTPS acquisition is the default when networking is allowed. Setting
+`[conda].offline = true` or `[network].default = "none"` keeps acquisition offline. Build commands always install cached, SHA-256 verified
+packages with build networking disabled. An offline cold-cache error explains
+which cache is missing and how to populate it during a network-enabled run or
+copy prepared metadata and hash-named package files from another machine.
 
 Prepared JSON lives at `<repodata>/<channel>/<conda-platform>/repodata.json` and the channel's
 `noarch/repodata.json`. Online metadata uses `<repodata>/gateway/`. Package files live at

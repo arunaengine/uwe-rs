@@ -89,7 +89,14 @@ fn sample_sheet(name: &str, project: &Path) -> Result<Json, String> {
             file.display()
         )
     })?;
+    let legacy = schema
+        .get("$schema")
+        .and_then(Json::as_str)
+        .is_some_and(|draft| draft.trim_end_matches('#').ends_with("/draft-07/schema"));
     let mut schema = upgrade(schema);
+    if legacy {
+        sample_annotations(&mut schema);
+    }
     input_schema::valid(&schema).map_err(|error| {
         format!(
             "sample-sheet schema {} is not valid: {error}",
@@ -100,6 +107,49 @@ fn sample_sheet(name: &str, project: &Path) -> Result<Json, String> {
         map.remove("$schema");
     }
     Ok(schema)
+}
+
+// nf-validation's field annotation collides with the standard object keyword in 2020-12.
+fn sample_annotations(schema: &mut Json) {
+    let Json::Object(map) = schema else {
+        return;
+    };
+    if matches!(map.get("dependentRequired"), Some(Json::Array(_)))
+        && let Some(required) = map.remove("dependentRequired")
+    {
+        map.insert("x-nf-validation-dependentRequired".into(), required);
+    }
+    for keyword in [
+        "properties",
+        "patternProperties",
+        "$defs",
+        "dependentSchemas",
+    ] {
+        if let Some(Json::Object(schemas)) = map.get_mut(keyword) {
+            schemas.values_mut().for_each(sample_annotations);
+        }
+    }
+    for keyword in ["allOf", "anyOf", "oneOf", "prefixItems"] {
+        if let Some(Json::Array(schemas)) = map.get_mut(keyword) {
+            schemas.iter_mut().for_each(sample_annotations);
+        }
+    }
+    for keyword in [
+        "items",
+        "additionalProperties",
+        "not",
+        "if",
+        "then",
+        "else",
+        "contains",
+        "propertyNames",
+        "unevaluatedItems",
+        "unevaluatedProperties",
+    ] {
+        if let Some(schema) = map.get_mut(keyword) {
+            sample_annotations(schema);
+        }
+    }
 }
 
 /// What a pipeline without a schema file declares: the params of the config and of its
@@ -501,6 +551,55 @@ mod tests {
         let error = from_file(&pipeline, project.path()).unwrap_err();
         assert!(error.contains(&invalid.display().to_string()), "{error}");
         assert!(error.contains("is not valid"), "{error}");
+    }
+
+    #[test]
+    fn preserves_field_dependencies() {
+        let project = tempfile::tempdir().unwrap();
+        let pipeline = project.path().join("nextflow_schema.json");
+        std::fs::write(&pipeline, pipeline_schema("rows.json").to_string()).unwrap();
+        let rows = json!({
+            "$schema": "http://json-schema.org/draft-07/schema",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "dependentRequired": {"lane": ["second"]},
+                "properties": {
+                    "first": {"type": "string"},
+                    "second": {"type": "string", "dependentRequired": ["first"]},
+                    "lane": {"anyOf": [{"type": "string", "dependentRequired": ["first"]}]}
+                }
+            },
+            "examples": [{"dependentRequired": ["literal"]}]
+        });
+        std::fs::write(project.path().join("rows.json"), rows.to_string()).unwrap();
+        let schema = from_file(&pipeline, project.path()).unwrap();
+        let embedded = &schema["properties"]["input"]["schema"];
+        assert_eq!(input_schema::valid(embedded), Ok(()));
+        assert_eq!(
+            embedded["items"]["properties"]["second"]["x-nf-validation-dependentRequired"],
+            json!(["first"])
+        );
+        assert_eq!(
+            embedded["items"]["properties"]["lane"]["anyOf"][0]["x-nf-validation-dependentRequired"],
+            json!(["first"])
+        );
+        assert_eq!(embedded["examples"], rows["examples"]);
+        assert_eq!(
+            embedded["items"]["dependentRequired"],
+            rows["items"]["dependentRequired"]
+        );
+        assert_eq!(
+            serde_json::from_str::<Json>(
+                &std::fs::read_to_string(project.path().join("rows.json")).unwrap()
+            )
+            .unwrap(),
+            rows
+        );
+        let mut rows = rows;
+        rows["$schema"] = json!(DRAFT);
+        std::fs::write(project.path().join("rows.json"), rows.to_string()).unwrap();
+        assert!(from_file(&pipeline, project.path()).is_err());
     }
 
     #[test]

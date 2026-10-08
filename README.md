@@ -6,7 +6,7 @@
 
 iunctus is a Rust workflow engine for subsets of Nextflow, Snakemake, CWL and Argo. It plans one shared execution graph, records runs and stores results by content digest. The default executor runs tasks in local Docker/Podman containers. TES, SLURM and Kubernetes backends are also available; `-executor simulator` explicitly selects synthetic outputs without task containers.
 
-Aruna integration uses the generic TES executor plus S3 storage; TES-over-S3 staging is still being implemented.
+Aruna integration uses the generic TES executor with object-store staging through S3 (`staging = "object-store"`); it was checked against Funnel and MinIO, see [executors](docs/guide/executors.md).
 
 This is a development release. Implemented features and passing local checks do not establish production readiness or full language parity. Read the [support matrix and operator notes](docs/support.md) before selecting a backend.
 

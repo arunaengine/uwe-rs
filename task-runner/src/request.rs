@@ -49,8 +49,9 @@ pub(crate) async fn prepare(
 ) -> Result<Prepared, RunnerError> {
     let mut files = Vec::new();
     let mut sources = Vec::new();
+    let (siblings, layout) = inputs.siblings(&task.inputs).await?;
     for input in &task.inputs {
-        let (file, source) = inputs.input(input).await?;
+        let (file, source) = inputs.input(input, &siblings).await?;
         files.push(file);
         sources.push(source);
     }
@@ -59,6 +60,9 @@ pub(crate) async fn prepare(
         None => None,
     };
     let mut request = request(task, image, files, stdin);
+    if let Some(layout) = layout {
+        request.spec.namespace = format!("{}siblings-{}", request.spec.namespace, layout.hex());
+    }
     // A task that changes an input where it is has effects that no stored result has.
     if (sources.iter()).any(|source| matches!(source, crate::runner::Source::InPlace(_))) {
         request.scope = ReuseScope::None;

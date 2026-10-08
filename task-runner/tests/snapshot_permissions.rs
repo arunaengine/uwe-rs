@@ -44,6 +44,94 @@ fn set_mode(path: &Path, mode: u32) {
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap();
 }
 
+#[tokio::test]
+async fn preserves_sibling_layout() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    std::fs::create_dir_all(source.join("database")).unwrap();
+    std::fs::write(source.join("settings.conf"), b"database").unwrap();
+    std::fs::write(source.join("database/model"), b"verified").unwrap();
+    std::fs::write(source.join("secret"), b"undeclared").unwrap();
+    let runner = Runner::new(
+        Store::local(&root.path().join("store")).unwrap(),
+        Inspect {
+            root: root.path().join("scratch"),
+            staged: Mutex::new(Vec::new()),
+        },
+        "siblings",
+        Settings {
+            downloads: root.path().join("downloads"),
+            import_inputs: false,
+            storage: storage::Storage::default(),
+            digests: None,
+        },
+    );
+    let mut task = Task {
+        command: vec!["true".into()],
+        inputs: vec![
+            Input {
+                path: "settings.conf".into(),
+                source: source.join("settings.conf").to_string_lossy().into_owned(),
+                ..Input::default()
+            },
+            Input {
+                path: "database".into(),
+                source: source.join("database").to_string_lossy().into_owned(),
+                directory: true,
+                ..Input::default()
+            },
+        ],
+        ..Task::default()
+    };
+    let prepared = runner.request(&task, None).await.unwrap();
+    let legacy = task_runner::request(&task, None, prepared.request.spec.inputs.clone(), None);
+    std::fs::write(source.join("database/model"), b"changed").unwrap();
+    runner
+        .execute(&prepared, &CancellationToken::new())
+        .await
+        .unwrap();
+    {
+        let captured = runner.backend().staged.lock().unwrap();
+        let inputs = &captured[0].inputs;
+        let parent = inputs[0].source.parent().unwrap();
+        assert_eq!(inputs[0].source.file_name().unwrap(), "settings.conf");
+        assert_eq!(inputs[1].source, parent.join("database"));
+        assert_eq!(
+            std::fs::read(parent.join("database/model")).unwrap(),
+            b"verified"
+        );
+        assert!(!parent.join("secret").exists());
+        assert!(inputs.iter().all(|input| !input.copy));
+        assert_eq!(mode(parent.parent().unwrap().parent().unwrap()), 0o700);
+    }
+    assert_ne!(
+        prepared.request.spec.cache_key().unwrap(),
+        legacy.spec.cache_key().unwrap()
+    );
+    task.inputs.pop();
+    let single = runner.request(&task, None).await.unwrap();
+    let legacy = task_runner::request(&task, None, single.request.spec.inputs.clone(), None);
+    assert_eq!(
+        single.request.spec.cache_key().unwrap(),
+        legacy.spec.cache_key().unwrap()
+    );
+    let separate = root.path().join("other/database");
+    std::fs::create_dir_all(&separate).unwrap();
+    std::fs::write(separate.join("model"), b"verified").unwrap();
+    task.inputs.push(Input {
+        path: "database".into(),
+        source: separate.to_string_lossy().into_owned(),
+        directory: true,
+        ..Input::default()
+    });
+    let separate = runner.request(&task, None).await.unwrap();
+    let legacy = task_runner::request(&task, None, separate.request.spec.inputs.clone(), None);
+    assert_eq!(
+        separate.request.spec.cache_key().unwrap(),
+        legacy.spec.cache_key().unwrap()
+    );
+}
+
 #[test]
 fn preserves_snapshot_permissions() {
     if std::env::var_os("IUNCTUS_SNAPSHOT_UMASK_TEST").is_none() {

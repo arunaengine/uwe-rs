@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::BTreeMap;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -69,15 +70,26 @@ impl Inputs<'_> {
 
     /// A persistent private copy: remote jobs may still use it after preparation is dropped.
     /// Downloads must belong to the caller; only its dedicated snapshot outer folder is private.
-    async fn snapshot(&self, source: &Path, directory: bool) -> Result<PathBuf, RunnerError> {
+    async fn snapshot(
+        &self,
+        source: &Path,
+        directory: bool,
+        destination: Option<&Path>,
+    ) -> Result<PathBuf, RunnerError> {
         if self.mode == Mode::Look {
             return Ok(std::fs::canonicalize(source)?);
         }
         let root = self.settings.downloads.join("input-snapshots");
         tokio::fs::create_dir_all(&root).await?;
         tokio::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).await?;
-        let snapshot = tempfile::tempdir_in(&root)?;
-        let path = snapshot.path().join("input");
+        let snapshot = match destination {
+            None => Some(tempfile::tempdir_in(&root)?),
+            Some(_) => None,
+        };
+        let path = destination.map_or_else(
+            || snapshot.as_ref().expect("a snapshot").path().join("input"),
+            Path::to_owned,
+        );
         if directory {
             tokio::fs::create_dir(&path).await?;
             for found in outputs::walk(source).await? {
@@ -104,10 +116,82 @@ impl Inputs<'_> {
         } else {
             tokio::fs::copy(source, &path).await?;
         }
-        readable_snapshot(snapshot.path()).await?;
+        readable_snapshot(match &snapshot {
+            Some(snapshot) => snapshot.path(),
+            None => path.parent().expect("a snapshot parent"),
+        })
+        .await?;
         let path = tokio::fs::canonicalize(path).await?;
-        let _ = snapshot.keep();
+        if let Some(snapshot) = snapshot {
+            let _ = snapshot.keep();
+        }
         Ok(path)
+    }
+
+    /// Preserves source siblings using only declared inputs, with a key for their layout.
+    pub(crate) async fn siblings(
+        &self,
+        inputs: &[Input],
+    ) -> Result<(BTreeMap<PathBuf, PathBuf>, Option<Digest>), RunnerError> {
+        let mut groups: BTreeMap<PathBuf, Vec<(usize, PathBuf)>> = BTreeMap::new();
+        for (index, input) in inputs.iter().enumerate() {
+            if input.content.is_some()
+                || input.writable == Writable::InPlace
+                || input.source.contains("://")
+                || !Path::new(&input.source).exists()
+            {
+                continue;
+            }
+            let source = std::fs::canonicalize(&input.source)?;
+            if let Some(parent) = source.parent() {
+                groups
+                    .entry(parent.to_owned())
+                    .or_default()
+                    .push((index, source));
+            }
+        }
+        let mut copies = BTreeMap::new();
+        let mut layout = Vec::new();
+        for members in groups.values().filter(|members| members.len() > 1) {
+            layout.push(
+                members
+                    .iter()
+                    .map(|(index, source)| {
+                        (
+                            *index,
+                            source
+                                .file_name()
+                                .expect("a child")
+                                .to_string_lossy()
+                                .into_owned(),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            if self.mode == Mode::Look {
+                continue;
+            }
+            let outer = self.settings.downloads.join("input-snapshots");
+            tokio::fs::create_dir_all(&outer).await?;
+            tokio::fs::set_permissions(&outer, std::fs::Permissions::from_mode(0o700)).await?;
+            let snapshot = tempfile::tempdir_in(&outer)?;
+            let parent = snapshot.path().join("input");
+            tokio::fs::create_dir(&parent).await?;
+            for (_, source) in members {
+                if copies.contains_key(source) {
+                    continue;
+                }
+                let target = parent.join(source.file_name().expect("a child"));
+                let copy = self
+                    .snapshot(source, source.is_dir(), Some(&target))
+                    .await?;
+                copies.insert(source.clone(), copy);
+            }
+            let _ = snapshot.keep();
+        }
+        layout.sort();
+        let digest = (!layout.is_empty()).then(|| Digest::sha256(format!("{layout:?}").as_bytes()));
+        Ok((copies, digest))
     }
 
     /// The digest of a directory manifest, like the one of an empty directory.
@@ -210,9 +294,13 @@ impl Inputs<'_> {
     /// An input by its digest, and where its content comes from: literal content, a local
     /// directory or a local file.
     /// See `docs/design/cache.md` for the full contract.
-    pub(crate) async fn input(&self, input: &Input) -> Result<(InputFile, Source), RunnerError> {
+    pub(crate) async fn input(
+        &self,
+        input: &Input,
+        siblings: &BTreeMap<PathBuf, PathBuf>,
+    ) -> Result<(InputFile, Source), RunnerError> {
         if let Some(local) = self.taken_into_folder(input).await? {
-            return Box::pin(self.input(&local)).await;
+            return Box::pin(self.input(&local, siblings)).await;
         }
         let source = Path::new(&input.source);
         if input.writable == Writable::InPlace {
@@ -255,7 +343,7 @@ impl Inputs<'_> {
                     return Err(RunnerError::Remote(input.source.clone()));
                 }
                 let copy = self.remote(&input.source).await?;
-                let snapshot = self.snapshot(&copy, false).await?;
+                let snapshot = self.snapshot(&copy, false, None).await?;
                 executable |= input.writable != Writable::Copy
                     && tokio::fs::metadata(&snapshot).await?.permissions().mode() & 0o111 != 0;
                 (
@@ -272,7 +360,10 @@ impl Inputs<'_> {
             ),
             None if !source.exists() => return Err(RunnerError::Missing(source.to_owned())),
             None if input.directory || source.is_dir() => {
-                let snapshot = self.snapshot(source, true).await?;
+                let snapshot = match siblings.get(&std::fs::canonicalize(source)?) {
+                    Some(snapshot) => snapshot.clone(),
+                    None => self.snapshot(source, true, None).await?,
+                };
                 (
                     FileKind::Directory,
                     self.directory(&snapshot).await?.0,
@@ -280,7 +371,10 @@ impl Inputs<'_> {
                 )
             }
             None => {
-                let snapshot = self.snapshot(source, false).await?;
+                let snapshot = match siblings.get(&std::fs::canonicalize(source)?) {
+                    Some(snapshot) => snapshot.clone(),
+                    None => self.snapshot(source, false, None).await?,
+                };
                 executable |= input.writable != Writable::Copy
                     && tokio::fs::metadata(&snapshot).await?.permissions().mode() & 0o111 != 0;
                 (

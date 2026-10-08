@@ -235,9 +235,9 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
     } else if template.data.is_some() {
         "is a data template, which reads an artifact repository from inside a cluster".to_owned()
     } else if !template.sidecars.is_empty() {
-        "has sidecars, services that run beside the task in its Kubernetes pod".to_owned()
+        "has sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup".to_owned()
     } else if template.daemon == Some(true) {
-        "runs as a daemon, a service that later steps reach through the cluster network".to_owned()
+        "runs as a daemon; the executor cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end".to_owned()
     } else {
         return None;
     };

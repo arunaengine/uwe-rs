@@ -47,6 +47,11 @@ pub trait Host {
 
     fn stat(&self, path: &Path) -> Option<Stat>;
 
+    /// Associates a workflow path with provider metadata for planning.
+    fn map_storage(&self, _: &Path, _: &str) -> std::io::Result<()> {
+        Ok(())
+    }
+
     /// Whether a path is a symbolic link, without following it.
     fn is_symlink(&self, path: &Path) -> bool {
         std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink())

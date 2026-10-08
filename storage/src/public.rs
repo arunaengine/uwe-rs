@@ -35,6 +35,7 @@ impl PublicBuckets {
         let (_, text) = self.web.answer(&listing).await?;
         Ok(text.contains("<Key>").then_some(Metadata {
             directory: true,
+            modified: None,
             size: 0,
             version: None,
         }))

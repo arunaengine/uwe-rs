@@ -432,9 +432,12 @@ pub fn build(
                 .is_none()
         {
             inputs.push(Input {
-                path: file,
+                path: file.clone(),
                 source: address,
-                directory: false,
+                directory: interpreter
+                    .host
+                    .stat(&interpreter.host.resolve(&file))
+                    .is_some_and(|stat| stat.kind == python_evaluator::FileKind::Directory),
                 content: None,
                 ..Default::default()
             });

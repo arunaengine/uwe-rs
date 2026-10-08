@@ -48,6 +48,11 @@ impl Folder {
         match tokio::fs::metadata(path).await {
             Ok(found) => Ok(Some(Metadata {
                 directory: found.is_dir(),
+                modified: found
+                    .modified()
+                    .ok()
+                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|time| time.as_secs()),
                 size: if found.is_dir() { 0 } else { found.len() },
                 version: modified(&found),
             })),

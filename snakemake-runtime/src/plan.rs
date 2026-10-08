@@ -628,6 +628,18 @@ impl Planner {
             Ok(filled)
         };
         let output = fill(&rule.output, "output")?;
+        for value in input.values.iter().chain(&output.values) {
+            if let Some(address) = value.tag(crate::storage::TAG).and_then(Value::as_str)
+                && let Some(file) = value.as_str()
+            {
+                interpreter
+                    .host
+                    .map_storage(&interpreter.host.resolve(file), address)
+                    .map_err(|error| {
+                        Failure::Error(crate::workflow::workflow_error(error.to_string()))
+                    })?;
+            }
+        }
         let log = fill(&rule.log, "log")?;
         let benchmark = match &rule.benchmark {
             Some(benchmark) => match benchmark.as_str() {
@@ -708,8 +720,7 @@ impl Planner {
                     job.assumed |= self.jobs[producer].assumed;
                     job.dependencies.push((file, producer));
                 }
-                // A file in storage counts as present.
-                Ok(None) if stored => {}
+                Ok(None) if stored && self.assume_inputs => {}
                 Ok(None) => {
                     if !self.exists(interpreter, &file) {
                         if !self.assume_inputs {
@@ -723,7 +734,7 @@ impl Planner {
                     }
                 }
                 Err(failure) => {
-                    if stored || self.exists(interpreter, &file) {
+                    if (stored && self.assume_inputs) || self.exists(interpreter, &file) {
                         continue;
                     }
                     return Err(failure);
@@ -1093,6 +1104,12 @@ fn add_function_result(
                     value = value.with_tag(flag, flag_value.clone());
                 }
             }
+        }
+        if let Some(Value::Tuple(defaults)) = value.tag("storage_default").map(Value::plain)
+            && let [provider, prefix] = defaults.as_ref()
+            && let (Some(provider), Some(prefix)) = (provider.as_str(), prefix.as_str())
+        {
+            value = crate::storage::default_file(interpreter, &value, provider, prefix)?;
         }
         items.push(value);
     }

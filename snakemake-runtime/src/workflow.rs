@@ -285,6 +285,7 @@ pub struct State {
     pub modifiers: Vec<Modifier>,
     /// The workflow profile, which Snakemake reads as default command-line options.
     pub profile: crate::profile::Profile,
+    pub storage_providers: HashMap<String, String>,
     /// Local copies of workflow files on the web.
     pub mirrors: Rc<Mirrors>,
     /// Parsed Snakefiles by path, for the statements their code reaches.
@@ -337,6 +338,7 @@ impl State {
             shell_executable: None,
             modifiers: vec![Modifier::root(globals)],
             profile: crate::profile::Profile::default(),
+            storage_providers: HashMap::new(),
             validations: Vec::new(),
             pep: None,
             lifecycle: HashMap::new(),
@@ -466,6 +468,22 @@ impl StatementHook for Hook {
                     _ => None,
                 };
                 crate::storage::check_provider(provider.as_deref())?;
+                let provider = provider.unwrap();
+                let tag = args
+                    .take_keyword("tag")
+                    .filter(|value| !value.is_none())
+                    .map(|value| interpreter.to_str(&value))
+                    .transpose()?
+                    .or_else(|| storage.tag.as_ref().map(|tag| tag.text.clone()));
+                if !args.keywords.is_empty() {
+                    return Err(Error::unsupported(
+                        "Snakemake storage plugin options; configure provider credentials in iunctus storage settings",
+                    ));
+                }
+                self.state
+                    .borrow_mut()
+                    .storage_providers
+                    .insert(tag.unwrap_or_else(|| provider.clone()), provider);
             }
         }
         Ok(true)
@@ -1378,6 +1396,21 @@ impl Hook {
         Ok(Some(named))
     }
 
+    fn stored_file(
+        &self,
+        interpreter: &mut Interpreter,
+        value: &Value,
+        property: &str,
+    ) -> Result<Value, Error> {
+        let profile = self.state.borrow().profile.clone();
+        match profile.storage_provider {
+            Some(provider) if ["input", "output"].contains(&property) => {
+                crate::storage::default_file(interpreter, value, &provider, &profile.storage_prefix)
+            }
+            _ => Ok(value.clone()),
+        }
+    }
+
     /// An input or output file with the default flags of `inputflags:` or `outputflags:`, as
     /// Snakemake's `DefaultFlags.apply` gives them: each flag that the file does not have yet,
     /// unless it has one that contradicts it (`temp` and `protected`). Logs get none.
@@ -1437,7 +1470,8 @@ impl Hook {
             Value::Str(_) => {
                 let modified = self.state.borrow().modify_path(value, property, skips);
                 let modified = self.default_flags(interpreter, &modified, property)?;
-                items.push(apply_pathvars(pathvars, &modified)?);
+                let modified = apply_pathvars(pathvars, &modified)?;
+                items.push(self.stored_file(interpreter, &modified, property)?);
                 if let Some(name) = name {
                     items.add_name(name);
                 }
@@ -1454,7 +1488,8 @@ impl Hook {
                 let text = retag(value, Value::str(text));
                 let modified = self.state.borrow().modify_path(&text, property, skips);
                 let modified = self.default_flags(interpreter, &modified, property)?;
-                items.push(apply_pathvars(pathvars, &modified)?);
+                let modified = apply_pathvars(pathvars, &modified)?;
+                items.push(self.stored_file(interpreter, &modified, property)?);
                 if let Some(name) = name {
                     items.add_name(name);
                 }
@@ -1470,6 +1505,18 @@ impl Hook {
                 let function = match levels.is_empty() || value.tag(MODULE_PATHS).is_some() {
                     true => value.clone(),
                     false => value.with_tag(MODULE_PATHS, levels_value(&levels)),
+                };
+                let profile = self.state.borrow().profile.clone();
+                let function = if let Some(provider) = profile.storage_provider {
+                    function.with_tag(
+                        "storage_default",
+                        Value::tuple(vec![
+                            Value::str(provider),
+                            Value::str(profile.storage_prefix),
+                        ]),
+                    )
+                } else {
+                    function
                 };
                 items.push(function);
                 if let Some(name) = name {

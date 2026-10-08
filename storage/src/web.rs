@@ -121,6 +121,9 @@ impl Web {
             let header = |name| headers.get(name)?.to_str().ok().map(str::to_owned);
             return Ok(Some(Metadata {
                 directory: false,
+                modified: header(LAST_MODIFIED)
+                    .and_then(|value| opendal::raw::Timestamp::parse_rfc2822(&value).ok())
+                    .and_then(|time| u64::try_from(time.into_inner().as_second()).ok()),
                 size,
                 version: header(ETAG).or_else(|| header(LAST_MODIFIED)),
             }));

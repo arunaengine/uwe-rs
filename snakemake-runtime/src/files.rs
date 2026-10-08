@@ -27,6 +27,7 @@ pub struct WorkflowFiles {
     mirrors: Rc<Mirrors>,
     /// Outputs of finished tasks by their absolute path in the working directory.
     produced: RefCell<BTreeMap<PathBuf, Produced>>,
+    stored: RefCell<BTreeMap<PathBuf, (String, Option<storage::Metadata>)>>,
     /// Output of `print` and of logging while the workflow is planned.
     pub messages: RefCell<Vec<String>>,
     /// Runs the commands of workflow code as tasks, once the driver connects it.
@@ -51,6 +52,7 @@ impl WorkflowFiles {
             local: LocalHost::new(workdir),
             mirrors,
             produced: RefCell::new(BTreeMap::new()),
+            stored: RefCell::new(BTreeMap::new()),
             messages: RefCell::new(Vec::new()),
             commands: RefCell::new(None),
             last_output_read: RefCell::new(None),
@@ -135,6 +137,13 @@ impl Host for WorkflowFiles {
                 workflow_graph::files::read(files.as_deref(), &location.to_string_lossy())
             }
             None => {
+                if let Some((address, _)) = self.stored.borrow().get(path) {
+                    let local = self
+                        .mirrors
+                        .stored(address)
+                        .map_err(std::io::Error::other)?;
+                    return std::fs::read(local);
+                }
                 self.mirrors.fetch(path)?;
                 self.local.read(path)
             }
@@ -155,6 +164,17 @@ impl Host for WorkflowFiles {
                 },
                 size: metadata.map_or(0, |metadata| metadata.len()),
                 modified: 0.0,
+            });
+        }
+        if let Some((_, metadata)) = self.stored.borrow().get(path) {
+            return metadata.as_ref().map(|metadata| Stat {
+                kind: if metadata.directory {
+                    FileKind::Directory
+                } else {
+                    FileKind::File
+                },
+                size: metadata.size,
+                modified: metadata.modified.unwrap_or(0) as f64,
             });
         }
         // A file on the web that cannot be downloaded counts as missing.
@@ -201,6 +221,24 @@ impl Host for WorkflowFiles {
             return Err(std::io::ErrorKind::NotFound.into());
         }
         Ok(names.into_iter().collect())
+    }
+
+    fn map_storage(&self, path: &Path, address: &str) -> std::io::Result<()> {
+        if !self.on_disk.get() || self.location(path).is_some() {
+            return Ok(());
+        }
+        let mut stored = self.stored.borrow_mut();
+        if let Some((known, _)) = stored.get(path) {
+            if known != address {
+                return Err(std::io::Error::other(
+                    "storage queries map different objects to the same local path",
+                ));
+            }
+            return Ok(());
+        }
+        let metadata = self.mirrors.stat(address).map_err(std::io::Error::other)?;
+        stored.insert(path.to_owned(), (address.to_owned(), metadata));
+        Ok(())
     }
 
     fn write(&self, path: &Path, data: &[u8], append: bool) -> std::io::Result<()> {

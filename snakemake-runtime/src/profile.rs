@@ -22,6 +22,8 @@ pub struct Profile {
     pub set_threads: Vec<(String, String)>,
     pub retries: Option<u32>,
     pub rerun_triggers: Option<Vec<String>>,
+    pub storage_provider: Option<String>,
+    pub storage_prefix: String,
 }
 
 pub const RERUN_TRIGGERS: [&str; 5] = ["mtime", "params", "input", "software-env", "code"];
@@ -164,6 +166,12 @@ impl Profile {
         if other.rerun_triggers.is_some() {
             self.rerun_triggers = other.rerun_triggers;
         }
+        if other.storage_provider.is_some() {
+            self.storage_provider = other.storage_provider;
+        }
+        if !other.storage_prefix.is_empty() {
+            self.storage_prefix = other.storage_prefix;
+        }
     }
 
     /// Reads the settings of a profile folder.
@@ -202,6 +210,12 @@ impl Profile {
                     }
                 }
                 "config" => profile.config = pairs(interpreter, &value)?,
+                "default-storage-provider" => {
+                    let provider = interpreter.to_str(&value)?;
+                    crate::storage::check_provider(Some(&provider))?;
+                    profile.storage_provider = Some(provider);
+                }
+                "default-storage-prefix" => profile.storage_prefix = interpreter.to_str(&value)?,
                 "default-resources" | "default-res" => {
                     profile.default_resources = pairs(interpreter, &value)?
                 }

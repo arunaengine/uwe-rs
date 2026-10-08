@@ -24,6 +24,7 @@ mod paramspace;
 mod pathvars;
 mod pattern;
 mod pep;
+mod pipes;
 mod plan;
 mod profile;
 mod python;

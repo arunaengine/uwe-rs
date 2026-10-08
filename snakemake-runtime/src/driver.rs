@@ -557,26 +557,6 @@ impl Session {
                         }
                     }
                 }
-                for value in &planner.jobs[*job].output.values {
-                    if value.tag("pipe").is_none() {
-                        continue;
-                    }
-                    let Some(file) = value.as_str() else { continue };
-                    let needed = self.needrun.get(job).copied().unwrap_or(false)
-                        || self.order.iter().any(|consumer| {
-                            self.needrun.get(consumer).copied().unwrap_or(false)
-                                && planner.jobs[*consumer]
-                                    .dependencies
-                                    .iter()
-                                    .any(|(input, producer)| *producer == *job && input == file)
-                        });
-                    if needed {
-                        return Err(DriverError::unsupported(format!(
-                            "pipe output {file} of rule {} requires FIFO creation and concurrent producer/consumer execution, which this Snakemake runtime does not support",
-                            planner.rules[planner.jobs[*job].rule].name
-                        )));
-                    }
-                }
             }
         }
         outputs.sort();
@@ -595,6 +575,21 @@ impl Session {
                 return Err(self.error(&crate::workflow::workflow_error(message)));
             }
         }
+        self.components = crate::groups::components(
+            &mut self.interpreter,
+            planner,
+            &self.order,
+            &self.needrun,
+            &self.tasks,
+        )
+        .map_err(|error| driver_error(&error, &self.workdir))?;
+        crate::pipes::components(
+            planner,
+            &self.order,
+            &mut self.needrun,
+            &mut self.components,
+        )
+        .map_err(DriverError::new)?;
         self.position = self
             .order
             .iter()
@@ -623,14 +618,6 @@ impl Session {
             self.remaining.insert(*job, count);
         }
         self.roots = roots;
-        self.components = crate::groups::components(
-            &mut self.interpreter,
-            planner,
-            &self.order,
-            &self.needrun,
-            &self.tasks,
-        )
-        .map_err(|error| driver_error(&error, &self.workdir))?;
         Ok(())
     }
 
@@ -692,7 +679,11 @@ impl Session {
                 continue;
             }
             let services = crate::services::service_files(entry);
-            if !services.is_empty() {
+            let piped = self
+                .components
+                .get(&job)
+                .is_some_and(|jobs| !crate::pipes::files(planner, jobs).is_empty());
+            if !services.is_empty() && !piped {
                 tasks.extend(self.service_group(job, &services, None)?);
                 continue;
             }
@@ -1472,8 +1463,8 @@ impl Session {
             return Ok(None);
         }
         let services = crate::services::service_files(&planner.jobs[*job]);
-        if services.is_empty() {
-            let jobs = members.iter().map(|(job, _)| *job).collect::<Vec<_>>();
+        let jobs = members.iter().map(|(job, _)| *job).collect::<Vec<_>>();
+        if services.is_empty() || !crate::pipes::files(planner, &jobs).is_empty() {
             return self.rule_group(&jobs, Some(id));
         }
         self.service_group(*job, &services, Some(id))
@@ -1532,17 +1523,28 @@ impl Session {
             declared.push((*job, task.outputs.clone()));
             members.push(task);
         }
+        let pipes = crate::pipes::files(planner, jobs);
+        let services: Vec<_> = jobs
+            .iter()
+            .flat_map(|job| crate::services::service_files(&planner.jobs[*job]))
+            .collect();
         if members
             .iter()
             .any(|member| member.image != members[0].image)
         {
+            if !pipes.is_empty() {
+                return Err(DriverError::unsupported(
+                    "Snakemake pipe jobs must run together and require the same container image",
+                ));
+            }
             tracing::debug!(jobs = ?jobs, "Snakemake group uses different images; running separate tasks");
             for job in jobs {
                 self.components.remove(job);
             }
             return Ok(None);
         }
-        let mut task = crate::groups::combine(&members, id).map_err(DriverError::new)?;
+        let mut task =
+            crate::groups::combine(&members, id, &pipes, &services).map_err(DriverError::new)?;
         if retry.is_some() || jobs.iter().any(|job| self.forced.contains(job)) {
             task.reuse = workflow_graph::Reuse::Denied;
         }
@@ -1599,9 +1601,9 @@ impl Session {
             .filter_map(|value| Some((value.as_str()?.to_owned(), value.tag("ensure")?.clone())))
             .collect();
         let wildcards = crate::objects::NamedList::wildcards(&entry.wildcards);
-        // A service is no file that stays, as Snakemake's `wait_for_files` ignores it.
+        // Pipes and services do not become stored output files.
         let outputs: Vec<String> = (entry.output.values.iter())
-            .filter(|value| value.tag("service").is_none())
+            .filter(|value| value.tag("service").is_none() && value.tag("pipe").is_none())
             .filter_map(|value| value.as_str().map(str::to_owned))
             .collect();
         let made = |outcome: &Outcome, output: &str| {

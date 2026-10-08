@@ -27,7 +27,7 @@ workflowhub/393 1 iunctus: main.nf:68:15: AbortOperationException: the run exits
 workflowhub/402 1 iunctus: action.nf:182:2: IllegalArgumentException: A process input channel evaluates to null
 workflowhub/416 33 iunctus: Nextflow/Genome-downloader.nf:19:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 workflowhub/417 1 iunctus: main.nf:201:5: AbortOperationException: the run exits with code 1
-workflowhub/418 ok
+workflowhub/418 33 iunctus: Not supported yet: publish mode `move`: task outputs must remain in the content store
 workflowhub/419 1 iunctus: main.nf:98:13: AbortOperationException: the run exits with code 1
 workflowhub/431 1 iunctus: main.nf:77:2: AbortOperationException: the run exits with code 1
 workflowhub/435 33 iunctus: sqtlseeker2.nf:26:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
@@ -42,14 +42,14 @@ workflowhub/453 1 iunctus: <cache>/workflow holds no workflow iunctus knows: no 
 workflowhub/454 ok
 workflowhub/462 1 iunctus: workflows/genomes_annotation.nf:6:18: AbortOperationException: Missing `fromPath` parameter
 workflowhub/480 1 iunctus: Workflow/NextFlow/covid19_pilot.nf:21:68: IllegalArgumentException: Must specify a non-null value for the 'to' index in a Range
-workflowhub/556 1 iunctus: workflows/../subworkflows/local/apply_score.nf:227:24: NullPointerException: Cannot invoke method split() on null object
+workflowhub/556 33 iunctus: Not supported yet: process directive `storeDir`
 workflowhub/560 1 iunctus: main.nf:86:6: AbortOperationException: the run exits with code 1
-workflowhub/638 ok
+workflowhub/638 33 iunctus: Not supported yet: process directive `maxForks`
 workflowhub/654 1 iunctus: workflows/annotato.nf:36:5: AbortOperationException: Input genome is not specified!
 workflowhub/664 ok
 workflowhub/665 ok
-workflowhub/666 ok
-workflowhub/667 ok
+workflowhub/666 33 iunctus: Not supported yet: process directive `maxForks`
+workflowhub/667 33 iunctus: Not supported yet: process directive `maxForks`
 workflowhub/668 1 iunctus: workflows/../subworkflows/local/../../modules/nf-core/custom/getchromsizes/main.nf:44:22: MissingPropertyException: No such variable: prefix
 workflowhub/683 ok
 workflowhub/691 1 iunctus: main.nf:76:2: AbortOperationException: the run exits with code 1
@@ -134,22 +134,22 @@ workflowhub/1250 1 iunctus: workflows/rangeland.nf:88:19: NoSuchFileException: N
 workflowhub/1263 1 iunctus: main.nf:103:2: AbortOperationException: the run exits with code 1
 workflowhub/1266 1 iunctus: ProcessUnrecoverableException: Input tuple does not match tuple declaration in process `NFCORE_DRUGRESPONSEEVAL:DRUGRESPONSEEVAL:MODEL_TESTING:VISUALIZE_RESULTS` -- offending value: [assets/NO_FILE, assets/NO_FILE]
 workflowhub/1293 ok
-workflowhub/1306 1 iunctus: IllegalStateException: Error while parsing JSON content - cause: JsonException: Invalid JSON: unexpected end
+workflowhub/1306 33 iunctus: Not supported yet: process directive `executor`
 workflowhub/1307 ok
 workflowhub/1320 1 iunctus: workflows/curationpretext_allf.nf:14:50: NoSuchFileException: No such file or directory: TreeValTinyData/genomic_data/pacbio
 workflowhub/1321 1 iunctus: workflows/curationpretext_allf.nf:14:50: NoSuchFileException: No such file or directory: TreeValTinyData/genomic_data/pacbio
 workflowhub/1330 1 iunctus: workflows/annoaudit.nf:20:5: AbortOperationException: Input genome is not specified!
 workflowhub/1360 1 iunctus: ProcessFailedException: Process `NFCORE_METHYLONG:METHYLONG:ONT:ONT_TRIM_REPAIR:PORECHOP_PORECHOP (homo_sapiens)` terminated with an error exit status (2)
 workflowhub/1727 1 iunctus: <cache>/workflow holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
-workflowhub/1735 ok
+workflowhub/1735 33 iunctus: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented
 workflowhub/1742 ok
 workflowhub/1757 1 iunctus: workflows/../subworkflows/local/fastq_fasta_mash_screen/../../../modules/nf-core/cat/cat/main.nf:59:55: StringIndexOutOfBoundsException: begin -1, end 1, length 1
-workflowhub/1763 1 iunctus: workflows/pathogensurveillance.nf:38:5: NoSuchFileException: assets/.pathogensurveillance_output.json
+workflowhub/1763 33 iunctus: Unable to parse config file: 'conf/modules.config'
 workflowhub/1769 1 iunctus: NoSuchFileException: params_ccrcc.csv
 workflowhub/1782 1 iunctus: the input `taxdb` is required, but has no value
-workflowhub/1787 ok
+workflowhub/1787 33 iunctus: Not supported yet: process directive `maxForks`
 workflowhub/1795 1 WARNING: Could not load nf-core/config/eisca profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/eisca.config
-workflowhub/1814 ok
+workflowhub/1814 1 iunctus: cannot read sample-sheet schema assets/schema_input.json: No such file or directory
 workflowhub/1841 1 iunctus: Unable to parse config file: 'conf/module.config'
 workflowhub/1846 ok
 workflowhub/1862 1 iunctus: NoSuchFileException: No such file or directory: /mnt/tblab/yolanda/CBRA_new_modules/CBRA/assets/gene_list.csv
@@ -164,7 +164,7 @@ workflowhub/2033 1 iunctus: IllegalStateException: Error while parsing JSON cont
 workflowhub/2037 1 iunctus: ProcessUnrecoverableException: Path value cannot be null
 workflowhub/2040 1 WARNING: Could not load nf-core/config/eista profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/eista.config
 workflowhub/2053 1 iunctus: <cache>/workflow holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
-workflowhub/2054 ok
+workflowhub/2054 33 iunctus: Not supported yet: process directive `maxForks`
 workflowhub/2080 1 iunctus: main.nf:89:16: AbortOperationException: No files found matching the pattern reads/*_R{1,2}.fastq.gz
 workflowhub/2105 1 iunctus: subworkflows/local/prepare_genome.nf:62:53: NoSuchFileException: No such file or directory: /data/CCBR_Pipeliner/db/PipeDB/Indices/hg38_basic/indexes/hg38.blacklist_v3.chrM.chr_rDNA.fa
 workflowhub/2110 1 iunctus: quantify_and_align.nf:26:10: the included file include/xic-extractor/main.nf does not exist

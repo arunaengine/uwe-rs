@@ -631,8 +631,8 @@ impl Run {
             NodeKind::Steps => self.execute_steps(index),
             NodeKind::Dag => self.execute_dag(index),
             NodeKind::Suspend => {
-                self.suspend(index);
-                Ok(())
+                self.arm_active(index);
+                self.suspend(index)
             }
             NodeKind::Plugin => self.start_plugin(index),
             _ if template.resource.as_ref().is_some_and(runs_workflow) => {
@@ -658,6 +658,7 @@ impl Run {
             NodeKind::Steps => self.execute_steps(index),
             NodeKind::Dag => self.execute_dag(index),
             NodeKind::Retry => self.continue_retry(index),
+            NodeKind::Suspend => self.suspend(index),
             NodeKind::TaskGroup => {
                 for child in self.nodes[index].children.clone() {
                     if !self.nodes[child].phase.fulfilled() {
@@ -745,10 +746,28 @@ impl Run {
         self.nodes[index].outputs = outputs;
     }
 
-    fn suspend(&mut self, index: usize) {
+    fn suspend(&mut self, index: usize) -> Result<()> {
         let Some(processed) = self.nodes[index].processed.clone() else {
-            return;
+            return Ok(());
         };
+        let duration = processed
+            .template
+            .suspend
+            .as_ref()
+            .and_then(|suspend| suspend.duration.as_ref())
+            .ok_or_else(|| {
+                Failure::unsupported("suspend without duration requires manual resume")
+            })?;
+        let duration = crate::resources::duration(&duration.0)
+            .ok_or_else(|| Failure::error("suspend.duration has invalid duration format"))?;
+        let at = self.nodes[index]
+            .started_at
+            .checked_add(duration)
+            .ok_or_else(|| Failure::error("suspend.duration overflow"))?;
+        if self.clock < at {
+            self.waits.insert(index, at);
+            return Ok(());
+        }
         let mut parameters = Vec::new();
         for parameter in &processed.template.outputs.parameters {
             let supplied = parameter.value_from.as_ref();
@@ -770,19 +789,9 @@ impl Run {
             };
             parameters.push((parameter.name.clone(), value));
         }
-        if processed
-            .template
-            .suspend
-            .as_ref()
-            .is_some_and(|suspend| suspend.duration.is_none())
-        {
-            self.warn(format!(
-                "suspend template {} resumes at once, as if `argo resume` came",
-                processed.template.name
-            ));
-        }
         self.nodes[index].outputs.parameters = parameters;
         self.set_phase(index, Phase::Succeeded, String::new());
+        Ok(())
     }
 
     /// Finds the template a holder names, and where its own references resolve.

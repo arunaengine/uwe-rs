@@ -161,3 +161,39 @@ fn engine_waits_cleanup() {
     assert!(cleaned.load(Ordering::SeqCst));
     assert!(result.error.unwrap().to_string().contains("timeout"));
 }
+
+#[test]
+fn timed_suspend_waits() {
+    let mut run = run("  templates:\n  - name: main\n    suspend: {duration: 20ms}\n");
+    assert!(run.operate().unwrap().is_empty());
+    let deadline = run.waits[&0];
+    run.clock += Duration::from_millis(19);
+    assert!(run.operate().unwrap().is_empty());
+    assert_eq!(run.nodes[0].phase, Phase::Running);
+    run.wake(deadline).unwrap();
+    assert_eq!(run.nodes[0].phase, Phase::Succeeded);
+    assert!(run.result().is_ok());
+}
+
+#[test]
+fn suspend_allows_siblings() {
+    let mut run = run(
+        "  templates:\n  - name: main\n    steps:\n    - - {name: wait, template: wait}\n      - {name: work, template: work}\n    - - {name: after, template: work}\n  - name: wait\n    suspend: {duration: 5s}\n  - name: work\n    container: {image: debian:stable-slim}\n",
+    );
+    let tasks = run.operate().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert!(tasks[0].name.ends_with("work"));
+    assert!(
+        run.complete(Outcome {
+            id: tasks[0].id,
+            ..Outcome::default()
+        })
+        .unwrap()
+        .is_empty()
+    );
+    let deadline = *run.waits.values().next().unwrap();
+    let next = run.wake(deadline).unwrap();
+    assert_eq!(next.len(), 1);
+    assert!(next[0].name.ends_with("after"));
+    assert_eq!(next[0].after, vec![tasks[0].id]);
+}

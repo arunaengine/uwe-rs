@@ -110,7 +110,7 @@ impl Ftp {
                     .mdtm(&parts.path)
                     .await
                     .ok()
-                    .and_then(|time| u64::try_from(time.and_utc().timestamp()).ok()),
+                    .map(|time| time.and_utc().into()),
                 size: size as u64,
                 version: None,
             }),

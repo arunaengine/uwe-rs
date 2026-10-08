@@ -181,7 +181,10 @@ impl Host for WorkflowFiles {
                     FileKind::File
                 },
                 size: metadata.size,
-                modified: metadata.modified.unwrap_or(0) as f64,
+                modified: metadata
+                    .modified
+                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map_or(0.0, |time| time.as_secs_f64()),
             });
         }
         // A file on the web that cannot be downloaded counts as missing.

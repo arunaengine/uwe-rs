@@ -239,3 +239,26 @@ fn stages_unflagged_inputs() {
     assert_eq!(tasks[0].step, "make");
     assert_eq!(tasks[0].inputs[0].source, "s3://bucket/in");
 }
+
+#[test]
+fn retains_storage_times() {
+    let folder = tempfile::tempdir().unwrap();
+    for name in ["in", "out"] {
+        std::fs::write(folder.path().join(name), name).unwrap();
+    }
+    let launch = launch(
+        folder.path(),
+        "rule make:\n    input: storage.fs('in')\n    output: storage.fs('out')\n    shell: 'cat {input} > {output}'\n",
+    );
+    for (input, output, count) in [(200, 100, 1), (200, 300, 0)] {
+        for (name, nanos) in [("in", input), ("out", output)] {
+            let time = std::time::UNIX_EPOCH + std::time::Duration::new(100, nanos);
+            std::fs::File::open(folder.path().join(name))
+                .unwrap()
+                .set_times(std::fs::FileTimes::new().set_modified(time))
+                .unwrap();
+        }
+        let mut session = Session::new(&launch, &Storage::default()).unwrap();
+        assert_eq!(session.start().unwrap().len(), count);
+    }
+}

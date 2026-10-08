@@ -123,7 +123,7 @@ impl Web {
                 directory: false,
                 modified: header(LAST_MODIFIED)
                     .and_then(|value| opendal::raw::Timestamp::parse_rfc2822(&value).ok())
-                    .and_then(|time| u64::try_from(time.into_inner().as_second()).ok()),
+                    .map(std::time::SystemTime::from),
                 size,
                 version: header(ETAG).or_else(|| header(LAST_MODIFIED)),
             }));

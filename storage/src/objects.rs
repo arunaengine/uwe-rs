@@ -200,9 +200,7 @@ impl Objects {
                     let changed = found.last_modified().map(|time| time.to_string());
                     return Ok(Some(Metadata {
                         directory: false,
-                        modified: found
-                            .last_modified()
-                            .and_then(|time| u64::try_from(time.into_inner().as_second()).ok()),
+                        modified: found.last_modified().map(std::time::SystemTime::from),
                         size: found.content_length(),
                         version: location
                             .version

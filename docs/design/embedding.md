@@ -43,7 +43,7 @@ The form format remains `FORMAT = 1`. `remote_content_checked: false` is accurat
 
 `Form::response()` returns `FormResponse`, and `Form::validate_response(values)` returns `ValidationResponse`. Both derive serde serialization and deserialization, including nested diagnostic branches. The existing `json()` and `validate()` methods retain their version 1 JSON format. Round-trip checks cover accepted, rejected and unavailable responses and preserve serialized bytes.
 
-Aruna integration uses the generic TES executor plus S3 storage; TES-over-S3 staging is still being implemented.
+Aruna integration uses the generic TES executor with object-store staging through S3 (`staging = "object-store"`); it was checked against Funnel and MinIO.
 
 ## Configuration and validation boundaries
 

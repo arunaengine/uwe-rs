@@ -2,162 +2,160 @@
 # -order shuffled:1` with the simulator for every pipeline of the test workflows:
 # `ok` (with a valid execution graph), or the exit code and the first line of the error (33
 # for unsupported features). run_evidence.txt says why each pipeline that fails cannot run.
-# Recorded offline with one workflow at a time in a network-isolated namespace.
-# Remote inputs and metadata absent from the local cache are unavailable.
-abotyper 1 iunctus: subworkflows/local/utils_nfcore_abotyper_pipeline/main.nf:112:19: SchemaValidationException: The following errors have been detected in assets/samplesheet_test_abotyper.csv:
-airrflow 1 iunctus: subworkflows/local/utils_nfcore_airrflow_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+abotyper ok
+airrflow ok
 alleleexpression 1 iunctus: main.nf:35:9: AbortOperationException: Input samplesheet not specified!
-ampliseq 1 iunctus: subworkflows/local/utils_nfcore_ampliseq_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-atacseq 1 iunctus: main.nf:52:5: SchemaValidationException: The following invalid input values have been detected:
-bacass 1 iunctus: subworkflows/local/utils_nfcore_bacass_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-bacmodel 1 iunctus: subworkflows/local/utils_nfcore_bacmodel_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
+ampliseq 1 iunctus: workflows/../subworkflows/local/../../modules/nf-core/cutadapt/main.nf:14:37: MissingPropertyException: No such variable: outformat
+atacseq ok
+bacass ok
+bacmodel 1 iunctus: workflows/../subworkflows/nf-core/utils_nfcore_pipeline/main.nf:82:20: NullPointerException: Cannot invoke method collectEntries() on null object
 bactmap ok
-bamtofastq 1 iunctus: subworkflows/local/utils_nfcore_bamtofastq_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
+bamtofastq ok
 cageseq 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-callingcards 1 WARNING: Could not load nf-core/config/callingcards profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/callingcards.config
-cellpainting 1 iunctus: subworkflows/local/utils_nfcore_cellpainting_pipeline/main.nf:105:22: SchemaValidationException: The following errors have been detected in assets/samplesheet.csv:
-chipseq 1 WARNING: Could not load nf-core/config/chipseq profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/chipseq.config
-circdna 1 iunctus: main.nf:43:5: SchemaValidationException: The following invalid input values have been detected:
-circrna 1 iunctus: subworkflows/local/utils_nfcore_circrna_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+callingcards 1 iunctus: workflows/../subworkflows/local/yeast/prepare_reads.nf:211:17: IndexOutOfBoundsException: index is out of range 0..-1 (index = 0)
+cellpainting ok
+chipseq 1 iunctus: workflows/../subworkflows/nf-core/utils_nfcore_pipeline/main.nf:106:16: NullPointerException: Cannot invoke method collectEntries() on null object
+circdna ok
+circrna 1 iunctus: MissingFileException: Missing output file(s) `mirna.targets.tsv` expected by process `NFCORE_CIRCRNA:CIRCRNA:MIRNA_PREDICTION:MIRNA_BINDINGSITES:MAJORITY_VOTE (mirna)`
 clipseq 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-coproid 1 iunctus: subworkflows/local/utils_nfcore_coproid_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-createpanelrefs 1 iunctus: subworkflows/local/utils_nfcore_createpanelrefs_pipeline/main.nf:149:9: SchemaValidationException: The following invalid input values have been detected:
-createtaxdb 1 iunctus: subworkflows/local/utils_nfcore_createtaxdb_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-crisprseq 1 iunctus: subworkflows/local/utils_nfcore_crisprseq_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
+coproid 1 iunctus: MissingFileException: Missing output file(s) `*.report.sourcepredict.csv` expected by process `NFCORE_COPROID:COPROID:KRAKEN2_CLASSIFICATION:SOURCEPREDICT (samples_combined)`
+createpanelrefs ok
+createtaxdb ok
+crisprseq ok
 crisprvar 1 iunctus: Unknown configuration profile: 'test'
-cutandrun 1 iunctus: main.nf:56:5: SchemaValidationException: The following invalid input values have been detected:
+cutandrun ok
 daamicrobiome 1 iunctus: the input `sim_abs_logfc` must be a text, but it is a list
 dartseq 1 iunctus: subworkflows/local/utils_nfcore_dartseq_pipeline/main.nf:104:19: SchemaValidationException: The following errors have been detected in assets/samplesheet_4samples_local.csv:
-datasync 1 iunctus: subworkflows/local/utils_nfcore_datasync_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
+datasync ok
 ddamsproteomics 33 iunctus: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-deepmodeloptim 1 iunctus: subworkflows/local/utils_nfcore_deepmodeloptim_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
-deepmutscan 1 iunctus: subworkflows/local/utils_nfcore_deepmutscan_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
+deepmodeloptim 1 iunctus: workflows/../subworkflows/local/tune/../../../modules/local/custom/modify_model_config/main.nf:15:15: MissingValueException: Missing value declared as output parameter: meta_updated
+deepmutscan ok
 deepvariant 33 iunctus: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 demo ok
-demultiplex 1 iunctus: subworkflows/local/utils_nfcore_demultiplex_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
+demultiplex 1 iunctus: workflows/../subworkflows/nf-core/bcl_demultiplex/main.nf:65:23: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/simulator/<run>/work/1/220422_M11111_0222_000000000-K9H97/*.xml`
 denovohybrid 33 iunctus: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-denovotranscript 1 iunctus: subworkflows/local/utils_nfcore_denovotranscript_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
-detaxizer 1 iunctus: subworkflows/local/utils_nfcore_detaxizer_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+denovotranscript 1 iunctus: workflows/../subworkflows/nf-core/fastq_trim_fastp_fastqc/main.nf:15:26: IllegalArgumentException: Text must not be null or empty
+detaxizer ok
 diaproteomics 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-differentialabundance 1 iunctus: subworkflows/local/utils_nfcore_differentialabundance_pipeline/main.nf:430:13: SchemaValidationException: /contrasts (https://raw.githubusercontent.com/nf-core/test-datasets/refs/heads/differentialabundance/testdata/SRP254919.contrasts.yaml): could not validate file format of 'https://raw.githubusercontent.com/nf-core/test-datasets/refs/heads/differentialabundance/testdata/SRP254919.contrasts.yaml': IOException: cannot find https://raw.githubusercontent.com/nf-core/test-datasets/refs/heads/differentialabundance/testdata/SRP254919.contrasts.yaml (the web, without credentials): error sending request: client error (Connect): dns error: error resolving DNS: failed to lookup address information: Temporary failure in name resolution
-diseasemodulediscovery 1 iunctus: subworkflows/local/utils_nfcore_diseasemodulediscovery_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-drop 1 iunctus: subworkflows/local/utils_nfcore_drop_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+differentialabundance ok
+diseasemodulediscovery 1 iunctus: workflows/../subworkflows/local/utils_nfcore_diseasemodulediscovery_pipeline/main.nf:331:9: IllegalArgumentException: TSV must have at least one header and one data row
+drop 1 iunctus: workflows/../subworkflows/local/aberrantexpression/../bam_stats_idxstats_merge/main.nf:27:29: NullPointerException: Cannot invoke method getAt() on null object
 drugresponseeval 1 iunctus: Config file does not exist: conf/test.config (No such file or directory)
 dualrnaseq 33 iunctus: main.nf:28:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-eager 33 WARNING: Could not load nf-core/config/eager profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/eager.config
-epigenomesegmentation 1 iunctus: subworkflows/local/utils_nfcore_epigenomesegmentation_pipeline/main.nf:99:19: SchemaValidationException: The following errors have been detected in assets/samplesheet.csv:
-epitopeprediction 1 iunctus: subworkflows/local/utils_nfcore_epitopeprediction_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-evexplorer 1 WARNING: Could not load nf-core/config/evexplorer profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/evexplorer.config
+eager 33 iunctus: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+epigenomesegmentation 1 iunctus: MissingFileException: Missing output file(s) `mm10.chrom.sizes.V2` expected by process `NFCORE_EPIGENOMESEGMENTATION:EPIGENOMESEGMENTATION:PREPARE_GENOME:CUSTOM_FILTERCHROMSIZES (mm10.chrom.sizes)`
+epitopeprediction ok
+evexplorer 1 iunctus: main.nf:107:5: IllegalArgumentException: Workflow `PIPELINE_INITIALISATION` declares 8 input channels but 6 were given
 exoseq 33 iunctus: PairedSingleSampleWF.nf:27:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-fastqrepair 1 iunctus: subworkflows/local/utils_nfcore_fastqrepair_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-fastquorum 1 iunctus: subworkflows/local/utils_nfcore_fastquorum_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-fetchngs 1 iunctus: subworkflows/local/utils_nfcore_fetchngs_pipeline/main.nf:115:9: SchemaValidationException: The following invalid input values have been detected:
-funcprofiler 1 iunctus: subworkflows/local/utils_nfcore_funcprofiler_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-funcscan 1 iunctus: subworkflows/local/utils_nfcore_funcscan_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-genephylomodeler 1 iunctus: subworkflows/local/utils_nfcore_genephylomodeler_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-genomeannotator 1 iunctus: workflows/genomeannotator.nf:13:50: IOException: cannot find https://raw.githubusercontent.com/nf-core/test-datasets/esga/contig.fa (the web, without credentials): error sending request: client error (Connect): dns error: error resolving DNS: failed to lookup address information: Temporary failure in name resolution
-genomeassembler 1 iunctus: subworkflows/local/utils_nfcore_genomeassembler_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-genomeqc 1 iunctus: subworkflows/local/utils_nfcore_genomeqc_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+fastqrepair ok
+fastquorum ok
+fetchngs ok
+funcprofiler ok
+funcscan ok
+genephylomodeler ok
+genomeannotator ok
+genomeassembler 1 iunctus: workflows/../subworkflows/local/prepare/main.nf:208:39: JsonException: Unable to determine the current character, it is not a string, number, array, or object
+genomeqc ok
 genomeskim ok
 genomicrelatedness 1 iunctus: the input `input` is required, but has no value
 gwas 1 iunctus: subworkflows/local/utils_nfcore_gwas_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
 hadge ok
-hgtseq 1 iunctus: workflows/hgtseq.nf:13:50: IOException: cannot find https://raw.githubusercontent.com/nf-core/test-datasets/hgtseq/testdata/csv/input_fastqs.csv (the web, without credentials): error sending request: client error (Connect): dns error: error resolving DNS: failed to lookup address information: Temporary failure in name resolution
-hic 1 iunctus: workflows/hic.nf:19:50: IOException: cannot find https://github.com/nf-core/test-datasets/raw/hic/reference/W303_SGD_2015_JRIU00000000.fsa (the web, without credentials): error sending request: client error (Connect): dns error: error resolving DNS: failed to lookup address information: Temporary failure in name resolution
-hicar 1 iunctus: workflows/hicar.nf:17:18: IOException: cannot find https://raw.githubusercontent.com/nf-core/test-datasets/hicar/data/genomics/homo_sapiens/fasta/chr22.fa.gz (the web, without credentials): error sending request: client error (Connect): dns error: error resolving DNS: failed to lookup address information: Temporary failure in name resolution
-hlatyping 1 iunctus: subworkflows/local/utils_nfcore_hlatyping_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+hgtseq 1 iunctus: workflows/hgtseq.nf:287:9: AbortOperationException: ERROR: Please check input samplesheet -> a column named input1 with either fastq or bam/cram input is mandatory!
+hic ok
+hicar ok
+hlatyping ok
 imcyto 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-isoseq 1 iunctus: subworkflows/local/utils_nfcore_isoseq_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
+isoseq ok
 kmermaid 33 iunctus: main.nf:1:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 liverctanalysis ok
-lncpipe 1 iunctus: subworkflows/local/utils_nfcore_lncpipe_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
-longraredisease 1 iunctus: subworkflows/local/utils_nfcore_longraredisease_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-lsmquant 1 iunctus: subworkflows/local/utils_nfcore_lsmquant_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-mag 1 iunctus: subworkflows/local/utils_nfcore_mag_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-magmap 1 iunctus: subworkflows/local/utils_nfcore_magmap_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-marsseq 1 iunctus: workflows/marsseq.nf:20:78: IOException: cannot find https://raw.githubusercontent.com/nf-core/test-datasets/marsseq/SB26-AB339.csv (the web, without credentials): error sending request: client error (Connect): dns error: error resolving DNS: failed to lookup address information: Temporary failure in name resolution
+lncpipe ok
+longraredisease ok
+lsmquant ok
+mag 1 iunctus: workflows/../subworkflows/local/bin_qc/../../../modules/nf-core/untar/main.nf:14:30: MissingPropertyException: No such variable: output_dir
+magmap 1 iunctus: workflows/../modules/local/check_duplicates/main.nf:33:13: MissingPropertyException: No such variable: outfile
+marsseq 1 iunctus: workflows/marsseq.nf:20:78: NoSuchFileException: No such file or directory: <cache>/out/references/mm10/GRCm39.fa
 mcmicro 1 iunctus: workflows/mcmicro.nf:265:39: AbortOperationException: QC Error found
 meerpipe 1 iunctus: nextflow.config:53:21: `PSRDB_URL` is not defined (hint: use `env('...')` to access environment variable)
-metaboigniter 1 iunctus: subworkflows/local/utils_nfcore_metaboigniter_pipeline/../../nf-core/utils_nfvalidation_plugin/main.nf:57:9: SchemaValidationException: The following invalid input values have been detected:
-metapep 1 iunctus: subworkflows/local/utils_nfcore_metapep_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
-metatdenovo 1 iunctus: subworkflows/local/utils_nfcore_metatdenovo_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-methylarray 1 iunctus: subworkflows/local/utils_nfcore_methylarray_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-methylong 1 iunctus: subworkflows/local/utils_nfcore_methylong_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-methylseq 1 iunctus: subworkflows/local/utils_nfcore_methylseq_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-mhcquant 1 iunctus: subworkflows/local/utils_nfcore_mhcquant_pipeline/main.nf:148:13: IOException: cannot read https://raw.githubusercontent.com/nf-core/test-datasets/mhcquant/testdata/HepG2_sample_sheet.tsv (the web, without credentials): error sending request: client error (Connect): dns error: error resolving DNS: failed to lookup address information: Temporary failure in name resolution
+metaboigniter ok
+metapep ok
+metatdenovo ok
+methylarray ok
+methylong 1 iunctus: ProcessFailedException: Process `NFCORE_METHYLONG:METHYLONG:ONT:ONT_TRIM_REPAIR:PORECHOP_PORECHOP (homo_sapiens)` terminated with an error exit status (2)
+methylseq ok
+mhcquant ok
 mitodetect ok
 mnaseseq 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-molkart 1 iunctus: subworkflows/local/utils_nfcore_molkart_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-mspepid 1 iunctus: subworkflows/local/utils_nfcore_mspepid_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-multiplesequencealign 1 iunctus: subworkflows/local/utils_nfcore_multiplesequencealign_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
-nanoseq 1 iunctus: workflows/nanoseq.nf:15:50: IOException: cannot find https://raw.githubusercontent.com/nf-core/test-datasets/nanoseq/3.0/samplesheet/samplesheet_nobc_dx.csv (the web, without credentials): error sending request: client error (Connect): dns error: error resolving DNS: failed to lookup address information: Temporary failure in name resolution
-nanostring 1 iunctus: subworkflows/local/utils_nfcore_nanostring_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-nascent 1 iunctus: subworkflows/local/utils_nfcore_nascent_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
+molkart ok
+mspepid 1 iunctus: workflows/../subworkflows/local/spectra_identification/../../../modules/local/cometconfig/main.nf:61:13: MissingPropertyException: No such variable: params_file
+multiplesequencealign ok
+nanoseq ok
+nanostring 1 iunctus: MissingFileException: Missing output file(s) `*_mqc.tsv` expected by process `NFCORE_NANOSTRING:NANOSTRING:CREATE_ANNOTATED_TABLES (samplesheet_test.csv)`
+nascent ok
 ncrnannotator ok
 neutronstar 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-omicsgenetraitassociation 1 iunctus: workflows/omicsgenetraitassociation.nf:86:5: IOException: cannot read s3://brentlab-nextflow-testdata/omicsgenetraitassociation/minimal/samplesheet.csv (a public bucket, without credentials): error sending request: client error (Connect): dns error: error resolving DNS: failed to lookup address information: Temporary failure in name resolution
-oncoanalyser 1 iunctus: subworkflows/local/utils_nfcore_oncoanalyser_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-pacsomatic 1 iunctus: subworkflows/local/utils_nfcore_pacsomatic_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
-pacvar 1 iunctus: subworkflows/local/utils_nfcore_pacvar_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-pairgenomealign 1 iunctus: subworkflows/local/utils_nfcore_pairgenomealign_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-pangenome 1 iunctus: subworkflows/local/utils_nfcore_pangenome_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
-panoramaseq 1 iunctus: subworkflows/local/utils_nfcore_panoramaseq_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+omicsgenetraitassociation ok
+oncoanalyser 1 iunctus: workflows/../subworkflows/local/prepare_reference/main.nf:290:12: NoSuchFileException: No such file or directory: <cache>/iunctus/scratch/simulator/<run>/work/4/hmf_pipeline_resources.38_v3.0.0--8/dna/copy_number/AmberGermlineSites.38.tsv.gz
+pacsomatic ok
+pacvar ok
+pairgenomealign 1 iunctus: MissingFileException: Missing output file(s) `*.matrix.txt` expected by process `NFCORE_PAIRGENOMEALIGN:PAIRGENOMEALIGN:PAIRALIGN_M2O:ALIGNMENT_SPLIT_O2O (MT192765___contigs)`
+pangenome ok
+panoramaseq ok
 pathogenepidemiology ok
 pathogensurveillance 33 iunctus: conf/modules.config:243:54: Not supported yet: reading `secrets.NCBI_API_KEY`
-phageannotator 1 iunctus: subworkflows/local/utils_nfcore_phageannotator_pipeline/../../nf-core/utils_nfvalidation_plugin/main.nf:57:9: SchemaValidationException: The following invalid input values have been detected:
-phaseimpute 1 iunctus: subworkflows/local/utils_nfcore_phaseimpute_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-phyloplace 1 iunctus: subworkflows/local/utils_nfcore_phyloplace_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-pixelator 1 iunctus: subworkflows/local/utils_nfcore_pixelator_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-plasmodiumdrugres 1 iunctus: subworkflows/local/utils_nfcore_plasmodiumdrugres_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-proteinannotator 1 iunctus: subworkflows/local/utils_nfcore_proteinannotator_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-proteinfamilies 1 iunctus: subworkflows/local/utils_nfcore_proteinfamilies_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-proteinfold 1 iunctus: subworkflows/local/utils_nfcore_proteinfold_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+phageannotator ok
+phaseimpute 1 iunctus: workflows/chrcheck/function.nf:46:13: AbortOperationException: Contig names: [chr21, chr22] absent from file: https://raw.githubusercontent.com/nf-core/test-datasets/phaseimpute/hum_data/individuals/NA12878/NA12878.s.1x.bam and cannot be solved by adding or removing the `chr` prefix.
+phyloplace ok
+pixelator ok
+plasmodiumdrugres ok
+proteinannotator ok
+proteinfamilies ok
+proteinfold ok
 proteogenomicsdb 33 iunctus: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 proteomicslfq 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-provenancereport 1 iunctus: subworkflows/local/utils_nfcore_provenancereport_pipeline/main.nf:109:19: SchemaValidationException: The following errors have been detected in assets/samplesheet.csv:
-quantms 1 iunctus: main.nf:33:5: SchemaValidationException: The following invalid input values have been detected:
+provenancereport ok
+quantms ok
 radseq 1 iunctus: workflows/radseq.nf:38:11: the included file workflows/../subworkflows/local/fastq_fastp.nf does not exist
-rangeland 1 iunctus: subworkflows/local/utils_nfcore_rangeland_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
-raredisease 1 iunctus: subworkflows/local/utils_nfcore_raredisease_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-rarevariantburden 1 iunctus: subworkflows/local/utils_nfcore_rarevariantburden_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
-readsimulator 1 iunctus: subworkflows/local/utils_nfcore_readsimulator_pipeline/../../nf-core/utils_nfvalidation_plugin/main.nf:57:9: SchemaValidationException: The following invalid input values have been detected:
-references 1 iunctus: subworkflows/local/utils_nfcore_references_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
-reportho 1 iunctus: subworkflows/local/utils_nfcore_reportho_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-ribomsqc 1 iunctus: subworkflows/local/utils_nfcore_ribomsqc_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-riboseq 1 iunctus: subworkflows/local/utils_nfcore_riboseq_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-rnadnavar 1 iunctus: subworkflows/local/utils_nfcore_rnadnavar_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-rnafusion 1 iunctus: subworkflows/local/utils_nfcore_rnafusion_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-rnaseq 1 iunctus: subworkflows/local/utils_nfcore_rnaseq_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-rnasplice 1 iunctus: main.nf:45:5: SchemaValidationException: The following invalid input values have been detected:
-rnastructurome 1 iunctus: subworkflows/local/utils_nfcore_rnastructurome_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-rnavar 1 iunctus: subworkflows/local/utils_nfcore_rnavar_pipeline/main.nf:178:9: SchemaValidationException: The following invalid input values have been detected:
-sammyseq 1 iunctus: subworkflows/local/utils_nfcore_sammyseq_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-sarek 1 iunctus: subworkflows/local/utils_nfcore_sarek_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-scdownstream 1 iunctus: subworkflows/local/utils_nfcore_scdownstream_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-scflow 1 iunctus: lib/NfcoreSchema.groovy:177:13: AbortOperationException: the run exits with code 1
-scnanoseq 1 iunctus: subworkflows/local/utils_nfcore_scnanoseq_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-scrnaseq 1 iunctus: subworkflows/local/utils_nfcore_scrnaseq_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-seqinspector 1 iunctus: subworkflows/local/utils_nfcore_seqinspector_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
+rangeland 1 iunctus: workflows/rangeland.nf:88:19: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/simulator/<run>/work/3/Landsat_data/*/*`
+raredisease ok
+rarevariantburden ok
+readsimulator ok
+references ok
+reportho ok
+ribomsqc ok
+riboseq ok
+rnadnavar 1 iunctus: MissingMethodException: No signature of method: java.util.ArrayList.tokenize() is applicable for argument types: (String) values: [.]
+rnafusion ok
+rnaseq ok
+rnasplice ok
+rnastructurome ok
+rnavar 1 iunctus: ProcessUnrecoverableException: Input tuple does not match tuple declaration in process `NFCORE_RNAVAR:RNAVAR:FASTQ_ALIGN_STAR:BAM_SORT_STATS_SAMTOOLS_TRANSCRIPTOME:SAMTOOLS_SORT` -- offending value: [[:], []]
+sammyseq ok
+sarek ok
+scdownstream 1 iunctus: workflows/../subworkflows/nf-core/utils_nfcore_pipeline/main.nf:82:20: NullPointerException: Cannot invoke method collectEntries() on null object
+scflow ok
+scnanoseq ok
+scrnaseq 1 iunctus: workflows/../subworkflows/nf-core/utils_nfcore_pipeline/main.nf:82:20: NullPointerException: Cannot invoke method collectEntries() on null object
+seqinspector ok
 seqsubmit 33 iunctus: nextflow.config:290:26: Not supported yet: reading `secrets.ENA_WEBIN`
 slamseq 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 smartseq2 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-smrnaseq 1 iunctus: subworkflows/local/utils_nfcore_smrnaseq_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-sopa 1 iunctus: subworkflows/local/utils_nfcore_sopa_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+smrnaseq 1 iunctus: subworkflows/local/prepare_genome/main.nf:32:9: Exception: Unable to extract the prefix from the Bowtie index files. No file with the '.1.ebwt' extension was found. Please ensure that the correct files are in the specified path.
+sopa ok
 spatialaxe 1 iunctus: workflows/spatialaxe.nf:212:13: AbortOperationException: ❌ Missing required file(s) in xenium bundle '<cache>/iunctus/scratch/simulator/<run>/work/1/test_run': [cell_boundaries.csv.gz, cell_boundaries.parquet, cell_feature_matrix.h5, cell_feature_matrix.zarr.zip, cells.csv.gz, cells.parquet, cells.zarr.zip, experiment.xenium, gene_panel.json, metrics_summary.csv, morphology.ome.tif, morphology_focus/, nucleus_boundaries.csv.gz, nucleus_boundaries.parquet, transcripts.parquet, transcripts.zarr.zip]
-spatialvi 1 iunctus: subworkflows/local/utils_nfcore_spatialvi_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-spinningjenny 1 iunctus: workflows/spinningjenny/main.nf:16:50: IOException: cannot find https://raw.githubusercontent.com/nf-core/test-datasets/spinningjenny/spinningjenny/values_spreadsheet_ci.txt (the web, without credentials): error sending request: client error (Connect): dns error: error resolving DNS: failed to lookup address information: Temporary failure in name resolution
-ssds 1 WARNING: CONFIG NOT FOUND: https://raw.githubusercontent.com/nf-core/test-datasets/ssds/intervals/spot_intervals.config
-stableexpression 1 iunctus: IOException: cannot find https://ftp.ebi.ac.uk/ensemblgenomes/pub/release-63/plants/gff3/prunus_persica/Prunus_persica.Prunus_persica_NCBIv2.63.gff3.gz (the web, without credentials): error sending request: client error (Connect): dns error: error resolving DNS: failed to lookup address information: Temporary failure in name resolution
-taxmarker 1 iunctus: subworkflows/local/utils_nfcore_taxmarker_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-taxprofiler 1 iunctus: subworkflows/local/utils_nfcore_taxprofiler_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-tbanalyzer 1 iunctus: subworkflows/local/utils_nfcore_tbanalyzer_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-tfactivity 1 iunctus: subworkflows/local/utils_nfcore_tfactivity_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+spatialvi 1 iunctus: workflows/../subworkflows/local/input_check/main.nf:144:9: AbortOperationException: No `fastq_dir` specified or no samples found in folder.
+spinningjenny ok
+ssds ok
+stableexpression ok
+taxmarker ok
+taxprofiler ok
+tbanalyzer ok
+tfactivity ok
 troughgraph ok
-tumourevo 1 iunctus: main.nf:96:26: IOException: cannot read https://raw.githubusercontent.com/nf-core/test-datasets/refs/heads/tumourevo/data/test_samplesheet.csv (the web, without credentials): error sending request: client error (Connect): dns error: error resolving DNS: failed to lookup address information: Temporary failure in name resolution
-variantbenchmarking 1 iunctus: subworkflows/local/utils_nfcore_variantbenchmarking_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+tumourevo ok
+variantbenchmarking ok
 variantcatalogue 33 iunctus: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented
-variantprioritization 1 iunctus: subworkflows/local/utils_nfcore_variantprioritization_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+variantprioritization ok
 vipr 1 iunctus: Unknown configuration profile: 'test'
-viralintegration 1 iunctus: main.nf:42:5: SchemaValidationException: The following invalid input values have been detected:
-viralmetagenome 1 iunctus: subworkflows/local/utils_nfcore_viralmetagenome_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-viralrecon 1 iunctus: workflows/viralrecon.nf:47:50: IOException: cannot find https://raw.githubusercontent.com/nf-core/test-datasets/viralrecon/samplesheet/v2.6/samplesheet_test_amplicon_illumina.csv (the web, without credentials): error sending request: client error (Connect): dns error: error resolving DNS: failed to lookup address information: Temporary failure in name resolution
+viralintegration ok
+viralmetagenome ok
+viralrecon 1 iunctus: workflows/../subworkflows/local/fastq_trim_fastp_fastqc/main.nf:15:26: IllegalArgumentException: Text must not be null or empty

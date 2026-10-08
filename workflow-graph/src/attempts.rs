@@ -76,6 +76,20 @@ impl Attempts {
         })
     }
 
+    /// Waits for an outcome or a driver timer while retaining run cancellation.
+    pub(crate) fn next_wake(&mut self, deadline: Instant) -> Result<Option<Ended>, ExecuteError> {
+        let cancel = self.cancel.clone();
+        let receiver = &mut self.receiver;
+        let wait = deadline.saturating_duration_since(Instant::now());
+        self.runtime.block_on(async {
+            tokio::select! {
+                () = cancel.cancelled() => Err(ExecuteError::Cancelled),
+                ended = receiver.recv() => ended.map(Some).ok_or(ExecuteError::Cancelled),
+                () = tokio::time::sleep(wait) => Ok(None),
+            }
+        })
+    }
+
     /// Waits for the next attempt to end, at most until `deadline`, after the run stopped.
     pub(crate) fn next_until(&mut self, deadline: Instant) -> Option<Ended> {
         let wait = deadline.saturating_duration_since(Instant::now());

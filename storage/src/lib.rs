@@ -36,8 +36,8 @@ pub use web::{config_proxy, http_client, use_proxy};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Metadata {
     pub directory: bool,
-    /// Last modification time in Unix seconds, when supplied by the provider.
-    pub modified: Option<u64>,
+    /// Last modification time, retaining provider precision when supplied.
+    pub modified: Option<std::time::SystemTime>,
     /// The size of a file; 0 for a directory.
     pub size: u64,
     /// What the provider says changes with the content of a file: its ETag, else the time of

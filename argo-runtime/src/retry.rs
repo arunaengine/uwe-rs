@@ -247,6 +247,29 @@ impl Run {
             depth: self.nodes[index].depth,
         };
         let child = self.new_node(&name, NodeKind::Pod, &template_name, &call_info);
+        if attempt > 0
+            && let Some(maximum) = call
+                .strategy
+                .backoff
+                .as_ref()
+                .and_then(|backoff| backoff.get("maxDuration"))
+        {
+            let text = crate::tags::replace(
+                &crate::run::scalar_text(maximum),
+                &Variables::new(self.globals.clone()),
+                false,
+            )
+            .map_err(Failure::error)?;
+            if !text.is_empty() {
+                let first = self.nodes[index].children[0];
+                self.nodes[child].retry_limit = Some(
+                    self.nodes[first]
+                        .started_at
+                        .checked_add(parse_duration(&text)?)
+                        .ok_or_else(|| Failure::error("retryStrategy maxDuration overflow"))?,
+                );
+            }
+        }
         self.nodes[index].children.push(child);
         self.start_node(child, processed)?;
         if self.nodes[child].phase.fulfilled() {

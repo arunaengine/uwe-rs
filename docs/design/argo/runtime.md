@@ -160,6 +160,13 @@ Containers run as Kubernetes runs them (decision 28, `Task.run_as`): as the user
 
 Resources come from the container's requests, or its limits where requests say nothing; a container set asks for the sum over its containers, as Argo does. `activeDeadlineSeconds` or `timeout` sets the time limit. Environment variables that read a field of the pod with `fieldRef` get the run's values: the pod name, the namespace, a stable uid, the service account, a node name and an IP address. Variables from ConfigMaps and Secrets follow section 11.
 
+Workflow `activeDeadlineSeconds` starts with the run and cancels outstanding work with
+`Step exceeded its deadline`. Exit handlers remain eligible to run. Template `timeout`
+includes pending time and reports `timeout`; template `activeDeadlineSeconds` covers all
+init and main tasks together and reports the pod deadline message. The engine cancels
+individual attempts and waits for their cleanup before the node ends. After the first
+failed attempt, retry `maxDuration` overrides the template active deadline.
+
 ### 8.1 Executor plugins
 
 Argo runs a plugin template in its agent pod, whose sidecars are the servers of the executor plugins. The agent posts the template to `/api/v1/template.execute` of one plugin after the other, until one replies with a node (workflow/executor/agent.go).

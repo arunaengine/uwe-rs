@@ -32,6 +32,7 @@ mod start;
 mod steps;
 pub mod tags;
 mod time;
+mod timers;
 mod validate;
 pub mod value;
 mod volumes;
@@ -164,7 +165,7 @@ impl Driver for ArgoDriver {
     fn wake_at(&self) -> Option<std::time::Instant> {
         let run = self.run.as_ref()?;
         let next = run.wake_at()?;
-        Some(if run.options.assume_inputs {
+        Some(if run.options.assume_inputs && !run.active_tasks() {
             std::time::Instant::now()
         } else {
             next
@@ -186,14 +187,22 @@ impl Driver for ArgoDriver {
 
     fn handles_error(
         &self,
-        _task: workflow_graph::TaskId,
+        task: workflow_graph::TaskId,
         error: &workflow_graph::ExecuteError,
     ) -> bool {
         matches!(
             error,
             workflow_graph::ExecuteError::Machine { .. }
                 | workflow_graph::ExecuteError::Executor { .. }
-        )
+        ) || (matches!(error, workflow_graph::ExecuteError::Cancelled)
+            && self.run.as_ref().is_some_and(|run| run.expired_task(task)))
+    }
+
+    fn cancellations(&mut self) -> Vec<workflow_graph::TaskId> {
+        self.run
+            .as_mut()
+            .map(run::Run::cancellations)
+            .unwrap_or_default()
     }
 
     /// Ends the run, and delivers the output artifacts of its steps to the results folder.

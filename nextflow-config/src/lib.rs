@@ -90,6 +90,7 @@ impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ConfigError::Invalid { messages } => f.write_str(&messages.join("\n")),
+            ConfigError::Failed { error, .. } if error.unsupported() => write!(f, "{error}"),
             ConfigError::Failed { file, error } => write!(
                 f,
                 "Unable to parse config file: '{}'\n  {error}",

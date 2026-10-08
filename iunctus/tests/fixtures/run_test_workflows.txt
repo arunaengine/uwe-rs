@@ -101,7 +101,7 @@ pairgenomealign 1 iunctus: MissingFileException: Missing output file(s) `*.matri
 pangenome ok
 panoramaseq ok
 pathogenepidemiology ok
-pathogensurveillance 1 iunctus: workflows/../subworkflows/local/prepare_input/main.nf:220:14: MissingMethodException: No signature of method: groovy.lang.Closure.doCall() is applicable for argument types: (ArrayList) values: [[null, null, null]]
+pathogensurveillance 33 iunctus: Unable to parse config file: 'conf/modules.config'
 phageannotator ok
 phaseimpute 1 iunctus: workflows/chrcheck/function.nf:46:13: AbortOperationException: Contig names: [chr21, chr22] absent from file: https://raw.githubusercontent.com/nf-core/test-datasets/phaseimpute/hum_data/individuals/NA12878/NA12878.s.1x.bam and cannot be solved by adding or removing the `chr` prefix.
 phyloplace ok
@@ -136,7 +136,7 @@ scflow ok
 scnanoseq ok
 scrnaseq 1 iunctus: workflows/../subworkflows/nf-core/utils_nfcore_pipeline/main.nf:82:20: NullPointerException: Cannot invoke method collectEntries() on null object
 seqinspector ok
-seqsubmit ok
+seqsubmit 33 iunctus: Unable to parse config file: 'nextflow.config'
 slamseq 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 smartseq2 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 smrnaseq 1 iunctus: subworkflows/local/prepare_genome/main.nf:32:9: Exception: Unable to extract the prefix from the Bowtie index files. No file with the '.1.ebwt' extension was found. Please ensure that the correct files are in the specified path.
@@ -153,7 +153,7 @@ tfactivity ok
 troughgraph ok
 tumourevo ok
 variantbenchmarking ok
-variantcatalogue ok
+variantcatalogue 33 iunctus: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented
 variantprioritization ok
 vipr 1 iunctus: Unknown configuration profile: 'test'
 viralintegration ok

@@ -36,7 +36,6 @@ $ NXF_SYNTAX_PARSER=v1 nextflow run callingcards -profile test -stub-run --outdi
 > [ERROR] ERROR ~ index is out of range 0..-1 (index = 0)
 
 chipseq
-pathogensurveillance
 = unsupported (decision 16): SAMPLESHEET_CHECK has no stub, so it needs its script to write the samplesheet that the pipeline reads, and the simulator only makes up an empty file
 $ NXF_SYNTAX_PARSER=v1 nextflow run chipseq -profile test -stub-run --outdir <out>  # with a `python3` that prints '1.0', with a `Rscript` that prints '1.0'
 > [ERROR] ERROR ~ Error executing process > 'NFCORE_CHIPSEQ:CHIPSEQ:INPUT_CHECK:SAMPLESHEET_CHECK (samplesheet_test.csv)'
@@ -438,11 +437,6 @@ workflowhub/1266
 $ nextflow run workflowhub/1266 -profile test -stub-run --outdir <out>  # with the stub `touch simulated.yaml; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml` for HPAM_SPLIT
 >   error [nextflow.exception.ProcessUnrecoverableException]: Input tuple does not match tuple declaration in process `NFCORE_DRUGRESPONSEEVAL:DRUGRESPONSEEVAL:MODEL_TESTING:VISUALIZE_RESULTS` -- offending value: [<pipeline>/assets/NO_FILE, <pipeline>/assets/NO_FILE]
 
-workflowhub/1306
-= unsupported (decision 16): preprocessFullMetadata has no stub, so it needs its script to write the settings that the workflow parses as JSON, and the simulator only makes up an empty file (Nextflow fails in the same way with a stand-in that makes the file of the simulator)
-$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/1306 -profile test -stub-run --outdir <out>  # with the stub `touch processed_full.config` for preprocessFullMetadata
-> [ERROR] ERROR ~ Error while parsing JSON content - cause: End of input at line 1 column 1 path $
-
 workflowhub/1320
 workflowhub/1321
 = missing: the test profile reads TreeValTinyData/, test data that the repository does not hold and that users download first, so the test run fails
@@ -476,11 +470,6 @@ workflowhub/1757
 = unsupported (decision 16): PRINSEQ_READS has no stub, so it needs prinseq++ to write the reads, and the simulator only makes up one file where paired reads give two; for one file, the stub of CAT_CAT reads the extension from the folder it is staged in, so it fails (Nextflow fails in the same way with a stand-in that makes the file of the simulator)
 $ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/1757 -profile test -stub-run --outdir <out>  # with the stub `touch simulated_good_outsimulated simulated.log; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml` for PRINSEQPLUSPLUS
 >   Range [-1, 1) out of bounds for length 1 -- Check script 'modules/nf-core/cat/cat/main.nf' at line: 59
-
-workflowhub/1763
-= missing: the RO-Crate that WorkflowHub gives leaves out assets/.pathogensurveillance_output.json, which the workflow reads, so the run fails
-$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/1763 -profile test -stub-run --outdir <out>
-> [ERROR] ERROR ~ No such file or directory: <pipeline>/assets/.pathogensurveillance_output.json
 
 workflowhub/1769
 = missing: the workflow has no `test` profile and needs `--sim`, which its repository does not give, so it reads ./params_ccrcc.csv, which its repository does not have
@@ -739,12 +728,6 @@ workflowhub/480
 $ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/480/Workflow/NextFlow/covid19_pilot.nf -stub-run --outdir <out>
 > [ERROR] ERROR ~ Must specify a non-null value for the 'to' index in a Range
 
-workflowhub/556
-= unsupported (decision 16): MATCH_COMBINE has no stub, so it needs its script to write the score file whose first line the workflow reads, and the simulator only makes up an empty file (Nextflow fails in the same way with stand-ins that make the files of the simulator)
-$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/556 -profile test -stub-run --outdir <out>  # with the stub `printf "" | gzip > scorefiles.txt.gz; touch log_scorefiles.json; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml` for COMBINE_SCOREFILES, with the stub `output = "simulated" """ touch simulated.pgen simulated.pvar.zst simulated.psam printf "" | gzip > simulated.vmiss.gz; printf "" | gzip > simulated.afreq.gz; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml """` for PLINK2_RELABELPVAR, with the stub `scoremeta = [:] scoremeta.id = "$meta.id" """ touch simulated.ipc.zst printf '"${task.process}": {stub: "1.0"}\n' > versions.yml """` for MATCH_VARIANTS, with the stub `scoremeta = [:] scoremeta.id = "$meta.id" """ printf "" | gzip > simulated.scorefile.gz touch simulated_summary.csv printf "" | gzip > simulated_log.csv.gz printf '"${task.process}": {stub: "1.0"}\n' > versions.yml """` for MATCH_COMBINE
-> [ERROR] ERROR ~ Unexpected error [InvocationTargetException]
-> Caused by: java.lang.NullPointerException: Cannot invoke method split() on null object
-
 workflowhub/560
 = missing: the workflow has no `test` profile and needs `--bam_folder`, which its repository does not give, so it prints its help and exits with code 1
 $ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/560 -stub-run --outdir <out>
@@ -866,3 +849,45 @@ workflowhub/996
 = invalid: the test profile names the genome R64-1-1, which the config of the pipeline does not have, so it stops, as Nextflow 21.04.0 of its time shows; runs with their own inputs are not affected
 $ NXF_VER=21.04.0 nextflow run workflowhub/996 -profile test -stub-run --outdir <out>  # with the Java libraries of nf-validation 1.1.3 in lib/
 >   Genome 'R64-1-1' not found in any config files provided to the pipeline.
+
+pathogensurveillance
+seqsubmit
+workflowhub/1763
+= unsupported (decision 14): Nextflow secret reads require its secret store, which iunctus does not implement; the earlier null result concealed this requirement
+$ NXF_OFFLINE=true nextflow -C <config with params.key = secrets.IUNCTUS_RECORDING_ABSENT> config -flat
+> params.key = 'secrets.IUNCTUS_RECORDING_ABSENT'
+
+variantcatalogue
+workflowhub/1735
+= unsupported (decision 14): collectFile must order multiple items by Nextflow's native hash; iunctus refuses that ordering until it can preserve those hashes
+$ NXF_OFFLINE=true nextflow run <workflow with channel.of('a', 'b').collectFile(name: 'sorted.txt').view { it.text }> -stub-run
+> ab
+
+workflowhub/418
+= unsupported (decision 14): publishDir mode move requires removing task outputs from their original paths; iunctus preserves content-store outputs and refuses that mode
+$ NXF_OFFLINE=true nextflow -C <config with process.publishDir = [path: 'out', mode: 'move']> config -flat
+> process.publishDir.mode = 'move'
+
+workflowhub/556
+= unsupported (decision 14): process storeDir requires reusing a persistent task output directory, which iunctus refuses rather than silently ignoring
+$ NXF_OFFLINE=true nextflow -C <config with process.storeDir = 'cache'> config -flat
+> process.storeDir = 'cache'
+
+workflowhub/638
+workflowhub/666
+workflowhub/667
+workflowhub/1787
+workflowhub/2054
+= unsupported (decision 14): process maxForks requires a per-process concurrency limit, which iunctus refuses rather than silently ignoring
+$ NXF_OFFLINE=true nextflow -C <config with process.maxForks = 1> config -flat
+> process.maxForks = 1
+
+workflowhub/1306
+= unsupported (decision 14): a process executor directive requires selecting a backend per process, which iunctus refuses rather than silently ignoring
+$ NXF_OFFLINE=true nextflow -C <config with process.executor = 'local'> config -flat
+> process.executor = 'local'
+
+workflowhub/1814
+= missing: the cached WorkflowHub source leaves out assets/schema_input.json, which nextflow_schema.json requires; iunctus now diagnoses the absent sample-sheet schema
+$ NXF_OFFLINE=true nextflow run <workflow that reads workflowhub/1814/assets/schema_input.json> -stub-run
+> ERROR ~ No such file or directory: <pipeline>/assets/schema_input.json

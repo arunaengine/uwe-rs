@@ -197,6 +197,15 @@ fn maps_default_storage() {
         format!("file://{}/in", folder.path().display())
     );
     assert!(tasks[0].outputs[0].starts_with(".snakemake/storage/fs/"));
+    let workflow = "rule make:\n    input: storage(['in'])\n    output: local('out')\n    shell: 'cat {input} > {output}'\n";
+    std::fs::write(folder.path().join("Snakefile"), workflow).unwrap();
+    let mut session = Session::new(&launch, &Storage::default()).unwrap();
+    let tasks = session.start().unwrap();
+    assert_eq!(
+        tasks[0].inputs[0].source,
+        format!("file://{}/in", folder.path().display())
+    );
+    assert_eq!(tasks[0].outputs, ["out"]);
     for provider in ["sftp", "xrootd", "zenodo", "irods", "unknown"] {
         let launch = launch.clone();
         std::fs::write(
@@ -212,4 +221,21 @@ fn maps_default_storage() {
             .unwrap_err();
         assert!(error.unsupported, "{error}");
     }
+}
+
+#[test]
+fn stages_unflagged_inputs() {
+    let server = Server::start();
+    let folder = tempfile::tempdir().unwrap();
+    let config = config_file::ConfigFile::parse(&format!("[storage.test]\ntype = 's3'\nprefixes = ['s3://bucket/']\nendpoint = '{}'\nanonymous = true\nregion = 'local'\n", server.address), &folder.path().join("iunctus.toml")).unwrap();
+    let storage = Storage::from_config(&config).unwrap();
+    let launch = launch(
+        folder.path(),
+        "rule all:\n    input: 'result'\nrule seed:\n    output: storage.s3('s3://bucket/in')\n    shell: 'false'\nrule make:\n    input: str(rules.seed.output[0])\n    output: 'result'\n    shell: 'cat {input} > {output}'\n",
+    );
+    let mut session = Session::new(&launch, &storage).unwrap();
+    let tasks = session.start().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].step, "make");
+    assert_eq!(tasks[0].inputs[0].source, "s3://bucket/in");
 }

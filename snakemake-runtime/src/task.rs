@@ -420,11 +420,20 @@ pub fn build(
     let mut inputs: Vec<Input> = Vec::new();
     for (input_index, file) in job.input_files().into_iter().enumerate() {
         // A file in storage comes from its address.
-        let address = job.input.values.iter().find_map(|value| {
-            (value.as_str() == Some(file.as_str()))
-                .then(|| value.tag(crate::storage::TAG)?.as_str().map(str::to_owned))
-                .flatten()
-        });
+        let address = job
+            .input
+            .values
+            .iter()
+            .find_map(|value| {
+                (value.as_str() == Some(file.as_str()))
+                    .then(|| value.tag(crate::storage::TAG)?.as_str().map(str::to_owned))
+                    .flatten()
+            })
+            .or_else(|| {
+                setting
+                    .files
+                    .storage_address(&interpreter.host.resolve(&file))
+            });
         if let Some(address) = address
             && setting
                 .files

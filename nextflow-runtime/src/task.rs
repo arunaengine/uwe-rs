@@ -64,6 +64,45 @@ pub fn command(request: &TaskRequest) -> Vec<String> {
     arguments
 }
 
+pub fn launcher(request: &TaskRequest) -> Option<String> {
+    let before = directive(&request.directives, "beforeScript")
+        .filter(Value::truth)
+        .map(|value| value.to_string());
+    let after = directive(&request.directives, "afterScript")
+        .filter(Value::truth)
+        .map(|value| value.to_string());
+    if before.is_none() && after.is_none() {
+        return None;
+    }
+    let mut script = String::from(
+        "set -e\nset +u\niunctus_status=0\ntrap 'iunctus_last=$?; if [ \"$iunctus_status\" -ne 0 ]; then exit \"$iunctus_status\"; fi; exit \"$iunctus_last\"' EXIT\n",
+    );
+    if let Some(before) = before {
+        script.push_str(&format!("{{\n{before}\n}} >&2\n"));
+    }
+    script.push_str("set -u\nexport NXF_TASK_WORKDIR=\"$PWD\"\n");
+    for (_, name) in &request.staged {
+        let parent = std::path::Path::new(name)
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new(""));
+        let quote = |text: &str| format!("'{}'", text.replace('\'', "'\\''"));
+        if !parent.as_os_str().is_empty() {
+            script.push_str(&format!("mkdir -p {}\n", quote(&parent.to_string_lossy())));
+        }
+        script.push_str(&format!(
+            "mv {} {}\n",
+            quote(&format!(".command.stage/{name}")),
+            quote(name)
+        ));
+    }
+    script.push_str("set +e\n\"$@\"\niunctus_status=$?\n");
+    if let Some(after) = after {
+        script.push_str(&format!("{{\n{after}\n}} >&2\niunctus_after=$?\n[ \"$iunctus_status\" -eq 0 ] && iunctus_status=$iunctus_after\n"));
+    }
+    script.push_str("exit \"$iunctus_status\"\n");
+    Some(script)
+}
+
 /// Whether a task gets copies of its input files, which it may change, as the directive
 /// `stageInMode 'copy'` asks; otherwise it sees them read-only where they are.
 pub fn copies_inputs(request: &TaskRequest) -> bool {

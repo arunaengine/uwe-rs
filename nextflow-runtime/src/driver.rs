@@ -20,7 +20,7 @@ use crate::notes::Noting;
 use crate::process::glob_matches;
 use crate::reports::Reports;
 use crate::task::{
-    ENVIRONMENT, SCRIPT, command, command_script, container, read_environment, resources,
+    ENVIRONMENT, SCRIPT, command, command_script, container, launcher, read_environment, resources,
     with_registry,
 };
 use crate::{LoadError, Loader, Options, Run, TaskId, TaskOutcome, TaskRequest};
@@ -734,6 +734,7 @@ pub fn task(
         true => workflow_graph::Writable::Copy,
         false => workflow_graph::Writable::No,
     };
+    let launcher = launcher(request);
     for (source, name) in &request.staged {
         let (source, directory) = match source.prefix {
             None => (source.path.clone(), Path::new(&source.path).is_dir()),
@@ -741,7 +742,11 @@ pub fn task(
         };
         inputs.push(Input {
             executable: false,
-            path: name.clone(),
+            path: if launcher.is_some() {
+                format!(".command.stage/{name}")
+            } else {
+                name.clone()
+            },
             source,
             directory,
             content: None,
@@ -752,13 +757,22 @@ pub fn task(
     if !request.env.is_empty() || !request.eval.is_empty() {
         outputs.push(ENVIRONMENT.into());
     }
+    let mut command = command(request);
+    if let Some(launcher) = launcher {
+        inputs.push(Input {
+            path: ".command.hooks".into(),
+            content: Some(launcher),
+            ..Default::default()
+        });
+        command.splice(0..0, ["/bin/bash".into(), ".command.hooks".into()]);
+    }
     Ok(Task {
         run_as: None,
         id: workflow_graph::TaskId(request.id.0),
         name: request.name.clone(),
         step: request.process.to_string(),
         image: container(request),
-        command: command(request),
+        command,
         script: Some(request.script.clone()),
         workdir: None,
         environment,

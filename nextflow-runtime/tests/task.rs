@@ -389,3 +389,64 @@ fn reads_stored_values() {
     let result = task_outcome(&request, outcome, Some(&files)).expect("an outcome");
     assert_eq!(result.env["FOO"], "remote");
 }
+
+#[test]
+fn hooks_preserve_status() {
+    for (body, after, expected) in [
+        ("true", "false", 1),
+        ("exit 7", "false", 7),
+        ("exit 7", "true", 7),
+        ("exit 7", "exit 0", 7),
+    ] {
+        let mut request = request(&[], &[], None);
+        request.script = format!("test \"$BEFORE\" = yes\ntest -e x.gz\n{body}\n");
+        request.directives.extend([
+            TaskDirective {
+                name: "beforeScript".into(),
+                arguments: vec![Value::string("test ! -e x.gz; export BEFORE=yes")],
+            },
+            TaskDirective {
+                name: "afterScript".into(),
+                arguments: vec![Value::string(format!("echo after > after.txt; {after}"))],
+            },
+        ]);
+        let task = task(&request, &BTreeMap::new()).unwrap();
+        let root = tempfile::tempdir().unwrap();
+        for input in &task.inputs {
+            let path = root.path().join(&input.path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, input.content.as_deref().unwrap_or("input")).unwrap();
+        }
+        let output = Command::new(&task.command[0])
+            .args(&task.command[1..])
+            .current_dir(root.path())
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(expected),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(root.path().join("after.txt").exists());
+    }
+}
+
+#[test]
+fn before_failure_stops() {
+    let mut request = request(&[], &[], None);
+    request.directives.push(TaskDirective {
+        name: "beforeScript".into(),
+        arguments: vec![Value::string("exit 9")],
+    });
+    let script = nextflow_runtime::task::launcher(&request).unwrap();
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("hooks"), script).unwrap();
+    let status = Command::new("bash")
+        .args(["hooks", "touch", "body"])
+        .current_dir(root.path())
+        .status()
+        .unwrap();
+    assert_eq!(status.code(), Some(9));
+    assert!(!root.path().join("body").exists());
+}

@@ -169,8 +169,6 @@ fn limits_each_retries() {
 #[test]
 fn rejects_active_directives() {
     for (name, value) in [
-        ("beforeScript", "'touch required'"),
-        ("afterScript", "'touch done'"),
         ("fair", "true"),
         ("maxErrors", "2"),
         ("storeDir", "'stored'"),

@@ -141,20 +141,13 @@ pub(crate) fn deliveries(
     Ok(deliveries)
 }
 
-/// How a mode of `publishDir` delivers. Stored files are not links, so `copyNoFollow` copies.
+/// Stored outputs stay available, so `move` and `copyNoFollow` publish copies.
 pub(crate) fn mode_of(mode: &str) -> Result<DeliveryMode, Error> {
     Ok(match mode {
         "symlink" => DeliveryMode::Link,
         "rellink" => DeliveryMode::RelativeLink,
         "link" => DeliveryMode::HardLink,
-        "copy" | "copyNoFollow" => DeliveryMode::Copy,
-        "move" => {
-            return Err(Error::Unsupported {
-                message: "publish mode `move`: task outputs must remain in the content store"
-                    .into(),
-                span: Default::default(),
-            });
-        }
+        "copy" | "copyNoFollow" | "move" => DeliveryMode::Copy,
         other => return Err(thrown(&format!("Unknown publish mode: {other}"))),
     })
 }

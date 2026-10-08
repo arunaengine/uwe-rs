@@ -6,6 +6,7 @@ mod build;
 pub mod channel;
 pub mod driver;
 mod files;
+mod hash;
 pub mod inputs;
 mod keyed;
 mod loader;

@@ -257,6 +257,12 @@ The check is part of the checks at submission (section 4.1), so it covers every 
 
 ### 11.2 Fields that are left out
 
+Daemon and sidecar services remain refused for every executor. The local executor's
+container wrappers wait for all containers; its API cannot publish readiness or a shared
+task network, or own service cleanup through a dependent steps or DAG boundary. Supporting
+these lifetimes safely requires changes to the executor and task model, outside this Argo
+implementation. TES, SLURM and Kubernetes execution receive the same explicit refusal.
+
 Fields that only tell Kubernetes where and how to run a pod do not change what a task computes. They are left out with a warning: `podSpecPatch`, `nodeSelector`, `tolerations`, `affinity`, the fields of a `securityContext` other than `runAsUser` and `runAsGroup` (decision 28: no container gets more than the least permissions), `serviceAccountName`, `automountServiceAccountToken`, `priorityClassName`, `schedulerName`, `hostAliases`, `dnsConfig`, `dnsPolicy`, `hostNetwork`, `imagePullSecrets`, `imagePullPolicy`, `podGC`, `podMetadata`, `podDisruptionBudget`, `ttlStrategy`, `metrics`, `archiveLocation`, `artifactGC`, `volumeClaimGC`, `executor` and `memoize`.
 
 Init containers are no such field: they run as tasks (section 11.8).

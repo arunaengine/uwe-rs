@@ -99,6 +99,23 @@ fn rejects_lifecycle_controls() {
 }
 
 #[test]
+fn refuses_service_lifetimes() {
+    for (field, reason) in [
+        ("daemon: true", "service readiness"),
+        (
+            "sidecars: [{name: server, image: debian:stable-slim}]",
+            "shared task network",
+        ),
+    ] {
+        let error = start_error(&format!(
+            "  templates:\n  - name: main\n    {field}\n    container: {{image: debian:stable-slim}}\n"
+        ));
+        assert!(error.unsupported, "{error}");
+        assert!(error.message.contains(reason), "{error}");
+    }
+}
+
+#[test]
 fn rejects_liveness_probes() {
     for template in [
         "    container: {image: alpine, livenessProbe: {exec: {command: [sh, -c, 'exit 1']}}}\n",

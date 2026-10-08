@@ -64,6 +64,15 @@ impl Run {
                     .as_ref()
                     .and_then(|timeout| duration_seconds(&timeout.0))
             });
+        let time = self.nodes[index]
+            .retry_limit
+            .map(|deadline| {
+                let remaining = deadline.saturating_duration_since(self.clock);
+                remaining
+                    .as_secs()
+                    .saturating_add(u64::from(remaining.subsec_nanos() > 0))
+            })
+            .or(time);
         let base = |image: &str, container: Option<&Container>| -> Result<Task> {
             let mut resources = container
                 .and_then(|container| container.resources.as_ref())

@@ -134,15 +134,26 @@ impl Run {
         }
         self.deadlines.remove(&index);
         self.waits.remove(&index);
+        let mut descendants = vec![index];
+        let mut position = 0;
+        while position < descendants.len() {
+            descendants.extend(self.nodes[descendants[position]].children.iter().copied());
+            position += 1;
+        }
         let tasks: Vec<_> = self
             .tasks
             .iter()
-            .filter(|(_, (node, _))| *node == index)
+            .filter(|(_, (node, _))| descendants.contains(node))
             .map(|(&id, _)| id)
             .collect();
         if tasks.is_empty() {
             self.fail(index, Phase::Failed, message);
         } else {
+            for task in &tasks {
+                let node = self.tasks[task].0;
+                self.deadlines.remove(&node);
+                self.expired.insert(node, message.clone());
+            }
             self.expired.insert(index, message);
             self.cancel_tasks.extend(tasks);
         }

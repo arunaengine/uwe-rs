@@ -1,169 +1,169 @@
 # The inputs of each Nextflow workflow of the test workflows (decision 24): `ok:` and the
 # counts of its schema, of a check of a simulated run with -profile test, and of the
 # params that its code reads and its schema does not declare or the other way round; or
-# why it has no schema. 345 workflows: 280 schemas (235 from nextflow_schema.json), 
-# 0 invalid, 65 fail to load; 7 runs would stop at the check.
-abotyper ok: 36 inputs, 2 required, 9 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
-airrflow ok: 110 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
+# why it has no schema. 345 workflows: 276 schemas (231 from nextflow_schema.json),
+# 0 invalid, 69 fail to load; 7 runs would stop at the check.
+abotyper ok: 36 inputs, 2 required, 9 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+airrflow ok: 110 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 alleleexpression ok: 36 inputs, 0 required, 10 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 20 declared not read
-ampliseq ok: 170 inputs, 1 required, 9 files, 3 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-atacseq ok: 88 inputs, 2 required, 18 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 4 declared not read
-bacass ok: 76 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
-bacmodel ok: 41 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 4 declared not read
-bactmap ok: 27 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-bamtofastq ok: 35 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+ampliseq ok: 170 inputs, 1 required, 9 files, 3 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+atacseq ok: 88 inputs, 2 required, 18 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+bacass ok: 76 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+bacmodel ok: 41 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+bactmap ok: 27 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+bamtofastq ok: 35 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 cageseq unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-callingcards ok: 53 inputs, 3 required, 11 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 7 declared not read
-cellpainting ok: 30 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-chipseq ok: 82 inputs, 3 required, 17 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
-circdna ok: 58 inputs, 4 required, 7 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 9 declared not read
-circrna ok: 81 inputs, 4 required, 8 files, 3 tables; 0 errors, 0 warnings; 0 read not declared, 13 declared not read
+callingcards ok: 53 inputs, 3 required, 11 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+cellpainting ok: 30 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+chipseq ok: 82 inputs, 3 required, 17 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+circdna ok: 58 inputs, 4 required, 7 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 0 declared not read
+circrna ok: 81 inputs, 4 required, 8 files, 3 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 clipseq unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-coproid ok: 39 inputs, 6 required, 10 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-createpanelrefs ok: 58 inputs, 3 required, 16 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
-createtaxdb ok: 73 inputs, 4 required, 9 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-crisprseq ok: 58 inputs, 2 required, 12 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+coproid ok: 39 inputs, 6 required, 10 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+createpanelrefs ok: 58 inputs, 3 required, 16 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+createtaxdb ok: 73 inputs, 4 required, 9 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+crisprseq ok: 58 inputs, 2 required, 12 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 crisprvar unsupported: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-cutandrun ok: 103 inputs, 2 required, 4 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 7 declared not read
-daamicrobiome ok: 57 inputs, 2 required, 4 files, 0 tables; 3 errors, 0 warnings; 1 read not declared, 4 declared not read
-dartseq ok: 75 inputs, 2 required, 13 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-datasync ok: 29 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+cutandrun ok: 103 inputs, 2 required, 4 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+daamicrobiome ok: 57 inputs, 2 required, 4 files, 0 tables; 3 errors, 0 warnings; 1 read not declared, 0 declared not read
+dartseq ok: 75 inputs, 2 required, 13 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+datasync ok: 29 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 ddamsproteomics unsupported: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-deepmodeloptim ok: 38 inputs, 0 required, 7 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 10 declared not read
-deepmutscan ok: 44 inputs, 3 required, 6 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 4 declared not read
+deepmodeloptim ok: 38 inputs, 0 required, 7 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 3 declared not read
+deepmutscan ok: 44 inputs, 3 required, 6 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
 deepvariant unsupported: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-demo ok: 30 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
-demultiplex ok: 44 inputs, 2 required, 12 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 4 declared not read
+demo ok: 30 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+demultiplex ok: 44 inputs, 2 required, 12 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 denovohybrid unsupported: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-denovotranscript ok: 52 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-detaxizer ok: 66 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+denovotranscript ok: 52 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+detaxizer ok: 66 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 diaproteomics unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-differentialabundance ok: 188 inputs, 23 required, 9 files, 2 tables; 0 errors, 0 warnings; 5 read not declared, 57 declared not read
-diseasemodulediscovery ok: 62 inputs, 1 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-drop ok: 83 inputs, 3 required, 16 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 10 declared not read
+differentialabundance ok: 188 inputs, 23 required, 9 files, 2 tables; 0 errors, 0 warnings; 5 read not declared, 1 declared not read
+diseasemodulediscovery ok: 62 inputs, 1 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+drop ok: 83 inputs, 3 required, 16 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 drugresponseeval fail: Config file does not exist: conf/test.config (No such file or directory (os error 2))
 dualrnaseq unsupported: main.nf:28:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 eager unsupported: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-epigenomesegmentation ok: 40 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 7 declared not read
-epitopeprediction ok: 48 inputs, 2 required, 6 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 8 declared not read
-evexplorer ok: 32 inputs, 2 required, 4 files, 1 tables; 0 errors, 1 warnings; 4 read not declared, 4 declared not read
+epigenomesegmentation ok: 40 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+epitopeprediction ok: 48 inputs, 2 required, 6 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
+evexplorer ok: 32 inputs, 2 required, 4 files, 1 tables; 0 errors, 1 warnings; 4 read not declared, 0 declared not read
 exoseq unsupported: PairedSingleSampleWF.nf:27:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and l
-fastqrepair ok: 32 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
-fastquorum ok: 46 inputs, 2 required, 7 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
-fetchngs ok: 29 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
-funcprofiler ok: 34 inputs, 3 required, 4 files, 2 tables; 0 errors, 0 warnings; 2 read not declared, 4 declared not read
-funcscan ok: 220 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-genephylomodeler ok: 21 inputs, 2 required, 2 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 4 declared not read
+fastqrepair ok: 32 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+fastquorum ok: 46 inputs, 2 required, 7 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+fetchngs ok: 29 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+funcprofiler ok: 34 inputs, 3 required, 4 files, 2 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+funcscan ok: 220 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+genephylomodeler ok: 21 inputs, 2 required, 2 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 genomeannotator ok: 69 inputs, 2 required, 9 files, 3 tables; 0 errors, 0 warnings; 6 read not declared, 9 declared not read
-genomeassembler ok: 72 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 54 declared not read
-genomeqc ok: 72 inputs, 2 required, 6 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 4 declared not read
+genomeassembler ok: 72 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
+genomeqc ok: 72 inputs, 2 required, 6 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 genomeskim ok: 28 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 4 read not declared, 5 declared not read
-genomicrelatedness ok: 44 inputs, 3 required, 10 files, 1 tables; 2 errors, 0 warnings; 0 read not declared, 4 declared not read
-gwas ok: 25 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-hadge ok: 27 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+genomicrelatedness ok: 44 inputs, 3 required, 10 files, 1 tables; 2 errors, 0 warnings; 0 read not declared, 0 declared not read
+gwas ok: 25 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+hadge ok: 27 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 hgtseq ok: 41 inputs, 5 required, 5 files, 1 tables; 0 errors, 0 warnings; 4 read not declared, 5 declared not read
 hic ok: 73 inputs, 2 required, 6 files, 1 tables; 0 errors, 0 warnings; 5 read not declared, 10 declared not read
 hicar ok: 74 inputs, 2 required, 10 files, 1 tables; 0 errors, 0 warnings; 5 read not declared, 10 declared not read
-hlatyping ok: 36 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+hlatyping ok: 36 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 imcyto unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-isoseq ok: 45 inputs, 3 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+isoseq ok: 45 inputs, 3 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 kmermaid unsupported: main.nf:1:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run i
 liverctanalysis ok: 30 inputs, 1 required, 3 files, 1 tables; 0 errors, 0 warnings; 6 read not declared, 4 declared not read
-lncpipe ok: 90 inputs, 2 required, 6 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 13 declared not read
-longraredisease ok: 96 inputs, 2 required, 24 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 10 declared not read
-lsmquant ok: 29 inputs, 2 required, 3 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-mag ok: 179 inputs, 2 required, 21 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-magmap ok: 59 inputs, 2 required, 8 files, 2 tables; 0 errors, 0 warnings; 1 read not declared, 9 declared not read
-marsseq ok: 38 inputs, 2 required, 8 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 5 declared not read
-mcmicro ok: 35 inputs, 2 required, 5 files, 3 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
+lncpipe ok: 90 inputs, 2 required, 6 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
+longraredisease ok: 96 inputs, 2 required, 24 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+lsmquant ok: 29 inputs, 2 required, 3 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+mag ok: 179 inputs, 2 required, 21 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+magmap ok: 59 inputs, 2 required, 8 files, 2 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+marsseq ok: 38 inputs, 2 required, 8 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+mcmicro ok: 35 inputs, 2 required, 5 files, 3 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 meerpipe fail: nextflow.config:53:21: `PSRDB_URL` is not defined (hint: use `env('...')` to access environment variable)
-metaboigniter ok: 229 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
-metapep ok: 38 inputs, 1 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-metatdenovo ok: 68 inputs, 2 required, 9 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 9 declared not read
-methylarray ok: 45 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
-methylong ok: 49 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-methylseq ok: 88 inputs, 3 required, 12 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-mhcquant ok: 79 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 19 declared not read
-mitodetect ok: 27 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+metaboigniter ok: 229 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+metapep ok: 38 inputs, 1 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+metatdenovo ok: 68 inputs, 2 required, 9 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+methylarray ok: 45 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+methylong ok: 49 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+methylseq ok: 88 inputs, 3 required, 12 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+mhcquant ok: 79 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+mitodetect ok: 27 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 mnaseseq unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-molkart ok: 62 inputs, 3 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
-mspepid ok: 35 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 4 declared not read
-multiplesequencealign ok: 51 inputs, 1 required, 7 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+molkart ok: 62 inputs, 3 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+mspepid ok: 35 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+multiplesequencealign ok: 51 inputs, 1 required, 7 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 nanoseq ok: 64 inputs, 2 required, 4 files, 2 tables; 0 errors, 0 warnings; 7 read not declared, 9 declared not read
-nanostring ok: 35 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 4 declared not read
-nascent ok: 53 inputs, 3 required, 8 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 5 declared not read
-ncrnannotator ok: 31 inputs, 5 required, 7 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
+nanostring ok: 35 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+nascent ok: 53 inputs, 3 required, 8 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
+ncrnannotator ok: 31 inputs, 5 required, 7 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 neutronstar unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-omicsgenetraitassociation ok: 33 inputs, 1 required, 0 files, 1 tables; 0 errors, 0 warnings; 14 read not declared, 5 declared not read
-oncoanalyser ok: 75 inputs, 1 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 28 declared not read
-pacsomatic ok: 75 inputs, 2 required, 23 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-pacvar ok: 60 inputs, 2 required, 14 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-pairgenomealign ok: 54 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-pangenome ok: 63 inputs, 3 required, 3 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 9 declared not read
-panoramaseq ok: 45 inputs, 2 required, 7 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 8 declared not read
-pathogenepidemiology ok: 29 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 7 read not declared, 5 declared not read
-pathogensurveillance ok: 53 inputs, 2 required, 7 files, 2 tables; 0 errors, 0 warnings; 2 read not declared, 9 declared not read
-phageannotator ok: 88 inputs, 2 required, 6 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 5 declared not read
-phaseimpute ok: 58 inputs, 1 required, 13 files, 7 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-phyloplace ok: 37 inputs, 1 required, 10 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-pixelator ok: 85 inputs, 3 required, 3 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 5 declared not read
-plasmodiumdrugres ok: 42 inputs, 1 required, 10 files, 3 tables; 0 errors, 0 warnings; 2 read not declared, 6 declared not read
-proteinannotator ok: 50 inputs, 2 required, 7 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-proteinfamilies ok: 68 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-proteinfold ok: 182 inputs, 2 required, 12 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+omicsgenetraitassociation ok: 33 inputs, 1 required, 0 files, 1 tables; 0 errors, 0 warnings; 14 read not declared, 0 declared not read
+oncoanalyser ok: 75 inputs, 1 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 23 declared not read
+pacsomatic ok: 75 inputs, 2 required, 23 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+pacvar ok: 60 inputs, 2 required, 14 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+pairgenomealign ok: 54 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+pangenome ok: 63 inputs, 3 required, 3 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+panoramaseq ok: 45 inputs, 2 required, 7 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
+pathogenepidemiology ok: 29 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 7 read not declared, 0 declared not read
+pathogensurveillance unsupported: Unable to parse config file: 'conf/modules.config'
+phageannotator ok: 88 inputs, 2 required, 6 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+phaseimpute ok: 58 inputs, 1 required, 13 files, 7 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+phyloplace ok: 37 inputs, 1 required, 10 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+pixelator ok: 85 inputs, 3 required, 3 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+plasmodiumdrugres ok: 42 inputs, 1 required, 10 files, 3 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+proteinannotator ok: 50 inputs, 2 required, 7 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+proteinfamilies ok: 68 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+proteinfold ok: 182 inputs, 2 required, 12 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 proteogenomicsdb unsupported: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 proteomicslfq unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-provenancereport ok: 22 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
-quantms ok: 167 inputs, 3 required, 3 files, 0 tables; 0 errors, 0 warnings; 6 read not declared, 16 declared not read
+provenancereport ok: 22 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+quantms ok: 167 inputs, 3 required, 3 files, 0 tables; 0 errors, 0 warnings; 6 read not declared, 0 declared not read
 radseq fail: workflows/radseq.nf:38:11: the included file workflows/../subworkflows/local/fastq_fastp.nf does not exist
-rangeland ok: 40 inputs, 7 required, 8 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 6 declared not read
-raredisease ok: 150 inputs, 4 required, 57 files, 8 tables; 0 errors, 0 warnings; 0 read not declared, 8 declared not read
-rarevariantburden ok: 64 inputs, 5 required, 23 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 5 declared not read
-readsimulator ok: 76 inputs, 2 required, 9 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 7 declared not read
-references ok: 24 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
-reportho ok: 51 inputs, 2 required, 11 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 6 declared not read
-ribomsqc ok: 31 inputs, 7 required, 3 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
-riboseq ok: 147 inputs, 2 required, 21 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
-rnadnavar ok: 126 inputs, 2 required, 6 files, 2 tables; 0 errors, 0 warnings; 2 read not declared, 6 declared not read
-rnafusion ok: 85 inputs, 3 required, 33 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
-rnaseq ok: 136 inputs, 2 required, 27 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
-rnasplice ok: 125 inputs, 4 required, 12 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 11 declared not read
-rnastructurome ok: 185 inputs, 2 required, 11 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
-rnavar ok: 106 inputs, 4 required, 25 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
-sammyseq ok: 72 inputs, 2 required, 8 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-sarek ok: 176 inputs, 2 required, 49 files, 3 tables; 0 errors, 0 warnings; 0 read not declared, 11 declared not read
-scdownstream ok: 103 inputs, 1 required, 14 files, 3 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+rangeland ok: 40 inputs, 7 required, 8 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 0 declared not read
+raredisease ok: 150 inputs, 4 required, 57 files, 8 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+rarevariantburden ok: 64 inputs, 5 required, 23 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
+readsimulator ok: 76 inputs, 2 required, 9 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+references ok: 24 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+reportho ok: 51 inputs, 2 required, 11 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+ribomsqc ok: 31 inputs, 7 required, 3 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+riboseq ok: 147 inputs, 2 required, 21 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+rnadnavar ok: 126 inputs, 2 required, 6 files, 2 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+rnafusion ok: 85 inputs, 3 required, 33 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+rnaseq ok: 136 inputs, 2 required, 27 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+rnasplice ok: 125 inputs, 4 required, 12 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 1 declared not read
+rnastructurome ok: 185 inputs, 2 required, 11 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+rnavar ok: 106 inputs, 4 required, 25 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+sammyseq ok: 72 inputs, 2 required, 8 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+sarek ok: 176 inputs, 2 required, 49 files, 3 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+scdownstream ok: 103 inputs, 1 required, 14 files, 3 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 scflow ok: 161 inputs, 133 required, 0 files, 0 tables; 0 errors, 1 warnings; 8 read not declared, 4 declared not read
-scnanoseq ok: 58 inputs, 6 required, 8 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
-scrnaseq ok: 69 inputs, 2 required, 23 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
-seqinspector ok: 51 inputs, 2 required, 10 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
-seqsubmit ok: 39 inputs, 4 required, 6 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+scnanoseq ok: 58 inputs, 6 required, 8 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+scrnaseq ok: 69 inputs, 2 required, 23 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+seqinspector ok: 51 inputs, 2 required, 10 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+seqsubmit unsupported: Unable to parse config file: 'nextflow.config'
 slamseq unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 smartseq2 unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-smrnaseq ok: 71 inputs, 2 required, 12 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
-sopa ok: 90 inputs, 3 required, 4 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 61 declared not read
-spatialaxe ok: 103 inputs, 3 required, 13 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 18 declared not read
-spatialvi ok: 55 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
-spinningjenny ok: 31 inputs, 2 required, 6 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 10 declared not read
+smrnaseq ok: 71 inputs, 2 required, 12 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+sopa ok: 90 inputs, 3 required, 4 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+spatialaxe ok: 103 inputs, 3 required, 13 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+spatialvi ok: 55 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+spinningjenny ok: 31 inputs, 2 required, 6 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 ssds ok: 33 inputs, 1 required, 6 files, 1 tables; 0 errors, 0 warnings; 12 read not declared, 4 declared not read
-stableexpression ok: 60 inputs, 1 required, 10 files, 4 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-taxmarker ok: 44 inputs, 1 required, 8 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-taxprofiler ok: 133 inputs, 3 required, 8 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-tbanalyzer ok: 51 inputs, 2 required, 10 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 9 declared not read
-tfactivity ok: 63 inputs, 4 required, 13 files, 3 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
-troughgraph ok: 27 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-tumourevo ok: 82 inputs, 3 required, 2 files, 1 tables; 0 errors, 1 warnings; 1 read not declared, 18 declared not read
-variantbenchmarking ok: 60 inputs, 7 required, 17 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
+stableexpression ok: 60 inputs, 1 required, 10 files, 4 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+taxmarker ok: 44 inputs, 1 required, 8 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+taxprofiler ok: 133 inputs, 3 required, 8 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tbanalyzer ok: 51 inputs, 2 required, 10 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tfactivity ok: 63 inputs, 4 required, 13 files, 3 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+troughgraph ok: 27 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tumourevo ok: 82 inputs, 3 required, 2 files, 1 tables; 0 errors, 1 warnings; 1 read not declared, 4 declared not read
+variantbenchmarking ok: 60 inputs, 7 required, 17 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 variantcatalogue ok: 31 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 21 read not declared, 5 declared not read
-variantprioritization ok: 111 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 11 declared not read
+variantprioritization ok: 111 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
 vipr unsupported: main.nf:15:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-viralintegration ok: 37 inputs, 6 required, 7 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 5 declared not read
-viralmetagenome ok: 196 inputs, 2 required, 8 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 8 declared not read
-viralrecon ok: 104 inputs, 1 required, 18 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+viralintegration ok: 37 inputs, 6 required, 7 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+viralmetagenome ok: 196 inputs, 2 required, 8 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+viralrecon ok: 104 inputs, 1 required, 18 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/19 unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 workflowhub/20 unsupported: main.nf:15:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 workflowhub/27 fail: virify.nf:90:9: Expected `{`
-workflowhub/44 ok: 133 inputs, 2 required, 26 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
+workflowhub/44 ok: 133 inputs, 2 required, 26 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
 workflowhub/57 unsupported: main.nf:11:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 workflowhub/104 unsupported: nanopore_nextflow.nf:9:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later
 workflowhub/105 unsupported: workflow.nf:3:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not r
@@ -199,7 +199,7 @@ workflowhub/453 fail: main.nf: no such file; name the main script of the project
 workflowhub/454 ok: 28 inputs, 0 required, 0 files, 0 tables; 0 errors, 1 warnings; 10 read not declared, 2 declared not read
 workflowhub/462 ok: 29 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 6 read not declared, 1 declared not read
 workflowhub/480 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 11 read not declared, 0 declared not read
-workflowhub/556 ok: 63 inputs, 12 required, 9 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 8 declared not read
+workflowhub/556 ok: 63 inputs, 12 required, 9 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 4 declared not read
 workflowhub/560 ok: 25 inputs, 2 required, 0 files, 0 tables; 0 errors, 1 warnings; 18 read not declared, 3 declared not read
 workflowhub/638 ok: 24 inputs, 2 required, 2 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 4 declared not read
 workflowhub/654 ok: 30 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -211,141 +211,141 @@ workflowhub/668 ok: 23 inputs, 2 required, 2 files, 1 tables; 0 errors, 0 warnin
 workflowhub/683 ok: 44 inputs, 0 required, 3 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
 workflowhub/691 ok: 3 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 5 read not declared, 0 declared not read
 workflowhub/737 ok: 195 inputs, 3 required, 4 files, 1 tables; 0 errors, 0 warnings; 6 read not declared, 35 declared not read
-workflowhub/813 ok: 30 inputs, 2 required, 2 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
+workflowhub/813 ok: 30 inputs, 2 required, 2 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 workflowhub/836 ok: 10 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
 workflowhub/837 ok: 37 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 10 read not declared, 0 declared not read
 workflowhub/874 fail: Unable to parse config file: 'nextflow.config'
-workflowhub/884 ok: 38 inputs, 1 required, 13 files, 1 tables; 1 errors, 0 warnings; 23 read not declared, 6 declared not read
-workflowhub/964 ok: 170 inputs, 1 required, 9 files, 3 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+workflowhub/884 ok: 38 inputs, 1 required, 13 files, 1 tables; 1 errors, 0 warnings; 23 read not declared, 0 declared not read
+workflowhub/964 ok: 170 inputs, 1 required, 9 files, 3 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/965 unsupported: main.nf:20:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-workflowhub/966 ok: 76 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
+workflowhub/966 ok: 76 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/967 ok: 39 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 19 read not declared, 3 declared not read
-workflowhub/968 ok: 35 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+workflowhub/968 ok: 35 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/969 unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-workflowhub/970 ok: 53 inputs, 3 required, 11 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 7 declared not read
+workflowhub/970 ok: 53 inputs, 3 required, 11 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 workflowhub/971 unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 workflowhub/972 ok: 51 inputs, 3 required, 7 files, 1 tables; 0 errors, 0 warnings; 5 read not declared, 4 declared not read
 workflowhub/973 unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-workflowhub/974 ok: 39 inputs, 6 required, 10 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-workflowhub/975 ok: 58 inputs, 2 required, 12 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+workflowhub/974 ok: 39 inputs, 6 required, 10 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/975 ok: 58 inputs, 2 required, 12 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/976 ok: 70 inputs, 1 required, 3 files, 1 tables; 0 errors, 0 warnings; 32 read not declared, 4 declared not read
-workflowhub/979 ok: 66 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+workflowhub/979 ok: 66 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/980 unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-workflowhub/981 ok: 188 inputs, 23 required, 9 files, 2 tables; 0 errors, 0 warnings; 5 read not declared, 57 declared not read
+workflowhub/981 ok: 188 inputs, 23 required, 9 files, 2 tables; 0 errors, 0 warnings; 5 read not declared, 1 declared not read
 workflowhub/982 unsupported: main.nf:28:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 workflowhub/983 unsupported: main.nf:16:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-workflowhub/985 ok: 46 inputs, 2 required, 7 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
-workflowhub/987 ok: 220 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+workflowhub/985 ok: 46 inputs, 2 required, 7 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/987 ok: 220 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/988 ok: 42 inputs, 5 required, 5 files, 1 tables; 0 errors, 0 warnings; 5 read not declared, 5 declared not read
 workflowhub/989 unsupported: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 workflowhub/990 ok: 74 inputs, 2 required, 10 files, 1 tables; 0 errors, 0 warnings; 5 read not declared, 10 declared not read
-workflowhub/991 ok: 36 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+workflowhub/991 ok: 36 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/992 unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 workflowhub/993 ok: 42 inputs, 4 required, 4 files, 1 tables; 0 errors, 0 warnings; 4 read not declared, 10 declared not read
 workflowhub/994 unsupported: main.nf:14:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 workflowhub/996 ok: 31 inputs, 1 required, 4 files, 1 tables; 0 errors, 0 warnings; 9 read not declared, 4 declared not read
-workflowhub/997 ok: 68 inputs, 2 required, 9 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 9 declared not read
-workflowhub/998 ok: 88 inputs, 3 required, 12 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-workflowhub/999 ok: 79 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 19 declared not read
+workflowhub/997 ok: 68 inputs, 2 required, 9 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/998 ok: 88 inputs, 3 required, 12 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/999 ok: 79 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/1000 unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-workflowhub/1001 ok: 62 inputs, 3 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
+workflowhub/1001 ok: 62 inputs, 3 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/1002 unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-workflowhub/1003 ok: 35 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 4 declared not read
+workflowhub/1003 ok: 35 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
 workflowhub/1004 unsupported: main.nf:51:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 workflowhub/1005 unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-workflowhub/1006 ok: 65 inputs, 1 required, 4 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 22 declared not read
-workflowhub/1007 ok: 66 inputs, 3 required, 3 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 8 declared not read
+workflowhub/1006 ok: 65 inputs, 1 required, 4 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 18 declared not read
+workflowhub/1007 ok: 66 inputs, 3 required, 3 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
 workflowhub/1008 unsupported: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-workflowhub/1009 ok: 35 inputs, 1 required, 10 files, 2 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
-workflowhub/1010 ok: 85 inputs, 3 required, 3 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 5 declared not read
+workflowhub/1009 ok: 35 inputs, 1 required, 10 files, 2 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+workflowhub/1010 ok: 85 inputs, 3 required, 3 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
 workflowhub/1011 ok: 72 inputs, 2 required, 2 files, 1 tables; 0 errors, 0 warnings; 5 read not declared, 5 declared not read
 workflowhub/1012 unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 workflowhub/1013 ok: 149 inputs, 3 required, 0 files, 0 tables; 0 errors, 3 warnings; 5 read not declared, 19 declared not read
-workflowhub/1014 ok: 150 inputs, 4 required, 57 files, 8 tables; 0 errors, 0 warnings; 0 read not declared, 8 declared not read
-workflowhub/1015 ok: 75 inputs, 2 required, 9 files, 1 tables; 1 errors, 0 warnings; 3 read not declared, 7 declared not read
-workflowhub/1016 ok: 100 inputs, 2 required, 18 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 8 declared not read
-workflowhub/1017 ok: 85 inputs, 3 required, 33 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
-workflowhub/1018 ok: 125 inputs, 4 required, 12 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 11 declared not read
-workflowhub/1019 ok: 106 inputs, 4 required, 25 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
-workflowhub/1021 ok: 69 inputs, 2 required, 23 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
+workflowhub/1014 ok: 150 inputs, 4 required, 57 files, 8 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/1015 ok: 75 inputs, 2 required, 9 files, 1 tables; 1 errors, 0 warnings; 3 read not declared, 0 declared not read
+workflowhub/1016 ok: 100 inputs, 2 required, 18 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+workflowhub/1017 ok: 85 inputs, 3 required, 33 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+workflowhub/1018 ok: 125 inputs, 4 required, 12 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 1 declared not read
+workflowhub/1019 ok: 106 inputs, 4 required, 25 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/1021 ok: 69 inputs, 2 required, 23 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/1022 unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-workflowhub/1023 ok: 71 inputs, 2 required, 12 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
-workflowhub/1025 ok: 133 inputs, 3 required, 8 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+workflowhub/1023 ok: 71 inputs, 2 required, 12 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+workflowhub/1025 ok: 133 inputs, 3 required, 8 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/1026 ok: 36 inputs, 6 required, 6 files, 1 tables; 0 errors, 0 warnings; 4 read not declared, 5 declared not read
-workflowhub/1027 ok: 104 inputs, 1 required, 18 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-workflowhub/1030 ok: 138 inputs, 2 required, 9 files, 2 tables; 0 errors, 0 warnings; 6 read not declared, 6 declared not read
-workflowhub/1041 ok: 51 inputs, 2 required, 11 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 6 declared not read
-workflowhub/1055 ok: 30 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
-workflowhub/1058 ok: 62 inputs, 2 required, 6 files, 2 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
-workflowhub/1069 ok: 46 inputs, 2 required, 13 files, 1 tables; 1 errors, 0 warnings; 3 read not declared, 1 declared not read
-workflowhub/1100 ok: 52 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+workflowhub/1027 ok: 104 inputs, 1 required, 18 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/1030 ok: 138 inputs, 2 required, 9 files, 2 tables; 0 errors, 0 warnings; 6 read not declared, 0 declared not read
+workflowhub/1041 ok: 51 inputs, 2 required, 11 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+workflowhub/1055 ok: 30 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/1058 ok: 62 inputs, 2 required, 6 files, 2 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+workflowhub/1069 ok: 46 inputs, 2 required, 13 files, 1 tables; 1 errors, 0 warnings; 3 read not declared, 0 declared not read
+workflowhub/1100 ok: 52 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/1106 ok: 20 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 3 declared not read
 workflowhub/1160 ok: 6 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 3 declared not read
-workflowhub/1178 ok: 51 inputs, 1 required, 7 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-workflowhub/1179 ok: 58 inputs, 6 required, 8 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
-workflowhub/1217 ok: 38 inputs, 1 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+workflowhub/1178 ok: 51 inputs, 1 required, 7 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/1179 ok: 58 inputs, 6 required, 8 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+workflowhub/1217 ok: 38 inputs, 1 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/1222 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 5 read not declared, 0 declared not read
-workflowhub/1226 ok: 58 inputs, 1 required, 13 files, 7 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-workflowhub/1236 ok: 24 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
-workflowhub/1250 ok: 40 inputs, 7 required, 8 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 6 declared not read
+workflowhub/1226 ok: 58 inputs, 1 required, 13 files, 7 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/1236 ok: 24 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+workflowhub/1250 ok: 40 inputs, 7 required, 8 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 0 declared not read
 workflowhub/1263 ok: 16 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 4 declared not read
-workflowhub/1266 ok: 38 inputs, 6 required, 2 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
-workflowhub/1293 ok: 60 inputs, 2 required, 14 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+workflowhub/1266 ok: 38 inputs, 6 required, 2 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+workflowhub/1293 ok: 60 inputs, 2 required, 14 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/1306 ok: 17 inputs, 0 required, 12 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 2 declared not read
-workflowhub/1307 ok: 60 inputs, 7 required, 17 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
+workflowhub/1307 ok: 60 inputs, 7 required, 17 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/1320 ok: 29 inputs, 5 required, 4 files, 0 tables; 0 errors, 0 warnings; 7 read not declared, 5 declared not read
 workflowhub/1321 ok: 29 inputs, 5 required, 4 files, 0 tables; 0 errors, 0 warnings; 7 read not declared, 5 declared not read
 workflowhub/1330 ok: 32 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
-workflowhub/1360 ok: 49 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+workflowhub/1360 ok: 49 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/1727 fail: main.nf: no such file; name the main script of the project, or set `manifest.mainScript` in its nextflow.config
 workflowhub/1735 ok: 30 inputs, 4 required, 5 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
-workflowhub/1742 ok: 73 inputs, 4 required, 9 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
-workflowhub/1757 ok: 191 inputs, 2 required, 7 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 8 declared not read
-workflowhub/1763 ok: 53 inputs, 2 required, 7 files, 2 tables; 0 errors, 0 warnings; 2 read not declared, 9 declared not read
+workflowhub/1742 ok: 73 inputs, 4 required, 9 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/1757 ok: 191 inputs, 2 required, 7 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/1763 unsupported: Unable to parse config file: 'conf/modules.config'
 workflowhub/1769 ok: 6 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 3 declared not read
-workflowhub/1782 ok: 64 inputs, 9 required, 6 files, 1 tables; 3 errors, 0 warnings; 1 read not declared, 6 declared not read
-workflowhub/1787 ok: 50 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 2 declared not read
-workflowhub/1795 ok: 65 inputs, 2 required, 14 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 6 declared not read
-workflowhub/1814 ok: 96 inputs, 1 required, 14 files, 0 tables; 0 errors, 0 warnings; 18 read not declared, 84 declared not read
+workflowhub/1782 ok: 64 inputs, 9 required, 6 files, 1 tables; 3 errors, 0 warnings; 1 read not declared, 0 declared not read
+workflowhub/1787 ok: 50 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/1795 ok: 65 inputs, 2 required, 14 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+workflowhub/1814 fail: cannot read sample-sheet schema assets/schema_input.json: No such file or directory (os error 2)
 workflowhub/1841 fail: Unable to parse config file: 'conf/module.config'
 workflowhub/1846 ok: 5 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-workflowhub/1862 ok: 55 inputs, 8 required, 16 files, 0 tables; 0 errors, 0 warnings; 27 read not declared, 8 declared not read
+workflowhub/1862 ok: 55 inputs, 8 required, 16 files, 0 tables; 0 errors, 0 warnings; 27 read not declared, 0 declared not read
 workflowhub/1864 ok: 32 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 110 read not declared, 0 declared not read
-workflowhub/1865 ok: 104 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+workflowhub/1865 ok: 104 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/1871 ok: 41 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 16 declared not read
 workflowhub/1888 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 34 read not declared, 0 declared not read
 workflowhub/1950 fail: main.nf: no such file; name the main script of the project, or set `manifest.mainScript` in its nextflow.config
-workflowhub/1954 ok: 64 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+workflowhub/1954 ok: 64 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/1960 ok: 60 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 7 declared not read
-workflowhub/2033 ok: 47 inputs, 0 required, 13 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 9 declared not read
+workflowhub/2033 ok: 47 inputs, 0 required, 13 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 0 declared not read
 workflowhub/2037 ok: 56 inputs, 1 required, 3 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 2 declared not read
-workflowhub/2040 ok: 49 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 6 declared not read
+workflowhub/2040 ok: 49 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 workflowhub/2053 fail: main.nf: no such file; name the main script of the project, or set `manifest.mainScript` in its nextflow.config
 workflowhub/2054 ok: 53 inputs, 0 required, 4 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/2080 ok: 19 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 7 read not declared, 2 declared not read
-workflowhub/2105 ok: 71 inputs, 2 required, 6 files, 0 tables; 0 errors, 0 warnings; 7 read not declared, 4 declared not read
+workflowhub/2105 ok: 71 inputs, 2 required, 6 files, 0 tables; 0 errors, 0 warnings; 7 read not declared, 0 declared not read
 workflowhub/2110 fail: quantify_and_align.nf:26:10: the included file include/xic-extractor/main.nf does not exist
-workflowhub/2141 ok: 75 inputs, 1 required, 11 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 8 declared not read
+workflowhub/2141 ok: 75 inputs, 1 required, 11 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 0 declared not read
 workflowhub/2153 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 13 read not declared, 0 declared not read
 workflowhub/2154 ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 14 read not declared, 0 declared not read
 workflowhub/2160 ok: 26 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 5 read not declared, 0 declared not read
-workflowhub/2177 ok: 30 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 10 read not declared, 8 declared not read
+workflowhub/2177 ok: 30 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 10 read not declared, 0 declared not read
 workflowhub/2190 ok: 25 inputs, 2 required, 2 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 workflowhub/2197 ok: 19 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 9 read not declared, 1 declared not read
-workflowhub/2199 ok: 58 inputs, 3 required, 16 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 7 declared not read
-workflowhub/2200 ok: 83 inputs, 3 required, 16 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 10 declared not read
-workflowhub/2203 ok: 50 inputs, 2 required, 7 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-workflowhub/2204 ok: 96 inputs, 2 required, 24 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 10 declared not read
+workflowhub/2199 ok: 58 inputs, 3 required, 16 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/2200 ok: 83 inputs, 3 required, 16 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/2203 ok: 50 inputs, 2 required, 7 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+workflowhub/2204 ok: 96 inputs, 2 required, 24 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
 workflowhub/2205 unsupported: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
-workflowhub/2209 ok: 111 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 11 declared not read
+workflowhub/2209 ok: 111 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
 workflowhub/2211 ok: 33 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 5 read not declared, 0 declared not read
-workflowhub/2212 ok: 126 inputs, 2 required, 6 files, 2 tables; 0 errors, 0 warnings; 2 read not declared, 6 declared not read
-workflowhub/2217 ok: 32 inputs, 2 required, 4 files, 1 tables; 0 errors, 1 warnings; 12 read not declared, 7 declared not read
-workflowhub/2239 ok: 70 inputs, 3 required, 7 files, 2 tables; 0 errors, 3 warnings; 3 read not declared, 6 declared not read
-workflowhub/2244 ok: 43 inputs, 2 required, 2 files, 1 tables; 0 errors, 0 warnings; 16 read not declared, 8 declared not read
-workflowhub/2246 ok: 91 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+workflowhub/2212 ok: 126 inputs, 2 required, 6 files, 2 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+workflowhub/2217 ok: 32 inputs, 2 required, 4 files, 1 tables; 0 errors, 1 warnings; 12 read not declared, 0 declared not read
+workflowhub/2239 ok: 70 inputs, 3 required, 7 files, 2 tables; 0 errors, 3 warnings; 3 read not declared, 0 declared not read
+workflowhub/2244 ok: 43 inputs, 2 required, 2 files, 1 tables; 0 errors, 0 warnings; 16 read not declared, 0 declared not read
+workflowhub/2246 ok: 91 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/2251 ok: 31 inputs, 2 required, 4 files, 0 tables; 0 errors, 2 warnings; 6 read not declared, 0 declared not read
 workflowhub/2302 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 64 read not declared, 0 declared not read
 workflowhub/2317 ok: 16 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 8 declared not read
 workflowhub/2318 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 44 read not declared, 0 declared not read
-outputs: 153 of 280 workflows have outputs, 324 outputs, 145 files
+outputs: 152 of 276 workflows have outputs, 323 outputs, 145 files

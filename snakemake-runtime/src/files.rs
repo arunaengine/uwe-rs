@@ -90,6 +90,13 @@ impl WorkflowFiles {
         }
     }
 
+    pub fn storage_address(&self, path: &Path) -> Option<String> {
+        self.stored
+            .borrow()
+            .get(path)
+            .and_then(|(address, metadata)| metadata.as_ref().map(|_| address.clone()))
+    }
+
     /// Where a path is on disk: in the output of a task, or itself. A path inside a directory
     /// output of a task that the folder does not hold is not in that output.
     pub fn location(&self, path: &Path) -> Option<(PathBuf, bool)> {

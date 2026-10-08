@@ -115,6 +115,14 @@ pub fn default_file(
     if value.tag(TAG).is_some() || value.tag("local").is_some() {
         return Ok(value.clone());
     }
+    if let Value::List(_) = value.plain() {
+        let items = interpreter.iterate(value)?;
+        return items
+            .iter()
+            .map(|item| default_file(interpreter, item, provider, prefix))
+            .collect::<Result<Vec<_>, _>>()
+            .map(Value::list);
+    }
     let query = interpreter.to_str(value)?;
     let query = if prefix.is_empty() || query.contains("://") {
         query

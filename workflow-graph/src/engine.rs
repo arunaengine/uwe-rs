@@ -117,6 +117,7 @@ pub struct Engine<'a> {
     retry_delay: Duration,
     /// The number of attempts of each task so far.
     attempts: HashMap<TaskId, u32>,
+    task_cancel: HashMap<TaskId, CancellationToken>,
 }
 
 impl<'a> Engine<'a> {
@@ -131,6 +132,7 @@ impl<'a> Engine<'a> {
             retries: MACHINE_RETRIES,
             retry_delay: Duration::from_secs(1),
             attempts: HashMap::new(),
+            task_cancel: HashMap::new(),
         }
     }
 
@@ -211,6 +213,9 @@ impl<'a> Engine<'a> {
         completed: Option<TaskId>,
     ) -> Result<(), ExecuteError> {
         let edges = recorder.add(&task, completed)?;
+        self.task_cancel
+            .entry(task.id)
+            .or_insert_with(|| self.cancel.child_token());
         self.report(Event::Requested { task: &task, edges });
         queue.push(task);
         Ok(())
@@ -263,6 +268,17 @@ impl<'a> Engine<'a> {
         let mut draining = false;
         loop {
             self.check_cancel()?;
+            if driver.wake_at().is_some_and(|time| time <= Instant::now()) {
+                let next = driver.wake();
+                let notes = driver.notes();
+                self.asked(next, notes, recorder, &mut queue, None)?;
+                self.deliver(driver, files.as_deref())?;
+            }
+            for task in driver.cancellations() {
+                if let Some(cancel) = self.task_cancel.get(&task) {
+                    cancel.cancel();
+                }
+            }
             // After a failure that ends the run once the running tasks have ended, no task
             // starts: neither one of the queue nor one that waits in the executor.
             if !draining && driver.draining() {
@@ -278,9 +294,13 @@ impl<'a> Engine<'a> {
             }
             self.check_cancel()?;
             let slot = match pending.take() {
-                Take::Empty => break,
-                Take::Wait => {
-                    let ended = attempts.next()?;
+                Take::Empty | Take::Wait => {
+                    let ended = match driver.wake_at() {
+                        Some(deadline) => attempts.next_wake(deadline)?,
+                        None if pending.len() == 0 => break,
+                        None => Some(attempts.next()?),
+                    };
+                    let Some(ended) = ended else { continue };
                     pending.end(ended.id, ended.attempt, ended.result);
                     continue;
                 }
@@ -297,6 +317,9 @@ impl<'a> Engine<'a> {
             };
             let mut outcome = match result {
                 Ok(outcome) => outcome,
+                Err(error) if driver.handles_error(task.id, &error) => {
+                    failed(&task, &error, attempt, started, time)
+                }
                 Err(error) => {
                     let outcome = failed(&task, &error, attempt, started, time);
                     let retried = !draining && error.retryable() && attempt <= self.retries;
@@ -360,6 +383,7 @@ impl<'a> Engine<'a> {
             self.asked(next, notes, recorder, &mut queue, Some(id))?;
             if !again {
                 queue.finished(id);
+                self.task_cancel.remove(&id);
             }
             self.deliver(driver, files.as_deref())?;
         }
@@ -412,9 +436,14 @@ impl<'a> Engine<'a> {
         let attempt = Attempt {
             task: task.clone(),
             number,
-            cancel: attempts.cancel.clone(),
+            cancel: self.task_cancel[&task.id].clone(),
         };
-        if let Some(ended) = attempts.start(task.id, number, self.executor.run(attempt)) {
+        let running = if attempt.cancel.is_cancelled() {
+            crate::Running::ended(Err(ExecuteError::Cancelled))
+        } else {
+            self.executor.run(attempt)
+        };
+        if let Some(ended) = attempts.start(task.id, number, running) {
             pending.end(ended.id, ended.attempt, ended.result);
         }
         Ok(())
@@ -473,6 +502,11 @@ fn failed(
         id: task.id,
         attempt,
         exit_code: -1,
+        error: Some(match error {
+            ExecuteError::Machine { .. } => crate::TaskError::Transient,
+            ExecuteError::Cancelled => crate::TaskError::Cancelled,
+            _ => crate::TaskError::System,
+        }),
         stderr: error.to_string(),
         started: Some(started),
         ended: Some(ended),

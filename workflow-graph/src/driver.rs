@@ -90,6 +90,26 @@ pub trait Driver {
     /// Takes the outcome of a task and returns the tasks that can run now.
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError>;
 
+    /// The next time the state machine needs to advance without a task outcome.
+    fn wake_at(&self) -> Option<std::time::Instant> {
+        None
+    }
+
+    /// Advances timers and returns tasks that became ready.
+    fn wake(&mut self) -> Result<Vec<Task>, DriverError> {
+        Ok(Vec::new())
+    }
+
+    /// Tasks whose individual attempts must stop, without stopping the run.
+    fn cancellations(&mut self) -> Vec<TaskId> {
+        Vec::new()
+    }
+
+    /// Whether execution failures should become outcomes for language retry decisions.
+    fn handles_error(&self, _task: TaskId, _error: &ExecuteError) -> bool {
+        false
+    }
+
     /// Consumes explicit output-validation acceptance for exactly this task and attempt after
     /// [`Driver::complete`].
     /// See `docs/design/graph.md` for the full contract.

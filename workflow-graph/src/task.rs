@@ -230,6 +230,9 @@ pub struct Outcome {
     /// Which attempt of the task this was, counting from 1; the engine sets it.
     pub attempt: u32,
     pub exit_code: i32,
+    /// An executor failure, distinct from a program's exit status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<TaskError>,
     /// Whether native output validation accepted this attempt. `None` is no recorded decision,
     /// including historical outcomes and attempts the driver did not hear.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -263,6 +266,15 @@ pub struct Outcome {
     /// See `docs/design/graph.md` for the full contract.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub containers: Vec<ContainerOutcome>,
+}
+
+/// Why execution ended without a program exit status.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskError {
+    System,
+    Transient,
+    Cancelled,
 }
 
 /// How one container of a task that runs several ended.

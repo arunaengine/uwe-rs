@@ -111,6 +111,23 @@ pub fn copies_inputs(request: &TaskRequest) -> bool {
 
 /// The container image a task asks for, from its `container` directive.
 pub fn container(request: &TaskRequest) -> Option<String> {
+    if let Some(value) = directive(&request.directives, "conda").filter(Value::truth) {
+        let source = value.to_string();
+        return Some(if source.ends_with(".yml") || source.ends_with(".yaml") {
+            let path = std::path::Path::new(&source);
+            let path = if path.is_absolute() || source.contains("://") {
+                path.to_owned()
+            } else {
+                std::env::current_dir().unwrap_or_default().join(path)
+            };
+            format!("conda-env:{}", path.display())
+        } else {
+            format!(
+                "conda-env:nextflow-packages:{}",
+                serde_json::to_string(&source).unwrap()
+            )
+        });
+    }
     match directive(&request.directives, "container") {
         Some(Value::String(image)) if !image.is_empty() => Some(image.to_string()),
         _ => None,
@@ -120,6 +137,9 @@ pub fn container(request: &TaskRequest) -> Option<String> {
 /// Prepends the engine registry unless the image's first part contains a dot or colon.
 /// For example, docker.registry = 'quay.io' qualifies biocontainers/fastqc.
 pub fn with_registry(image: &str, registry: Option<&str>) -> String {
+    if image.starts_with("conda-env:") {
+        return image.to_owned();
+    }
     let Some(registry) = registry.filter(|registry| !registry.is_empty()) else {
         return image.to_owned();
     };

@@ -23,7 +23,7 @@ pub struct Local {
 
 impl Backend for Local {
     async fn pin(&self, image: &str) -> Result<Option<String>, ExecutorError> {
-        let (base, source) = if let Some(value) = image.strip_prefix("conda-container:") {
+        let (base, mut source) = if let Some(value) = image.strip_prefix("conda-container:") {
             let pair: [String; 2] = serde_json::from_str(value).map_err(|error| {
                 ExecutorError::Unsupported(format!("Invalid Conda container reference: {error}"))
             })?;
@@ -33,6 +33,13 @@ impl Backend for Local {
         } else {
             return self.backend.pin(image).await;
         };
+        let inline = source
+            .strip_prefix("nextflow-packages:")
+            .map(crate::nextflow::conda_file)
+            .transpose()?;
+        if let Some(file) = &inline {
+            source = file.path().to_string_lossy().into_owned();
+        }
         if let Some(base) = &base
             && self.config.is_none()
         {

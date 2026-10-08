@@ -120,6 +120,37 @@ fn io_error(message: String) -> Error {
     }
 }
 
+pub(crate) fn conda_file(source: &str) -> Result<tempfile::NamedTempFile, executor::ExecutorError> {
+    let failed = |message: String| {
+        executor::ExecutorError::Unsupported(format!("Nextflow Conda: {message}"))
+    };
+    let source: String = serde_json::from_str(source).map_err(|error| failed(error.to_string()))?;
+    if source.contains('/') || source.contains('\n') || source.trim().is_empty() {
+        return Err(failed(
+            "named host environments and prefix paths are unsupported".into(),
+        ));
+    }
+    let mut channels = vec!["conda-forge".to_owned()];
+    let mut dependencies = Vec::new();
+    for package in source.split_whitespace() {
+        let spec = conda_environment::MatchSpec::parse(package)
+            .map_err(|error| failed(error.to_string()))?;
+        if let Some(channel) = spec.channel
+            && !channels.contains(&channel)
+        {
+            channels.push(channel);
+        }
+        dependencies.push(package.to_owned());
+    }
+    let text = serde_json::json!({"channels": channels, "dependencies": dependencies}).to_string();
+    let file = tempfile::Builder::new()
+        .suffix(".yml")
+        .tempfile()
+        .map_err(executor::ExecutorError::from)?;
+    std::fs::write(file.path(), text).map_err(executor::ExecutorError::from)?;
+    Ok(file)
+}
+
 /// The host of a run; remote files are cached in `downloads` of the cache directory.
 fn console(quiet: bool, storage: &Storage) -> Console {
     Console {
@@ -152,4 +183,26 @@ pub fn print_config(launch: &Launch, storage: &Storage) -> Result<(), DriverErro
     let config = nextflow_runtime::driver::config(&launch.target, launch, &mut console)?;
     print!("{}", config.flat());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn writes_conda_packages() {
+        let file = super::conda_file(
+            &serde_json::to_string("bioconda::fastqc=0.12.1 samtools=1.20").unwrap(),
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(file.path()).unwrap();
+        let environment = conda_environment::Environment::parse(&text).unwrap();
+        assert_eq!(environment.channels, ["conda-forge", "bioconda"]);
+        assert_eq!(environment.dependencies.len(), 2);
+        assert_eq!(environment.dependencies[0].name, "fastqc");
+        let path = file.path().to_owned();
+        drop(file);
+        assert!(!path.exists());
+        assert!(
+            super::conda_file(&serde_json::to_string("/opt/conda/envs/existing").unwrap()).is_err()
+        );
+    }
 }

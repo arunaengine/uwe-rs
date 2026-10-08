@@ -282,22 +282,21 @@ fn accepts_inactive_config() {
 
 #[test]
 fn rejects_enabled_environment() {
-    for name in ["conda", "spack"] {
-        let source = format!(
-            "process P {{\n {name} 'environment.yml'\n script:\n 'true'\n}}\nworkflow {{ P() }}"
-        );
-        let (tasks, _) = run(&source, &Options::default()).expect("disabled environment");
-        assert_eq!(tasks.len(), 1);
-        let options = Options {
-            config: config(&format!("{name}.enabled = true")),
-            ..Options::default()
-        };
-        let error = run(&source, &options).expect_err("unsupported environment");
-        assert!(
-            error.contains(&format!("process directive `{name}`")),
-            "{error}"
-        );
-    }
+    let name = "spack";
+    let source = format!(
+        "process P {{\n {name} 'environment.yml'\n script:\n 'true'\n}}\nworkflow {{ P() }}"
+    );
+    let (tasks, _) = run(&source, &Options::default()).expect("disabled environment");
+    assert_eq!(tasks.len(), 1);
+    let options = Options {
+        config: config(&format!("{name}.enabled = true")),
+        ..Options::default()
+    };
+    let error = run(&source, &options).expect_err("unsupported environment");
+    assert!(
+        error.contains(&format!("process directive `{name}`")),
+        "{error}"
+    );
 }
 
 #[test]

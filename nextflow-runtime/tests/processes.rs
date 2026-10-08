@@ -175,16 +175,25 @@ fn rejects_active_directives() {
         ("maxErrors", "2"),
         ("storeDir", "'stored'"),
         ("containerOptions", "'--privileged'"),
-        ("clusterOptions", "'--exclusive'"),
-        ("queue", "'batch'"),
+        ("clusterOptions", "'--export=TOKEN=value'"),
+        ("clusterOptions", "'-q batch -v TOKEN=value'"),
+        ("clusterOptions", "'--partition --export=TOKEN=value'"),
         ("module", "'samtools'"),
-        ("arch", "'arm64'"),
+        ("arch", "[name: 'linux/x86_64', target: 'cascadelake']"),
+        ("pod", "[env: 'TOKEN', value: 'value']"),
+        (
+            "pod",
+            "[[nodeSelector: 'disk=ssd'], [secret: 'token/key', env: 'TOKEN']]",
+        ),
+        ("pod", "[volumeClaim: 'data', mountPath: '/data']"),
+        ("containerOptions", "'--gpus all'"),
+        ("containerOptions", "'--shm-size 1g'"),
+        ("containerOptions", "'-e TOKEN=value'"),
         ("stageOutMode", "'move'"),
         ("secret", "'TOKEN'"),
-        ("executor", "'slurm'"),
     ] {
         let source =
-            format!("process P {{\n {name} {value}\n script:\n 'true'\n}}\nworkflow {{ P() }}");
+            format!("process P {{\n {name}({value})\n script:\n 'true'\n}}\nworkflow {{ P() }}");
         let error = run(&source, &Options::default()).expect_err("unsupported directive");
         assert!(
             error.contains(&format!("process directive `{name}`")),
@@ -200,6 +209,56 @@ fn rejects_active_directives() {
             error.contains(&format!("process directive `{name}`")),
             "{error}"
         );
+    }
+}
+
+#[test]
+fn accepts_scheduling_hints() {
+    for (name, value) in [
+        ("executor", "'slurm'"),
+        ("queue", "'batch'"),
+        (
+            "clusterOptions",
+            "'--exclusive --partition=batch --account project'",
+        ),
+        ("clusterOptions", "['-q batch', '--qos normal']"),
+        ("penv", "'smp'"),
+        ("machineType", "'n1-standard-4'"),
+        ("arch", "'arm64'"),
+        ("arch", "[name: 'linux/x86_64']"),
+        ("resourceLabels", "[region: 'local']"),
+        ("scratch", "true"),
+        ("scratch", "'/scratch'"),
+        ("pod", "[nodeSelector: 'disk=ssd']"),
+        (
+            "pod",
+            "[[affinity: [nodeAffinity: [:]]], [toleration: [key: 'workload']]]",
+        ),
+        ("array", "10"),
+    ] {
+        for configured in [false, true] {
+            let directive = if configured {
+                String::new()
+            } else {
+                format!(" {name}({value})\n")
+            };
+            let source = format!(
+                "process P {{\n{directive} input:\n val x\n output:\n val x\n script:\n 'true'\n}}\nworkflow {{ P(channel.of(1, 2)).view() }}"
+            );
+            let options = Options {
+                config: if configured {
+                    config(&format!("process.{name} = {value}"))
+                } else {
+                    nextflow_config::Config::default()
+                },
+                ..Options::default()
+            };
+            let (tasks, output) = run(&source, &options).expect(name);
+            assert_eq!(tasks.len(), 2, "{name}");
+            let diagnostic = format!("INFO: process directive `{name}` is ignored");
+            assert_eq!(output.matches(&diagnostic).count(), 1, "{output}");
+            assert!(output.ends_with("1\n2\n"), "{output}");
+        }
     }
 }
 

@@ -46,28 +46,31 @@ const HANDLED_DIRECTIVES: &[&str] = &[
 
 const REFUSED_DIRECTIVES: &[&str] = &[
     "afterScript",
-    "arch",
-    "array",
     "beforeScript",
-    "clusterOptions",
     "conda",
     "containerOptions",
-    "executor",
     "fair",
     "hints",
-    "machineType",
     "maxErrors",
     "maxSubmitAwait",
     "module",
+    "secret",
+    "spack",
+    "stageOutMode",
+    "storeDir",
+];
+
+const HINT_DIRECTIVES: &[&str] = &[
+    "arch",
+    "array",
+    "clusterOptions",
+    "executor",
+    "machineType",
     "penv",
     "pod",
     "queue",
     "resourceLabels",
     "scratch",
-    "secret",
-    "spack",
-    "stageOutMode",
-    "storeDir",
 ];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -372,6 +375,7 @@ impl ProcessNode {
                 ("conda", _) if !self.conda_enabled => false,
                 ("spack", _) if !self.spack_enabled => false,
                 ("stageOutMode", [Value::String(mode)]) if &**mode == "copy" => false,
+                (name, _) if HINT_DIRECTIVES.contains(&name) => !scheduling_hint(directive),
                 (name, _) if REFUSED_DIRECTIVES.contains(&name) => {
                     directive.arguments.iter().any(Value::truth)
                 }
@@ -415,6 +419,17 @@ impl ProcessNode {
         let base = task_object(&self.name, index, attempt, None, &[], &ext);
         let directives = self.directives(interpreter, &mut frame, &base)?;
         if index == 1 && attempt == 1 {
+            for directive in &directives {
+                if HINT_DIRECTIVES.contains(&directive.name.as_ref())
+                    && directive.arguments.iter().any(Value::truth)
+                {
+                    interpreter.print(&format!(
+                        "INFO: process directive `{}` is ignored for process `{}`; \
+                         iunctus settings select the backend and placement\n",
+                        directive.name, self.name
+                    ));
+                }
+            }
             self.max_forks = directives
                 .iter()
                 .find(|directive| &*directive.name == "maxForks")
@@ -705,6 +720,79 @@ impl ProcessNode {
     }
 }
 
+fn scheduling_hint(directive: &TaskDirective) -> bool {
+    directive
+        .arguments
+        .iter()
+        .all(|value| match &*directive.name {
+            "clusterOptions" => cluster_hint(value),
+            "pod" => placement_hint(value, &["nodeSelector", "affinity", "toleration"]),
+            "arch" if matches!(value, Value::Map(_)) => placement_hint(value, &["name"]),
+            _ => true,
+        })
+}
+
+fn placement_hint(value: &Value, names: &[&str]) -> bool {
+    match value {
+        Value::Map(map) => map
+            .borrow()
+            .entries
+            .iter()
+            .all(|(key, value)| !value.truth() || names.contains(&key.0.to_string().as_str())),
+        Value::List(list) => list
+            .borrow()
+            .items
+            .iter()
+            .all(|value| placement_hint(value, names)),
+        _ => !value.truth(),
+    }
+}
+
+fn cluster_hint(value: &Value) -> bool {
+    if let Value::List(list) = value {
+        return list.borrow().items.iter().all(cluster_hint);
+    }
+    if !value.truth() {
+        return true;
+    }
+    let Value::String(text) = value else {
+        return false;
+    };
+    let mut words = text.split_whitespace();
+    while let Some(word) = words.next() {
+        if matches!(word, "--exclusive" | "--oversubscribe") {
+            continue;
+        }
+        let (flag, value) = word
+            .split_once('=')
+            .map_or((word, None), |(flag, value)| (flag, Some(value)));
+        if !matches!(
+            flag,
+            "--account"
+                | "--partition"
+                | "--qos"
+                | "--constraint"
+                | "--nodes"
+                | "--nodelist"
+                | "--exclude"
+                | "--reservation"
+                | "-q"
+                | "-A"
+                | "-P"
+                | "-p"
+        ) {
+            return false;
+        }
+        if value
+            .or_else(|| words.next())
+            .is_none_or(|value| value.is_empty() || value.starts_with('-'))
+        {
+            return false;
+        }
+    }
+    true
+}
+
 fn output_arity(options: &Value) -> Result<Option<(usize, Option<usize>)>, Error> {
     let Some(arity) = option(options, "arity") else {
         return Ok(None);
@@ -969,6 +1057,7 @@ mod directive_tests {
     fn accounts_lowered_directives() {
         let mut runtime = super::HANDLED_DIRECTIVES.to_vec();
         runtime.extend_from_slice(super::REFUSED_DIRECTIVES);
+        runtime.extend_from_slice(super::HINT_DIRECTIVES);
         runtime.sort_unstable();
         let mut lowered = nextflow_evaluator::lower::PROCESS_DIRECTIVES.to_vec();
         lowered.sort_unstable();

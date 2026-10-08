@@ -466,3 +466,31 @@ fn marks_deciding_outputs() {
     // Only the first task made files that decide tasks.
     assert_eq!(graph.marked().count(), 1);
 }
+
+#[test]
+fn enables_conda_images() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(directory.path().join("main.nf"), "process P {\n conda 'bioconda::fastqc=0.12.1'\n container 'debian:stable-slim'\n script:\n 'true'\n}\nworkflow { P() }").unwrap();
+    for enabled in [false, true] {
+        std::fs::write(
+            directory.path().join("nextflow.config"),
+            format!("conda.enabled = {enabled}\ndocker.registry = 'quay.io'\n"),
+        )
+        .unwrap();
+        let mut driver = nextflow_runtime::driver(&Launch {
+            target: directory.path().to_owned(),
+            ..Launch::default()
+        })
+        .unwrap();
+        let tasks = driver.start().unwrap();
+        let image = tasks[0].image.as_deref().unwrap();
+        assert_eq!(
+            image.starts_with("conda-env:nextflow-packages:"),
+            enabled,
+            "{image}"
+        );
+        if !enabled {
+            assert_eq!(image, "quay.io/debian:stable-slim");
+        }
+    }
+}

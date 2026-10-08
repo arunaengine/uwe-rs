@@ -27,6 +27,7 @@ const HANDLED_DIRECTIVES: &[&str] = &[
     "afterScript",
     "beforeScript",
     "cache",
+    "conda",
     "container",
     "cpus",
     "debug",
@@ -47,7 +48,6 @@ const HANDLED_DIRECTIVES: &[&str] = &[
 ];
 
 const REFUSED_DIRECTIVES: &[&str] = &[
-    "conda",
     "containerOptions",
     "fair",
     "hints",
@@ -389,6 +389,9 @@ impl ProcessNode {
             }
         }
         limit_resources(&mut directives);
+        if !self.conda_enabled {
+            directives.retain(|directive| &*directive.name != "conda");
+        }
         Ok(directives)
     }
 

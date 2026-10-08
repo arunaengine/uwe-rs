@@ -42,14 +42,14 @@ Use `type = "s3"`. Prefixes can start with `s3://`, `http://` or `https://`.
 | `endpoint` | string HTTP(S) URL | AWS service endpoint | `"https://s3.example.org"`; compatible service endpoint. |
 | `region` | string | AWS_REGION, then AWS_DEFAULT_REGION; `"us-east-1"` with custom endpoint | `"eu-central-1"`; otherwise required when connecting. |
 | `path_style` | boolean | `true` with custom endpoint; `false` otherwise | `true`; put bucket in URL path instead of hostname. |
-| `access_key_id` | secret | none; external discovery unconfirmed | `{ environment = "S3_ACCESS_KEY" }`; requires secret_access_key. |
-| `secret_access_key` | secret | none; external discovery unconfirmed | `{ environment = "S3_SECRET_KEY" }`; requires access_key_id. |
+| `access_key_id` | secret | none; then the standard AWS sources | `{ environment = "S3_ACCESS_KEY" }`; requires secret_access_key. |
+| `secret_access_key` | secret | none; then the standard AWS sources | `{ environment = "S3_SECRET_KEY" }`; requires access_key_id. |
 | `session_token` | secret | none | `{ environment = "S3_SESSION_TOKEN" }`; passed with the explicit key pair. |
 | `anonymous` | boolean | `false` | `true`; unsigned access, cannot combine with explicit access keys. |
 
 Use a real bucket and choose prefixes that include your input, output or
 [TES staging](executors.md#tes) locations.
-An explicit key pair disables external credential loading.
+Without a key pair, OpenDAL reads the standard AWS sources: the `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN` environment variables, the `~/.aws` config and credentials files, web identity tokens and instance metadata. An explicit key pair disables this discovery.
 
 ```toml
 [storage.lab]
@@ -71,9 +71,11 @@ Use `type = "google-cloud-storage"` with `gs://`, HTTP or HTTPS prefixes.
 | Key | Type | Default | Example and meaning |
 | --- | --- | --- | --- |
 | `endpoint` | string HTTP(S) URL | `"https://storage.googleapis.com"` | `"https://storage.googleapis.com"`; provider endpoint. |
-| `credential_file` | string path | none; external discovery unconfirmed | `"/srv/secrets/service-account.json"`; service-account key file passed to OpenDAL. |
-| `token` | secret | none; external discovery unconfirmed | `{ environment = "GCS_TOKEN" }`; OAuth access token. |
+| `credential_file` | string path | none; then the standard Google sources | `"/srv/secrets/service-account.json"`; service-account key file passed to OpenDAL. |
+| `token` | secret | none; then the standard Google sources | `{ environment = "GCS_TOKEN" }`; OAuth access token. |
 | `anonymous` | boolean | `false` | `true`; unsigned access, disables credential and metadata discovery. |
+
+Without `credential_file` or `token`, OpenDAL reads the standard Google sources: the file named by `GOOGLE_APPLICATION_CREDENTIALS`, the gcloud default credentials and VM metadata.
 
 ## Azure Blob Storage
 

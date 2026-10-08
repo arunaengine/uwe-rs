@@ -139,6 +139,7 @@ impl<'a> Evaluator<'a> {
             variables: vec![Vec::new()],
         };
         file.module = self.module(&mut file, &parsed.tree.statements, includer)?;
+        *file.module.path.borrow_mut() = Some(file.path.to_string_lossy().into_owned().into());
         *file.module.source.borrow_mut() = Some(file.source.clone());
         self.active.push(identity);
         let result = self.statements(&mut file, &parsed.tree.statements, &[], false);
@@ -580,7 +581,7 @@ impl<'a> Evaluator<'a> {
             .evaluate(&Rc::new(code), &file.module)
             .map_err(|error| ConfigError::Failed {
                 file: file.path.clone(),
-                error,
+                error: interpreter.locate(error),
             })
     }
 }

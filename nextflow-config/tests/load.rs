@@ -53,10 +53,68 @@ fn rejects_secret_reads() {
         "secrets['TOKEN']",
         "secrets.getProperty('TOKEN')",
     ] {
-        let error = load_text(&format!("params.token = {read}\n")).expect_err("secret read");
+        let error = load_text(&format!("\nparams.token = {read}\n")).expect_err("secret read");
         assert!(error.unsupported(), "{error}");
-        assert!(error.to_string().contains("secrets"), "{error}");
+        let diagnostic = error.to_string();
+        assert!(diagnostic.contains("nextflow.config:2:16:"), "{error}");
+        assert!(diagnostic.contains("secrets"), "{error}");
+        assert!(!diagnostic.contains("Unable to parse config"), "{error}");
     }
+}
+
+#[test]
+fn locates_included_secrets() {
+    let directory = tempfile::tempdir().unwrap();
+    let main = directory.path().join("nextflow.config");
+    let included = directory.path().join("modules.config");
+    std::fs::write(&main, "includeConfig 'modules.config'\n").unwrap();
+    std::fs::write(
+        &included,
+        "\nprocess.maxForks = secrets.NCBI_API_KEY ? 8 : 3\n",
+    )
+    .unwrap();
+    let error = load(
+        &[main],
+        &options(directory.path(), &[], Value::map([])),
+        &mut Quiet,
+    )
+    .unwrap_err();
+    assert!(error.unsupported(), "{error}");
+    assert!(
+        error
+            .to_string()
+            .ends_with("modules.config:2:20: Not supported yet: reading `secrets.NCBI_API_KEY`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn skips_inactive_secrets() {
+    let config = load_text("params.enabled = false\nparams.token = params.enabled ? secrets.TOKEN : null\nprofiles {\n production { env.TOKEN = secrets.TOKEN }\n}\nprocess { withName: UNUSED { ext.args = { secrets.TOKEN } } }\n").unwrap();
+    assert!(matches!(
+        config.get(&["params", "token"]),
+        Some(Value::Null)
+    ));
+    assert!(config.get(&["env", "TOKEN"]).is_none());
+    assert!(
+        config
+            .get(&["process", "withName:UNUSED", "ext", "args"])
+            .is_some()
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let main = directory.path().join("nextflow.config");
+    std::fs::write(
+        &main,
+        "profiles { production { env.TOKEN = secrets.TOKEN } }\n",
+    )
+    .unwrap();
+    let error = load(
+        &[main],
+        &options(directory.path(), &["production"], Value::map([])),
+        &mut Quiet,
+    )
+    .unwrap_err();
+    assert!(error.unsupported(), "{error}");
 }
 
 #[test]

@@ -121,6 +121,15 @@ fn runs_local_pipes() {
         SNAKEFILE.to_owned(),
         SNAKEFILE.replace("echo bytes > stream.txt", "exit 7"),
         SNAKEFILE.replace("cat stream.txt > final.txt", "exit 9"),
+        SNAKEFILE
+            .replace(
+                "echo bytes > stream.txt",
+                "trap '' TERM; touch armed; echo bytes > stream.txt",
+            )
+            .replace(
+                "cat stream.txt > final.txt",
+                "while [ ! -f armed ]; do sleep 0.01; done; exit 9",
+            ),
     ]
     .iter()
     .enumerate()
@@ -151,7 +160,10 @@ fn runs_local_pipes() {
                 "10".into(),
                 "bash".into(),
                 "-c".into(),
-                task.command[2].clone(),
+                format!(
+                    "bash -c {}; code=$?; printf '%s\\n' \"$code\" > group.status; exit \"$code\"",
+                    python_evaluator::modules::shell_quote(&task.command[2])
+                ),
             ],
             mounts: vec![Mount {
                 source: folder.path().into(),
@@ -162,6 +174,13 @@ fn runs_local_pipes() {
             memory: Some(64 << 20),
             ..ContainerSpec::default()
         });
+        let expected = ["0", "7", "9", "9"][number];
+        assert_eq!(
+            std::fs::read_to_string(folder.path().join("group.status"))
+                .unwrap()
+                .trim(),
+            expected
+        );
         if number == 0 {
             result.unwrap();
             assert_eq!(

@@ -93,6 +93,43 @@ fn reads_secret_values() {
 }
 
 #[test]
+fn missing_env_empty() {
+    struct Missing;
+    impl nextflow_evaluator::interpreter::Host for Missing {
+        fn print(&mut self, _: &str) {}
+        fn secret(
+            &mut self,
+            _: &str,
+        ) -> Result<Option<String>, nextflow_evaluator::interpreter::Error> {
+            Ok(None)
+        }
+    }
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(
+        directory.path().join("main.nf"),
+        "process P {\n script:\n 'true'\n}\nworkflow { P() }",
+    )
+    .unwrap();
+    std::fs::write(
+        directory.path().join("nextflow.config"),
+        "env.TOKEN = secrets.MISSING\n",
+    )
+    .unwrap();
+    let mut driver = nextflow_runtime::driver::Nextflow::new(
+        &Launch {
+            target: directory.path().to_owned(),
+            ..Default::default()
+        },
+        nextflow_runtime::driver::Settings {
+            host: Box::new(Missing),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(driver.start().unwrap()[0].environment["TOKEN"], "");
+}
+
+#[test]
 fn builds_task_graph() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), PIPELINE).expect("writes the script");

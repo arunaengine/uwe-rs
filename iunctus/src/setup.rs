@@ -28,6 +28,7 @@ const SECTIONS: &[&str] = &[
     "conda",
     "page",
     "retry",
+    "secrets",
 ];
 
 /// The executors that `-executor` and `default` of `[executor]` may name.
@@ -45,6 +46,7 @@ pub struct Setup {
     /// Which tasks get the network, from `[network]`.
     pub network: NetworkRule,
     pub conda: Option<crate::conda::Config>,
+    pub secrets: std::collections::BTreeMap<String, Secret>,
 }
 
 /// The settings of executors from the `[executor.<name>]` sections. Options on the command line
@@ -303,12 +305,21 @@ impl Setup {
         let telemetry = Telemetry::read(&config).map_err(failed)?;
         let network = network(&config).map_err(failed)?;
         let conda = crate::conda::Config::read(&config).map_err(failed)?;
+        let mut secrets = std::collections::BTreeMap::new();
+        if let Some(section) = config.section("secrets").map_err(failed)? {
+            for name in section.keys() {
+                if let Some(secret) = section.secret(name).map_err(failed)? {
+                    secrets.insert(name.to_owned(), secret);
+                }
+            }
+        }
         Ok(Setup {
             storage,
             executors,
             telemetry,
             network,
             conda,
+            secrets,
         })
     }
 

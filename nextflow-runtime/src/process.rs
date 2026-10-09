@@ -41,6 +41,7 @@ const HANDLED_DIRECTIVES: &[&str] = &[
     "memory",
     "publishDir",
     "resourceLimits",
+    "secret",
     "shell",
     "stageInMode",
     "storeDir",
@@ -55,7 +56,6 @@ const REFUSED_DIRECTIVES: &[&str] = &[
     "maxErrors",
     "maxSubmitAwait",
     "module",
-    "secret",
     "spack",
     "stageOutMode",
 ];
@@ -408,6 +408,7 @@ impl ProcessNode {
         if !self.conda_enabled {
             directives.retain(|directive| &*directive.name != "conda");
         }
+        crate::task::secrets(&directives)?;
         Ok(directives)
     }
 

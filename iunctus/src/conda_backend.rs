@@ -19,6 +19,7 @@ pub struct Local {
     pub config: Option<Config>,
     pub holder: Holder,
     pub preparing: Arc<Semaphore>,
+    pub secrets: std::collections::BTreeMap<String, config_file::Secret>,
 }
 
 impl Backend for Local {
@@ -169,7 +170,33 @@ impl Backend for Local {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
-        self.backend.run(job, cancel).await
+        let Some(task_model::EnvironmentValue::Literal(names)) = job
+            .spec
+            .environment
+            .get(nextflow_runtime::task::SECRET_NAMES)
+        else {
+            return self.backend.run(job, cancel).await;
+        };
+        let file = crate::nextflow::secret_file(names, &self.secrets)?;
+        let mut spec = job.spec.clone();
+        spec.environment
+            .remove(nextflow_runtime::task::SECRET_NAMES);
+        let mut staging = job.staging.clone();
+        staging.inputs.push(executor::Staged {
+            path: nextflow_runtime::task::SECRET_FILE.into(),
+            source: file.path().to_owned(),
+            ..Default::default()
+        });
+        self.backend
+            .run(
+                Job {
+                    spec: &spec,
+                    staging: &staging,
+                    ..job
+                },
+                cancel,
+            )
+            .await
     }
 
     fn hold(&self) {

@@ -20,7 +20,7 @@ pub fn executor(
     default_image: Option<String>,
     storage: Storage,
     engine: &str,
-    conda: Option<crate::conda::Config>,
+    setup: &crate::setup::Setup,
 ) -> Result<RunnerExecutor<crate::conda_backend::Local>, String> {
     // The client of the engine runs on the runtime of the engine, which runs the attempts.
     let runtime = workflow_graph::runtime().map_err(|error| error.to_string())?;
@@ -35,9 +35,10 @@ pub fn executor(
     let backend = crate::conda_backend::Local {
         backend,
         store: store.clone(),
-        config: conda,
+        config: setup.conda.clone(),
         holder: Holder::new(run, "Conda image preparation"),
         preparing: std::sync::Arc::new(tokio::sync::Semaphore::new(1)),
+        secrets: setup.secrets.clone(),
     };
     // Remote inputs share the folder of downloads with the files that workflow code reads.
     let runner = Runner::new(store, backend, run, crate::runner_settings(storage, false));

@@ -110,7 +110,7 @@ fn graph(arguments: &Arguments) -> Result<(), Failure> {
 fn config(arguments: &Arguments) -> Result<(), Failure> {
     let setup = Setup::load(arguments)?;
     let project = arguments.target.clone().unwrap_or_else(|| ".".into());
-    nextflow::print_config(&launch(arguments, project), &setup.storage)?;
+    nextflow::print_config(&launch(arguments, project), &setup)?;
     Ok(())
 }
 

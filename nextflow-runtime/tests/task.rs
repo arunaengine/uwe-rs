@@ -450,3 +450,33 @@ fn before_failure_stops() {
     assert_eq!(status.code(), Some(9));
     assert!(!root.path().join("body").exists());
 }
+
+#[test]
+fn records_secret_names() {
+    let mut request = request(&[], &[], None);
+    request.directives.push(TaskDirective {
+        name: "secret".into(),
+        arguments: vec![Value::string("TOKEN"), Value::string("KEY")],
+    });
+    let task = task(&request, &BTreeMap::new()).unwrap();
+    assert_eq!(
+        task.environment[nextflow_runtime::task::SECRET_NAMES],
+        "[\"KEY\",\"TOKEN\"]"
+    );
+    assert!(!task.environment.contains_key("TOKEN"));
+    assert!(!task.environment.contains_key("KEY"));
+    let launcher = task
+        .inputs
+        .iter()
+        .find(|input| input.path == ".command.hooks")
+        .unwrap()
+        .content
+        .as_ref()
+        .unwrap();
+    assert!(launcher.contains("source /run/iunctus/secrets"));
+    assert!(
+        task.inputs
+            .iter()
+            .all(|input| input.path != "/run/iunctus/secrets")
+    );
+}

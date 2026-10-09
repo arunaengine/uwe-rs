@@ -74,7 +74,10 @@ impl Server {
                     } else {
                         "Thu, 01 Jan 1970 00:01:40 GMT"
                     };
-                write!(stream, "HTTP/1.1 {status}\r\nContent-Length: {}\r\nETag: \"fixed\"\r\nLast-Modified: {date}\r\nConnection: close\r\n\r\n", bytes.len()).unwrap();
+                let tag = bytes.iter().fold(0u64, |tag, byte| {
+                    tag.wrapping_mul(31).wrapping_add(u64::from(*byte))
+                });
+                write!(stream, "HTTP/1.1 {status}\r\nContent-Length: {}\r\nETag: \"{tag:x}\"\r\nLast-Modified: {date}\r\nConnection: close\r\n\r\n", bytes.len()).unwrap();
                 if words[0] != "HEAD" {
                     stream.write_all(bytes).unwrap();
                 }
@@ -149,6 +152,23 @@ fn transfers_s3_objects() {
         .blocking()
         .fetch(&tasks[0].inputs[0].source, &folder.path().join("downloads"))
         .unwrap();
+    assert_eq!(std::fs::read(&input).unwrap(), b"input bytes");
+    server
+        .files
+        .lock()
+        .unwrap()
+        .insert("/bucket/in".into(), b"fresh bytes".to_vec());
+    let mut changed = Session::new(&launch, &storage).unwrap();
+    let changed = changed.start().unwrap();
+    let fresh = storage
+        .blocking()
+        .fetch(
+            &changed[0].inputs[0].source,
+            &folder.path().join("downloads"),
+        )
+        .unwrap();
+    assert_ne!(input, fresh);
+    assert_eq!(std::fs::read(fresh).unwrap(), b"fresh bytes");
     assert_eq!(std::fs::read(input).unwrap(), b"input bytes");
     let output = folder.path().join("result");
     std::fs::write(&output, b"output bytes").unwrap();

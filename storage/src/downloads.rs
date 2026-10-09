@@ -38,6 +38,22 @@ impl Storage {
             _ => target.into(),
         };
         identity.push(address::redacted(&routed));
+        let observed = self
+            .inner
+            .observed
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let entry = observed.get(target).or_else(|| {
+            observed
+                .iter()
+                .filter(|(query, entry)| entry.metadata.directory && address::serves(query, target))
+                .max_by_key(|(query, _)| query.len())
+                .map(|(_, entry)| entry)
+        });
+        if let Some(entry) = entry {
+            identity.push(entry.stamp.clone());
+        }
+        drop(observed);
         let mut hasher = Sha256::new();
         for field in identity {
             hasher.update((field.len() as u64).to_le_bytes());

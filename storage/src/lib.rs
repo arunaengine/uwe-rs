@@ -98,6 +98,12 @@ struct Inner {
     /// A lock for each copy in the folder of downloads, so that fetches of one file in this
     /// process take turns: the first downloads it, the others find its copy.
     downloading: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    observed: Mutex<HashMap<String, Observed>>,
+}
+
+struct Observed {
+    metadata: Metadata,
+    stamp: String,
 }
 
 /// A provider, and its client once it is used.
@@ -203,6 +209,7 @@ impl Storage {
                 local_store: settings.local_store,
                 journal: journal::Journal::default(),
                 downloading: Mutex::default(),
+                observed: Mutex::default(),
             }),
         }
     }
@@ -244,6 +251,43 @@ impl Storage {
         let served = self.serve(target)?;
         let found = served.connection.stat(served.prefix, target).await;
         found.map_err(|problem| served.failed("find", target, problem))
+    }
+
+    /// Checks current metadata and selects a download cache for that workflow view.
+    pub async fn current(&self, target: &str) -> Result<Option<Metadata>, StorageError> {
+        if let Some(pinned) = self.inner.journal.pinned(target) {
+            return Ok(Some(Metadata {
+                directory: false,
+                modified: None,
+                size: pinned.size,
+                version: pinned.version,
+            }));
+        }
+        let found = self.stat(target).await?;
+        let mut observed = self
+            .inner
+            .observed
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        if let Some(metadata) = &found {
+            let stamp = if metadata.directory
+                || (metadata.version.is_none() && metadata.modified.is_none())
+            {
+                format!("fresh {:?}", std::time::SystemTime::now())
+            } else {
+                format!("{metadata:?}")
+            };
+            observed.insert(
+                target.to_owned(),
+                Observed {
+                    metadata: metadata.clone(),
+                    stamp,
+                },
+            );
+        } else {
+            observed.remove(target);
+        }
+        Ok(found)
     }
 
     /// The entries of a directory.

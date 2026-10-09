@@ -94,6 +94,41 @@ pub async fn pin(reference: &str) -> Result<Option<String>, ExecutorError> {
     Ok(digest.map(|digest| format!("{}@{digest}", parsed.name)))
 }
 
+/// Checks a published manifest by digest. Only HTTP 404 means it must be republished.
+pub async fn exists(reference: &str) -> Result<bool, ExecutorError> {
+    let parsed = Reference::parse(reference);
+    let digest = parsed.digest.as_deref().ok_or_else(|| {
+        ExecutorError::Unsupported("registry reuse requires a digest reference".into())
+    })?;
+    let (response, _) = request(
+        &parsed,
+        Method::HEAD,
+        &manifest_url(&parsed),
+        MANIFESTS,
+        None,
+    )
+    .await?;
+    if response.status() == StatusCode::NOT_FOUND {
+        return Ok(false);
+    }
+    if !response.status().is_success()
+        || response
+            .headers()
+            .get("docker-content-digest")
+            .and_then(|value| value.to_str().ok())
+            != Some(digest)
+    {
+        return Err(ExecutorError::Engine {
+            engine: parsed.registry,
+            message: format!(
+                "published manifest check failed: {} (details redacted)",
+                response.status()
+            ),
+        });
+    }
+    Ok(true)
+}
+
 /// What an image runs by itself: its entrypoint and its default command.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ImageConfig {
@@ -319,6 +354,17 @@ async fn ask_with(
     accept: &str,
     credentials: Option<Found>,
 ) -> Result<reqwest::Response, ExecutorError> {
+    let (response, credentials) = request(parsed, method, url, accept, credentials).await?;
+    check_response(parsed, response, &credentials)
+}
+
+async fn request(
+    parsed: &Reference,
+    method: Method,
+    url: &str,
+    accept: &str,
+    credentials: Option<Found>,
+) -> Result<(reqwest::Response, Found), ExecutorError> {
     let failed = |message: String| ExecutorError::Engine {
         engine: parsed.registry.clone(),
         message,
@@ -365,6 +411,18 @@ async fn ask_with(
             })?;
         }
     }
+    Ok((response, credentials))
+}
+
+fn check_response(
+    parsed: &Reference,
+    response: reqwest::Response,
+    credentials: &Found,
+) -> Result<reqwest::Response, ExecutorError> {
+    let failed = |message| ExecutorError::Engine {
+        engine: parsed.registry.clone(),
+        message,
+    };
     let version = match &parsed.digest {
         Some(digest) => format!("@{digest}"),
         None => format!(":{}", parsed.tag),

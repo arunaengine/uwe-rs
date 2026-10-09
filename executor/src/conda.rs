@@ -8,7 +8,10 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use bollard::query_parameters::{BuildImageOptions, BuilderVersion, ImportImageOptions};
+use bollard::auth::DockerCredentials;
+use bollard::query_parameters::{
+    BuildImageOptions, BuilderVersion, ImportImageOptions, PushImageOptions, TagImageOptions,
+};
 use conda_environment::{BuiltImage, CompletedImage, ImagePreparation};
 use content_store::Store;
 use futures_util::StreamExt;
@@ -49,6 +52,8 @@ pub enum CondaImageError {
     Cancelled,
     #[error("Conda image operation exceeded its {0} limit")]
     Limit(&'static str),
+    #[error("Conda image publication failed: {0}")]
+    Publication(String),
 }
 
 /// Bounds exported and downloaded archive bytes, decoded import progress, and total time.
@@ -57,6 +62,123 @@ pub struct TransferLimits {
     pub archive_bytes: u64,
     pub progress_bytes: usize,
     pub timeout: Duration,
+}
+
+/// Publishes an inspected image and records the engine's manifest identity, never a tag.
+pub async fn publish(
+    engine: &ContainerEngine,
+    preparation: &ImagePreparation,
+    receipt: &CompletedImage,
+    registry: &str,
+    limits: TransferLimits,
+    cancel: &CancellationToken,
+) -> Result<CompletedImage, CondaImageError> {
+    transfer(limits, cancel, async {
+        receipt.validate(preparation)?;
+        inspect(engine, preparation, receipt.image_id()).await?;
+        let parsed = crate::registry::Reference::parse(registry);
+        let found =
+            crate::credentials::lookup(&parsed.registry).map_err(CondaImageError::Publication)?;
+        let mut credentials = DockerCredentials {
+            serveraddress: Some(parsed.registry.clone()),
+            ..Default::default()
+        };
+        match found.credential {
+            Some(crate::credentials::Credential::Basic(username, password)) => {
+                credentials.username = Some(username);
+                credentials.password = Some(password);
+            }
+            Some(crate::credentials::Credential::Bearer(token)) => {
+                credentials.registrytoken = Some(token)
+            }
+            Some(crate::credentials::Credential::Identity(token)) => {
+                credentials.identitytoken = Some(token)
+            }
+            None if found.helper => return Err(CondaImageError::Publication(found.hint().into())),
+            None => {}
+        }
+        let failed =
+            || CondaImageError::Publication("engine push failed (details redacted)".into());
+        // Image-specific tags prevent concurrent preparations from moving each other's tag.
+        let tag = format!("conda-{}", receipt.image_id().trim_start_matches("sha256:"));
+        engine
+            .client()
+            .tag_image(
+                receipt.image_id(),
+                Some(TagImageOptions {
+                    repo: Some(registry.into()),
+                    tag: Some(tag.clone()),
+                }),
+            )
+            .await
+            .map_err(|_| failed())?;
+        let mut stream = engine.client().push_image(
+            registry,
+            Some(PushImageOptions {
+                tag: Some(tag),
+                ..Default::default()
+            }),
+            Some(credentials),
+        );
+        let mut used = 0usize;
+        while let Some(step) = stream.next().await {
+            let step = step.map_err(|_| failed())?;
+            if step.error_detail.is_some() {
+                return Err(failed());
+            }
+            used = used
+                .checked_add(serde_json::to_vec(&step).map_err(io::Error::other)?.len())
+                .filter(|size| *size <= limits.progress_bytes)
+                .ok_or(CondaImageError::Limit("push progress"))?;
+        }
+        let image = engine
+            .client()
+            .inspect_image(receipt.image_id())
+            .await
+            .map_err(|_| failed())?;
+        let reference = image
+            .repo_digests
+            .unwrap_or_default()
+            .into_iter()
+            .find_map(|reference| {
+                let candidate = crate::registry::Reference::parse(&reference);
+                if candidate.registry == parsed.registry
+                    && candidate.repository == parsed.repository
+                {
+                    candidate
+                        .digest
+                        .map(|digest| format!("{registry}@{digest}"))
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| {
+                CondaImageError::Publication("engine gave no published manifest digest".into())
+            })?;
+        let digest = reference
+            .rsplit_once('@')
+            .map(|(_, digest)| digest.to_owned());
+        let published = preparation.completed(BuiltImage {
+            preparation: receipt.preparation().into(),
+            base: receipt.base().into(),
+            recipe_digest: receipt.recipe_digest().into(),
+            platform: receipt.platform().into(),
+            image_id: receipt.image_id().into(),
+            archive_digest: receipt.archive_digest().map(str::to_owned),
+            manifest_digest: digest,
+            reference: Some(reference.clone()),
+        })?;
+        if !crate::registry::exists(&reference)
+            .await
+            .map_err(|error| CondaImageError::Publication(error.to_string()))?
+        {
+            return Err(CondaImageError::Publication(
+                "published manifest is missing".into(),
+            ));
+        }
+        Ok(published)
+    })
+    .await
 }
 
 /// Requires the exact digest-selected base to be local, without pulling it. A Docker image

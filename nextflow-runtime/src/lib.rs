@@ -22,6 +22,7 @@ mod reports;
 mod route;
 mod session;
 mod split;
+mod store;
 mod strategy;
 pub mod task;
 mod workflow;

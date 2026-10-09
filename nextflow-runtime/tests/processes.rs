@@ -171,7 +171,6 @@ fn rejects_active_directives() {
     for (name, value) in [
         ("fair", "true"),
         ("maxErrors", "2"),
-        ("storeDir", "'stored'"),
         ("containerOptions", "'--privileged'"),
         ("clusterOptions", "'--export=TOKEN=value'"),
         ("clusterOptions", "'-q batch -v TOKEN=value'"),

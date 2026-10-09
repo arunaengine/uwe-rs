@@ -17,6 +17,44 @@ pub const SCRIPT: &str = ".command.sh";
 pub const STDOUT: &str = ".command.out";
 pub const STDERR: &str = ".command.err";
 pub const ENVIRONMENT: &str = ".command.env";
+pub const SECRET_NAMES: &str = "IUNCTUS_SECRET_NAMES";
+pub const SECRET_FILE: &str = "/run/iunctus/secrets";
+
+pub fn secrets(
+    directives: &[TaskDirective],
+) -> Result<Vec<String>, nextflow_evaluator::interpreter::Error> {
+    let mut names = std::collections::BTreeSet::new();
+    for directive in directives
+        .iter()
+        .filter(|directive| &*directive.name == "secret")
+    {
+        for value in &directive.arguments {
+            let values = match value {
+                Value::List(list) => list.borrow().items.clone(),
+                Value::Null => Vec::new(),
+                value => vec![value.clone()],
+            };
+            for value in values {
+                let name = value.to_string();
+                if name.is_empty()
+                    || name.bytes().enumerate().any(|(index, byte)| {
+                        !(byte == b'_'
+                            || byte.is_ascii_alphabetic()
+                            || index > 0 && byte.is_ascii_digit())
+                    })
+                {
+                    return Err(nextflow_evaluator::interpreter::Error::Unsupported {
+                        message: "process directive `secret` with an invalid environment name"
+                            .into(),
+                        span: Default::default(),
+                    });
+                }
+                names.insert(name);
+            }
+        }
+    }
+    Ok(names.into_iter().collect())
+}
 
 /// The task script, followed by iunctus's own code that captures `env` and `eval` outputs into
 /// `.command.env` in Nextflow's format. The script alone equals Nextflow's up to that code.
@@ -71,7 +109,8 @@ pub fn launcher(request: &TaskRequest) -> Option<String> {
     let after = directive(&request.directives, "afterScript")
         .filter(Value::truth)
         .map(|value| value.to_string());
-    if before.is_none() && after.is_none() {
+    let secrets = secrets(&request.directives).unwrap_or_default();
+    if before.is_none() && after.is_none() && secrets.is_empty() {
         return None;
     }
     let mut script = String::from(
@@ -81,6 +120,9 @@ pub fn launcher(request: &TaskRequest) -> Option<String> {
         script.push_str(&format!("{{\n{before}\n}} >&2\n"));
     }
     script.push_str("set -u\nexport NXF_TASK_WORKDIR=\"$PWD\"\n");
+    if !secrets.is_empty() {
+        script.push_str(&format!("source {SECRET_FILE}\n"));
+    }
     for (_, name) in &request.staged {
         let parent = std::path::Path::new(name)
             .parent()

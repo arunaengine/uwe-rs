@@ -10,7 +10,7 @@ use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
 use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_runtime::driver::{Nextflow, Settings};
-use storage::{Blocking, Storage, StorageError};
+use storage::{Blocking, StorageError};
 use workflow_graph::{Driver, DriverError, Launch};
 
 use crate::arguments::Arguments;
@@ -22,9 +22,13 @@ struct Console {
     /// Prints to standard error instead of standard output, which then holds only the graph.
     quiet: bool,
     storage: Blocking,
+    secrets: std::collections::BTreeMap<String, config_file::Secret>,
 }
 
 impl Host for Console {
+    fn secret(&mut self, name: &str) -> Result<Option<String>, Error> {
+        SecretSource(&self.secrets).secret(name)
+    }
     fn print(&mut self, text: &str) {
         if self.quiet {
             eprint!("{text}");
@@ -169,12 +173,62 @@ pub(crate) fn conda_file(source: &str) -> Result<tempfile::NamedTempFile, execut
     Ok(file)
 }
 
+struct SecretSource<'a>(&'a std::collections::BTreeMap<String, config_file::Secret>);
+
+impl Host for SecretSource<'_> {
+    fn print(&mut self, _: &str) {}
+
+    fn secret(&mut self, name: &str) -> Result<Option<String>, Error> {
+        if let Some(secret) = self.0.get(name) {
+            return secret
+                .reveal()
+                .map(Some)
+                .map_err(|error| io_error(error.to_string()));
+        }
+        nextflow_evaluator::secrets::get(self, name)
+    }
+}
+
+pub(crate) fn secret_file(
+    names: &str,
+    secrets: &std::collections::BTreeMap<String, config_file::Secret>,
+) -> Result<tempfile::NamedTempFile, executor::ExecutorError> {
+    let failed = executor::ExecutorError::Unsupported;
+    let names: Vec<String> =
+        serde_json::from_str(names).map_err(|_| failed("Invalid task secret names".into()))?;
+    let mut host = SecretSource(secrets);
+    let mut text = String::new();
+    for name in names {
+        if name.is_empty()
+            || name.bytes().enumerate().any(|(index, byte)| {
+                !(byte == b'_' || byte.is_ascii_alphabetic() || index > 0 && byte.is_ascii_digit())
+            })
+        {
+            return Err(failed("Invalid task secret name".into()));
+        }
+        let value = host
+            .secret(&name)
+            .map_err(|error| std::io::Error::other(error.to_string()))?
+            .ok_or_else(|| {
+                std::io::Error::other(format!("Required secret is missing: '{name}'"))
+            })?;
+        text.push_str(&format!(
+            "export {name}='{}'\n",
+            value.replace('\'', "'\\''")
+        ));
+    }
+    let file = tempfile::NamedTempFile::new()?;
+    std::fs::write(file.path(), text)?;
+    Ok(file)
+}
+
 /// The host of a run; remote files are cached in `downloads` of the cache directory.
-fn console(quiet: bool, storage: &Storage) -> Console {
+fn console(quiet: bool, setup: &Setup) -> Console {
     Console {
         downloads: crate::cache_directory().join("downloads"),
         quiet,
-        storage: storage.blocking(),
+        storage: setup.storage.blocking(),
+        secrets: setup.secrets.clone(),
     }
 }
 
@@ -187,17 +241,21 @@ pub fn driver(
     setup: &Setup,
 ) -> Result<Box<dyn Driver>, DriverError> {
     let settings = Settings {
-        host: Box::new(console(quiet, &setup.storage)),
+        host: Box::new(console(quiet, setup)),
         container_engine: Some(setup.engine_kind(arguments)),
         run_name: run.to_owned(),
         command_line: std::env::args().collect::<Vec<_>>().join(" "),
+        secret_env: !matches!(
+            arguments.executor.as_deref(),
+            Some("tes" | "slurm" | "kubernetes")
+        ),
     };
     Ok(Box::new(Nextflow::new(launch, settings)?))
 }
 
 /// `iunctus config`: the config of a project in the flat form of `nextflow config -flat`.
-pub fn print_config(launch: &Launch, storage: &Storage) -> Result<(), DriverError> {
-    let mut console = console(false, storage);
+pub fn print_config(launch: &Launch, setup: &Setup) -> Result<(), DriverError> {
+    let mut console = console(false, setup);
     let config = nextflow_runtime::driver::config(&launch.target, launch, &mut console)?;
     print!("{}", config.flat());
     Ok(())
@@ -205,6 +263,44 @@ pub fn print_config(launch: &Launch, storage: &Storage) -> Result<(), DriverErro
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn protects_task_secrets() {
+        use std::os::unix::fs::PermissionsExt;
+        let config = config_file::ConfigFile::parse(
+            "[secrets]\nTOKEN = \"a b'c$HOME\"\n",
+            std::path::Path::new("config.toml"),
+        )
+        .unwrap();
+        let secret = config
+            .section("secrets")
+            .unwrap()
+            .unwrap()
+            .secret("TOKEN")
+            .unwrap()
+            .unwrap();
+        let values = std::collections::BTreeMap::from([("TOKEN".into(), secret)]);
+        let file = super::secret_file("[\"TOKEN\"]", &values).unwrap();
+        assert_eq!(
+            file.as_file().metadata().unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let output = std::process::Command::new("bash")
+            .args(["-c", "source \"$1\"; printf '%s' \"$TOKEN\"", "bash"])
+            .arg(file.path())
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"a b'c$HOME");
+        let path = file.path().to_owned();
+        drop(file);
+        assert!(!path.exists());
+        let error = super::secret_file("[\"MISSING\"]", &values)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("Required secret is missing"));
+        assert!(!error.contains("a b'c"));
+    }
+
     #[test]
     fn writes_conda_packages() {
         let file = super::conda_file(

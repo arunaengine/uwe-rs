@@ -163,16 +163,9 @@ pub(crate) fn executor(
             let store = setup.store(arguments)?;
             let storage = setup.storage.clone();
             let engine = setup.engine();
-            let mut executor = local::executor(
-                store,
-                &scratch,
-                run,
-                default_image,
-                storage,
-                &engine,
-                setup.conda.clone(),
-            )
-            .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
+            let mut executor =
+                local::executor(store, &scratch, run, default_image, storage, &engine, setup)
+                    .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             executor.priorities = std::sync::Arc::new(chains(arguments));
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }

@@ -35,6 +35,7 @@ pub struct Settings {
     pub run_name: String,
     /// The command line that started the run, `workflow.commandLine`.
     pub command_line: String,
+    pub secret_env: bool,
 }
 
 impl Default for Settings {
@@ -45,6 +46,7 @@ impl Default for Settings {
             container_engine: None,
             run_name: "iunctus".into(),
             command_line: String::new(),
+            secret_env: false,
         }
     }
 }
@@ -275,6 +277,13 @@ impl Nextflow {
         requests
             .into_iter()
             .map(|request| {
+                let names = crate::task::secrets(&request.directives).map_err(error)?;
+                if !names.is_empty() && !self.settings.secret_env {
+                    return Err(DriverError {
+                        unsupported: true,
+                        message: "process secret injection requires the local executor".into(),
+                    });
+                }
                 let mut task = task(&request, &self.environment)?;
                 if request.made.is_none()
                     && let Some(bin) = &self.project_bin
@@ -689,7 +698,14 @@ fn environment(config: &Config) -> BTreeMap<String, String> {
     let mut variables = BTreeMap::new();
     if let Some(Value::Map(map)) = config.get(&["env"]) {
         for (name, value) in &map.borrow().entries {
-            variables.insert(name.0.to_string(), value.to_string());
+            variables.insert(
+                name.0.to_string(),
+                if matches!(value, Value::Null) {
+                    String::new()
+                } else {
+                    value.to_string()
+                },
+            );
         }
     }
     variables
@@ -713,6 +729,13 @@ pub fn task(
         _ => workflow_graph::Reuse::Allowed,
     };
     let mut environment = environment.clone();
+    let names = crate::task::secrets(&request.directives).map_err(error)?;
+    if !names.is_empty() {
+        environment.insert(
+            crate::task::SECRET_NAMES.into(),
+            serde_json::to_string(&names).unwrap(),
+        );
+    }
     environment.extend(
         request
             .input_environment

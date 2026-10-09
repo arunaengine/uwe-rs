@@ -187,7 +187,6 @@ fn rejects_active_directives() {
         ("containerOptions", "'--shm-size 1g'"),
         ("containerOptions", "'-e TOKEN=value'"),
         ("stageOutMode", "'move'"),
-        ("secret", "'TOKEN'"),
     ] {
         let source =
             format!("process P {{\n {name}({value})\n script:\n 'true'\n}}\nworkflow {{ P() }}");

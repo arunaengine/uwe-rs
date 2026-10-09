@@ -144,7 +144,7 @@ fn rejects_invalid_resources() {
 
 #[test]
 fn rejects_required_extensions() {
-    for class in ["Secrets", "ShmSize", "RuntimeConstraints"] {
+    for class in ["Secrets", "RuntimeConstraints"] {
         for kind in ["requirements", "hints"] {
             let tool = format!(
                 "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: echo\n\

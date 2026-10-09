@@ -106,6 +106,9 @@ impl Resolver {
             let identity = context::is_identity(&entry.key);
             let rule = Expansion::field(&entry.key);
             let mut expand = |text: &mut String| {
+                if entry.key == "class" && text == "ShmSize" {
+                    *text = "http://commonwl.org/cwltool#ShmSize".into();
+                }
                 if identity {
                     *text = scope.expand(text, &base, Expansion::IDENTIFIER);
                     self.ids.insert(text.clone());

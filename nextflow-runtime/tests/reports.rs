@@ -132,3 +132,49 @@ fn skips_simulated_reports() {
     assert!(deliveries.is_empty());
     assert!(!directory.path().join("scratch/nextflow-reports").exists());
 }
+
+#[test]
+fn fills_measured_columns() {
+    use std::time::{Duration, UNIX_EPOCH};
+    use workflow_graph::{Outcome, Usage};
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(
+        directory.path().join("main.nf"),
+        "process P {\n script:\n 'true'\n}\nworkflow { P() }",
+    )
+    .unwrap();
+    std::fs::write(
+        directory.path().join("nextflow.config"),
+        "trace.enabled = true\ntrace.fields = 'task_id,%cpu,peak_rss,read_bytes,write_bytes'\n",
+    )
+    .unwrap();
+    let mut driver = nextflow_runtime::driver(&Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    })
+    .unwrap();
+    let tasks = driver.start().unwrap();
+    driver
+        .complete(Outcome {
+            id: tasks[0].id,
+            attempt: 1,
+            started: Some(UNIX_EPOCH + Duration::from_secs(1)),
+            ended: Some(UNIX_EPOCH + Duration::from_secs(3)),
+            usage: Some(Usage {
+                cpu_usec: Some(1_000_000),
+                memory_peak: Some(3 << 20),
+                read_bytes: Some(0),
+                write_bytes: Some(4096),
+            }),
+            ..Default::default()
+        })
+        .unwrap();
+    driver.finish().unwrap();
+    let deliveries = driver.deliveries();
+    let trace = std::fs::read_to_string(&deliveries[0].location).unwrap();
+    assert_eq!(
+        trace,
+        "task_id\t%cpu\tpeak_rss\tread_bytes\twrite_bytes\n1\t50.0%\t3 MB\t0\t4 KB\n"
+    );
+}

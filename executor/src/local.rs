@@ -128,17 +128,87 @@ impl crate::Backend for LocalContainer {
 }
 
 fn admit<'a>(job: Job<'a>) -> Result<Job<'a>, ExecutorError> {
+    let flags = Flags::of(job.spec)?;
+    if job.spec.environment.contains_key(FLAGS_ENV) && !job.spec.containers.is_empty() {
+        return Err(ExecutorError::Unsupported(
+            "container flags for multiple containers".into(),
+        ));
+    }
     if job
         .placement
         .accelerators
         .iter()
         .any(|accelerator| accelerator.count != 0)
+        && flags.gpus.is_none()
     {
         return Err(ExecutorError::Unsupported(
             "the local executor does not support accelerators".into(),
         ));
     }
     Ok(job)
+}
+
+const FLAGS_ENV: &str = "IUNCTUS_CONTAINER_FLAGS";
+
+#[derive(Default)]
+struct Flags {
+    cpus: Option<i64>,
+    shm: Option<i64>,
+    swap: Option<i64>,
+    gpus: Option<i64>,
+}
+
+impl Flags {
+    fn of(spec: &TaskSpec) -> Result<Self, ExecutorError> {
+        let Some(task_model::EnvironmentValue::Literal(text)) = spec.environment.get(FLAGS_ENV)
+        else {
+            return Ok(Self::default());
+        };
+        let failed = || ExecutorError::Unsupported("invalid container launch flags".into());
+        let values: std::collections::BTreeMap<String, i64> =
+            serde_json::from_str(text).map_err(|_| failed())?;
+        if values
+            .keys()
+            .any(|name| !matches!(name.as_str(), "cpus" | "shm" | "swap" | "gpus"))
+        {
+            return Err(failed());
+        }
+        let flags = Self {
+            cpus: values.get("cpus").copied(),
+            shm: values.get("shm").copied(),
+            swap: values.get("swap").copied(),
+            gpus: values.get("gpus").copied(),
+        };
+        if flags.cpus.is_some_and(|value| value <= 0)
+            || flags.shm.is_some_and(|value| value < 0)
+            || flags.swap.is_some_and(|value| value < -1)
+            || flags
+                .gpus
+                .is_some_and(|value| value < -1 || value > i32::MAX as i64)
+        {
+            return Err(failed());
+        }
+        Ok(flags)
+    }
+
+    fn apply(&self, config: &mut HostConfig) {
+        if let Some(cpus) = self.cpus {
+            config.nano_cpus = Some(config.nano_cpus.map_or(cpus, |granted| granted.min(cpus)));
+        }
+        if let Some(shm) = self.shm {
+            config.shm_size = Some(shm);
+        }
+        if let Some(swap) = self.swap {
+            config.memory_swap = Some(swap);
+        }
+        if let Some(gpus) = self.gpus {
+            config.device_requests = Some(vec![bollard::models::DeviceRequest {
+                count: Some(gpus),
+                capabilities: Some(vec![vec!["gpu".into()]]),
+                ..Default::default()
+            }]);
+        }
+    }
 }
 
 /// How a container runs the wrapper of a task staged in its scratch directory.
@@ -372,6 +442,8 @@ impl LocalContainer {
         }
         let image = job.spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
         let mut spec = job.spec.clone();
+        let flags = Flags::of(&spec)?;
+        spec.environment.remove(FLAGS_ENV);
         // The command runs through the image's entrypoint, as `docker run` runs it, which
         // some images need to set up their tools, unless it replaces the entrypoint.
         let entrypoint = !spec.replaces_entrypoint || spec.arguments.is_empty();
@@ -403,7 +475,13 @@ impl LocalContainer {
         tokio::fs::write(run.script(), run.wrapper(&spec)).await?;
         let time = job.placement.time_seconds.map(Duration::from_secs);
         let ending = self
-            .run_to_end(&run, i64::from(share.cpus) * 1_000_000_000, time, cancel)
+            .run_to_end(
+                &run,
+                i64::from(share.cpus) * 1_000_000_000,
+                time,
+                cancel,
+                &flags,
+            )
             .await;
         self.hand_back(&access, image, root, owner.uid()).await;
         self.finish(ending?, root.to_owned(), &spec).await
@@ -501,8 +579,9 @@ impl LocalContainer {
             .collect();
         let time = job.placement.time_seconds.map(Duration::from_secs);
         let stop = cancel.child_token();
+        let flags = Flags::default();
         let mut running: futures_util::stream::FuturesUnordered<_> = (runs.iter().enumerate())
-            .map(|(index, run)| self.run_to_end(run, resources[index].0, time, &stop))
+            .map(|(index, run)| self.run_to_end(run, resources[index].0, time, &stop, &flags))
             .collect();
         let mut first: Option<Result<Ending, ExecutorError>> = None;
         let mut normal = None;
@@ -632,6 +711,7 @@ impl LocalContainer {
         nano_cpus: i64,
         time: Option<Duration>,
         cancel: &CancellationToken,
+        flags: &Flags,
     ) -> Result<Ending, ExecutorError> {
         let client = self.engine.client();
         let failed = |error| image::failed(&self.engine, error);
@@ -640,6 +720,9 @@ impl LocalContainer {
             platform: run.image.platform.clone().unwrap_or_default(),
         };
         let mut body = run.create_with_cpus(nano_cpus);
+        if let Some(config) = &mut body.host_config {
+            flags.apply(config);
+        }
         if let Some(platform) = run.image.platform.as_deref() {
             let image =
                 image::available_for(&self.engine, &run.image.reference, Some(platform)).await?;
@@ -1204,5 +1287,40 @@ mod tests {
                 "/data:/work/data"
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod flag_tests {
+    use super::*;
+    #[test]
+    fn maps_native_flags() {
+        let spec = TaskSpec {
+            format: task_model::FORMAT,
+            namespace: String::new(),
+            image: None,
+            arguments: Vec::new(),
+            workdir: None,
+            environment: std::collections::BTreeMap::from([(
+                FLAGS_ENV.into(),
+                task_model::EnvironmentValue::Literal(
+                    r#"{"shm":1073741824,"swap":2147483648,"gpus":-1}"#.into(),
+                ),
+            )]),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            stdin: None,
+            containers: Vec::new(),
+            replaces_entrypoint: false,
+            run_as: None,
+        };
+        let flags = Flags::of(&spec).unwrap();
+        let mut config = HostConfig::default();
+        flags.apply(&mut config);
+        assert_eq!(config.shm_size, Some(1 << 30));
+        assert_eq!(config.memory_swap, Some(2 << 30));
+        let request = &config.device_requests.unwrap()[0];
+        assert_eq!(request.count, Some(-1));
+        assert_eq!(request.capabilities, Some(vec![vec!["gpu".to_owned()]]));
     }
 }

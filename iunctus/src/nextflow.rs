@@ -105,6 +105,9 @@ impl Host for Console {
 
     fn write(&mut self, path: &PathValue, bytes: &[u8]) -> Result<(), Error> {
         if path.prefix.is_none() {
+            if let Some(parent) = std::path::Path::new(&path.path).parent() {
+                std::fs::create_dir_all(parent).map_err(|error| io_error(error.to_string()))?;
+            }
             return std::fs::write(&path.path, bytes).map_err(|error| io_error(error.to_string()));
         }
         let file = tempfile::NamedTempFile::new().map_err(|error| io_error(error.to_string()))?;
@@ -267,6 +270,16 @@ pub fn print_config(launch: &Launch, setup: &Setup) -> Result<(), DriverError> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn writes_local_parents() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("pipeline_info/params.json");
+        let mut host = super::console(false, &crate::setup::Setup::default());
+        let value = nextflow_evaluator::value::PathValue::parse(&path.to_string_lossy(), "/");
+        nextflow_evaluator::interpreter::Host::write(&mut host, &value, b"{}").unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"{}");
+    }
+
     #[test]
     fn protects_task_secrets() {
         use std::os::unix::fs::PermissionsExt;

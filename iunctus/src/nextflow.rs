@@ -98,6 +98,24 @@ impl Host for Console {
             size: found.size,
         }))
     }
+
+    fn write(&mut self, path: &PathValue, bytes: &[u8]) -> Result<(), Error> {
+        if path.prefix.is_none() {
+            return std::fs::write(&path.path, bytes).map_err(|error| io_error(error.to_string()));
+        }
+        let file = tempfile::NamedTempFile::new().map_err(|error| io_error(error.to_string()))?;
+        std::fs::write(file.path(), bytes).map_err(|error| io_error(error.to_string()))?;
+        self.storage
+            .upload(file.path(), &path.uri())
+            .map_err(|error| storage_error(&path.uri(), error))
+    }
+
+    fn create_directories(&mut self, path: &PathValue) -> Result<(), Error> {
+        if path.prefix.is_none() {
+            std::fs::create_dir_all(&path.path).map_err(|error| io_error(error.to_string()))?;
+        }
+        Ok(())
+    }
 }
 
 /// An error of storage as an error of the workflow: an address that no storage provider

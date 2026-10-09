@@ -43,6 +43,7 @@ const HANDLED_DIRECTIVES: &[&str] = &[
     "resourceLimits",
     "shell",
     "stageInMode",
+    "storeDir",
     "tag",
     "time",
 ];
@@ -57,7 +58,6 @@ const REFUSED_DIRECTIVES: &[&str] = &[
     "secret",
     "spack",
     "stageOutMode",
-    "storeDir",
 ];
 
 const HINT_DIRECTIVES: &[&str] = &[
@@ -171,6 +171,7 @@ pub(crate) struct InFlight {
     frame: TaskFrame,
     task: Value,
     publish: Vec<publish::Rule>,
+    store: Option<PathValue>,
 }
 
 impl Behaviour for ProcessNode {
@@ -240,6 +241,9 @@ impl Behaviour for ProcessNode {
                 None
             };
             return self.failed(context, flight, &outcome, failure);
+        }
+        if let Some(directory) = &flight.store {
+            crate::store::save(&mut outcome.files, directory, context.interpreter.host())?;
         }
         context.remember_task_files(&outcome.files);
         let (task, outputs) = (&flight.name, &flight.outputs);
@@ -389,6 +393,11 @@ impl ProcessNode {
             }
         }
         limit_resources(&mut directives);
+        if directives.iter().any(|directive| &*directive.name == "storeDir" && directive.arguments.iter().any(Value::truth))
+            && directives.iter().any(|directive| &*directive.name == "afterScript" && directive.arguments.iter().any(Value::truth))
+        {
+            return Err(Error::Unsupported { message: "storeDir combined with afterScript requires output transfer before the hook".into(), span: self.process.span });
+        }
         if !self.conda_enabled {
             directives.retain(|directive| &*directive.name != "conda");
         }
@@ -451,6 +460,12 @@ impl ProcessNode {
             return Ok(());
         }
         let publish = publish::rules(interpreter, &frame, &task, &directives)?;
+        let store = crate::store::directory(&directives, interpreter.host());
+        let stored = if let Some(directory) = &store {
+            crate::store::files(&rendered.outputs, directory, interpreter.host())?
+        } else {
+            None
+        };
         let id = id.unwrap_or_else(|| context.task_id());
         let mut request = TaskRequest {
             id,
@@ -494,9 +509,37 @@ impl ProcessNode {
             frame,
             task,
             publish,
+            store,
         };
+        let stored = stored.filter(|files| {
+            let outcome = TaskOutcome {
+                files: files.clone(),
+                ..TaskOutcome::default()
+            };
+            let mut bound = Bound {
+                staged: Vec::new(),
+                files: Vec::new(),
+                simulated: false,
+            };
+            let mut eval_index = 0;
+            flight.outputs.iter().all(|output| {
+                self.output_value(output, &outcome, &flight.name, &mut eval_index, &mut bound)
+                    .is_ok()
+            })
+        });
         self.pending.insert(id, flight);
-        context.request(request);
+        if let Some(files) = stored {
+            self.complete(
+                context,
+                TaskOutcome {
+                    id,
+                    files,
+                    ..TaskOutcome::default()
+                },
+            )?;
+        } else {
+            context.request(request);
+        }
         Ok(())
     }
 

@@ -1857,10 +1857,10 @@ singlem-sra-processing/cloud/argo/test3.yaml
 = unsupported (decision 18): artifact out-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 
 snakemake-tutorial-argo-workflows/argo-workflows/workflows.yaml
-= unsupported (decision 18): artifact reference-genome: the default artifact repository is not supported; supply an S3 bucket
+= unsupported (decision 18): templates.snakemake-tutorial-dag.tasks.map-read-1 artifact mapped-read: the default artifact repository is not supported; supply an S3 bucket and key
 
 snakemake-tutorial-argo-workflows/argo-workflows/workflowtemplates.yaml
-= unsupported (decision 18): artifact reference-genome: the default artifact repository is not supported; supply an S3 bucket
+= unsupported (decision 18): templates.snakemake-tutorial-dag.tasks.map-read-1 artifact mapped-read: the default artifact repository is not supported; supply an S3 bucket and key
 
 talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_standard_cluster_workflow_template.yaml
 = unsupported (decision 18): template dask-scheduler-generator runs as a daemon, a service that later steps reach through the cluster network

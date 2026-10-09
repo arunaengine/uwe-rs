@@ -104,7 +104,10 @@ pub struct Pending {
 
 impl Pending {
     pub(crate) fn in_place_sources(&self) -> impl Iterator<Item = &str> {
-        self.in_place.iter().map(|entry| entry.location.as_str())
+        self.in_place
+            .iter()
+            .filter(|entry| !entry.directory)
+            .map(|entry| entry.location.as_str())
     }
 
     /// The new locations of the files that the tool updated in place, by their old ones: the

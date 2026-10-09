@@ -29,6 +29,7 @@ const HANDLED_DIRECTIVES: &[&str] = &[
     "cache",
     "conda",
     "container",
+    "containerOptions",
     "cpus",
     "debug",
     "disk",
@@ -50,7 +51,6 @@ const HANDLED_DIRECTIVES: &[&str] = &[
 ];
 
 const REFUSED_DIRECTIVES: &[&str] = &[
-    "containerOptions",
     "fair",
     "hints",
     "maxErrors",
@@ -393,6 +393,11 @@ impl ProcessNode {
             }
         }
         limit_resources(&mut directives);
+        crate::options::apply(
+            &directives,
+            &mut Default::default(),
+            &mut Default::default(),
+        )?;
         if directives.iter().any(|directive| {
             &*directive.name == "storeDir" && directive.arguments.iter().any(Value::truth)
         }) && directives.iter().any(|directive| {

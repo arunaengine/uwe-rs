@@ -13,6 +13,7 @@ mod loader;
 mod network;
 mod notes;
 mod operator;
+mod options;
 mod output_schema;
 mod outputs;
 mod pairs;

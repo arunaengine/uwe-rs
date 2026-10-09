@@ -36,6 +36,7 @@ pub struct Settings {
     /// The command line that started the run, `workflow.commandLine`.
     pub command_line: String,
     pub secret_env: bool,
+    pub local_options: bool,
 }
 
 impl Default for Settings {
@@ -47,6 +48,7 @@ impl Default for Settings {
             run_name: "iunctus".into(),
             command_line: String::new(),
             secret_env: false,
+            local_options: false,
         }
     }
 }
@@ -285,6 +287,14 @@ impl Nextflow {
                     });
                 }
                 let mut task = task(&request, &self.environment)?;
+                if let Some(flags) = task.environment.get(crate::options::FLAGS_ENV) && !self.settings.local_options {
+                    let flags: BTreeMap<String, i64> = serde_json::from_str(flags).map_err(|_| DriverError { unsupported: true, message: "invalid container launch flags".into() })?;
+                    if flags.iter().all(|(name, count)| name == "cpus" || name == "gpus" && *count >= 0) {
+                        task.environment.remove(crate::options::FLAGS_ENV);
+                    } else {
+                        return Err(DriverError { unsupported: true, message: "container shared memory, swap and GPU 'all' flags require the local executor".into() });
+                    }
+                }
                 if request.made.is_none()
                     && let Some(bin) = &self.project_bin
                 {
@@ -745,7 +755,8 @@ pub fn task(
     if request.made.is_some() {
         return Ok(exec_task(request, environment, reuse));
     }
-    let resources = resources(request).map_err(DriverError::new)?;
+    let mut resources = resources(request).map_err(DriverError::new)?;
+    crate::options::apply(&request.directives, &mut resources, &mut environment).map_err(error)?;
     let mut inputs = vec![Input {
         path: SCRIPT.into(),
         source: String::new(),

@@ -6,6 +6,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixListener;
 use std::time::{Duration, Instant};
 
+use base64::Engine;
 use conda_environment::{
     BuiltImage, CompletedImage, FORMAT, IMAGE_CACHE_NAMESPACE, ImageBuild, ImageCache,
     ImagePreparation, Lock,
@@ -133,6 +134,7 @@ async fn engine(
             }
             let mut size = 0;
             let mut chunked = false;
+            let mut auth = None;
             loop {
                 line.clear();
                 assert_ne!(reader.read_line(&mut line).unwrap(), 0);
@@ -145,6 +147,18 @@ async fn engine(
                 chunked |= line
                     .to_ascii_lowercase()
                     .contains("transfer-encoding: chunked");
+                if let Some(value) = line.to_ascii_lowercase().strip_prefix("x-registry-auth:") {
+                    let offset = line.len() - value.len();
+                    auth = Some(line[offset..].trim().to_owned());
+                }
+            }
+            if expected == "/push?" {
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(auth.unwrap())
+                    .unwrap();
+                let auth: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+                assert!(auth["username"].as_str() == Some("push-user"));
+                assert!(auth["password"].as_str() == Some("push-password"));
             }
             reader.read_exact(&mut vec![0; size]).unwrap();
             if chunked {
@@ -196,6 +210,7 @@ async fn reuses_prepared_images() {
             CacheContext {
                 store: &store,
                 holder: &Holder::new(run, "test"),
+                registry: None,
             },
             limits(),
             &cancel,
@@ -242,6 +257,7 @@ async fn publishes_verified_archive() {
         CacheContext {
             store: &store,
             holder: &Holder::new("cold", "test"),
+            registry: None,
         },
         limits(),
         &CancellationToken::new(),
@@ -303,6 +319,7 @@ async fn restores_shared_archive() {
         CacheContext {
             store: &store,
             holder: &Holder::new("restore", "test"),
+            registry: None,
         },
         limits(),
         &CancellationToken::new(),
@@ -341,6 +358,7 @@ async fn requires_valid_base() {
             CacheContext {
                 store: &store,
                 holder: &Holder::new("cold", "test"),
+                registry: None,
             },
             limits(),
             &CancellationToken::new(),
@@ -377,6 +395,7 @@ async fn bounds_owned_preparation() {
             CacheContext {
                 store: &store,
                 holder: &Holder::new("cold", "test"),
+                registry: None,
             },
             bounded,
             &cancel,
@@ -562,4 +581,324 @@ async fn bounds_local_candidates() {
     ));
     assert!(ImageCache::new(store).lookup(&p).await.unwrap().is_none());
     server.join().unwrap();
+}
+
+fn registry(statuses: Vec<u16>, digest: &str) -> (String, std::thread::JoinHandle<()>) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let host = listener.local_addr().unwrap().to_string();
+    let digest = digest.to_owned();
+    let server = std::thread::spawn(move || {
+        let mut challenged = false;
+        for status in statuses {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let (mut stream, _) = loop {
+                match listener.accept() {
+                    Ok(connection) => break connection,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline, "missing registry request");
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                    Err(error) => panic!("{error}"),
+                }
+            };
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            assert!(line.starts_with("HEAD /v2/tool/manifests/sha256:"));
+            let mut authorized = false;
+            loop {
+                line.clear();
+                assert_ne!(reader.read_line(&mut line).unwrap(), 0);
+                if line == "\r\n" {
+                    break;
+                }
+                authorized |= line
+                    .to_ascii_lowercase()
+                    .starts_with("authorization: basic ");
+            }
+            if challenged {
+                assert!(authorized);
+            }
+            challenged = status == 401;
+            write!(stream, "HTTP/1.1 {status} Response\r\nDocker-Content-Digest: {digest}\r\nWWW-Authenticate: Basic realm=\"registry\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+        }
+    });
+    (format!("{host}/tool"), server)
+}
+
+fn pushed(p: &ImagePreparation, registry: &str) -> Reply {
+    let mut reply = inspect(p);
+    let mut image: serde_json::Value = serde_json::from_str(&reply.2).unwrap();
+    image["RepoDigests"] = json!([format!("{registry}@sha256:{}", "c".repeat(64))]);
+    reply.2 = image.to_string();
+    reply
+}
+
+#[tokio::test]
+async fn publishes_remote_images() {
+    let folder = tempfile::tempdir().unwrap();
+    let p = preparation();
+    let (registry, remote) = registry(
+        vec![401, 200, 401, 200, 404, 401, 200],
+        &format!("sha256:{}", "c".repeat(64)),
+    );
+    let host = registry.split('/').next().unwrap();
+    let config = config_file::ConfigFile::parse(
+        &format!("[registry.\"{host}\"]\nusername = 'push-user'\npassword = 'push-password'\n"),
+        std::path::Path::new("config.toml"),
+    )
+    .unwrap();
+    executor::credentials::configure(&config).unwrap();
+    let mut replies = vec![
+        images(&['b']),
+        inspect(&p),
+        inspect(&p),
+        export(),
+        inspect(&p),
+    ];
+    for _ in 0..2 {
+        replies.extend([
+            inspect(&p),
+            ("/tag?".into(), 201, String::new()),
+            ("/push?".into(), 200, "{\"status\":\"pushed\"}\n".into()),
+            pushed(&p, &registry),
+        ]);
+        if replies.len() == 9 {
+            replies.push(inspect(&p));
+        }
+    }
+    let (engine, server) = engine(folder.path(), replies).await;
+    let store = Store::local(&folder.path().join("cache")).unwrap();
+    let empty = Store::local(&folder.path().join("empty")).unwrap();
+    let expected = format!("{registry}@sha256:{}", "c".repeat(64));
+    for (index, store) in [&store, &empty, &store].into_iter().enumerate() {
+        let image = ensure_with(
+            &engine,
+            &p,
+            &folder.path().join("missing packages"),
+            CacheContext {
+                store,
+                holder: &Holder::new("publish", "test"),
+                registry: Some(&registry),
+            },
+            limits(),
+            &CancellationToken::new(),
+            || async {
+                Err(CondaImageError::Provenance(
+                    "registry reuse called preparation".into(),
+                ))
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(image.reference(), Some(expected.as_str()));
+        assert_eq!(image.image_id(), receipt(&p).image_id());
+        if index == 0 {
+            empty
+                .put_entry(
+                    "conda-registry",
+                    &p.digest().parse().unwrap(),
+                    serde_json::to_vec(&image).unwrap().into(),
+                )
+                .await
+                .unwrap();
+            assert!(
+                !empty
+                    .has_content(&Digest::sha256(ARCHIVE.as_bytes()))
+                    .await
+                    .unwrap()
+            );
+        }
+    }
+    assert!(
+        ImageCache::new(store)
+            .lookup(&p)
+            .await
+            .unwrap()
+            .unwrap()
+            .receipt()
+            .reference()
+            .is_none()
+    );
+    server.join().unwrap();
+    remote.join().unwrap();
+}
+
+#[tokio::test]
+async fn refuses_registry_errors() {
+    for status in [403, 500, 200] {
+        let folder = tempfile::tempdir().unwrap();
+        let p = preparation();
+        let (registry, remote) = registry(vec![status], &format!("sha256:{}", "d".repeat(64)));
+        let store = Store::local(&folder.path().join("cache")).unwrap();
+        let mut image = serde_json::to_value(receipt(&p)).unwrap();
+        image["reference"] = json!(format!("{registry}@sha256:{}", "c".repeat(64)));
+        image["manifest_digest"] = json!(format!("sha256:{}", "c".repeat(64)));
+        store
+            .put_entry(
+                "conda-registry",
+                &p.digest().parse().unwrap(),
+                serde_json::to_vec(&image).unwrap().into(),
+            )
+            .await
+            .unwrap();
+        let (engine, server) = engine(folder.path(), vec![]).await;
+        let result = ensure_with(
+            &engine,
+            &p,
+            folder.path(),
+            CacheContext {
+                store: &store,
+                holder: &Holder::new("refused", "test"),
+                registry: Some(&registry),
+            },
+            limits(),
+            &CancellationToken::new(),
+            || async { panic!("registry errors must not build") },
+        )
+        .await;
+        assert!(matches!(result, Err(CondaImageError::Publication(_))));
+        server.join().unwrap();
+        remote.join().unwrap();
+    }
+}
+
+#[tokio::test]
+async fn redacts_push_errors() {
+    for status in [200, 500] {
+        let folder = tempfile::tempdir().unwrap();
+        let p = preparation();
+        let (engine, server) = engine(folder.path(), vec![
+            inspect(&p), ("/tag?".into(), 201, String::new()),
+            ("/push".into(), status, "{\"errorDetail\":{\"message\":\"private-value\"},\"message\":\"private-value\"}\n".into()),
+        ]).await;
+        let error = executor::conda::publish(
+            &engine,
+            &p,
+            &receipt(&p),
+            "127.0.0.1:1/tool",
+            limits().transfer,
+            &CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, CondaImageError::Publication(_)));
+        assert!(!error.to_string().contains("private-value"));
+        server.join().unwrap();
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs a local Debian image, a prepared tiny context and a throwaway registry"]
+async fn publishes_local_image() {
+    use bollard::query_parameters::{BuildImageOptions, BuilderVersion, RemoveImageOptions};
+    use futures_util::StreamExt;
+
+    let base = std::env::var("IUNCTUS_PUBLISH_BASE").unwrap();
+    let registry = std::env::var("IUNCTUS_PUBLISH_REGISTRY").unwrap();
+    let context = std::fs::read(std::env::var("IUNCTUS_PUBLISH_CONTEXT").unwrap()).unwrap();
+    assert!(context.len() <= 16 * 1024);
+    let p = ImagePreparation::new(preparation().lock(), &base, "linux/amd64", &[]).unwrap();
+    let engine = ContainerEngine::named(Some("docker")).await.unwrap();
+    executor::conda::require_base(&engine, &p).await.unwrap();
+    let tag = format!("{registry}:build");
+    let options = BuildImageOptions {
+        t: Some(tag.clone()),
+        version: BuilderVersion::BuilderV1,
+        forcerm: true,
+        platform: "linux/amd64".into(),
+        networkmode: Some("none".into()),
+        memory: Some(128 << 20),
+        memswap: Some(128 << 20),
+        cpuperiod: Some(100_000),
+        cpuquota: Some(100_000),
+        labels: Some(std::collections::HashMap::from([
+            ("org.iunctus.conda.preparation".into(), p.digest().into()),
+            ("org.iunctus.conda.base".into(), p.base().into()),
+            ("org.iunctus.conda.recipe".into(), p.recipe_digest()),
+        ])),
+        ..Default::default()
+    };
+    let mut id = None;
+    let result = async {
+        let mut build =
+            engine
+                .client()
+                .build_image(options, None, Some(bollard::body_full(context.into())));
+        while let Some(step) = build.next().await {
+            let step = step?;
+            if let Some(aux) = step.aux {
+                id = aux.id;
+            }
+        }
+        let image = engine.client().inspect_image(&tag).await?;
+        id = image.id;
+        let image = p.completed(BuiltImage {
+            preparation: p.digest().into(),
+            base: p.base().into(),
+            recipe_digest: p.recipe_digest(),
+            platform: p.platform().into(),
+            image_id: id.clone().unwrap(),
+            manifest_digest: None,
+            archive_digest: None,
+            reference: None,
+        })?;
+        let mut bounded = limits();
+        bounded.timeout = Duration::from_secs(60);
+        bounded.transfer.timeout = Duration::from_secs(60);
+        bounded.transfer.progress_bytes = 8 << 20;
+        let published = executor::conda::publish(
+            &engine,
+            &p,
+            &image,
+            &registry,
+            bounded.transfer,
+            &CancellationToken::new(),
+        )
+        .await?;
+        let folder = tempfile::tempdir()?;
+        let store = Store::local(folder.path())?;
+        store
+            .put_entry(
+                "conda-registry",
+                &p.digest().parse().unwrap(),
+                serde_json::to_vec(&published).unwrap().into(),
+            )
+            .await?;
+        let reused = ensure_with(
+            &engine,
+            &p,
+            &folder.path().join("missing"),
+            CacheContext {
+                store: &store,
+                holder: &Holder::new("live", "test"),
+                registry: Some(&registry),
+            },
+            bounded,
+            &CancellationToken::new(),
+            || async { panic!("registry reuse must not build") },
+        )
+        .await?;
+        assert_eq!(published, reused);
+        println!("published and reused {}", published.reference().unwrap());
+        Ok::<_, CondaImageError>(())
+    }
+    .await;
+    engine
+        .client()
+        .remove_image(
+            id.as_deref().unwrap_or(&tag),
+            Some(RemoveImageOptions {
+                force: true,
+                ..Default::default()
+            }),
+            None,
+        )
+        .await
+        .unwrap();
+    result.unwrap();
 }

@@ -131,6 +131,12 @@ fn execute_with(
     if let Some(network) = network {
         setup.network = network;
     }
+    setup.conda = setup
+        .conda
+        .as_ref()
+        .map(|config| config.for_network(network_rule(arguments, &setup).none_by_default))
+        .transpose()
+        .map_err(|error| Failure::setup(error.to_string()))?;
     for file in &pinned.files {
         setup.storage.pin(file.clone());
     }

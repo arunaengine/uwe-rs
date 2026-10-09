@@ -21,6 +21,13 @@ test:
 check:
 	cargo check --workspace --all-targets --all-features --locked
 
+# Builds the portable Linux binary and keeps symbols for crash backtraces.
+release-binary:
+	rustup target add x86_64-unknown-linux-musl
+	CC_x86_64_unknown_linux_musl=musl-gcc CARGO_INCREMENTAL=0 nice -n 19 cargo build --release --locked --target x86_64-unknown-linux-musl -p iunctus -j 8
+	strip --strip-debug target/x86_64-unknown-linux-musl/release/iunctus
+	file target/x86_64-unknown-linux-musl/release/iunctus
+
 # Runs four demos and checks failure, resume, cancellation and simulation with local Docker.
 container-runs:
 	nice -n 19 cargo build --offline --locked -p iunctus -j 8

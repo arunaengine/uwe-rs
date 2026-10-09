@@ -26,6 +26,24 @@ The binary prints `iunctus 0.1.0`. The version stays 0.1.0 during the beta;
 the changelog lists the changes that are not yet released.
 Building may download the toolchain and dependencies.
 
+## Portable Linux binary
+
+Candidate packages use `x86_64-unknown-linux-musl`: one static binary with no
+host glibc requirement. A GNU binary built on a newer glibc can fail to start
+on an older cluster. To build the portable release on an x86_64 Linux host:
+
+```sh
+sudo apt-get install --no-install-recommends build-essential musl-tools cmake binutils file just
+just release-binary
+target/x86_64-unknown-linux-musl/release/iunctus --version
+target/x86_64-unknown-linux-musl/release/iunctus check-machine
+```
+
+The recipe installs the Rust musl target and removes debug sections while
+keeping symbols for crash backtraces. Packaged `BINARY.file` and `BINARY.ldd`
+record the static linkage. The same binary builds the CWL JavaScript helper:
+`python3 -I scripts/cwl-js-image.py target/x86_64-unknown-linux-musl/release/iunctus`.
+
 For local runs, start Docker or enable Podman's API socket:
 
 ```sh

@@ -215,7 +215,7 @@ Explicit output `archive.none` exports files or directory trees unchanged. `arch
 exports gzip tar with compression levels -1 and 0 through 9; `archive.zip` exports zip.
 Huffman-only gzip (-2) remains refused. Native downstream steps retain the original files,
 including inputs with an explicit archive strategy. External archive extraction remains refused.
-S3 output locations use the configured storage delivery path and default to gzip tar when
+S3 output locations require a bucket and key, use configured storage, and default to gzip tar when
 no archive strategy is given. Archives are staged in a run-owned temporary folder that is
 removed when the driver is dropped. Endpoint and credential overrides remain refused:
 the language driver has no storage endpoint identity to verify a declared `S3.endpoint`.

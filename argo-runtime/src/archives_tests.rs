@@ -161,3 +161,17 @@ fn downstream_keeps_files() {
         "original"
     );
 }
+
+#[test]
+fn requires_repository_location() {
+    for source in ["{key: data}", "{bucket: data}"] {
+        let artifact = argo_parser::model::Artifact {
+            name: "output".into(),
+            s3: argo_parser::parse_yaml(source).unwrap(),
+            ..Default::default()
+        };
+        let error = super::check(&artifact).unwrap_err();
+        assert!(error.unsupported);
+        assert!(error.message.contains("bucket and key"));
+    }
+}

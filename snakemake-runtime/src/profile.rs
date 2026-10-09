@@ -23,7 +23,7 @@ pub struct Profile {
     pub retries: Option<u32>,
     pub rerun_triggers: Option<Vec<String>>,
     pub storage_provider: Option<String>,
-    pub storage_prefix: String,
+    pub storage_prefix: Option<String>,
 }
 
 pub const RERUN_TRIGGERS: [&str; 5] = ["mtime", "params", "input", "software-env", "code"];
@@ -169,7 +169,7 @@ impl Profile {
         if other.storage_provider.is_some() {
             self.storage_provider = other.storage_provider;
         }
-        if !other.storage_prefix.is_empty() {
+        if other.storage_prefix.is_some() {
             self.storage_prefix = other.storage_prefix;
         }
     }
@@ -215,7 +215,9 @@ impl Profile {
                     crate::storage::check_provider(Some(&provider))?;
                     profile.storage_provider = Some(provider);
                 }
-                "default-storage-prefix" => profile.storage_prefix = interpreter.to_str(&value)?,
+                "default-storage-prefix" => {
+                    profile.storage_prefix = Some(interpreter.to_str(&value)?)
+                }
                 "default-resources" | "default-res" => {
                     profile.default_resources = pairs(interpreter, &value)?
                 }

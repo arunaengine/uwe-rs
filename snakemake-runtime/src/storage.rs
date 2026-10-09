@@ -168,7 +168,7 @@ impl Native for StorageRegistry {
         match profile.and_then(|profile| {
             profile
                 .storage_provider
-                .map(|provider| (provider, profile.storage_prefix))
+                .map(|provider| (provider, profile.storage_prefix.unwrap_or_default()))
         }) {
             Some((provider, prefix)) => {
                 default_file(interpreter, &query, &provider, &prefix).map(Some)

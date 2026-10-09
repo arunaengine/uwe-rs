@@ -10,22 +10,22 @@
 # entrypoint, as `argo submit -p` gives them.
 
 Hybrid-Argo-Workflows/Examples/QC-Alignment-WF.yaml
-= unsupported (decision 18): templates.hybrid-workflow.tasks.fastp-trimming artifact outputArtifact: declared repository uploads are not supported; use the results destination
+= unsupported (decision 18): templates.hybrid-workflow.tasks.fastp-trimming artifact outputArtifact: the default artifact repository is not supported; supply an S3 bucket and key
 
 Hybrid-Argo-Workflows/Examples/clean-up-wf.yaml
-= unsupported (decision 18): templates.hybrid-workflow.tasks.fastp-trimming artifact outputArtifact: declared repository uploads are not supported; use the results destination
+= unsupported (decision 18): templates.hybrid-workflow.tasks.fastp-trimming artifact outputArtifact: the default artifact repository is not supported; supply an S3 bucket and key
 
 Hybrid-Argo-Workflows/Examples/katib-workflow.yaml
-= unsupported (decision 18): templates.hybrid-workflow.tasks.model-training artifact output-artifact: declared repository uploads are not supported; use the results destination
+= unsupported (decision 18): templates.hybrid-workflow.tasks.model-training artifact output-artifact: the default artifact repository is not supported; supply an S3 bucket and key
 
 Hybrid-Argo-Workflows/Examples/scheduler-workflow.yaml
-= unsupported (decision 18): templates.hybrid-workflow.tasks.fastp-trimming artifact outputArtifact: declared repository uploads are not supported; use the results destination
+= unsupported (decision 18): templates.hybrid-workflow.tasks.fastp-trimming artifact outputArtifact: the default artifact repository is not supported; supply an S3 bucket and key
 
 Hybrid-Argo-Workflows/Examples/variations-workflow.yaml
-= unsupported (decision 18): templates.hybrid-workflow.tasks.generate artifact file: declared repository uploads are not supported; use the results destination
+= unsupported (decision 18): templates.hybrid-workflow.tasks.generate artifact file: the default artifact repository is not supported; supply an S3 bucket and key
 
 Hybrid-Argo-Workflows/slurm-job-workflow-template.yaml
-= unsupported (decision 18): artifact output-artifact: declared repository uploads are not supported; use the results destination
+= unsupported (decision 18): artifact output-artifact: the default artifact repository is not supported; supply an S3 bucket and key
 
 SIM-PIPE/examples/fake-file-process/fail/fake-file-process-fail.yaml
 = unsupported (decision 18): templates.main.steps[0].pre-process artifact input_file: mode, recurseMode, archive compression and archiveLogs are not supported
@@ -34,16 +34,16 @@ SIM-PIPE/examples/fake-file-process/fake-file-process.yaml
 = unsupported (decision 18): templates.main.steps[0].pre-process artifact input_file: mode, recurseMode, archive compression and archiveLogs are not supported
 
 SIM-PIPE/examples/nhrf/nhrf-conf-1.yaml
-= unsupported (decision 18): artifact fastq-data: S3.endpoint is not supported; use the configured storage provider
+= unsupported (decision 18): artifact fastq-data: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 
 SIM-PIPE/examples/nhrf/nhrf-conf-2.yaml
-= unsupported (decision 18): artifact fastq-data: S3.endpoint is not supported; use the configured storage provider
+= unsupported (decision 18): artifact fastq-data: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 
 SIM-PIPE/examples/nhrf/nhrf-conf-3.yaml
-= unsupported (decision 18): artifact fastq-data: S3.endpoint is not supported; use the configured storage provider
+= unsupported (decision 18): artifact fastq-data: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 
 SIM-PIPE/examples/nhrf/nhrf-conf-4.yaml
-= unsupported (decision 18): artifact fastq-data: S3.endpoint is not supported; use the configured storage provider
+= unsupported (decision 18): artifact fastq-data: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 
 argo-hub/examples/ci-simple/versions/0.0.1/workflowTemplate.yaml
 = unsupported (decision 18): templates.ci-tasks.tasks.build-docker-image artifact repo: Git, HDFS, OSS and artifact plugin transfers are not supported
@@ -68,19 +68,16 @@ argo-hub/workflows/git/versions/0.0.3/workflowTemplate.yaml
 = unsupported (decision 18): templates.clone-s3 artifact repo: Git, HDFS, OSS and artifact plugin transfers are not supported
 
 argo-hub/workflows/gitops-promotion/versions/0.0.1/workflowTemplate.yaml
-= unsupported (decision 18): templates.promote-from-src-to-dest-env-s3 artifact repo: declared repository uploads are not supported; use the results destination
+= unsupported (decision 18): templates.promote-from-src-to-dest-env-s3 artifact repo: the default artifact repository is not supported; supply an S3 bucket and key
 
 argo-hub/workflows/kaniko/versions/0.0.1/workflowTemplate.yaml
 = unsupported (decision 18): templates.build artifact repo: Git, HDFS, OSS and artifact plugin transfers are not supported
-
-argo-workflow-examples/embodied-eval/workflow.yaml
-= unsupported (decision 18): spec.activeDeadlineSeconds is not supported
 
 argo-workflow-examples/ephemeral-snapshot-disk/workflowtemplate/all-in-one-template.yaml
 = unsupported (decision 18): template create-snapshot is a resource template that manages Kubernetes objects of kind VolumeSnapshot
 
 argo-workflow-examples/map-reduce/map-reduce.yaml
-= unsupported (decision 18): templates.main.tasks.split artifact parts: declared repository uploads are not supported; use the results destination
+= unsupported (decision 18): templates.main.tasks.split artifact parts: the default artifact repository is not supported; supply an S3 bucket and key
 
 argo-workflows-catalog/templates/distro/manifests.yaml
 = invalid: the file or a WorkflowTemplate it calls declares invalid fields spec.poddisruptionbudget, which Argo v4.1.4 rejects in strict mode
@@ -88,7 +85,7 @@ $ argo lint --offline --strict=true argo-workflows-catalog/templates/distro/mani
 > argo-workflows-catalog/templates/distro/manifests.yaml: in "distro" (WorkflowTemplate): strict decoding error: unknown field "spec.poddisruptionbudget"
 
 argo-workflows-catalog/templates/sendmail/tests/send-email.yaml
-= unsupported (decision 18): template smtp-server runs as a daemon, a service that later steps reach through the cluster network
+= unsupported (decision 18): ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows-catalog/templates/slack/manifests.yaml
 = unsupported (decision 18): templates.file artifact file: mode, recurseMode, archive compression and archiveLogs are not supported
@@ -172,11 +169,8 @@ argo-workflows/examples/archive-location.yaml
 argo-workflows/examples/arguments-artifacts.yaml
 = unsupported (decision 18): artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
 
-argo-workflows/examples/artifact-disable-archive.yaml
-= unsupported (decision 18): templates.artifact-disable-archive.steps[0].generate-artifact artifact hello-txt-nc: mode, recurseMode, archive compression and archiveLogs are not supported
-
 argo-workflows/examples/artifact-gc-workflow.yaml
-= unsupported (decision 18): artifact on-completion: declared repository uploads are not supported; use the results destination
+= unsupported (decision 18): artifact on-completion: the default artifact repository is not supported; supply an S3 bucket and key
 
 argo-workflows/examples/artifact-passing-explicit-plugin.yaml
 = unsupported (decision 18): templates.artifact-example.steps[0].generate-artifact artifact hello-art: Git, HDFS, OSS and artifact plugin transfers are not supported
@@ -188,34 +182,31 @@ argo-workflows/examples/artifactory-artifact.yaml
 = unsupported (decision 18): templates.artifact-example.steps[0].generate-artifact artifact hello-art: Artifactory.usernameSecret is not supported; use the configured storage provider
 
 argo-workflows/examples/artifacts-workflowtemplate.yaml
-= unsupported (decision 18): artifact text-file: declared repository uploads are not supported; use the results destination
+= unsupported (decision 18): artifact text-file: the default artifact repository is not supported; supply an S3 bucket and key
 
 argo-workflows/examples/ci-output-artifact.yaml
 = unsupported (decision 18): templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported
 
 argo-workflows/examples/ci-workflowtemplate.yaml
-= unsupported (decision 18): templates.main.tasks.test artifact test-report: declared repository uploads are not supported; use the results destination
+= unsupported (decision 18): templates.main.tasks.test artifact test-report: the default artifact repository is not supported; supply an S3 bucket and key
 
 argo-workflows/examples/ci.yaml
 = unsupported (decision 18): templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported
 
 argo-workflows/examples/daemon-nginx.yaml
-= unsupported (decision 18): template nginx-server runs as a daemon, a service that later steps reach through the cluster network
+= unsupported (decision 18): ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/examples/daemon-step.yaml
-= unsupported (decision 18): template influxdb runs as a daemon, a service that later steps reach through the cluster network
+= unsupported (decision 18): ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/examples/daemoned-stateful-set-with-service.yaml
 = unsupported (decision 18): template create-service is a resource template that manages Kubernetes objects of kind Service
 
 argo-workflows/examples/dag-daemon-retry-strategy.yaml
-= unsupported (decision 18): template server runs as a daemon, a service that later steps reach through the cluster network
+= unsupported (decision 18): ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/examples/dag-daemon-task.yaml
-= unsupported (decision 18): template influxdb runs as a daemon, a service that later steps reach through the cluster network
-
-argo-workflows/examples/dag-task-level-timeout.yaml
-= unsupported (decision 18): templates.diamond.tasks.A template echo: `timeout` is not supported
+= unsupported (decision 18): ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/examples/data-transformations.yaml
 = unsupported (decision 18): template list-log-files is a data template, which reads an artifact repository from inside a cluster
@@ -242,10 +233,10 @@ argo-workflows/examples/input-artifact-oss.yaml
 = unsupported (decision 18): artifact my-art: Git, HDFS, OSS and artifact plugin transfers are not supported
 
 argo-workflows/examples/input-artifact-s3.yaml
-= unsupported (decision 18): artifact my-art: S3.endpoint is not supported; use the configured storage provider
+= unsupported (decision 18): artifact my-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 
 argo-workflows/examples/intermediate-parameters.yaml
-= unsupported (decision 18): templates.cicd-pipeline.steps[1].approval template approval: `suspend` is not supported
+= unsupported (decision 18): templates.cicd-pipeline.steps[1].approval template approval: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
 
 argo-workflows/examples/k8s-jobs.yaml
 = unsupported (decision 18): template rand-num is a resource template that manages Kubernetes objects of kind Job
@@ -276,10 +267,10 @@ argo-workflows/examples/k8s-set-owner-reference.yaml
 = unsupported (decision 18): template k8s-set-owner-reference is a resource template that manages Kubernetes objects of kind ConfigMap
 
 argo-workflows/examples/key-only-artifact.yaml
-= unsupported (decision 18): templates.main.tasks.generate artifact file: declared repository uploads are not supported; use the results destination
+= unsupported (decision 18): templates.main.tasks.generate artifact file: the default artifact repository is not supported; supply an S3 bucket and key
 
 argo-workflows/examples/map-reduce.yaml
-= unsupported (decision 18): templates.main.tasks.split artifact parts: declared repository uploads are not supported; use the results destination
+= unsupported (decision 18): templates.main.tasks.split artifact parts: the default artifact repository is not supported; supply an S3 bucket and key
 
 argo-workflows/examples/output-artifact-azure.yaml
 = unsupported (decision 18): artifact message: Azure.accountKeySecret is not supported; use the configured storage provider
@@ -288,7 +279,7 @@ argo-workflows/examples/output-artifact-gcs.yaml
 = unsupported (decision 18): artifact message: GCS.serviceAccountKeySecret is not supported; use the configured storage provider
 
 argo-workflows/examples/output-artifact-s3.yaml
-= unsupported (decision 18): artifact message: S3.endpoint is not supported; use the configured storage provider
+= unsupported (decision 18): artifact message: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 
 argo-workflows/examples/pod-resources-template-override.yaml
 = unsupported (decision 18): template large has sidecars, services that run beside the task in its Kubernetes pod
@@ -320,74 +311,53 @@ argo-workflows/examples/resource-delete-with-flags.yaml
 argo-workflows/examples/resource-flags.yaml
 = unsupported (decision 18): template create-route is a resource template that manages Kubernetes objects of kind Route
 
-argo-workflows/examples/retry-backoff.yaml
-= unsupported (decision 18): retryStrategy backoff.maxDuration and OnTransientError are not supported
-
 argo-workflows/examples/sidecar-dind.yaml
-= unsupported (decision 18): template dind-sidecar-example has sidecars, services that run beside the task in its Kubernetes pod
+= unsupported (decision 18): ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/examples/sidecar-nginx.yaml
-= unsupported (decision 18): template sidecar-nginx-example has sidecars, services that run beside the task in its Kubernetes pod
+= unsupported (decision 18): ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/examples/sidecar.yaml
-= unsupported (decision 18): template sidecar-example has sidecars, services that run beside the task in its Kubernetes pod
-
-argo-workflows/examples/step-level-timeout.yaml
-= unsupported (decision 18): templates.sleep-sleep.steps[0].sleep1 template sleep: `timeout` is not supported
+= unsupported (decision 18): ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/examples/steps-daemon-retry-strategy.yaml
-= unsupported (decision 18): template server runs as a daemon, a service that later steps reach through the cluster network
+= unsupported (decision 18): ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/examples/suspend-template-outputs.yaml
-= unsupported (decision 18): templates.suspend.steps[0].approve template approve: `suspend` is not supported
+= unsupported (decision 18): templates.suspend.steps[0].approve template approve: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
 
 argo-workflows/examples/suspend-template.yaml
-= unsupported (decision 18): templates.suspend.steps[1].approve template approve: `suspend` is not supported
+= unsupported (decision 18): templates.suspend.steps[1].approve template approve: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
 
 argo-workflows/examples/synchronization-db-mutex-tmpl-level.yaml
-= unsupported (decision 18): templates.synchronization-db-tmpl-level-mutex-example.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
+= unsupported (decision 18): templates.synchronization-db-tmpl-level-mutex-example.steps[0].synchronization-acquire-lock synchronization database mutexes require an Argo controller; use a local mutex
 
 argo-workflows/examples/synchronization-db-mutex-wf-level.yaml
-= unsupported (decision 18): spec.synchronization is not supported
+= unsupported (decision 18): synchronization database mutexes require an Argo controller; use a local mutex
 
 argo-workflows/examples/synchronization-db-tmpl-level.yaml
-= unsupported (decision 18): templates.synchronization-db-tmpl-level-example.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
+= unsupported (decision 18): templates.synchronization-db-tmpl-level-example.steps[0].synchronization-acquire-lock synchronization database semaphores require an Argo controller; use configMapKeyRef
 
 argo-workflows/examples/synchronization-db-wf-level.yaml
-= unsupported (decision 18): spec.synchronization is not supported
-
-argo-workflows/examples/synchronization-mutex-tmpl-level.yaml
-= unsupported (decision 18): templates.synchronization-tmpl-level-mutex-example.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
-
-argo-workflows/examples/synchronization-mutex-wf-level.yaml
-= unsupported (decision 18): spec.synchronization is not supported
+= unsupported (decision 18): synchronization database semaphores require an Argo controller; use configMapKeyRef
 
 argo-workflows/examples/synchronization-tmpl-level.yaml
-= unsupported (decision 18): templates.synchronization-tmpl-level-example.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
+= unsupported (decision 18): synchronization semaphore requires ConfigMap default/my-config key template; supply a ConfigMap with data.template using -config, or an inline configMapKeyRef.limit
 
 argo-workflows/examples/synchronization-wf-level.yaml
-= unsupported (decision 18): spec.synchronization is not supported
-
-argo-workflows/examples/template-defaults.yaml
-= unsupported (decision 18): templateDefaults: template : `timeout` is not supported
-
-argo-workflows/examples/timeouts-workflow.yaml
-= unsupported (decision 18): spec.activeDeadlineSeconds is not supported
+= unsupported (decision 18): synchronization semaphore requires ConfigMap default/my-config key workflow; supply a ConfigMap with data.workflow using -config, or an inline configMapKeyRef.limit
 
 argo-workflows/examples/variables-showcase.yaml
-= unsupported (decision 18): template svc-daemon runs as a daemon, a service that later steps reach through the cluster network
+= unsupported (decision 18): ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/examples/webhdfs-input-output-artifacts.yaml
 = unsupported (decision 18): artifact my-art: HTTP.auth is not supported; use the configured storage provider
 
 argo-workflows/examples/work-avoidance.yaml
-= unsupported (decision 18): templates.main.steps[0].load-markers artifact markers: S3.endpoint is not supported; use the configured storage provider
+= unsupported (decision 18): templates.main.steps[0].load-markers artifact markers: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 
 argo-workflows/examples/workflow-template/input-artifacts.yaml
-= unsupported (decision 18): artifact input-file: S3.endpoint is not supported; use the configured storage provider
-
-argo-workflows/test/e2e/benchmarks/multiple-ref-main-workflowtemplate.yaml
-= unsupported (decision 18): spec.activeDeadlineSeconds is not supported
+= unsupported (decision 18): artifact input-file: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 
 argo-workflows/test/e2e/cron/cron-and-malformed-template.yaml#0
 = invalid: the same file contains WorkflowTemplate basic-malformed with the invalid field spec.entrypoints, so the file cannot load
@@ -410,7 +380,7 @@ $ argo lint --offline --strict=false argo-workflows/test/e2e/expectedfailures/em
 > argo-workflows/test/e2e/expectedfailures/empty-parameter-steps.yaml: in "arguments-steps-" (Workflow): templates.abc.steps[0].a templates.whalesay inputs.parameters.message was not supplied
 
 argo-workflows/test/e2e/expectedfailures/failed-artifact-save.yaml
-= unsupported (decision 18): artifact randomfile: S3.endpoint is not supported; use the configured storage provider
+= unsupported (decision 18): artifact randomfile: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 
 argo-workflows/test/e2e/expectedfailures/input-artifact-not-optional.yaml
 = unsupported (decision 18): artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
@@ -432,14 +402,8 @@ argo-workflows/test/e2e/expectedfailures/pns/pns-quick-exit-output-art.yaml
 argo-workflows/test/e2e/expectedfailures/timeouts-step-plugin.yaml
 = unsupported (decision 18): spec.artifactRepositoryRef is not supported
 
-argo-workflows/test/e2e/expectedfailures/timeouts-workflow.yaml
-= unsupported (decision 18): spec.activeDeadlineSeconds is not supported
-
 argo-workflows/test/e2e/functional/arguments-artifacts.yaml
 = unsupported (decision 18): artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
-
-argo-workflows/test/e2e/functional/artifact-disable-archive.yaml
-= unsupported (decision 18): templates.artifact-disable-archive.steps[0].generate-artifact artifact hello-txt-nc: mode, recurseMode, archive compression and archiveLogs are not supported
 
 argo-workflows/test/e2e/functional/ci-output-artifact.yaml
 = unsupported (decision 18): templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported
@@ -448,13 +412,13 @@ argo-workflows/test/e2e/functional/ci.yaml
 = unsupported (decision 18): templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported
 
 argo-workflows/test/e2e/functional/daemon-nginx.yaml
-= unsupported (decision 18): template nginx-server runs as a daemon, a service that later steps reach through the cluster network
+= unsupported (decision 18): ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/test/e2e/functional/daemon-step.yaml
-= unsupported (decision 18): template influxdb runs as a daemon, a service that later steps reach through the cluster network
+= unsupported (decision 18): ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/test/e2e/functional/dag-daemon-task.yaml
-= unsupported (decision 18): template influxdb runs as a daemon, a service that later steps reach through the cluster network
+= unsupported (decision 18): ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/test/e2e/functional/git-clone-test.yaml
 = unsupported (decision 18): templates.try-clones.steps[0].clone artifact argo-source: Git, HDFS, OSS and artifact plugin transfers are not supported
@@ -486,28 +450,28 @@ $ argo lint --offline --strict=false argo-workflows/test/e2e/functional/resource
 > no linting errors found!
 
 argo-workflows/test/e2e/functional/sidecar-dind.yaml
-= unsupported (decision 18): template dind-sidecar-example has sidecars, services that run beside the task in its Kubernetes pod
+= unsupported (decision 18): ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/test/e2e/functional/sidecar-force-kill.yaml
-= unsupported (decision 18): template sidecar-force-kill has sidecars, services that run beside the task in its Kubernetes pod
+= unsupported (decision 18): ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/test/e2e/functional/sidecar-nginx.yaml
-= unsupported (decision 18): template sidecar-nginx-example has sidecars, services that run beside the task in its Kubernetes pod
+= unsupported (decision 18): ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/test/e2e/functional/sidecar-volumes.yaml
-= unsupported (decision 18): template generate has sidecars, services that run beside the task in its Kubernetes pod
+= unsupported (decision 18): ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/test/e2e/functional/sidecar.yaml
-= unsupported (decision 18): template sidecar-example has sidecars, services that run beside the task in its Kubernetes pod
+= unsupported (decision 18): ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/test/e2e/functional/stop-terminate-daemon.yaml
-= unsupported (decision 18): template sleep runs as a daemon, a service that later steps reach through the cluster network
+= unsupported (decision 18): ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 
 argo-workflows/test/e2e/functional/suspend-dag-template.yaml
-= unsupported (decision 18): templates.suspend-dag.tasks.approve template approve: `suspend` is not supported
+= unsupported (decision 18): templates.suspend-dag.tasks.approve template approve: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
 
 argo-workflows/test/e2e/functional/suspend-template.yaml
-= unsupported (decision 18): templates.suspend.steps[1].approve template approve: `suspend` is not supported
+= unsupported (decision 18): templates.suspend.steps[1].approve template approve: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
 
 argo-workflows/test/e2e/lintfail/disallow-unknown.yaml
 = invalid: the file or a WorkflowTemplate it calls declares invalid fields spec.templates[0].container.someExtraField, which Argo v4.1.4 rejects in strict mode
@@ -532,22 +496,22 @@ $ argo lint --offline --strict=false argo-workflows/test/e2e/smoke/basic-invalid
 > level=ERROR msg="yaml file is not valid" index=0 error="error converting YAML to JSON: yaml: line 10: did not find expected key"
 
 argo-workflows/test/e2e/synchronization/db-multiple.yaml
-= unsupported (decision 18): templates.main.steps[0].task-1 template django-command: `synchronization` is not supported
+= unsupported (decision 18): templates.main.steps[0].task-1 synchronization database mutexes require an Argo controller; use a local mutex
 
 argo-workflows/test/e2e/synchronization/db-mutex-tmpl-level.yaml
-= unsupported (decision 18): templates.synchronization-tmpl-level-example-mutex.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
+= unsupported (decision 18): templates.synchronization-tmpl-level-example-mutex.steps[0].synchronization-acquire-lock synchronization database mutexes require an Argo controller; use a local mutex
 
 argo-workflows/test/e2e/synchronization/db-mutex-wf-level-1.yaml
-= unsupported (decision 18): spec.synchronization is not supported
+= unsupported (decision 18): synchronization database mutexes require an Argo controller; use a local mutex
 
 argo-workflows/test/e2e/synchronization/db-semaphore-tmpl-level.yaml
-= unsupported (decision 18): templates.semaphore-tmpl-level-example.steps[0].sleep template sleep-n-sec: `synchronization` is not supported
+= unsupported (decision 18): templates.semaphore-tmpl-level-example.steps[0].sleep synchronization database semaphores require an Argo controller; use configMapKeyRef
 
 argo-workflows/test/e2e/synchronization/db-semaphore-wf-level.yaml
-= unsupported (decision 18): spec.synchronization is not supported
+= unsupported (decision 18): synchronization database semaphores require an Argo controller; use configMapKeyRef
 
 argo-workflows/test/e2e/synchronization/db-tmpl-level-mutex-semaphore.yaml
-= unsupported (decision 18): templates.main.steps[0].task-1 template django-command: `synchronization` is not supported
+= unsupported (decision 18): templates.main.steps[0].task-1 synchronization database mutexes require an Argo controller; use a local mutex
 
 argo-workflows/test/e2e/synchronization/multiple.yaml
 = unsupported (decision 18): templates.main.steps[0].task-1 template django-command: `synchronization` is not supported

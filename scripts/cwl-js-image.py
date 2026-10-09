@@ -21,9 +21,14 @@ def main():
     parser.add_argument("--image", default=os.environ.get("IUNCTUS_CWL_JS_IMAGE", "iunctus-cwl-js:0.1.0"))
     arguments = parser.parse_args()
     binary = arguments.binary.resolve(strict=True)
-    resolved = subprocess.run(["ldd", "--", str(binary)], check=True, capture_output=True, text=True)
+    resolved = subprocess.run(["ldd", "--", str(binary)], capture_output=True, text=True,
+                              env=dict(os.environ, LC_ALL="C"))
+    static = (resolved.stdout + resolved.stderr).strip() in (
+        "statically linked", "not a dynamic executable")
+    if not static:
+        resolved.check_returncode()
     files = {"/usr/local/bin/iunctus": binary}
-    for line in resolved.stdout.splitlines():
+    for line in ([] if static else resolved.stdout.splitlines()):
         if "=> not found" in line:
             raise RuntimeError("a required runtime library was not found")
         match = re.fullmatch(r"\s*(?:(\S+)\s+=>\s+)?(/.+?)\s+\(0x[0-9a-fA-F]+\)\s*", line)

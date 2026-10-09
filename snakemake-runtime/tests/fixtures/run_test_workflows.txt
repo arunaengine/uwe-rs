@@ -497,7 +497,7 @@ tests/test_benchmark ok 5
 tests/test_benchmark_jsonl ok 5
 tests/test_cache_multioutput ok 1
 tests/test_callable ok 3
-tests/test_censored_path ok 1
+tests/test_censored_path 33 Snakefile:1: Not supported yet: Snakemake storage plugin 'xrootd'; mapped providers are s3, gcs, azure, http, ftp and fs; sftp, xrootd, zenodo and irods are unavailable
 tests/test_checkpoint_allowed_rules ok 3
 tests/test_checkpoint_missing_output ok 4
 tests/test_checkpoint_omit_from ok 7
@@ -654,7 +654,7 @@ tests/test_issue1093 ok 3
 tests/test_issue1256 1 Snakefile:9: SyntaxError: cannot assign to literal here. Maybe you meant '==' instead of '='?
 tests/test_issue1281 ok 5
 tests/test_issue1284 ok 6
-tests/test_issue1331 ok 19
+tests/test_issue1331 ok 13
 tests/test_issue2574 1 Snakefile:4: KeyError: 'unexisting_key'
 tests/test_issue2685 ok 2
 tests/test_issue2826_failed_binary_logs ok 1
@@ -672,7 +672,7 @@ tests/test_issue612 ok 1
 tests/test_issue635 ok 2
 tests/test_issue805 1 Snakefile:6: SyntaxError: No rule keywords allowed after the execution keyword in rule a.
 tests/test_issue823_1 ok 3
-tests/test_issue823_2 ok 5
+tests/test_issue823_2 ok 4
 tests/test_issue823_3 ok 2
 tests/test_issue850 ok 3
 tests/test_issue854 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
@@ -763,10 +763,10 @@ tests/test_pep_pathlib ok 3
 tests/test_peppy ok 3
 tests/test_persistence_backend_db_run_directive_concurrency ok 101
 tests/test_pipe_depend 1 WorkflowError: Output file test.txt is marked as pipe but is requested by a rule that does not execute anything. This is not allowed because it would lead to a dead lock.
-tests/test_pipes ok 5
-tests/test_pipes2 ok 3
-tests/test_pipes_fail ok 5
-tests/test_pipes_multiple ok 6
+tests/test_pipes ok 3
+tests/test_pipes2 ok 2
+tests/test_pipes_fail ok 3
+tests/test_pipes_multiple ok 2
 tests/test_prebuilt_conda_script ok 2
 tests/test_priority ok 12
 tests/test_priority_invalid 1 WorkflowError: RuleException in rule bad_priority: Priority function must return a numeric value (int or float), got str.
@@ -844,10 +844,10 @@ tests/test_source_path ok 1
 tests/test_source_path_rerun ok 3
 tests/test_spaces_in_fnames ok 3
 tests/test_speed ok 301
-tests/test_storage 1 Snakefile:12: KeyError: 's3_prefix'
+tests/test_storage 33 Snakefile:1: Not supported yet: Snakemake storage plugin options; configure provider credentials in iunctus storage settings
 tests/test_storage_call 1 Snakefile:7: KeyError: 's3_prefix'
 tests/test_storage_cleanup_local ok 2
-tests/test_storage_dependency_edge_flags 1 Snakefile:6: KeyError: 's3_prefix'
+tests/test_storage_dependency_edge_flags 33 Snakefile:1: Not supported yet: Snakemake storage plugin options; configure provider credentials in iunctus storage settings
 tests/test_storage_localrule ok 2
 tests/test_storage_noretrieve_dryrun ok 3
 tests/test_strict_mode ok 1

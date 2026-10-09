@@ -3,8 +3,8 @@
 # of the simulated run, and of the config keys that its code reads and its schema does
 # not declare or the other way round; or the error that stops its evaluation. The line
 # `(outputs)` holds the totals of the schemas of their outputs.
-# 892 workflows, 676 with a schema.
-(outputs) outputs: 597 of 675 workflows have outputs, 647 outputs, 647 files
+# 892 workflows, 675 with a schema.
+(outputs) outputs: 596 of 674 workflows have outputs, 646 outputs, 646 files
 catalog/3d-omics__hg_genotype ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/AToL-Bioinformatics__genome-launcher-workflow 1 workflow/Snakefile:8: the workflow imports the Python package giturlparse, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/Addimator__compare_meth 1 workflow/rules/common.smk:7: FileNotFoundError: [Errno 2] No such file or directory: '/projects/koesterlab/benchmark-methylation/data_analysis_jochen/compare_meth/config/sample.tsv'
@@ -501,7 +501,7 @@ tests/test_benchmark ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 wa
 tests/test_benchmark_jsonl ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_cache_multioutput ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_callable ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-tests/test_censored_path ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_censored_path 33 Snakefile:1: Not supported yet: Snakemake storage plugin 'xrootd'; mapped providers are s3, gcs, azure, http, ftp and fs; sftp, xrootd, zenodo and irods are unavailable
 tests/test_checkpoint_allowed_rules ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_checkpoint_missing_output ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_checkpoint_omit_from ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -848,10 +848,10 @@ tests/test_source_path ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 
 tests/test_source_path_rerun ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_spaces_in_fnames ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_speed ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-tests/test_storage 1 Snakefile:12: KeyError: 's3_prefix'
+tests/test_storage 33 Snakefile:1: Not supported yet: Snakemake storage plugin options; configure provider credentials in iunctus storage settings
 tests/test_storage_call 1 Snakefile:7: KeyError: 's3_prefix'
 tests/test_storage_cleanup_local ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-tests/test_storage_dependency_edge_flags 1 Snakefile:6: KeyError: 's3_prefix'
+tests/test_storage_dependency_edge_flags 33 Snakefile:1: Not supported yet: Snakemake storage plugin options; configure provider credentials in iunctus storage settings
 tests/test_storage_localrule ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_storage_noretrieve_dryrun ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_strict_mode ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read

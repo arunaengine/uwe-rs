@@ -149,13 +149,29 @@ pub(crate) fn conda_file(source: &str) -> Result<tempfile::NamedTempFile, execut
     let failed = |message: String| {
         executor::ExecutorError::Unsupported(format!("Nextflow Conda: {message}"))
     };
-    let source: String = serde_json::from_str(source).map_err(|error| failed(error.to_string()))?;
+    let value: serde_json::Value =
+        serde_json::from_str(source).map_err(|error| failed(error.to_string()))?;
+    let (source, mut channels) = match value {
+        serde_json::Value::String(source) => (
+            source,
+            vec!["conda-forge".to_owned(), "bioconda".to_owned()],
+        ),
+        serde_json::Value::Object(mut value) => {
+            let source: String =
+                serde_json::from_value(value.remove("packages").unwrap_or_default())
+                    .map_err(|error| failed(error.to_string()))?;
+            let channels: Vec<String> =
+                serde_json::from_value(value.remove("channels").unwrap_or_default())
+                    .map_err(|error| failed(error.to_string()))?;
+            (source, channels)
+        }
+        _ => return Err(failed("invalid package reference".into())),
+    };
     if source.contains('/') || source.contains('\n') || source.trim().is_empty() {
         return Err(failed(
             "named host environments and prefix paths are unsupported".into(),
         ));
     }
-    let mut channels = vec!["conda-forge".to_owned()];
     let mut dependencies = Vec::new();
     for package in source.split_whitespace() {
         let spec = conda_environment::MatchSpec::parse(package)
@@ -329,6 +345,14 @@ mod tests {
         assert_eq!(environment.channels, ["conda-forge", "bioconda"]);
         assert_eq!(environment.dependencies.len(), 2);
         assert_eq!(environment.dependencies[0].name, "fastqc");
+        let custom = super::conda_file(
+            &serde_json::json!({"packages": "foo=1", "channels": ["custom"]}).to_string(),
+        )
+        .unwrap();
+        let environment =
+            conda_environment::Environment::parse(&std::fs::read_to_string(custom.path()).unwrap())
+                .unwrap();
+        assert_eq!(environment.channels, ["custom"]);
         let path = file.path().to_owned();
         drop(file);
         assert!(!path.exists());

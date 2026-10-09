@@ -82,6 +82,7 @@ pub struct Nextflow {
     notes: Vec<Note>,
     /// The registry of the container engine, like `docker.registry`, for images without one.
     registry: Option<String>,
+    conda_channels: Vec<String>,
     /// The reports that the config turns on, like the trace, in a real run.
     reports: Option<Reports>,
     /// The deliveries of the reports, once they are written.
@@ -123,6 +124,7 @@ impl Nextflow {
             project_bin: None,
             notes: Vec::new(),
             registry: None,
+            conda_channels: vec!["conda-forge".into(), "bioconda".into()],
             reports: None,
             report_deliveries: Vec::new(),
             loaded: None,
@@ -287,6 +289,10 @@ impl Nextflow {
                     });
                 }
                 let mut task = task(&request, &self.environment)?;
+                if let Some(source) = task.image.as_deref().and_then(|image| image.strip_prefix("conda-env:nextflow-packages:")) {
+                    let source: String = serde_json::from_str(source).map_err(|_| DriverError::new("invalid Conda package reference"))?;
+                    task.image = Some(format!("conda-env:nextflow-packages:{}", serde_json::json!({"packages": source, "channels": self.conda_channels})));
+                }
                 if let Some(flags) = task.environment.get(crate::options::FLAGS_ENV) && !self.settings.local_options {
                     let flags: BTreeMap<String, i64> = serde_json::from_str(flags).map_err(|_| DriverError { unsupported: true, message: "invalid container launch flags".into() })?;
                     if flags.iter().all(|(name, count)| name == "cpus" || name == "gpus" && *count >= 0) {
@@ -347,6 +353,26 @@ impl Driver for Nextflow {
         let bin = loaded.project.join("bin");
         self.project_bin = bin.is_dir().then_some(bin);
         let config = &loaded.config;
+        if config
+            .get(&["conda", "enabled"])
+            .is_some_and(|value| value.truth())
+            && let Some(value) = config.get(&["conda", "channels"]).filter(Value::truth)
+        {
+            self.conda_channels = match value {
+                Value::List(list) => list.borrow().items.iter().map(Value::to_string).collect(),
+                Value::String(text) | Value::GString(text) => text
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|text| !text.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+                _ => {
+                    return Err(DriverError::new(
+                        "conda.channels expects a list or comma-separated text",
+                    ));
+                }
+            };
+        }
         self.environment = environment(config);
         let engine = self
             .settings

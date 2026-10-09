@@ -39,8 +39,10 @@ The [support matrix](../support.md) and recorded results describe qualification.
   or all paths selected by real data. Compare real outputs before relying on them.
 - **Build and platform assumptions.** Source builds need the pinned Rust
   toolchain and native build tools. Building can download dependencies.
-  Linux x86_64 has selected local evidence; macOS, Windows and ARM hosts are
-  unqualified. Follow [installation](install.md) and validate your own platform.
+  A normal build links against the host's glibc and may not start on an older
+  Linux. Use `just release-binary` for a static musl binary that runs on any
+  x86_64 Linux. macOS, Windows and ARM hosts are unqualified. Follow
+  [installation](install.md) and validate your own platform.
 - **Engine flags differ.** Many Nextflow and Snakemake command-line flags are
   rejected. iunctus uses its own options, usually one hyphen, while workflow
   parameters use two. Consult `iunctus run -help` and the language guides.
@@ -144,9 +146,10 @@ See [Nextflow usage](nextflow.md) and the
   sequentially as one task and retry as a whole. Different images use separate
   tasks; local rules and checkpoints remain separate. Compare member jobs rather
   than assuming task counts equal Snakemake job counts.
-- **FIFO pipes are unavailable.** Real `pipe()` jobs are refused before task
-  publication. The runner cannot preserve FIFO producer and consumer execution.
-  Use ordinary intermediate files or the original engine for pipe workflows.
+- **FIFO pipes need one image.** Jobs connected by `pipe()` run together in one
+  container with named pipes; a failure or retry affects the whole group.
+  Pipes between jobs with different images, `run:` jobs, several consumers and
+  cycles are refused. Give the connected rules one container image.
 - **Hooks still need a local engine.** Hook shell and supported subprocess
   commands run uncached in a local container, even with remote rule execution.
   They mount the workflow folder writable and use the global or default image.
@@ -155,10 +158,11 @@ See [Nextflow usage](nextflow.md) and the
   task code; shallow shadow links top-level entries. A shallow output under an
   existing directory link would escape scratch and is refused. Use full shadow
   for that layout and keep outputs inside scratch. `copy-minimal` is unsupported.
-- **Storage plugins are only partly represented.** Recognizing `storage.s3()`
-  or another plugin name does not install its Python implementation or credentials.
-  Transfers use iunctus storage providers. Configure a supported provider or
-  materialize the files locally when the plugin's behavior is unavailable.
+- **Storage plugins map to iunctus providers.** S3, GCS, Azure, HTTP, FTP and
+  `fs` storage use the configured iunctus storage providers, with remote freshness
+  checks, staged inputs and uploaded outputs. SFTP, XRootD, Zenodo, iRODS,
+  plugin-specific options and protected storage outputs are refused.
+  HTTP and FTP outputs need a writable provider.
 
 See [Snakemake usage](snakemake.md) and [Python package boundaries](../design/snakemake/python-packages.md).
 
@@ -169,9 +173,10 @@ See [Snakemake usage](snakemake.md) and [Python package boundaries](../design/sn
   Configure `[conda]` with a pinned base, platform and matching target capabilities.
   A Conda-only base must provide micromamba; the classic image builder is required.
   BuildKit support is not implemented.
-- **Offline is the default.** A cold build fails if metadata or package bytes
-  are missing. Offline preparation cannot fetch them. Populate the caches first
-  or explicitly enable online acquisition in the Conda settings.
+- **Packages come from the network once.** Conda metadata and packages are
+  fetched over HTTPS, cached and checked by SHA-256. With `-no-network`, an
+  offline Conda setting or `[network] default = "none"`, a cold cache fails
+  with a message that says how to prepare it.
 - **Environment sources are limited.** Remote executors, remote YAML sources and
   named host environments cannot prepare Conda images. Only local workflow
   preparation is implemented. Use a local YAML and local executor, or supply an
@@ -231,25 +236,25 @@ See [CWL usage](cwl-argo.md#cwl). Simulation coverage is listed below.
   Deployments, Services and similar objects are refused. Supported claim and
   child-workflow operations are exceptions. Daemons, sidecars and data templates
   are unavailable. Use ordinary container tasks or the Argo controller.
-- **Outcome-changing controls are refused.** Suspend, synchronization,
-  `podSpecPatch`, container lifecycle hooks, `livenessProbe`, `startupProbe`
-  and restart policies cannot be honored. Documents using them fail, including
+- **Some controls are refused.** Suspend without a duration (manual resume),
+  `podSpecPatch`, daemon and sidecar containers, container lifecycle hooks,
+  `livenessProbe`, `startupProbe` and restart policies cannot be honored.
+  Timed suspend, mutexes and semaphores within a run are supported. Documents using them fail, including
   affected Kubeflow output. Rework the workflow only if those semantics are
   unnecessary; otherwise use Argo.
-- **Retry delays and readiness have no effect.** Argo retry backoff duration,
-  factor and cap, containerSet retry duration and retry host affinity are ignored.
-  Readiness probes are also no-ops. Retries run immediately without node-diversity
-  guarantees. Use an Argo controller if timing or placement is required.
-- **Deadlines have a narrower scope.** Workflow deadlines, template timeout and
-  pending timeout, retry `maxDuration` and deadlines across init containers are
-  refused. Supported task `activeDeadlineSeconds` does not cover all those cases.
-  Use the supported task deadline or the original controller.
+- **Retries have no placement control.** Retry backoff (duration, factor, cap,
+  `maxDuration`) and all retry policies are honored. Retry host affinity and
+  readiness probes have no effect. Use an Argo controller if placement matters.
+- **Deadlines are run-local.** Workflow and template `activeDeadlineSeconds`
+  and template `timeout` are enforced and still run exit handlers. Pending
+  timeouts that depend on cluster scheduling are not modeled.
 - **Cluster cleanup and memoization are no-ops.** Garbage-collection fields have
   no cluster objects to remove; user-keyed memoization uses no Argo cache.
   Native task caching still applies. Manage retention through iunctus and storage
   settings rather than relying on these fields.
-- **Artifact transfers are a subset.** Repository uploads, Git/HDFS/OSS/plugin
-  transfers and inline transfer options such as S3 endpoints are refused.
+- **Artifact transfers are a subset.** Tar, gzip and zip archive options and
+  S3 delivery with an explicit bucket and key work. Git/HDFS/OSS/plugin transfers,
+  external archive extraction and inline S3 endpoints are refused.
   Storage access belongs to iunctus configuration. Use supported transfers with a
   configured provider, or the controller for the missing artifact behavior.
 - **Requests and limits do not keep separate roles.** CPU and memory limits

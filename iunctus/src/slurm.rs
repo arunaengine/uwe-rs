@@ -52,7 +52,8 @@ pub fn executor(
     run: &str,
     default_image: Option<String>,
     storage: Storage,
-) -> Result<RunnerExecutor<SlurmBackend>, String> {
+    setup: &crate::setup::Setup,
+) -> Result<RunnerExecutor<crate::conda_backend::Remote<SlurmBackend>>, String> {
     let needed: Vec<&str> = (backend.missing_tools().into_iter())
         .filter(|tool| *tool != "sacct")
         .collect();
@@ -71,6 +72,8 @@ pub fn executor(
         .block_on(backend.reconcile())
         .map_err(|error| error.to_string())?;
     // The nodes read the inputs from the store, so they are copied there.
+    let scratch = backend.scratch.clone();
+    let backend = crate::conda_backend::Remote::new(backend, store.clone(), &scratch, run, setup);
     let runner = Runner::new(store, backend, run, crate::runner_settings(storage, true));
     Ok(RunnerExecutor::new(runner, default_image))
 }

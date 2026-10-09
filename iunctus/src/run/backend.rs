@@ -190,7 +190,7 @@ pub(crate) fn executor(
                 sites: &settings.tes_sites,
                 scratch: &scratch,
             };
-            let executor = tes::executor(store, place, run, default_image, storage)
+            let executor = tes::executor(store, place, run, default_image, storage, setup)
                 .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
@@ -208,7 +208,7 @@ pub(crate) fn executor(
             let store = setup.store(arguments)?;
             let storage = setup.storage.clone();
             let backend = slurm::backend(&scratch, container, options, settings.slurm_pull);
-            let executor = slurm::executor(store, backend, run, default_image, storage)
+            let executor = slurm::executor(store, backend, run, default_image, storage, setup)
                 .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
@@ -219,15 +219,14 @@ pub(crate) fn executor(
             let namespace = (arguments.kubernetes_namespace.clone())
                 .or_else(|| settings.kubernetes_namespace.clone());
             let store = setup.store(arguments)?;
-            let storage = setup.storage.clone();
             let executor = kubernetes::executor(
                 store,
                 &scratch,
                 run,
                 default_image,
-                storage,
                 kubeconfig,
                 namespace,
+                setup,
             )
             .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)

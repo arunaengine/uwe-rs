@@ -22,8 +22,12 @@ pub struct Local {
     pub secrets: std::collections::BTreeMap<String, config_file::Secret>,
 }
 
-impl Backend for Local {
-    async fn pin(&self, image: &str) -> Result<Option<String>, ExecutorError> {
+impl Local {
+    async fn prepare(
+        &self,
+        image: &str,
+        registry: Option<&str>,
+    ) -> Result<Option<String>, ExecutorError> {
         let (base, mut source) = if let Some(value) = image.strip_prefix("conda-container:") {
             let pair: [String; 2] = serde_json::from_str(value).map_err(|error| {
                 ExecutorError::Unsupported(format!("Invalid Conda container reference: {error}"))
@@ -144,6 +148,7 @@ impl Backend for Local {
                 CacheContext {
                     store: &self.store,
                     holder: &self.holder,
+                    registry,
                 },
                 limits,
                 &cancel,
@@ -158,11 +163,24 @@ impl Backend for Local {
             .await
             .map_err(|error| failed(error.to_string()))?;
             drop(permit);
-            Ok(Some(receipt.image_id().to_owned()))
+            let reference = if registry.is_some() {
+                receipt
+                    .reference()
+                    .ok_or_else(|| failed("published image has no registry reference".into()))?
+            } else {
+                receipt.image_id()
+            };
+            Ok(Some(reference.to_owned()))
         };
         tokio::time::timeout(Duration::from_secs(1200), work)
             .await
             .map_err(|_| failed("preparation exceeded 1200 seconds".into()))?
+    }
+}
+
+impl Backend for Local {
+    async fn pin(&self, image: &str) -> Result<Option<String>, ExecutorError> {
+        self.prepare(image, None).await
     }
 
     async fn run(
@@ -197,6 +215,86 @@ impl Backend for Local {
                 cancel,
             )
             .await
+    }
+
+    fn hold(&self) {
+        self.backend.hold();
+    }
+}
+
+pub struct Remote<B> {
+    backend: B,
+    config: Option<Config>,
+    engine: String,
+    store: Store,
+    scratch: std::path::PathBuf,
+    holder: Holder,
+    local: tokio::sync::OnceCell<Local>,
+}
+
+impl<B> Remote<B> {
+    pub fn new(
+        backend: B,
+        store: Store,
+        scratch: &std::path::Path,
+        run: &str,
+        setup: &crate::setup::Setup,
+    ) -> Self {
+        Self {
+            backend,
+            config: setup.conda.clone(),
+            engine: setup.engine(),
+            store,
+            scratch: scratch.to_owned(),
+            holder: Holder::new(run, "Conda image publication"),
+            local: Default::default(),
+        }
+    }
+}
+
+impl<B: Backend> Backend for Remote<B> {
+    async fn pin(&self, image: &str) -> Result<Option<String>, ExecutorError> {
+        if !task_model::conda_image(image) {
+            return self.backend.pin(image).await;
+        }
+        let registry = self.config.as_ref().and_then(|config| config.registry.as_deref()).ok_or_else(|| {
+            ExecutorError::Unsupported("Remote Conda tasks require [conda].registry = \"host/team/image\" and explicit Conda preparation settings".into())
+        })?;
+        let local = self
+            .local
+            .get_or_try_init(|| async {
+                let engine = executor::ContainerEngine::named(
+                    Some(self.engine.as_str()).filter(|name| !name.is_empty()),
+                )
+                .await
+                .map_err(|error| {
+                    ExecutorError::Unsupported(format!(
+                        "Conda publication needs a local container engine: {error}"
+                    ))
+                })?;
+                Ok::<_, ExecutorError>(Local {
+                    backend: LocalContainer::new(
+                        engine,
+                        self.scratch.clone(),
+                        executor::Pool::of_this_machine(),
+                    ),
+                    store: self.store.clone(),
+                    config: self.config.clone(),
+                    holder: self.holder.clone(),
+                    preparing: Arc::new(Semaphore::new(1)),
+                    secrets: Default::default(),
+                })
+            })
+            .await?;
+        local.prepare(image, Some(registry)).await
+    }
+
+    async fn run(
+        &self,
+        job: Job<'_>,
+        cancel: &CancellationToken,
+    ) -> Result<Finished, ExecutorError> {
+        self.backend.run(job, cancel).await
     }
 
     fn hold(&self) {

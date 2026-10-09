@@ -33,7 +33,8 @@ pub fn executor(
     run: &str,
     default_image: Option<String>,
     storage: Storage,
-) -> Result<RunnerExecutor<Sites<TesBackend>>, String> {
+    setup: &crate::setup::Setup,
+) -> Result<RunnerExecutor<crate::conda_backend::Remote<Sites<TesBackend>>>, String> {
     let scratch = place.scratch.join("tes");
     let backend =
         |server: &str, token: Option<String>, settings: &Settings| -> Result<TesBackend, String> {
@@ -70,6 +71,7 @@ pub fn executor(
         .block_on(backends.default.reconcile(&peers))
         .map_err(|error| error.to_string())?;
     // The server reads the inputs from the store, so they are copied there.
+    let backends = crate::conda_backend::Remote::new(backends, store.clone(), &scratch, run, setup);
     let runner = Runner::new(store, backends, run, crate::runner_settings(storage, true));
     let mut executor = RunnerExecutor::new(runner, default_image);
     executor.sites = SiteRule {

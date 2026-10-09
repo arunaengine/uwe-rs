@@ -6,7 +6,6 @@ use std::path::Path;
 
 use content_store::Store;
 use kubernetes_executor::{Cluster, KubernetesBackend};
-use storage::Storage;
 use task_runner::{Runner, RunnerExecutor};
 
 /// An executor that runs each task as a Job in the cluster of `kubeconfig`, in `namespace` or
@@ -16,10 +15,10 @@ pub fn executor(
     scratch: &Path,
     run: &str,
     default_image: Option<String>,
-    storage: Storage,
     kubeconfig: Option<&Path>,
     namespace: Option<String>,
-) -> Result<RunnerExecutor<KubernetesBackend>, String> {
+    setup: &crate::setup::Setup,
+) -> Result<RunnerExecutor<crate::conda_backend::Remote<KubernetesBackend>>, String> {
     let kubeconfig = kubeconfig.ok_or(
         "-executor kubernetes needs the kubeconfig of the cluster: name it with -kubeconfig \
          <file>; iunctus never takes the default one",
@@ -42,6 +41,12 @@ pub fn executor(
         .block_on(backend.reconcile())
         .map_err(|error| error.to_string())?;
     // The nodes read the inputs from the store, so they are copied there.
-    let runner = Runner::new(store, backend, run, crate::runner_settings(storage, true));
+    let backend = crate::conda_backend::Remote::new(backend, store.clone(), scratch, run, setup);
+    let runner = Runner::new(
+        store,
+        backend,
+        run,
+        crate::runner_settings(setup.storage.clone(), true),
+    );
     Ok(RunnerExecutor::new(runner, default_image))
 }

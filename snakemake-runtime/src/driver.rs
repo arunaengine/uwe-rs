@@ -575,6 +575,38 @@ impl Session {
                 return Err(self.error(&crate::workflow::workflow_error(message)));
             }
         }
+        self.components.clear();
+        crate::pipes::components(
+            planner,
+            &self.order,
+            &mut self.needrun,
+            &mut self.components,
+        )
+        .map_err(DriverError::new)?;
+        if let Some(message) = pipe_problem(planner, &self.order, &self.needrun) {
+            return Err(driver_error(
+                &crate::workflow::workflow_error(message),
+                &self.workdir,
+            ));
+        }
+        for job in &self.order {
+            if planner.jobs[*job]
+                .dependencies
+                .iter()
+                .any(|(file, producer)| {
+                    self.needrun.get(producer).copied().unwrap_or(false)
+                        && !(planner.jobs[*job].input.values.iter().any(|value| {
+                            value.as_str() == Some(file) && value.tag("ancient").is_some()
+                        }) && self
+                            .interpreter
+                            .host
+                            .stat(&self.interpreter.host.resolve(file))
+                            .is_some())
+                })
+            {
+                self.needrun.insert(*job, true);
+            }
+        }
         self.components = crate::groups::components(
             &mut self.interpreter,
             planner,
@@ -1533,9 +1565,33 @@ impl Session {
             .any(|member| member.image != members[0].image)
         {
             if !pipes.is_empty() {
-                return Err(DriverError::unsupported(
-                    "Snakemake pipe jobs must run together and require the same container image",
-                ));
+                let mut required = HashMap::new();
+                crate::pipes::components(planner, &self.order, &mut self.needrun, &mut required)
+                    .map_err(DriverError::new)?;
+                let conflict = jobs.iter().enumerate().any(|(index, job)| {
+                    required.get(job).is_some_and(|component| {
+                        component.iter().any(|peer| {
+                            jobs.iter()
+                                .position(|candidate| candidate == peer)
+                                .is_some_and(|other| members[other].image != members[index].image)
+                        })
+                    })
+                });
+                if conflict {
+                    return Err(DriverError::unsupported(
+                        "Snakemake pipe jobs must run together and require the same container image",
+                    ));
+                }
+                for job in jobs {
+                    self.components.remove(job);
+                    if let Some(component) = required.get(job) {
+                        self.components.insert(*job, component.clone());
+                    }
+                }
+                if let Some(component) = required.get(&jobs[0]) {
+                    return self.rule_group(component, retry);
+                }
+                return Ok(None);
             }
             tracing::debug!(jobs = ?jobs, "Snakemake group uses different images; running separate tasks");
             for job in jobs {

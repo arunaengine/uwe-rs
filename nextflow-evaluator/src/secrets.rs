@@ -11,6 +11,10 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 pub fn get<H: Host + ?Sized>(host: &H, name: &str) -> Result<Option<String>, Error> {
+    Ok(load(&path(host))?.remove(name))
+}
+
+pub fn path<H: Host + ?Sized>(host: &H) -> PathBuf {
     let home = host
         .environment("NXF_HOME")
         .filter(|value| !value.is_empty())
@@ -23,12 +27,11 @@ pub fn get<H: Host + ?Sized>(host: &H, name: &str) -> Result<Option<String>, Err
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| "secrets/store.json".into()),
     );
-    let path = if path.is_absolute() {
+    if path.is_absolute() {
         path
     } else {
         home.join(path)
-    };
-    Ok(load(&path)?.remove(name))
+    }
 }
 
 pub fn load(path: &Path) -> Result<BTreeMap<String, String>, Error> {

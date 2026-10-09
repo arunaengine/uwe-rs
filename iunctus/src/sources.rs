@@ -46,7 +46,11 @@ pub async fn collect(target: &Path, arguments: &Arguments) -> Sources {
         workflow_files(&target, arguments)
     };
     let mut files = Vec::new();
+    let secret = secret_store(&target, arguments);
     for file in found {
+        if is_secret(&file.path, secret.as_deref()) {
+            continue;
+        }
         if let Ok((digest, size)) = content_store::hash_file(&file.path).await {
             files.push(Source {
                 kind: SourceKind::Workflow,
@@ -59,6 +63,9 @@ pub async fn collect(target: &Path, arguments: &Arguments) -> Sources {
     let named = (arguments.configs.iter()).chain(arguments.inputs.as_ref());
     for path in named {
         let path = std::path::absolute(path).unwrap_or_else(|_| path.clone());
+        if is_secret(&path, secret.as_deref()) {
+            continue;
+        }
         if let Ok((digest, size)) = content_store::hash_file(&path).await {
             files.push(Source {
                 kind: SourceKind::Named,
@@ -73,6 +80,27 @@ pub async fn collect(target: &Path, arguments: &Arguments) -> Sources {
         files,
         skipped,
     }
+}
+
+fn secret_store(target: &Path, arguments: &Arguments) -> Option<PathBuf> {
+    if arguments.language.or_else(|| detect::language(target).ok())
+        != Some(workflow_graph::Language::Nextflow)
+    {
+        return None;
+    }
+    struct Environment;
+    impl nextflow_evaluator::interpreter::Host for Environment {
+        fn print(&mut self, _: &str) {}
+    }
+    let path = nextflow_evaluator::secrets::path(&Environment);
+    Some(
+        path.canonicalize()
+            .unwrap_or_else(|_| std::path::absolute(&path).unwrap_or(path)),
+    )
+}
+
+fn is_secret(path: &Path, secret: Option<&Path>) -> bool {
+    secret.is_some_and(|secret| path.canonicalize().unwrap_or_else(|_| path.to_owned()) == secret)
 }
 
 /// Keeps the contents of the sources in a store. The files of the workflow go in as one tree,
@@ -290,6 +318,22 @@ mod tests {
     fn write(path: &Path, text: &str) {
         std::fs::create_dir_all(path.parent().expect("a parent")).expect("makes folders");
         std::fs::write(path, text).expect("writes");
+    }
+
+    #[test]
+    fn excludes_secret_aliases() {
+        let root = tempfile::tempdir().unwrap();
+        let secret = root.path().join("secrets.json");
+        write(&secret, "[]");
+        let alias = root.path().join("alias.json");
+        std::os::unix::fs::symlink(&secret, &alias).unwrap();
+        assert!(super::is_secret(&secret, Some(&secret)));
+        assert!(super::is_secret(&alias, Some(&secret)));
+        assert!(!super::is_secret(
+            &root.path().join("main.nf"),
+            Some(&secret)
+        ));
+        assert!(!super::is_secret(&secret, None));
     }
 
     #[test]

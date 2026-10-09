@@ -309,6 +309,12 @@ impl Setup {
         if let Some(section) = config.section("secrets").map_err(failed)? {
             for name in section.keys() {
                 if let Some(secret) = section.secret(name).map_err(failed)? {
+                    if secret.variable().is_none() {
+                        return Err(failed(section.invalid(
+                            name,
+                            "secrets require an environment variable reference",
+                        )));
+                    }
                     secrets.insert(name.to_owned(), secret);
                 }
             }

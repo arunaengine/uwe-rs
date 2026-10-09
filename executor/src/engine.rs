@@ -4,7 +4,10 @@
 
 use std::fmt;
 use std::path::PathBuf;
+use std::time::Duration;
 
+use bollard::errors::Error as ApiError;
+use bollard::query_parameters::RemoveContainerOptions;
 use bollard::{API_DEFAULT_VERSION, Docker};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -16,6 +19,38 @@ pub enum EngineKind {
 /// How long a request to the engine may take before its answer starts. Long waits, like for
 /// the end of a container, ask again instead.
 const TIMEOUT_SECONDS: u64 = 600;
+
+/// Removal must finish before the runner's one-minute cancellation drain expires.
+const REMOVE_GRACE: Duration = Duration::from_secs(10);
+
+pub(crate) async fn remove(client: &Docker, id: &str) {
+    let result = tokio::time::timeout(REMOVE_GRACE, async {
+        loop {
+            let options = RemoveContainerOptions {
+                force: true,
+                ..Default::default()
+            };
+            match client.remove_container(id, Some(options)).await {
+                Ok(())
+                | Err(ApiError::DockerResponseServerError {
+                    status_code: 404, ..
+                }) => return Ok(()),
+                // Automatic removal can hold the container's removal lock after it exits.
+                Err(ApiError::DockerResponseServerError {
+                    status_code: 409, ..
+                }) => tokio::time::sleep(Duration::from_millis(100)).await,
+                Err(error) => return Err(error.to_string()),
+            }
+        }
+    })
+    .await;
+    let reason = match result {
+        Ok(Ok(())) => return,
+        Ok(Err(reason)) => reason,
+        Err(_) => "removal was not confirmed within 10 seconds".into(),
+    };
+    eprintln!("iunctus: warning: could not remove container {id}: {reason}");
+}
 
 /// The engine of this machine, with a client of its API.
 #[derive(Clone)]

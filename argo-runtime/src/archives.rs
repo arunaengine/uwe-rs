@@ -79,6 +79,18 @@ pub(crate) fn check(artifact: &Artifact) -> Result<()> {
         ..artifact.clone()
     };
     crate::inputs::check_artifact(&plain)?;
+    if let Some(s3) = &artifact.s3
+        && ["bucket", "key"].into_iter().any(|key| {
+            s3.get(key)
+                .map(scalar_text)
+                .is_none_or(|value| value.is_empty())
+        })
+    {
+        return Err(Failure::unsupported(format!(
+            "artifact {}: the default artifact repository is not supported; supply an S3 bucket and key",
+            artifact.name
+        )));
+    }
     if artifact
         .archive
         .as_ref()

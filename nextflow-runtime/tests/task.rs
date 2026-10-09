@@ -480,3 +480,52 @@ fn records_secret_names() {
             .all(|input| input.path != "/run/iunctus/secrets")
     );
 }
+
+#[test]
+fn maps_container_options() {
+    let mut request = request(&[], &[], None);
+    request.directives.push(TaskDirective {
+        name: "containerOptions".into(),
+        arguments: vec![Value::string(
+            "-e ANSWER='a b' --env=EMPTY= --cpus=3.5 --gpus 2",
+        )],
+    });
+    let mapped = task(&request, &BTreeMap::new()).unwrap();
+    assert_eq!(mapped.environment["ANSWER"], "a b");
+    assert_eq!(mapped.environment["EMPTY"], "");
+    assert_eq!(mapped.resources.cpus, Some(3.5));
+    assert_eq!(mapped.resources.gpus, Some(2));
+    for flag in [
+        "--privileged",
+        "--volume /:/host",
+        "--device /dev/null",
+        "--env INHERITED",
+        "--env 'BROKEN=value",
+        "--gpus device=0",
+        "--env TOKEN=$HOME",
+    ] {
+        request.directives.last_mut().unwrap().arguments = vec![Value::string(flag)];
+        let error = task(&request, &BTreeMap::new()).unwrap_err();
+        assert!(error.unsupported, "{flag}: {error}");
+    }
+}
+
+#[test]
+fn maps_shared_memory() {
+    let mut request = request(&[], &[], None);
+    request.directives.push(TaskDirective {
+        name: "containerOptions".into(),
+        arguments: vec![Value::string(
+            "--shm-size 0.2g --memory-swap 512mb --gpus all -eESCAPED=\"a\\b\" -eLITERAL='$HOME'",
+        )],
+    });
+    let task = task(&request, &BTreeMap::new()).unwrap();
+    let flags: serde_json::Value =
+        serde_json::from_str(&task.environment["IUNCTUS_CONTAINER_FLAGS"]).unwrap();
+    assert_eq!(flags["shm"], 214748364);
+    assert_eq!(flags["swap"], 512 << 20);
+    assert_eq!(flags["gpus"], -1);
+    assert_eq!(task.resources.gpus, None);
+    assert_eq!(task.environment["ESCAPED"], "a\\b");
+    assert_eq!(task.environment["LITERAL"], "$HOME");
+}

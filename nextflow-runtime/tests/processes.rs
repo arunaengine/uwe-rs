@@ -183,9 +183,6 @@ fn rejects_active_directives() {
             "[[nodeSelector: 'disk=ssd'], [secret: 'token/key', env: 'TOKEN']]",
         ),
         ("pod", "[volumeClaim: 'data', mountPath: '/data']"),
-        ("containerOptions", "'--gpus all'"),
-        ("containerOptions", "'--shm-size 1g'"),
-        ("containerOptions", "'-e TOKEN=value'"),
         ("stageOutMode", "'move'"),
     ] {
         let source =

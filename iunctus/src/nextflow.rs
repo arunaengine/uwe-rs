@@ -249,6 +249,10 @@ pub fn driver(
             arguments.executor.as_deref(),
             Some("tes" | "slurm" | "kubernetes")
         ),
+        local_options: !matches!(
+            arguments.executor.as_deref(),
+            Some("tes" | "slurm" | "kubernetes")
+        ),
     };
     Ok(Box::new(Nextflow::new(launch, settings)?))
 }

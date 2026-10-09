@@ -166,7 +166,9 @@ impl Scope {
                             )));
                         }
                     }
-                    if !IGNORED_EXTENSIONS.contains(&name) && name != "CUDARequirement" {
+                    if !IGNORED_EXTENSIONS.contains(&name)
+                        && !matches!(name, "CUDARequirement" | "ShmSize")
+                    {
                         return Err(DriverError::unsupported(format!(
                             "{}: the requirement `{class}` is not supported",
                             entry.location

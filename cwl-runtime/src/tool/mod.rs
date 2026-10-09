@@ -398,6 +398,21 @@ pub fn task(
         }
     }
 
+    if let Some(size) = crate::shm::size(scope, &evaluator, vars, options, process.version)? {
+        let key = "IUNCTUS_CONTAINER_FLAGS";
+        let mut flags: BTreeMap<String, i64> = match environment.get(key) {
+            Some(flags) => {
+                serde_json::from_str(flags).map_err(|error| format!("container flags: {error}"))?
+            }
+            None => BTreeMap::new(),
+        };
+        flags.insert("shm".into(), size);
+        environment.insert(
+            key.into(),
+            serde_json::to_string(&flags).map_err(|error| error.to_string())?,
+        );
+    }
+
     // Outputs the executor fetches: the standard streams, the globs, and cwl.output.json
     // when an output can come from nowhere else.
     let mut outputs: Vec<String> = stdout.iter().chain(&stderr).cloned().collect();

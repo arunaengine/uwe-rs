@@ -72,6 +72,7 @@ pub struct Docker {
     pub docker_import: Option<String>,
     pub docker_image_id: Option<String>,
     pub docker_output_directory: Option<String>,
+    pub docker_context: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -264,14 +265,16 @@ fn dynamic_bool(node: &Node, context: &Context) -> Result<Dynamic<bool>, Error> 
 }
 
 fn read_docker(record: &mut Record<'_>) -> Result<Docker, Error> {
+    let base = record.location().file.clone();
     let mut field = |name| record.optional(name).map(record::text).transpose();
     Ok(Docker {
         docker_pull: field("dockerPull")?,
-        docker_load: field("dockerLoad")?,
+        docker_load: field("dockerLoad")?.map(|url| crate::iri::join(&base, &url)),
         docker_file: field("dockerFile")?,
-        docker_import: field("dockerImport")?,
+        docker_import: field("dockerImport")?.map(|url| crate::iri::join(&base, &url)),
         docker_image_id: field("dockerImageId")?,
         docker_output_directory: field("dockerOutputDirectory")?,
+        docker_context: field("dockerContext")?.map(|url| crate::iri::join(&base, &url)),
     })
 }
 

@@ -58,6 +58,8 @@ pub struct Options {
     /// Where files at addresses are read from while the run plans: the storage providers.
     pub remote: Remote,
     pub javascript: JavaScriptSettings,
+    /// The local task engine; remote callers leave this unset.
+    pub local_engine: Option<String>,
 }
 
 impl Default for Options {
@@ -68,6 +70,7 @@ impl Default for Options {
             fill_optional: false,
             remote: Remote::default(),
             javascript: JavaScriptSettings::default(),
+            local_engine: None,
         }
     }
 }
@@ -163,23 +166,7 @@ pub fn task(
     let outdir = docker
         .and_then(|(docker, _)| docker.docker_output_directory.clone())
         .unwrap_or_else(|| OUTDIR.to_owned());
-    let image = match docker {
-        Some((docker, required)) => match docker
-            .docker_pull
-            .as_ref()
-            .or(docker.docker_image_id.as_ref())
-        {
-            Some(image) => image.clone(),
-            None if required => {
-                return Err(unsupported(
-                    "DockerRequirement with dockerFile, dockerLoad or dockerImport needs an \
-                     image build, which iunctus does not do yet; give dockerPull",
-                ));
-            }
-            None => options.image.clone(),
-        },
-        None => options.image.clone(),
-    };
+    let image = crate::image::select(docker, options)?;
     let job = Value::Map(job);
     let mut runtime = Map::new();
     runtime.insert("outdir".into(), Value::string(outdir.as_str()));
@@ -600,7 +587,7 @@ pub fn task(
     Ok((task, pending))
 }
 
-fn unsupported(message: &str) -> String {
+pub(crate) fn unsupported(message: &str) -> String {
     format!("{UNSUPPORTED}{message}")
 }
 

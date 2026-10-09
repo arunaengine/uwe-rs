@@ -29,4 +29,5 @@ tokio = { workspace = true, features = ["process", "time", "sync"] }
 tokio-util = { workspace = true, features = ["io"] }
 
 [dev-dependencies]
+tar.workspace = true
 tokio = { workspace = true, features = ["process", "time", "sync", "rt"] }

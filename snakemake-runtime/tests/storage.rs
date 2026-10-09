@@ -226,6 +226,18 @@ fn maps_default_storage() {
         format!("file://{}/in", folder.path().display())
     );
     assert_eq!(tasks[0].outputs, ["out"]);
+    let override_file = profiles.join("override.yaml");
+    std::fs::write(&override_file, "default-storage-prefix: ''\n").unwrap();
+    let mut overridden = launch.clone();
+    overridden.profiles = vec![
+        profiles.join("config.yaml").to_string_lossy().into_owned(),
+        override_file.to_string_lossy().into_owned(),
+    ];
+    let mut session = Session::new(&overridden, &Storage::default()).unwrap();
+    assert_eq!(
+        session.start().unwrap()[0].inputs[0].path,
+        ".snakemake/storage/fs/in"
+    );
     for provider in ["sftp", "xrootd", "zenodo", "irods", "unknown"] {
         let launch = launch.clone();
         std::fs::write(

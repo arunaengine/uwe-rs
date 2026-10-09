@@ -1405,7 +1405,12 @@ impl Hook {
         let profile = self.state.borrow().profile.clone();
         match profile.storage_provider {
             Some(provider) if ["input", "output"].contains(&property) => {
-                crate::storage::default_file(interpreter, value, &provider, &profile.storage_prefix)
+                crate::storage::default_file(
+                    interpreter,
+                    value,
+                    &provider,
+                    profile.storage_prefix.as_deref().unwrap_or_default(),
+                )
             }
             _ => Ok(value.clone()),
         }
@@ -1512,7 +1517,7 @@ impl Hook {
                         "storage_default",
                         Value::tuple(vec![
                             Value::str(provider),
-                            Value::str(profile.storage_prefix),
+                            Value::str(profile.storage_prefix.unwrap_or_default()),
                         ]),
                     )
                 } else {

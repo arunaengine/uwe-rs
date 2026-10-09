@@ -10,6 +10,7 @@ pub mod lower;
 pub mod lowered;
 pub mod number;
 pub mod regex;
+pub mod secrets;
 pub mod split;
 pub mod units;
 pub mod value;

@@ -23,7 +23,10 @@ impl Interpreter<'_> {
     ) -> Result<Value, Error> {
         Ok(match object {
             Value::Namespace(namespace) if &**namespace == "secrets" => {
-                return Err(unsupported(format!("reading `secrets.{name}`"), span));
+                return self
+                    .host
+                    .secret(name)
+                    .map(|value| value.map_or(Value::Null, Value::string));
             }
             Value::Null => {
                 let message = format!("Cannot get property '{name}' on null object");
@@ -221,7 +224,10 @@ impl Interpreter<'_> {
         };
         Ok(match (object, index) {
             (Value::Namespace(namespace), key) if &**namespace == "secrets" => {
-                return Err(unsupported(format!("reading `secrets[{key}]`"), span));
+                return self
+                    .host
+                    .secret(&key.to_string())
+                    .map(|value| value.map_or(Value::Null, Value::string));
             }
             (Value::Path(path), Value::Number(position)) => {
                 let items = super::library::path_items(path);

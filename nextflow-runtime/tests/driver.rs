@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use serde_json::json;
-use workflow_graph::{EdgeKind, ExecutionGraph, Launch, Simulator, execute};
+use workflow_graph::{Driver, EdgeKind, ExecutionGraph, Launch, Simulator, execute};
 
 const PIPELINE: &str = r#"
 process GREET {
@@ -50,32 +50,45 @@ fn run(directory: &Path, launch: Launch) -> ExecutionGraph {
 }
 
 #[test]
-fn rejects_secret_reads() {
+fn reads_secret_values() {
+    struct Secrets;
+    impl nextflow_evaluator::interpreter::Host for Secrets {
+        fn print(&mut self, _: &str) {}
+        fn secret(
+            &mut self,
+            name: &str,
+        ) -> Result<Option<String>, nextflow_evaluator::interpreter::Error> {
+            Ok((name == "TOKEN").then(|| "fixture".to_owned()))
+        }
+    }
     for read in [
         "secrets.TOKEN",
         "secrets['TOKEN']",
         "secrets.getProperty('TOKEN')",
     ] {
-        for (script, config) in [
-            (format!("workflow {{ println {read} }}"), String::new()),
-            (
-                format!("process P {{\n script:\n \"echo ${{{read}}}\"\n}}\nworkflow {{ P() }}"),
-                String::new(),
-            ),
-            ("workflow {}".into(), format!("params.token = {read}")),
-        ] {
-            let directory = tempfile::tempdir().expect("a temporary directory");
-            std::fs::write(directory.path().join("main.nf"), script).unwrap();
-            std::fs::write(directory.path().join("nextflow.config"), config).unwrap();
-            let mut driver = nextflow_runtime::driver(&Launch {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("main.nf"),
+            format!("workflow {{ assert {read} == 'fixture'; assert secrets.MISSING == null }}"),
+        )
+        .unwrap();
+        std::fs::write(
+            directory.path().join("nextflow.config"),
+            format!("params.token = {read}"),
+        )
+        .unwrap();
+        let mut driver = nextflow_runtime::driver::Nextflow::new(
+            &Launch {
                 target: directory.path().to_owned(),
                 ..Launch::default()
-            })
-            .expect("a driver");
-            let error = driver.start().expect_err("secret read");
-            assert!(error.unsupported, "{error}");
-            assert!(error.to_string().contains("secrets"), "{error}");
-        }
+            },
+            nextflow_runtime::driver::Settings {
+                host: Box::new(Secrets),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(driver.start().unwrap().is_empty());
     }
 }
 

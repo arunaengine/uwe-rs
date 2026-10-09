@@ -82,6 +82,10 @@ impl Host for Noting<'_> {
         self.host.create_directories(path)
     }
 
+    fn secret(&mut self, name: &str) -> Result<Option<String>, Error> {
+        self.host.secret(name)
+    }
+
     fn environment(&self, name: &str) -> Option<String> {
         self.host.environment(name)
     }

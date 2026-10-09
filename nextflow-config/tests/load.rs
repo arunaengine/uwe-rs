@@ -12,6 +12,13 @@ struct Quiet;
 
 impl Host for Quiet {
     fn print(&mut self, _: &str) {}
+
+    fn secret(
+        &mut self,
+        name: &str,
+    ) -> Result<Option<String>, nextflow_evaluator::interpreter::Error> {
+        Ok((name == "TOKEN").then(|| "fixture".to_owned()))
+    }
 }
 
 fn fixture(name: &str) -> PathBuf {
@@ -47,23 +54,22 @@ fn load_text(text: &str) -> Result<Config, ConfigError> {
 }
 
 #[test]
-fn rejects_secret_reads() {
+fn loads_secret_reads() {
     for read in [
         "secrets.TOKEN",
         "secrets['TOKEN']",
         "secrets.getProperty('TOKEN')",
     ] {
-        let error = load_text(&format!("\nparams.token = {read}\n")).expect_err("secret read");
-        assert!(error.unsupported(), "{error}");
-        let diagnostic = error.to_string();
-        assert!(diagnostic.contains("nextflow.config:2:16:"), "{error}");
-        assert!(diagnostic.contains("secrets"), "{error}");
-        assert!(!diagnostic.contains("Unable to parse config"), "{error}");
+        let config = load_text(&format!("\nparams.token = {read}\n")).unwrap();
+        assert_eq!(
+            config.get(&["params", "token"]).unwrap().to_string(),
+            "fixture"
+        );
     }
 }
 
 #[test]
-fn locates_included_secrets() {
+fn loads_included_secrets() {
     let directory = tempfile::tempdir().unwrap();
     let main = directory.path().join("nextflow.config");
     let included = directory.path().join("modules.config");
@@ -73,18 +79,15 @@ fn locates_included_secrets() {
         "\nprocess.maxForks = secrets.NCBI_API_KEY ? 8 : 3\n",
     )
     .unwrap();
-    let error = load(
+    let config = load(
         &[main],
         &options(directory.path(), &[], Value::map([])),
         &mut Quiet,
     )
-    .unwrap_err();
-    assert!(error.unsupported(), "{error}");
-    assert!(
-        error
-            .to_string()
-            .ends_with("modules.config:2:20: Not supported yet: reading `secrets.NCBI_API_KEY`"),
-        "{error}"
+    .unwrap();
+    assert_eq!(
+        config.get(&["process", "maxForks"]).unwrap().to_string(),
+        "3"
     );
 }
 
@@ -108,13 +111,16 @@ fn skips_inactive_secrets() {
         "profiles { production { env.TOKEN = secrets.TOKEN } }\n",
     )
     .unwrap();
-    let error = load(
+    let config = load(
         &[main],
         &options(directory.path(), &["production"], Value::map([])),
         &mut Quiet,
     )
-    .unwrap_err();
-    assert!(error.unsupported(), "{error}");
+    .unwrap();
+    assert_eq!(
+        config.get(&["env", "TOKEN"]).unwrap().to_string(),
+        "fixture"
+    );
 }
 
 #[test]

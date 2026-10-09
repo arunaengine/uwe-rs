@@ -315,6 +315,13 @@ impl Interpreter<'_> {
             let processors = std::thread::available_parallelism().map_or(1, usize::from);
             return Ok(Value::integer(processors as i32));
         }
+        if namespace == "secrets" && matches!(name, "getProperty" | "getAt") && arguments.len() == 1
+        {
+            return self
+                .host
+                .secret(&arguments[0].to_string())
+                .map(|value| value.map_or(Value::Null, Value::string));
+        }
         let result = self.host.namespace_method(namespace, name, arguments);
         match result.map_err(|error| error.or_at(span))? {
             Some(value) => Ok(value),

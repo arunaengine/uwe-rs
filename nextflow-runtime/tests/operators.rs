@@ -88,8 +88,8 @@ fn propagates_subscription_errors() {
             "IllegalArgumentException: broken",
         ),
         (
-            "channel.of(1).subscribe(onNext: { secrets.TOKEN }, onError: { println 'wrong' })",
-            "reading `secrets.TOKEN`",
+            "channel.of(1).subscribe(onNext: { file('s3://bucket/input').text }, onError: { println 'wrong' })",
+            "reading remote files like s3://bucket/input",
         ),
         (
             "channel.of(1).subscribe(onComplete: { throw new IllegalStateException('completion failed') }, onError: { println 'wrong' })",

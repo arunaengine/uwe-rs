@@ -13,8 +13,7 @@ use bollard::container::LogOutput;
 use bollard::errors::Error as ApiError;
 use bollard::models::{ContainerCreateBody, HostConfig, MountType};
 use bollard::query_parameters::{
-    AttachContainerOptions, CreateContainerOptions, KillContainerOptions, RemoveContainerOptions,
-    StopContainerOptions, WaitContainerOptions,
+    AttachContainerOptions, CreateContainerOptions, StopContainerOptions, WaitContainerOptions,
 };
 use futures_util::StreamExt;
 use task_model::{Image, TaskSpec};
@@ -23,12 +22,12 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::access::{self, Access, NO_NEW_PRIVILEGES};
-use crate::engine::{ContainerEngine, EngineCommand};
+use crate::engine::{ContainerEngine, EngineCommand, remove};
 use crate::image::{self, Commands};
 use crate::job::{CONTROL, ExecutorError, Finished, HOME, Job, Usage, WORK};
 use crate::manifest::parse;
 use crate::pool::{Pool, Share};
-use crate::process::Mount;
+use crate::process::{Mount, ProcessError, create_id};
 use crate::stage::place;
 use crate::wrapper::{ENDED, Folders, MANIFEST, STDERR, wrapper};
 
@@ -483,7 +482,8 @@ impl LocalContainer {
                 &flags,
             )
             .await;
-        self.hand_back(&access, image, root, owner.uid()).await;
+        self.hand_back(&access, image, root, owner.uid(), cancel)
+            .await;
         self.finish(ending?, root.to_owned(), &spec).await
     }
 
@@ -599,7 +599,7 @@ impl LocalContainer {
         }
         drop(running);
         for (index, access) in accesses.iter().enumerate() {
-            self.hand_back(access, &groups[index].0.image, root, owner.uid())
+            self.hand_back(access, &groups[index].0.image, root, owner.uid(), cancel)
                 .await;
         }
         let ending = match (first, normal) {
@@ -626,7 +626,14 @@ impl LocalContainer {
     /// Returns scratch outputs to `user` with a restricted root helper when the wrapper could
     /// not.
     /// See `docs/design/engine.md` for the full contract.
-    async fn hand_back(&self, access: &Access, image: &Image, root: &Path, user: u32) {
+    async fn hand_back(
+        &self,
+        access: &Access,
+        image: &Image,
+        root: &Path,
+        user: u32,
+        cancel: &CancellationToken,
+    ) {
         let Some(owner) = access.hand_back else {
             return;
         };
@@ -668,23 +675,22 @@ impl LocalContainer {
             name: Some(name.clone()),
             platform: image.platform.clone().unwrap_or_default(),
         };
-        if client.create_container(Some(options), body).await.is_err() {
-            return;
+        let id = match create_id(&self.engine, options, body, cancel).await {
+            Ok(id) => id,
+            Err(_) => return,
+        };
+        let mut exited = tokio::spawn(exit_code(client.clone(), id.clone()));
+        let ended = async {
+            client.start_container(&id, None).await?;
+            let _ = (&mut exited).await;
+            Ok::<_, ApiError>(())
+        };
+        tokio::select! {
+            () = cancel.cancelled() => {},
+            _ = ended => {},
         }
-        let exited = tokio::spawn(exit_code(client.clone(), name.clone()));
-        match client.start_container(&name, None).await {
-            Ok(()) => {
-                let _ = exited.await;
-            }
-            Err(_) => {
-                exited.abort();
-                let remove = RemoveContainerOptions {
-                    force: true,
-                    ..RemoveContainerOptions::default()
-                };
-                let _ = client.remove_container(&name, Some(remove)).await;
-            }
-        }
+        exited.abort();
+        remove(client, &id).await;
     }
 
     /// What containers of an image run by default, asked once per run.
@@ -733,10 +739,15 @@ impl LocalContainer {
                 ))
             })?);
         }
-        client
-            .create_container(Some(options), body)
+        let id = create_id(&self.engine, options, body, cancel)
             .await
-            .map_err(failed)?;
+            .map_err(|error| match error {
+                ProcessError::Cancelled => ExecutorError::Cancelled,
+                error => ExecutorError::Engine {
+                    engine: self.engine.name.clone(),
+                    message: error.to_string(),
+                },
+            })?;
         let attach = AttachContainerOptions {
             stream: true,
             stdout: true,
@@ -744,9 +755,9 @@ impl LocalContainer {
             ..AttachContainerOptions::default()
         };
         let started = async {
-            let attached = client.attach_container(run.name, Some(attach)).await?;
-            let exited = tokio::spawn(exit_code(client.clone(), run.name.to_owned()));
-            match client.start_container(run.name, None).await {
+            let attached = client.attach_container(&id, Some(attach)).await?;
+            let exited = tokio::spawn(exit_code(client.clone(), id.clone()));
+            match client.start_container(&id, None).await {
                 Ok(()) => Ok((attached.output, exited)),
                 Err(error) => {
                     exited.abort();
@@ -754,16 +765,12 @@ impl LocalContainer {
                 }
             }
         };
-        match started.await {
-            Ok((stream, exited)) => self.follow(run.name, stream, exited, time, cancel).await,
-            Err(error) => {
-                // The engine removes only a container that ran.
-                let remove = RemoveContainerOptions {
-                    force: true,
-                    ..RemoveContainerOptions::default()
-                };
-                let _ = client.remove_container(run.name, Some(remove)).await;
-                Err(
+        let ending = tokio::select! {
+            biased;
+            () = cancel.cancelled() => Err(ExecutorError::Cancelled),
+            started = started => match started {
+                Ok((stream, exited)) => self.follow(&id, stream, exited, time, cancel).await,
+                Err(error) => Err(
                     match error
                         .to_string()
                         .contains("\"sh\": executable file not found")
@@ -771,9 +778,11 @@ impl LocalContainer {
                         true => ExecutorError::NoShell(run.image.reference.clone()),
                         false => failed(error),
                     },
-                )
+                ),
             }
-        }
+        };
+        remove(client, &id).await;
+        ending
     }
 
     /// Follows a started container until the wrapper says that it ended, or until the
@@ -807,8 +816,6 @@ impl LocalContainer {
                 code = &mut exited, if status.is_none() => status = Some(code.unwrap_or(-1)),
                 () = cancel.cancelled() => {
                     exited.abort();
-                    let kill = KillContainerOptions::default();
-                    let _ = client.kill_container(container, Some(kill)).await;
                     return Err(ExecutorError::Cancelled);
                 }
                 () = &mut limit, if timed_out.is_none() => {
@@ -816,7 +823,13 @@ impl LocalContainer {
                         t: Some(STOP_GRACE.as_secs() as i32),
                         ..StopContainerOptions::default()
                     };
-                    let _ = client.stop_container(container, Some(stop)).await;
+                    tokio::select! {
+                        () = cancel.cancelled() => {
+                            exited.abort();
+                            return Err(ExecutorError::Cancelled);
+                        }
+                        _ = client.stop_container(container, Some(stop)) => {}
+                    }
                     timed_out = time;
                 }
             }
@@ -832,11 +845,20 @@ impl LocalContainer {
         }
         let status = match status {
             Some(status) => status,
-            None => exited.await.unwrap_or(-1),
+            None => tokio::select! {
+                code = &mut exited => code.unwrap_or(-1),
+                () = cancel.cancelled() => {
+                    exited.abort();
+                    return Err(ExecutorError::Cancelled);
+                }
+            },
         };
         // The engine may have removed the container already; then its lack of memory is not
         // known, and the note on the task says that it may be the cause.
-        let inspected = client.inspect_container(container, None).await.ok();
+        let inspected = tokio::select! {
+            inspected = client.inspect_container(container, None) => inspected.ok(),
+            () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
+        };
         let state = inspected.and_then(|inspected| inspected.state);
         Ok(Ending {
             status,

@@ -11,9 +11,7 @@ use std::time::Duration;
 
 use bollard::container::LogOutput;
 use bollard::models::{ContainerCreateBody, HostConfig, ResourcesUlimits};
-use bollard::query_parameters::{
-    AttachContainerOptions, CreateContainerOptions, LogsOptions, RemoveContainerOptions,
-};
+use bollard::query_parameters::{AttachContainerOptions, CreateContainerOptions, LogsOptions};
 use futures_util::{Stream, StreamExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::runtime::Runtime;
@@ -21,7 +19,7 @@ use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, channel, unbounded_
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::engine::ContainerEngine;
+use crate::engine::{ContainerEngine, remove as remove_async};
 
 /// A folder of the machine that the container sees.
 #[derive(Clone, Debug)]
@@ -472,15 +470,7 @@ fn remove(engine: &ContainerEngine, name: &str) {
     runtime.block_on(remove_async(engine.client(), name));
 }
 
-async fn remove_async(client: &bollard::Docker, name: &str) {
-    let options = RemoveContainerOptions {
-        force: true,
-        ..RemoveContainerOptions::default()
-    };
-    let _ = tokio::time::timeout(STOP_GRACE, client.remove_container(name, Some(options))).await;
-}
-
-async fn create_id(
+pub(crate) async fn create_id(
     engine: &ContainerEngine,
     options: CreateContainerOptions,
     body: ContainerCreateBody,
@@ -491,6 +481,7 @@ async fn create_id(
     }
     let client = engine.client().clone();
     let engine_name = engine.name.clone();
+    let name = options.name.clone().unwrap_or_default();
     let (sender, mut receiver) = unbounded_channel();
     tokio::spawn(async move {
         let result = tokio::time::timeout(
@@ -518,8 +509,12 @@ async fn create_id(
         Ok(None) => Err(ProcessError::Ended { stderr: Vec::new() }),
         Err(error) => {
             // Creation can finish after cancellation; wait for its owned ID before returning.
-            if let Ok(Some(Ok(id))) = tokio::time::timeout(STOP_GRACE, receiver.recv()).await {
-                remove_async(engine.client(), &id).await;
+            match tokio::time::timeout(STOP_GRACE, receiver.recv()).await {
+                Ok(Some(Ok(id))) => remove_async(engine.client(), &id).await,
+                Err(_) => eprintln!(
+                    "iunctus: warning: container creation for {name} is still pending; its removal could not be confirmed"
+                ),
+                _ => {}
             }
             receiver.close();
             if let Ok(Ok(id)) = receiver.try_recv() {

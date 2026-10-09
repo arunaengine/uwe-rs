@@ -156,7 +156,7 @@ iunctus lock-environment <conda environment file> [-platform <name>] [-output <f
 - Pip locks require JSON output. A `.txt` explicit list cannot preserve pip pins and is
   refused with exit code 33 for an environment containing pip requirements.
 
-## Building and reusing images for local workflows
+## Building and reusing images
 
 The local executor follows decision 12 and decision 26 (one binary, no host installers):
 
@@ -192,6 +192,7 @@ offline = false # default; true requires cached metadata and package bytes
 capabilities = "/srv/iunctus/conda/target.json"
 repodata = "/srv/iunctus/conda/repodata"
 packages = "/srv/iunctus/conda/packages"
+registry = "registry.example.org/team/iunctus-conda" # required for remote executors only
 ```
 
 Replace the base placeholder with a real pinned manifest. The base must already provide
@@ -212,6 +213,21 @@ contexts have finite byte limits. The cold path inspects the exact base manifest
 before building, with network disabled, one CPU and 1 GiB memory. Hot reuse does not require
 the base or package files. Classic builder availability is required; BuildKit support remains open.
 
+TES, SLURM and Kubernetes prepare Conda images on the driver and publish them through the
+Docker Engine API when `[conda].registry` names a repository. The value has no scheme, tag,
+digest or credentials. Push authentication uses the existing `[registry."host"]` login and
+Docker/Podman credential files; external credential helpers remain unsupported. Credentials
+and push error details are never logged. Workers need their own registry pull credentials.
+
+Remote tasks receive `repository@sha256:<manifest>`, rather than a local configuration ID.
+SLURM Apptainer pulls `docker://repository@sha256:<manifest>`. Publication records keep the
+preparation key unchanged: environment lock, base digest, platform and recipe. A separate
+`conda-registry` receipt in the deepest shared store records the pushed reference. Later runs
+check that exact manifest with authenticated HTTP HEAD and skip local image restoration,
+package acquisition and rebuilding when it exists, even if the archive is absent. Only HTTP
+404 permits republishing; authorization, server and digest mismatch errors fail the task.
+Republishing restores the existing local image or archive before considering a cold build.
+
 The focused native fixture `real_conda_rule_reuses_its_image_after_package_cache_eviction`
 accepts `IUNCTUS_CONDA_TEST_FIXTURE` containing `target.json`, `repodata/` and `packages/`.
 It installs a pinned tzdata package, executes two fresh native Snakemake workflows with task
@@ -220,8 +236,9 @@ completed-image receipt and native output.
 
 ## Limits
 
-- Workflow preparation supports local YAML and the local executor only. Remote executors,
-  remote environment sources and named host environments are unsupported.
+- Workflow preparation supports local YAML. Remote executors require `[conda].registry`
+  and a local Docker-compatible engine for preparation and publication; without that key
+  Conda tasks are refused. Remote environment sources and named host environments remain unsupported.
 - Unsupported pip forms above and Conda namespace syntax are refused. No host Conda, mamba,
   pip or uv program is invoked. Micromamba and pip remain inside the container image build.
 - Target capability discovery still relies on the existing operator-provided, target-bound

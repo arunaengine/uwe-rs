@@ -24,6 +24,7 @@ pub struct Config {
     pub capabilities: Vec<VirtualPackage>,
     pub repodata: PathBuf,
     pub packages: PathBuf,
+    pub registry: Option<String>,
     pub offline: bool,
     pub acquisition: conda_environment::Acquisition,
 }
@@ -50,6 +51,7 @@ impl Config {
             "capabilities",
             "repodata",
             "packages",
+            "registry",
         ])?;
         let offline = table.flag("offline")?.unwrap_or(false)
             || config
@@ -133,12 +135,30 @@ impl Config {
         let repodata = path("repodata")?;
         let acquisition = conda_environment::Acquisition::new(&repodata, offline)
             .map_err(|error| table.invalid("repodata", error.to_string()))?;
+        let registry = table.text("registry")?;
+        if let Some(registry) = &registry {
+            let parsed = executor::registry::Reference::parse(registry);
+            if registry.is_empty()
+                || parsed.name != *registry
+                || parsed.digest.is_some()
+                || !registry.bytes().all(|byte| {
+                    byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"/:._-".contains(&byte)
+                })
+                || parsed.repository.split('/').any(str::is_empty)
+            {
+                return Err(table.invalid(
+                    "registry",
+                    "must be an image repository without a scheme, tag, digest or credentials",
+                ));
+            }
+        }
         let configured = Self {
             base,
             platform,
             capabilities,
             repodata,
             packages: path("packages")?,
+            registry,
             offline,
             acquisition,
         };
@@ -488,6 +508,31 @@ mod tests {
             assert!(config.for_network(true).unwrap().offline);
             assert_eq!(config.for_network(false).unwrap().offline, offline);
         }
+        for registry in ["registry.example.org/team/conda", "127.0.0.1:5000/conda"] {
+            let file = ConfigFile::parse(
+                &format!("{settings}registry = '{registry}'\n"),
+                &root.join("iunctus.toml"),
+            )
+            .unwrap();
+            assert_eq!(
+                Config::read(&file).unwrap().unwrap().registry.as_deref(),
+                Some(registry)
+            );
+        }
+        for registry in [
+            "",
+            "https://example.org/conda",
+            "example.org/conda:tag",
+            "example.org/conda@sha256:abc",
+            "example.org//conda",
+        ] {
+            let file = ConfigFile::parse(
+                &format!("{settings}registry = '{registry}'\n"),
+                &root.join("iunctus.toml"),
+            )
+            .unwrap();
+            assert!(Config::read(&file).is_err());
+        }
     }
 
     #[test]
@@ -518,6 +563,7 @@ mod tests {
             capabilities: vec![],
             repodata: root.join("repodata"),
             packages: root.join("missing-packages"),
+            registry: None,
             offline: true,
             acquisition: conda_environment::Acquisition::new(&root.join("repodata"), true).unwrap(),
         };

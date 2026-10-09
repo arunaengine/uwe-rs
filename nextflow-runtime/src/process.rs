@@ -393,10 +393,17 @@ impl ProcessNode {
             }
         }
         limit_resources(&mut directives);
-        if directives.iter().any(|directive| &*directive.name == "storeDir" && directive.arguments.iter().any(Value::truth))
-            && directives.iter().any(|directive| &*directive.name == "afterScript" && directive.arguments.iter().any(Value::truth))
-        {
-            return Err(Error::Unsupported { message: "storeDir combined with afterScript requires output transfer before the hook".into(), span: self.process.span });
+        if directives.iter().any(|directive| {
+            &*directive.name == "storeDir" && directive.arguments.iter().any(Value::truth)
+        }) && directives.iter().any(|directive| {
+            &*directive.name == "afterScript" && directive.arguments.iter().any(Value::truth)
+        }) {
+            return Err(Error::Unsupported {
+                message:
+                    "storeDir combined with afterScript requires output transfer before the hook"
+                        .into(),
+                span: self.process.span,
+            });
         }
         if !self.conda_enabled {
             directives.retain(|directive| &*directive.name != "conda");

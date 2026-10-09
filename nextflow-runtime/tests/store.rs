@@ -95,6 +95,12 @@ fn refuses_store_after() {
     let source = "process P {\n storeDir 'stored'\n afterScript 'true'\n output:\n path 'out.txt'\n script:\n 'true'\n}\nworkflow { P() }";
     let parsed = parse_script(source);
     let module = Rc::new(lower_module(&parsed.tree, source).unwrap());
-    let error = Run::start(&module, &Options::default(), &mut Output::default()).unwrap_err();
-    assert!(error.to_string().contains("output transfer before the hook"));
+    let error = Run::start(&module, &Options::default(), &mut Output::default())
+        .err()
+        .expect("unsupported store ordering");
+    assert!(
+        error
+            .to_string()
+            .contains("output transfer before the hook")
+    );
 }

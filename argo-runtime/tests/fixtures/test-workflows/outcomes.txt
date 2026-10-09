@@ -2,19 +2,19 @@
 # `valid` for a document without an entrypoint that passes Argo's checks, or the
 # exit code (33 for unsupported features) and the first error. A tab ends the path, which may
 # hold spaces.
-Hybrid-Argo-Workflows/Examples/QC-Alignment-WF.yaml	33 templates.hybrid-workflow.tasks.fastp-trimming artifact outputArtifact: declared repository uploads are not supported; use the results destination
-Hybrid-Argo-Workflows/Examples/clean-up-wf.yaml	33 templates.hybrid-workflow.tasks.fastp-trimming artifact outputArtifact: declared repository uploads are not supported; use the results destination
-Hybrid-Argo-Workflows/Examples/katib-workflow.yaml	33 templates.hybrid-workflow.tasks.model-training artifact output-artifact: declared repository uploads are not supported; use the results destination
-Hybrid-Argo-Workflows/Examples/scheduler-workflow.yaml	33 templates.hybrid-workflow.tasks.fastp-trimming artifact outputArtifact: declared repository uploads are not supported; use the results destination
-Hybrid-Argo-Workflows/Examples/variations-workflow.yaml	33 templates.hybrid-workflow.tasks.generate artifact file: declared repository uploads are not supported; use the results destination
-Hybrid-Argo-Workflows/slurm-job-workflow-template.yaml	33 artifact output-artifact: declared repository uploads are not supported; use the results destination
+Hybrid-Argo-Workflows/Examples/QC-Alignment-WF.yaml	33 templates.hybrid-workflow.tasks.fastp-trimming artifact outputArtifact: the default artifact repository is not supported; supply an S3 bucket and key
+Hybrid-Argo-Workflows/Examples/clean-up-wf.yaml	33 templates.hybrid-workflow.tasks.fastp-trimming artifact outputArtifact: the default artifact repository is not supported; supply an S3 bucket and key
+Hybrid-Argo-Workflows/Examples/katib-workflow.yaml	33 templates.hybrid-workflow.tasks.model-training artifact output-artifact: the default artifact repository is not supported; supply an S3 bucket and key
+Hybrid-Argo-Workflows/Examples/scheduler-workflow.yaml	33 templates.hybrid-workflow.tasks.fastp-trimming artifact outputArtifact: the default artifact repository is not supported; supply an S3 bucket and key
+Hybrid-Argo-Workflows/Examples/variations-workflow.yaml	33 templates.hybrid-workflow.tasks.generate artifact file: the default artifact repository is not supported; supply an S3 bucket and key
+Hybrid-Argo-Workflows/slurm-job-workflow-template.yaml	33 artifact output-artifact: the default artifact repository is not supported; supply an S3 bucket and key
 SIM-PIPE/examples/fake-file-process/fail/fake-file-process-fail.yaml	33 templates.main.steps[0].pre-process artifact input_file: mode, recurseMode, archive compression and archiveLogs are not supported
 SIM-PIPE/examples/fake-file-process/fake-file-process.yaml	33 templates.main.steps[0].pre-process artifact input_file: mode, recurseMode, archive compression and archiveLogs are not supported
 SIM-PIPE/examples/hello-world/hello-world.yaml	ok 1
-SIM-PIPE/examples/nhrf/nhrf-conf-1.yaml	33 artifact fastq-data: S3.endpoint is not supported; use the configured storage provider
-SIM-PIPE/examples/nhrf/nhrf-conf-2.yaml	33 artifact fastq-data: S3.endpoint is not supported; use the configured storage provider
-SIM-PIPE/examples/nhrf/nhrf-conf-3.yaml	33 artifact fastq-data: S3.endpoint is not supported; use the configured storage provider
-SIM-PIPE/examples/nhrf/nhrf-conf-4.yaml	33 artifact fastq-data: S3.endpoint is not supported; use the configured storage provider
+SIM-PIPE/examples/nhrf/nhrf-conf-1.yaml	33 artifact fastq-data: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+SIM-PIPE/examples/nhrf/nhrf-conf-2.yaml	33 artifact fastq-data: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+SIM-PIPE/examples/nhrf/nhrf-conf-3.yaml	33 artifact fastq-data: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+SIM-PIPE/examples/nhrf/nhrf-conf-4.yaml	33 artifact fastq-data: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 SIM-PIPE/examples/remote-patient-monitoring/remote-patient-monitoring-error.yaml	ok 3
 SIM-PIPE/examples/remote-patient-monitoring/remote-patient-monitoring.yaml	ok 3
 SIM-PIPE/examples/sleeper/sleeper.yaml	ok 1
@@ -111,7 +111,7 @@ argo-hub/workflows/github/versions/0.0.3/workflowTemplate.yaml	valid
 argo-hub/workflows/github/versions/0.0.4/workflowTemplate.yaml	valid
 argo-hub/workflows/github/versions/0.0.5/workflowTemplate.yaml	valid
 argo-hub/workflows/gitlab/versions/0.0.1/workflowTemplate.yaml	valid
-argo-hub/workflows/gitops-promotion/versions/0.0.1/workflowTemplate.yaml	33 templates.promote-from-src-to-dest-env-s3 artifact repo: declared repository uploads are not supported; use the results destination
+argo-hub/workflows/gitops-promotion/versions/0.0.1/workflowTemplate.yaml	33 templates.promote-from-src-to-dest-env-s3 artifact repo: the default artifact repository is not supported; supply an S3 bucket and key
 argo-hub/workflows/jira/versions/0.0.1/workflowTemplate.yaml	valid
 argo-hub/workflows/jira/versions/0.0.2/workflowTemplate.yaml	valid
 argo-hub/workflows/kaniko/versions/0.0.1/workflowTemplate.yaml	33 templates.build artifact repo: Git, HDFS, OSS and artifact plugin transfers are not supported
@@ -127,7 +127,7 @@ argo-hub/workflows/slack/versions/0.0.2/workflowTemplate.yaml	valid
 argo-hub/workflows/sonar/versions/0.0.1/workflowTemplate.yaml	valid
 argo-workflow-examples/artifacts-files/artifacts-files-wf.yaml	ok 1
 argo-workflow-examples/dag/dag-diamond.yaml	ok 4
-argo-workflow-examples/embodied-eval/workflow.yaml	33 spec.activeDeadlineSeconds is not supported
+argo-workflow-examples/embodied-eval/workflow.yaml	ok 12
 argo-workflow-examples/ephemeral-snapshot-disk/create-disk-from-nas-data.yaml	ok 2
 argo-workflow-examples/ephemeral-snapshot-disk/parallel-read-snapshot-data.yaml	ok 2
 argo-workflow-examples/ephemeral-snapshot-disk/workflowtemplate/all-in-one-template.yaml	33 ...te-snapshot template create-snapshot is a resource template that manages Kubernetes objects of kind VolumeSnapshot; iunctus runs workflows without Kubernetes and does not support this (decision 18)
@@ -141,7 +141,7 @@ argo-workflow-examples/helloworld/helloworld-acs-performance.yaml	ok 1
 argo-workflow-examples/helloworld/helloworld.yaml	ok 1
 argo-workflow-examples/log-count/dynamic-dag-map-reduce.yaml	ok 2
 argo-workflow-examples/loops/loops.yaml	ok 5
-argo-workflow-examples/map-reduce/map-reduce.yaml	33 templates.main.tasks.split artifact parts: declared repository uploads are not supported; use the results destination
+argo-workflow-examples/map-reduce/map-reduce.yaml	33 templates.main.tasks.split artifact parts: the default artifact repository is not supported; supply an S3 bucket and key
 argo-workflow-examples/process-data/aggregation-createfile.yaml	ok 1
 argo-workflow-examples/process-data/aggregation-parallel.yaml	ok 311
 argo-workflow-examples/process-data/aggregation-template.yaml	ok 497
@@ -156,7 +156,7 @@ argo-workflows-catalog/templates/jenkins-pipeline/manifests.yaml	ok 1
 argo-workflows-catalog/templates/jenkins-pipeline/tests/run-task.yaml	ok 1
 argo-workflows-catalog/templates/pgdump-s3/manifests.yaml	valid
 argo-workflows-catalog/templates/sendmail/manifests.yaml	ok 1
-argo-workflows-catalog/templates/sendmail/tests/send-email.yaml	33 ....steps[0].smtp template smtp-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows-catalog/templates/sendmail/tests/send-email.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows-catalog/templates/slack-workflow-notifications/manifests.yaml#0	valid
 argo-workflows-catalog/templates/slack-workflow-notifications/manifests.yaml#1	ok 3
 argo-workflows-catalog/templates/slack-workflow-notifications/tests/run-task.yaml	ok 2
@@ -191,18 +191,18 @@ argo-workflows/examples/archive-location.yaml	33 template hello-world: `archiveL
 argo-workflows/examples/arguments-artifacts.yaml	33 artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
 argo-workflows/examples/arguments-parameters-from-configmap.yaml	ok 1
 argo-workflows/examples/arguments-parameters.yaml	ok 1
-argo-workflows/examples/artifact-disable-archive.yaml	33 templates.artifact-disable-archive.steps[0].generate-artifact artifact hello-txt-nc: mode, recurseMode, archive compression and archiveLogs are not supported
-argo-workflows/examples/artifact-gc-workflow.yaml	33 artifact on-completion: declared repository uploads are not supported; use the results destination
+argo-workflows/examples/artifact-disable-archive.yaml	ok 2
+argo-workflows/examples/artifact-gc-workflow.yaml	33 artifact on-completion: the default artifact repository is not supported; supply an S3 bucket and key
 argo-workflows/examples/artifact-passing-explicit-plugin.yaml	33 templates.artifact-example.steps[0].generate-artifact artifact hello-art: Git, HDFS, OSS and artifact plugin transfers are not supported
 argo-workflows/examples/artifact-passing-subpath.yaml	ok 3
 argo-workflows/examples/artifact-passing.yaml	ok 2
 argo-workflows/examples/artifact-path-placeholders.yaml	ok 1
 argo-workflows/examples/artifact-repository-ref.yaml	33 spec.artifactRepositoryRef is not supported
 argo-workflows/examples/artifactory-artifact.yaml	33 templates.artifact-example.steps[0].generate-artifact artifact hello-art: Artifactory.usernameSecret is not supported; use the configured storage provider
-argo-workflows/examples/artifacts-workflowtemplate.yaml	33 artifact text-file: declared repository uploads are not supported; use the results destination
+argo-workflows/examples/artifacts-workflowtemplate.yaml	33 artifact text-file: the default artifact repository is not supported; supply an S3 bucket and key
 argo-workflows/examples/buildkit-template.yaml	ok 3
 argo-workflows/examples/ci-output-artifact.yaml	33 templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported
-argo-workflows/examples/ci-workflowtemplate.yaml	33 templates.main.tasks.test artifact test-report: declared repository uploads are not supported; use the results destination
+argo-workflows/examples/ci-workflowtemplate.yaml	33 templates.main.tasks.test artifact test-report: the default artifact repository is not supported; supply an S3 bucket and key
 argo-workflows/examples/ci.yaml	33 templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported
 argo-workflows/examples/cluster-workflow-template/cluster-wftmpl-dag.yaml	ok 7
 argo-workflows/examples/cluster-workflow-template/clustertemplates.yaml#0	valid
@@ -234,16 +234,16 @@ argo-workflows/examples/cron-when.yaml	ok 1
 argo-workflows/examples/cron-workflow-multiple-schedules.yaml	ok 1
 argo-workflows/examples/cron-workflow.yaml	ok 1
 argo-workflows/examples/custom-metrics.yaml	ok 2
-argo-workflows/examples/daemon-nginx.yaml	33 ....nginx-server template nginx-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-argo-workflows/examples/daemon-step.yaml	33 ...e.steps[0].influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/daemon-nginx.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/daemon-step.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/daemoned-stateful-set-with-service.yaml	33 ...s[0].create-service template create-service is a resource template that manages Kubernetes objects of kind Service; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/dag-coinflip.yaml	ok 4
 argo-workflows/examples/dag-conditional-artifacts.yaml	ok 1
 argo-workflows/examples/dag-conditional-parameters.yaml	ok 1
 argo-workflows/examples/dag-continue-on-fail.yaml	ok 6
 argo-workflows/examples/dag-custom-metrics.yaml	ok 4
-argo-workflows/examples/dag-daemon-retry-strategy.yaml	33 ...s.main.tasks.server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-argo-workflows/examples/dag-daemon-task.yaml	33 ...mple.tasks.influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/dag-daemon-retry-strategy.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/dag-daemon-task.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/dag-diamond-steps.yaml	ok 12
 argo-workflows/examples/dag-diamond.yaml	ok 4
 argo-workflows/examples/dag-disable-failFast.yaml	ok 5
@@ -255,7 +255,7 @@ argo-workflows/examples/dag-inline-workflowtemplate.yaml	ok 1
 argo-workflows/examples/dag-multiroot.yaml	ok 4
 argo-workflows/examples/dag-nested.yaml	ok 16
 argo-workflows/examples/dag-targets.yaml	ok 3
-argo-workflows/examples/dag-task-level-timeout.yaml	33 templates.diamond.tasks.A template echo: `timeout` is not supported
+argo-workflows/examples/dag-task-level-timeout.yaml	ok 3
 argo-workflows/examples/data-transformations.yaml	33 ...ist-log-files template list-log-files is a data template, which reads an artifact repository from inside a cluster; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/default-pdb-support.yaml	ok 1
 argo-workflows/examples/dns-config.yaml	ok 1
@@ -294,8 +294,8 @@ argo-workflows/examples/input-artifact-git.yaml	33 artifact argo-source: Git, HD
 argo-workflows/examples/input-artifact-http.yaml	33 artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
 argo-workflows/examples/input-artifact-oss.yaml	33 artifact my-art: Git, HDFS, OSS and artifact plugin transfers are not supported
 argo-workflows/examples/input-artifact-raw.yaml	ok 1
-argo-workflows/examples/input-artifact-s3.yaml	33 artifact my-art: S3.endpoint is not supported; use the configured storage provider
-argo-workflows/examples/intermediate-parameters.yaml	33 templates.cicd-pipeline.steps[1].approval template approval: `suspend` is not supported
+argo-workflows/examples/input-artifact-s3.yaml	33 artifact my-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+argo-workflows/examples/intermediate-parameters.yaml	33 templates.cicd-pipeline.steps[1].approval template approval: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
 argo-workflows/examples/k8s-jobs.yaml	33 template rand-num: resource output job-obj supports only valueFrom.jsonPath
 argo-workflows/examples/k8s-orchestration.yaml	33 ...0].random-number-job template random-number-job is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/k8s-owner-reference.yaml	ok 1
@@ -306,7 +306,7 @@ argo-workflows/examples/k8s-patch-pod.yaml	33 template main is a resource templa
 argo-workflows/examples/k8s-resource-log-selector.yaml	33 template tf-jobtmpl is a resource template that manages Kubernetes objects of kind TFJob; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/k8s-set-owner-reference.yaml	33 template k8s-set-owner-reference is a resource template that manages Kubernetes objects of kind ConfigMap; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/k8s-wait-wf.yaml	ok 1
-argo-workflows/examples/key-only-artifact.yaml	33 templates.main.tasks.generate artifact file: declared repository uploads are not supported; use the results destination
+argo-workflows/examples/key-only-artifact.yaml	33 templates.main.tasks.generate artifact file: the default artifact repository is not supported; supply an S3 bucket and key
 argo-workflows/examples/label-value-from-workflow.yaml	ok 1
 argo-workflows/examples/life-cycle-hooks-tmpl-level.yaml	ok 6
 argo-workflows/examples/life-cycle-hooks-wf-level.yaml	ok 3
@@ -317,13 +317,13 @@ argo-workflows/examples/loops-param-argument.yaml	ok 4
 argo-workflows/examples/loops-param-result.yaml	ok 1
 argo-workflows/examples/loops-sequence.yaml	ok 25
 argo-workflows/examples/loops.yaml	ok 2
-argo-workflows/examples/map-reduce.yaml	33 templates.main.tasks.split artifact parts: declared repository uploads are not supported; use the results destination
+argo-workflows/examples/map-reduce.yaml	33 templates.main.tasks.split artifact parts: the default artifact repository is not supported; supply an S3 bucket and key
 argo-workflows/examples/memoize-simple.yaml	ok 1
 argo-workflows/examples/nested-workflow.yaml	ok 4
 argo-workflows/examples/node-selector.yaml	ok 1
 argo-workflows/examples/output-artifact-azure.yaml	33 artifact message: Azure.accountKeySecret is not supported; use the configured storage provider
 argo-workflows/examples/output-artifact-gcs.yaml	33 artifact message: GCS.serviceAccountKeySecret is not supported; use the configured storage provider
-argo-workflows/examples/output-artifact-s3.yaml	33 artifact message: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/examples/output-artifact-s3.yaml	33 artifact message: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/examples/output-parameter.yaml	ok 2
 argo-workflows/examples/parallelism-limit.yaml	ok 10
 argo-workflows/examples/parallelism-nested-dag.yaml	ok 15
@@ -349,7 +349,7 @@ argo-workflows/examples/resource-claims.yaml	33 spec.resourceClaims is not suppo
 argo-workflows/examples/resource-delete-with-flags.yaml	33 ...submit-resource template create-configmap is a resource template that manages Kubernetes objects of kind ConfigMap; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/resource-flags.yaml	33 ...teps[0].submit-resource template create-route is a resource template that manages Kubernetes objects of kind Route; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/resubmit.yaml	ok 9
-argo-workflows/examples/retry-backoff.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
+argo-workflows/examples/retry-backoff.yaml	ok 1
 argo-workflows/examples/retry-conditional.yaml	ok 2
 argo-workflows/examples/retry-container-to-completion.yaml	ok 1
 argo-workflows/examples/retry-container.yaml	ok 1
@@ -360,46 +360,46 @@ argo-workflows/examples/scripts-bash.yaml	ok 2
 argo-workflows/examples/scripts-javascript.yaml	ok 2
 argo-workflows/examples/scripts-python.yaml	ok 2
 argo-workflows/examples/secrets.yaml	ok 1
-argo-workflows/examples/sidecar-dind.yaml	33 template dind-sidecar-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-argo-workflows/examples/sidecar-nginx.yaml	33 template sidecar-nginx-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-argo-workflows/examples/sidecar.yaml	33 template sidecar-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/sidecar-dind.yaml	33 ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/sidecar-nginx.yaml	33 ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/sidecar.yaml	33 ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/skipped-output-defaults/consumer-input-default.yaml	ok 1
 argo-workflows/examples/skipped-output-defaults/expression-fallback.yaml	ok 0
 argo-workflows/examples/skipped-output-defaults/producer-output-default.yaml	ok 1
 argo-workflows/examples/status-reference.yaml	ok 2
-argo-workflows/examples/step-level-timeout.yaml	33 templates.sleep-sleep.steps[0].sleep1 template sleep: `timeout` is not supported
-argo-workflows/examples/steps-daemon-retry-strategy.yaml	33 ...ain.steps[0].server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/step-level-timeout.yaml	ok 2
+argo-workflows/examples/steps-daemon-retry-strategy.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/steps-inline-workflow.yaml	ok 1
 argo-workflows/examples/steps.yaml	ok 3
-argo-workflows/examples/suspend-template-outputs.yaml	33 templates.suspend.steps[0].approve template approve: `suspend` is not supported
-argo-workflows/examples/suspend-template.yaml	33 templates.suspend.steps[1].approve template approve: `suspend` is not supported
-argo-workflows/examples/synchronization-db-mutex-tmpl-level.yaml	33 templates.synchronization-db-tmpl-level-mutex-example.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
-argo-workflows/examples/synchronization-db-mutex-wf-level.yaml	33 spec.synchronization is not supported
-argo-workflows/examples/synchronization-db-tmpl-level.yaml	33 templates.synchronization-db-tmpl-level-example.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
-argo-workflows/examples/synchronization-db-wf-level.yaml	33 spec.synchronization is not supported
-argo-workflows/examples/synchronization-mutex-tmpl-level.yaml	33 templates.synchronization-tmpl-level-mutex-example.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
-argo-workflows/examples/synchronization-mutex-wf-level.yaml	33 spec.synchronization is not supported
-argo-workflows/examples/synchronization-tmpl-level.yaml	33 templates.synchronization-tmpl-level-example.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
-argo-workflows/examples/synchronization-wf-level.yaml	33 spec.synchronization is not supported
-argo-workflows/examples/template-defaults.yaml	33 templateDefaults: template : `timeout` is not supported
+argo-workflows/examples/suspend-template-outputs.yaml	33 templates.suspend.steps[0].approve template approve: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
+argo-workflows/examples/suspend-template.yaml	33 templates.suspend.steps[1].approve template approve: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
+argo-workflows/examples/synchronization-db-mutex-tmpl-level.yaml	33 templates.synchronization-db-tmpl-level-mutex-example.steps[0].synchronization-acquire-lock synchronization database mutexes require an Argo controller; use a local mutex
+argo-workflows/examples/synchronization-db-mutex-wf-level.yaml	33 synchronization database mutexes require an Argo controller; use a local mutex
+argo-workflows/examples/synchronization-db-tmpl-level.yaml	33 templates.synchronization-db-tmpl-level-example.steps[0].synchronization-acquire-lock synchronization database semaphores require an Argo controller; use configMapKeyRef
+argo-workflows/examples/synchronization-db-wf-level.yaml	33 synchronization database semaphores require an Argo controller; use configMapKeyRef
+argo-workflows/examples/synchronization-mutex-tmpl-level.yaml	ok 10
+argo-workflows/examples/synchronization-mutex-wf-level.yaml	ok 1
+argo-workflows/examples/synchronization-tmpl-level.yaml	33 synchronization semaphore requires ConfigMap default/my-config key template; supply a ConfigMap with data.template using -config, or an inline configMapKeyRef.limit
+argo-workflows/examples/synchronization-wf-level.yaml	33 synchronization semaphore requires ConfigMap default/my-config key workflow; supply a ConfigMap with data.workflow using -config, or an inline configMapKeyRef.limit
+argo-workflows/examples/template-defaults.yaml	ok 2
 argo-workflows/examples/template-on-exit.yaml	ok 4
 argo-workflows/examples/timeouts-step.yaml	ok 1
-argo-workflows/examples/timeouts-workflow.yaml	33 spec.activeDeadlineSeconds is not supported
+argo-workflows/examples/timeouts-workflow.yaml	ok 6
 argo-workflows/examples/title-and-description-with-markdown.yaml	ok 1
-argo-workflows/examples/variables-showcase.yaml	33 ...in.steps[0].svc template svc-daemon runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/variables-showcase.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/volumes-emptydir.yaml	ok 1
 argo-workflows/examples/volumes-existing.yaml	ok 2
 argo-workflows/examples/volumes-pvc.yaml	ok 2
 argo-workflows/examples/webhdfs-input-output-artifacts.yaml	33 artifact my-art: HTTP.auth is not supported; use the configured storage provider
 argo-workflows/examples/withsequence-nested-result.yaml	ok 1
-argo-workflows/examples/work-avoidance.yaml	33 templates.main.steps[0].load-markers artifact markers: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/examples/work-avoidance.yaml	33 templates.main.steps[0].load-markers artifact markers: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/examples/workflow-event-binding/event-consumer-workflowtemplate.yaml	ok 1
 argo-workflows/examples/workflow-event-binding/github-path-filter-workflowtemplate.yaml	ok 1
 argo-workflows/examples/workflow-level-executor-plugin.yaml	ok 1
 argo-workflows/examples/workflow-of-workflows.yaml	ok 2
 argo-workflows/examples/workflow-template/dag.yaml	ok 7
 argo-workflows/examples/workflow-template/hello-world.yaml	ok 1
-argo-workflows/examples/workflow-template/input-artifacts.yaml	33 artifact input-file: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/examples/workflow-template/input-artifacts.yaml	33 artifact input-file: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/examples/workflow-template/retry-with-steps.yaml	ok 3
 argo-workflows/examples/workflow-template/steps.yaml	ok 5
 argo-workflows/examples/workflow-template/templates.yaml#0	ok 1
@@ -412,7 +412,7 @@ argo-workflows/examples/workflow-template/workflow-template-ref-with-entrypoint-
 argo-workflows/examples/workflow-template/workflow-template-ref.yaml	ok 1
 argo-workflows/test/e2e/benchmarks/multiple-ref-echo-1-workflowtemplate.yaml	ok 1
 argo-workflows/test/e2e/benchmarks/multiple-ref-echo-2-workflowtemplate.yaml	ok 1
-argo-workflows/test/e2e/benchmarks/multiple-ref-main-workflowtemplate.yaml	33 spec.activeDeadlineSeconds is not supported
+argo-workflows/test/e2e/benchmarks/multiple-ref-main-workflowtemplate.yaml	ok 20
 argo-workflows/test/e2e/cron/basic-update-template.yaml	ok 1
 argo-workflows/test/e2e/cron/basic-update.yaml	ok 1
 argo-workflows/test/e2e/cron/basic.yaml	ok 1
@@ -435,7 +435,7 @@ argo-workflows/test/e2e/expectedfailures/exit-handler-fail-missing-output.yaml	o
 argo-workflows/test/e2e/expectedfailures/exit-handler-failed.yaml	ok 2
 argo-workflows/test/e2e/expectedfailures/exit-handlers.yaml	ok 3
 argo-workflows/test/e2e/expectedfailures/failed-artifact-load.yaml	ok 1
-argo-workflows/test/e2e/expectedfailures/failed-artifact-save.yaml	33 artifact randomfile: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/expectedfailures/failed-artifact-save.yaml	33 artifact randomfile: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/expectedfailures/failed-retries.yaml	ok 2
 argo-workflows/test/e2e/expectedfailures/failed-step-event.yaml	ok 1
 argo-workflows/test/e2e/expectedfailures/failed-step.yaml	ok 2
@@ -452,12 +452,12 @@ argo-workflows/test/e2e/expectedfailures/pod-termination-failure.yaml	ok 3
 argo-workflows/test/e2e/expectedfailures/serviceaccount-insufficient-permissions.yaml	ok 1
 argo-workflows/test/e2e/expectedfailures/timeouts-step-plugin.yaml	33 spec.artifactRepositoryRef is not supported
 argo-workflows/test/e2e/expectedfailures/timeouts-step.yaml	ok 1
-argo-workflows/test/e2e/expectedfailures/timeouts-workflow.yaml	33 spec.activeDeadlineSeconds is not supported
+argo-workflows/test/e2e/expectedfailures/timeouts-workflow.yaml	ok 6
 argo-workflows/test/e2e/expectedfailures/unschedulable.yaml	ok 2
 argo-workflows/test/e2e/expectedfailures/volumes-pvc-fail-event.yaml	ok 2
 argo-workflows/test/e2e/functional/arguments-artifacts.yaml	33 artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
 argo-workflows/test/e2e/functional/arguments-parameters.yaml	ok 1
-argo-workflows/test/e2e/functional/artifact-disable-archive.yaml	33 templates.artifact-disable-archive.steps[0].generate-artifact artifact hello-txt-nc: mode, recurseMode, archive compression and archiveLogs are not supported
+argo-workflows/test/e2e/functional/artifact-disable-archive.yaml	ok 2
 argo-workflows/test/e2e/functional/artifact-input-output-samedir.yaml	ok 3
 argo-workflows/test/e2e/functional/artifact-passing.yaml	ok 2
 argo-workflows/test/e2e/functional/ci-output-artifact.yaml	33 templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported
@@ -468,11 +468,11 @@ argo-workflows/test/e2e/functional/conditionals.yaml	ok 3
 argo-workflows/test/e2e/functional/continue-on-fail.yaml	ok 4
 argo-workflows/test/e2e/functional/continue-on-failed.yaml	ok 3
 argo-workflows/test/e2e/functional/custom_template_variable.yaml	ok 3
-argo-workflows/test/e2e/functional/daemon-nginx.yaml	33 ....nginx-server template nginx-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-argo-workflows/test/e2e/functional/daemon-step.yaml	33 ...e.steps[0].influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/daemon-nginx.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/daemon-step.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/functional/dag-argument-passing.yaml	ok 3
 argo-workflows/test/e2e/functional/dag-coinflip.yaml	ok 4
-argo-workflows/test/e2e/functional/dag-daemon-task.yaml	33 ...mple.tasks.influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/dag-daemon-task.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/functional/dag-depends.yaml	ok 6
 argo-workflows/test/e2e/functional/dag-diamond-steps.yaml	ok 12
 argo-workflows/test/e2e/functional/dag-diamond.yaml	ok 4
@@ -552,11 +552,11 @@ argo-workflows/test/e2e/functional/scripts-bash.yaml	ok 2
 argo-workflows/test/e2e/functional/scripts-javascript.yaml	ok 2
 argo-workflows/test/e2e/functional/scripts-python.yaml	ok 2
 argo-workflows/test/e2e/functional/secrets.yaml	ok 1
-argo-workflows/test/e2e/functional/sidecar-dind.yaml	33 template dind-sidecar-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-argo-workflows/test/e2e/functional/sidecar-force-kill.yaml	33 template sidecar-force-kill has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-argo-workflows/test/e2e/functional/sidecar-nginx.yaml	33 template sidecar-nginx-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-argo-workflows/test/e2e/functional/sidecar-volumes.yaml	33 ...-volumes.steps[0].generate template generate has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-argo-workflows/test/e2e/functional/sidecar.yaml	33 template sidecar-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/sidecar-dind.yaml	33 ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/sidecar-force-kill.yaml	33 ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/sidecar-nginx.yaml	33 ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/sidecar-volumes.yaml	33 ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/sidecar.yaml	33 ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/functional/steps-skipped-consumer-default.yaml	ok 1
 argo-workflows/test/e2e/functional/steps-skipped-output-ref.yaml	ok 1
 argo-workflows/test/e2e/functional/steps-skipped-producer-default.yaml	ok 1
@@ -564,11 +564,11 @@ argo-workflows/test/e2e/functional/steps-skipped-withparam-ref.yaml	ok 0
 argo-workflows/test/e2e/functional/steps-when-expr-filter.yaml	ok 4
 argo-workflows/test/e2e/functional/steps.yaml	ok 3
 argo-workflows/test/e2e/functional/stop-terminate-2.yaml	ok 2
-argo-workflows/test/e2e/functional/stop-terminate-daemon.yaml	33 ...main.steps[0].Daemon template sleep runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/stop-terminate-daemon.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/functional/stop-terminate.yaml	ok 3
 argo-workflows/test/e2e/functional/success-event.yaml	ok 1
-argo-workflows/test/e2e/functional/suspend-dag-template.yaml	33 templates.suspend-dag.tasks.approve template approve: `suspend` is not supported
-argo-workflows/test/e2e/functional/suspend-template.yaml	33 templates.suspend.steps[1].approve template approve: `suspend` is not supported
+argo-workflows/test/e2e/functional/suspend-dag-template.yaml	33 templates.suspend-dag.tasks.approve template approve: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
+argo-workflows/test/e2e/functional/suspend-template.yaml	33 templates.suspend.steps[1].approve template approve: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
 argo-workflows/test/e2e/functional/template-default-image.yaml	ok 2
 argo-workflows/test/e2e/functional/template_level_host_aliases.yaml	ok 1
 argo-workflows/test/e2e/functional/tty.yaml	ok 2
@@ -596,56 +596,56 @@ argo-workflows/test/e2e/smoke/runasnonroot-output-params-pipeline.yaml	ok 1
 argo-workflows/test/e2e/smoke/runasnonroot-workflow.yaml	ok 1
 argo-workflows/test/e2e/smoke/with-items-with-hooks.yaml	ok 5
 argo-workflows/test/e2e/smoke/workflow-template-whalesay-template.yaml	ok 2
-argo-workflows/test/e2e/synchronization/db-multiple.yaml	33 templates.main.steps[0].task-1 template django-command: `synchronization` is not supported
-argo-workflows/test/e2e/synchronization/db-mutex-tmpl-level.yaml	33 templates.synchronization-tmpl-level-example-mutex.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
-argo-workflows/test/e2e/synchronization/db-mutex-wf-level-1.yaml	33 spec.synchronization is not supported
-argo-workflows/test/e2e/synchronization/db-semaphore-tmpl-level.yaml	33 templates.semaphore-tmpl-level-example.steps[0].sleep template sleep-n-sec: `synchronization` is not supported
-argo-workflows/test/e2e/synchronization/db-semaphore-wf-level.yaml	33 spec.synchronization is not supported
-argo-workflows/test/e2e/synchronization/db-tmpl-level-mutex-semaphore.yaml	33 templates.main.steps[0].task-1 template django-command: `synchronization` is not supported
-argo-workflows/test/e2e/synchronization/multiple.yaml	33 templates.main.steps[0].task-1 template django-command: `synchronization` is not supported
-argo-workflows/test/e2e/synchronization/mutex-tmpl-level.yaml	33 templates.synchronization-tmpl-level-example-mutex.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
-argo-workflows/test/e2e/synchronization/mutex-wf-level-1.yaml	33 spec.synchronization is not supported
-argo-workflows/test/e2e/synchronization/semaphore-tmpl-level.yaml	33 templates.semaphore-tmpl-level-example.steps[0].sleep template sleep-n-sec: `synchronization` is not supported
-argo-workflows/test/e2e/synchronization/semaphore-wf-level.yaml	33 spec.synchronization is not supported
-argo-workflows/test/e2e/synchronization/tmpl-level-mutex-semaphore.yaml	33 templates.main.steps[0].task-1 template django-command: `synchronization` is not supported
-argo-workflows/test/e2e/testdata/archive-strategies.yaml	33 templates.main.tasks.generate-tar artifact file-tar: mode, recurseMode, archive compression and archiveLogs are not supported
+argo-workflows/test/e2e/synchronization/db-multiple.yaml	33 templates.main.steps[0].task-1 synchronization database mutexes require an Argo controller; use a local mutex
+argo-workflows/test/e2e/synchronization/db-mutex-tmpl-level.yaml	33 templates.synchronization-tmpl-level-example-mutex.steps[0].synchronization-acquire-lock synchronization database mutexes require an Argo controller; use a local mutex
+argo-workflows/test/e2e/synchronization/db-mutex-wf-level-1.yaml	33 synchronization database mutexes require an Argo controller; use a local mutex
+argo-workflows/test/e2e/synchronization/db-semaphore-tmpl-level.yaml	33 templates.semaphore-tmpl-level-example.steps[0].sleep synchronization database semaphores require an Argo controller; use configMapKeyRef
+argo-workflows/test/e2e/synchronization/db-semaphore-wf-level.yaml	33 synchronization database semaphores require an Argo controller; use configMapKeyRef
+argo-workflows/test/e2e/synchronization/db-tmpl-level-mutex-semaphore.yaml	33 templates.main.steps[0].task-1 synchronization database mutexes require an Argo controller; use a local mutex
+argo-workflows/test/e2e/synchronization/multiple.yaml	33 synchronization semaphore requires ConfigMap default/my-config key workflow; supply a ConfigMap with data.workflow using -config, or an inline configMapKeyRef.limit
+argo-workflows/test/e2e/synchronization/mutex-tmpl-level.yaml	ok 4
+argo-workflows/test/e2e/synchronization/mutex-wf-level-1.yaml	ok 1
+argo-workflows/test/e2e/synchronization/semaphore-tmpl-level.yaml	33 synchronization semaphore requires ConfigMap default/my-config key template; supply a ConfigMap with data.template using -config, or an inline configMapKeyRef.limit
+argo-workflows/test/e2e/synchronization/semaphore-wf-level.yaml	33 synchronization semaphore requires ConfigMap default/my-config key workflow; supply a ConfigMap with data.workflow using -config, or an inline configMapKeyRef.limit
+argo-workflows/test/e2e/synchronization/tmpl-level-mutex-semaphore.yaml	33 synchronization semaphore requires ConfigMap default/my-config key workflow; supply a ConfigMap with data.workflow using -config, or an inline configMapKeyRef.limit
+argo-workflows/test/e2e/testdata/archive-strategies.yaml	ok 6
 argo-workflows/test/e2e/testdata/artifact-passing-plugin-workflow.yaml	33 spec.artifactRepositoryRef is not supported
 argo-workflows/test/e2e/testdata/artifact-passing-workflow.yaml	ok 2
 argo-workflows/test/e2e/testdata/artifact-repository-ref.yaml	33 spec.artifactRepositoryRef is not supported
-argo-workflows/test/e2e/testdata/artifact-workflow-stopped.yaml	33 templates.wf-stopped-main.tasks.create-artifact artifact local-artifact: S3.endpoint is not supported; use the configured storage provider
-argo-workflows/test/e2e/testdata/artifact-workflow.yaml	33 artifact out: declared repository uploads are not supported; use the results destination
+argo-workflows/test/e2e/testdata/artifact-workflow-stopped.yaml	33 templates.wf-stopped-main.tasks.create-artifact artifact local-artifact: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+argo-workflows/test/e2e/testdata/artifact-workflow.yaml	33 artifact out: the default artifact repository is not supported; supply an S3 bucket and key
 argo-workflows/test/e2e/testdata/artifactgc/artgc-artifact-not-written-failed-plugin.yaml	33 artifact on-completion: Git, HDFS, OSS and artifact plugin transfers are not supported
-argo-workflows/test/e2e/testdata/artifactgc/artgc-artifact-not-written-failed.yaml	33 artifact on-completion: declared repository uploads are not supported; use the results destination
+argo-workflows/test/e2e/testdata/artifactgc/artgc-artifact-not-written-failed.yaml	33 artifact on-completion: the default artifact repository is not supported; supply an S3 bucket and key
 argo-workflows/test/e2e/testdata/artifactgc/artgc-dag-wf-self-delete-plugin.yaml	33 templates.artgc-dag-wf-self-delete-main.tasks.create-artifact artifact artifact: Git, HDFS, OSS and artifact plugin transfers are not supported
-argo-workflows/test/e2e/testdata/artifactgc/artgc-dag-wf-self-delete.yaml	33 templates.artgc-dag-wf-self-delete-main.tasks.create-artifact artifact artifact: S3.endpoint is not supported; use the configured storage provider
-argo-workflows/test/e2e/testdata/artifactgc/artgc-dag-wf-stopped-pod-gc-on-pod-completion.yaml	33 templates.artgc-dag-wf-stopped-pod-gc-on-pod-completion-main.tasks.create-artifact-1 artifact on-deletion-wf-stopped-1: S3.endpoint is not supported; use the configured storage provider
-argo-workflows/test/e2e/testdata/artifactgc/artgc-dag-wf-stopped.yaml	33 templates.artgc-dag-wf-stopped-main.tasks.create-artifact-1 artifact on-deletion-wf-stopped-1: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/artifactgc/artgc-dag-wf-self-delete.yaml	33 ....artgc-dag-wf-self-delete-main.tasks.create-artifact artifact artifact: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+argo-workflows/test/e2e/testdata/artifactgc/artgc-dag-wf-stopped-pod-gc-on-pod-completion.yaml	33 ...pletion-main.tasks.create-artifact-1 artifact on-deletion-wf-stopped-1: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+argo-workflows/test/e2e/testdata/artifactgc/artgc-dag-wf-stopped.yaml	33 ...stopped-main.tasks.create-artifact-1 artifact on-deletion-wf-stopped-1: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/artifactgc/artgc-from-ref-template-plugin.yaml	33 templates.steps-direct.steps[0].main artifact on-completion: Git, HDFS, OSS and artifact plugin transfers are not supported
-argo-workflows/test/e2e/testdata/artifactgc/artgc-from-ref-template.yaml	33 templates.steps-direct.steps[0].main artifact on-completion: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/artifactgc/artgc-from-ref-template.yaml	33 templates.steps-direct.steps[0].main artifact on-completion: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/artifactgc/artgc-from-template-2-plugin.yaml	33 artifact on-completion: Git, HDFS, OSS and artifact plugin transfers are not supported
-argo-workflows/test/e2e/testdata/artifactgc/artgc-from-template-2.yaml	33 artifact on-completion: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/artifactgc/artgc-from-template-2.yaml	33 artifact on-completion: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/artifactgc/artgc-from-template-plugin.yaml	33 artifact on-completion: Git, HDFS, OSS and artifact plugin transfers are not supported
-argo-workflows/test/e2e/testdata/artifactgc/artgc-from-template.yaml	33 artifact on-completion: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/artifactgc/artgc-from-template.yaml	33 artifact on-completion: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/artifactgc/artgc-multi-strategy-multi-anno-plugin.yaml	33 templates.entrypoint.steps[0].call-first artifact first-on-completion-1: Git, HDFS, OSS and artifact plugin transfers are not supported
-argo-workflows/test/e2e/testdata/artifactgc/artgc-multi-strategy-multi-anno.yaml	33 templates.entrypoint.steps[0].call-first artifact first-on-completion-1: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/artifactgc/artgc-multi-strategy-multi-anno.yaml	33 templates.entrypoint.steps[0].call-first artifact first-on-completion-1: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/artifactgc/artgc-non-optional-artifact-not-written-plugin.yaml	33 templates.entrypoint.steps[0].artifact-written template artifact-written: `archiveLocation` is not supported
 argo-workflows/test/e2e/testdata/artifactgc/artgc-non-optional-artifact-not-written.yaml	ok 2
 argo-workflows/test/e2e/testdata/artifactgc/artgc-optional-artifact-not-written-plugin.yaml	33 templates.entrypoint.steps[0].some-artifacts-not-written template some-artifacts-not-written: `archiveLocation` is not supported
 argo-workflows/test/e2e/testdata/artifactgc/artgc-optional-artifact-not-written.yaml	ok 2
 argo-workflows/test/e2e/testdata/artifactgc/artgc-step-wf-tmpl-2-plugin.yaml	33 templates.artgc-step-wf-tmpl.steps[0].call-template artifact on-completion: Git, HDFS, OSS and artifact plugin transfers are not supported
-argo-workflows/test/e2e/testdata/artifactgc/artgc-step-wf-tmpl-2.yaml	33 templates.artgc-step-wf-tmpl.steps[0].call-template artifact on-completion: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/artifactgc/artgc-step-wf-tmpl-2.yaml	33 ...lates.artgc-step-wf-tmpl.steps[0].call-template artifact on-completion: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/artifactgc/artgc-step-wf-tmpl-no-gc-plugin.yaml	33 templates.artgc-step-wf-tmpl-no-gc.steps[0].call-template artifact on-completion: Git, HDFS, OSS and artifact plugin transfers are not supported
-argo-workflows/test/e2e/testdata/artifactgc/artgc-step-wf-tmpl-no-gc.yaml	33 templates.artgc-step-wf-tmpl-no-gc.steps[0].call-template artifact on-completion: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/artifactgc/artgc-step-wf-tmpl-no-gc.yaml	33 ...artgc-step-wf-tmpl-no-gc.steps[0].call-template artifact on-completion: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/artifactgc/artgc-step-wf-tmpl-plugin.yaml	33 templates.artgc-step-wf-tmpl.steps[0].call-template artifact on-completion: Git, HDFS, OSS and artifact plugin transfers are not supported
-argo-workflows/test/e2e/testdata/artifactgc/artgc-step-wf-tmpl.yaml	33 templates.artgc-step-wf-tmpl.steps[0].call-template artifact on-completion: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/artifactgc/artgc-step-wf-tmpl.yaml	33 ...lates.artgc-step-wf-tmpl.steps[0].call-template artifact on-completion: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/artifactgc/artgc-template-2-plugin.yaml	33 artifact on-completion: Git, HDFS, OSS and artifact plugin transfers are not supported
-argo-workflows/test/e2e/testdata/artifactgc/artgc-template-2.yaml	33 artifact on-completion: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/artifactgc/artgc-template-2.yaml	33 artifact on-completion: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/artifactgc/artgc-template-no-gc-plugin.yaml	33 artifact on-completion: Git, HDFS, OSS and artifact plugin transfers are not supported
-argo-workflows/test/e2e/testdata/artifactgc/artgc-template-no-gc.yaml	33 artifact on-completion: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/artifactgc/artgc-template-no-gc.yaml	33 artifact on-completion: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/artifactgc/artgc-template-plugin.yaml	33 artifact on-completion: Git, HDFS, OSS and artifact plugin transfers are not supported
 argo-workflows/test/e2e/testdata/artifactgc/artgc-template-ref-template-plugin.yaml	33 templates.steps-direct.steps[0].main artifact on-completion: Git, HDFS, OSS and artifact plugin transfers are not supported
-argo-workflows/test/e2e/testdata/artifactgc/artgc-template-ref-template.yaml	33 templates.steps-direct.steps[0].main artifact on-completion: S3.endpoint is not supported; use the configured storage provider
-argo-workflows/test/e2e/testdata/artifactgc/artgc-template.yaml	33 artifact on-completion: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/artifactgc/artgc-template-ref-template.yaml	33 templates.steps-direct.steps[0].main artifact on-completion: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+argo-workflows/test/e2e/testdata/artifactgc/artgc-template.yaml	33 artifact on-completion: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/basic-artifact-workflow-azure.yaml	33 spec.artifactRepositoryRef is not supported
 argo-workflows/test/e2e/testdata/basic-artifact-workflow.yaml	ok 2
 argo-workflows/test/e2e/testdata/basic-clusterworkflowtemplate.yaml	ok 1
@@ -658,18 +658,18 @@ argo-workflows/test/e2e/testdata/cluster-workflow-template-nested-template.yaml	
 argo-workflows/test/e2e/testdata/cluster-workflow-template-ref.yaml	ok 1
 argo-workflows/test/e2e/testdata/clustertemplateref-metrics.yaml	ok 1
 argo-workflows/test/e2e/testdata/complex-global-artifact-passing-plugin.yaml	33 spec.artifactRepositoryRef is not supported
-argo-workflows/test/e2e/testdata/complex-global-artifact-passing.yaml	33 templates.test-root.steps[3].upload-testupdate-step artifact finalTestUpdate: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/complex-global-artifact-passing.yaml	33 ...tes.test-root.steps[3].upload-testupdate-step artifact finalTestUpdate: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/convert/convert-legacy-cron.yaml	ok 1
-argo-workflows/test/e2e/testdata/convert/convert-legacy-sync.yaml	33 spec.synchronization is not supported
+argo-workflows/test/e2e/testdata/convert/convert-legacy-sync.yaml	33 synchronization semaphore requires ConfigMap default/my-config key workflow; supply a ConfigMap with data.workflow using -config, or an inline configMapKeyRef.limit
 argo-workflows/test/e2e/testdata/cronworkflow-metrics-forbid.yaml	ok 1
 argo-workflows/test/e2e/testdata/cronworkflow-metrics-replace.yaml	ok 1
-argo-workflows/test/e2e/testdata/daemoned-pod-completed.yaml	33 ...in.tasks.daemoned template daemoned runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-argo-workflows/test/e2e/testdata/data-transformation.yaml	33 artifact file: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/daemoned-pod-completed.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/testdata/data-transformation.yaml	33 artifact file: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/default-params-plugin-workflow.yaml	33 spec.artifactRepositoryRef is not supported
 argo-workflows/test/e2e/testdata/exit-1.yaml	ok 1
 argo-workflows/test/e2e/testdata/exit-handler-parameterized-global-artifacts.yaml	ok 3
 argo-workflows/test/e2e/testdata/global-artifact-passing-plugin.yaml	33 spec.artifactRepositoryRef is not supported
-argo-workflows/test/e2e/testdata/global-artifact-passing.yaml	33 templates.main.steps[3].save-artifact artifact globalArtifact: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/global-artifact-passing.yaml	33 templates.main.steps[3].save-artifact artifact globalArtifact: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/http-outputs.yaml	ok 2
 argo-workflows/test/e2e/testdata/http/artifactory-artifact.yaml	33 artifact my-art: Artifactory.usernameSecret is not supported; use the configured storage provider
 argo-workflows/test/e2e/testdata/http/basic-auth-artifact-http.yaml	33 artifact my-art: HTTP.auth is not supported; use the configured storage provider
@@ -677,7 +677,7 @@ argo-workflows/test/e2e/testdata/http/clientcert-auth-artifact-http.yaml	33 arti
 argo-workflows/test/e2e/testdata/http/input-artifact-http.yaml	ok 1
 argo-workflows/test/e2e/testdata/http/oauth-artifact-http.yaml	33 artifact my-art: HTTP.auth is not supported; use the configured storage provider
 argo-workflows/test/e2e/testdata/http/output-artifact-http.yaml	33 artifact my-art: declared repository uploads are not supported; use the results destination
-argo-workflows/test/e2e/testdata/input-artifacts.yaml	33 artifact my-s3-artifact: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/input-artifacts.yaml	33 artifact my-s3-artifact: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/input-on-mount-plugin-workflow.yaml	33 spec.artifactRepositoryRef is not supported
 argo-workflows/test/e2e/testdata/input-on-mount-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/json-variables.yaml	ok 1
@@ -689,8 +689,8 @@ argo-workflows/test/e2e/testdata/malformed/malformed-cronworkflow.yaml	1 spec: a
 argo-workflows/test/e2e/testdata/malformed/malformed-workflow.yaml	1 spec: arguments.parameters: invalid type: map, expected a sequence
 argo-workflows/test/e2e/testdata/malformed/malformed-workflowtemplate-2.yaml	1 spec.templates[0].name is required
 argo-workflows/test/e2e/testdata/malformed/malformed-workflowtemplate.yaml	1 spec: arguments.parameters: invalid type: map, expected a sequence
-argo-workflows/test/e2e/testdata/node-suspend.yaml	33 templates.node-suspend.steps[1].suspend1 template suspend: `suspend` is not supported
-argo-workflows/test/e2e/testdata/output-artifact-with-s3-bucket-creation-enabled.yaml	33 templates.main.steps[0].generate-artifact artifact hello-art: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/node-suspend.yaml	33 templates.node-suspend.steps[1].suspend1 template suspend: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
+argo-workflows/test/e2e/testdata/output-artifact-with-s3-bucket-creation-enabled.yaml	33 templates.main.steps[0].generate-artifact artifact hello-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/output-on-input-plugin-workflow.yaml	33 spec.artifactRepositoryRef is not supported
 argo-workflows/test/e2e/testdata/output-on-input-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/output-on-mount-plugin-workflow.yaml	33 spec.artifactRepositoryRef is not supported
@@ -708,14 +708,14 @@ argo-workflows/test/e2e/testdata/resubmit-dag-with-dependencies.yaml	ok 4
 argo-workflows/test/e2e/testdata/retry-nested-dag-test.yaml	ok 5
 argo-workflows/test/e2e/testdata/retry-omit.yaml	ok 2
 argo-workflows/test/e2e/testdata/retry-on-error-workflow.yaml	ok 1
-argo-workflows/test/e2e/testdata/retry-on-stopped.yaml	33 templates.wf-retry-stopped-main.steps[0].create artifact my-artifact: S3.endpoint is not supported; use the configured storage provider
-argo-workflows/test/e2e/testdata/retry-test.yaml	33 templates.main.steps[1].steps-outer-step2 templates.steps-inner.steps[1].steps-inner-step2 template approve: `suspend` is not supported
+argo-workflows/test/e2e/testdata/retry-on-stopped.yaml	33 templates.wf-retry-stopped-main.steps[0].create artifact my-artifact: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+argo-workflows/test/e2e/testdata/retry-test.yaml	33 ...steps[1].steps-outer-step2 templates.steps-inner.steps[1].steps-inner-step2 template approve: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
 argo-workflows/test/e2e/testdata/retry-with-recreated-pvc-test.yaml	ok 2
 argo-workflows/test/e2e/testdata/retry-workflow-with-continueon.yaml	ok 5
 argo-workflows/test/e2e/testdata/retry-workflow-with-failed-exit-handler.yaml	ok 2
 argo-workflows/test/e2e/testdata/same-input-output-path-optional-plugin.yaml	33 spec.artifactRepositoryRef is not supported
 argo-workflows/test/e2e/testdata/same-input-output-path-optional.yaml	ok 1
-argo-workflows/test/e2e/testdata/sidecar-workflow.yaml	33 template main has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/testdata/sidecar-workflow.yaml	33 ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/testdata/signaled-container-set-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/signaled-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/sleep-3s.yaml	ok 1
@@ -736,15 +736,15 @@ argo-workflows/test/e2e/testdata/wellformed/wellformed-workflowtemplate.yaml	ok 
 argo-workflows/test/e2e/testdata/wf-default-ns.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-archive-logs-tracing.yaml	33 template main: `archiveLocation` is not supported
 argo-workflows/test/e2e/testdata/workflow-dag-metrics.yaml	ok 4
-argo-workflows/test/e2e/testdata/workflow-data-tracing.yaml	33 templates.main.steps[0].generate-artifact artifact file: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/workflow-data-tracing.yaml	33 templates.main.steps[0].generate-artifact artifact file: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/workflow-hook-parameter.yaml	ok 2
-argo-workflows/test/e2e/testdata/workflow-node-sync-tracing.yaml	33 templates.main.steps[0].synced-step template synced: `synchronization` is not supported
+argo-workflows/test/e2e/testdata/workflow-node-sync-tracing.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-otel-cli.yaml	ok 2
 argo-workflows/test/e2e/testdata/workflow-pending-metrics.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-pod-restart.yaml	ok 2
 argo-workflows/test/e2e/testdata/workflow-retry-metrics.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-script-tracing.yaml	ok 1
-argo-workflows/test/e2e/testdata/workflow-sync-tracing.yaml	33 spec.synchronization is not supported
+argo-workflows/test/e2e/testdata/workflow-sync-tracing.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-template-invalid-entrypoint.yaml	ok 2
 argo-workflows/test/e2e/testdata/workflow-template-invalid-onexit.yaml	ok 2
 argo-workflows/test/e2e/testdata/workflow-template-nested-template.yaml	valid
@@ -803,7 +803,7 @@ gennext-workflows/tasks/base_tasks/calc-tmb.yaml	valid
 gennext-workflows/tasks/base_tasks/cancervar.yaml	valid
 gennext-workflows/tasks/base_tasks/cnvpytor.yaml	valid
 gennext-workflows/tasks/base_tasks/dir_cleanup.yaml	valid
-gennext-workflows/tasks/base_tasks/duckdb.yaml	33 templates.duckdb-snv template duckdb-snv: `synchronization` is not supported
+gennext-workflows/tasks/base_tasks/duckdb.yaml	valid
 gennext-workflows/tasks/base_tasks/elprep.yaml	valid
 gennext-workflows/tasks/base_tasks/exomedepth.yaml	ok 1
 gennext-workflows/tasks/base_tasks/extract-reads-for-fusion-inspector.yaml	valid
@@ -895,46 +895,46 @@ gennext-workflows/tasks/regenerate_qc_workflow.yaml	1 templates.main.tasks.mosde
 gennext-workflows/tasks/retrieve_base_dirs_2.yaml	ok 2
 gennext-workflows/tasks/test_tasks/cat_json.yaml	ok 1
 gennext-workflows/tasks/test_tasks/gpu_task.yaml	ok 1
-gennext-workflows/tests/wgs-cnv/argo-validation.yaml	33 spec.activeDeadlineSeconds is not supported
+gennext-workflows/tests/wgs-cnv/argo-validation.yaml	ok 1
 gennext-workflows/workflows/caller-dv-workflow.yaml	ok 3
 gennext-workflows/workflows/caller-hc-workflow.yaml	ok 3
 gennext-workflows/workflows/ces-workflow.yaml	ok 16
-gennext-workflows/workflows/cnv_workflow.yaml	33 templates.cnv-workflow templates.cnv-workflow.tasks.duckdb-cnv template duckdb-cnv: `synchronization` is not supported
+gennext-workflows/workflows/cnv_workflow.yaml	valid
 gennext-workflows/workflows/germline/germline-rna-gpu-workflow.yaml	1 templates.germline-rna-gpu-fastq templates.germline-rna-gpu-fastq.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/germline/germline-tps-gpu-workflow.yaml	ok 0
 gennext-workflows/workflows/germline/germline-wes-gpu-workflow.yaml	ok 0
 gennext-workflows/workflows/germline/germline-wgs-gpu-workflow.yaml	ok 0
 gennext-workflows/workflows/haplotypecaller-wrapper-workflow.yaml	1 /gennext-workflows/workflows/haplotypecaller-wrapper-workflow.yaml:89:13: unknown Argo field `spec.templates[0].dag.tasks[3].outputs`
 gennext-workflows/workflows/msi_tmb_coverage_workflow.yaml	1 templates.msi-tmb-coverage-workflow templates.msi-tmb-coverage-workflow.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
-gennext-workflows/workflows/per-sample-cnv-analysis.yaml	33 templates.per-sample-cnv-pipeline.tasks.duckdb-cnv template duckdb-cnv: `synchronization` is not supported
-gennext-workflows/workflows/per-sample-cnv-cohort-analysis.yaml	33 templates.per-sample-cnv-cohort-pipeline.tasks.duckdb-cnv template duckdb-cnv: `synchronization` is not supported
+gennext-workflows/workflows/per-sample-cnv-analysis.yaml	ok 7
+gennext-workflows/workflows/per-sample-cnv-cohort-analysis.yaml	ok 10
 gennext-workflows/workflows/per-sample-germline.yaml	ok 3
-gennext-workflows/workflows/per-sample-somatic-dna-rna.yaml	33 templates.main.tasks.run-dna-fastq templates.somatic-testing-dna-gpu-fastq-v2.tasks.duckdb-snv template duckdb-snv: `synchronization` is not supported
-gennext-workflows/workflows/per-sample-somatic-dna.yaml	33 templates.main.tasks.run-dna-fastq templates.somatic-testing-dna-gpu-fastq-v2.tasks.duckdb-snv template duckdb-snv: `synchronization` is not supported
-gennext-workflows/workflows/per-sample-somatic-fusion-gpu.yaml	33 templates.main.tasks.run-fusion-fastq templates.somatic-testing-fusion-fastq-gpu.tasks.duckdb-fusions template duckdb-fusions-v2: `synchronization` is not supported
-gennext-workflows/workflows/per-sample-somatic-fusion.yaml	33 templates.main.tasks.run-fusion-fastq templates.somatic-testing-fusion-fastq.tasks.duckdb-fusions template duckdb-fusions-v2: `synchronization` is not supported
-gennext-workflows/workflows/per-sample-somatic-rna.yaml	33 templates.main.tasks.run-rna-fastq templates.somatic-testing-rna-gpu-fastq-v2.tasks.duckdb-fusions template duckdb-fusions-v2: `synchronization` is not supported
-gennext-workflows/workflows/post-process-cnv.yaml	33 templates.main.tasks.per-sample-cnv templates.per-sample-cnv-pipeline.tasks.duckdb-cnv template duckdb-cnv: `synchronization` is not supported
+gennext-workflows/workflows/per-sample-somatic-dna-rna.yaml	ok 4
+gennext-workflows/workflows/per-sample-somatic-dna.yaml	ok 3
+gennext-workflows/workflows/per-sample-somatic-fusion-gpu.yaml	ok 2
+gennext-workflows/workflows/per-sample-somatic-fusion.yaml	ok 2
+gennext-workflows/workflows/per-sample-somatic-rna.yaml	ok 3
+gennext-workflows/workflows/post-process-cnv.yaml	1 workflow error: batch-load-and-prepare: task post-process-cnv-9ee37.batch-load-and-prepare: simulated path `` must stay inside its work directory without symlinks
 gennext-workflows/workflows/post-process-variant-counter.yaml	ok 2
 gennext-workflows/workflows/preprocess-fastq.yaml	ok 4
-gennext-workflows/workflows/prototypes/batch-orchestrator-prototype.yaml	33 templates.main.tasks.fan-out-samples templates.fan-out-samples.steps[0].process-sample template submit-sample-workflow: `synchronization` is not supported
+gennext-workflows/workflows/prototypes/batch-orchestrator-prototype.yaml	ok 0
 gennext-workflows/workflows/prototypes/debug-cnvkit-analyze.yaml	ok 1
 gennext-workflows/workflows/prototypes/debug-qc-recollect.yaml	ok 5
 gennext-workflows/workflows/prototypes/sample-worker-prototype.yaml	ok 3
 gennext-workflows/workflows/prototypes/test-fusion-inspector.yaml	ok 13
 gennext-workflows/workflows/prs/prs_workflow.yaml	ok 9
-gennext-workflows/workflows/somatic-testing-workflow.yaml	33 templates.somatic-testing-tumor templates.somatic-testing-tumor.tasks.duckdb-snv template duckdb-snv: `synchronization` is not supported
-gennext-workflows/workflows/somatic/somatic-testing-dna-gpu-workflow.yaml	33 templates.somatic-testing-dna-gpu-bam templates.somatic-testing-dna-gpu-bam.tasks.duckdb-snv template duckdb-snv: `synchronization` is not supported
+gennext-workflows/workflows/somatic-testing-workflow.yaml	1 templates.somatic-testing-tumor templates.somatic-testing-tumor.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
+gennext-workflows/workflows/somatic/somatic-testing-dna-gpu-workflow.yaml	valid
 gennext-workflows/workflows/somatic/somatic-testing-dna-workflow.yaml	valid
-gennext-workflows/workflows/somatic/somatic-testing-rna-gpu-workflow.yaml	33 templates.somatic-testing-rna-gpu-fastq templates.somatic-testing-rna-gpu-fastq.tasks.duckdb-fusions template duckdb-fusions: `synchronization` is not supported
-gennext-workflows/workflows/somatic/v2/somatic-dna-bam.yaml	33 templates.somatic-testing-dna-gpu-bam-v2 templates.somatic-testing-dna-gpu-bam-v2.tasks.duckdb-snv template duckdb-snv: `synchronization` is not supported
-gennext-workflows/workflows/somatic/v2/somatic-dna-fastq.yaml	33 templates.somatic-testing-dna-gpu-fastq-v2 templates.somatic-testing-dna-gpu-fastq-v2.tasks.duckdb-snv template duckdb-snv: `synchronization` is not supported
-gennext-workflows/workflows/somatic/v2/somatic-dna-padding-repair.yaml	33 spec.synchronization is not supported
-gennext-workflows/workflows/somatic/v2/somatic-dna-vcf.yaml	33 templates.somatic-testing-dna-gpu-vcf-v2 templates.somatic-testing-dna-gpu-vcf-v2.tasks.duckdb-snv template duckdb-snv-vcf-only: `synchronization` is not supported
-gennext-workflows/workflows/somatic/v2/somatic-fusion-fastq-gpu.yaml	33 templates.somatic-testing-fusion-fastq-gpu templates.somatic-testing-fusion-fastq-gpu.tasks.duckdb-fusions template duckdb-fusions-v2: `synchronization` is not supported
-gennext-workflows/workflows/somatic/v2/somatic-fusion-fastq.yaml	33 templates.somatic-testing-fusion-fastq templates.somatic-testing-fusion-fastq.tasks.duckdb-fusions template duckdb-fusions-v2: `synchronization` is not supported
-gennext-workflows/workflows/somatic/v2/somatic-rna-bam.yaml	33 templates.somatic-testing-rna-gpu-bam-v2 templates.somatic-testing-rna-gpu-bam-v2.tasks.duckdb-fusions template duckdb-fusions-v2: `synchronization` is not supported
-gennext-workflows/workflows/somatic/v2/somatic-rna-fastq.yaml	33 templates.somatic-testing-rna-gpu-fastq-v2 templates.somatic-testing-rna-gpu-fastq-v2.tasks.duckdb-fusions template duckdb-fusions-v2: `synchronization` is not supported
+gennext-workflows/workflows/somatic/somatic-testing-rna-gpu-workflow.yaml	1 templates.somatic-testing-rna-gpu-bam templates.somatic-testing-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
+gennext-workflows/workflows/somatic/v2/somatic-dna-bam.yaml	valid
+gennext-workflows/workflows/somatic/v2/somatic-dna-fastq.yaml	valid
+gennext-workflows/workflows/somatic/v2/somatic-dna-padding-repair.yaml	1 workflow error: load-and-prepare-dna: task somatic-dna-padding-repair-v1-f5766.load-and-prepare-dna: simulated path `` must stay inside its work directory without symlinks
+gennext-workflows/workflows/somatic/v2/somatic-dna-vcf.yaml	valid
+gennext-workflows/workflows/somatic/v2/somatic-fusion-fastq-gpu.yaml	valid
+gennext-workflows/workflows/somatic/v2/somatic-fusion-fastq.yaml	valid
+gennext-workflows/workflows/somatic/v2/somatic-rna-bam.yaml	valid
+gennext-workflows/workflows/somatic/v2/somatic-rna-fastq.yaml	valid
 gennext-workflows/workflows/tps-workflow.yaml	1 templates.main.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/wes-workflow.yaml	1 templates.main.tasks.wes-bam-workflow templates.wes-bam-workflow.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/wgs-workflow.yaml	1 templates.main.tasks.wgs-fastq-workflow templates.wgs-fastq-workflow.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
@@ -942,15 +942,15 @@ gennext-workflows/workflows/wrapper-annotation.yaml	ok 1
 gennext-workflows/workflows/wrapper-workflow-prs.yaml	1 templates.wrapper-workflow-prs.tasks.prs-workflow templates.main inputs.parameters.genotype-file-name was not supplied
 gennext-workflows/workflows/wrapper-workflow-somatic.yaml	1 templates.wrapper-workflow-somatic.tasks.somatic-testing-tumor-workflow template reference somatic-testing-workflow.main not found
 gennext-workflows/workflows/wrapper-workflow.yaml	1 ...s.wrapper-workflow.tasks.rna-workflow templates.main.tasks.germline-rna-bam-workflow templates.germline-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna-rna.yaml	33 templates.main.tasks.fan-out-samples templates.fan-out-samples.steps[0].submit-sample template submit-sample-workflow: `synchronization` is not supported
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna.yaml	33 templates.main.tasks.fan-out-samples templates.fan-out-samples.steps[0].submit-sample template submit-sample-workflow: `synchronization` is not supported
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion-gpu.yaml	33 templates.main.tasks.fan-out-samples templates.fan-out-samples.steps[0].submit-sample template submit-sample-workflow: `synchronization` is not supported
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion.yaml	33 templates.main.tasks.fan-out-samples templates.fan-out-samples.steps[0].submit-sample template submit-sample-workflow: `synchronization` is not supported
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-rna.yaml	33 templates.main.tasks.fan-out-samples templates.fan-out-samples.steps[0].submit-sample template submit-sample-workflow: `synchronization` is not supported
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna-rna.yaml	33 synchronization semaphore requires ConfigMap argo/batch-sample-semaphore key max-concurrent; supply a ConfigMap with data.max-concurrent using -config, or an inline configMapKeyRef.limit
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna.yaml	33 synchronization semaphore requires ConfigMap argo/batch-sample-semaphore key max-concurrent; supply a ConfigMap with data.max-concurrent using -config, or an inline configMapKeyRef.limit
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion-gpu.yaml	33 synchronization semaphore requires ConfigMap argo/batch-sample-semaphore key max-concurrent; supply a ConfigMap with data.max-concurrent using -config, or an inline configMapKeyRef.limit
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion.yaml	33 synchronization semaphore requires ConfigMap argo/batch-sample-semaphore key max-concurrent; supply a ConfigMap with data.max-concurrent using -config, or an inline configMapKeyRef.limit
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-rna.yaml	33 synchronization semaphore requires ConfigMap argo/batch-sample-semaphore key max-concurrent; supply a ConfigMap with data.max-concurrent using -config, or an inline configMapKeyRef.limit
 gennext-workflows/workflows/wrappers/wrapper-rna.yaml	1 templates.main.tasks.run-workflow templates.main.tasks.germline-rna-bam-workflow templates.germline-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
-gennext-workflows/workflows/wrappers/wrapper-somatic-dna-rna.yaml	33 ...a-rna.tasks.som-test-tumor-workflow templates.main-dna.tasks.somatic-testing-tumor-bam templates.somatic-testing-dna-gpu-bam.tasks.duckdb-snv template duckdb-snv: `synchronization` is not supported
-gennext-workflows/workflows/wrappers/wrapper-somatic-dna.yaml	33 templates.main.tasks.run-workflow templates.main-dna.tasks.somatic-testing-tumor-bam templates.somatic-testing-dna-gpu-bam.tasks.duckdb-snv template duckdb-snv: `synchronization` is not supported
-gennext-workflows/workflows/wrappers/wrapper-somatic-rna.yaml	33 ...lates.main.tasks.run-workflow templates.main-rna.tasks.somatic-testing-rna-bam templates.somatic-testing-rna-gpu-bam.tasks.duckdb-fusions template duckdb-fusions: `synchronization` is not supported
+gennext-workflows/workflows/wrappers/wrapper-somatic-dna-rna.yaml	1 ....tasks.som-test-rna-workflow templates.main-rna.tasks.somatic-testing-rna-bam templates.somatic-testing-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
+gennext-workflows/workflows/wrappers/wrapper-somatic-dna.yaml	ok 3
+gennext-workflows/workflows/wrappers/wrapper-somatic-rna.yaml	1 ...ates.main.tasks.run-workflow templates.main-rna.tasks.somatic-testing-rna-bam templates.somatic-testing-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/wrappers/wrapper-tps.yaml	ok 3
 gennext-workflows/workflows/wrappers/wrapper-wes.yaml	ok 3
 gennext-workflows/workflows/wrappers/wrapper-wgs.yaml	ok 3
@@ -991,7 +991,7 @@ hera/examples/workflows/misc/container-with-resources.yaml	ok 1
 hera/examples/workflows/misc/container.yaml	ok 1
 hera/examples/workflows/misc/cron-hello-world.yaml	ok 1
 hera/examples/workflows/misc/cron-workflow-stop-strategy.yaml	ok 1
-hera/examples/workflows/misc/daemon.yaml	33 ...ates.d.tasks.server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/misc/daemon.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/misc/data.yaml	33 template list-log-files is a data template, which reads an artifact repository from inside a cluster; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/misc/dynamic-resources.yaml	33 templates.d.tasks.resource-consumer template resource-consumer: `podSpecPatch` is not supported
 hera/examples/workflows/misc/dynamic-volumes.yaml	ok 1
@@ -1004,12 +1004,12 @@ hera/examples/workflows/misc/init-containers-with-env.yaml	ok 2
 hera/examples/workflows/misc/map-outputs-to-inputs.yaml	ok 4
 hera/examples/workflows/misc/multi-env.yaml	ok 1
 hera/examples/workflows/misc/resource-flags.yaml	33 ...teps[0].submit-resource template create-route is a resource template that manages Kubernetes objects of kind Route; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-hera/examples/workflows/misc/retry-workflow.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
-hera/examples/workflows/misc/suspend-input-duration.yaml	33 templates.suspend.steps[0].get-value-step template suspend-with-intermediate-param: `suspend` is not supported
-hera/examples/workflows/misc/suspend.yaml	33 template suspend-without-duration: `suspend` is not supported
+hera/examples/workflows/misc/retry-workflow.yaml	ok 1
+hera/examples/workflows/misc/suspend-input-duration.yaml	33 templates.suspend.steps[0].get-value-step template suspend-with-intermediate-param: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
+hera/examples/workflows/misc/suspend.yaml	33 template suspend-without-duration: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
 hera/examples/workflows/misc/template-level-volume.yaml	ok 2
 hera/examples/workflows/misc/template-refs.yaml	1 templates.steps.steps[0].hello-template-ref couldn't find workflow template "hello-world-workflow-template"
-hera/examples/workflows/misc/user-container.yaml	33 templates.d.tasks.foo template foo has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/misc/user-container.yaml	33 ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/misc/volume-mount.yaml	ok 1
 hera/examples/workflows/misc/volume-mounts-nfs.yaml	ok 1
 hera/examples/workflows/misc/volume-mounts-wt.yaml	ok 3
@@ -1028,17 +1028,17 @@ hera/examples/workflows/upstream/archive-location.yaml	33 template hello-world: 
 hera/examples/workflows/upstream/arguments-artifacts.yaml	33 artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
 hera/examples/workflows/upstream/arguments-parameters-from-configmap.yaml	ok 1
 hera/examples/workflows/upstream/arguments-parameters.yaml	ok 1
-hera/examples/workflows/upstream/artifact-disable-archive.yaml	33 templates.artifact-disable-archive.steps[0].generate-artifact artifact hello-txt-nc: mode, recurseMode, archive compression and archiveLogs are not supported
-hera/examples/workflows/upstream/artifact-gc-workflow.yaml	33 artifact on-completion: declared repository uploads are not supported; use the results destination
+hera/examples/workflows/upstream/artifact-disable-archive.yaml	ok 2
+hera/examples/workflows/upstream/artifact-gc-workflow.yaml	33 artifact on-completion: the default artifact repository is not supported; supply an S3 bucket and key
 hera/examples/workflows/upstream/artifact-passing-subpath.yaml	ok 3
 hera/examples/workflows/upstream/artifact-passing.yaml	ok 2
 hera/examples/workflows/upstream/artifact-path-placeholders.yaml	ok 1
 hera/examples/workflows/upstream/artifact-repository-ref.yaml	33 spec.artifactRepositoryRef is not supported
 hera/examples/workflows/upstream/artifactory-artifact.yaml	33 templates.artifact-example.steps[0].generate-artifact artifact hello-art: Artifactory.passwordSecret is not supported; use the configured storage provider
-hera/examples/workflows/upstream/artifacts-workflowtemplate.yaml	33 artifact text-file: declared repository uploads are not supported; use the results destination
+hera/examples/workflows/upstream/artifacts-workflowtemplate.yaml	33 artifact text-file: the default artifact repository is not supported; supply an S3 bucket and key
 hera/examples/workflows/upstream/buildkit-template.yaml	ok 3
 hera/examples/workflows/upstream/ci-output-artifact.yaml	33 templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported
-hera/examples/workflows/upstream/ci-workflowtemplate.yaml	33 templates.main.tasks.test artifact test-report: declared repository uploads are not supported; use the results destination
+hera/examples/workflows/upstream/ci-workflowtemplate.yaml	33 templates.main.tasks.test artifact test-report: the default artifact repository is not supported; supply an S3 bucket and key
 hera/examples/workflows/upstream/ci.yaml	33 templates.ci-example.steps[0].build artifact code: Git, HDFS, OSS and artifact plugin transfers are not supported
 hera/examples/workflows/upstream/cluster-workflow-template--cluster-wftmpl-dag.yaml	ok 7
 hera/examples/workflows/upstream/cluster-workflow-template--clustertemplates.yaml	ok 1
@@ -1062,16 +1062,16 @@ hera/examples/workflows/upstream/cron-when.yaml	ok 1
 hera/examples/workflows/upstream/cron-workflow-multiple-schedules.yaml	ok 1
 hera/examples/workflows/upstream/cron-workflow.yaml	ok 1
 hera/examples/workflows/upstream/custom-metrics.yaml	ok 2
-hera/examples/workflows/upstream/daemon-nginx.yaml	33 ....nginx-server template nginx-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-hera/examples/workflows/upstream/daemon-step.yaml	33 ...e.steps[0].influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/daemon-nginx.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/daemon-step.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/daemoned-stateful-set-with-service.yaml	33 ...s[0].create-service template create-service is a resource template that manages Kubernetes objects of kind Service; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/dag-coinflip.yaml	ok 4
 hera/examples/workflows/upstream/dag-conditional-artifacts.yaml	ok 1
 hera/examples/workflows/upstream/dag-conditional-parameters.yaml	ok 1
 hera/examples/workflows/upstream/dag-continue-on-fail.yaml	ok 6
 hera/examples/workflows/upstream/dag-custom-metrics.yaml	ok 4
-hera/examples/workflows/upstream/dag-daemon-retry-strategy.yaml	33 ...s.main.tasks.server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-hera/examples/workflows/upstream/dag-daemon-task.yaml	33 ...mple.tasks.influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/dag-daemon-retry-strategy.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/dag-daemon-task.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/dag-diamond-steps.yaml	ok 12
 hera/examples/workflows/upstream/dag-diamond.yaml	ok 4
 hera/examples/workflows/upstream/dag-enhanced-depends.yaml	ok 7
@@ -1080,7 +1080,7 @@ hera/examples/workflows/upstream/dag-inline-workflowtemplate.yaml	ok 1
 hera/examples/workflows/upstream/dag-multiroot.yaml	ok 4
 hera/examples/workflows/upstream/dag-nested.yaml	ok 16
 hera/examples/workflows/upstream/dag-targets.yaml	ok 3
-hera/examples/workflows/upstream/dag-task-level-timeout.yaml	33 templates.diamond.tasks.A template echo: `timeout` is not supported
+hera/examples/workflows/upstream/dag-task-level-timeout.yaml	ok 3
 hera/examples/workflows/upstream/data-transformations.yaml	33 ...ist-log-files template list-log-files is a data template, which reads an artifact repository from inside a cluster; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/default-pdb-support.yaml	ok 1
 hera/examples/workflows/upstream/dns-config.yaml	ok 1
@@ -1119,8 +1119,8 @@ hera/examples/workflows/upstream/input-artifact-git.yaml	33 artifact argo-source
 hera/examples/workflows/upstream/input-artifact-http.yaml	33 artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
 hera/examples/workflows/upstream/input-artifact-oss.yaml	33 artifact my-art: Git, HDFS, OSS and artifact plugin transfers are not supported
 hera/examples/workflows/upstream/input-artifact-raw.yaml	ok 1
-hera/examples/workflows/upstream/input-artifact-s3.yaml	33 artifact my-art: S3.endpoint is not supported; use the configured storage provider
-hera/examples/workflows/upstream/intermediate-parameters.yaml	33 templates.cicd-pipeline.steps[1].approval template approval: `suspend` is not supported
+hera/examples/workflows/upstream/input-artifact-s3.yaml	33 artifact my-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+hera/examples/workflows/upstream/intermediate-parameters.yaml	33 templates.cicd-pipeline.steps[1].approval template approval: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
 hera/examples/workflows/upstream/k8s-jobs.yaml	33 template rand-num: resource output job-obj supports only valueFrom.jsonPath
 hera/examples/workflows/upstream/k8s-orchestration.yaml	33 ...0].random-number-job template random-number-job is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/k8s-owner-reference.yaml	ok 1
@@ -1131,7 +1131,7 @@ hera/examples/workflows/upstream/k8s-patch-pod.yaml	33 template main is a resour
 hera/examples/workflows/upstream/k8s-resource-log-selector.yaml	33 template tf-jobtmpl is a resource template that manages Kubernetes objects of kind TFJob; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/k8s-set-owner-reference.yaml	33 template k8s-set-owner-reference is a resource template that manages Kubernetes objects of kind ConfigMap; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/k8s-wait-wf.yaml	ok 1
-hera/examples/workflows/upstream/key-only-artifact.yaml	33 templates.main.tasks.generate artifact file: declared repository uploads are not supported; use the results destination
+hera/examples/workflows/upstream/key-only-artifact.yaml	33 templates.main.tasks.generate artifact file: the default artifact repository is not supported; supply an S3 bucket and key
 hera/examples/workflows/upstream/label-value-from-workflow.yaml	ok 1
 hera/examples/workflows/upstream/life-cycle-hooks-tmpl-level.yaml	ok 6
 hera/examples/workflows/upstream/life-cycle-hooks-wf-level.yaml	ok 3
@@ -1142,12 +1142,12 @@ hera/examples/workflows/upstream/loops-param-argument.yaml	ok 4
 hera/examples/workflows/upstream/loops-param-result.yaml	ok 1
 hera/examples/workflows/upstream/loops-sequence.yaml	ok 25
 hera/examples/workflows/upstream/loops.yaml	ok 2
-hera/examples/workflows/upstream/map-reduce.yaml	33 templates.main.tasks.split artifact parts: declared repository uploads are not supported; use the results destination
+hera/examples/workflows/upstream/map-reduce.yaml	33 templates.main.tasks.split artifact parts: the default artifact repository is not supported; supply an S3 bucket and key
 hera/examples/workflows/upstream/nested-workflow.yaml	ok 4
 hera/examples/workflows/upstream/node-selector.yaml	ok 1
 hera/examples/workflows/upstream/output-artifact-azure.yaml	33 artifact message: Azure.accountKeySecret is not supported; use the configured storage provider
 hera/examples/workflows/upstream/output-artifact-gcs.yaml	33 artifact message: GCS.serviceAccountKeySecret is not supported; use the configured storage provider
-hera/examples/workflows/upstream/output-artifact-s3.yaml	33 artifact message: S3.endpoint is not supported; use the configured storage provider
+hera/examples/workflows/upstream/output-artifact-s3.yaml	33 artifact message: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 hera/examples/workflows/upstream/output-parameter.yaml	ok 2
 hera/examples/workflows/upstream/parallelism-limit.yaml	ok 10
 hera/examples/workflows/upstream/parallelism-nested-dag.yaml	ok 15
@@ -1169,7 +1169,7 @@ hera/examples/workflows/upstream/recursive-for-loop.yaml	ok 1
 hera/examples/workflows/upstream/resource-delete-with-flags.yaml	33 ...submit-resource template create-configmap is a resource template that manages Kubernetes objects of kind ConfigMap; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/resource-flags.yaml	33 ...teps[0].submit-resource template create-route is a resource template that manages Kubernetes objects of kind Route; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/resubmit.yaml	ok 9
-hera/examples/workflows/upstream/retry-backoff.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
+hera/examples/workflows/upstream/retry-backoff.yaml	ok 1
 hera/examples/workflows/upstream/retry-conditional.yaml	ok 2
 hera/examples/workflows/upstream/retry-container-to-completion.yaml	ok 1
 hera/examples/workflows/upstream/retry-container.yaml	ok 1
@@ -1180,39 +1180,39 @@ hera/examples/workflows/upstream/scripts-bash.yaml	ok 2
 hera/examples/workflows/upstream/scripts-javascript.yaml	ok 2
 hera/examples/workflows/upstream/scripts-python.yaml	ok 2
 hera/examples/workflows/upstream/secrets.yaml	ok 1
-hera/examples/workflows/upstream/sidecar-dind.yaml	33 template dind-sidecar-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-hera/examples/workflows/upstream/sidecar-nginx.yaml	33 template sidecar-nginx-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-hera/examples/workflows/upstream/sidecar.yaml	33 template sidecar-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/sidecar-dind.yaml	33 ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/sidecar-nginx.yaml	33 ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/sidecar.yaml	33 ... sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/status-reference.yaml	ok 2
-hera/examples/workflows/upstream/step-level-timeout.yaml	33 templates.sleep-sleep.steps[0].sleep1 template sleep: `timeout` is not supported
-hera/examples/workflows/upstream/steps-daemon-retry-strategy.yaml	33 ...ain.steps[0].server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/step-level-timeout.yaml	ok 2
+hera/examples/workflows/upstream/steps-daemon-retry-strategy.yaml	33 ...cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/steps-inline-workflow.yaml	ok 1
 hera/examples/workflows/upstream/steps.yaml	ok 3
-hera/examples/workflows/upstream/suspend-template-outputs.yaml	33 templates.suspend.steps[0].approve template approve: `suspend` is not supported
-hera/examples/workflows/upstream/suspend-template.yaml	33 templates.suspend.steps[1].approve template approve: `suspend` is not supported
-hera/examples/workflows/upstream/synchronization-db-mutex-tmpl-level.yaml	33 templates.synchronization-db-tmpl-level-mutex-example.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
-hera/examples/workflows/upstream/synchronization-db-mutex-wf-level.yaml	33 spec.synchronization is not supported
-hera/examples/workflows/upstream/synchronization-db-tmpl-level.yaml	33 templates.synchronization-db-tmpl-level-example.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
-hera/examples/workflows/upstream/synchronization-db-wf-level.yaml	33 spec.synchronization is not supported
-hera/examples/workflows/upstream/synchronization-mutex-tmpl-level-legacy.yaml	33 templates.synchronization-tmpl-level-mutex-example.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
-hera/examples/workflows/upstream/synchronization-mutex-tmpl-level.yaml	33 templates.synchronization-tmpl-level-mutex-example.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
-hera/examples/workflows/upstream/synchronization-mutex-wf-level-legacy.yaml	33 spec.synchronization is not supported
-hera/examples/workflows/upstream/synchronization-mutex-wf-level.yaml	33 spec.synchronization is not supported
-hera/examples/workflows/upstream/synchronization-tmpl-level-legacy.yaml	33 templates.synchronization-tmpl-level-example.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
-hera/examples/workflows/upstream/synchronization-tmpl-level.yaml	33 templates.synchronization-tmpl-level-example.steps[0].synchronization-acquire-lock template acquire-lock: `synchronization` is not supported
-hera/examples/workflows/upstream/synchronization-wf-level-legacy.yaml	33 spec.synchronization is not supported
-hera/examples/workflows/upstream/synchronization-wf-level.yaml	33 spec.synchronization is not supported
-hera/examples/workflows/upstream/template-defaults.yaml	33 templateDefaults: template : `timeout` is not supported
+hera/examples/workflows/upstream/suspend-template-outputs.yaml	33 templates.suspend.steps[0].approve template approve: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
+hera/examples/workflows/upstream/suspend-template.yaml	33 templates.suspend.steps[1].approve template approve: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes
+hera/examples/workflows/upstream/synchronization-db-mutex-tmpl-level.yaml	33 templates.synchronization-db-tmpl-level-mutex-example.steps[0].synchronization-acquire-lock synchronization database mutexes require an Argo controller; use a local mutex
+hera/examples/workflows/upstream/synchronization-db-mutex-wf-level.yaml	33 synchronization database mutexes require an Argo controller; use a local mutex
+hera/examples/workflows/upstream/synchronization-db-tmpl-level.yaml	33 templates.synchronization-db-tmpl-level-example.steps[0].synchronization-acquire-lock synchronization database semaphores require an Argo controller; use configMapKeyRef
+hera/examples/workflows/upstream/synchronization-db-wf-level.yaml	33 synchronization database semaphores require an Argo controller; use configMapKeyRef
+hera/examples/workflows/upstream/synchronization-mutex-tmpl-level-legacy.yaml	ok 10
+hera/examples/workflows/upstream/synchronization-mutex-tmpl-level.yaml	ok 10
+hera/examples/workflows/upstream/synchronization-mutex-wf-level-legacy.yaml	ok 1
+hera/examples/workflows/upstream/synchronization-mutex-wf-level.yaml	ok 1
+hera/examples/workflows/upstream/synchronization-tmpl-level-legacy.yaml	33 synchronization semaphore requires ConfigMap default/my-config key template; supply a ConfigMap with data.template using -config, or an inline configMapKeyRef.limit
+hera/examples/workflows/upstream/synchronization-tmpl-level.yaml	33 synchronization semaphore requires ConfigMap default/my-config key template; supply a ConfigMap with data.template using -config, or an inline configMapKeyRef.limit
+hera/examples/workflows/upstream/synchronization-wf-level-legacy.yaml	33 synchronization semaphore requires ConfigMap default/my-config key workflow; supply a ConfigMap with data.workflow using -config, or an inline configMapKeyRef.limit
+hera/examples/workflows/upstream/synchronization-wf-level.yaml	33 synchronization semaphore requires ConfigMap default/my-config key workflow; supply a ConfigMap with data.workflow using -config, or an inline configMapKeyRef.limit
+hera/examples/workflows/upstream/template-defaults.yaml	ok 2
 hera/examples/workflows/upstream/template-on-exit.yaml	ok 4
 hera/examples/workflows/upstream/timeouts-step.yaml	ok 1
-hera/examples/workflows/upstream/timeouts-workflow.yaml	33 spec.activeDeadlineSeconds is not supported
+hera/examples/workflows/upstream/timeouts-workflow.yaml	ok 6
 hera/examples/workflows/upstream/title-and-description-with-markdown.yaml	ok 1
 hera/examples/workflows/upstream/volumes-emptydir.yaml	ok 1
 hera/examples/workflows/upstream/volumes-existing.yaml	ok 2
 hera/examples/workflows/upstream/volumes-pvc.yaml	ok 2
 hera/examples/workflows/upstream/webhdfs-input-output-artifacts.yaml	33 artifact my-art: HTTP.headers is not supported; use the configured storage provider
 hera/examples/workflows/upstream/withsequence-nested-result.yaml	ok 1
-hera/examples/workflows/upstream/work-avoidance.yaml	33 templates.main.steps[0].load-markers artifact markers: S3.endpoint is not supported; use the configured storage provider
+hera/examples/workflows/upstream/work-avoidance.yaml	33 templates.main.steps[0].load-markers artifact markers: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 hera/examples/workflows/upstream/workflow-event-binding--event-consumer-workflowtemplate.yaml	ok 1
 hera/examples/workflows/upstream/workflow-of-workflows.yaml	ok 2
 hera/examples/workflows/upstream/workflow-template--dag.yaml	ok 7
@@ -1224,7 +1224,7 @@ hera/examples/workflows/upstream/workflow-template--workflow-template-ref-with-e
 hera/examples/workflows/upstream/workflow-template--workflow-template-ref.yaml	ok 1
 hera/examples/workflows/use_cases/dask.yaml	ok 1
 hera/examples/workflows/use_cases/fine-tune-llama.yaml	33 ...lass template create-ssd-storage-class is a resource template that manages Kubernetes objects of kind StorageClass; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-hera/examples/workflows/use_cases/map-reduce.yaml	33 templates.main.tasks.split artifact parts: declared repository uploads are not supported; use the results destination
+hera/examples/workflows/use_cases/map-reduce.yaml	33 templates.main.tasks.split artifact parts: the default artifact repository is not supported; supply an S3 bucket and key
 hera/examples/workflows/use_cases/parquet-pandas.yaml	ok 3
 hera/examples/workflows/use_cases/reusing-cli-app.yaml	ok 1
 hera/examples/workflows/use_cases/spacy-inference-pipeline.yaml	ok 2
@@ -1282,7 +1282,7 @@ pipelines/test_data/compiled-workflows/local_execution_pipeline_with_exit_handle
 pipelines/test_data/compiled-workflows/local_execution_pipeline_with_ignore_upstream_failure.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.fail-always templates.system-container-executor.tasks.executor template system-container-impl: `podSpecPatch` is not supported
 pipelines/test_data/compiled-workflows/local_execution_pipeline_with_k8s_only_methods.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.echo templates.system-container-executor.tasks.executor template system-container-impl: `podSpecPatch` is not supported
 pipelines/test_data/compiled-workflows/local_execution_pipeline_with_oneof.yaml	33 ...p-condition-branches-1.tasks.condition-2 templates.comp-condition-2.tasks.branch-a templates.system-container-executor.tasks.executor template system-container-impl: `podSpecPatch` is not supported
-pipelines/test_data/compiled-workflows/local_execution_pipeline_with_retry.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.flaky templates.retry-system-container-executor.tasks.executor retryStrategy backoff.maxDuration and OnTransientError are not supported
+pipelines/test_data/compiled-workflows/local_execution_pipeline_with_retry.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.flaky templates.retry-system-container-executor.tasks.executor template retry-system-container-impl: `podSpecPatch` is not supported
 pipelines/test_data/compiled-workflows/log_streaming_compiled.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.print-message templates.system-container-executor.tasks.executor template system-container-impl: `podSpecPatch` is not supported
 pipelines/test_data/compiled-workflows/long-running.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.wait-op templates.system-container-executor.tasks.executor template system-container-impl: `podSpecPatch` is not supported
 pipelines/test_data/compiled-workflows/loop_consume_upstream.yaml	33 ...-1-iterator.tasks.iteration-iterations templates.comp-for-loop-1.tasks.create-file templates.system-container-executor.tasks.executor template system-container-impl: `podSpecPatch` is not supported
@@ -1348,8 +1348,8 @@ pipelines/test_data/compiled-workflows/pipeline_with_parallelfor_pipeline_param.
 pipelines/test_data/compiled-workflows/pipeline_with_params_containing_format.yaml	33 ...op-2-iterator.tasks.iteration-iterations templates.comp-for-loop-2.tasks.print-op2 templates.system-container-executor.tasks.executor template system-container-impl: `podSpecPatch` is not supported
 pipelines/test_data/compiled-workflows/pipeline_with_placeholders.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.print-all-placeholders templates.system-container-executor.tasks.executor template system-container-impl: `podSpecPatch` is not supported
 pipelines/test_data/compiled-workflows/pipeline_with_pod_metadata.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.validate-no-pod-metadata templates.system-container-executor.tasks.executor template system-container-impl: `podSpecPatch` is not supported
-pipelines/test_data/compiled-workflows/pipeline_with_retry.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.add templates.retry-system-container-executor.tasks.executor retryStrategy backoff.maxDuration and OnTransientError are not supported
-pipelines/test_data/compiled-workflows/pipeline_with_retry_policy.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.add templates.retry-system-container-executor-onerror.tasks.executor retryStrategy backoff.maxDuration and OnTransientError are not supported
+pipelines/test_data/compiled-workflows/pipeline_with_retry.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.add templates.retry-system-container-executor.tasks.executor template retry-system-container-impl: `podSpecPatch` is not supported
+pipelines/test_data/compiled-workflows/pipeline_with_retry_policy.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.add templates.retry-system-container-executor-onerror.tasks.executor template retry-system-container-impl-onerror: `podSpecPatch` is not supported
 pipelines/test_data/compiled-workflows/pipeline_with_reused_component.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.add-numbers templates.system-container-executor.tasks.executor template system-container-impl: `podSpecPatch` is not supported
 pipelines/test_data/compiled-workflows/pipeline_with_secret_as_env.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.comp templates.system-container-executor.tasks.executor template system-container-impl: `podSpecPatch` is not supported
 pipelines/test_data/compiled-workflows/pipeline_with_secret_as_volume.yaml	33 templates.entrypoint.tasks.root templates.root.tasks.comp templates.system-container-executor.tasks.executor template system-container-impl: `podSpecPatch` is not supported
@@ -1396,25 +1396,25 @@ regulation-workflows/workflow-templates/alignment/.deprecated/get-rfs-alignments
 regulation-workflows/workflow-templates/alignment/.deprecated/merge-run-alignments.yaml	33 ...s.multiple-merge-run-alignments.tasks.merge-run-alignments templates.rfs-alignment.tasks.create-rfs-alignment-pvc artifact kubeconfig: Git, HDFS, OSS and artifact plugin transfers are not supported
 regulation-workflows/workflow-templates/alignment/.deprecated/rfs-alignments.yaml	1 ...tasks.execute-rfs-alignment templates.rfs-alignment.tasks.execute-runs-alignment templates.run-alignment.tasks.execute-pe-alignment couldn't find workflow template "run-alignment-pe-v1-submittable"
 regulation-workflows/workflow-templates/alignment/.experimental/rfs-alignment-v3.yaml	ok 1
-regulation-workflows/workflow-templates/alignment/alignment-tasks.yaml	33 templates.rfs-alignment-tasks-dag.tasks.execute-get-rfs-alignment-tasks retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/alignment/alignment-tasks.yaml	33 ...execute-pe-alignment templates.run-alignment.tasks.execute-fastqc-cmd-for-original-read-files artifact first_read_file: the default artifact repository is not supported; supply an S3 bucket and key
 regulation-workflows/workflow-templates/alignment/compute-get-rfs-alignment-tasks-url-v-0.1.yaml	ok 1
-regulation-workflows/workflow-templates/alignment/rfs-alignment.yaml	33 templates.rfs-alignment.tasks.get-run-alignments-payload-info retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/alignment/run-alignment-pe.yaml	33 templates.run-alignment.tasks.load-read-files-to-pvc retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/alignment/run-alignment-se.yaml	33 templates.run-alignment.tasks.load-read-file-to-pvc retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/alignment/rfs-alignment.yaml	33 ...execute-pe-alignment templates.run-alignment.tasks.execute-fastqc-cmd-for-original-read-files artifact first_read_file: the default artifact repository is not supported; supply an S3 bucket and key
+regulation-workflows/workflow-templates/alignment/run-alignment-pe.yaml	33 templates.run-alignment.tasks.execute-fastqc-cmd-for-original-read-files artifact first_read_file: the default artifact repository is not supported; supply an S3 bucket and key
+regulation-workflows/workflow-templates/alignment/run-alignment-se.yaml	33 templates.run-alignment.tasks.execute-fastqc-cmd-for-original-read-file artifact first_read_file: the default artifact repository is not supported; supply an S3 bucket and key
 regulation-workflows/workflow-templates/bowtie2/.deprecated/bowtie2-pe-cmd-pvc-callable.yaml	1 /regulation-workflows/workflow-templates/bowtie2/.deprecated/bowtie2-pe-cmd-pvc-callable.yaml:127:9: unknown Argo field `spec.templates[1].container.podSpecPatch`
 regulation-workflows/workflow-templates/bowtie2/.deprecated/bowtie2-se-cmd-pvc-callable.yaml	1 /regulation-workflows/workflow-templates/bowtie2/.deprecated/bowtie2-se-cmd-pvc-callable.yaml:124:9: unknown Argo field `spec.templates[1].container.podSpecPatch`
 regulation-workflows/workflow-templates/bowtie2/bowtie2-pe-cmd-pvc-callable-v-0.1.yaml	1 /regulation-workflows/workflow-templates/bowtie2/bowtie2-pe-cmd-pvc-callable-v-0.1.yaml:126:9: unknown Argo field `spec.templates[1].container.podSpecPatch`
 regulation-workflows/workflow-templates/bowtie2/bowtie2-se-cmd-pvc-callable-v-0.1.yaml	1 /regulation-workflows/workflow-templates/bowtie2/bowtie2-se-cmd-pvc-callable-v-0.1.yaml:124:9: unknown Argo field `spec.templates[1].container.podSpecPatch`
 regulation-workflows/workflow-templates/bowtie2/build/build-index-v-0.1.yaml	1 spec.templates[0].name: 'bt2_build-index' is invalid: name must consist of alpha-numeric characters or '-', and must start with an alpha-numeric character (e.g. My-name1-2, 123-NAME)
-regulation-workflows/workflow-templates/export-peak/bed-to-bigbed-v-0.1.yaml	33 templates.bed-to-bigbed.tasks.convert-bed-to-bigbed artifact final_bigbed: declared repository uploads are not supported; use the results destination
+regulation-workflows/workflow-templates/export-peak/bed-to-bigbed-v-0.1.yaml	33 templates.bed-to-bigbed.tasks.convert-bed-to-bigbed artifact final_bigbed: the default artifact repository is not supported; supply an S3 bucket and key
 regulation-workflows/workflow-templates/export-peak/export-peak-tasks.yaml	1 spec.templates[2].name 'export-peak-tasks-dag' is not unique
 regulation-workflows/workflow-templates/fastp/.deprecated/fastp-se-cmd-pvc-callable.yaml	ok 1
 regulation-workflows/workflow-templates/fastp/fastp-se-cmd-pvc-callable-v-0.1.yaml	ok 1
-regulation-workflows/workflow-templates/fastqc/.deprecated/fastqc-pe-cmd-pvc-callable.yaml	33 artifact first_read_file: declared repository uploads are not supported; use the results destination
-regulation-workflows/workflow-templates/fastqc/.deprecated/fastqc-se-cmd-pvc-callable.yaml	33 artifact first_read_file: declared repository uploads are not supported; use the results destination
-regulation-workflows/workflow-templates/fastqc/fastqc-pe-cmd-pvc-callable-v-0.1.yaml	33 artifact first_read_file: declared repository uploads are not supported; use the results destination
-regulation-workflows/workflow-templates/fastqc/fastqc-se-cmd-pvc-callable-v-0.1.yaml	33 artifact first_read_file: declared repository uploads are not supported; use the results destination
-regulation-workflows/workflow-templates/helpers/.deprecated/analysis-file-post-request-payload.yaml	33 artifact analysis-file-post-request-payload: declared repository uploads are not supported; use the results destination
+regulation-workflows/workflow-templates/fastqc/.deprecated/fastqc-pe-cmd-pvc-callable.yaml	33 artifact first_read_file: the default artifact repository is not supported; supply an S3 bucket and key
+regulation-workflows/workflow-templates/fastqc/.deprecated/fastqc-se-cmd-pvc-callable.yaml	33 artifact first_read_file: the default artifact repository is not supported; supply an S3 bucket and key
+regulation-workflows/workflow-templates/fastqc/fastqc-pe-cmd-pvc-callable-v-0.1.yaml	33 artifact first_read_file: the default artifact repository is not supported; supply an S3 bucket and key
+regulation-workflows/workflow-templates/fastqc/fastqc-se-cmd-pvc-callable-v-0.1.yaml	33 artifact first_read_file: the default artifact repository is not supported; supply an S3 bucket and key
+regulation-workflows/workflow-templates/helpers/.deprecated/analysis-file-post-request-payload.yaml	33 artifact analysis-file-post-request-payload: the default artifact repository is not supported; supply an S3 bucket and key
 regulation-workflows/workflow-templates/helpers/.deprecated/check-if-field-present-and-not-empty.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.deprecated/check-if-s3-objects-exist.yaml	ok 0
 regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml	ok 1
@@ -1426,35 +1426,35 @@ regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yam
 regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name-v2.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.deprecated/copy-from-pvc-to-s3-object.yaml	1 /regulation-workflows/workflow-templates/helpers/.deprecated/copy-from-pvc-to-s3-object.yaml:75:9: unknown Argo field `spec.templates[1].container.podSpecPatch`
-regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-object-to-pvc.yaml	33 templates.s3-object-to-pvc.tasks.s3-object-to-pvc retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-object-to-pvc.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-prefix-objects-to-pvc.yaml	ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/cp-s3-object-to-s3.yaml	33 templates.cp-s3-object-to-s3.tasks.copy-s3-object-to-s3 retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/helpers/.deprecated/cp-s3-object-to-s3.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml	33 artifact kubeconfig: Git, HDFS, OSS and artifact plugin transfers are not supported
 regulation-workflows/workflow-templates/helpers/.deprecated/decompress-tgz-pvc-callable.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.deprecated/decompress-tgz-pvc-callable_v2.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.deprecated/delete-file-from-pvc.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml	33 artifact kubeconfig: Git, HDFS, OSS and artifact plugin transfers are not supported
-regulation-workflows/workflow-templates/helpers/.deprecated/expose-payload-fields-as-params.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/helpers/.deprecated/get-from-reg-pipelines-api.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api-v1_1.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api-v2.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/helpers/.deprecated/expose-payload-fields-as-params.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/get-from-reg-pipelines-api.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api-v1_1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api-v2.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api.yaml	ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/get-task-payload-by-index.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/helpers/.deprecated/get-wf-task-payload-by-index.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/helpers/.deprecated/get-task-payload-by-index.yaml	33 artifact task-payload: the default artifact repository is not supported; supply an S3 bucket and key
+regulation-workflows/workflow-templates/helpers/.deprecated/get-wf-task-payload-by-index.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.deprecated/pvc-to-pvc-copy.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml	ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker-v2.yaml	33 artifact task-marker: declared repository uploads are not supported; use the results destination
-regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml	33 artifact task-marker: declared repository uploads are not supported; use the results destination
+regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker-v2.yaml	33 artifact task-marker: the default artifact repository is not supported; supply an S3 bucket and key
+regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml	33 artifact task-marker: the default artifact repository is not supported; supply an S3 bucket and key
 regulation-workflows/workflow-templates/helpers/.deprecated/validate-expected-number-of-files-in-dir.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.experimental/commit-rdr-changes.yaml	33 artifact rdr-repo: Git, HDFS, OSS and artifact plugin transfers are not supported
 regulation-workflows/workflow-templates/helpers/.experimental/create-nfs-pvc-kubectl.yaml	33 artifact kubeconfig: Git, HDFS, OSS and artifact plugin transfers are not supported
 regulation-workflows/workflow-templates/helpers/.experimental/delete-request-from-reg-pipelines-api.yaml	ok 1
-regulation-workflows/workflow-templates/helpers/.experimental/delete-s3-object.yaml	33 templates.delete-s3-object.tasks.dag-delete-s3-object retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/helpers/.experimental/delete-task-marker.yaml	33 templates.delete-task-marker.tasks.delete-rfs-alignment-marker templates.delete-s3-object.tasks.dag-delete-s3-object retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/helpers/.experimental/delete-s3-object.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/delete-task-marker.yaml	ok 2
 regulation-workflows/workflow-templates/helpers/.experimental/list-objects-under-s3-prefix.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.experimental/post-results-to-reg-pipelines-api.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.experimental/s3-objects-to-pvc.yaml	ok 1
-regulation-workflows/workflow-templates/helpers/analysis-file-post-request-payload-v-0.1.yaml	33 artifact analysis-file-post-request-payload: declared repository uploads are not supported; use the results destination
+regulation-workflows/workflow-templates/helpers/analysis-file-post-request-payload-v-0.1.yaml	33 artifact analysis-file-post-request-payload: the default artifact repository is not supported; supply an S3 bucket and key
 regulation-workflows/workflow-templates/helpers/check-if-field-present-and-not-empty-v-0.1.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/check-if-s3-objects-exist-v-0.1.yaml	ok 0
 regulation-workflows/workflow-templates/helpers/check-s3-object-exists-v-0.1.yaml	ok 1
@@ -1466,23 +1466,23 @@ regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.1.y
 regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.2.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/copy-from-pvc-to-s3-object-v-0.1.yaml	1 /regulation-workflows/workflow-templates/helpers/copy-from-pvc-to-s3-object-v-0.1.yaml:76:9: unknown Argo field `spec.templates[1].container.podSpecPatch`
 regulation-workflows/workflow-templates/helpers/copy-pvc-to-pvc-v-0.1.yaml	ok 1
-regulation-workflows/workflow-templates/helpers/copy-s3-object-to-pvc-v-0.1.yaml	33 templates.s3-object-to-pvc.tasks.s3-object-to-pvc retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/helpers/copy-s3-object-to-pvc-v-0.1.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/copy-s3-prefix-objects-to-pvc-v-0.1.yaml	ok 1
-regulation-workflows/workflow-templates/helpers/cp-s3-object-to-s3-v-0.1.yaml	33 templates.cp-s3-object-to-s3.tasks.copy-s3-object-to-s3 retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/helpers/cp-s3-object-to-s3-v-0.1.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/create-pvc-v-0.2.yaml	ok 0
 regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.1.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.2.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/delete-file-from-pvc-v-0.1.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml	ok 0
-regulation-workflows/workflow-templates/helpers/expose-payload-fields-as-params-v-0.1.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.1.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.2.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/helpers/get-wf-task-payload-by-index-v-0.1.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/helpers/expose-payload-fields-as-params-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.2.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/get-wf-task-payload-by-index-v-0.1.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/resolve-work-avoidance-v-0.1.yaml	ok 1
-regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.1.yaml	33 artifact task-marker: declared repository uploads are not supported; use the results destination
-regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.2.yaml	33 artifact task-marker: declared repository uploads are not supported; use the results destination
+regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.1.yaml	33 artifact task-marker: the default artifact repository is not supported; supply an S3 bucket and key
+regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.2.yaml	33 artifact task-marker: the default artifact repository is not supported; supply an S3 bucket and key
 regulation-workflows/workflow-templates/helpers/validate-expected-number-of-files-in-dir-v-0.1.yaml	ok 1
-regulation-workflows/workflow-templates/masked-regions/masked-regions-identification-v-0.1.yaml	33 templates.masked-regions-identification.tasks.run-masked-regions-identification-script artifact final_bed: declared repository uploads are not supported; use the results destination
+regulation-workflows/workflow-templates/masked-regions/masked-regions-identification-v-0.1.yaml	33 templates.masked-regions-identification.tasks.run-masked-regions-identification-script artifact final_bed: the default artifact repository is not supported; supply an S3 bucket and key
 regulation-workflows/workflow-templates/motif-mapping/motif-mapping-tasks.yaml	1 spec.templates[2].name 'motif-mapping-tasks-dag' is not unique
 regulation-workflows/workflow-templates/ngmerge/.deprecated/ngmerge-cmd-pvc-callable.yaml	ok 1
 regulation-workflows/workflow-templates/ngmerge/ngmerge-cmd-pvc-callable-v-0.1.yaml	ok 1
@@ -1493,49 +1493,49 @@ regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-se-no-
 regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-v2.yaml	33 ...sort-tasks templates.dag-samtools-sort-tasks.tasks.create-tasks templates.dag-samtools-sort-task.tasks.create-pvc artifact kubeconfig: Git, HDFS, OSS and artifact plugin transfers are not supported
 regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq.yaml	33 ...s.peak-calling-chip-seq.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.create-peak-calling-pvc artifact kubeconfig: Git, HDFS, OSS and artifact plugin transfers are not supported
 regulation-workflows/workflow-templates/peak-calling/.deprecated/dnase-seq.yaml	33 ....peak-calling-dnase-seq.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.create-peak-calling-pvc artifact kubeconfig: Git, HDFS, OSS and artifact plugin transfers are not supported
-regulation-workflows/workflow-templates/peak-calling/.deprecated/genrich-controls-pvc-callable.yaml	33 artifact final_bed: declared repository uploads are not supported; use the results destination
-regulation-workflows/workflow-templates/peak-calling/.deprecated/get-genrich-values-tasks.yaml	33 templates.get-genrich-values-tasks-dag.tasks.execute-get-genrich-values-tasks retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/peak-calling/.deprecated/genrich-controls-pvc-callable.yaml	33 artifact final_bed: the default artifact repository is not supported; supply an S3 bucket and key
+regulation-workflows/workflow-templates/peak-calling/.deprecated/get-genrich-values-tasks.yaml	1 templates.get-genrich-values-tasks-dag.tasks.submit-genrich-values-tasks couldn't find workflow template "genrich-values-v2-submittable"
 regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks-ad-hoc.yaml	33 ...s.peak-calling-atac-seq.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.create-peak-calling-pvc artifact kubeconfig: Git, HDFS, OSS and artifact plugin transfers are not supported
 regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks.yaml	33 ...s.peak-calling-atac-seq.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.create-peak-calling-pvc artifact kubeconfig: Git, HDFS, OSS and artifact plugin transfers are not supported
-regulation-workflows/workflow-templates/peak-calling/chip-seq-genrich-values-cmd.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/peak-calling/chip-seq-peaks-v-0.2.yaml	33 ...-peak-calling-task templates.peak-calling-task.tasks.load-pq-values-to-pvc templates.s3-object-to-pvc.tasks.s3-object-to-pvc retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/peak-calling/chip-seq-genrich-values-cmd.yaml	33 artifact masked-regions-file: the default artifact repository is not supported; supply an S3 bucket
+regulation-workflows/workflow-templates/peak-calling/chip-seq-peaks-v-0.2.yaml	33 ...q.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.execute-peak-calling-narrow-case artifact bed-file: the default artifact repository is not supported; supply an S3 bucket and key
 regulation-workflows/workflow-templates/peak-calling/controls/.deprecated/controls-peak-calling-for-mask-file-with-pileups.yaml	33 ...-mask-file-with-pileups.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.create-peak-calling-pvc artifact kubeconfig: Git, HDFS, OSS and artifact plugin transfers are not supported
 regulation-workflows/workflow-templates/peak-calling/controls/control-peak-calling-for-mask-file.yaml	1 ...k-calling-task templates.peak-calling-task.tasks.execute-sort-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.get-pvc-size couldn't find workflow template "compute-pvc-v-0.1.0"
-regulation-workflows/workflow-templates/peak-calling/controls/get-control-peak-calling-tasks.yaml	33 templates.get-control-peak-calling-tasks-dag.tasks.execute-get-peak-calling-tasks retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/peak-calling/delete-task-markers.yaml	33 ...lates.delete-peak-calling-task-marker.tasks.delete-peak-calling-marker templates.delete-s3-object.tasks.dag-delete-s3-object retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/peak-calling/genrich-tasks.yaml	33 templates.genrich-values-tasks-dag.tasks.execute-get-genrich-values-tasks retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/peak-calling/genrich-values-cmd.yaml	33 templates.dag-genrich-values-cmd.tasks.execute-genrich-values-cmd-chip-seq-case retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/peak-calling/controls/get-control-peak-calling-tasks.yaml	1 templates.get-control-peak-calling-tasks-dag.tasks.submit-controls-pc-tasks-for-mask-file couldn't find workflow template "control-peak-calling-for-mask-file-v-0.1.0"
+regulation-workflows/workflow-templates/peak-calling/delete-task-markers.yaml	ok 4
+regulation-workflows/workflow-templates/peak-calling/genrich-tasks.yaml	1 templates.genrich-values-tasks-dag.tasks.submit-genrich-values-tasks couldn't find workflow template "genrich-values-v-0.2.1"
+regulation-workflows/workflow-templates/peak-calling/genrich-values-cmd.yaml	ok 0
 regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.1.yaml	1 ...execute-peak-calling-task templates.peak-calling-task.tasks.check-if-pq-values-and-pileups-already-in-s3-bucket template reference check-s3-object-exists-v-0.1.0.check-if-s3-objects-exist not found
 regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.2.yaml	1 /regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.2.yaml:236:15: unknown Argo field `spec.templates[1].dag.tasks[15].templateRef.parameters`
-regulation-workflows/workflow-templates/peak-calling/open-chromatin-genrich-values-cmd.yaml	33 retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/peak-calling/open-chromatin-genrich-values-cmd.yaml	33 artifact masked-regions-file: the default artifact repository is not supported; supply an S3 bucket
 regulation-workflows/workflow-templates/peak-calling/open-chromatin-peaks-v-0.2.yaml	1 templates.peak-calling-open-chromatin.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.get-peak-calling-pvc-size template reference compute-pvc-size-v-0.1.1.compute-pvc not found
-regulation-workflows/workflow-templates/peak-calling/peak-calling-tasks.yaml	33 templates.peak-calling-tasks-dag.tasks.get-peak-calling-tasks-v2-url retryStrategy backoff.maxDuration and OnTransientError are not supported
+regulation-workflows/workflow-templates/peak-calling/peak-calling-tasks.yaml	33 ...q.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.execute-peak-calling-narrow-case artifact bed-file: the default artifact repository is not supported; supply an S3 bucket and key
 regulation-workflows/workflow-templates/samtools/.deprecated/samtools-quickcheck-cmd-pvc-callable.yaml	ok 1
-regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.1.yaml	33 templates.sort-alignment-by-queryname-pvc-callable.tasks.load-bam-to-pvc templates.s3-object-to-pvc.tasks.s3-object-to-pvc retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.2.yaml	33 templates.sort-alignment-by-queryname-pvc-callable.tasks.load-bam-to-pvc templates.s3-object-to-pvc.tasks.s3-object-to-pvc retryStrategy backoff.maxDuration and OnTransientError are not supported
-regulation-workflows/workflow-templates/signal/.deprecated/genrich-pq-values-to-bigwig-high-mem-pvc-callable.yaml	33 templates.genrich-pq-values-to-bigwig-pvc-callable.tasks.convert-bed-to-bigwig artifact final_bigwig: declared repository uploads are not supported; use the results destination
+regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.1.yaml	ok 2
+regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.2.yaml	ok 3
+regulation-workflows/workflow-templates/signal/.deprecated/genrich-pq-values-to-bigwig-high-mem-pvc-callable.yaml	33 templates.genrich-pq-values-to-bigwig-pvc-callable.tasks.convert-bed-to-bigwig artifact final_bigwig: the default artifact repository is not supported; supply an S3 bucket and key
 regulation-workflows/workflow-templates/signal/.deprecated/get-signal-task.yaml	33 ...gnal-tasks-dag.tasks.submit-pq-values-to-bigwig templates.genrich-pq-values-to-bigwig-dag.tasks.create-signal-pvc artifact kubeconfig: Git, HDFS, OSS and artifact plugin transfers are not supported
-regulation-workflows/workflow-templates/signal/genrich-pq-values-to-bigwig-pvc-callable-v-0.1.yaml	33 templates.genrich-pq-values-to-bigwig-pvc-callable.tasks.convert-bed-to-bigwig artifact final_bigwig: declared repository uploads are not supported; use the results destination
+regulation-workflows/workflow-templates/signal/genrich-pq-values-to-bigwig-pvc-callable-v-0.1.yaml	33 templates.genrich-pq-values-to-bigwig-pvc-callable.tasks.convert-bed-to-bigwig artifact final_bigwig: the default artifact repository is not supported; supply an S3 bucket and key
 regulation-workflows/workflow-templates/signal/signal-tasks.yaml	1 spec.templates[2].name 'signal-tasks-dag' is not unique
 singlem-sra-processing/cloud/argo/logan_chunked_workflow_template.yaml	ok 1
-singlem-sra-processing/cloud/argo/logan_workflow_template.yaml	33 artifact out-art: S3.endpoint is not supported; use the configured storage provider
-singlem-sra-processing/cloud/argo/prod_workflow_template1.yaml	33 artifact out-art: S3.endpoint is not supported; use the configured storage provider
-singlem-sra-processing/cloud/argo/prod_workflow_template2.yaml	33 artifact out-art: S3.endpoint is not supported; use the configured storage provider
-singlem-sra-processing/cloud/argo/prod_workflow_template3.yaml	33 artifact out-art: S3.endpoint is not supported; use the configured storage provider
-singlem-sra-processing/cloud/argo/prod_workflow_template4.yaml	33 artifact out-art: S3.endpoint is not supported; use the configured storage provider
-singlem-sra-processing/cloud/argo/prod_workflow_template_less_than30gbp.yaml	33 artifact out-art: S3.endpoint is not supported; use the configured storage provider
+singlem-sra-processing/cloud/argo/logan_workflow_template.yaml	33 artifact out-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+singlem-sra-processing/cloud/argo/prod_workflow_template1.yaml	33 artifact out-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+singlem-sra-processing/cloud/argo/prod_workflow_template2.yaml	33 artifact out-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+singlem-sra-processing/cloud/argo/prod_workflow_template3.yaml	33 artifact out-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+singlem-sra-processing/cloud/argo/prod_workflow_template4.yaml	33 artifact out-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+singlem-sra-processing/cloud/argo/prod_workflow_template_less_than30gbp.yaml	33 artifact out-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 singlem-sra-processing/cloud/argo/sra_weebill_workflow_template.yaml	33 template singlem: `podSpecPatch` is not supported
-singlem-sra-processing/cloud/argo/test3.yaml	33 artifact out-art: S3.endpoint is not supported; use the configured storage provider
-snakemake-tutorial-argo-workflows/argo-workflows/workflows.yaml	33 templates.snakemake-tutorial-dag.tasks.map-read-1 artifact mapped-read: declared repository uploads are not supported; use the results destination
-snakemake-tutorial-argo-workflows/argo-workflows/workflowtemplates.yaml	33 templates.snakemake-tutorial-dag.tasks.map-read-1 artifact mapped-read: declared repository uploads are not supported; use the results destination
+singlem-sra-processing/cloud/argo/test3.yaml	33 artifact out-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
+snakemake-tutorial-argo-workflows/argo-workflows/workflows.yaml	33 artifact reference-genome: the default artifact repository is not supported; supply an S3 bucket
+snakemake-tutorial-argo-workflows/argo-workflows/workflowtemplates.yaml	33 artifact reference-genome: the default artifact repository is not supported; supply an S3 bucket
 talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_standard_cluster_workflow_template.yaml	33 templates.main.steps[0].generate-dask-scheduler template dask-scheduler-generator: `podSpecPatch` is not supported
-talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#1	33 spec.synchronization is not supported
-talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#2	33 spec.synchronization is not supported
+talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#1	33 templates.wrapped-workflow.steps[0].dask-workflow templates.main.steps[0].generate-dask-scheduler template dask-scheduler-generator: `podSpecPatch` is not supported
+talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#2	33 templates.wrapped-workflow.steps[0].dask-workflow templates.main.steps[0].generate-dask-scheduler template dask-scheduler-generator: `podSpecPatch` is not supported
 talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/doubler-assertion.yaml	ok 2
 talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/doubler-template.yaml	ok 1
 talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/git-checkout-template.yaml	ok 1
 talk-demos/argocon-demos/2023-artifact-management-at-scale/ci-workflow-s3.yaml	1 /talk-demos/argocon-demos/2023-artifact-management-at-scale/ci-workflow-s3.yaml:27:3: unknown Argo field `spec.parameters`
-talk-demos/argocon-demos/2023-artifact-management-at-scale/fan-out-fan-in.yaml	33 templates.main.tasks.split artifact parts: declared repository uploads are not supported; use the results destination
+talk-demos/argocon-demos/2023-artifact-management-at-scale/fan-out-fan-in.yaml	33 templates.main.tasks.split artifact parts: the default artifact repository is not supported; supply an S3 bucket and key
 talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/nfs-workflow.yml	ok 4
 talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/s3-workflow.yml	ok 4
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/code-analysis.yml	1 templates.main.tasks.code-analysis template name 'code-analysis' undefined
@@ -1552,14 +1552,14 @@ talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-us
 talk-demos/argocon-demos/2023-streamlining-big-data-workflows-with-memoization-and-work-avoidance/workflow/example.yaml	ok 2
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/container.yaml	ok 2
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/containerset.yaml	ok 1
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/dag-example.yaml	33 templates.main.tasks.suspend template suspend: `suspend` is not supported
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/dag-example.yaml	33 templates.main.tasks.resource template resource is a resource template that manages Kubernetes objects of kind Pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/http.yaml	ok 3
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/inline.yaml	ok 1
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/plugin.yaml	ok 1
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/resource.yaml	33 template hello is a resource template that manages Kubernetes objects of kind Pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/script.yaml	ok 2
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/steps-example.yaml	33 templates.main.steps[2].suspend template suspend: `suspend` is not supported
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/suspend.yaml	33 template suspend: `suspend` is not supported
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/steps-example.yaml	33 templates.main.steps[3].resource template resource is a resource template that manages Kubernetes objects of kind Pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/suspend.yaml	ok 0
 talk-demos/oss-2022/python/cron-workflow-python.yaml	33 ...tasks.bike-type template bike-type is a resource template that manages Kubernetes objects of kind SparkApplication; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 talk-demos/oss-2022/scala/workflows/spark-template-jvm.yaml	33 template spark is a resource template that manages Kubernetes objects of kind SparkApplication; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 talk-demos/oss-2022/scala/workflows/workflow-scala-with-template.yaml	33 ...dag.tasks.bike-type template spark is a resource template that manages Kubernetes objects of kind SparkApplication; iunctus runs workflows without Kubernetes and does not support this (decision 18)
@@ -1572,6 +1572,6 @@ workflows/examples/resource-validate.yaml	1 /workflows/examples/resource-validat
 workflows/templates/inspection-build-template.yaml	1 /workflows/templates/inspection-build-template.yaml:99:7: unknown Argo field `spec.templates[2].resource.validate`
 workflows/templates/inspection-results-template.yaml	valid
 workflows/templates/inspection-run-template.yaml	33 templates.main.steps[0].job template create-job is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-workflows/templates/solver-rhel-8.0-py36.yaml	33 templates.solve artifact solver-document: S3.endpoint is not supported; use the configured storage provider
+workflows/templates/solver-rhel-8.0-py36.yaml	33 templates.solve artifact solver-document: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 workflows/templates/solver-sync.yaml	valid
 workflows/templates/sync-template.yaml	valid

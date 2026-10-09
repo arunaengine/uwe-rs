@@ -29,6 +29,7 @@ pub struct CacheLimits {
 pub struct CacheContext<'a> {
     pub store: &'a Store,
     pub holder: &'a Holder,
+    pub registry: Option<&'a str>,
 }
 
 /// Reuses a verified cache winner or compatible local image before building. Receipts and
@@ -47,7 +48,11 @@ pub async fn ensure(
         engine,
         preparation,
         package_cache,
-        CacheContext { store, holder },
+        CacheContext {
+            store,
+            holder,
+            registry: None,
+        },
         limits,
         cancel,
         || async { Ok(()) },
@@ -71,7 +76,11 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<(), CondaImageError>>,
 {
-    let CacheContext { store, holder } = context;
+    let CacheContext {
+        store,
+        holder,
+        registry,
+    } = context;
     if limits.attempts == 0
         || limits.candidates == 0
         || limits.retry_delay.is_zero()
@@ -90,6 +99,27 @@ where
     }
     let cache = ImageCache::new(store.clone());
     let work = async {
+        let key = preparation
+            .digest()
+            .parse::<task_model::Digest>()
+            .map_err(std::io::Error::other)?;
+        if let Some(registry) = registry
+            && let Some(observed) = store.observe_entry("conda-registry", &key).await?
+        {
+            if let Ok(receipt) = serde_json::from_slice::<CompletedImage>(observed.bytes())
+                && receipt.validate(preparation).is_ok()
+                && let Some(reference) = receipt.reference()
+                && crate::registry::Reference::parse(reference).name == registry
+                && crate::registry::exists(reference)
+                    .await
+                    .map_err(|error| CondaImageError::Publication(error.to_string()))?
+            {
+                return Ok(receipt);
+            }
+            store
+                .invalidate_entry("conda-registry", &key, &observed)
+                .await?;
+        }
         for _ in 0..limits.attempts {
             let cached = match cache.try_build(preparation, holder).await? {
                 ImageBuild::Busy => {
@@ -174,7 +204,30 @@ where
             )
             .await
             {
-                Ok(image) => return Ok(image),
+                Ok(image) => {
+                    if let Some(registry) = registry {
+                        let published = conda::publish(
+                            engine,
+                            preparation,
+                            &image,
+                            registry,
+                            limits.transfer,
+                            cancel,
+                        )
+                        .await?;
+                        store
+                            .put_entry(
+                                "conda-registry",
+                                &key,
+                                serde_json::to_vec(&published)
+                                    .map_err(std::io::Error::other)?
+                                    .into(),
+                            )
+                            .await?;
+                        return Ok(published);
+                    }
+                    return Ok(image);
+                }
                 Err(
                     CondaImageError::Provenance(_)
                     | CondaImageError::MissingArchive

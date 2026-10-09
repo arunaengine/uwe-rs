@@ -182,11 +182,6 @@ pub(super) fn initial_workdir(
                 .and_then(Value::as_str)
                 .unwrap_or_default();
             if in_place && !location.starts_with("_:") && !target.starts_with('/') {
-                if map.get("class").and_then(Value::as_str) == Some("Directory") {
-                    return Err(super::unsupported(
-                        "in-place Directory updates are not supported",
-                    ));
-                }
                 stager.in_place.push(InPlace {
                     path: target.clone(),
                     location: location.to_owned(),

@@ -282,7 +282,7 @@ fn releases_completed_readers() {
 }
 
 #[test]
-fn rejects_directory_updates() {
+fn accepts_directory_updates() {
     let tool = FILE_WRITER
         .replace(
             "inputs: {f: File}",
@@ -292,8 +292,7 @@ fn rejects_directory_updates() {
             "outputs: {changed: {type: File, outputBinding: {glob: data.txt}}}",
             "outputs: []",
         );
-    let error = run(&[("main.cwl", &tool)]).expect_err("Directory writer must fail");
-    assert!(error.contains("in-place Directory updates"), "{error}");
+    assert_eq!(run(&[("main.cwl", &tool)]), Ok(1));
     let disabled = tool.replace("inplaceUpdate: true", "inplaceUpdate: false");
     assert_eq!(run(&[("main.cwl", &disabled)]), Ok(1));
 }

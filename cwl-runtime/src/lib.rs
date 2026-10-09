@@ -6,6 +6,7 @@ pub mod binding;
 mod driver;
 pub mod expression;
 pub mod files;
+mod image;
 mod inputs;
 mod javascript;
 mod ontology;

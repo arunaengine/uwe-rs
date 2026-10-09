@@ -28,6 +28,7 @@ pub use tokio_util::sync::CancellationToken;
 
 pub use access::Access;
 pub use engine::{ContainerEngine, EngineCommand, EngineKind, NoEngine};
+pub use image::ImageSource;
 pub use job::{CONTROL, ExecutorError, Finished, HOME, Job, Staged, Staging, Usage, WORK};
 pub use local::{ContainerRun, LocalContainer};
 pub use pool::{Pool, Share};

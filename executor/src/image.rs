@@ -10,6 +10,133 @@ use futures_util::StreamExt;
 use crate::engine::ContainerEngine;
 use crate::job::ExecutorError;
 
+/// The engine operation that creates a locally available image from an archive.
+#[derive(Clone, Copy, Debug)]
+pub enum ImageSource {
+    Build,
+    Load,
+    Import,
+}
+
+impl ContainerEngine {
+    /// Prepares an image under a content-addressed tag and returns its immutable engine ID.
+    pub async fn prepare_image(
+        &self,
+        source: ImageSource,
+        archive: &std::path::Path,
+        tag: &str,
+        expected: Option<&str>,
+        cancel: &crate::CancellationToken,
+    ) -> Result<String, ExecutorError> {
+        tokio::select! {
+            () = cancel.cancelled() => Err(ExecutorError::Cancelled),
+            result = tokio::time::timeout(std::time::Duration::from_secs(600), async {
+                match inspect(self, tag).await {
+                    Ok(image) => return image.id.ok_or_else(|| self.image_error("cached image has no ID")),
+                    Err(ExecutorError::Engine { .. }) => {},
+                    Err(error) => return Err(error),
+                }
+                let file = tokio::fs::File::open(archive).await?;
+                let body = bollard::body_try_stream(tokio_util::io::ReaderStream::new(file));
+                let mut loaded = Vec::new();
+                match source {
+                    ImageSource::Build => {
+                        let options = bollard::query_parameters::BuildImageOptions {
+                            t: Some(tag.to_owned()), rm: true, forcerm: true,
+                            pull: Some("false".into()),
+                            ..Default::default()
+                        };
+                        let mut stream = self.client().build_image(options, None, Some(body));
+                        while let Some(step) = stream.next().await {
+                            let step = step.map_err(|error| failed(self, error))?;
+                            if let Some(error) = step.error_detail.and_then(|detail| detail.message) {
+                                return Err(self.image_error(&error));
+                            }
+                        }
+                    }
+                    ImageSource::Load => {
+                        let mut stream = self.client().import_image(
+                            bollard::query_parameters::ImportImageOptions::default(), body, None);
+                        while let Some(step) = stream.next().await {
+                            let step = step.map_err(|error| failed(self, error))?;
+                            if let Some(error) = step.error_detail.and_then(|detail| detail.message) {
+                                return Err(self.image_error(&error));
+                            }
+                            if let Some(text) = step.stream {
+                                for line in text.lines() {
+                                    if let Some(image) = line.strip_prefix("Loaded image: ")
+                                        .or_else(|| line.strip_prefix("Loaded image ID: ")) {
+                                        loaded.push(image.to_owned());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    ImageSource::Import => {
+                        let (repo, tag) = tag.rsplit_once(':').ok_or_else(|| self.image_error("image tag is missing"))?;
+                        let options = CreateImageOptions {
+                            from_src: Some("-".into()), repo: Some(repo.into()), tag: Some(tag.into()),
+                            ..Default::default()
+                        };
+                        let mut stream = self.client().create_image(Some(options), Some(body), None);
+                        while let Some(step) = stream.next().await {
+                            let step = step.map_err(|error| failed(self, error))?;
+                            if let Some(error) = step.error_detail.and_then(|detail| detail.message) {
+                                return Err(self.image_error(&error));
+                            }
+                        }
+                    }
+                }
+                let id = if matches!(source, ImageSource::Load) {
+                    let mut identities = std::collections::BTreeSet::new();
+                    for reference in loaded {
+                        let image = inspect(self, &reference).await?;
+                        identities.insert(image.id.ok_or_else(|| self.image_error("loaded image has no ID"))?);
+                    }
+                    let id = match expected {
+                        Some(expected) => inspect(self, expected).await?.id
+                            .ok_or_else(|| self.image_error("requested image has no ID"))?,
+                        None if identities.len() == 1 => identities.first().unwrap().clone(),
+                        None => return Err(self.image_error("dockerLoad needs dockerImageId for an archive with multiple images")),
+                    };
+                    if !identities.contains(&id) {
+                        return Err(self.image_error("dockerLoad did not contain dockerImageId"));
+                    }
+                    self.tag_image(&id, tag).await?;
+                    id
+                } else {
+                    inspect(self, tag).await?.id.ok_or_else(|| self.image_error("prepared image has no ID"))?
+                };
+                self.tag_image(&id, &format!("iunctus-cwl:{}", id.trim_start_matches("sha256:"))).await?;
+                Ok(id)
+            }) => result.unwrap_or_else(|_| Err(self.image_error("image preparation exceeded 600 seconds"))),
+        }
+    }
+
+    async fn tag_image(&self, id: &str, reference: &str) -> Result<(), ExecutorError> {
+        let (repo, tag) = reference
+            .rsplit_once(':')
+            .ok_or_else(|| self.image_error("image tag is missing"))?;
+        self.client()
+            .tag_image(
+                id,
+                Some(bollard::query_parameters::TagImageOptions {
+                    repo: Some(repo.into()),
+                    tag: Some(tag.into()),
+                }),
+            )
+            .await
+            .map_err(|error| failed(self, error))
+    }
+
+    fn image_error(&self, message: &str) -> ExecutorError {
+        ExecutorError::Engine {
+            engine: self.name.clone(),
+            message: message.to_owned(),
+        }
+    }
+}
+
 /// The image pinned to its digest, like `debian@sha256:...`, pulling it first when it is not
 /// local. `None` for an image without a registry digest, such as one built locally.
 pub(crate) async fn pin(

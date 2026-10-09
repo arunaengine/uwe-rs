@@ -539,8 +539,45 @@ fn enables_conda_images() {
             enabled,
             "{image}"
         );
+        if enabled {
+            let reference: serde_json::Value =
+                serde_json::from_str(image.strip_prefix("conda-env:nextflow-packages:").unwrap())
+                    .unwrap();
+            assert_eq!(
+                reference["channels"],
+                serde_json::json!(["conda-forge", "bioconda"])
+            );
+        }
         if !enabled {
             assert_eq!(image, "quay.io/debian:stable-slim");
         }
+    }
+}
+
+#[test]
+fn conda_config_channels() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(
+        root.path().join("main.nf"),
+        "process P {\n conda 'foo=1'\n script:\n 'true'\n}\nworkflow { P() }",
+    )
+    .unwrap();
+    for channels in ["['custom', 'bioconda']", "'custom,bioconda'"] {
+        std::fs::write(
+            root.path().join("nextflow.config"),
+            format!("conda.enabled = true\nconda.channels = {channels}\n"),
+        )
+        .unwrap();
+        let mut driver = nextflow_runtime::driver(&Launch {
+            target: root.path().to_owned(),
+            ..Default::default()
+        })
+        .unwrap();
+        let task = driver.start().unwrap().remove(0);
+        let source = task.image.unwrap();
+        let value: serde_json::Value =
+            serde_json::from_str(source.strip_prefix("conda-env:nextflow-packages:").unwrap())
+                .unwrap();
+        assert_eq!(value["channels"], serde_json::json!(["custom", "bioconda"]));
     }
 }

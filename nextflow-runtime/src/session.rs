@@ -66,6 +66,10 @@ impl Host for Session<'_> {
         self.base.create_directories(path)
     }
 
+    fn secret(&mut self, name: &str) -> Result<Option<String>, Error> {
+        self.base.secret(name)
+    }
+
     fn environment(&self, name: &str) -> Option<String> {
         self.base.environment(name)
     }

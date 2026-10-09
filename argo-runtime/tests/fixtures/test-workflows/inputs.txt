@@ -184,7 +184,7 @@ argo-workflows/examples/input-artifact-git.yaml	33 artifact argo-source: Git, HD
 argo-workflows/examples/input-artifact-http.yaml	33 artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
 argo-workflows/examples/input-artifact-oss.yaml	33 artifact my-art: Git, HDFS, OSS and artifact plugin transfers are not supported
 argo-workflows/examples/input-artifact-raw.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/examples/input-artifact-s3.yaml	33 artifact my-art: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/examples/input-artifact-s3.yaml	33 artifact my-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/examples/intermediate-parameters.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/k8s-jobs.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/k8s-orchestration.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -288,7 +288,7 @@ argo-workflows/examples/workflow-level-executor-plugin.yaml	ok: 0 inputs, 0 requ
 argo-workflows/examples/workflow-of-workflows.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/workflow-template/dag.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/workflow-template/hello-world.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/examples/workflow-template/input-artifacts.yaml	33 artifact input-file: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/examples/workflow-template/input-artifacts.yaml	33 artifact input-file: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/examples/workflow-template/retry-with-steps.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/workflow-template/steps.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/examples/workflow-template/templates.yaml#0	ok: 1 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -555,7 +555,7 @@ argo-workflows/test/e2e/testdata/http/clientcert-auth-artifact-http.yaml	33 arti
 argo-workflows/test/e2e/testdata/http/input-artifact-http.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/testdata/http/oauth-artifact-http.yaml	33 artifact my-art: HTTP.auth is not supported; use the configured storage provider
 argo-workflows/test/e2e/testdata/http/output-artifact-http.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-argo-workflows/test/e2e/testdata/input-artifacts.yaml	33 artifact my-s3-artifact: S3.endpoint is not supported; use the configured storage provider
+argo-workflows/test/e2e/testdata/input-artifacts.yaml	33 artifact my-s3-artifact: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 argo-workflows/test/e2e/testdata/input-on-mount-plugin-workflow.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/testdata/input-on-mount-workflow.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 argo-workflows/test/e2e/testdata/json-variables.yaml	ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -892,7 +892,7 @@ hera/examples/workflows/upstream/input-artifact-git.yaml	33 artifact argo-source
 hera/examples/workflows/upstream/input-artifact-http.yaml	33 artifact kubectl: mode, recurseMode, archive compression and archiveLogs are not supported
 hera/examples/workflows/upstream/input-artifact-oss.yaml	33 artifact my-art: Git, HDFS, OSS and artifact plugin transfers are not supported
 hera/examples/workflows/upstream/input-artifact-raw.yaml	ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-hera/examples/workflows/upstream/input-artifact-s3.yaml	33 artifact my-art: S3.endpoint is not supported; use the configured storage provider
+hera/examples/workflows/upstream/input-artifact-s3.yaml	33 artifact my-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 hera/examples/workflows/upstream/intermediate-parameters.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 hera/examples/workflows/upstream/k8s-jobs.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 hera/examples/workflows/upstream/k8s-orchestration.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read

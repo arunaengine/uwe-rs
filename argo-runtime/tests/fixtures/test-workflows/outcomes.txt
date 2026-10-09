@@ -1526,8 +1526,8 @@ singlem-sra-processing/cloud/argo/prod_workflow_template4.yaml	33 artifact out-a
 singlem-sra-processing/cloud/argo/prod_workflow_template_less_than30gbp.yaml	33 artifact out-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
 singlem-sra-processing/cloud/argo/sra_weebill_workflow_template.yaml	33 template singlem: `podSpecPatch` is not supported
 singlem-sra-processing/cloud/argo/test3.yaml	33 artifact out-art: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver
-snakemake-tutorial-argo-workflows/argo-workflows/workflows.yaml	33 artifact reference-genome: the default artifact repository is not supported; supply an S3 bucket
-snakemake-tutorial-argo-workflows/argo-workflows/workflowtemplates.yaml	33 artifact reference-genome: the default artifact repository is not supported; supply an S3 bucket
+snakemake-tutorial-argo-workflows/argo-workflows/workflows.yaml	33 templates.snakemake-tutorial-dag.tasks.map-read-1 artifact mapped-read: the default artifact repository is not supported; supply an S3 bucket and key
+snakemake-tutorial-argo-workflows/argo-workflows/workflowtemplates.yaml	33 templates.snakemake-tutorial-dag.tasks.map-read-1 artifact mapped-read: the default artifact repository is not supported; supply an S3 bucket and key
 talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_standard_cluster_workflow_template.yaml	33 templates.main.steps[0].generate-dask-scheduler template dask-scheduler-generator: `podSpecPatch` is not supported
 talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#1	33 templates.wrapped-workflow.steps[0].dask-workflow templates.main.steps[0].generate-dask-scheduler template dask-scheduler-generator: `podSpecPatch` is not supported
 talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#2	33 templates.wrapped-workflow.steps[0].dask-workflow templates.main.steps[0].generate-dask-scheduler template dask-scheduler-generator: `podSpecPatch` is not supported

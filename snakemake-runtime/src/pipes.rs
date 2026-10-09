@@ -112,6 +112,7 @@ pub fn script(members: &[Task], pipes: &[String], services: &[String]) -> String
             quote(pipe)
         ));
     }
+    let connected = labels(members, pipes);
     let mut finite = Vec::new();
     for (number, task) in members.iter().enumerate() {
         let mut before = String::new();
@@ -122,7 +123,7 @@ pub fn script(members: &[Task], pipes: &[String], services: &[String]) -> String
                 }
                 if services.contains(&input.path) {
                     before.push_str(&format!("while [ ! -e {} ] && [ ! -L {} ]; do [ ! -f \"$status_dir/{producer}\" ] || exit 1; sleep 0.1; done; ", quote(&input.path), quote(&input.path)));
-                } else {
+                } else if connected[number] != connected[producer] {
                     before.push_str(&format!("while [ ! -f \"$status_dir/{producer}\" ]; do sleep 0.1; done; [ \"$(cat \"$status_dir/{producer}\")\" -eq 0 ] || exit 1; "));
                 }
             }
@@ -154,4 +155,26 @@ pub fn script(members: &[Task], pipes: &[String], services: &[String]) -> String
         .join(" && ");
     script.push_str(&format!("{done} && exit 0\nsleep 0.1\ndone\n"));
     script
+}
+
+fn labels(members: &[Task], pipes: &[String]) -> Vec<usize> {
+    let mut labels: Vec<_> = (0..members.len()).collect();
+    for (producer, task) in members.iter().enumerate() {
+        for (consumer, other) in members.iter().enumerate() {
+            if other
+                .inputs
+                .iter()
+                .any(|input| pipes.contains(&input.path) && task.outputs.contains(&input.path))
+            {
+                let from = labels[consumer];
+                let to = labels[producer];
+                for label in &mut labels {
+                    if *label == from {
+                        *label = to;
+                    }
+                }
+            }
+        }
+    }
+    labels
 }

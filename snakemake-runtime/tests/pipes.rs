@@ -113,6 +113,106 @@ fn connects_pipe_chains() {
 }
 
 #[test]
+fn rejects_existing_runs() {
+    for shell in ["echo bytes > stream.txt", "cat stream.txt > final.txt"] {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::write(folder.path().join("stream.txt"), "old").unwrap();
+        let workflow = SNAKEFILE.replace(
+            &format!("shell: \"{shell}\""),
+            "run:\n        print('unused')",
+        );
+        std::fs::write(folder.path().join("Snakefile"), workflow).unwrap();
+        let mut driver = snakemake_runtime::driver(&Launch {
+            target: folder.path().into(),
+            scratch: folder.path().join("scratch"),
+            ..Launch::default()
+        })
+        .unwrap();
+        let error = driver.start().unwrap_err();
+        assert!(error.message.contains("uses a 'run' directive"), "{error}");
+        assert!(driver.deliveries().is_empty());
+    }
+}
+
+#[test]
+fn reruns_pipe_siblings() {
+    let folder = tempfile::tempdir().unwrap();
+    for file in ["stream.txt", "side.txt", "side.end", "independent.txt"] {
+        std::fs::write(folder.path().join(file), "old").unwrap();
+    }
+    let workflow = SNAKEFILE
+        .replace(
+            "input: \"independent.txt\", \"final.txt\"",
+            "input: \"independent.txt\", \"final.txt\", \"side.end\"",
+        )
+        .replace(
+            "output: pipe(\"stream.txt\")",
+            "output: pipe(\"stream.txt\"), \"side.txt\"",
+        );
+    std::fs::write(folder.path().join("Snakefile"), format!("{workflow}\nrule side:\n    input: 'side.txt'\n    output: 'side.end'\n    shell: 'cat {{input}} > {{output}}'\n")).unwrap();
+    let mut driver = snakemake_runtime::driver(&Launch {
+        target: folder.path().into(),
+        scratch: folder.path().join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    })
+    .unwrap();
+    let tasks = driver.start().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert!(tasks[0].name.contains("produce"));
+    let next = driver
+        .complete(Outcome {
+            id: tasks[0].id,
+            ..Outcome::default()
+        })
+        .unwrap();
+    assert_eq!(next.len(), 1);
+    assert_eq!(next[0].step, "side");
+}
+
+#[test]
+fn splits_optional_images() {
+    let folder = tempfile::tempdir().unwrap();
+    let workflow = SNAKEFILE
+        .replace(
+            "input: \"independent.txt\", \"final.txt\"",
+            "input: \"independent.txt\", \"final.txt\", \"last.txt\"",
+        )
+        .replace(
+            "rule produce:",
+            "rule produce:\n    group: 'work'\n    container: 'debian:stable-slim'",
+        )
+        .replace(
+            "rule consume:",
+            "rule consume:\n    group: 'work'\n    container: 'debian:stable-slim'",
+        );
+    std::fs::write(folder.path().join("Snakefile"), format!("{workflow}\nrule last:\n    group: 'work'\n    container: 'other'\n    input: 'final.txt'\n    output: 'last.txt'\n    shell: 'cat {{input}} > {{output}}'\n")).unwrap();
+    let mut driver = snakemake_runtime::driver(&Launch {
+        target: folder.path().into(),
+        scratch: folder.path().join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    })
+    .unwrap();
+    let tasks = driver.start().unwrap();
+    let task = tasks
+        .iter()
+        .find(|task| task.name.contains("produce"))
+        .unwrap();
+    assert!(task.name.contains("consume"));
+    assert!(!task.name.contains("last"));
+    let next = driver
+        .complete(Outcome {
+            id: task.id,
+            ..Outcome::default()
+        })
+        .unwrap();
+    assert_eq!(next.len(), 1);
+    assert_eq!(next[0].step, "last");
+    assert_eq!(next[0].image.as_deref(), Some("other"));
+}
+
+#[test]
 #[ignore = "needs the already local debian:stable-slim image"]
 fn runs_local_pipes() {
     use executor::process::{ContainerSpec, Mount, run_to_end};
@@ -129,6 +229,23 @@ fn runs_local_pipes() {
             .replace(
                 "cat stream.txt > final.txt",
                 "while [ ! -f armed ]; do sleep 0.01; done; exit 9",
+            ),
+        SNAKEFILE
+            .replace(
+                "output: pipe(\"stream.txt\")",
+                "output: pipe(\"stream.txt\"), \"side.txt\"",
+            )
+            .replace(
+                "echo bytes > stream.txt",
+                "echo side > side.txt; echo bytes > stream.txt",
+            )
+            .replace(
+                "input: \"stream.txt\"",
+                "input: \"stream.txt\", \"side.txt\"",
+            )
+            .replace(
+                "cat stream.txt > final.txt",
+                "cat stream.txt > final.txt; cat side.txt >> final.txt",
             ),
     ]
     .iter()
@@ -174,18 +291,22 @@ fn runs_local_pipes() {
             memory: Some(64 << 20),
             ..ContainerSpec::default()
         });
-        let expected = ["0", "7", "9", "9"][number];
+        let expected = ["0", "7", "9", "9", "0"][number];
         assert_eq!(
             std::fs::read_to_string(folder.path().join("group.status"))
                 .unwrap()
                 .trim(),
             expected
         );
-        if number == 0 {
+        if expected == "0" {
             result.unwrap();
             assert_eq!(
                 std::fs::read_to_string(folder.path().join("final.txt")).unwrap(),
-                "bytes\n"
+                if number == 4 {
+                    "bytes\nside\n"
+                } else {
+                    "bytes\n"
+                }
             );
         } else {
             assert!(result.is_err());

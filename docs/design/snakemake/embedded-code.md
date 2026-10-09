@@ -100,8 +100,9 @@ Combined preparation is local only. Named host environments, remote YAML sources
 ## 13. FIFO outputs
 
 Connected `pipe()` jobs run concurrently in one task with a shared directory and
-one image. The runner creates named pipes before starting the jobs. Ordinary
-internal dependencies wait for their producer to finish; pipe edges do not.
+one image. The runner creates named pipes before starting the jobs. Jobs in
+the same pipe component start together. Ordinary dependencies between components
+wait for their producer to finish.
 The first member failure stops the other process groups and fails the task.
 Retries repeat the whole component. FIFO paths are temporary and are never
 stored or delivered. Different images are refused because the jobs must run

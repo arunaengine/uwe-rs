@@ -56,7 +56,7 @@ impl CwlDriver {
             .map_err(|error| DriverError::new(error.to_string()))?;
         let simulated = options.simulated;
         let mut run = Run::new(options, launch.keep_going);
-        run.name_ontologies(!document.schemas.is_empty());
+        run.name_ontologies(document.schemas);
         Ok(CwlDriver {
             launch: launch.clone(),
             simulated,

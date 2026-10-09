@@ -14,6 +14,7 @@ use workflow_graph::{Files, Note, Outcome, Task, TaskId};
 use crate::expression::Variables;
 use crate::files;
 use crate::inputs::{self, Setting};
+use crate::ontology::Ontology;
 use crate::placeholder;
 use crate::scope::Scope;
 use crate::tool::{self, OUTDIR, Options, Pending, TMPDIR};
@@ -230,8 +231,7 @@ pub struct Run {
     /// Location prefixes of files whose content is not real: the work folders of tasks in a
     /// simulated run, and the placeholder folder.
     fake: Vec<String>,
-    /// Whether the documents name ontologies in `$schemas`.
-    ontologies: bool,
+    ontologies: Ontology,
     /// Location prefixes of files that have what a parameter asks of them: the placeholder
     /// folder, and the work folders of abstract `Operation` tasks.
     assumed: Vec<String>,
@@ -262,7 +262,7 @@ impl Run {
             result: None,
             placeholders: None,
             fake: Vec::new(),
-            ontologies: false,
+            ontologies: Ontology::default(),
             assumed: Vec::new(),
             placeholder_strings: HashSet::new(),
             task_of_job: HashMap::new(),
@@ -285,10 +285,9 @@ impl Run {
         std::mem::take(&mut self.notes)
     }
 
-    /// Notes that the documents name ontologies in `$schemas`, which iunctus does not read, so
-    /// that a file format may be a subclass of a declared one.
-    pub fn name_ontologies(&mut self, named: bool) {
-        self.ontologies = named;
+    /// Loads format relationships only when an exact format does not match.
+    pub fn name_ontologies(&mut self, schemas: Vec<String>) {
+        self.ontologies = Ontology::new(schemas, self.options.remote.clone());
     }
 
     /// Runs on placeholder inputs, whose files are named in the folder `base`.
@@ -608,7 +607,7 @@ impl Run {
             placeholders: self.placeholders.as_deref(),
             toplevel,
             fill_optional: self.options.fill_optional,
-            ontologies: self.ontologies,
+            ontologies: &self.ontologies,
             assumed: &self.assumed,
             placeholder_strings: &self.placeholder_strings,
         };

@@ -10,6 +10,7 @@ use cwl_parser::model::{
 
 use crate::expression::{Evaluator, Variables};
 use crate::files::{self, Access};
+use crate::ontology::Ontology;
 use crate::placeholder;
 use crate::types::Types;
 use crate::value::{Map, Value};
@@ -40,9 +41,7 @@ pub struct Setting<'a> {
     /// Location prefixes of files that have the formats and secondary files asked of them, as
     /// a job that works gives them: placeholder files, and the outputs of abstract steps.
     pub assumed: &'a [String],
-    /// Whether the documents name ontologies in `$schemas`, whose format relationships
-    /// iunctus cannot check.
-    pub ontologies: bool,
+    pub ontologies: &'a Ontology,
 }
 
 /// Fills in and checks the input object of a process.
@@ -343,16 +342,8 @@ impl Walk<'_, '_> {
         let Some(format) = file.get("format").and_then(Value::as_str) else {
             return Err(format!("the file `{name}` has no format, but needs one"));
         };
-        if allowed.iter().any(|allowed| allowed == format) {
+        if self.setting.ontologies.matches(format, &allowed)? {
             return Ok(());
-        }
-        if self.setting.ontologies {
-            return Err(format!(
-                "{}the file `{name}` has the format `{format}`, not one of `{}`; \
-                 ontology format relationships from `$schemas` are not supported",
-                crate::tool::UNSUPPORTED,
-                allowed.join("`, `")
-            ));
         }
         Err(format!(
             "the file `{name}` has the format `{format}`, not one of `{}`",

@@ -48,6 +48,9 @@ workflow-graph = { path = "workflow-graph" }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "query", "tokio"] }
 base64 = "0.23.1"
 bollard = "0.21.1"
+oxrdf = "0.3.4"
+oxrdfxml = { version = "0.2.4", default-features = false }
+oxttl = { version = "0.2.4", default-features = false }
 boa_engine = { version = "0.22.0", default-features = false, features = ["annex-b"] }
 bytes = "1.12.1"
 fancy-regex = "0.19.2"

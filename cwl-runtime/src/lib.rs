@@ -8,6 +8,7 @@ pub mod expression;
 pub mod files;
 mod inputs;
 mod javascript;
+mod ontology;
 mod placeholder;
 mod results;
 mod run;

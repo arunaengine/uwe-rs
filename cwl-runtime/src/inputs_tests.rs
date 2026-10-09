@@ -23,6 +23,7 @@ fn process(text: &str) -> Arc<Process> {
 /// The setting of the process a run on placeholder inputs starts with.
 fn setting<'a>(types: &'a Types, evaluator: &'a Evaluator, assumed: &'a [String]) -> Setting<'a> {
     static NONE: std::sync::LazyLock<HashSet<String>> = std::sync::LazyLock::new(HashSet::new);
+    static ONTOLOGY: std::sync::LazyLock<Ontology> = std::sync::LazyLock::new(Ontology::default);
     Setting {
         types,
         evaluator,
@@ -35,7 +36,7 @@ fn setting<'a>(types: &'a Types, evaluator: &'a Evaluator, assumed: &'a [String]
         placeholders: Some(BASE),
         toplevel: true,
         fill_optional: false,
-        ontologies: false,
+        ontologies: &ONTOLOGY,
         assumed,
         placeholder_strings: &NONE,
     }
@@ -191,16 +192,6 @@ fn checks_cwl_formats() {
         job.get("regular").and_then(|file| file.text("format")),
         Some(one)
     );
-    // Naming an ontology does not establish a relationship between different formats.
-    let named = Setting {
-        ontologies: true,
-        ..setting
-    };
-    assert!(prepare(&tool, formats(Some(one), two), &named).is_ok());
-    let wrong =
-        prepare(&tool, formats(Some(other), two), &named).expect_err("unknown relationship");
-    assert!(wrong.contains("ontology format relationships"), "{wrong}");
-    assert!(wrong.contains(crate::tool::UNSUPPORTED), "{wrong}");
 }
 
 const INDEXED: &str = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\n\

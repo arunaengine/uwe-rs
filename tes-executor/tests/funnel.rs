@@ -168,7 +168,7 @@ fn funnel_refuses_containers() {
 }
 
 #[test]
-#[ignore = "needs a TES server and S3 bucket accessible to both client and worker; see docs/design/executors.md"]
+#[ignore = "needs a TES server and S3 bucket accessible to both client and worker"]
 fn transfers_s3_outputs() {
     use config_file::ConfigFile;
     use content_store::Store;

@@ -45,7 +45,6 @@ pub fn per_container(measured: &[Measured]) -> usize {
 
 /// Lowers requested resources to measured usage with margins, without exceeding requests.
 /// Unspecified memory stays unlimited; memory has a [`LEAST_MEMORY`] floor.
-/// See `docs/design/efficiency.md`, section 1, for input scaling and CPU margins.
 pub fn right_sized(
     asked: &Placement,
     input_bytes: Option<u64>,

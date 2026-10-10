@@ -23,6 +23,5 @@ functions (`__definitions__`) and variables (`__variables__`).
 Python packages without a stand-in (decision 19): they run in one Python process, which
 the embedder starts, for example in a container. The interpreter sends each use of a
 package object to the process as one request line, and gets one reply line. Objects of the
-packages stay in the process as handles; plain values come back as values. The design is
-in `docs/design/snakemake/python-packages.md`.
+packages stay in the process as handles; plain values come back as values.
 

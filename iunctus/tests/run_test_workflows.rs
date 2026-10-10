@@ -19,7 +19,7 @@ mod targets;
 const EVIDENCE: &str = include_str!("fixtures/run_evidence.txt");
 
 /// Parses pipeline names, typed reasons and Nextflow evidence from record blocks.
-/// Panics on missing reasons or evidence; docs/support.md describes the format.
+/// Panics on missing reasons or evidence.
 fn reasons(text: &str) -> BTreeMap<&str, &str> {
     let mut reasons = BTreeMap::new();
     for block in text.split("\n\n") {

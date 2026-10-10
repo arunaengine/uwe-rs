@@ -9,7 +9,7 @@
 nf-validation 1.1.3, the plugin that nf-schema replaced: parameter validation, summaries
 and help from a JSON schema of draft-07 with `definitions`, and `fromSamplesheet`. Older
 nf-core pipelines use it, and Nextflow 26.04.6 still runs it with the legacy parser
-([decisions](../docs/decisions.md), item 14). It shares the JSON helpers of
+(decision 14). It shares the JSON helpers of
 `crate::nf_schema`.
 
 ## src/everit.rs:97

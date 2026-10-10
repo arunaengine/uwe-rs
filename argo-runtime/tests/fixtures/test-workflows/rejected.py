@@ -21,7 +21,7 @@ HEADER = """\
 # the same way, or accepts a workflow that would wait forever in Argo. The kind is `invalid`
 # (the workflow itself is broken), `missing` (it needs a WorkflowTemplate that is in no
 # repository of the test workflows), or `unsupported (decision N)` (iunctus leaves the feature
-# out on purpose, as decision N of docs/decisions.md says).
+# out on purpose, as decision N says).
 # argo lint ran on a copy of the document and of the WorkflowTemplates it calls, without
 # namespaces, the called templates only, and with values for the inputs of a Workflow's
 # entrypoint, as `argo submit -p` gives them."""

@@ -1,5 +1,5 @@
 //! Nextflow config files: evaluates them into one tree of settings, with includes, profiles
-//! and params, following the rules of `docs/research/nextflow-config.md`.
+//! and params.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -9,7 +9,7 @@
 Stand-ins for `org.json` (`JSONObject`, `JSONArray`, `JSONTokener`) and the everit JSON
 schema validator (`SchemaLoader`, `Schema`, `ValidationException`). Nextflow releases
 before 24 shipped both, and the `lib/` classes of older nf-core pipelines use them
-([decisions](../docs/decisions.md), item 14). The host validates, as the
+(decision 14). The host validates, as the
 evaluator has no JSON schema validator of its own.
 
 ## src/lower/mod.rs:59

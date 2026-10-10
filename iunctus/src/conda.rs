@@ -1,5 +1,5 @@
 //! `iunctus lock-environment <file>`: offline locks or configured cached HTTPS acquisition
-//! for an explicit container target. See docs/design/conda.md.
+//! for an explicit container target.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -450,10 +450,10 @@ See [embedding contracts](../design/embedding.md).
   partial comparisons and no full rerun after the UUID fix. Nanoseq has no complete
   reference comparison; viralrecon completed with altered database parameters but
   no file-by-file comparison. Taxprofiler was not run. Treat these as unqualified.
-- **Snakemake counts check planning.** Recorded simulation succeeds for 640 of
+- **Snakemake counts check planning.** Recorded simulation succeeds for 639 of
   892 test workflows. Of 531 real Snakemake dry-run tables, 494 match job counts
   and 37 have [documented differences](../../snakemake-runtime/tests/fixtures/job_differences.txt).
-  Another 109 successful simulations have no comparable table. Groups, checkpoints,
+  Another 108 successful simulations have no comparable table. Groups, checkpoints,
   top-level commands and dynamic replanning explain count differences.
   These numbers do not compare real tool outputs; validate your workflow's results.
 - **CWL conformance is simulated.** The

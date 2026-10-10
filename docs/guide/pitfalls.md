@@ -156,6 +156,12 @@ See [Nextflow usage](nextflow.md) and the
   commands run uncached in a local container, even with remote rule execution.
   They mount the workflow folder writable and use the global or default image.
   Provide that engine and image. Simulations skip hook commands.
+- **Error hooks can delay shutdown indefinitely.** Snakemake `onerror` commands
+  receive a fresh token in [commands.rs](../../snakemake-runtime/src/commands.rs),
+  and [hooks.rs](../../snakemake-runtime/src/hooks.rs) supplies no task deadline.
+  Cancelling the run therefore does not stop an error hook that never exits.
+  Use finite cleanup commands. A separate hook cancellation or deadline policy
+  is needed; an arbitrary timeout could interrupt valid cleanup.
 - **Shadow paths are constrained.** Minimal shadow stages declared inputs and
   task code; shallow shadow links top-level entries. A shallow output under an
   existing directory link would escape scratch and is refused. Use full shadow

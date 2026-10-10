@@ -62,13 +62,16 @@ The [support matrix](../support.md) and recorded results describe qualification.
 - **Language features can be refused.** DSL1, Groovy class inheritance and typed
   process sections are unavailable. The native evaluator implements a subset.
   Use DSL2 and untyped process inputs and outputs, or run the original engine.
-- **Unsupported process behavior fails.** Active `storeDir`, `secret`, and
-  nonempty `beforeScript` or `afterScript` are refused. Their effects cannot be
-  preserved by the current task path. Put setup and cleanup inside the container
-  script; replace `storeDir` with supported publishing and native cache reuse.
-- **Nextflow Conda and Spack are unavailable.** Enabled environment directives
-  are refused because this preparation path is not implemented. Inactive
-  declarations do not prepare software. Supply a complete container image.
+- **Some process settings have limits.** `beforeScript` and `afterScript` run
+  inside the task container. `storeDir` skips a task when its outputs already
+  exist and copies new outputs there, but not together with `afterScript`.
+  Secrets come from Nextflow's local secret store or environment references;
+  cache keys record only their names, and remote executors cannot receive them.
+  `containerOptions` maps CPU, GPU, shared memory, swap and environment flags;
+  mounts, devices and privileged flags are refused.
+- **Conda becomes an image; Spack is unavailable.** With `conda.enabled`, YAML
+  files and inline package lists are built into container images like Snakemake
+  environments. Named host environments and Spack are refused.
 - **Backend settings belong to iunctus.** Nextflow scheduling hints do not select
   an iunctus executor or cluster placement. Backend selection is separate from
   process configuration. Use `-executor` and the iunctus executor settings.
@@ -76,11 +79,10 @@ The [support matrix](../support.md) and recorded results describe qualification.
   sections inside a workflow are refused by lowering. The existing
   `workflow.onComplete { ... }` and `workflow.onError { ... }` callbacks are
   supported. Use those callbacks with supported native code.
-- **Hash sorting stops multi-item collections.** `collectFile` defaults to hash
-  sorting; explicit hash or deep sorting also affects `groupTuple`. Native
-  CacheHelper ordering is unavailable when two or more items need sorting.
-  Choose natural ordering, a supported closure, or an order-free option whose
-  meaning fits the workflow. Empty and singleton collections do not need sorting.
+- **Hash sorting covers common values.** `collectFile` and `groupTuple` hash
+  ordering matches Nextflow for strings, numbers, booleans, lists, maps and local
+  paths. Other value types and remote file hashes are refused when two or more
+  items need ordering.
 - **Completion order changes results built from arrival order.** Operators such
   as `distinct()` depend on arrival order; it only removes adjacent duplicates.
   Recorded methylseq metadata repeats identical version blocks in a different

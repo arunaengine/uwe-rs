@@ -867,6 +867,19 @@ async fn preserves_changed_identity() {
             .is_err()
     );
     let journal = active.scratch.join("original/remote.json");
+    let lock = std::fs::File::options()
+        .write(true)
+        .open(active.scratch.join("original/remote.lock"))
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while lock.try_lock().is_err() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    lock.unlock().unwrap();
+    drop(lock);
     let bytes = std::fs::read(&journal).unwrap();
     let mut next = spec.clone();
     next.arguments = vec!["sh".into(), "-c".into(), "exit 0".into()];

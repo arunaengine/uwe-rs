@@ -104,7 +104,7 @@ pub(crate) fn finished_spans(
             || !detail
                 .attempts
                 .last()
-                .is_some_and(|attempt| attempt.accepted.is_some()))
+                .is_some_and(|attempt| attempt.accepted == Some(true)))
     {
         return Ok(Vec::new());
     }
@@ -467,8 +467,14 @@ mod tests {
         committed
             .recv_timeout(std::time::Duration::from_secs(2))
             .unwrap();
+        assert!(
+            database
+                .snapshot(|database| finished_spans(database, "validation", 1, false))
+                .unwrap()
+                .is_empty()
+        );
         let spans = database
-            .snapshot(|database| finished_spans(database, "validation", 1, false))
+            .snapshot(|database| finished_spans(database, "validation", 1, true))
             .unwrap();
         assert_eq!(spans.len(), 2);
         assert_eq!(spans[0].status.code, ERROR);
@@ -479,7 +485,28 @@ mod tests {
                 .any(|event| event.name == "validated")
         );
         assert!(finished_run(&database, "validation").unwrap().is_none());
-        recorder.ended(Some("output validation failed"));
+        recorder.requested(&task, &[]);
+        recorder.started(task.id, 2);
+        recorder.finished(
+            &Outcome {
+                id: task.id,
+                ..Outcome::default()
+            },
+            2,
+            false,
+        );
+        recorder.validated(task.id, 2, true);
+        committed
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        let spans = database
+            .snapshot(|database| finished_spans(database, "validation", 1, false))
+            .unwrap();
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].status.code, OK);
+        assert_eq!(spans[1].status.code, OK);
+        assert_eq!(spans[2].status.code, OK);
+        recorder.ended(None);
         recorder.close().unwrap();
     }
 

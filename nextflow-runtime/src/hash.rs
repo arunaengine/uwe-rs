@@ -190,12 +190,10 @@ mod tests {
         let Value::Map(map) = &value else {
             unreachable!()
         };
-        map.borrow_mut()
-            .entries
-            .insert(
-                nextflow_evaluator::value::Key(Value::string("self")),
-                value.clone(),
-            );
+        map.borrow_mut().entries.insert(
+            nextflow_evaluator::value::Key(Value::string("self")),
+            value.clone(),
+        );
         assert!(matches!(
             key(&value, &mut Silent, false),
             Err(Error::Unsupported { .. })

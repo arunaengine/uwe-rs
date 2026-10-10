@@ -306,14 +306,6 @@ $ cwltool --no-container realworld/collections/github.com__kids-first__kf-somati
 > ERROR Workflow error, try again with --debug for more information:
 > Missing required secondary file 'calls.vcf.tbi' from file object: {
 
-conformance/v1.1/tests/inpdir_update_wf.cwl
-conformance/v1.1/tests/updatedir_inplace.cwl
-conformance/v1.2/tests/inpdir_update_wf.cwl
-conformance/v1.2/tests/updatedir_inplace.cwl
-= unsupported (decision 2): in-place Directory updates are not supported, as recorded in docs/support.md
-$ cwltool --validate --skip-schemas conformance/v1.2/tests/updatedir_inplace.cwl
-> conformance/v1.2/tests/updatedir_inplace.cwl is valid CWL.
-
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/variation_PE.cwl
 = invalid: the snpsift_extract tool gives its string[]? input extractFields a string default
 $ cwltool --no-container realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/snpSift_extract.cwl <job>

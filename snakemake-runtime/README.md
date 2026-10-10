@@ -50,8 +50,7 @@ gives scripts, wrappers and notebooks a `snakemake` object with the job's input,
 params, wildcards, threads, resources, log, config and rule, through a preamble in each
 language, and it runs `run:` blocks as functions with these names and the Snakefile's
 globals. iunctus builds the same preambles while it plans the job, so that the code runs
-unchanged in the task's container (decision 11); the design is in
-docs/design/snakemake/embedded-code.md.
+unchanged in the task's container (decision 11).
 
 ## src/embedded/python.rs
 
@@ -83,8 +82,7 @@ script, whose other files scripts import or source.
 
 The stand-in of the snakemake package that iunctus gives the code of jobs in their
 containers: the `snakemake` object of scripts, wrappers and notebooks, `shell()`, and the
-helpers that such code imports from snakemake. See
-docs/design/snakemake/embedded-code.md. It needs only the Python standard library, and runs
+helpers that such code imports from snakemake. It needs only the Python standard library, and runs
 with Python 3.7 or later, as the scripts of Snakemake 9.27 do.
 
 ## src/embedded/wrapper.rs

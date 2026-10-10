@@ -426,7 +426,7 @@ CASES = [
     },
     {
         "kind": "unsupported (decision 2)",
-        "why": "in-place Directory updates are not supported, as recorded in docs/support.md",
+        "why": "in-place Directory updates are not supported",
         "validate": "conformance/v1.2/tests/updatedir_inplace.cwl",
         "documents": [
             "conformance/v1.1/tests/inpdir_update_wf.cwl",

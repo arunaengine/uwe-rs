@@ -25,7 +25,7 @@ pub struct Place<'a> {
 }
 
 /// An executor that runs tasks on the TES server of `place`, or on the server of the site that
-/// is near most of their inputs (`docs/design/efficiency.md`, section 3). Tasks without an
+/// is near most of their inputs. Tasks without an
 /// image get `default_image`.
 pub fn executor(
     store: Store,

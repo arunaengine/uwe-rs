@@ -1,4 +1,4 @@
-# Sources of the Argo test workflows (docs/research/argo-workflows.md, Q6), looked up on 2026-09-28:
+# Sources of the Argo test workflows, looked up on 2026-09-28:
 # GitHub repository, branch or tag, commit, and sparse patterns. A pattern ending in `/` takes
 # the YAML and JSON files below that folder, a pattern starting with `!` leaves files out, and
 # without patterns the YAML and JSON files of the whole repository are taken. `just argo-test-workflows`

@@ -269,7 +269,7 @@ fn tes_tasks(server: &str) -> usize {
 }
 
 /// Counts tasks routed near inputs across two local Funnel servers.
-/// Run with `--test-threads 1`; server setup is in docs/support.md.
+/// Run with `--test-threads 1`.
 #[test]
 #[ignore = "needs two Funnel servers, at ports 18000 and 18001, Docker and debian:stable-slim"]
 fn routes_near_inputs() {

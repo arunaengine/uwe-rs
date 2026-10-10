@@ -38,7 +38,7 @@ JOBS = 4
 # own, and the sentence says whether the pipeline, its stubs or its test profile are the
 # cause) unless the case gives `kind`: `missing` (it needs something that is not public or not
 # in its repository) or `unsupported (decision N)` (iunctus leaves the feature out on purpose,
-# as decision N of docs/decisions.md says). A case may give `release` for the Nextflow release
+# as decision N says). A case may give `release` for the Nextflow release
 # that the pipeline names, whose meaning iunctus keeps (decision 14), `parser: "v2"` for the
 # strict parser (the legacy parser is the default, as iunctus accepts legacy syntax), `jars:
 # True` to put the old Java libraries into `lib/`, `args` for more arguments of the run, where

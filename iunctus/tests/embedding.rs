@@ -21,6 +21,29 @@ fn request(root: &std::path::Path) -> RunRequest {
 }
 
 #[tokio::test]
+async fn forwards_cwl_image() {
+    let root = tempfile::tempdir().unwrap();
+    for declared in [None, Some("declared:tag")] {
+        let mut request = request(root.path());
+        request.settings.default_image = Some("chosen:tag".into());
+        if let Some(image) = declared {
+            let target = &request.settings.target;
+            let text = std::fs::read_to_string(target).unwrap().replace(
+                "inputs:\n",
+                &format!("requirements:\n  DockerRequirement:\n    dockerPull: {image}\ninputs:\n"),
+            );
+            std::fs::write(target, text).unwrap();
+        }
+        let run = request.run().await.unwrap();
+        assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+        assert_eq!(
+            run.execution.graph.nodes[0].task.image.as_deref(),
+            Some(declared.unwrap_or("chosen:tag"))
+        );
+    }
+}
+
+#[tokio::test]
 async fn defaults_to_local() {
     let root = tempfile::tempdir().unwrap();
     let mut request = request(root.path());

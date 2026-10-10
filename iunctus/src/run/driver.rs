@@ -94,6 +94,8 @@ pub(crate) fn driver(
             let downloads = cache_directory().join("downloads");
             let options = cwl_runtime::Options {
                 javascript: cwl_runtime::JavaScriptSettings::new(setup.engine(), cancel.clone()),
+                local_engine: (arguments.executor.as_deref().unwrap_or("local") == "local")
+                    .then(|| setup.engine()),
                 ..cwl_runtime::Options::default()
             };
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)

@@ -15,7 +15,7 @@ This heading does not change the current binary version, which remains 0.1.0.
 - Run pinned hosted repositories and retain their resolved revisions for repeats.
 - Support subscription error callbacks, debug/echo directives, UUID values and nested null channels.
 - Stage tracked project helpers for container tasks.
-- Read local secrets and inject named secrets into local task containers; refuse unsupported directives and unsafe publishing options.
+- Inject named task secrets from the local store or environment references; refuse secret values in workflow expressions, unsupported directives and unsafe publishing options.
 - Improve YAML output and resource validation.
 
 ### Snakemake

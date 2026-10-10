@@ -71,7 +71,8 @@ Nextflow plugins. Read the full [support matrix](../support.md#workflow-language
 existing outputs and copies new outputs, but cannot be combined with `afterScript`.
 `maxForks` limits process tasks. Local `containerOptions` support environment,
 CPU, GPU, shared memory and swap flags. Named secrets can be injected into local
-tasks. Scheduling hints do not choose the iunctus executor or placement.
+tasks. Reads of existing `secrets.NAME` values in workflow expressions are refused;
+missing secrets remain null. Scheduling hints do not choose executor or placement.
 Active unsupported settings, including `module`, `arch` and non-copy
 `stageOutMode`, fail with exit code 33.
 `publishDir` publishes `move` outputs as copies and refuses `failOnError: false`

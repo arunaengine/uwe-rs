@@ -54,17 +54,17 @@ fn load_text(text: &str) -> Result<Config, ConfigError> {
 }
 
 #[test]
-fn loads_secret_reads() {
+fn rejects_secret_values() {
     for read in [
         "secrets.TOKEN",
         "secrets['TOKEN']",
         "secrets.getProperty('TOKEN')",
+        "secrets.getAt('TOKEN')",
     ] {
-        let config = load_text(&format!("\nparams.token = {read}\n")).unwrap();
-        assert_eq!(
-            config.get(&["params", "token"]).unwrap().to_string(),
-            "fixture"
-        );
+        let error = load_text(&format!("\nparams.token = {read}\n")).unwrap_err();
+        assert!(error.unsupported());
+        assert!(error.to_string().contains("process `secret` directive"));
+        assert!(!error.to_string().contains("fixture"));
     }
 }
 
@@ -111,16 +111,14 @@ fn skips_inactive_secrets() {
         "profiles { production { env.TOKEN = secrets.TOKEN } }\n",
     )
     .unwrap();
-    let config = load(
+    let error = load(
         &[main],
         &options(directory.path(), &["production"], Value::map([])),
         &mut Quiet,
     )
-    .unwrap();
-    assert_eq!(
-        config.get(&["env", "TOKEN"]).unwrap().to_string(),
-        "fixture"
-    );
+    .unwrap_err();
+    assert!(error.unsupported());
+    assert!(!error.to_string().contains("fixture"));
 }
 
 #[test]

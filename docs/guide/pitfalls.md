@@ -395,10 +395,12 @@ See [storage settings](storage.md) and [cleanup details](troubleshooting.md#clea
   a token, generated if none is configured. Keep the complete printed URL private
   and set `[page] token` for stable access. It is access control, not tenant isolation.
   The page uses HTTP. Use a private network or HTTPS proxy for remote access.
-- **Secrets are not workflow values.** Nextflow `secrets` reads and required
-  CWL secret extensions are unsupported. Plain parameters and task logs can be
-  recorded. Use configuration environment references for supported service
-  credentials, and keep sensitive values out of parameters, scripts and logs.
+- **Secrets must stay outside workflow values.** Use the Nextflow process
+  `secret` directive for local task injection. Reads of existing secrets through
+  workflow expressions are refused in [access.rs](../../nextflow-evaluator/src/interpreter/access.rs):
+  ordinary values enter task records and cache identity. Missing secrets remain null.
+  Required CWL secret extensions are unsupported. Keep sensitive values out of
+  parameters, scripts and logs; use environment references for service credentials.
 - **Registry login can depend on unavailable helpers.** Docker or Podman login
   may store credentials only through `credsStore` or `credHelpers`.
   iunctus never runs those programs. Configure direct `[registry."HOST"]`

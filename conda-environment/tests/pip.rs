@@ -210,6 +210,19 @@ fn rejects_unsupported_inputs() {
 }
 
 #[test]
+fn redacts_requirement_credentials() {
+    for text in [
+        "alpha @ https://user:private-value@example.org/a.whl",
+        "alpha @ https://user:private-value@example.org/archive",
+        "--index-url https://user:private-value@example.org",
+        "https://user:private-value@example.org",
+    ] {
+        let error = validate_pip(&[text.into()]).unwrap_err().to_string();
+        assert!(!error.contains("private-value"), "{error}");
+    }
+}
+
+#[test]
 fn checks_target_compatibility() {
     let index = Index::new();
     for (version, tag) in [

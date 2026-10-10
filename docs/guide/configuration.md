@@ -112,10 +112,11 @@ is not needed. Its parser is [iunctus/conda.rs](../../iunctus/src/conda.rs).
 | `base` | string image reference | required | `"registry.example.org/base@sha256:MANIFEST_DIGEST"`; use a real platform manifest digest. |
 | `platform` | string OCI platform | required | `"linux/amd64"`; target container platform. |
 | `installer` | string | required, must be `"micromamba"` | `"micromamba"`; Conda-only bases must already provide it. |
-| `offline` | boolean | `true` | `false`; permit cached HTTPS acquisition of metadata and packages. |
+| `offline` | boolean | `false` | `true`; use only cached metadata and packages. `-no-network` or `network.default = "none"` also forces offline acquisition. |
 | `capabilities` | absolute string path | required | `"/srv/conda/target.json"`; exact base/platform and virtual packages. |
 | `repodata` | absolute string path | required | `"/srv/conda/repodata"`; prepared JSON and downloaded metadata cache. |
 | `packages` | absolute string path | required | `"/srv/conda/packages"`; verified package bytes indexed by SHA-256. |
+| `registry` | string repository reference | none | `"registry.example.org/team/conda"`; required for remote Conda tasks. A local engine builds and pushes the image, and workers receive its manifest digest. |
 
 The capabilities file has this shape. Replace the placeholders with data for
 the pinned target. An empty package list asserts that no virtual packages exist:

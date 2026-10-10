@@ -14,7 +14,7 @@ This is a development release. Implemented features and passing local checks do 
 
 - The default executor needs Docker or Podman. `-executor simulator` makes up outputs and can publish them; use separate folders and verify real results.
 - Language support is a native subset. Nextflow work and resume layouts, Python package boundaries and Argo cluster controls differ from the original engines.
-- Conda prepares local container images. Remote preparation and editable, local or VCS pip requirements are unsupported.
+- Conda prepares container images for local execution and publishes them for remote executors. Editable, local or VCS pip requirements are unsupported.
 - Published links can depend on retained store data. Cache contents and engine images grow; preview retention before removing results.
 - Real qualification is selective. Large pipeline comparisons, real CWL conformance, rootless engines and current SLURM/Kubernetes qualification remain incomplete.
 

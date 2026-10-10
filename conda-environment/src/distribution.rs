@@ -240,7 +240,10 @@ fn archive_metadata(bytes: &[u8], file: &str) -> Result<(Vec<u8>, Option<Vec<u8>
             let mut entry = archive
                 .by_index(index)
                 .map_err(|error| PipError::Metadata(error.to_string()))?;
-            let name = entry.name().to_owned();
+            let name = entry
+                .name()
+                .map_err(|error| PipError::Metadata(error.to_string()))?
+                .into_owned();
             let parts: Vec<_> = name.split('/').collect();
             if parts.len() == 2
                 && ((file.ends_with(".whl")

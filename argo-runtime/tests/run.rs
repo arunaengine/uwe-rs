@@ -507,7 +507,6 @@ fn failure_preserves_branches() {
     };
     // Argo admits ready dependencies before assessing DAG failure; `-keep-going` disables
     // default fail-fast.
-    // See `docs/design/argo/runtime.md` for the full contract.
     for keep_going in [false, true] {
         let ran = run_with(&workflow(dag), failing(keep_going));
         assert_eq!(ran.names(), ["a", "b", "c"]);

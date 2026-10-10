@@ -79,7 +79,6 @@ impl crate::Backend for LocalContainer {
 
     /// Runs a task in `<scratch>/<name>`, a name that must not be in use: stages its inputs,
     /// runs the wrapper in the task's image as the current user, and reads the control files.
-    /// See `docs/design/engine.md` for the full contract.
     async fn run(
         &self,
         job: Job<'_>,
@@ -259,7 +258,6 @@ impl ContainerRun<'_> {
 
     /// Maps scratch, workdir and input mounts into the container, including workdir
     /// replacements.
-    /// See `docs/design/engine.md` for the full contract.
     pub fn binds(&self) -> Vec<Mount> {
         let inside = self.inside();
         let mounts: Vec<Mount> = (self.mounts.iter())
@@ -502,7 +500,6 @@ impl LocalContainer {
 
     /// Runs a task of several containers: one container of the engine for each image, all at
     /// once, on the same scratch directory and mounts, within the share of the task.
-    /// See `docs/design/engine.md` for the full contract.
     async fn contain_several(
         &self,
         job: Job<'_>,
@@ -638,7 +635,6 @@ impl LocalContainer {
 
     /// Returns scratch outputs to `user` with a restricted root helper when the wrapper could
     /// not.
-    /// See `docs/design/engine.md` for the full contract.
     async fn hand_back(
         &self,
         access: &Access,
@@ -723,7 +719,6 @@ impl LocalContainer {
 
     /// Runs a container to its end: creates it, attaches to its output before it starts, and
     /// reads the output until the wrapper says that it ended.
-    /// See `docs/design/engine.md` for the full contract.
     async fn run_to_end(
         &self,
         run: &ContainerRun<'_>,
@@ -882,7 +877,6 @@ impl LocalContainer {
     }
 
     /// What a container left behind.
-    /// See `docs/design/engine.md` for the full contract.
     async fn finish(
         &self,
         ending: Ending,

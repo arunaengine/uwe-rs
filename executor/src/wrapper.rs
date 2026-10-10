@@ -47,12 +47,10 @@ pub struct Folders<'a> {
     pub outbox: &'a str,
     /// The user and group, like `1000:100`, that get what the task made in the folder of the
     /// control folder at the end, for a container that may run as another user; empty for none.
-    /// See `docs/design/engine.md` for the full contract.
     pub owner: &'a str,
 }
 
 /// The wrapper for a task in the given folders.
-/// See `docs/design/engine.md` for the full contract.
 pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
     if spec.validate().is_err() {
         return invalid_specification();
@@ -157,7 +155,6 @@ pub(crate) fn hand_back(owner: &str, folder: &str) -> String {
 }
 
 /// Runs a command so that a stop reaches it, and sets `status` to its exit code.
-/// See `docs/design/engine.md` for the full contract.
 pub fn stoppable(command: &str) -> String {
     format!(
         "exec 3<&0\n<&3 3<&- {command} &\npid=$!\n\
@@ -176,7 +173,6 @@ fi
 
 /// Records CPU, peak memory, block I/O and memory kills from the private cgroup using shell
 /// builtins.
-/// See `docs/design/engine.md` for the full contract.
 pub(crate) const USAGE_SCRIPT: &str = r#"cgroup=/sys/fs/cgroup
 if [ -r "$cgroup/memory.peak" ]; then
     {
@@ -211,7 +207,6 @@ fi
 
 /// Adds each file and directory that a pattern matches to the manifest, as `file <path>` or
 /// `directory <path>`, without a process per file.
-/// See `docs/design/engine.md` for the full contract.
 pub(crate) const COLLECT: &str = r#"if [ -n "${BASH_VERSION:-}" ]; then
     shopt -s globstar nullglob dotglob
 fi

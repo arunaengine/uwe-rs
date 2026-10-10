@@ -638,7 +638,6 @@ fn take_lines(buffer: &mut Vec<u8>) -> Vec<String> {
 
 /// Creates a helper without capabilities or privilege escalation; core dumps cannot fill the journal.
 /// Rootless container root maps to the invoking user.
-/// See `docs/design/engine.md` for the full contract.
 fn create(spec: &ContainerSpec, engine: &ContainerEngine, remove: bool) -> ContainerCreateBody {
     let binds = (spec.mounts.iter())
         .map(|mount| {

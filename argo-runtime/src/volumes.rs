@@ -248,7 +248,6 @@ impl Run {
                     };
                     // Volume files are writable copies committed on task completion; mounted
                     // host paths stay read-only.
-                    // See `docs/design/argo/runtime.md` for the full contract.
                     let writable = match read_only || host_input {
                         true => workflow_graph::Writable::No,
                         false => workflow_graph::Writable::Copy,

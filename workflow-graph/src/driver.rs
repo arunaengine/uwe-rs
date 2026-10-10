@@ -40,15 +40,12 @@ pub struct Launch {
     pub scratch: PathBuf,
     /// Selects language result destinations from `-output-dir`, retaining each language
     /// default.
-    /// See `docs/design/graph.md` for the full contract.
     pub output_dir: Option<PathBuf>,
     /// Run the stubs of tasks instead of their scripts, where the language has stubs.
     pub stub: bool,
     /// Whether the run is simulated: tasks make up their files (decision 21).
-    /// See `docs/design/graph.md` for the full contract.
     pub simulated: bool,
     /// Continues independent tasks after failure when enabled; the final run still fails.
-    /// See `docs/design/graph.md` for the full contract.
     pub keep_going: bool,
 }
 
@@ -112,7 +109,6 @@ pub trait Driver {
 
     /// Consumes explicit output-validation acceptance for exactly this task and attempt after
     /// [`Driver::complete`].
-    /// See `docs/design/graph.md` for the full contract.
     fn take_acceptance(&mut self, _task: TaskId, _attempt: u32) -> bool {
         false
     }
@@ -169,7 +165,6 @@ pub trait Driver {
     }
 
     /// The files that the tasks make, where the executor keeps them.
-    /// See `docs/design/graph.md` for the full contract.
     fn use_files(&mut self, _files: Arc<dyn Files>) {}
 
     /// Supplies cancellation to drivers that evaluate code while planning.
@@ -184,7 +179,6 @@ pub trait Driver {
 
     /// During draining, running tasks finish and report outcomes, while all new admissions
     /// stop.
-    /// See `docs/design/graph.md` for the full contract.
     fn draining(&self) -> bool {
         false
     }

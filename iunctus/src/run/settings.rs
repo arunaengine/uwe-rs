@@ -14,7 +14,6 @@ use crate::setup::{Defaults, Setup};
 
 /// Configure with `new` or `default`, then assign the fields needed by the host.
 /// Executor credentials and backend configuration belong in `setup`.
-/// See docs/design/embedding.md for typed inputs and cancellation ownership.
 #[non_exhaustive]
 pub struct Settings {
     pub target: PathBuf,

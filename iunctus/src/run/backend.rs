@@ -135,7 +135,6 @@ pub(crate) fn offline_possible(arguments: &Arguments, setup: &Setup) -> Result<(
 
 /// Builds the executor selected by `-executor`, defaulting to local containers.
 /// Without `reuse`, real executors bypass cached results, including during replay.
-/// See docs/design/executors.md for backends and scratch paths.
 pub(crate) fn executor(
     arguments: &Arguments,
     setup: &Setup,

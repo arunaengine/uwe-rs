@@ -26,7 +26,6 @@ impl Lookup {
 
     /// The outcome that a real run would take from the cache for a task whose image is pinned
     /// to `image`, with the stored files.
-    /// See `docs/design/cache.md` for the full contract.
     pub async fn find(
         &self,
         task: &Task,

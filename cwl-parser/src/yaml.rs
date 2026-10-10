@@ -18,7 +18,6 @@ const QUOTED_INDENTATION: &str = "invalid indentation in multiline quoted scalar
 const LONE_DASH: &str = "plain scalar cannot start with '-'";
 
 /// Reads the first document of a YAML stream, resolving scalars with the YAML 1.2 core schema.
-/// See `docs/research/cwl.md` for the full contract.
 pub fn read(text: &str, file: &Arc<str>) -> Result<Node, Error> {
     let mut text = std::borrow::Cow::Borrowed(text);
     for _ in 0..256 {

@@ -559,7 +559,6 @@ impl Run {
 
     /// Selects user and group from container, template, then workflow securityContext; missing
     /// IDs defer to the image.
-    /// See `docs/design/argo/runtime.md` for the full contract.
     fn run_as(&self, template: &Template, container: Option<&Container>) -> RunAs {
         let contexts = [
             container.and_then(|container| container.security_context.as_ref()),

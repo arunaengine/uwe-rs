@@ -18,7 +18,6 @@ pub struct Variables<'a> {
 }
 
 /// Evaluates the expressions of one process.
-/// See `docs/research/cwl.md` for the full contract.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Evaluator {
     /// The `expressionLib` of `InlineJavascriptRequirement`; `None` when the requirement is

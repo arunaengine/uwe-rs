@@ -52,6 +52,5 @@ pub trait Backend: Send + Sync + 'static {
 
     /// Starts no attempt that waits for its turn on this machine, as a run that ends after a
     /// failure starts no more tasks; an attempt that waits ends as cancelled.
-    /// See `docs/design/engine.md` for the full contract.
     fn hold(&self) {}
 }

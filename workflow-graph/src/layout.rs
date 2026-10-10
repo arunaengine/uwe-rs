@@ -73,7 +73,6 @@ pub struct Graph {
     pub edges: Vec<(usize, usize)>,
     /// Nodes that sit beside another node instead of in a layer of their own, as pairs of the
     /// node and the one it sits beside.
-    /// See `docs/design/graph.md` for the full contract.
     pub beside: Vec<(usize, usize)>,
     pub direction: Direction,
 }

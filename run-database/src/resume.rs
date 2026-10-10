@@ -50,7 +50,6 @@ impl Database {
 
     /// The outcomes of the tasks that succeeded in the given runs, by fingerprint; for a
     /// fingerprint in several runs, the run that comes first in the list wins.
-    /// See `docs/design/runs.md` for the full contract.
     pub fn reusable(&self, runs: &[String]) -> Result<HashMap<String, Reusable>, DatabaseError> {
         let mut reusable = HashMap::new();
         for run in runs {

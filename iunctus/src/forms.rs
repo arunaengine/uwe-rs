@@ -123,7 +123,6 @@ impl Form {
 
     /// JSON with effective values and defaults as annotations, for authorized renderers.
     /// Remote bytes, access and immutable versions remain unchecked during validation.
-    /// See docs/design/embedding.md for disclosure and remote-content boundaries.
     pub fn json(&self) -> Value {
         serde_json::to_value(self.response()).expect("form responses serialize")
     }

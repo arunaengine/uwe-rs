@@ -200,7 +200,6 @@ impl Run {
 
     /// The phase of a DAG, as Argo's `assessDAGPhase` finds it: running while any of its nodes,
     /// hooks included, runs; then by the branch phases of its target tasks.
-    /// See `docs/design/argo/runtime.md` for the full contract.
     fn assess_dag(
         &self,
         index: usize,

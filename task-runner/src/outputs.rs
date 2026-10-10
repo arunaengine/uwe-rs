@@ -22,7 +22,6 @@ const KEPT_FROM: u64 = 1 << 20;
 
 /// Stores the outputs of a finished attempt of `task` in the run `run`, and its captured
 /// streams by their content.
-/// See `docs/design/cache.md` for the full contract.
 pub(crate) async fn store_outputs(
     store: &Store,
     run: &str,

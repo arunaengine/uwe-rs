@@ -192,7 +192,6 @@ fn network(config: &ConfigFile) -> Result<NetworkRule, ConfigError> {
 }
 
 /// Config defaults applied before command options, cache and network setup.
-/// See docs/design/embedding.md for executor, cache, proxy and report precedence.
 #[derive(Debug, Default, PartialEq)]
 pub struct Defaults {
     pub executor: Option<String>,
@@ -341,7 +340,6 @@ impl Setup {
 
     /// Names the task engine for Nextflow metadata and config scope selection.
     /// Uses the SLURM runtime or this machine's Docker/Podman engine.
-    /// See docs/design/executors.md for socket and runtime selection.
     pub fn engine_kind(&self, arguments: &Arguments) -> String {
         engine_kind(
             arguments.executor.as_deref(),

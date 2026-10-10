@@ -73,7 +73,6 @@ impl Journal {
 
 /// Reads cached digest, size and version while the copy is unchanged; recorded addresses hide
 /// passwords.
-/// See `docs/design/storage.md` for the full contract.
 pub(crate) async fn described(address: &str, copy: &Path) -> Result<Fetched, StorageError> {
     let (address, copy) = (redacted(address), copy.to_owned());
     let described = tokio::task::spawn_blocking(move || {

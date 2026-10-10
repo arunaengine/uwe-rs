@@ -629,7 +629,6 @@ async fn finish(
 
 /// Combines wrapper and container or job status into a task exit code; machine failures return
 /// `Err`.
-/// See `docs/design/engine.md` for the full contract.
 fn outcome(
     recorded: Option<i32>,
     ended: &Ended,

@@ -118,7 +118,6 @@ const STOP_GRACE: u64 = 10;
 
 /// Waits for the complete wrapper, runs the task container, syncs outputs and records its exit
 /// code.
-/// See `docs/design/engine.md` for the full contract.
 pub fn job_script(
     container: &Container,
     run: &ContainerRun<'_>,
@@ -147,7 +146,6 @@ pub fn job_script(
 
 /// Runs image groups concurrently and records the first failure, preserving dependency exit
 /// markers.
-/// See `docs/design/engine.md` for the full contract.
 pub fn container_script(
     container: &Container,
     runs: &[ContainerRun<'_>],
@@ -191,7 +189,6 @@ pub const NOT_SEEN: i32 = 125;
 const SEEN_GRACE: u64 = 60;
 
 /// The lines that wait until the node sees each file at its length in bytes.
-/// See `docs/design/engine.md` for the full contract.
 fn wait_for(files: &[(PathBuf, u64)], exit: &str) -> String {
     let checks: Vec<String> = (files.iter())
         .map(|(path, size)| format!("seen {} {size}", quote(&path.to_string_lossy())))
@@ -257,7 +254,6 @@ fn command(container: &Container, run: &ContainerRun<'_>, gpus: bool) -> Vec<Str
 
 /// The command of Apptainer: a container with its own `/tmp`, home and environment, which sees
 /// the scratch directory at the same path, the work directory, and the other mounts.
-/// See `docs/design/engine.md` for the full contract.
 fn apptainer(program: &str, run: &ContainerRun<'_>, gpus: bool) -> Vec<String> {
     let start = match run.access.run_as {
         Some(_) => run.start().unwrap_or_else(|| "/".to_owned()),

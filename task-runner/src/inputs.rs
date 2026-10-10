@@ -250,7 +250,6 @@ impl Inputs<'_> {
 
     /// Materializes shared-only inputs into the local store for runs; cache lookups download
     /// nothing.
-    /// See `docs/design/cache.md` for the full contract.
     async fn taken_into_folder(&self, input: &Input) -> Result<Option<Input>, RunnerError> {
         let shared = self.store.shared().is_some() && input.writable != Writable::InPlace;
         let decoded = input
@@ -293,7 +292,6 @@ impl Inputs<'_> {
 
     /// An input by its digest, and where its content comes from: literal content, a local
     /// directory or a local file.
-    /// See `docs/design/cache.md` for the full contract.
     pub(crate) async fn input(
         &self,
         input: &Input,

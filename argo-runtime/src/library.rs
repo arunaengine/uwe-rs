@@ -288,7 +288,6 @@ impl Library {
 
     /// The document that a `templateRef` names: like [`Library::find`], but among several
     /// documents of the kind and name, those that hold the template win.
-    /// See `docs/design/argo/runtime.md` for the full contract.
     pub fn find_template(
         &self,
         kind: Kind,

@@ -20,7 +20,6 @@ use crate::{ExecutionGraph, TaskId};
 pub const FOLD: usize = 5;
 
 /// The most boxes side by side that a picture of the graph of tasks aims at.
-/// See `docs/design/graph.md` for the full contract.
 pub const WIDTH: usize = 16;
 
 /// A graph to draw.

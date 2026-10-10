@@ -26,7 +26,6 @@ pub(crate) struct Web {
 
 /// Shares one lazy HTTP client across storage and executors; bounded requests supply their own
 /// timeouts.
-/// See `docs/design/storage.md` for the full contract.
 pub fn http_client() -> Result<&'static reqwest::Client, String> {
     static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
     let client = CLIENT.get_or_init(|| {

@@ -175,7 +175,6 @@ fn url(source: &str) -> String {
 }
 
 /// Pretends to run a task in `work` and returns its outputs.
-/// See `docs/design/graph.md` for the full contract.
 pub fn pretend(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
     Ok(pretend_run(task, work)?.unwrap_or_default())
 }

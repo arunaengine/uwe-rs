@@ -25,7 +25,6 @@ const REJECTED: &str = "tests/fixtures/test-workflows/rejected.txt";
 
 /// Directories of templates that documents under a path get as configs, as `Launch.configs`
 /// gives them.
-/// See `docs/design/argo/runtime.md` for the full contract.
 const CONFIGS: &[(&str, &str)] = &[
     (
         "hera/examples/workflows/upstream/",
@@ -446,7 +445,6 @@ fn passed(outcome: &str) -> bool {
 }
 
 /// The records of rejected.txt: for each document, its kind and why it cannot run.
-/// See `docs/design/argo/runtime.md` for the full contract.
 fn records(text: &str) -> BTreeMap<String, String> {
     let mut records = BTreeMap::new();
     for block in text.split("\n\n") {

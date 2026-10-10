@@ -13,7 +13,6 @@ use crate::{Database, DatabaseError};
 
 impl Database {
     /// Reads tasks, last attempt state, reuse, markers and edges; unknown runs return `None`.
-    /// See `docs/design/runs.md` for the full contract.
     pub fn graph(&self, run: &str) -> Result<Option<ExecutionGraph>, DatabaseError> {
         let Some(record) = self.run(run)? else {
             return Ok(None);

@@ -20,7 +20,6 @@ use crate::{DatabaseError, now};
 pub const LOG_LIMIT: usize = 64 * 1024;
 
 /// How long writes gather in one transaction before they are committed.
-/// See `docs/design/runs.md` for the full contract.
 const BATCH: Duration = Duration::from_millis(250);
 
 /// What is known of a run when it starts.

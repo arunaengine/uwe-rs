@@ -15,7 +15,6 @@ const RUNS: u32 = 5;
 impl Database {
     /// For each step of a workflow, the time in milliseconds of the longest chain of steps that
     /// starts with it: its own time, and the time of the longest chain after it.
-    /// See `docs/design/runs.md` for the full contract.
     pub fn chains(&self, workflow: &str) -> Result<HashMap<String, u64>, DatabaseError> {
         let mut statement = self.connection.prepare(
             "SELECT id FROM runs WHERE workflow = ?1 AND simulated = 0

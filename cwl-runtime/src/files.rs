@@ -18,7 +18,6 @@ use crate::value::{Map, Value};
 pub const CONTENTS_LIMIT: u64 = 64 * 1024;
 
 /// How files that are not on disk count.
-/// See `docs/research/cwl.md` for the full contract.
 #[derive(Clone, Debug, Default)]
 pub struct Access {
     pub assume_present: bool,

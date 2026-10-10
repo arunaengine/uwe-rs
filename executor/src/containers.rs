@@ -90,7 +90,6 @@ fn comes_after(spec: &TaskSpec, position: usize, before: usize) -> bool {
 }
 
 /// Orders sequential containers by dependencies, placing the main container as early as valid.
-/// See `docs/design/engine.md` for the full contract.
 pub fn sequence(spec: &TaskSpec) -> Option<Vec<usize>> {
     let order = spec.container_order()?;
     let (after_main, before): (Vec<usize>, Vec<usize>) = (order.into_iter())
@@ -233,7 +232,6 @@ pub fn exit_file(spec: &TaskSpec, position: usize) -> String {
 
 /// The lines that run `command` in the background and, when it fails, record its exit code in
 /// each file of `exits` that has none yet.
-/// See `docs/design/engine.md` for the full contract.
 pub fn recording_its_end(command: &str, exits: &[String]) -> String {
     let mut lines = format!(
         "{{
@@ -253,7 +251,6 @@ pub fn recording_its_end(command: &str, exits: &[String]) -> String {
 
 /// The wrapper of one container of the engine that runs the wrappers of a group of containers
 /// at once, and ends when all of them ended.
-/// See `docs/design/engine.md` for the full contract.
 pub fn group_wrapper(members: &[(String, String)], owner: &str, root: &str) -> String {
     // The script is the first process of its container, which ignores a stop that it has no
     // trap for; when it ends, the container ends with every process in it.
@@ -272,7 +269,6 @@ pub fn group_wrapper(members: &[(String, String)], owner: &str, root: &str) -> S
 
 /// Writes the wrapper of every container and of every group of a task that runs several into
 /// the control folder `control` of this machine.
-/// See `docs/design/engine.md` for the full contract.
 pub fn write_wrappers(
     spec: &TaskSpec,
     control: &Path,

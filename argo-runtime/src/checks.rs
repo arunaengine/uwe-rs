@@ -93,7 +93,6 @@ pub(crate) fn process_args(template: &Template, supplied: Supplied) -> Result<()
 
 /// Explains unsupported cluster-dependent templates, except locally modeled claims and child
 /// workflows.
-/// See `docs/design/argo/runtime.md` for the full contract.
 pub(crate) fn cluster_only(template: &Template) -> Option<String> {
     let name = &template.name;
     if let Some(node) = &template.synchronization

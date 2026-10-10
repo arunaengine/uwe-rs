@@ -48,7 +48,6 @@ impl Database {
     }
 
     /// Matches a prior task by step and fingerprint, then shared input locations, then name.
-    /// See `docs/design/runs.md` for the full contract.
     fn earlier(&self, run: &str, now: &TaskDetail) -> Result<Option<(String, u64)>, DatabaseError> {
         let step = &now.row.step;
         let earlier: Option<String> = self

@@ -29,7 +29,6 @@ impl Images {
 
 /// Names stable SIF files from pinned image digests or HTTP(S) address digests; otherwise
 /// returns `None`.
-/// See `docs/design/engine.md` for the full contract.
 pub fn file_name(reference: &str) -> Option<String> {
     if reference.starts_with("https://") || reference.starts_with("http://") {
         let digest = task_model::Digest::sha256(reference.as_bytes()).to_string();
@@ -47,7 +46,6 @@ pub fn file_name(reference: &str) -> Option<String> {
 
 /// The name of the SIF file of an image of a registry named by a tag, like `debian:stable-slim`
 /// as `tag-<digest of the name>.sif`.
-/// See `docs/design/engine.md` for the full contract.
 pub fn tag_file_name(reference: &str) -> Option<String> {
     let local = reference.starts_with('/') || reference.ends_with(".sif");
     if reference.is_empty() || local || reference.contains("://") || file_name(reference).is_some()
@@ -60,7 +58,6 @@ pub fn tag_file_name(reference: &str) -> Option<String> {
 }
 
 /// The script of the job that pulls an image into `file`.
-/// See `docs/design/engine.md` for the full contract.
 pub fn pull_script(program: &str, reference: &str, file: &Path, exit: &Path) -> String {
     let file = quote(&file.to_string_lossy());
     format!(

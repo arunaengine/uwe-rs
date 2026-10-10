@@ -103,3 +103,58 @@ fn rejects_bad_schemas() {
         assert!(parse(bytes, base, &mut Relations::new()).is_err());
     }
 }
+
+#[test]
+fn ignores_url_suffix() {
+    for base in [
+        "http://example/ontology",
+        "http://example/ontology?format=ttl",
+    ] {
+        let mut relations = Relations::new();
+        parse(
+            b"<child> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <parent> .",
+            base,
+            &mut relations,
+        )
+        .unwrap();
+        let ontology = Ontology::default();
+        ontology.relations.set(Ok(relations)).unwrap();
+        assert!(
+            ontology
+                .matches("http://example/child", &["http://example/parent".into()])
+                .unwrap()
+        );
+    }
+}
+
+#[test]
+fn scopes_anonymous_classes() {
+    let mut relations = Relations::new();
+    parse(
+        br#"@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+        @prefix owl: <http://www.w3.org/2002/07/owl#> .
+        <child> rdfs:subClassOf _:middle .
+        _:middle owl:equivalentClass <parent> ."#,
+        "http://example/first",
+        &mut relations,
+    )
+    .unwrap();
+    parse(
+        br#"_:middle <http://www.w3.org/2000/01/rdf-schema#subClassOf> <unrelated> ."#,
+        "http://example/second",
+        &mut relations,
+    )
+    .unwrap();
+    let ontology = Ontology::default();
+    ontology.relations.set(Ok(relations)).unwrap();
+    assert!(
+        ontology
+            .matches("http://example/child", &["http://example/parent".into()])
+            .unwrap()
+    );
+    assert!(
+        !ontology
+            .matches("http://example/child", &["http://example/unrelated".into()])
+            .unwrap()
+    );
+}

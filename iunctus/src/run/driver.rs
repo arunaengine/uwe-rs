@@ -93,6 +93,10 @@ pub(crate) fn driver(
         Language::Cwl => {
             let downloads = cache_directory().join("downloads");
             let options = cwl_runtime::Options {
+                image: arguments
+                    .default_image
+                    .clone()
+                    .unwrap_or_else(|| cwl_runtime::tool::DEFAULT_IMAGE.into()),
                 javascript: cwl_runtime::JavaScriptSettings::new(setup.engine(), cancel.clone()),
                 local_engine: (arguments.executor.as_deref().unwrap_or("local") == "local")
                     .then(|| setup.engine()),

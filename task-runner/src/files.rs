@@ -42,6 +42,16 @@ impl StorageFiles {
     fn download_directory(&self, location: &str, folder: &Path) -> io::Result<()> {
         std::fs::create_dir_all(folder)?;
         for entry in self.storage.list(location).map_err(other)? {
+            let mut components = Path::new(&entry.name).components();
+            if !matches!(
+                (components.next(), components.next()),
+                (Some(std::path::Component::Normal(_)), None)
+            ) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "storage listed an invalid entry name",
+                ));
+            }
             let inside = format!("{}/{}", location.trim_end_matches('/'), entry.name);
             let local = folder.join(&entry.name);
             match entry.directory {
@@ -103,6 +113,67 @@ fn other(error: StorageError) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::{TcpListener, TcpStream};
+
+    fn ftp_session(mut stream: TcpStream) {
+        let mut reader = BufReader::new(stream.try_clone().expect("a stream"));
+        writeln!(stream, "220 fixture\r").unwrap();
+        let mut data = None;
+        loop {
+            let mut line = String::new();
+            if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                return;
+            }
+            let line = line.trim_end();
+            let (command, argument) = line.split_once(' ').unwrap_or((line, ""));
+            let answer = match command {
+                "USER" => "331 password please".to_owned(),
+                "PASS" => "230 welcome".to_owned(),
+                "TYPE" => "200 type set".to_owned(),
+                "SIZE" => "550 folder".to_owned(),
+                "CWD" => "250 changed".to_owned(),
+                "PASV" => {
+                    let listener = TcpListener::bind("127.0.0.1:0").expect("a data port");
+                    let port = listener.local_addr().expect("an address").port();
+                    data = Some(listener);
+                    format!("227 passive (127,0,0,1,{},{})", port / 256, port % 256)
+                }
+                "RETR" | "LIST" => match data.take() {
+                    Some(listener) => {
+                        writeln!(stream, "150 sending\r").unwrap();
+                        let (mut transfer, _) = listener.accept().expect("a transfer");
+                        let body: &[u8] = match (command, argument) {
+                            ("LIST", "/bad") => b"-rw-r--r-- 1 owner group 8 Jan 01 00:00 ../../../download-sentinel\r\n",
+                            ("LIST", _) => b"-rw-r--r-- 1 owner group 4 Jan 01 00:00 safe.txt\r\n",
+                            _ => b"safe",
+                        };
+                        transfer.write_all(body).unwrap();
+                        drop(transfer);
+                        "226 sent".to_owned()
+                    }
+                    None => "550 no transfer".to_owned(),
+                },
+                "QUIT" => {
+                    writeln!(stream, "221 bye\r").unwrap();
+                    return;
+                }
+                _ => "502 unknown".to_owned(),
+            };
+            writeln!(stream, "{answer}\r").unwrap();
+        }
+    }
+
+    fn start_ftp() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("a free port");
+        let address = format!("ftp://{}", listener.local_addr().expect("an address"));
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                std::thread::spawn(move || ftp_session(stream));
+            }
+        });
+        address
+    }
 
     #[test]
     fn directory_reads_preserve() {
@@ -123,6 +194,34 @@ mod tests {
         assert_eq!(before.modified().unwrap(), after.modified().unwrap());
         assert_eq!(std::fs::read_to_string(member).unwrap(), "original");
         assert!(!root.path().join("downloads").exists());
+    }
+
+    #[test]
+    fn rejects_list_escape() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let downloads = root.path().join("downloads");
+        let storage = Storage::default();
+        let files = StorageFiles::new(&storage, downloads.clone());
+        let server = start_ftp();
+        let safe = format!("{server}/safe");
+        let name = storage
+            .blocking()
+            .download_name(&safe)
+            .expect("a download name");
+
+        files.local(&safe).expect("a safe directory");
+        assert_eq!(
+            std::fs::read_to_string(downloads.join(name).join("content/safe.txt")).unwrap(),
+            "safe"
+        );
+
+        let sentinel = root.path().join("download-sentinel");
+        std::fs::write(&sentinel, "original").unwrap();
+        let error = files
+            .local(&format!("{server}/bad"))
+            .expect_err("an invalid listing");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(std::fs::read_to_string(sentinel).unwrap(), "original");
     }
 
     /// Storage whose `s3://results/` and `s3://store/` are folders below `root`.

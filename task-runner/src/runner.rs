@@ -518,10 +518,14 @@ impl<B: Backend> Runner<B> {
             return Ok((result, candidate));
         }
         let mut candidate = None;
-        if result.exit_code == Some(0) && request.scope != ReuseScope::None {
+        if let Some(exit_code) = result.exit_code
+            && (deferred || exit_code == 0)
+            && request.scope != ReuseScope::None
+        {
             let entry = CacheEntry {
                 run: self.run.clone(),
                 task,
+                exit_code,
                 files: result.files.clone(),
                 stdout: result.stdout.clone(),
                 stderr: result.stderr.clone(),

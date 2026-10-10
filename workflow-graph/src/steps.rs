@@ -27,12 +27,12 @@ pub struct StepNode {
     pub name: String,
     /// How many tasks of the step the run asked for.
     pub tasks: usize,
-    /// How many of them ended with exit code 0.
+    /// How many of them ended successfully: by native acceptance when recorded, else exit 0.
     pub succeeded: usize,
-    /// How many of them ended with another exit code; the rest did not end.
+    /// How many of them ended unsuccessfully; the rest did not end.
     pub failed: usize,
-    /// How many of those that ended with exit code 0 an earlier result answered, from the
-    /// cache store or from an earlier run.
+    /// How many of those that succeeded an earlier result answered, from the cache store or
+    /// from an earlier run.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub reused: usize,
     /// How many of them have markers.
@@ -76,12 +76,15 @@ impl ExecutionGraph {
             step_of.insert(node.task.id, position);
             let step = &mut steps[position];
             step.tasks += 1;
-            match node.exit_code {
-                Some(0) => step.succeeded += 1,
-                Some(_) => step.failed += 1,
+            let succeeded = node
+                .exit_code
+                .map(|code| node.accepted.unwrap_or(code == 0));
+            match succeeded {
+                Some(true) => step.succeeded += 1,
+                Some(false) => step.failed += 1,
                 None => {}
             }
-            if node.reused && node.exit_code == Some(0) {
+            if node.reused && succeeded == Some(true) {
                 step.reused += 1;
             }
             if !node.markers.is_empty() {

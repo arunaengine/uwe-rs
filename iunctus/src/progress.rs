@@ -110,6 +110,7 @@ pub struct Board {
     steps: Vec<Step>,
     step_of: HashMap<TaskId, usize>,
     names: HashMap<TaskId, String>,
+    completed: HashMap<TaskId, (u32, bool, bool)>,
     running: usize,
     attempts: usize,
     failed: bool,
@@ -137,6 +138,7 @@ impl Board {
             steps: Vec::new(),
             step_of: HashMap::new(),
             names: HashMap::new(),
+            completed: HashMap::new(),
             running: 0,
             attempts: 0,
             failed: false,
@@ -169,12 +171,22 @@ impl Board {
                 }
             }
             Event::Finished {
-                outcome, retried, ..
+                outcome,
+                attempt,
+                retried,
             } => {
                 self.running = self.running.saturating_sub(1);
                 if *retried {
                     return;
                 }
+                self.completed.insert(
+                    outcome.id,
+                    (
+                        *attempt,
+                        outcome.cached || outcome.exit_code == 0,
+                        outcome.cached,
+                    ),
+                );
                 let Some(step) = self.step_mut(outcome.id) else {
                     return;
                 };
@@ -188,6 +200,35 @@ impl Board {
                     (false, _) => step.failed += 1,
                 }
             }
+            Event::Validated {
+                task,
+                attempt,
+                accepted,
+            } => {
+                let Some((number, succeeded, cached)) = self.completed.get(task).copied() else {
+                    return;
+                };
+                if number != *attempt {
+                    return;
+                }
+                self.completed.remove(task);
+                if succeeded == *accepted {
+                    return;
+                }
+                let Some(step) = self.step_mut(*task) else {
+                    return;
+                };
+                if *accepted {
+                    step.failed -= 1;
+                    step.done += 1;
+                } else {
+                    step.done -= 1;
+                    step.failed += 1;
+                    if cached {
+                        step.cached -= 1;
+                    }
+                }
+            }
             Event::Delivered { delivery } => {
                 if !self.results.contains(&delivery.target) {
                     self.results.push(delivery.target.clone());
@@ -198,7 +239,7 @@ impl Board {
                 self.failed = error.is_some();
                 self.running = 0;
             }
-            Event::Marked { .. } | Event::Validated { .. } => {}
+            Event::Marked { .. } => {}
         }
     }
 
@@ -403,6 +444,28 @@ mod tests {
         board.note(&Event::Delivered {
             delivery: &delivery,
         });
+    }
+
+    #[test]
+    fn counts_native_acceptance() {
+        for (exit_code, accepted, cached) in [(7, true, false), (0, false, false), (0, false, true)]
+        {
+            let mut board = Board::new("local");
+            board.note(&Event::Requested {
+                task: &task(1, "TOOL", "TOOL"),
+                edges: &[],
+            });
+            ended(&mut board, 1, exit_code, cached);
+            board.note(&Event::Validated {
+                task: TaskId(1),
+                attempt: 1,
+                accepted,
+            });
+            assert_eq!(board.steps[0].done, usize::from(accepted));
+            assert_eq!(board.steps[0].failed, usize::from(!accepted));
+            assert_eq!(board.steps[0].cached, 0);
+            assert!(board.completed.is_empty());
+        }
     }
 
     #[test]

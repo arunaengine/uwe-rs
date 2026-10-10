@@ -11,6 +11,7 @@ fn entry(location: &str, digest: Digest, size: u64) -> CacheEntry {
     CacheEntry {
         run: "run".into(),
         task: "task".into(),
+        exit_code: 0,
         stdout: None,
         stderr: None,
         milliseconds: None,

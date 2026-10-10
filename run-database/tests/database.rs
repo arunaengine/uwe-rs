@@ -101,6 +101,7 @@ fn record(path: &Path, directory: &Path) -> Result<(), DatabaseError> {
     recorder.started(TaskId(2), 1);
     let failed = Outcome {
         exit_code: 1,
+        accepted: Some(false),
         stderr: format!("{}\nlast line", "x".repeat(LOG_LIMIT)),
         ..outcome(2, directory.join("never.txt"), "")
     };
@@ -483,6 +484,7 @@ fn validation_gates_reuse() {
     recorder.started(approved.id, 1);
     recorder.finished(&first, 1, false);
     let mut second = outcome(1, directory.path().join("second"), "second raw\n");
+    second.exit_code = 7;
     second.accepted = None;
     recorder.started(approved.id, 2);
     recorder.finished(&second, 2, false);
@@ -530,7 +532,7 @@ fn validation_gates_reuse() {
     assert_eq!(approved.attempts[0].accepted, Some(false));
     assert_eq!(approved.attempts[1].accepted, Some(true));
     assert_eq!(approved.attempts[0].exit_code, Some(0));
-    assert_eq!(approved.attempts[1].exit_code, Some(0));
+    assert_eq!(approved.attempts[1].exit_code, Some(7));
     let rejected = database
         .task("run-1", 2)
         .expect("reads")
@@ -560,6 +562,7 @@ fn validation_gates_reuse() {
     let found = reusable.values().next().expect("approved result");
     assert_eq!(found.outcome.id, TaskId(1));
     assert_eq!(found.outcome.accepted, Some(true));
+    assert_eq!(found.outcome.exit_code, 7);
     let validated: Vec<(Option<u64>, Option<u32>)> = database
         .events("run-1", 0, 100)
         .expect("reads events")

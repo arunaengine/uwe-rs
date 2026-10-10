@@ -33,6 +33,75 @@ fn run(files: &[(&str, &str)]) -> Result<usize, String> {
 }
 
 #[test]
+fn classifies_exit_codes() {
+    struct Exits(i32);
+
+    impl Executor for Exits {
+        fn run(&mut self, attempt: Attempt) -> Running {
+            Running::ended(Ok(Outcome {
+                id: attempt.task.id,
+                exit_code: self.0,
+                ..Outcome::default()
+            }))
+        }
+    }
+
+    for (codes, code, accepted) in [
+        ("", 0, true),
+        ("", 7, false),
+        ("successCodes: [7]", 0, true),
+        ("successCodes: [7]", 7, true),
+        ("temporaryFailCodes: [0]", 0, false),
+        ("permanentFailCodes: [0]", 0, false),
+        (
+            "successCodes: [0]\ntemporaryFailCodes: [0]\npermanentFailCodes: [0]",
+            0,
+            true,
+        ),
+        (
+            "successCodes: [7]\ntemporaryFailCodes: [7]\npermanentFailCodes: [7]",
+            7,
+            true,
+        ),
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let main = root.path().join("main.cwl");
+        std::fs::write(&main, format!(
+            "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: echo\n{codes}\ninputs: []\n\
+             outputs: {{code: {{type: int, outputBinding: {{outputEval: '$(runtime.exitCode)'}}}}}}\n"
+        )).unwrap();
+        let launch = Launch {
+            target: main,
+            scratch: root.path().join("scratch"),
+            ..Launch::default()
+        };
+        let mut driver = CwlDriver::new(
+            &launch,
+            Options {
+                simulated: false,
+                ..Options::default()
+            },
+        )
+        .unwrap();
+        let execution = execute("main.cwl", &mut driver, &mut Exits(code));
+        assert_eq!(
+            execution.error.is_none(),
+            accepted,
+            "{codes}: {:?}",
+            execution.error
+        );
+        assert_eq!(execution.graph.nodes[0].accepted, Some(accepted), "{codes}");
+        assert_eq!(execution.graph.nodes[0].exit_code, Some(code));
+        if accepted {
+            assert_eq!(
+                driver.outputs().unwrap().get("code"),
+                Some(&cwl_runtime::Value::Integer(i64::from(code)))
+            );
+        }
+    }
+}
+
+#[test]
 fn preserves_json_formats() {
     let make = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: make\ninputs: []\n\
         outputs:\n  made: {type: File, format: 'http://example.com/movies'}\n";

@@ -177,10 +177,11 @@ See [Snakemake usage](snakemake.md) and [Python package boundaries](../design/sn
   fetched over HTTPS, cached and checked by SHA-256. With `-no-network`, an
   offline Conda setting or `[network] default = "none"`, a cold cache fails
   with a message that says how to prepare it.
-- **Environment sources are limited.** Remote executors, remote YAML sources and
-  named host environments cannot prepare Conda images. Only local workflow
-  preparation is implemented. Use a local YAML and local executor, or supply an
-  already complete container image to the remote executor.
+- **Environment sources are limited.** Use local YAML files. Remote executors
+  need `[conda] registry` and a local Docker-compatible engine: iunctus builds the
+  image, pushes it and gives TES, SLURM or Kubernetes the image by digest; the
+  workers need pull access. Remote YAML sources and named host environments
+  remain unsupported.
 - **Combined rules need matching bases.** A configured `conda:` plus
   `container:` rule builds on that rule's image. Its manifest must match the
   configured target base. Match the target configuration; without `[conda]`,

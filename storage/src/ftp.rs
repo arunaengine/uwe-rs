@@ -162,10 +162,7 @@ impl Ftp {
         tokio::io::copy(&mut stream, &mut output)
             .await
             .map_err(|error| Problem::passing(error.to_string()))?;
-        session
-            .finalize_retr_stream(stream)
-            .await
-            .map_err(problem)?;
+        stream.finish().await.map_err(problem)?;
         let _ = session.quit().await;
         Ok(Downloaded { version: None })
     }

@@ -116,11 +116,17 @@ impl Drop for Server {
     }
 }
 
-fn engine(root: &Path) -> std::thread::JoinHandle<()> {
+fn engine(root: &Path, replies: Vec<(String, String)>) -> std::thread::JoinHandle<()> {
     let listener = std::os::unix::net::UnixListener::bind(root.join("engine.sock")).unwrap();
     listener.set_nonblocking(true).unwrap();
     std::thread::spawn(move || {
-        for path in ["/version", "/info"] {
+        for (path, body) in [
+            ("/version".into(), "{}".into()),
+            ("/info".into(), "{}".into()),
+        ]
+        .into_iter()
+        .chain(replies)
+        {
             let deadline = std::time::Instant::now() + Duration::from_secs(15);
             let (mut stream, _) = loop {
                 match listener.accept() {
@@ -139,10 +145,11 @@ fn engine(root: &Path) -> std::thread::JoinHandle<()> {
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
             let (first, _) = request(&mut stream);
-            assert!(first.contains(path));
+            assert!(first.contains(&path));
             write!(
                 stream,
-                "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
             )
             .unwrap();
         }
@@ -208,7 +215,7 @@ async fn submits_conda_digest() {
     let config = root.join("config.toml");
     std::fs::write(&config, format!("{settings}registry = '{registry}'\n")).unwrap();
     std::fs::write(root.join("Snakefile"), "rule all:\n    output: 'out.txt'\n    conda: 'env.yaml'\n    shell: 'printf prepared > {output}'\n").unwrap();
-    let engine = engine(root);
+    let engine = engine(root, vec![]);
     let run = || {
         common::command()
             .args(["run", "Snakefile", "-executor", "tes", "-tes-server"])
@@ -216,6 +223,7 @@ async fn submits_conda_digest() {
             .arg("-iunctus-config")
             .arg(&config)
             .args(["-no-cache", "-forceall"])
+            .env("IUNCTUS_LOG", "debug")
             .current_dir(root)
             .output()
             .unwrap()
@@ -237,7 +245,7 @@ async fn submits_conda_digest() {
     );
     std::fs::remove_file(root.join("out.txt")).unwrap();
     *server.task.lock().unwrap() = None;
-    std::fs::write(&config, settings).unwrap();
+    std::fs::write(&config, &settings).unwrap();
     let output = run();
     assert_eq!(
         output.status.code(),
@@ -246,5 +254,48 @@ async fn submits_conda_digest() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(String::from_utf8_lossy(&output.stderr).contains("[conda].registry"));
+    assert!(server.task.lock().unwrap().is_none());
+    let key = preparation.digest().parse().unwrap();
+    let observed = store
+        .observe_entry("conda-registry", &key)
+        .await
+        .unwrap()
+        .unwrap();
+    store
+        .invalidate_entry("conda-registry", &key, &observed)
+        .await
+        .unwrap();
+    store
+        .put_entry(
+            conda_environment::IMAGE_CACHE_NAMESPACE,
+            &key,
+            serde_json::to_vec(&receipt).unwrap().into(),
+        )
+        .await
+        .unwrap();
+    std::fs::remove_file(root.join("engine.sock")).unwrap();
+    let image = json!({"Id":receipt.image_id(),"Os":"linux","Architecture":"amd64","Config":{"Labels":{
+        "org.iunctus.conda.preparation":preparation.digest(),"org.iunctus.conda.base":preparation.base(),"org.iunctus.conda.recipe":preparation.recipe_digest()
+    }}}).to_string();
+    let pushing = crate::engine(
+        root,
+        vec![
+            ("/json".into(), image.clone()),
+            ("/json".into(), image),
+            ("/tag?".into(), String::new()),
+            (
+                "/push?".into(),
+                "{\"errorDetail\":{\"message\":\"private-value\"}}\n".into(),
+            ),
+        ],
+    );
+    std::fs::write(&config, format!("{settings}registry = '{registry}'\n")).unwrap();
+    let output = run();
+    pushing.join().unwrap();
+    let error = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(33));
+    assert!(error.contains("Conda image cache hit"));
+    assert!(!error.contains("private-value"));
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("private-value"));
     assert!(server.task.lock().unwrap().is_none());
 }

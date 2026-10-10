@@ -7,10 +7,10 @@ use std::sync::OnceLock;
 
 use cwl_parser::iri;
 use cwl_parser::source::Remote;
-use oxrdf::{NamedOrBlankNode, Term, Triple};
+use oxrdf::{BlankNode, NamedNode, NamedOrBlankNode, Term, Triple};
 
 const LIMIT: u64 = 16 << 20;
-type Relations = HashMap<String, HashSet<String>>;
+type Relations = HashMap<NamedOrBlankNode, HashSet<NamedOrBlankNode>>;
 
 #[derive(Debug, Default)]
 pub(crate) struct Ontology {
@@ -34,17 +34,20 @@ impl Ontology {
         }
         let relations = self.relations.get_or_init(|| self.load());
         let relations = relations.as_ref().map_err(Clone::clone)?;
-        let mut pending = vec![format];
+        let format = NamedOrBlankNode::NamedNode(NamedNode::new_unchecked(format));
+        let mut pending = vec![&format];
         let mut visited = HashSet::new();
         while let Some(format) = pending.pop() {
             if !visited.insert(format) {
                 continue;
             }
-            if allowed.iter().any(|allowed| allowed == format) {
+            if let NamedOrBlankNode::NamedNode(name) = format
+                && allowed.iter().any(|allowed| allowed == name.as_str())
+            {
                 return Ok(true);
             }
             if let Some(parents) = relations.get(format) {
-                pending.extend(parents.iter().map(String::as_str));
+                pending.extend(parents);
             }
         }
         Ok(false)
@@ -89,45 +92,46 @@ impl Ontology {
 }
 
 fn parse(bytes: &[u8], base: &str, relations: &mut Relations) -> Result<(), String> {
-    let turtle = iri::split_fragment(base).0.ends_with(".ttl");
-    if turtle {
-        for triple in oxttl::TurtleParser::new()
+    let xml = oxrdfxml::RdfXmlParser::new()
+        .with_base_iri(base)
+        .map_err(|error| error.to_string())?
+        .for_reader(bytes)
+        .collect::<Result<Vec<_>, _>>();
+    let triples = match xml {
+        Ok(triples) => triples,
+        Err(_) => oxttl::TurtleParser::new()
             .with_base_iri(base)
             .map_err(|error| error.to_string())?
             .for_reader(bytes)
-        {
-            add(triple.map_err(|error| error.to_string())?, relations);
-        }
-    } else {
-        for triple in oxrdfxml::RdfXmlParser::new()
-            .with_base_iri(base)
-            .map_err(|error| error.to_string())?
-            .for_reader(bytes)
-        {
-            add(triple.map_err(|error| error.to_string())?, relations);
-        }
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?,
+    };
+    let mut blanks = HashMap::new();
+    for triple in triples {
+        add(triple, relations, &mut blanks);
     }
     Ok(())
 }
 
-fn add(triple: Triple, relations: &mut Relations) {
-    let (NamedOrBlankNode::NamedNode(subject), Term::NamedNode(object)) =
-        (triple.subject, triple.object)
-    else {
-        return;
-    };
+fn add(triple: Triple, relations: &mut Relations, blanks: &mut HashMap<BlankNode, BlankNode>) {
     let equivalent = triple.predicate.as_str() == "http://www.w3.org/2002/07/owl#equivalentClass";
     if equivalent || triple.predicate.as_str() == "http://www.w3.org/2000/01/rdf-schema#subClassOf"
     {
+        let subject = match triple.subject {
+            NamedOrBlankNode::BlankNode(node) => blanks.entry(node).or_default().clone().into(),
+            subject => subject,
+        };
+        let object: NamedOrBlankNode = match triple.object {
+            Term::NamedNode(node) => node.into(),
+            Term::BlankNode(node) => blanks.entry(node).or_default().clone().into(),
+            _ => return,
+        };
         relations
-            .entry(subject.as_str().to_owned())
+            .entry(subject.clone())
             .or_default()
-            .insert(object.as_str().to_owned());
+            .insert(object.clone());
         if equivalent {
-            relations
-                .entry(object.as_str().to_owned())
-                .or_default()
-                .insert(subject.as_str().to_owned());
+            relations.entry(object).or_default().insert(subject);
         }
     }
 }

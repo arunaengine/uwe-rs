@@ -264,8 +264,10 @@ fn run_one() {
     let folder = PathBuf::from(folder);
     // The parent removes the scratch folder, also after a timeout ended this process.
     let scratch = std::env::var_os("SNAKEMAKE_RUN_SCRATCH").map(PathBuf::from);
-    let own = tempfile::tempdir().expect("a temporary directory");
-    let scratch = scratch.unwrap_or_else(|| own.path().to_path_buf());
+    let own = scratch
+        .is_none()
+        .then(|| tempfile::tempdir().expect("a temporary directory"));
+    let scratch = scratch.unwrap_or_else(|| own.as_ref().unwrap().path().to_path_buf());
     let (result, inputs, outputs, jobs) =
         run(&folder, &Launching::of(&name.to_string_lossy()), &scratch);
     let outcome = PathBuf::from(outcome);

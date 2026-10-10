@@ -850,41 +850,32 @@ workflowhub/996
 $ NXF_VER=21.04.0 nextflow run workflowhub/996 -profile test -stub-run --outdir <out>  # with the Java libraries of nf-validation 1.1.3 in lib/
 >   Genome 'R64-1-1' not found in any config files provided to the pipeline.
 
-workflowhub/1763
-= unsupported (decision 14): Nextflow secret reads require its secret store, which iunctus does not implement; the earlier null result concealed this requirement
-$ NXF_OFFLINE=true nextflow -C <config with params.key = secrets.IUNCTUS_RECORDING_ABSENT> config -flat
-> params.key = 'secrets.IUNCTUS_RECORDING_ABSENT'
-
-variantcatalogue
-workflowhub/1735
-= unsupported (decision 14): collectFile must order multiple items by Nextflow's native hash; iunctus refuses that ordering until it can preserve those hashes
-$ NXF_OFFLINE=true nextflow run <workflow with channel.of('a', 'b').collectFile(name: 'sorted.txt').view { it.text }> -stub-run
-> ab
-
-workflowhub/556
-= unsupported (decision 14): process storeDir requires reusing a persistent task output directory, which iunctus refuses rather than silently ignoring
-$ NXF_OFFLINE=true nextflow -C <config with process.storeDir = 'cache'> config -flat
-> process.storeDir = 'cache'
-
 workflowhub/1814
 = missing: the cached WorkflowHub source leaves out assets/schema_input.json, which nextflow_schema.json requires; iunctus now diagnoses the absent sample-sheet schema
 $ NXF_OFFLINE=true nextflow run <workflow that reads workflowhub/1814/assets/schema_input.json> -stub-run
 > ERROR ~ No such file or directory: <pipeline>/assets/schema_input.json
 
-pathogensurveillance
-seqsubmit
-= unsupported (decision 14): active Nextflow secret reads need its secret store, which iunctus does not read; seqsubmit reads credentials in nextflow.config:290 and pathogensurveillance and workflowhub/1763 read NCBI_API_KEY in conf/modules.config:243, while unselected profiles and branches remain unevaluated
-$ NXF_OFFLINE=true nextflow -C <config with env.TOKEN = secrets.IUNCTUS_RECORDING_ABSENT and an empty secret store> run <workflow with process P running true>
-> WARN: Environment variable `TOKEN` evaluates to an empty value
-
-workflowhub/638
-workflowhub/666
-workflowhub/667
-= unsupported (decision 14): collectFile must order multiple items by Nextflow's native hash; iunctus refuses that ordering until it can preserve those hashes
-$ NXF_OFFLINE=true nextflow run <workflow with channel.of('a', 'b').collectFile(name: 'sorted.txt').view { it.text }> -stub-run
-> ab
-
 workflowhub/1306
 = unsupported (decision 16): preprocessFullMetadata has no stub and its JSON output is empty in the simulator, so splitJson fails after the executor hint is accepted
 $ NXF_OFFLINE=true nextflow run <workflow that calls new groovy.json.JsonSlurper().parseText('')>
 > ERROR ~ Text must not be null or empty
+
+workflowhub/1763
+= missing: the cached workflow source omits assets/.pathogensurveillance_output.json, which the workflow copies before processing inputs
+$ NXF_OFFLINE=true nextflow run <workflow that copies workflowhub/1763/assets/.pathogensurveillance_output.json>
+> ERROR ~ No such file or directory: <pipeline>/assets/.pathogensurveillance_output.json
+
+workflowhub/556
+= unsupported (decision 16): simulation produces an empty compressed score file; count_scores requires a header, and Nextflow fails on that empty score input too
+$ NXF_OFFLINE=true NXF_SYNTAX_PARSER=v1 nextflow run <workflow reading an empty gzip score header and splitting it on tabs>
+> ERROR ~ Cannot invoke method split() on null object
+
+pathogensurveillance
+= unsupported (decision 16): the empty simulated samplesheet produces a three-item null join result for a two-parameter closure; Nextflow rejects that invocation too
+$ NXF_OFFLINE=true NXF_SYNTAX_PARSER=v1 nextflow run <workflow mapping [null, null, null] with a two-parameter closure>
+> ERROR ~ Invalid method invocation `call` with arguments: [null, null, null] (java.util.ArrayList) on _closure3 type
+
+seqsubmit
+= unsupported (decision 14): iunctus sample-sheet conversion does not implement properties containing anyOf; Nextflow's cached nf-schema plugin accepts that schema
+$ NXF_OFFLINE=true nextflow run <workflow using nf-schema@3.0.0 samplesheetToList with an anyOf string property>
+> [[[id:one], hello]]

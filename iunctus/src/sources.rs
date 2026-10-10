@@ -104,9 +104,7 @@ fn is_secret(path: &Path, secret: Option<&Path>) -> bool {
     secret.is_some_and(|secret| {
         path.canonicalize().unwrap_or_else(|_| path.to_owned()) == secret
             || match (std::fs::metadata(path), std::fs::metadata(secret)) {
-                (Ok(path), Ok(secret)) => {
-                    path.dev() == secret.dev() && path.ino() == secret.ino()
-                }
+                (Ok(path), Ok(secret)) => path.dev() == secret.dev() && path.ino() == secret.ino(),
                 _ => false,
             }
     })

@@ -329,7 +329,11 @@ fn manifest_url(parsed: &Reference) -> String {
 
 /// An address of the registry API of a repository.
 fn registry_url(parsed: &Reference, path: &str) -> String {
-    let local = parsed.registry.starts_with("localhost") || parsed.registry.starts_with("127.");
+    let host = parsed.registry.split(':').next().unwrap_or_default();
+    let local = host == "localhost"
+        || host
+            .parse::<std::net::Ipv4Addr>()
+            .is_ok_and(|address| address.is_loopback());
     let scheme = if local { "http" } else { "https" };
     format!(
         "{scheme}://{}/v2/{}/{path}",
@@ -585,6 +589,18 @@ mod auth_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn confines_registry_http() {
+        for host in ["localhost:5000", "127.0.0.1:5000", "127.0.0.2:5000"] {
+            let parsed = Reference::parse(&format!("{host}/tool:1"));
+            assert!(manifest_url(&parsed).starts_with("http://"), "{host}");
+        }
+        for host in ["localhost.example.org", "127.example.org", "192.0.2.1:5000"] {
+            let parsed = Reference::parse(&format!("{host}/tool:1"));
+            assert!(manifest_url(&parsed).starts_with("https://"), "{host}");
+        }
+    }
 
     #[test]
     fn parses_image_references() {

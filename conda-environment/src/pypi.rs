@@ -160,17 +160,17 @@ pub(crate) fn requirement(text: &str) -> Result<Requirement, PipError> {
             .iter()
             .any(|suffix| text.trim().ends_with(suffix))
     {
-        return Err(unsupported(format!(
-            "pip options, editable installs and local archives are unsupported: {text:?}"
-        )));
+        return Err(unsupported(
+            "pip options, editable installs and local archives are unsupported",
+        ));
     }
     let requirement: Requirement = text
         .parse()
-        .map_err(|error| unsupported(format!("unsupported pip requirement {text:?}: {error}")))?;
+        .map_err(|_| unsupported("invalid pip requirement (contents redacted)"))?;
     if matches!(requirement.version_or_url, Some(VersionOrUrl::Url(_))) {
-        return Err(unsupported(format!(
-            "pip URLs, local paths and VCS requirements are unsupported: {text}"
-        )));
+        return Err(unsupported(
+            "pip URLs, local paths and VCS requirements are unsupported",
+        ));
     }
     let marker = requirement
         .marker

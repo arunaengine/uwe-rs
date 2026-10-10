@@ -91,7 +91,11 @@ fn remove(path: &Path) -> io::Result<()> {
 
 /// Copies a file or a directory with all it holds.
 fn copy(source: &Path, target: &Path) -> io::Result<()> {
-    if !std::fs::metadata(source)?.is_dir() {
+    let metadata = std::fs::metadata(source)?;
+    if std::fs::symlink_metadata(source)?.is_symlink() && metadata.is_dir() {
+        return std::os::unix::fs::symlink(std::fs::read_link(source)?, target);
+    }
+    if !metadata.is_dir() {
         return std::fs::copy(source, target).map(|_| ());
     }
     std::fs::create_dir_all(target)?;
@@ -104,7 +108,11 @@ fn copy(source: &Path, target: &Path) -> io::Result<()> {
 
 /// Hard-links a file, or each file of a directory; copies where no hard link is possible.
 fn hard_link(source: &Path, target: &Path) -> io::Result<()> {
-    if !std::fs::metadata(source)?.is_dir() {
+    let metadata = std::fs::metadata(source)?;
+    if std::fs::symlink_metadata(source)?.is_symlink() && metadata.is_dir() {
+        return std::os::unix::fs::symlink(std::fs::read_link(source)?, target);
+    }
+    if !metadata.is_dir() {
         return std::fs::hard_link(source, target).or_else(|_| copy(source, target));
     }
     std::fs::create_dir_all(target)?;
@@ -175,5 +183,77 @@ mod tests {
             std::fs::read_to_string(tree_copy.join("sub/a.txt")).unwrap(),
             "a\n"
         );
+    }
+
+    #[test]
+    fn preserves_directory_aliases() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let source = folder.path().join("source");
+        std::fs::create_dir_all(source.join("sub")).unwrap();
+        std::fs::write(source.join("sub/member"), "nested\n").unwrap();
+        std::os::unix::fs::symlink("sub", source.join("alias")).unwrap();
+
+        for (name, mode) in [
+            ("copy", DeliveryMode::Copy),
+            ("hard-link", DeliveryMode::HardLink),
+        ] {
+            let target = folder.path().join(name);
+            LocalFiles
+                .deliver(&Delivery {
+                    location: source.to_string_lossy().into_owned(),
+                    target: target.to_string_lossy().into_owned(),
+                    mode,
+                })
+                .expect("delivers an alias");
+            assert!(
+                std::fs::symlink_metadata(target.join("alias"))
+                    .unwrap()
+                    .is_symlink()
+            );
+            assert_eq!(
+                std::fs::read_link(target.join("alias")).unwrap(),
+                PathBuf::from("sub")
+            );
+            assert_eq!(
+                std::fs::read_to_string(target.join("alias/member")).unwrap(),
+                "nested\n"
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_directory_cycles() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let source = folder.path().join("source");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("member"), "content\n").unwrap();
+        std::os::unix::fs::symlink(".", source.join("cycle")).unwrap();
+
+        for (name, mode) in [
+            ("copy", DeliveryMode::Copy),
+            ("hard-link", DeliveryMode::HardLink),
+        ] {
+            let target = folder.path().join(name);
+            LocalFiles
+                .deliver(&Delivery {
+                    location: source.to_string_lossy().into_owned(),
+                    target: target.to_string_lossy().into_owned(),
+                    mode,
+                })
+                .expect("delivers a cycle");
+            assert!(
+                std::fs::symlink_metadata(target.join("cycle"))
+                    .unwrap()
+                    .is_symlink()
+            );
+            assert_eq!(
+                std::fs::read_link(target.join("cycle")).unwrap(),
+                PathBuf::from(".")
+            );
+            assert_eq!(
+                std::fs::read_to_string(target.join("member")).unwrap(),
+                "content\n"
+            );
+        }
     }
 }

@@ -152,7 +152,7 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
                 let state = match (outcome.cached, outcome.exit_code) {
                     (true, _) => "cached".to_owned(),
                     (false, 0) => "done".to_owned(),
-                    (false, code) => format!("failed with exit code {code}"),
+                    (false, code) => format!("ended with exit code {code}"),
                 };
                 match &outcome.reproducibility {
                     Some(check) => println!("[checked] {}: {}", task.name, said(check)),

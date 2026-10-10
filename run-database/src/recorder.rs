@@ -281,7 +281,8 @@ impl Recorder {
                 ])?;
             let state = match (retried, outcome.exit_code, outcome.accepted) {
                 (true, _, _) => "running",
-                (false, 0, Some(false)) => "failed",
+                (false, _, Some(false)) => "failed",
+                (false, _, Some(true)) => "succeeded",
                 (false, 0, _) => "succeeded",
                 (false, _, _) => "failed",
             };
@@ -397,7 +398,7 @@ impl Recorder {
                         WHEN ?4 AND EXISTS (
                             SELECT 1 FROM attempts
                             WHERE run = ?1 AND task = ?2 AND number = ?3
-                                AND exit_code = 0 AND retried = 0
+                                AND exit_code IS NOT NULL AND retried = 0
                         ) THEN 'succeeded' ELSE 'failed' END
                      WHERE run = ?1 AND id = ?2 AND ?3 = (
                         SELECT MAX(number) FROM attempts WHERE run = ?1 AND task = ?2

@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use content_store::{Holder, Store, layout};
@@ -17,6 +17,7 @@ use workflow_graph::{Attempt, CancellationToken, ExecuteError, Executor, Network
 struct Fake {
     scratch: PathBuf,
     calls: AtomicUsize,
+    exit_code: AtomicI32,
 }
 
 impl Backend for Fake {
@@ -31,7 +32,7 @@ impl Backend for Fake {
         std::fs::create_dir_all(root.join("control"))?;
         std::fs::write(root.join("work/out"), job.name)?;
         Ok(Finished {
-            exit_code: Some(0),
+            exit_code: Some(self.exit_code.load(Ordering::SeqCst)),
             files: vec![Collected {
                 path: "out".into(),
                 directory: false,
@@ -49,6 +50,7 @@ fn executor(root: &Path, store: Store, run: &str) -> RunnerExecutor<Fake> {
             Fake {
                 scratch: root.join("scratch"),
                 calls: AtomicUsize::new(0),
+                exit_code: AtomicI32::new(0),
             },
             run,
             Settings {
@@ -144,6 +146,56 @@ async fn acceptance_gates_publication() {
     assert!(reused.cached);
     assert_eq!(executor.runner().backend().calls.load(Ordering::SeqCst), 2);
     executor.settle(TaskId(2), 1, true).await.unwrap();
+}
+
+#[tokio::test]
+async fn preserves_accepted_code() {
+    let root = tempfile::tempdir().unwrap();
+    let store = Store::local(&root.path().join("store")).unwrap();
+    let mut executor = executor(root.path(), store.clone(), "run");
+    executor
+        .runner()
+        .backend()
+        .exit_code
+        .store(7, Ordering::SeqCst);
+    let cancel = CancellationToken::new();
+    let task = task(1);
+    let prepared = executor
+        .runner()
+        .request(&task, task.image.clone())
+        .await
+        .unwrap();
+    let direct = executor.runner().execute(&prepared, &cancel).await.unwrap();
+    assert_eq!(direct.exit_code, Some(7));
+    assert!(cached(&store).await.is_none());
+    let first = executor.run(attempt(1, 1, &cancel)).await.unwrap();
+    assert_eq!(first.exit_code, 7);
+    executor.settle(TaskId(1), 1, false).await.unwrap();
+    assert!(cached(&store).await.is_none());
+    executor.run(attempt(1, 2, &cancel)).await.unwrap();
+    executor.settle(TaskId(1), 2, true).await.unwrap();
+    assert_eq!(cached(&store).await.unwrap().exit_code, 7);
+    let reused = executor.run(attempt(1, 3, &cancel)).await.unwrap();
+    assert!(reused.cached);
+    assert_eq!(reused.exit_code, 7);
+    executor.settle(TaskId(1), 3, true).await.unwrap();
+    executor.check_reproducibility(1.0);
+    let checked = executor.run(attempt(1, 4, &cancel)).await.unwrap();
+    assert_eq!(checked.exit_code, 7);
+    assert_eq!(
+        checked.reproducibility.unwrap().verdict,
+        workflow_graph::Verdict::Differs {
+            paths: vec!["out".into()]
+        }
+    );
+    executor.settle(TaskId(1), 4, true).await.unwrap();
+}
+
+#[test]
+fn restores_legacy_code() {
+    let bytes = br#"{"run":"old","task":"1","files":[],"stdout":null,"stderr":null}"#;
+    let entry = CacheEntry::parse(&key(), bytes).unwrap();
+    assert_eq!(entry.result().exit_code, Some(0));
 }
 
 #[tokio::test]

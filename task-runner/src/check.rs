@@ -41,7 +41,7 @@ pub(crate) fn tool(image: &str, step: &str) -> Digest {
 /// What the task gave when it ran again, against the result in the cache.
 pub(crate) fn verdict(earlier: &CacheEntry, now: &TaskResult) -> Verdict {
     match now.exit_code {
-        Some(0) => {}
+        Some(code) if code == earlier.exit_code => {}
         other => {
             return Verdict::Failed {
                 exit_code: other.unwrap_or(-1),
@@ -99,6 +99,7 @@ mod tests {
         CacheEntry {
             run: "earlier".into(),
             task: "T-1".into(),
+            exit_code: 0,
             files,
             stdout: Some(Digest::sha256(b"out")),
             stderr: None,

@@ -196,9 +196,8 @@ impl Driver for CwlDriver {
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
         let stopping = !self.failures.is_empty() && !self.launch.keep_going;
         let identity = (outcome.id, outcome.attempt);
-        let accepted = outcome.exit_code == 0;
         let completed = self.run.complete(&outcome);
-        if accepted && completed.is_ok() {
+        if completed.is_ok() {
             self.acceptance.insert(identity);
         }
         match completed {

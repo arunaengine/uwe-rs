@@ -360,9 +360,8 @@ impl<'a> Engine<'a> {
                 retried: false,
             });
             let id = outcome.id;
-            let succeeded = outcome.exit_code == 0;
             let next = driver.complete(outcome);
-            let accepted = driver.take_acceptance(id, attempt) && succeeded;
+            let accepted = driver.take_acceptance(id, attempt);
             recorder.validated(id, accepted);
             self.report(Event::Validated {
                 task: id,

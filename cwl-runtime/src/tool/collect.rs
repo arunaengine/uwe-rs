@@ -31,7 +31,11 @@ impl Pending {
     /// `files` when the run has them.
     pub fn collect(self, outcome: &Outcome, files: Option<&dyn Files>) -> Result<Map, String> {
         let exit = i64::from(outcome.exit_code);
-        if exit != 0 && !self.success_codes.contains(&exit) {
+        if !self.success_codes.contains(&exit)
+            && (self.temporary_fail_codes.contains(&exit)
+                || self.permanent_fail_codes.contains(&exit)
+                || exit != 0)
+        {
             return Err(format!("the command ended with exit code {exit}"));
         }
         let mut runtime = self.runtime.clone();

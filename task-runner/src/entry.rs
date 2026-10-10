@@ -17,6 +17,9 @@ pub struct CacheEntry {
     pub run: String,
     /// The task in that run, as the store names its folder, like `FASTQC-12`.
     pub task: String,
+    /// The raw exit code; older entries contain only zero-code results.
+    #[serde(default)]
+    pub exit_code: i32,
     pub files: Vec<StoredFile>,
     pub stdout: Option<Digest>,
     pub stderr: Option<Digest>,
@@ -46,7 +49,7 @@ impl CacheEntry {
     /// The result that the entry gives a request.
     pub fn result(self) -> TaskResult {
         TaskResult {
-            exit_code: Some(0),
+            exit_code: Some(self.exit_code),
             files: self.files,
             stdout: self.stdout,
             stderr: self.stderr,

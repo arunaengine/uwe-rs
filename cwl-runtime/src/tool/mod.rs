@@ -100,6 +100,8 @@ pub struct Pending {
     stdout: Option<String>,
     stderr: Option<String>,
     success_codes: Vec<i64>,
+    temporary_fail_codes: Vec<i64>,
+    permanent_fail_codes: Vec<i64>,
     options: Options,
     /// The entries that the tool updates in place.
     in_place: Vec<InPlace>,
@@ -595,6 +597,12 @@ pub fn task(
         stderr,
         success_codes: tool
             .map(|tool| tool.success_codes.clone())
+            .unwrap_or_default(),
+        temporary_fail_codes: tool
+            .map(|tool| tool.temporary_fail_codes.clone())
+            .unwrap_or_default(),
+        permanent_fail_codes: tool
+            .map(|tool| tool.permanent_fail_codes.clone())
             .unwrap_or_default(),
         options: options.clone(),
         in_place: stager.in_place.clone(),

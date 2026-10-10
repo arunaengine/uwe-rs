@@ -57,7 +57,7 @@ impl Database {
             let mut statement = self.connection.prepare(
                 "SELECT t.id, t.fingerprint, a.number FROM tasks t JOIN attempts a
                     ON a.run = t.run AND a.task = t.id
-                 WHERE t.run = ?1 AND t.state = 'succeeded' AND a.exit_code = 0
+                 WHERE t.run = ?1 AND t.state = 'succeeded' AND a.exit_code IS NOT NULL
                     AND a.accepted = 1
                     AND a.number = (SELECT MAX(number) FROM attempts
                         WHERE run = t.run AND task = t.id)",
@@ -124,15 +124,15 @@ impl Database {
                 size: file.size,
             })
             .collect();
-        let image: Option<String> = self.connection.query_row(
-            "SELECT image FROM attempts WHERE run = ?1 AND task = ?2 AND number = ?3",
+        let (image, exit_code): (Option<String>, i32) = self.connection.query_row(
+            "SELECT image, exit_code FROM attempts WHERE run = ?1 AND task = ?2 AND number = ?3",
             params![run, task, attempt],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         // The result of an earlier run answers the task, so it does not run.
         Ok(Some(Outcome {
             id: TaskId(task),
-            exit_code: 0,
+            exit_code,
             files,
             stdout,
             stderr,

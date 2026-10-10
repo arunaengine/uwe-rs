@@ -439,13 +439,13 @@ fn open_point(drawing: &mut Drawing, after: usize, id: String, markers: &[Marker
     });
 }
 
-/// The state of a task from its exit code: reused, simulated or succeeded when it is 0.
+/// The state of a task from native acceptance, or its exit code when acceptance is unknown.
 fn node_state(node: &Node, simulated: bool) -> State {
     match node.exit_code {
-        Some(0) if node.reused => State::Reused,
-        Some(0) if simulated => State::Simulated,
-        Some(0) => State::Succeeded,
-        Some(_) => State::Failed,
+        Some(code) if !node.accepted.unwrap_or(code == 0) => State::Failed,
+        Some(_) if node.reused => State::Reused,
+        Some(_) if simulated => State::Simulated,
+        Some(_) => State::Succeeded,
         None => State::Waiting,
     }
 }
@@ -622,6 +622,35 @@ mod tests {
             node.reused = false;
         }
         assert_eq!(graph.cache_note(), None);
+    }
+
+    #[test]
+    fn uses_native_acceptance() {
+        let mut graph = fan_out();
+        graph.nodes[0].exit_code = Some(7);
+        graph.nodes[0].accepted = Some(true);
+        graph.nodes[1].exit_code = Some(7);
+        graph.nodes[1].accepted = Some(true);
+        graph.nodes[1].reused = true;
+        graph.nodes[2].accepted = Some(false);
+
+        let steps = graph.step_graph();
+        assert_eq!((steps.steps[0].succeeded, steps.steps[0].failed), (1, 0));
+        assert_eq!(
+            (
+                steps.steps[1].succeeded,
+                steps.steps[1].failed,
+                steps.steps[1].reused
+            ),
+            (6, 1, 1)
+        );
+        let drawing = graph.drawing(&Options {
+            fold: 0,
+            ..Options::default()
+        });
+        assert_eq!(drawing.shapes[0].state, State::Succeeded);
+        assert_eq!(drawing.shapes[1].state, State::Reused);
+        assert_eq!(drawing.shapes[2].state, State::Failed);
     }
 
     /// One SOURCE task, then `steps` steps of `tasks` tasks each that read its file, then SINK,

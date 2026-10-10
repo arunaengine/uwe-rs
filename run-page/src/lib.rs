@@ -22,7 +22,7 @@ use tokio_util::sync::CancellationToken;
 pub use report::{LOG_TAIL, report};
 
 /// Where the page serves and what it reads.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Settings {
     /// The run database file.
     pub database: PathBuf,
@@ -32,6 +32,18 @@ pub struct Settings {
     pub port: u16,
     /// The access token, required when listening beyond loopback.
     pub token: Option<String>,
+}
+
+impl std::fmt::Debug for Settings {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Settings")
+            .field("database", &self.database)
+            .field("address", &self.address)
+            .field("port", &self.port)
+            .field("token", &self.token.as_ref().map(|_| "[redacted]"))
+            .finish()
+    }
 }
 
 impl Settings {

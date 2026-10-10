@@ -17,6 +17,7 @@ use content_store::Store;
 use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
+use tracing::instrument::WithSubscriber;
 
 use crate::{CancellationToken, ContainerEngine};
 
@@ -73,7 +74,7 @@ pub async fn publish(
     limits: TransferLimits,
     cancel: &CancellationToken,
 ) -> Result<CompletedImage, CondaImageError> {
-    transfer(limits, cancel, async {
+    let work = async {
         receipt.validate(preparation)?;
         inspect(engine, preparation, receipt.image_id()).await?;
         let parsed = crate::registry::Reference::parse(registry);
@@ -177,7 +178,13 @@ pub async fn publish(
             ));
         }
         Ok(published)
-    })
+    };
+    // Bollard logs decoded push replies before returning potentially sensitive errors.
+    transfer(
+        limits,
+        cancel,
+        work.with_subscriber(tracing::subscriber::NoSubscriber::default()),
+    )
     .await
 }
 

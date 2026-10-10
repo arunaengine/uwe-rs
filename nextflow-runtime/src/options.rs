@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 use workflow_graph::Resources;
 
 pub(crate) const FLAGS_ENV: &str = "IUNCTUS_CONTAINER_FLAGS";
+pub(crate) const WORK_ENV: &str = "IUNCTUS_WORK_VARIABLES";
+const WORK_MARKER: &str = "\0PWD\0";
 
 pub(crate) fn apply(
     directives: &[TaskDirective],
@@ -15,6 +17,7 @@ pub(crate) fn apply(
     environment: &mut BTreeMap<String, String>,
 ) -> Result<(), Error> {
     let mut flags = std::collections::BTreeMap::new();
+    let mut work = Vec::new();
     for directive in directives
         .iter()
         .filter(|directive| &*directive.name == "containerOptions")
@@ -23,6 +26,19 @@ pub(crate) fn apply(
             .arguments
             .iter()
             .map(|value| match value {
+                Value::Map(map) => map
+                    .borrow()
+                    .entries
+                    .iter()
+                    .map(|(name, value)| {
+                        format!(
+                            "--{}='{}'",
+                            name.0,
+                            value.to_string().replace('\'', "'\\''")
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" "),
                 Value::List(list) => list
                     .borrow()
                     .items
@@ -68,7 +84,13 @@ pub(crate) fn apply(
                     {
                         return Err(refused("invalid environment name"));
                     }
-                    environment.insert(name.to_owned(), value.to_owned());
+                    if value == WORK_MARKER {
+                        work.push(name.to_owned());
+                    } else if value.contains(WORK_MARKER) {
+                        return Err(refused("work directory expressions other than PWD"));
+                    } else {
+                        environment.insert(name.to_owned(), value.to_owned());
+                    }
                 }
                 "--cpus" => {
                     let cpus: f64 = value.parse().map_err(|_| refused(flag))?;
@@ -108,6 +130,9 @@ pub(crate) fn apply(
     if !flags.is_empty() {
         environment.insert(FLAGS_ENV.into(), serde_json::to_string(&flags).unwrap());
     }
+    if !work.is_empty() {
+        environment.insert(WORK_ENV.into(), serde_json::to_string(&work).unwrap());
+    }
     Ok(())
 }
 
@@ -129,7 +154,31 @@ fn words(text: &str) -> Result<Vec<String>, Error> {
                 word.push(next);
             }
             present = true;
-        } else if matches!(character, '$' | '`') && quote != Some('\'') {
+        } else if character == '$' && quote != Some('\'') {
+            let mut expected = "PWD".chars();
+            let first = characters.next();
+            if first == Some('{') {
+                for character in expected {
+                    if characters.next() != Some(character) {
+                        return Err(refused("shell expansion"));
+                    }
+                }
+                if characters.next() != Some('}') {
+                    return Err(refused("shell expansion"));
+                }
+            } else {
+                if first != expected.next() {
+                    return Err(refused("shell expansion"));
+                }
+                for character in expected {
+                    if characters.next() != Some(character) {
+                        return Err(refused("shell expansion"));
+                    }
+                }
+            }
+            word.push_str(WORK_MARKER);
+            present = true;
+        } else if character == '`' && quote != Some('\'') {
             return Err(refused("shell expansion"));
         } else if quote.is_none() && matches!(character, ';' | '|' | '&' | '<' | '>' | '(' | ')') {
             return Err(refused("shell operators"));

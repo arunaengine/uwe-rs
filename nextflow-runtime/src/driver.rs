@@ -289,6 +289,9 @@ impl Nextflow {
                     });
                 }
                 let mut task = task(&request, &self.environment)?;
+                if task.environment.contains_key(crate::options::WORK_ENV) && !self.settings.local_options {
+                    return Err(DriverError { unsupported: true, message: "container PWD environment binding requires the local executor".into() });
+                }
                 if let Some(source) = task.image.as_deref().and_then(|image| image.strip_prefix("conda-env:nextflow-packages:")) {
                     let source: String = serde_json::from_str(source).map_err(|_| DriverError::new("invalid Conda package reference"))?;
                     task.image = Some(format!("conda-env:nextflow-packages:{}", serde_json::json!({"packages": source, "channels": self.conda_channels})));

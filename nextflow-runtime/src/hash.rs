@@ -10,7 +10,7 @@ use nextflow_evaluator::value::Value;
 
 pub(crate) fn key(value: &Value, host: &mut dyn Host, deep: bool) -> Result<i64, Error> {
     let mut bytes = Vec::new();
-    encode(value, host, deep, &mut bytes)?;
+    encode(value, host, deep, &mut bytes, 0)?;
     Ok(i64::from_le_bytes(murmur(&bytes)[..8].try_into().unwrap()))
 }
 
@@ -19,7 +19,14 @@ fn encode(
     host: &mut dyn Host,
     deep: bool,
     bytes: &mut Vec<u8>,
+    depth: usize,
 ) -> Result<(), Error> {
+    if depth > 128 {
+        return Err(Error::Unsupported {
+            message: "CacheHelper hash sorting exceeds 128 nested values".into(),
+            span: Default::default(),
+        });
+    }
     match value {
         Value::Null => {}
         Value::Boolean(value) => bytes.push(u8::from(*value)),
@@ -33,15 +40,15 @@ fn encode(
         },
         Value::List(list) => {
             for value in &list.borrow().items {
-                encode(value, host, deep, bytes)?;
+                encode(value, host, deep, bytes, depth + 1)?;
             }
         }
         Value::Map(map) => {
             let mut sum = [0u8; 16];
             for (key, value) in &map.borrow().entries {
                 let mut entry = Vec::new();
-                encode(&key.0, host, deep, &mut entry)?;
-                encode(value, host, deep, &mut entry)?;
+                encode(&key.0, host, deep, &mut entry, depth + 1)?;
+                encode(value, host, deep, &mut entry, depth + 1)?;
                 for (total, byte) in sum.iter_mut().zip(murmur(&entry)) {
                     *total = total.wrapping_add(byte);
                 }
@@ -163,6 +170,46 @@ mod tests {
     struct Silent;
     impl Host for Silent {
         fn print(&mut self, _: &str) {}
+    }
+
+    #[test]
+    fn rejects_cyclic_hashes() {
+        let value = Value::list(Vec::new());
+        let Value::List(list) = &value else {
+            unreachable!()
+        };
+        list.borrow_mut().items.push(value.clone());
+        for deep in [false, true] {
+            assert!(matches!(
+                key(&value, &mut Silent, deep),
+                Err(Error::Unsupported { .. })
+            ));
+        }
+        list.borrow_mut().items.clear();
+        let value = Value::map([]);
+        let Value::Map(map) = &value else {
+            unreachable!()
+        };
+        map.borrow_mut()
+            .entries
+            .insert(
+                nextflow_evaluator::value::Key(Value::string("self")),
+                value.clone(),
+            );
+        assert!(matches!(
+            key(&value, &mut Silent, false),
+            Err(Error::Unsupported { .. })
+        ));
+        map.borrow_mut().entries.clear();
+        let shared = Value::list(vec![Value::integer(1)]);
+        assert!(
+            key(
+                &Value::list(vec![shared.clone(), shared]),
+                &mut Silent,
+                false
+            )
+            .is_ok()
+        );
     }
 
     #[test]

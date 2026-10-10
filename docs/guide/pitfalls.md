@@ -213,17 +213,17 @@ See [Conda configuration](configuration.md#conda) and [environment limits](../de
   operation budget, 256 MiB memory limit and 16 MiB message limit.
   Large or long expressions can exceed them. Simplify expressions or move the
   computation into a normal container task.
-- **Image requirements are incomplete.** Required image build, load and import
-  behavior is unavailable. These operations cannot be satisfied by the current
-  CWL task path. Prebuild an image and replace that requirement with `dockerPull`.
-- **Format matching is exact.** Ontology subclass and equivalent-format
-  relationships are unsupported. Exact format matching is implemented.
-  Supply the exact declared format or use a runner with ontology support.
-- **Directory updates are limited.** In-place Directory updates and conflicting
-  File updates through parent Directory views are refused. The runner cannot
-  preserve those update relationships. Write new outputs and pass them downstream.
-- **Required extensions can fail.** Required `Secrets`, `ShmSize` and
-  `RuntimeConstraints` are unsupported; CUDA requirements support static device
+- **Image builds are local only.** `dockerFile`, `dockerLoad` and
+  `dockerImport` are prepared on the local engine and tagged by content. Remote
+  executors cannot use them; push the image to a registry and use `dockerPull`.
+- **Formats follow the ontology.** RDF/XML and Turtle ontologies from
+  `$schemas` are read, and subclass and equivalent-class relationships are checked
+  transitively. Other ontology formats are not read.
+- **Directory updates use copies.** Writable and in-place Directory inputs get a
+  copy whose updated version flows downstream. Conflicting File updates through a
+  parent Directory view are refused.
+- **Required extensions can fail.** `ShmSize` works on the local executor.
+  Required `Secrets` and `RuntimeConstraints` are unsupported; CUDA requirements support static device
   counts only. Hints may be ignored. Use a supported requirement and executor,
   or another runner when the required behavior must be preserved.
 
@@ -451,8 +451,8 @@ See [embedding contracts](../design/embedding.md).
   top-level commands and dynamic replanning explain count differences.
   These numbers do not compare real tool outputs; validate your workflow's results.
 - **CWL conformance is simulated.** The
-  [recorded fixture](../../cwl-runtime/tests/fixtures/conformance.txt) has 621 passes
-  out of 828 tests, or 75%, with 199 marked `ran` and 8 unsupported.
+  [recorded fixture](../../cwl-runtime/tests/fixtures/conformance.txt) has 623 passes
+  out of 828 tests, or 75%, with 205 marked `ran` and none unsupported.
   `ran` means the output needs real tools. A real conformance suite is not recorded.
   Run the relevant real cases before claiming conformance.
 - **Argo records check simulated execution and admission.** The

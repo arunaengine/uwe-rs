@@ -114,9 +114,14 @@ fn prepare(docker: &Docker, source: ImageSource, options: &Options) -> Result<St
         .build()
         .map_err(|error| error.to_string())?;
     runtime.block_on(async {
-        let engine = ContainerEngine::named(options.local_engine.as_deref())
-            .await
-            .map_err(|error| error.to_string())?;
+        let engine = ContainerEngine::named(
+            options
+                .local_engine
+                .as_deref()
+                .filter(|name| !name.is_empty()),
+        )
+        .await
+        .map_err(|error| error.to_string())?;
         engine
             .prepare_image(
                 source,

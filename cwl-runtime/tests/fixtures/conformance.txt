@@ -66,8 +66,8 @@ v1.0 param_evaluation_noexpr pass
 v1.0 param_evaluation_expr pass
 v1.0 metadata pass
 v1.0 format_checking ran
-v1.0 format_checking_subclass unsupported: formattest2: the file `ref.fasta` has the format `http://edamontology.org/format_1929`, not one of `http://edamontology.org/format_2330`; ontology format relationships from `$schemas` are not supporte
-v1.0 format_checking_equivalentclass unsupported: formattest3: the file `ref.fasta` has the format `http://edamontology.org/format_1929`, not one of `http://galaxyproject.org/formats/fasta`; ontology format relationships from `$schemas` are not suppo
+v1.0 format_checking_subclass ran
+v1.0 format_checking_equivalentclass ran
 v1.0 output_secondaryfile_optional pass
 v1.0 valuefrom_ignored_null pass
 v1.0 valuefrom_secondexpr_ignored pass
@@ -263,8 +263,8 @@ v1.1 param_evaluation_noexpr pass
 v1.1 param_evaluation_expr pass
 v1.1 metadata pass
 v1.1 format_checking ran
-v1.1 format_checking_subclass unsupported: formattest2: the file `ref.fasta` has the format `http://edamontology.org/format_1929`, not one of `http://edamontology.org/format_2330`; ontology format relationships from `$schemas` are not supporte
-v1.1 format_checking_equivalentclass unsupported: formattest3: the file `ref.fasta` has the format `http://edamontology.org/format_1929`, not one of `http://galaxyproject.org/formats/fasta`; ontology format relationships from `$schemas` are not suppo
+v1.1 format_checking_subclass ran
+v1.1 format_checking_equivalentclass ran
 v1.1 output_secondaryfile_optional pass
 v1.1 valuefrom_ignored_null pass
 v1.1 valuefrom_secondexpr_ignored pass
@@ -434,7 +434,7 @@ v1.1 fail_glob_outside_output_dir pass
 v1.1 symlink_to_file_out_of_workdir_illegal pass
 v1.1 symlink-to-file-in-workdir-legal pass
 v1.1 inplace_update_on_file_content ran
-v1.1 inplace_update_on_dir_content unsupported: step2: in-place Directory updates are not supported
+v1.1 inplace_update_on_dir_content pass
 v1.1 outputbinding_glob_directory pass
 v1.1 stage_file_array_to_dir ran
 v1.1 stage_file_array_to_dir_basename ran
@@ -517,8 +517,8 @@ v1.2 param_evaluation_noexpr pass
 v1.2 param_evaluation_expr pass
 v1.2 metadata pass
 v1.2 format_checking ran
-v1.2 format_checking_subclass unsupported: formattest2: the file `ref.fasta` has the format `http://edamontology.org/format_1929`, not one of `http://edamontology.org/format_2330`; ontology format relationships from `$schemas` are not supporte
-v1.2 format_checking_equivalentclass unsupported: formattest3: the file `ref.fasta` has the format `http://edamontology.org/format_1929`, not one of `http://galaxyproject.org/formats/fasta`; ontology format relationships from `$schemas` are not suppo
+v1.2 format_checking_subclass ran
+v1.2 format_checking_equivalentclass ran
 v1.2 output_secondaryfile_optional pass
 v1.2 valuefrom_ignored_null pass
 v1.2 valuefrom_secondexpr_ignored pass
@@ -689,7 +689,7 @@ v1.2 glob_outside_outputs_fails pass
 v1.2 illegal_symlink pass
 v1.2 legal_symlink pass
 v1.2 modify_file_content ran
-v1.2 modify_directory_content unsupported: step2: in-place Directory updates are not supported
+v1.2 modify_directory_content pass
 v1.2 outputbinding_glob_directory pass
 v1.2 stage_file_array ran
 v1.2 stage_file_array_basename ran

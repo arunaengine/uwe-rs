@@ -56,7 +56,13 @@ jobs:
           rustup toolchain install 1.97.1 --profile minimal
           cargo +1.97.1 fetch --locked
       - name: Exact Conda corpus outcomes
-        run: cargo +1.97.1 test --offline --locked -p conda-environment --test test_workflows -j 2 -- --ignored --exact the_environments_of_the_snakemake_test_workflows_read
+        run: |
+          status=0
+          output=$(cargo +1.97.1 test --offline --locked -p conda-environment --test test_workflows -j 2 -- --ignored --exact reads_workflow_environments 2>&1) || status=$?
+          printf '%s\n' "$output"
+          test "$status" -eq 0
+          grep -Fqx 'test reads_workflow_environments ... ok' <<< "$output"
+          grep -Eq '^test result: ok\. 1 passed; 0 failed;' <<< "$output"
       - name: Exact config inventory and oracle parity
         run: cargo +1.97.1 test --offline --locked -p iunctus --test config_test_workflows -j 2 -- --ignored --exact matches_oracle
   container:
@@ -75,4 +81,10 @@ jobs:
           rustup toolchain install 1.97.1 --profile minimal
           cargo +1.97.1 fetch --locked
       - name: Real Python package bridge
-        run: cargo +1.97.1 test --offline --locked -p snakemake-runtime --test python_container -j 2 -- --ignored --exact packages_run_in_a_container
+        run: |
+          status=0
+          output=$(cargo +1.97.1 test --offline --locked -p snakemake-runtime --test python_container -j 2 -- --ignored --exact executes_container_packages 2>&1) || status=$?
+          printf '%s\n' "$output"
+          test "$status" -eq 0
+          grep -Fqx 'test executes_container_packages ... ok' <<< "$output"
+          grep -Eq '^test result: ok\. 1 passed; 0 failed;' <<< "$output"

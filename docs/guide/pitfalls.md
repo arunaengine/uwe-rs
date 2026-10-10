@@ -219,6 +219,10 @@ See [Conda configuration](configuration.md#conda) and [environment limits](../de
   operation budget, 256 MiB memory limit and 16 MiB message limit.
   Large or long expressions can exceed them. Simplify expressions or move the
   computation into a normal container task.
+  The deadline in [helper.rs](../../cwl-runtime/src/javascript/helper.rs) also
+  includes helper startup, so a busy host can reject small expressions.
+  Stop competing work before retrying; startup needs a separate budget policy
+  before its time can safely be excluded from the evaluation limit.
 - **Image builds are local only.** `dockerFile`, `dockerLoad` and
   `dockerImport` are prepared on the local engine and tagged by content. Remote
   executors cannot use them; push the image to a registry and use `dockerPull`.

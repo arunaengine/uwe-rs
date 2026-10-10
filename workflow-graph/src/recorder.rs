@@ -41,7 +41,6 @@ impl Recorder {
 
     /// Adds a task that the driver asked for, with an edge from each task that made one of its
     /// input files and from each task in its `after` list.
-    /// See `docs/design/graph.md` for the full contract.
     pub(crate) fn add(
         &mut self,
         task: &Task,
@@ -163,7 +162,6 @@ impl Recorder {
 
     /// The marker of a task output that started tasks of its own, when an output pattern with a
     /// wildcard matched it; a pattern without one names exactly one file.
-    /// See `docs/design/graph.md` for the full contract.
     fn spread(&self, path: &Path, asked: usize) -> Option<(TaskId, Marker)> {
         let file = normalize(path);
         let asked = self.graph.nodes.get(asked..).unwrap_or_default();

@@ -37,7 +37,6 @@ pub struct Access {
 impl Access {
     /// How a container runs for a task with `run_as`, in an image whose config names the user
     /// `image_user` (like `1000:100`, `nobody` or empty for root).
-    /// See `docs/design/engine.md` for the full contract.
     pub fn of(
         owner: (u32, u32),
         rootless: bool,
@@ -88,7 +87,6 @@ impl Access {
 
 /// Opens the scratch directory `root` of a task to every user, for a container that may run as
 /// another user: its folders get mode 0777 and its files may be written by all.
-/// See `docs/design/engine.md` for the full contract.
 pub fn open(root: &Path) -> std::io::Result<()> {
     if let Some(scratch) = root.parent() {
         std::fs::set_permissions(scratch, std::fs::Permissions::from_mode(0o700))?;

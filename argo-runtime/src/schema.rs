@@ -105,7 +105,6 @@ pub(crate) fn inputs(document: &Document, library: &Library, options: &Options) 
 
 /// Describes entrypoint and global output parameters and artifacts, allowing optional artifacts
 /// to be absent.
-/// See `docs/design/argo/runtime.md` for the full contract.
 pub(crate) fn outputs(document: &Document, library: &Library, options: &Options) -> Result<Json> {
     let Joined { spec: node, .. } = joined_spec(document, library)?;
     let (spec, _) =
@@ -311,7 +310,6 @@ fn annotation(document: &Document, key: &str) -> Option<String> {
 
 /// Finds workflow and entrypoint parameters and artifacts read by the specification and
 /// referenced templates.
-/// See `docs/design/argo/runtime.md` for the full contract.
 fn read(
     spec: &Node,
     library: &Library,

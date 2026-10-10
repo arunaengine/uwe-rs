@@ -192,7 +192,6 @@ impl Driver for CwlDriver {
     }
 
     /// A tool that failed fails its step.
-    /// See `docs/research/cwl.md` for the full contract.
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
         let stopping = !self.failures.is_empty() && !self.launch.keep_going;
         let identity = (outcome.id, outcome.attempt);

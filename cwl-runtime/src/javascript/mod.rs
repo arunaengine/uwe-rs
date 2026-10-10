@@ -31,7 +31,6 @@ const UNDEFINED: &str = "\u{0}undefined";
 
 /// Runs a function body after the expression library and the global variables, the way
 /// cwltool's sandbox does, and returns its result as JSON data.
-/// See `docs/research/cwl.md` for the full contract.
 #[cfg(test)]
 pub fn evaluate(
     library: &[String],

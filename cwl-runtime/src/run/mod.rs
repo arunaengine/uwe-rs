@@ -373,7 +373,6 @@ impl Run {
 
     /// Propagates updated file or directory versions and drops stale listings, sizes and
     /// checksums.
-    /// See `docs/research/cwl.md` for the full contract.
     fn update_in_place(&mut self, old: &str, new: &str) {
         let inside = format!("{old}/");
         let path = files::local_path(old);

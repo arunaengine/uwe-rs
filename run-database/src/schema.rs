@@ -190,7 +190,6 @@ ALTER TABLE attempts ADD COLUMN write_bytes INTEGER;
 
 /// Version 4: what a run needs to be repeated exactly, and the verdicts of the reproducibility
 /// check.
-/// See `docs/design/runs.md` for the full contract.
 const VERSION_4: &str = "
 ALTER TABLE runs ADD COLUMN program TEXT;
 ALTER TABLE runs ADD COLUMN launch TEXT;
@@ -276,7 +275,6 @@ ALTER TABLE attempts ADD COLUMN accepted INTEGER CHECK (accepted IN (0, 1));
 
 /// Brings the schema of a database to [`VERSION`]: creates it in a new file, and runs the
 /// missing steps on an older one, in one transaction.
-/// See `docs/design/runs.md` for the full contract.
 pub(crate) fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> {
     let version = |connection: &Connection| -> Result<u32, DatabaseError> {
         let found: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;

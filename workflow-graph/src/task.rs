@@ -75,7 +75,6 @@ pub struct Task {
     /// before this one; the engine starts this task only when all of them have finished.
     pub after: Vec<TaskId>,
     /// Containers share task files; the first owns stdin, stdout and output collection.
-    /// See `docs/design/graph.md` for the full contract.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub containers: Vec<Container>,
     /// Whether `command` replaces the entrypoint of the image, as the `command` of a container
@@ -88,7 +87,6 @@ pub struct Task {
     pub reuse: Reuse,
     /// Selects Kubernetes image or explicit identity and starting directory; `None` uses the
     /// iunctus user.
-    /// See `docs/design/graph.md` for the full contract.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_as: Option<RunAs>,
 }
@@ -166,7 +164,6 @@ impl Network {
 impl Task {
     /// Whether the task does nothing: it has neither a command nor an image, like a CWL
     /// `Operation` or a Snakemake rule without an action.
-    /// See `docs/design/graph.md` for the full contract.
     pub fn is_no_op(&self) -> bool {
         self.command.is_empty() && self.image.is_none()
     }
@@ -204,7 +201,6 @@ pub enum Writable {
     /// `InitialWorkDir` entry with `writable: true`.
     Copy,
     /// Changes a local input in place for later tasks; this task never reuses a cached result.
-    /// See `docs/design/graph.md` for the full contract.
     InPlace,
 }
 
@@ -263,7 +259,6 @@ pub struct Outcome {
     pub reproducibility: Option<ReproducibilityCheck>,
     /// How the containers of a task that runs several ended, in the order of `Task.containers`,
     /// the main one first, whose streams are those of the outcome.
-    /// See `docs/design/graph.md` for the full contract.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub containers: Vec<ContainerOutcome>,
 }

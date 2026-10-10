@@ -81,7 +81,6 @@ pub trait Executor {
 
     /// Settles only this task and attempt after native validation, with build leases released
     /// beforehand.
-    /// See `docs/design/graph.md` for the full contract.
     fn settle(
         &mut self,
         _task: TaskId,

@@ -33,7 +33,6 @@ pub const MOST_TOGETHER: usize = 100;
 
 /// Sequential tasks that fit within the least measured startup overhead, at most
 /// [`MOST_TOGETHER`]; 1 without short tasks or measurements.
-/// See `docs/design/efficiency.md`, section 2.
 pub fn per_container(measured: &[Measured]) -> usize {
     let least = measured.iter().filter_map(|task| task.overhead).min();
     let Some(least) = least else {

@@ -321,7 +321,6 @@ fn data_address(text: &str) -> String {
 }
 
 /// Finds inputs read through workflow sources, command-line bindings and tool expressions.
-/// See `docs/research/cwl.md` for the full contract.
 pub fn read(process: &Process) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     match &process.class {

@@ -353,7 +353,6 @@ impl<B: Backend> Runner<B> {
     }
 
     /// Runs a request, unless the cache has a result for it that the reuse scope allows.
-    /// See `docs/design/cache.md` for the full contract.
     pub async fn execute(
         &self,
         prepared: &Prepared,
@@ -627,7 +626,6 @@ impl<B: Backend> Runner<B> {
 
     /// Waits until this run may run the task of `key`: while another run, or another task of
     /// this run, runs the same task, it holds the lease of the key.
-    /// See `docs/design/cache.md` for the full contract.
     async fn turn(
         &self,
         namespace: &str,

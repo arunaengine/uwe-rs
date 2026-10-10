@@ -200,7 +200,6 @@ impl<'a> Check<'a> {
     }
 
     /// Checks a workflow spec whose templates are those of `base`.
-    /// See `docs/design/argo/runtime.md` for the full contract.
     pub fn spec(
         &mut self,
         spec: &WorkflowSpec,

@@ -118,7 +118,6 @@ impl Pool {
     }
 
     /// Waits until a task's share is free.
-    /// See `docs/design/engine.md` for the full contract.
     pub async fn share(&self, cpus: u32, memory: Option<u64>, priority: u64) -> Share<'_> {
         let cpus = cpus.clamp(1, self.total_cpus);
         let memory = memory.map(|bytes| bytes.clamp(MIB, self.total_memory));

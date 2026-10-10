@@ -112,7 +112,6 @@ pub fn namespace_name(namespace: &str) -> &str {
 }
 
 /// Keeps task output names under the run, task and attempt work or absolute-root subtree.
-/// See `docs/design/cache.md` for the full contract.
 pub fn output(run: &str, task: &str, attempt: u32, path: &str) -> Result<String, StoreError> {
     let unsafe_part =
         |part: &str| part.is_empty() || part == "." || part == ".." || part.contains('/');

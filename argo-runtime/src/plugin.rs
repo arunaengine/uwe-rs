@@ -117,7 +117,6 @@ fn simple(name: &str) -> String {
 impl Run {
     /// Tries explicit executor plugins, otherwise library ConfigMaps, prioritizing matching
     /// plugin names.
-    /// See `docs/design/argo/runtime.md` for the full contract.
     pub(crate) fn plugins(&mut self, template: &Template) -> Vec<Plugin> {
         let mut plugins = Vec::new();
         let mut problems = Vec::new();

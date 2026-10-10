@@ -11,7 +11,6 @@ use crate::process::Mount;
 use crate::wrapper::STDIN;
 
 /// Makes the scratch directory `root` of a task and places its inputs.
-/// See `docs/design/engine.md` for the full contract.
 pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
     for path in staging
         .inputs

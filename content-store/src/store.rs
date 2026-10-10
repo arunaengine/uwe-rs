@@ -697,7 +697,6 @@ impl Store {
     }
 
     /// Removes only the observed stale versions, including a matching shared entry.
-    /// See `docs/design/cache.md` for the full contract.
     pub async fn invalidate_entry(
         &self,
         namespace: &str,

@@ -210,7 +210,6 @@ impl Backend for SlurmBackend {
 
 impl SlurmBackend {
     /// The command that a container of `image` runs for these arguments.
-    /// See `docs/design/engine.md` for the full contract.
     async fn task_command(
         &self,
         image: &mut task_model::Image,
@@ -250,7 +249,6 @@ impl SlurmBackend {
     }
 
     /// The config of an image of a registry.
-    /// See `docs/design/engine.md` for the full contract.
     async fn image_config(&self, reference: &str) -> Result<ImageConfig, ExecutorError> {
         let kept =
             file_name(reference).map(|name| self.images.join(name.replace(".sif", ".config.json")));
@@ -462,7 +460,6 @@ impl SlurmBackend {
 
     /// The image as the jobs run it: with Apptainer or Singularity, the SIF file of the image,
     /// pulled once by a job of its own, else the image itself.
-    /// See `docs/design/engine.md` for the full contract.
     async fn runnable(
         &self,
         image: &task_model::Image,
@@ -490,7 +487,6 @@ impl SlurmBackend {
     }
 
     /// The SIF file of an image, pulled once by a job of its own.
-    /// See `docs/design/engine.md` for the full contract.
     async fn sif(
         &self,
         program: &str,
@@ -1028,7 +1024,6 @@ fn sync_files(folder: &Path) -> std::io::Result<()> {
 
 /// The exit code of the task and a note for its standard error, from the exit code that the
 /// wrapper recorded and the end of the job; `Err` when the machine failed rather than the task.
-/// See `docs/design/engine.md` for the full contract.
 fn outcome(
     recorded: Option<i32>,
     ended: &Ended,

@@ -166,7 +166,6 @@ impl ExecutionGraph {
     }
 
     /// Chooses task folding to respect `options.fold` and graph width; open steps stay open.
-    /// See `docs/design/graph.md` for the full contract.
     fn fold_for(&self, steps: &[Step], options: &Options) -> usize {
         if options.fold == 0 {
             return 0;

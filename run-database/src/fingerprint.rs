@@ -38,7 +38,6 @@ pub fn input_states(task: &Task) -> Vec<Option<InputState>> {
 }
 
 /// The SHA-256 of the task as the driver described it, and of the state of each local input.
-/// See `docs/design/runs.md` for the full contract.
 pub fn fingerprint(task: &Task, states: &[Option<InputState>]) -> String {
     let described = Task {
         id: TaskId(0),

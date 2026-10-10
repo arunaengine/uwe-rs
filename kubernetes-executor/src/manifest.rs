@@ -71,7 +71,6 @@ pub struct Limits {
 
 /// Builds labelled Jobs with image-group containers sharing task folders and the task memory
 /// limit.
-/// See `docs/design/engine.md` for the full contract.
 pub fn job(name: &str, label: &str, runs: &[ContainerRun<'_>], limits: &Limits) -> Value {
     let run = &runs[0];
     let mut mounts = Vec::new();

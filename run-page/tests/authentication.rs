@@ -5,6 +5,15 @@
 use run_page::{PageError, Server, Settings};
 
 #[test]
+fn redacts_settings_token() {
+    let mut settings = Settings::new("runs.sqlite".into());
+    settings.token = Some("private-token".into());
+    let output = format!("{settings:?}");
+    assert!(!output.contains("private-token"));
+    assert!(output.contains("[redacted]"));
+}
+
+#[test]
 fn requires_remote_token() {
     let mut settings = Settings::new("unused.sqlite".into());
     settings.address = "0.0.0.0".parse().unwrap();

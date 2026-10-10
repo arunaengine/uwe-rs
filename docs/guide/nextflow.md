@@ -67,12 +67,17 @@ container scripts, declared outputs, retries and supported publishing modes.
 It uses a native Groovy subset. It does not start a JVM or install arbitrary
 Nextflow plugins. Read the full [support matrix](../support.md#workflow-languages).
 
-Active unsupported settings fail with exit code 33. Examples include `storeDir`,
-`maxForks`, `containerOptions`, `clusterOptions`, `queue`, `module`, `arch`,
-process `executor`, secrets reads and non-copy `stageOutMode`.
-`publishDir` refuses `move`, `failOnError: false`, and active `contentType` or
-`tags` options. Hash and deep `collectFile` sorting are refused when two or more
-items need ordering. Natural, index, none and supported closure keys are available.
+`beforeScript` and `afterScript` run inside task containers. `storeDir` reuses
+existing outputs and copies new outputs, but cannot be combined with `afterScript`.
+`maxForks` limits process tasks. Local `containerOptions` support environment,
+CPU, GPU, shared memory and swap flags. Named secrets can be injected into local
+tasks. Scheduling hints do not choose the iunctus executor or placement.
+Active unsupported settings, including `module`, `arch` and non-copy
+`stageOutMode`, fail with exit code 33.
+`publishDir` publishes `move` outputs as copies and refuses `failOnError: false`
+and active `contentType` or `tags` options. Hash and deep sorting support common
+values; unsupported values are refused when two or more items need ordering.
+Natural, index, none and supported closure keys are also available.
 Inactive Conda or Spack defaults do not enable environment preparation.
 
 Next: [Executors](executors.md). Return to [First run](first-run.md).

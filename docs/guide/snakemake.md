@@ -87,14 +87,17 @@ With both `conda:` and `container:`, configured preparation builds the environme
 on the rule image. Its manifest digest must match the configured base.
 A pinned micromamba installer is added during this build.
 Without `[conda]`, a combined rule uses its container alone.
-Conda image preparation is unavailable on remote executors.
+Remote executors require `[conda] registry` and a local engine to build and push
+the image. Workers receive the published manifest digest and need pull access.
 
 ## Groups, shadow and hooks
 
 Same-image connected jobs with the same `group:` run in one container, in
 dependency order. The whole group retries on failure. Different-image groups
 fall back to separate tasks and emit a debug log. Supported `service()` groups
-retain dependency order. Real FIFO `pipe()` execution is refused.
+retain dependency order. Same-image FIFO `pipe()` jobs run concurrently in one
+container; a failure or retry affects the whole group. Several consumers,
+cycles, different images and `run:` pipe jobs are refused.
 
 `shadow: "minimal"` stages declared inputs and task code. `"shallow"` links
 top-level working-folder entries. `"full"` creates scratch folders and links

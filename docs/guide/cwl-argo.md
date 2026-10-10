@@ -29,8 +29,9 @@ Packed documents can select a process by its name after the workflow argument.
 `-output-dir results` selects the output folder.
 
 Supported workflows include scatter, conditional steps and supported JavaScript
-expressions. Required image build/load/import behavior, ontology matching beyond
-exact formats, and in-place Directory updates are unavailable.
+expressions. Image build/load/import works with a local task executor; remote
+executors need a prepublished image. Format checks follow RDF subclass and
+equivalent-class relationships. In-place Directory updates use writable copies.
 Required unsupported extensions fail explicitly. Hints can be ignored.
 See [CWL support](../support.md#workflow-languages).
 
@@ -55,8 +56,9 @@ interpreted by iunctus. Backend configuration supplies remote storage access.
 
 Some cluster controls are accepted without effects, including readiness probes,
 garbage collection and memoization. The native task cache handles task reuse.
-Controls that can change results, such as suspension, synchronization, pod patches
-and unsupported deadlines, are refused. Several artifact transfer forms are also
+Timed suspension, run-local mutexes and semaphores, retries and supported
+deadlines are implemented. Manual suspension, database locks, pod patches
+and unsupported deadlines are refused. Several artifact transfer forms are also
 refused. Read [Argo support](../support.md#workflow-languages) before using a
 document written for a live Argo controller.
 

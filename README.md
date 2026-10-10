@@ -8,11 +8,11 @@ iunctus is a pure Rust workflow executor for Nextflow, Snakemake, CWL and Argo W
 
 ## Why?
 
-Bioinformatics has lots of domain specific workflow languages. All of them have benefits and drawbacks, and I was a bit annoyed by some of the same problems showing up again and again.
+Bioinformatics has many domain-specific workflow languages. Each has its own set of benefits and drawbacks. I was annoyed by the recurring problems I encountered over and over again. I was also annoyed that some of the cool features were hidden behind cloud offerings or were essentially paid features tied to API keys, etc.
 
-Most have limited or inconsistent support for containers, Kubernetes, etc. or require a shared working directory. Almost none of them supports multiple cloud storage providers in parallel, like several S3 providers at once. Caches are tied to one language, so the same tool with the same inputs runs again just because it was called from a different workflow. So I decided to build this experiment: can we unify all of that in a single Rust binary?
+Most have limited or inconsistent support for containers, Kubernetes, and so on, or they require a shared working directory. Almost none support multiple cloud storage providers simultaneously, such as several S3 providers at once. Caches are tied to one language or even to a single workflow, so the same tool with the same inputs will run again simply because it was called from a different workflow. So I decided to build this experiment: Can we unify all of that in a single Rust binary?
 
-The answer so far is a pretty confident yes. A Snakemake rule and a Nextflow process that run the same container on the same inputs share one cache entry. A run on your laptop can move to a cluster or the cloud without changing the workflow. And every run can be repeated later with exactly the same inputs, images and code.
+So far, the answer is a confident yes. A Snakemake rule and a Nextflow process that use the same container with the same inputs share one cache entry. You can move a run from your laptop to a cluster or the cloud without changing the workflow. Every run can also be repeated later with the same inputs, images, and code. And everything is container first, with no compromises. Everything MUST be run in a container, supporting the FAIR principles and making executions more reproducible.
 
 ## Features
 
@@ -123,9 +123,8 @@ iunctus run nf-core/demo -r 1.2.0 -profile test,docker --outdir results
 ## Known pitfalls
 
 - **Containers are required.** Every task runs in a container. Host-installed tools are never used as a fallback, so declare an image in the workflow or pass `-default-image IMAGE`.
-- **The simulator makes up outputs.** `-executor simulator` is great for planning and for checking a workflow, but its files are placeholders. Use a separate folder for simulated runs.
-- **Languages are native subsets.** iunctus implements the languages in Rust instead of calling the original engines. A workflow that runs on Nextflow or Snakemake can still use a feature iunctus does not support yet. Run `iunctus check <workflow>` first; unsupported features give exit code 33 with a clear message.
-- **Flags differ from the original engines.** iunctus options use one hyphen (`-executor`, `-profile`), workflow parameters use two (`--outdir`). Many Nextflow and Snakemake flags are not accepted. Nextflow `-c FILE` configures the workflow, not iunctus; use `-iunctus-config FILE` for that.
+- **Languages are native subsets.** iunctus implements the languages in Rust instead of calling the original engines. A workflow that runs on Nextflow or Snakemake can still use a feature iunctus does not support yet. Run `iunctus check <workflow>` first, unsupported features give exit code 33 with a clear message.
+- **Flags differ from the original engines.** iunctus options use one hyphen (`-executor`, `-profile`), workflow parameters use two (`--outdir`). Many Nextflow and Snakemake flags are not accepted. Nextflow `-c FILE` configures the workflow, not iunctus, use `-iunctus-config FILE` for that.
 - **Nextflow work and resume layouts differ.** iunctus has its own store and resume, so tools that read Nextflow `work/` folders or `.nextflow` logs will not find them.
 - **Python packages in Snakemake.** Embedded Python runs natively, but third-party packages run in container helpers, and arbitrary Python objects cannot cross that boundary.
 - **Conda and pip.** Conda environments become container images for local runs and are published for remote executors. Editable, local or VCS `pip:` requirements are not supported.

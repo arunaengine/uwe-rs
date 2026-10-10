@@ -443,6 +443,19 @@ impl LocalContainer {
         let mut spec = job.spec.clone();
         let flags = Flags::of(&spec)?;
         spec.environment.remove(FLAGS_ENV);
+        if let Some(task_model::EnvironmentValue::Literal(names)) =
+            spec.environment.remove("IUNCTUS_WORK_VARIABLES")
+        {
+            let names: Vec<String> = serde_json::from_str(&names).map_err(|_| {
+                ExecutorError::Unsupported("invalid work directory environment binding".into())
+            })?;
+            for name in names {
+                spec.environment
+                    .insert(name, task_model::EnvironmentValue::WorkDirectory);
+            }
+            spec.validate()
+                .map_err(|error| ExecutorError::Unsupported(error.to_string()))?;
+        }
         // The command runs through the image's entrypoint, as `docker run` runs it, which
         // some images need to set up their tools, unless it replaces the entrypoint.
         let entrypoint = !spec.replaces_entrypoint || spec.arguments.is_empty();

@@ -529,3 +529,23 @@ fn maps_shared_memory() {
     assert_eq!(task.environment["ESCAPED"], "a\\b");
     assert_eq!(task.environment["LITERAL"], "$HOME");
 }
+
+#[test]
+fn maps_work_environment() {
+    let mut request = request(&[], &[], None);
+    request.directives.push(TaskDirective {
+        name: "containerOptions".into(),
+        arguments: vec![Value::string("-e HOME=$PWD -e LITERAL='$PWD'")],
+    });
+    let mapped = task(&request, &BTreeMap::new()).unwrap();
+    assert_eq!(mapped.environment["IUNCTUS_WORK_VARIABLES"], "[\"HOME\"]");
+    assert_eq!(mapped.environment["LITERAL"], "$PWD");
+    request.directives.last_mut().unwrap().arguments = vec![Value::map([(
+        Value::string("shm-size"),
+        Value::MemoryUnit(4 << 30),
+    )])];
+    let mapped = task(&request, &BTreeMap::new()).unwrap();
+    let flags: serde_json::Value =
+        serde_json::from_str(&mapped.environment["IUNCTUS_CONTAINER_FLAGS"]).unwrap();
+    assert_eq!(flags["shm"], 4i64 << 30);
+}

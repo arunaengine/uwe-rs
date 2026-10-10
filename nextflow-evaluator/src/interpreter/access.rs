@@ -23,10 +23,13 @@ impl Interpreter<'_> {
     ) -> Result<Value, Error> {
         Ok(match object {
             Value::Namespace(namespace) if &**namespace == "secrets" => {
-                return self
-                    .host
-                    .secret(name)
-                    .map(|value| value.map_or(Value::Null, Value::string));
+                return match self.host.secret(name)? {
+                    None => Ok(Value::Null),
+                    Some(_) => Err(unsupported(
+                        "secret values in workflow expressions; use a process `secret` directive",
+                        span,
+                    )),
+                };
             }
             Value::Null => {
                 let message = format!("Cannot get property '{name}' on null object");
@@ -224,10 +227,7 @@ impl Interpreter<'_> {
         };
         Ok(match (object, index) {
             (Value::Namespace(namespace), key) if &**namespace == "secrets" => {
-                return self
-                    .host
-                    .secret(&key.to_string())
-                    .map(|value| value.map_or(Value::Null, Value::string));
+                return self.property(object, &key.to_string(), span);
             }
             (Value::Path(path), Value::Number(position)) => {
                 let items = super::library::path_items(path);

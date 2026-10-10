@@ -50,7 +50,7 @@ fn run(directory: &Path, launch: Launch) -> ExecutionGraph {
 }
 
 #[test]
-fn reads_secret_values() {
+fn rejects_secret_values() {
     struct Secrets;
     impl nextflow_evaluator::interpreter::Host for Secrets {
         fn print(&mut self, _: &str) {}
@@ -65,30 +65,40 @@ fn reads_secret_values() {
         "secrets.TOKEN",
         "secrets['TOKEN']",
         "secrets.getProperty('TOKEN')",
+        "secrets.getAt('TOKEN')",
     ] {
-        let directory = tempfile::tempdir().unwrap();
-        std::fs::write(
-            directory.path().join("main.nf"),
-            format!("workflow {{ assert {read} == 'fixture'; assert secrets.MISSING == null }}"),
-        )
-        .unwrap();
-        std::fs::write(
-            directory.path().join("nextflow.config"),
-            format!("params.token = {read}"),
-        )
-        .unwrap();
-        let mut driver = nextflow_runtime::driver::Nextflow::new(
-            &Launch {
-                target: directory.path().to_owned(),
-                ..Launch::default()
-            },
-            nextflow_runtime::driver::Settings {
-                host: Box::new(Secrets),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        assert!(driver.start().unwrap().is_empty());
+        for configured in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            std::fs::write(
+                directory.path().join("main.nf"),
+                format!("workflow {{ def value = {read}; assert secrets.MISSING == null }}"),
+            )
+            .unwrap();
+            std::fs::write(
+                directory.path().join("nextflow.config"),
+                if configured {
+                    format!("params.token = {read}")
+                } else {
+                    String::new()
+                },
+            )
+            .unwrap();
+            let mut driver = nextflow_runtime::driver::Nextflow::new(
+                &Launch {
+                    target: directory.path().to_owned(),
+                    ..Launch::default()
+                },
+                nextflow_runtime::driver::Settings {
+                    host: Box::new(Secrets),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let error = driver.start().unwrap_err();
+            assert!(error.unsupported);
+            assert!(error.message.contains("process `secret` directive"));
+            assert!(!error.message.contains("fixture"));
+        }
     }
 }
 

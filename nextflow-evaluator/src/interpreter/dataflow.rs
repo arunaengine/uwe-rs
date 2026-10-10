@@ -317,10 +317,11 @@ impl Interpreter<'_> {
         }
         if namespace == "secrets" && matches!(name, "getProperty" | "getAt") && arguments.len() == 1
         {
-            return self
-                .host
-                .secret(&arguments[0].to_string())
-                .map(|value| value.map_or(Value::Null, Value::string));
+            return self.property(
+                &Value::Namespace(namespace.into()),
+                &arguments[0].to_string(),
+                span,
+            );
         }
         let result = self.host.namespace_method(namespace, name, arguments);
         match result.map_err(|error| error.or_at(span))? {

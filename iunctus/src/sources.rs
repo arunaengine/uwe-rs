@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use content_store::Store;
@@ -100,7 +101,15 @@ fn secret_store(target: &Path, arguments: &Arguments) -> Option<PathBuf> {
 }
 
 fn is_secret(path: &Path, secret: Option<&Path>) -> bool {
-    secret.is_some_and(|secret| path.canonicalize().unwrap_or_else(|_| path.to_owned()) == secret)
+    secret.is_some_and(|secret| {
+        path.canonicalize().unwrap_or_else(|_| path.to_owned()) == secret
+            || match (std::fs::metadata(path), std::fs::metadata(secret)) {
+                (Ok(path), Ok(secret)) => {
+                    path.dev() == secret.dev() && path.ino() == secret.ino()
+                }
+                _ => false,
+            }
+    })
 }
 
 /// Keeps the contents of the sources in a store. The files of the workflow go in as one tree,
@@ -327,8 +336,11 @@ mod tests {
         write(&secret, "[]");
         let alias = root.path().join("alias.json");
         std::os::unix::fs::symlink(&secret, &alias).unwrap();
+        let linked = root.path().join("linked.json");
+        std::fs::hard_link(&secret, &linked).unwrap();
         assert!(super::is_secret(&secret, Some(&secret)));
         assert!(super::is_secret(&alias, Some(&secret)));
+        assert!(super::is_secret(&linked, Some(&secret)));
         assert!(!super::is_secret(
             &root.path().join("main.nf"),
             Some(&secret)

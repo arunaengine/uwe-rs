@@ -10,7 +10,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use nextflow_evaluator::interpreter::Host;
 use nextflow_runtime::driver::{Nextflow, Settings};
 use workflow_graph::{
-    Attempt, Driver, Engine, Executor, Launch, Order, Outcome, RunOptions, Running,
+    Attempt, CancellationToken, Driver, Engine, Executor, Launch, Order, Outcome, RunOptions,
+    Running,
 };
 
 struct Printed {
@@ -33,6 +34,7 @@ impl Host for Printed {
 struct Scripted {
     mode: u8,
     cleaned: Arc<AtomicBool>,
+    cancel: CancellationToken,
 }
 
 impl Executor for Scripted {
@@ -42,7 +44,7 @@ impl Executor for Scripted {
         if self.mode == 2 || slow {
             let cancel = attempt.cancel;
             if self.mode == 2 {
-                cancel.cancel();
+                self.cancel.cancel();
             }
             let cleaned = self.cleaned.clone();
             return Running::new(async move {
@@ -116,8 +118,14 @@ fn preserves_callback_failure() {
             },
         )
         .unwrap();
-        let mut executor = Scripted { mode, cleaned };
+        let cancel = CancellationToken::new();
+        let mut executor = Scripted {
+            mode,
+            cleaned,
+            cancel: cancel.clone(),
+        };
         let execution = Engine::new(&mut executor)
+            .cancel(cancel)
             .options(RunOptions {
                 max_pending: 4,
                 order: Order::AsAsked,

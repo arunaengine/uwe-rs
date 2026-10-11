@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use content_store::Store;
-use kubernetes_executor::{Cluster, KubernetesBackend, PodStaging, Via};
+use kubernetes_executor::{Cluster, KubernetesBackend, PodStaging, Via, Volumes};
 use task_runner::{Runner, RunnerExecutor};
 
 /// An executor that runs each task as a Job in the cluster of `kubeconfig`, in `namespace` or
@@ -39,6 +39,17 @@ pub fn executor(
         .map_err(|error| error.lines().next().unwrap_or_default().to_owned())?;
     let mut backend = KubernetesBackend::new(cluster, scratch.join("kubernetes"));
     let executors = &setup.executors;
+    if let Volumes::Under { root, .. } = &executors.kubernetes_volumes
+        && !backend.scratch.starts_with(root)
+    {
+        return Err(format!(
+            "the scratch folder {} is not in the shared volume at {}; keep the cache of iunctus \
+             there",
+            backend.scratch.display(),
+            root.display()
+        ));
+    }
+    backend.volumes = executors.kubernetes_volumes.clone();
     if let Some(stage) = executors.kubernetes_staging.stage(&setup.storage)? {
         let helper = (executors.kubernetes_helper.clone())
             .ok_or("Kubernetes object-store staging needs helper_image")?;

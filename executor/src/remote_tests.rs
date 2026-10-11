@@ -268,9 +268,15 @@ async fn presigned_object(stage: &RemoteStage) {
         assert!(response.status().is_success(), "{response:?}");
         response.text().await.unwrap()
     };
-    let write = stage.request("attempts/presigned/files/1", true).await.unwrap();
+    let write = stage
+        .request("attempts/presigned/files/1", true)
+        .await
+        .unwrap();
     send(write, "presigned\n").await;
-    let read = stage.request("attempts/presigned/files/1", false).await.unwrap();
+    let read = stage
+        .request("attempts/presigned/files/1", false)
+        .await
+        .unwrap();
     assert_eq!(send(read, "").await, "presigned\n");
 }
 

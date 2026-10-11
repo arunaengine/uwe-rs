@@ -39,9 +39,9 @@ helper-image tag="iunctus-helper:dev": release-binary
 	printf 'FROM scratch\nCOPY iunctus /iunctus\n' > "$context/Dockerfile"
 	docker build -t "{{tag}}" "$context"
 
-# Runs a workflow on a kind cluster with object-store staging (image volume, init container, and
-# credentials with a cleanup), with kubedal staging and with shared paths on a claim; set KUBEDAL
-# to a checkout of kubedal.
+# Runs a workflow on a kind cluster with object-store staging (the uploaded binary, image volume,
+# init container, and credentials with a cleanup), with kubedal staging and with shared paths on
+# a claim; set KUBEDAL to a checkout of kubedal.
 kind-staging-test: release-binary
 	bash scripts/kind-staging.sh
 

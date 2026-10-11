@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Runs a workflow with the Kubernetes executor on a kind cluster, with object-store and kubedal staging,
-# with object-store staging through credentials and a cleanup, and with shared paths on a claim.
+# Runs a workflow with the Kubernetes executor on a kind cluster, with object-store staging (with the
+# uploaded binary, a helper image, or credentials), with kubedal staging, and with a shared claim.
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 #
 # Needs docker, kind, kubectl and helm, the static binary of `just release-binary` (IUNCTUS),
 # a checkout of kubedal (KUBEDAL, default ../kubedal) and its image (KUBEDAL_IMAGE, default
-# kubedal:e2e). MODES picks some of image-volume, init-container, kubedal, credentials and
+# kubedal:e2e). MODES picks some of self, image-volume, init-container, kubedal, credentials and
 # shared-claim;
 # KIND_CLUSTER names the cluster (default iunctus-staging); KEEP_CLUSTER=1 keeps the cluster
 # and the S3 server after the run.
@@ -55,8 +55,10 @@ echo "=== helper image and kubedal"
 mkdir "$work/helper"
 cp "$binary" "$work/helper/iunctus"
 printf 'FROM scratch\nCOPY iunctus /iunctus\n' > "$work/helper/Dockerfile"
-docker build -q -t iunctus-helper:kind "$work/helper" > /dev/null
-kind load docker-image --name "$cluster" iunctus-helper:kind debian:stable-slim "$kubedal_image"
+# Another run may build its own helper image at the same time.
+helper="iunctus-helper:$cluster"
+docker build -q -t "$helper" "$work/helper" > /dev/null
+kind load docker-image --name "$cluster" "$helper" debian:stable-slim "$kubedal_image"
 helm upgrade --install kubedal "$kubedal/charts/kubedal" --namespace kube-system \
     --set image.repository="${kubedal_image%%:*}" --set image.tag="${kubedal_image##*:}" \
     --set image.pullPolicy=Never --wait --timeout 180s > /dev/null
@@ -117,14 +119,17 @@ keys() {
 }
 export XDG_CONFIG_HOME="$work/config" IUNCTUS_SITE_CONFIG=""
 status=0
-for mode in ${MODES:-image-volume init-container kubedal credentials shared-claim}; do
+for mode in ${MODES:-self image-volume init-container kubedal credentials shared-claim}; do
     echo "=== $mode"
     export XDG_CACHE_HOME="$work/cache"
     staging="staging = \"object-store\"
 staging_root = \"s3://staging/objects\"
-helper_image = \"iunctus-helper:kind\"
+helper_image = \"$helper\"
 helper_mount = \"$mode\""
-    if [ "$mode" = kubedal ]; then
+    if [ "$mode" = self ]; then
+        staging='staging = "object-store"
+staging_root = "s3://staging/self"'
+    elif [ "$mode" = kubedal ]; then
         staging='staging = "kubedal"
 staging_root = "s3://staging/kubedal"
 kubedal_data_node = "staging"'
@@ -134,7 +139,7 @@ staging_root = "s3://staging/credentials"
 staging_access = "credentials"
 staging_secret = "staging-storage"
 staging_cleanup = true
-helper_image = "iunctus-helper:kind"'
+helper_image = "'"$helper"'"'
     elif [ "$mode" = shared-claim ]; then
         # The cache of iunctus is on the claim, which the pods mount at the same path.
         export XDG_CACHE_HOME="$shared/cache"
@@ -162,7 +167,8 @@ EOF
         -iunctus-config "$work/$mode.toml") \
         && [ "$(cat "$work/run/hello/all.txt")" = "$(printf '%s world!\n' Hello Hola Bonjour Ciao)" ] \
         && { [ "$mode" != credentials ] || { keys credentials/cas/ | grep -q '<Key>' \
-            && ! keys credentials/attempts/ | grep -q '<Key>'; }; }; then
+            && ! keys credentials/attempts/ | grep -q '<Key>'; }; } \
+        && { [ "$mode" != self ] || keys self/cas/ | grep -q "$(sha256sum "$binary" | cut -c 3-64)"; }; then
         echo "=== $mode: passed"
     else
         echo "=== $mode: FAILED"

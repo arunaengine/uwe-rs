@@ -21,5 +21,6 @@ tokio-util.workspace = true
 
 [dev-dependencies]
 content-store.workspace = true
+opendal.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }

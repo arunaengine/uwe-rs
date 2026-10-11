@@ -3,6 +3,9 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+
 use executor::remote::RemoteStage;
 use executor::wrapper::quote;
 use executor::{CONTROL, ContainerRun};
@@ -17,6 +20,22 @@ pub struct NodeStaging {
     /// The folder of the nodes where each job makes the folder of its attempt; `None` for
     /// `$TMPDIR`, else `/tmp`.
     pub folder: Option<String>,
+    /// For nodes with credentials: the file of the storage providers of the staging root, which
+    /// only its owner may read. Each job gets its text in the environment, never in its script.
+    pub secret_file: Option<PathBuf>,
+}
+
+/// The text of the file of the storage providers, which only its owner may read.
+pub fn secret_text(file: &Path) -> Result<String, String> {
+    let unreadable = |error: std::io::Error| format!("cannot read {}: {error}", file.display());
+    let metadata = std::fs::metadata(file).map_err(unreadable)?;
+    if metadata.permissions().mode() & 0o077 != 0 {
+        return Err(format!(
+            "other users may read {}, which holds secrets; make it private with chmod 600",
+            file.display()
+        ));
+    }
+    std::fs::read_to_string(file).map_err(unreadable)
 }
 
 /// Where a job finds the static iunctus binary that stages the files.
@@ -149,6 +168,7 @@ mod tests {
             stage,
             helper: Helper::Path("/opt/iunctus".into()),
             folder: None,
+            secret_file: None,
         };
         let apptainer = Container::Apptainer("apptainer".into());
         let script = job_script(&apptainer, &run, &staging, false, Some(60), "https://plan");

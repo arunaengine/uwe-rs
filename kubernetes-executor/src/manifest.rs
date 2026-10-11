@@ -94,6 +94,9 @@ pub struct Helper {
     /// Whether the task container sees the image as an image volume, which needs Kubernetes
     /// 1.31 or later with the `ImageVolume` feature; else an init container copies the binary.
     pub image_volume: bool,
+    /// For nodes with credentials: the Secret whose keys the helper gets as environment
+    /// variables, among them the storage providers of the staging root.
+    pub secret: Option<String>,
 }
 
 /// Where the task container finds the helper.
@@ -140,6 +143,10 @@ pub fn stage(job: &mut Value, helper: &Helper, root: &str, plan: &str) {
     inputs["name"] = json!("stage-in");
     inputs["command"] = json!(["/iunctus", "__stage", "in", root, plan]);
     inputs["volumeMounts"] = json!([{"name": FOLDERS, "mountPath": root}]);
+    let secret = (helper.secret.as_ref()).map(|name| json!([{"secretRef": {"name": name}}]));
+    if let Some(secret) = &secret {
+        inputs["envFrom"] = secret.clone();
+    }
     init.push(inputs);
     pod["initContainers"] = json!(init);
     (pod["volumes"].as_array_mut())
@@ -147,6 +154,10 @@ pub fn stage(job: &mut Value, helper: &Helper, root: &str, plan: &str) {
         .push(volume);
     let container = &mut pod["containers"][0];
     container["command"] = json!(["sh", "-c", SEND, "iunctus", binary, root]);
+    // The task container sends the outputs back, so it gets the Secret too.
+    if let Some(secret) = secret {
+        container["envFrom"] = secret;
+    }
     let mount = json!({"name": "helper", "mountPath": HELPER, "readOnly": true});
     (container["volumeMounts"].as_array_mut())
         .expect("mounts")

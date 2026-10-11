@@ -23,7 +23,7 @@ pub enum Mode {
 }
 
 /// The staging settings of an executor, from `staging`, `staging_root`, `staging_access`,
-/// `presign_hours` and `max_outputs`.
+/// `staging_cleanup`, `presign_hours` and `max_outputs`.
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub mode: Mode,
@@ -36,6 +36,9 @@ pub struct Settings {
     /// Whether the nodes reach the staging root with credentials of their own instead of with
     /// presigned requests (`staging_access = "credentials"`).
     pub credentials: bool,
+    /// Whether the objects of an attempt go away once its results are collected
+    /// (`staging_cleanup = true`).
+    pub cleanup: bool,
 }
 
 impl Default for Settings {
@@ -46,6 +49,7 @@ impl Default for Settings {
             presign_hours: MOST_HOURS,
             max_outputs: 1024,
             credentials: false,
+            cleanup: false,
         }
     }
 }
@@ -58,6 +62,7 @@ impl Settings {
         "staging",
         "staging_root",
         "staging_access",
+        "staging_cleanup",
         "presign_hours",
         "max_outputs",
     ];
@@ -95,6 +100,10 @@ impl Settings {
                 return Err(table.invalid("staging_access", "must be presigned or credentials"));
             }
         };
+        settings.cleanup = table.flag("staging_cleanup")?.unwrap_or(false);
+        if settings.cleanup && settings.mode == Mode::SharedPath {
+            return Err(table.invalid("staging_cleanup", "needs a staging root"));
+        }
         if let Some(hours) = table.integer("presign_hours")? {
             if !(1..=MOST_HOURS as i64).contains(&hours) {
                 let message =
@@ -130,6 +139,7 @@ impl Settings {
             expiry: Duration::from_secs(self.presign_hours * 3600),
             max_outputs: self.max_outputs,
             credentials: self.credentials,
+            cleanup: self.cleanup,
         }))
     }
 }
@@ -171,5 +181,11 @@ mod tests {
             read(shared).is_err(),
             "credentials without object-store staging"
         );
+        assert!(
+            read(&format!("{text}\nstaging_cleanup = true"))
+                .unwrap()
+                .cleanup
+        );
+        assert!(read("[executor.slurm]\nstaging_cleanup = true").is_err());
     }
 }

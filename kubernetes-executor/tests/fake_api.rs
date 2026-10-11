@@ -1183,8 +1183,8 @@ async fn containers_share_pod() {
 }
 
 /// Runs a task with object-store staging, with the helper as an image volume or copied by an
-/// init container, and with the credentials of a Secret, on a node whose folder of the attempt
-/// goes away with the pod.
+/// init container, and with the credentials of a Secret and a cleanup, on a node whose folder
+/// of the attempt goes away with the pod.
 #[tokio::test]
 async fn stages_through_objects() {
     for (image_volume, credentials) in [(true, false), (false, false), (true, true)] {
@@ -1225,6 +1225,7 @@ async fn stages_through_objects() {
                 expiry: Duration::from_secs(600),
                 max_outputs: 4,
                 credentials,
+                cleanup: credentials,
             },
             via: Via::Helper(Helper {
                 image: "iunctus-helper:test".into(),
@@ -1285,6 +1286,15 @@ async fn stages_through_objects() {
         assert_eq!(plan.starts_with("s3://staging/cas/"), credentials, "{plan}");
         assert_eq!(pod["containers"][0].get("envFrom"), secret.as_ref());
         assert!(!submitted.to_string().contains("storage.staging"));
+        // A cleanup removes the attempt and its plan, but not its inputs.
+        let objects = &backend.remote.as_ref().expect("the staging").stage.objects;
+        let left = objects.objects("attempts/").await.expect("the attempts");
+        assert_eq!(left.is_empty(), credentials, "{left:?}");
+        let plan = plan.rsplit_once("s3://staging/").map(|(_, plan)| plan);
+        let plan = plan.map(|plan| staging_root.join(plan));
+        assert!(!plan.is_some_and(|plan| plan.exists()));
+        let input = task_model::Digest::sha256(b"hello\n");
+        assert!(objects.has_content(&input).await.expect("the input"));
         let folders = volumes.iter().find(|volume| volume["name"] == "folders");
         assert!(folders.expect("the folders")["emptyDir"].is_object());
         assert!(
@@ -1324,6 +1334,7 @@ async fn stages_through_kubedal() {
             expiry: Duration::from_secs(600),
             max_outputs: 4,
             credentials: false,
+            cleanup: false,
         },
         via: Via::Kubedal(Kubedal {
             driver: "kubedal.arunaengine.org".into(),

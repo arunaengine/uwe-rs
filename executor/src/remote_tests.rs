@@ -70,7 +70,7 @@ fn staging(sources: &Path) -> Staging {
 
 /// Plans an attempt, runs its captured wrapper in a node folder between stage-in and stage-out,
 /// and collects it into a scratch folder on this machine.
-async fn round_trip(stage: &RemoteStage) {
+async fn round_trip(stage: &RemoteStage) -> Planned {
     let sources = tempfile::tempdir().unwrap();
     let node = tempfile::tempdir().unwrap();
     let scratch = tempfile::tempdir().unwrap();
@@ -139,6 +139,7 @@ async fn round_trip(stage: &RemoteStage) {
     );
     let absolute = format!("{}/mounts/opt/result.txt", text(root.clone()));
     assert_eq!(read(&absolute), "c\n");
+    planned
 }
 
 #[tokio::test]
@@ -149,8 +150,32 @@ async fn folder_round_trip() {
         expiry: Duration::from_secs(60),
         max_outputs: 8,
         credentials: false,
+        cleanup: false,
     };
     round_trip(&stage).await;
+}
+
+#[tokio::test]
+async fn cleans_attempts() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut stage = RemoteStage {
+        objects: Store::local(folder.path()).unwrap(),
+        expiry: Duration::from_secs(60),
+        max_outputs: 8,
+        credentials: false,
+        cleanup: false,
+    };
+    let planned = round_trip(&stage).await;
+    let sent = format!("{}/", planned.prefix);
+    stage.clean(&planned.prefix, &planned.plan).await;
+    assert!(!stage.objects.objects(&sent).await.unwrap().is_empty());
+    stage.cleanup = true;
+    stage.clean(&planned.prefix, &planned.plan).await;
+    assert!(stage.objects.objects(&sent).await.unwrap().is_empty());
+    assert!(!folder.path().join(&planned.plan).exists());
+    // The inputs stay for other attempts.
+    let input = Digest::sha256(b"a\n");
+    assert!(stage.objects.has_content(&input).await.unwrap());
 }
 
 #[tokio::test]
@@ -161,6 +186,7 @@ async fn refuses_unplaceable_inputs() {
         expiry: Duration::from_secs(60),
         max_outputs: 1,
         credentials: false,
+        cleanup: false,
     };
     let spec = spec();
     let placement = Placement::default();
@@ -205,6 +231,7 @@ fn s3_stage(name: &str, credentials: bool) -> RemoteStage {
         expiry: Duration::from_secs(600),
         max_outputs: 8,
         credentials,
+        cleanup: false,
     }
 }
 

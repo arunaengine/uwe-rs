@@ -51,9 +51,14 @@ pub fn job_script(
         None => "\"${TMPDIR:-/tmp}\"".to_owned(),
     };
     let name = run.root.file_name().unwrap_or_default().to_string_lossy();
+    // Other users may not read the files of the task, unless its container runs as one.
+    let umask = match run.access.hand_back {
+        Some(_) => "000",
+        None => "077",
+    };
     let mut script = format!(
         "#!/bin/bash\n# The iunctus job of one attempt of a task, on a node without the shared \
-         folders.\nnode={base}/{}\nmkdir -p \"$node/{CONTROL}\" || exit 1\n\
+         folders.\numask {umask}\nnode={base}/{}\nmkdir -p \"$node/{CONTROL}\" || exit 1\n\
          exec >> \"$node/{CONTROL}/{LOG}\" 2>&1\n",
         quote(&format!("iunctus-{name}"))
     );
@@ -167,7 +172,7 @@ mod tests {
         let docker = Container::Engine(EngineCommand::docker("docker"));
         let script = job_script(&docker, &run, &staging, false, None, "https://plan");
         assert!(
-            script.contains("node='/local'/'iunctus-run-P-1-1'\n"),
+            script.contains("umask 077\nnode='/local'/'iunctus-run-P-1-1'\n"),
             "{script}"
         );
         assert!(

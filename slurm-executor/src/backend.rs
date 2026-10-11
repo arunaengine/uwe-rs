@@ -879,8 +879,10 @@ impl SlurmBackend {
                 .map_err(|_| ExecutorError::Cancelled)?;
             if let (Some(remote), Some(prefix), Some(root)) =
                 (&self.remote, prefix, control.parent())
+                && let Err(error) = remote.stage.fetch(prefix, CONTAINER_EXIT, root).await
             {
-                remote.stage.fetch(prefix, CONTAINER_EXIT, root).await?;
+                // The staging root may fail for a moment; the job goes on meanwhile.
+                tracing::debug!(job = id, %error, "cannot look at the staging root");
             }
             if let Some(status) = read_number(&control.join(CONTAINER_EXIT)).await {
                 return Ok(Ended::Done(status));

@@ -952,10 +952,6 @@ async fn recovers_dropped_attempts() {
     }
     let record: Value = serde_json::from_slice(&std::fs::read(&journal).unwrap()).unwrap();
     assert_eq!(record["owner"], json!(std::process::id()));
-    // A process that another test starts may hold a copy of the lock for a moment.
-    let lock = std::fs::File::open(backend.scratch.join("orphan/remote.lock")).unwrap();
-    until(|| lock.try_lock().is_ok()).await;
-    drop(lock);
 
     let next_spec = spec("debian:stable-slim", "echo next > out.txt");
     let next = Job {
@@ -965,6 +961,15 @@ async fn recovers_dropped_attempts() {
         placement: &placement,
     };
     backend.run(next, &CancellationToken::new()).await.unwrap();
+    // A process that another test starts may hold a copy of the lock for a moment, and then
+    // the orphan looks alive; a later admission recovers it.
+    for _ in 0..100 {
+        if state.lock().unwrap().jobs["iunctus-orphan"].deleted {
+            break;
+        }
+        backend.reconcile().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
     let state = state.lock().unwrap();
     assert!(state.jobs["iunctus-orphan"].deleted);
     assert_eq!(state.submitted.len(), 2);

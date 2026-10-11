@@ -1,21 +1,26 @@
 #!/usr/bin/env bash
-# Runs a workflow with the Kubernetes executor on a kind cluster, with object-store and kubedal staging.
+# Runs a workflow with the Kubernetes executor on a kind cluster, with object-store and kubedal staging,
+# and with shared paths on a claim.
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 #
 # Needs docker, kind, kubectl and helm, the static binary of `just release-binary` (IUNCTUS),
 # a checkout of kubedal (KUBEDAL, default ../kubedal) and its image (KUBEDAL_IMAGE, default
-# kubedal:e2e). MODES picks some of image-volume, init-container and kubedal; KEEP_CLUSTER=1
-# keeps the cluster and the S3 server after the run.
+# kubedal:e2e). MODES picks some of image-volume, init-container, kubedal and shared-claim;
+# KIND_CLUSTER names the cluster (default iunctus-staging); KEEP_CLUSTER=1 keeps the cluster
+# and the S3 server after the run.
 set -euo pipefail
 
 repository="$(cd "$(dirname "$0")/.." && pwd)"
 binary="$(realpath "${IUNCTUS:-$repository/target/x86_64-unknown-linux-musl/release/iunctus}")"
 kubedal="${KUBEDAL:-$repository/../kubedal}"
 kubedal_image="${KUBEDAL_IMAGE:-kubedal:e2e}"
-cluster=iunctus-staging
-server=iunctus-staging-s3
+cluster="${KIND_CLUSTER:-iunctus-staging}"
+server="$cluster-s3"
 work="$(mktemp -d)"
+# The folder that this machine and the node share, for the cache of shared paths.
+shared="$work/shared"
+mkdir "$shared"
 cleanup() {
     if [ "${KEEP_CLUSTER:-0}" != 1 ]; then
         kind delete cluster --name "$cluster" > /dev/null 2>&1 || true
@@ -28,6 +33,8 @@ trap cleanup EXIT
 echo "=== kind cluster with image volumes"
 printf 'kind: Cluster\napiVersion: kind.x-k8s.io/v1alpha4\nfeatureGates:\n  ImageVolume: true\n' \
     > "$work/kind.yaml"
+printf 'nodes:\n- role: control-plane\n  extraMounts:\n  - {hostPath: "%s", containerPath: "%s"}\n' \
+    "$shared" "$shared" >> "$work/kind.yaml"
 kind create cluster --name "$cluster" --image "${KIND_IMAGE:-kindest/node:v1.34.0}" \
     --config "$work/kind.yaml" --kubeconfig "$work/kubeconfig" --wait 120s
 export KUBECONFIG="$work/kubeconfig"
@@ -68,13 +75,32 @@ spec:
   limit: 1Gi
   secretRef: {name: staging-credentials}
   config: {bucket: staging, endpoint: "$endpoint", region: us-east-1, root: /kubedal}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata: {name: iunctus-cache}
+spec:
+  capacity: {storage: 1Gi}
+  accessModes: [ReadWriteMany]
+  storageClassName: ""
+  hostPath: {path: "$shared"}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: iunctus-cache, namespace: iunctus}
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: ""
+  volumeName: iunctus-cache
+  resources: {requests: {storage: 1Gi}}
 EOF
 
 export STAGING_KEY=staging-user STAGING_SECRET=staging-secret-4410
-export XDG_CACHE_HOME="$work/cache" XDG_CONFIG_HOME="$work/config" IUNCTUS_SITE_CONFIG=""
+export XDG_CONFIG_HOME="$work/config" IUNCTUS_SITE_CONFIG=""
 status=0
-for mode in ${MODES:-image-volume init-container kubedal}; do
+for mode in ${MODES:-image-volume init-container kubedal shared-claim}; do
     echo "=== $mode"
+    export XDG_CACHE_HOME="$work/cache"
     staging="staging = \"object-store\"
 staging_root = \"s3://staging/objects\"
 helper_image = \"iunctus-helper:kind\"
@@ -83,6 +109,12 @@ helper_mount = \"$mode\""
         staging='staging = "kubedal"
 staging_root = "s3://staging/kubedal"
 kubedal_data_node = "staging"'
+    elif [ "$mode" = shared-claim ]; then
+        # The cache of iunctus is on the claim, which the pods mount at the same path.
+        export XDG_CACHE_HOME="$shared/cache"
+        staging="[executor.kubernetes.shared_volume]
+claim = \"iunctus-cache\"
+path = \"$shared\""
     fi
     cat > "$work/$mode.toml" <<EOF
 [storage.staging]
@@ -97,7 +129,7 @@ secret_access_key = { environment = "STAGING_SECRET" }
 namespace = "iunctus"
 $staging
 EOF
-    rm -rf "$work/cache" "$work/run"
+    rm -rf "$XDG_CACHE_HOME" "$work/run"
     mkdir "$work/run"
     cp "$repository/demo/snakemake/hello.smk" "$work/run/"
     if (cd "$work/run" && "$binary" run hello.smk -executor kubernetes -kubeconfig "$work/kubeconfig" \

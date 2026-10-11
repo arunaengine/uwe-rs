@@ -12,4 +12,4 @@ pub use backend::KubernetesBackend;
 pub use cluster::Cluster;
 pub use manifest::{FOLDERS, Helper, LABEL, Limits, Volumes, job, job_name};
 pub use pods::{Look, Pods};
-pub use staging::{PodStaging, Via};
+pub use staging::{Kubedal, PodStaging, Via};

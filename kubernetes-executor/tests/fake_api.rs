@@ -13,7 +13,9 @@ use std::time::Duration;
 
 use executor::remote::RemoteStage;
 use executor::{Backend, ExecutorError, Job, Staged, Staging};
-use kubernetes_executor::{Cluster, Helper, KubernetesBackend, LABEL, Look, PodStaging, Pods, Via};
+use kubernetes_executor::{
+    Cluster, Helper, Kubedal, KubernetesBackend, LABEL, Look, PodStaging, Pods, Via,
+};
 use serde_json::{Value, json};
 use task_model::{ContainerSpec, FORMAT, Image, OutputRule, Placement, TaskSpec};
 use tokio_util::sync::CancellationToken;
@@ -106,18 +108,50 @@ fn start(folder: &Path, job: &Value) -> Running {
             })
             .collect()
     };
-    let node = (pod["volumes"].as_array().into_iter().flatten())
-        .any(|volume| volume["name"] == "folders" && volume["emptyDir"].is_object())
-        .then(|| {
-            let mounts = containers[0]["volumeMounts"].as_array().expect("mounts");
-            let mount = mounts.iter().find(|mount| mount.get("subPath").is_none());
-            mount.expect("the folder")["mountPath"]
-                .as_str()
-                .expect("a path")
-                .to_owned()
-        });
+    let volume = (pod["volumes"].as_array().into_iter().flatten())
+        .find(|volume| volume["name"] == "folders" && volume.get("hostPath").is_none())
+        .filter(|volume| volume["emptyDir"].is_object() || volume["csi"].is_object());
+    let node = volume.map(|_| {
+        let mounts = containers[0]["volumeMounts"].as_array().expect("mounts");
+        let mount = mounts.iter().find(|mount| mount.get("subPath").is_none());
+        mount.expect("the folder")["mountPath"]
+            .as_str()
+            .expect("a path")
+            .to_owned()
+    });
     let suffix = if node.is_some() { ".partial" } else { "" };
     let mut script = String::new();
+    // A kubedal volume gets the files of its list before the pod starts, and kubedal uploads its
+    // folder `upload` after the pod; its DataNode is the folder in the file `data-node`.
+    let kubedal = (volume.and_then(|volume| volume["csi"]["volumeAttributes"].as_object())).map(
+        |attributes| {
+            let data = std::fs::read_to_string(folder.join("data-node")).expect("a DataNode");
+            let data = PathBuf::from(data);
+            let manifest = attributes["manifest"].as_str().expect("a file list");
+            let list: Value =
+                serde_json::from_slice(&std::fs::read(data.join(manifest)).expect("the list"))
+                    .expect("a list");
+            let node = PathBuf::from(node.as_deref().expect("the folder"));
+            for directory in list["directories"].as_array().expect("directories") {
+                std::fs::create_dir_all(node.join(directory.as_str().expect("a path")))
+                    .expect("makes the folder");
+            }
+            for file in list["files"].as_array().expect("files") {
+                let target = node.join(file["path"].as_str().expect("a path"));
+                std::fs::create_dir_all(target.parent().expect("a folder")).expect("a folder");
+                let source = data.join(file["source"].as_str().expect("a source"));
+                std::fs::copy(source, &target).expect("places the file");
+                let mode = if file["executable"] == true {
+                    0o755
+                } else {
+                    0o644
+                };
+                let mode = std::os::unix::fs::PermissionsExt::from_mode(mode);
+                std::fs::set_permissions(&target, mode).expect("sets the mode");
+            }
+            data.join(list["upload"]["prefix"].as_str().expect("a prefix"))
+        },
+    );
     for container in pod["initContainers"].as_array().into_iter().flatten() {
         let exit = folder.join(format!("{name}.exit.0"));
         script.push_str(&format!(
@@ -142,11 +176,17 @@ fn start(folder: &Path, job: &Value) -> Running {
         ));
     }
     script.push_str("wait\n");
+    if let (Some(prefix), Some(node)) = (&kubedal, &node) {
+        let (prefix, node) = (quote(&prefix.to_string_lossy()), quote(node));
+        script.push_str(&format!(
+            "mkdir -p {prefix}\ncp -R {node}/upload/. {prefix}/\n"
+        ));
+    }
     if let Some(node) = node {
         let node = quote(&node);
         script.push_str(&format!(
             "rm -rf {node}/work {node}/control {node}/home {node}/outbox {node}/transfer \
-             {node}/plan.json\n"
+             {node}/plan.json {node}/upload\n"
         ));
         let exit = quote(&folder.join(format!("{name}.exit.0")).to_string_lossy());
         script.push_str(&format!("mv {exit}{suffix} {exit}\n"));
@@ -1197,4 +1237,90 @@ fn stage_helper() {
         // The first argument is `__stage`, as the iunctus program takes it.
         executor::helper::main(&arguments[1..]).expect("the helper stages");
     }
+}
+
+/// Runs a task whose kubedal volume places its inputs and uploads its outputs after the pod.
+#[tokio::test]
+async fn stages_through_kubedal() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (mut backend, state) = backend(root.path()).await;
+    let data = root.path().join("staging");
+    let objects = content_store::Store::local(&data).expect("a store");
+    std::fs::write(
+        root.path().join("server/data-node"),
+        data.to_string_lossy().as_bytes(),
+    )
+    .expect("names the DataNode");
+    backend.remote = Some(PodStaging {
+        stage: RemoteStage {
+            objects,
+            expiry: Duration::from_secs(600),
+            max_outputs: 4,
+        },
+        via: Via::Kubedal(Kubedal {
+            driver: "kubedal.arunaengine.org".into(),
+            data_node: "staging".into(),
+            namespace: Some("data".into()),
+            upload: Duration::from_secs(60),
+        }),
+    });
+    let source = root.path().join("source/in.txt");
+    std::fs::create_dir_all(source.parent().expect("a folder")).expect("makes the folder");
+    std::fs::write(&source, "hello\n").expect("writes the input");
+    let staging = Staging {
+        inputs: vec![Staged {
+            path: "in.txt".into(),
+            source,
+            ..Default::default()
+        }],
+        ..Staging::default()
+    };
+    let spec = spec(
+        "debian:stable-slim",
+        "tr a-z A-Z < in.txt > out.txt && mkdir -p out && echo deep > out/deep.txt",
+    );
+    let spec = TaskSpec {
+        outputs: ["out.txt", "out"]
+            .map(|pattern| OutputRule {
+                pattern: pattern.into(),
+            })
+            .to_vec(),
+        ..spec
+    };
+    let placement = placement();
+    let job = Job {
+        name: "run-P-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
+    assert_eq!(output, "HELLO\n");
+    let deep = std::fs::read_to_string(finished.local_path("out/deep.txt")).expect("an output");
+    assert_eq!(deep, "deep\n");
+    let submitted = state.lock().expect("the state").submitted[0].clone();
+    let pod = &submitted["spec"]["template"]["spec"];
+    assert!(pod.get("initContainers").is_none(), "{pod}");
+    assert_eq!(
+        pod["securityContext"]["fsGroup"],
+        pod["containers"][0]["securityContext"]["runAsGroup"]
+    );
+    let csi = &pod["volumes"][0]["csi"];
+    assert_eq!(csi["driver"], "kubedal.arunaengine.org");
+    assert_eq!(csi["volumeAttributes"]["dataNode"], "staging");
+    assert_eq!(csi["volumeAttributes"]["dataNodeNamespace"], "data");
+    let list = csi["volumeAttributes"]["manifest"]
+        .as_str()
+        .expect("a file list");
+    let list: Value =
+        serde_json::from_slice(&std::fs::read(data.join(list)).expect("the list")).expect("a list");
+    assert_eq!(list["version"], 1);
+    assert_eq!(list["upload"]["path"], "upload");
+    assert_eq!(list["upload"]["dataNodeNamespace"], "data");
+    let paths: Vec<&str> = (list["files"].as_array().expect("files").iter())
+        .map(|file| file["path"].as_str().unwrap_or_default())
+        .collect();
+    assert!(paths.contains(&"work/in.txt") && paths.contains(&"control/wrapper.sh"));
 }

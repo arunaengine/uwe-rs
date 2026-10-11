@@ -1,5 +1,5 @@
 //! How the pods of a backend get their files when the nodes share no folders with this machine:
-//! through the iunctus helper and a plan.
+//! through the iunctus helper and a plan, or through kubedal volumes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -9,7 +9,7 @@ use std::time::Duration;
 use executor::capture::{RECORDS, capture};
 use executor::process::Mount;
 use executor::remote::RemoteStage;
-use executor::wrapper::{Folders, wrapper};
+use executor::wrapper::{Folders, quote, wrapper};
 use executor::{CONTROL, ContainerRun, ExecutorError, HOME, Job};
 use serde_json::{Value, json};
 use task_model::TaskSpec;
@@ -28,6 +28,21 @@ pub struct PodStaging {
 pub enum Via {
     /// The iunctus helper, from an image that holds only the binary, with presigned requests.
     Helper(Helper),
+    /// The kubedal CSI driver, which places the inputs and uploads the outputs after the pod.
+    Kubedal(Kubedal),
+}
+
+/// The kubedal setup that the staging root needs.
+#[derive(Clone, Debug)]
+pub struct Kubedal {
+    /// The name of the CSI driver, like `kubedal.arunaengine.org`.
+    pub driver: String,
+    /// The DataNode whose folder is the staging root.
+    pub data_node: String,
+    /// The namespace of the DataNode; `None` for the namespace of the Jobs.
+    pub namespace: Option<String>,
+    /// How long kubedal may take to upload the outputs after the pod ended.
+    pub upload: Duration,
 }
 
 /// What an attempt staged: where it sends its outputs back, and how its pod sees its folder.
@@ -37,9 +52,14 @@ pub struct Prepared {
     /// What the container sees besides the folder of the attempt.
     pub mounts: Vec<Mount>,
     pub volumes: Volumes,
-    /// The plan of the helper in the staging root.
+    /// The plan of the helper, or the file list of kubedal, in the staging root.
     location: String,
+    /// The group that kubedal gives the files of the volume, so that the task may change them.
+    group: Option<u32>,
 }
+
+/// The folder of the attempt that kubedal uploads to the attempt prefix.
+const UPLOAD: &str = "upload";
 
 impl PodStaging {
     /// Uploads the inputs and the captured wrapper of `spec`, which runs as `run`.
@@ -61,36 +81,114 @@ impl PodStaging {
             owner: &owner,
         };
         let script = wrapper(spec, &folders);
-        let Via::Helper(_) = &self.via;
-        let transfer = text(&root.join(executor::helper::TRANSFER));
-        let extra = [("control/wrapper.sh", capture(&script, &transfer)?)];
-        // A task that runs as a user that the image names may differ from the helper.
-        let open = spec.run_as.is_some_and(|run_as| run_as.user.is_none());
-        let planned = self.stage.plan(job, root, &extra, RECORDS, open).await?;
+        let kubedal = match &self.via {
+            Via::Helper(_) => {
+                let transfer = text(&root.join(executor::helper::TRANSFER));
+                let extra = [("control/wrapper.sh", capture(&script, &transfer)?)];
+                // A task that runs as a user that the image names may differ from the helper.
+                let open = spec.run_as.is_some_and(|run_as| run_as.user.is_none());
+                let planned = self.stage.plan(job, root, &extra, RECORDS, open).await?;
+                return Ok(Prepared {
+                    prefix: planned.prefix,
+                    mounts: planned.mounts,
+                    volumes: Volumes::Under {
+                        root: root.to_owned(),
+                        source: json!({"emptyDir": {}}),
+                    },
+                    location: planned.location,
+                    group: None,
+                });
+            }
+            Via::Kubedal(kubedal) => kubedal,
+        };
+        let files = text(&root.join(UPLOAD).join("files"));
+        let records = text(&root.join(UPLOAD).join(CONTROL));
+        let script = capture(&script, &files)?;
+        let script = script
+            .strip_suffix("exit \"$status\"\n")
+            .expect("a final exit");
+        let names: Vec<String> = RECORDS.iter().map(|name| quote(name)).collect();
+        let script = format!(
+            "{script}mkdir -p {records}\nfor name in {}; do\n    [ ! -f \"$control/$name\" ] || \
+             cp \"$control/$name\" {records}/\ndone\nexit \"$status\"\n",
+            names.join(" "),
+            records = quote(&records),
+        );
+        let prefix = executor::capture::attempt_prefix(job)?;
+        let layout = (self.stage)
+            .upload(job, root, &[("control/wrapper.sh", script)])
+            .await?;
+        let mut directories = layout.directories;
+        directories.push(UPLOAD.into());
+        let files: Vec<Value> = (layout.files.iter())
+            .map(|file| {
+                json!({
+                    "path": file.path,
+                    "source": content_store::layout::content(&file.digest),
+                    "sha256": file.digest.hex(),
+                    "size": file.size,
+                    "executable": file.executable,
+                })
+            })
+            .collect();
+        let mut upload = json!({"dataNode": kubedal.data_node, "prefix": prefix, "path": UPLOAD});
+        let mut attributes = json!({"dataNode": kubedal.data_node});
+        if let Some(namespace) = &kubedal.namespace {
+            upload["dataNodeNamespace"] = json!(namespace);
+            attributes["dataNodeNamespace"] = json!(namespace);
+        }
+        let list = json!({
+            "version": 1,
+            "files": files,
+            "directories": directories,
+            "upload": upload,
+        });
+        let text = serde_json::to_vec(&list).map_err(failed)?;
+        let digest = (self.stage.objects.put_content(text.into()).await).map_err(failed)?;
+        let location = content_store::layout::content(&digest);
+        attributes["manifest"] = json!(location);
+        let source = json!({"csi": {"driver": kubedal.driver, "volumeAttributes": attributes}});
         Ok(Prepared {
-            prefix: planned.prefix,
-            mounts: planned.mounts,
+            prefix,
+            mounts: layout.mounts,
             volumes: Volumes::Under {
                 root: root.to_owned(),
-                source: json!({"emptyDir": {}}),
+                source,
             },
-            location: planned.location,
+            location,
+            group: match run.access.run_as {
+                None => Some(run.owner.1),
+                Some(run_as) => run_as.group,
+            },
         })
     }
 
-    /// Adds to the Job what its pod needs for staging: the helper.
+    /// Adds to the Job what its pod needs for staging: the helper, or the group of kubedal.
     pub fn complete(&self, job: &mut Value, prepared: &Prepared, root: &Path) {
-        let Via::Helper(helper) = &self.via;
-        stage(job, helper, &root.to_string_lossy(), &prepared.location);
+        match &self.via {
+            Via::Helper(helper) => stage(job, helper, &root.to_string_lossy(), &prepared.location),
+            Via::Kubedal(_) => {
+                if let Some(group) = prepared.group {
+                    job["spec"]["template"]["spec"]["securityContext"] = json!({"fsGroup": group});
+                }
+            }
+        }
     }
 
-    /// How long the pod may take to go away, when it does more than the task.
+    /// How long the pod may take to go away: kubedal uploads the outputs on the way.
     pub fn grace(&self) -> Option<Duration> {
-        None
+        match &self.via {
+            Via::Helper(_) => None,
+            Via::Kubedal(kubedal) => Some(kubedal.upload),
+        }
     }
 
     /// Downloads what the attempt sent back into its folder `root`.
     pub async fn collect(&self, prepared: &Prepared, root: &Path) -> Result<(), ExecutorError> {
         self.stage.collect(&prepared.prefix, root, RECORDS).await
     }
+}
+
+fn failed(error: impl std::fmt::Display) -> ExecutorError {
+    std::io::Error::other(format!("kubedal staging failed: {error}")).into()
 }

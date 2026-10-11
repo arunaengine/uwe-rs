@@ -683,7 +683,10 @@ mod tests {
             if sha256 == "ab".repeat(32))
         );
         assert!(read(&format!("{text}ab'\n")).is_err(), "a short digest");
-        let text = format!("{text}{}'\nstaging_access = 'credentials'\n", "ab".repeat(32));
+        let text = format!(
+            "{text}{}'\nstaging_access = 'credentials'\n",
+            "ab".repeat(32)
+        );
         assert!(read(&text).unwrap_err().contains("staging_secret_file"));
         let text = format!("{text}staging_secret_file = '/home/me/staging.toml'\n");
         let file = read(&text).expect("settings").slurm_secret_file;

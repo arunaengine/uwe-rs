@@ -516,6 +516,24 @@ fn placement() -> Placement {
     }
 }
 
+/// Waits until `ready` holds, for at most 30 seconds, as a busy machine may be slow.
+async fn until(ready: impl Fn() -> bool) {
+    for _ in 0..3000 {
+        if ready() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("the test waited too long");
+}
+
+/// Whether the journal of an attempt names the UID of its accepted Job.
+fn accepted(journal: &Path) -> bool {
+    let record = std::fs::read(journal).ok();
+    let record: Option<Value> = record.and_then(|bytes| serde_json::from_slice(&bytes).ok());
+    record.is_some_and(|record| record["uid"].is_string())
+}
+
 #[tokio::test]
 async fn preserves_api_errors() {
     let root = tempfile::tempdir().expect("a folder");
@@ -844,12 +862,10 @@ async fn cancelled_jobs_stop() {
         placement: &placement,
     };
     let cancel = CancellationToken::new();
-    let stopper = {
-        let cancel = cancel.clone();
-        async move {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            cancel.cancel();
-        }
+    let journal = backend.scratch.join("run-P-4-1/remote.json");
+    let stopper = async {
+        until(|| accepted(&journal)).await;
+        cancel.cancel();
     };
     let (result, ()) = tokio::join!(backend.run(job, &cancel), stopper);
     assert!(
@@ -912,18 +928,18 @@ async fn recovers_dropped_attempts() {
         staging: &staging,
         placement: &placement,
     };
-    assert!(
-        tokio::time::timeout(
-            Duration::from_millis(600),
-            backend.run(old, &CancellationToken::new())
-        )
-        .await
-        .is_err()
-    );
-    let record: Value =
-        serde_json::from_slice(&std::fs::read(backend.scratch.join("orphan/remote.json")).unwrap())
-            .unwrap();
+    let journal = backend.scratch.join("orphan/remote.json");
+    let cancel = CancellationToken::new();
+    tokio::select! {
+        result = backend.run(old, &cancel) => panic!("{result:?}"),
+        () = until(|| accepted(&journal)) => {}
+    }
+    let record: Value = serde_json::from_slice(&std::fs::read(&journal).unwrap()).unwrap();
     assert_eq!(record["owner"], json!(std::process::id()));
+    // A process that another test starts may hold a copy of the lock for a moment.
+    let lock = std::fs::File::open(backend.scratch.join("orphan/remote.lock")).unwrap();
+    until(|| lock.try_lock().is_ok()).await;
+    drop(lock);
 
     let next_spec = spec("debian:stable-slim", "echo next > out.txt");
     let next = Job {
@@ -942,7 +958,13 @@ async fn recovers_dropped_attempts() {
 async fn preserves_active_siblings() {
     let root = tempfile::tempdir().unwrap();
     let (backend, state) = backend(root.path()).await;
-    let active_spec = spec("debian:stable-slim", "sleep 1; echo active > out.txt");
+    // The active task ends once the sibling ended.
+    let go = root.path().join("go");
+    let wait = format!(
+        "until [ -e {} ]; do sleep 0.05; done; echo active > out.txt",
+        quote(&go.to_string_lossy())
+    );
+    let active_spec = spec("debian:stable-slim", &wait);
     let next_spec = spec("debian:stable-slim", "echo next > out.txt");
     let (staging, placement, cancel) = (Staging::default(), placement(), CancellationToken::new());
     let active = Job {
@@ -951,8 +973,9 @@ async fn preserves_active_siblings() {
         staging: &staging,
         placement: &placement,
     };
+    let journal = backend.scratch.join("active/remote.json");
     let next = async {
-        tokio::time::sleep(Duration::from_millis(400)).await;
+        until(|| accepted(&journal)).await;
         let next = Job {
             name: "sibling",
             spec: &next_spec,
@@ -961,6 +984,7 @@ async fn preserves_active_siblings() {
         };
         let result = backend.run(next, &cancel).await;
         assert!(!state.lock().unwrap().jobs["iunctus-active"].deleted);
+        std::fs::write(&go, "").unwrap();
         result
     };
     let (active, next) = tokio::join!(backend.run(active, &cancel), next);
@@ -1003,15 +1027,12 @@ async fn recovery_waits_removal() {
         staging: &staging,
         placement: &placement,
     };
-    assert!(
-        tokio::time::timeout(
-            Duration::from_millis(600),
-            backend.run(job, &CancellationToken::new())
-        )
-        .await
-        .is_err()
-    );
     let journal = backend.scratch.join("recover/remote.json");
+    let cancel = CancellationToken::new();
+    tokio::select! {
+        result = backend.run(job, &cancel) => panic!("{result:?}"),
+        () = until(|| accepted(&journal)) => {}
+    }
     let mut record: Value = serde_json::from_slice(&std::fs::read(&journal).unwrap()).unwrap();
     let uid = record["uid"].clone();
     record["owner"] = json!(0);
@@ -1071,7 +1092,8 @@ async fn failure_retains_scratch() {
     let cancel = CancellationToken::new();
     let run = backend.run(job, &cancel);
     let confirm = async {
-        tokio::time::sleep(Duration::from_millis(700)).await;
+        // The backend asked to remove the failed Job, which the server keeps for now.
+        until(|| (state.lock().unwrap().calls.iter()).any(|call| call.starts_with("DELETE"))).await;
         assert!(backend.scratch.join("siblings/remote.json").is_file());
         assert!(backend.scratch.join("siblings/control").is_dir());
         assert!(!state.lock().unwrap().jobs["iunctus-siblings"].deleted);

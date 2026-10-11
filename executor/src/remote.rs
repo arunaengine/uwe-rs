@@ -6,11 +6,13 @@
 use std::collections::BTreeSet;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use content_store::{Store, hash_file, layout};
 use task_model::Digest;
 
+use crate::binary::Binary;
 use crate::helper::{Input, Plan, Record, Request};
 use crate::job::{CONTROL, ExecutorError, Finished, HOME, Job, MOUNTS, WORK};
 use crate::process::Mount;
@@ -298,6 +300,33 @@ impl RemoteStage {
             Err(error) if error.missing() => Ok(false),
             Err(error) => Err(failed(error)),
         }
+    }
+
+    /// Where a job downloads `binary` with `curl` or `wget`: a presigned URL, or a `file://` URL
+    /// for a staging root in a folder. The first call uploads the binary, where it is not yet.
+    pub async fn binary(&self, binary: &Binary) -> Result<String, ExecutorError> {
+        if !binary.uploaded.load(Ordering::Relaxed) {
+            if !self
+                .objects
+                .has_content(&binary.digest)
+                .await
+                .map_err(failed)?
+            {
+                (self.objects.put_file_as(&binary.file, &binary.digest))
+                    .await
+                    .map_err(failed)?;
+            }
+            binary.uploaded.store(true, Ordering::Relaxed);
+        }
+        // The job has no helper yet to read an object address with credentials.
+        let stage = RemoteStage {
+            credentials: false,
+            ..self.clone()
+        };
+        Ok(stage
+            .request(&layout::content(&binary.digest), false)
+            .await?
+            .url)
     }
 
     /// A request that reads or writes `location`: presigned, the address of the object for

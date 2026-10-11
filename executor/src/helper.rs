@@ -30,6 +30,10 @@ pub struct Plan {
     pub files: Vec<Request>,
     /// The upload of each control record, in the order they are sent.
     pub records: Vec<Record>,
+    /// Whether every user may change what stage-in makes, for a task that runs as another user
+    /// than the helper.
+    #[serde(default)]
+    pub open: bool,
 }
 
 /// One file to download.
@@ -94,12 +98,12 @@ pub fn stage_in(folder: &Path, plan: &Plan) -> Result<(), String> {
     let client = client()?;
     for directory in &plan.directories {
         let path = inside(folder, directory)?;
-        make_folders(folder, &path)?;
+        make_folders(folder, &path, plan.open)?;
     }
     for input in &plan.inputs {
         let path = inside(folder, &input.path)?;
-        make_folders(folder, path.parent().expect("a parent"))?;
-        retried(|| download(&client, input, &path))
+        make_folders(folder, path.parent().expect("a parent"), plan.open)?;
+        retried(|| download(&client, input, &path, plan.open))
             .map_err(|error| format!("cannot download {}: {error}", input.path))?;
     }
     Ok(())
@@ -180,7 +184,7 @@ fn inside(folder: &Path, relative: &str) -> Result<PathBuf, String> {
 }
 
 /// Makes the folders from `folder` down to `path`, refusing links and files on the way.
-fn make_folders(folder: &Path, path: &Path) -> Result<(), String> {
+fn make_folders(folder: &Path, path: &Path, open: bool) -> Result<(), String> {
     let mut current = folder.to_owned();
     for part in path
         .strip_prefix(folder)
@@ -192,7 +196,11 @@ fn make_folders(folder: &Path, path: &Path) -> Result<(), String> {
             Ok(metadata) if metadata.is_dir() => {}
             Ok(_) => return Err(format!("{} is not a folder", current.display())),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                std::fs::create_dir(&current).map_err(|error| error.to_string())?
+                std::fs::create_dir(&current).map_err(|error| error.to_string())?;
+                if open {
+                    let mode = std::fs::Permissions::from_mode(0o777);
+                    std::fs::set_permissions(&current, mode).map_err(|error| error.to_string())?;
+                }
             }
             Err(error) => return Err(error.to_string()),
         }
@@ -201,7 +209,12 @@ fn make_folders(folder: &Path, path: &Path) -> Result<(), String> {
 }
 
 /// Downloads an input to a new file beside its path, checks it and moves it in place.
-fn download(client: &reqwest::blocking::Client, input: &Input, path: &Path) -> Result<(), String> {
+fn download(
+    client: &reqwest::blocking::Client,
+    input: &Input,
+    path: &Path,
+    open: bool,
+) -> Result<(), String> {
     let partial = path.with_file_name(format!(
         ".{}.partial",
         path.file_name().unwrap_or_default().to_string_lossy()
@@ -238,7 +251,12 @@ fn download(client: &reqwest::blocking::Client, input: &Input, path: &Path) -> R
             input.sha256
         ));
     }
-    let mode = if input.executable { 0o755 } else { 0o644 };
+    let mode = match (input.executable, open) {
+        (true, false) => 0o755,
+        (false, false) => 0o644,
+        (true, true) => 0o777,
+        (false, true) => 0o666,
+    };
     file.set_permissions(std::fs::Permissions::from_mode(mode))
         .map_err(|error| error.to_string())?;
     file.sync_all().map_err(|error| error.to_string())?;

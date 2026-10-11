@@ -57,18 +57,21 @@ pub struct Planned {
 
 impl RemoteStage {
     /// Uploads the inputs of `job` and the `extra` files, like the wrapper, as the folder `root`
-    /// of the attempt shows them, and writes the plan that sends back `records`.
+    /// of the attempt shows them, and writes the plan that sends back `records`. An `open` plan
+    /// lets every user change what stage-in makes.
     pub async fn plan(
         &self,
         job: Job<'_>,
         root: &Path,
         extra: &[(&str, String)],
         records: &[&str],
+        open: bool,
     ) -> Result<Planned, ExecutorError> {
         let prefix = crate::capture::attempt_prefix(job)?;
         let layout = self.upload(job, root, extra).await?;
         let mut plan = Plan {
             directories: layout.directories,
+            open,
             ..Plan::default()
         };
         for file in layout.files {

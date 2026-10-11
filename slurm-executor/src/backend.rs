@@ -370,7 +370,10 @@ impl SlurmBackend {
                 let wrapper = executor::wrapper::wrapper(spec, &folders);
                 let wrapper = executor::capture::capture(&wrapper, &transfer)?;
                 let extra = [("control/wrapper.sh", wrapper)];
-                let planned = remote.stage.plan(job, root, &extra, &records()).await?;
+                let planned = remote
+                    .stage
+                    .plan(job, root, &extra, &records(), false)
+                    .await?;
                 let run = ContainerRun {
                     mounts: &planned.mounts,
                     ..run

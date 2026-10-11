@@ -120,6 +120,68 @@ iunctus run nf-core/demo -r 1.2.0 -profile test,docker --outdir results
 
 `iunctus help` lists all commands and `iunctus run -help` lists all run options.
 
+## Remote executors without shared folders
+
+SLURM and Kubernetes take a `staging` setting in `[executor.slurm]` or `[executor.kubernetes]` of the config file. In every mode the task container runs the original image of the task, unchanged.
+
+**`staging = "shared-path"`** (the default): the nodes see the store and scratch folders at the same paths as the machine of iunctus, for example on a shared file system. On Kubernetes these are `hostPath` volumes, or one shared volume that holds the cache of iunctus:
+
+```toml
+[executor.kubernetes.shared_volume]
+claim = "iunctus-cache"   # a ReadWriteMany claim; or nfs_server and nfs_path of an NFS export
+path = "/mnt/iunctus"     # where iunctus and the pods see the volume
+```
+
+A ReadWriteMany folder that all pods share is an antipattern on Kubernetes: it is slow, it fails as one piece, and it does not scale. Prefer `object-store` or `kubedal`.
+
+**`staging = "object-store"`**: nothing is shared. iunctus uploads the inputs to the staging root and writes a plan of presigned requests. On the node, the static iunctus binary downloads the inputs, checks their SHA-256, and uploads the outputs after the task. The nodes need no credentials. The staging root is an address of a configured storage provider that signs requests: S3, Google Cloud Storage or Azure Blob Storage.
+
+```toml
+[executor.slurm]
+staging = "object-store"
+staging_root = "s3://bucket/iunctus-staging"
+helper_url = "https://example.org/iunctus"   # the static binary of `just release-binary`
+helper_sha256 = "<its SHA-256, 64 hex digits>"
+# helper_path = "/opt/iunctus/bin/iunctus"   # instead, when the nodes have it already
+node_folder = "/local/scratch"               # the default is $TMPDIR, else /tmp
+```
+
+A SLURM job gets the binary with `curl` or `wget` and checks it, stages the inputs into the node folder, runs the container with binds to that folder, and sends the outputs back. Apptainer pulls the image on each node.
+
+```toml
+[executor.kubernetes]
+staging = "object-store"
+staging_root = "s3://bucket/iunctus-staging"
+helper_image = "registry.example.org/iunctus-helper:0.1.0"   # built with `just helper-image`
+helper_mount = "image-volume"                                # or "init-container"
+```
+
+The helper image holds only the static binary, at `/iunctus`. An init container of that image stages the inputs into an `emptyDir` volume. The task container sees the binary as a read-only image volume and sends the outputs back after the task. Image volumes need Kubernetes 1.31 or later with the `ImageVolume` feature gate on, and a container runtime that supports them. On other clusters, `helper_mount = "init-container"` copies the binary into an `emptyDir` volume instead.
+
+Limits of object-store staging:
+
+- Presigned requests work for `presign_hours` (default 168, the most that S3 allows). This must cover the time that a task waits in the queue and runs. Requests signed with temporary credentials end with those credentials.
+- Each output file goes up in one request of at most 5 GiB, the S3 limit for one upload. A larger file fails the task with a clear message.
+- A task gives back at most `max_outputs` files (default 1024).
+- Anyone who can read the job script or the Job sees the address of its plan, which grants access to the files of that task until it expires.
+- Tasks of several containers need `shared-path`.
+
+**`staging = "kubedal"`** (Kubernetes only): the [kubedal](https://github.com/arunaengine/kubedal) CSI driver places the inputs from a file list before the pod starts and uploads the outputs when the pod ends. The pod gets no iunctus binary.
+
+```toml
+[executor.kubernetes]
+staging = "kubedal"
+staging_root = "s3://bucket/iunctus-staging"
+kubedal_data_node = "iunctus-staging"       # a DataNode whose bucket and root are the staging root
+kubedal_namespace = "data"                  # the default is the namespace of the Jobs
+kubedal_driver = "kubedal.arunaengine.org"  # the default
+kubedal_upload_minutes = 60                 # how long kubedal may upload after a pod (default)
+```
+
+Install kubedal with its Helm chart. Make a DataNode that may write, with its credentials Secret, whose `config` names the bucket and the `root` of the staging root. Put it in the namespace of the Jobs, or give their service account the right to `get` it. iunctus waits until Kubernetes removed the pod, which happens only once kubedal uploaded the outputs, and then checks that every output file that the task listed is there. The pod gets the group of the user who runs iunctus as `fsGroup`, so that the task can write to the volume.
+
+Both modes keep inputs under `cas/` and the results of attempts under `attempts/` in the staging root. iunctus does not remove them; a lifecycle rule of the bucket can.
+
 ## Known pitfalls
 
 - **Containers are required.** Every task runs in a container. Host-installed tools are never used as a fallback, so declare an image in the workflow or pass `-default-image IMAGE`.
@@ -130,7 +192,7 @@ iunctus run nf-core/demo -r 1.2.0 -profile test,docker --outdir results
 - **Conda and pip.** Conda environments become container images for local runs and are published for remote executors. Editable, local or VCS `pip:` requirements are not supported.
 - **CWL JavaScript needs a helper image.** Build it once from your binary with `python3 scripts/cwl-js-image.py target/release/iunctus --engine docker` (or `--engine podman`).
 - **Repository sources.** SSH URLs, arbitrary Git servers, submodules and archive links are not supported. Cached branches stay on their remembered commit until you pass `-latest`.
-- **Remote executors need shared paths.** SLURM and Kubernetes nodes must see the store and scratch folders at the same paths. TES can use an S3 bucket instead.
+- **Remote executors move files in one of three ways.** By default SLURM and Kubernetes nodes must see the store and scratch folders at the same paths. With `staging = "object-store"` (SLURM and Kubernetes) or `staging = "kubedal"` (Kubernetes) nothing is shared and the files go through an object store, see [Remote executors without shared folders](#remote-executors-without-shared-folders). TES can use an S3 bucket too.
 - **Disk use grows.** The store, cache and engine images grow over time. Published results can link to data in the store, so preview with `iunctus clean` before removing anything with `-remove`.
 
 ## License

@@ -235,6 +235,59 @@ fn s3_stage(name: &str, credentials: bool) -> RemoteStage {
     }
 }
 
+/// A staging root below the address in the environment variable `root`, through the storage
+/// providers of `IUNCTUS_TEST_STORAGE`, as iunctus opens it.
+fn configured_stage(root: &str) -> RemoteStage {
+    let root = std::env::var(root).expect("the address of the staging root");
+    let root = format!("{root}/iunctus-remote-{}", std::process::id());
+    let text = std::env::var("IUNCTUS_TEST_STORAGE").expect("IUNCTUS_TEST_STORAGE is set");
+    let config = config_file::ConfigFile::parse(&text, Path::new("storage.toml")).unwrap();
+    let storage = storage::Storage::from_config(&config).unwrap();
+    let storage::StoreLocation::Objects(operator) = storage.store(&root).unwrap() else {
+        panic!("{root} is not in an object store");
+    };
+    RemoteStage {
+        objects: Store::remote(operator, &root).unwrap(),
+        expiry: Duration::from_secs(600),
+        max_outputs: 8,
+        credentials: false,
+        cleanup: false,
+    }
+}
+
+/// Writes an object and reads it back through presigned requests alone, as a node does.
+async fn presigned_object(stage: &RemoteStage) {
+    let client = reqwest::Client::new();
+    let send = async |request: Request, body: &'static str| {
+        let method = reqwest::Method::from_bytes(request.method.as_bytes()).unwrap();
+        let mut built = client.request(method, &request.url).body(body);
+        for (name, value) in &request.headers {
+            built = built.header(name, value);
+        }
+        let response = built.send().await.unwrap();
+        assert!(response.status().is_success(), "{response:?}");
+        response.text().await.unwrap()
+    };
+    let write = stage.request("attempts/presigned/files/1", true).await.unwrap();
+    send(write, "presigned\n").await;
+    let read = stage.request("attempts/presigned/files/1", false).await.unwrap();
+    assert_eq!(send(read, "").await, "presigned\n");
+}
+
+/// The emulator answers only requests that it can read without a token from Google, so this
+/// checks the presigned requests alone.
+#[tokio::test]
+#[ignore = "needs fake-gcs-server; run `just emulator-test`"]
+async fn gcs_presigned_requests() {
+    presigned_object(&configured_stage("IUNCTUS_GCS_ROOT")).await;
+}
+
+#[tokio::test]
+#[ignore = "needs Azurite; run `just emulator-test`"]
+async fn azure_round_trip() {
+    round_trip(&configured_stage("IUNCTUS_AZURE_ROOT")).await;
+}
+
 #[tokio::test]
 #[ignore = "needs an S3 bucket; set IUNCTUS_S3_BUCKET and AWS credentials, then run with --ignored"]
 async fn presigned_round_trip() {

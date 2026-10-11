@@ -462,11 +462,15 @@ s3-server:
 		endpoint_url='http://127.0.0.1:9000', aws_access_key_id='rustfsadmin', \
 		aws_secret_access_key='rustfsadmin', region_name='us-east-1').create_bucket(Bucket='iunctus-test')"
 
-# Runs the S3 tests of content-store against the server from `just s3-server`.
+# Runs the S3 tests of content-store and of object-store staging against the server from
+# `just s3-server`.
 s3-test:
 	AWS_ACCESS_KEY_ID=rustfsadmin AWS_SECRET_ACCESS_KEY=rustfsadmin AWS_REGION=us-east-1 \
 	IUNCTUS_S3_BUCKET=iunctus-test IUNCTUS_S3_ENDPOINT=http://127.0.0.1:9000 \
 	cargo test -p content-store --test store -- --ignored
+	AWS_ACCESS_KEY_ID=rustfsadmin AWS_SECRET_ACCESS_KEY=rustfsadmin AWS_REGION=us-east-1 \
+	IUNCTUS_S3_BUCKET=iunctus-test IUNCTUS_S3_ENDPOINT=http://127.0.0.1:9000 \
+	cargo test -p executor --lib remote -- --ignored
 
 # Runs the tests of two S3 storage providers against two local RustFS servers, one for inputs
 # (bucket `inputs`) and one for the store (bucket `cache`), each with its own credentials, and

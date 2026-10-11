@@ -158,12 +158,32 @@ helper_mount = "image-volume"                                # or "init-containe
 
 The helper image holds only the static binary, at `/iunctus`. An init container of that image stages the inputs into an `emptyDir` volume. The task container sees the binary as a read-only image volume and sends the outputs back after the task. Image volumes need Kubernetes 1.31 or later with the `ImageVolume` feature gate on, and a container runtime that supports them. On other clusters, `helper_mount = "init-container"` copies the binary into an `emptyDir` volume instead.
 
+With `staging_access = "credentials"`, the nodes reach the staging root with credentials of their own instead of presigned requests. The plan then names the objects, and the helper sends each output in parts, so a file may be larger than 5 GiB. The helper reads the storage providers of the staging root from the environment variable `IUNCTUS_STAGING_STORAGE`, as `[storage.<name>]` tables like those of the config file:
+
+```toml
+[executor.slurm]
+staging_access = "credentials"
+staging_secret_file = "/home/me/.config/iunctus/staging.toml"   # only its owner may read it
+
+[executor.kubernetes]
+staging_access = "credentials"
+staging_secret = "iunctus-staging"   # a Secret in the namespace of the Jobs
+```
+
+A SLURM job gets the text of the file in its environment, never in its job script. A Kubernetes pod gets the keys of the Secret as environment variables, and the Job only names the Secret:
+
+```sh
+kubectl create secret generic iunctus-staging --from-file=IUNCTUS_STAGING_STORAGE=staging.toml
+```
+
+On Kubernetes the task container holds these credentials too, as it sends the outputs back, and SLURM administrators can see the environment of jobs. Give the nodes credentials that reach only the staging root.
+
 Limits of object-store staging:
 
 - Presigned requests work for `presign_hours` (default 168, the most that S3 allows). This must cover the time that a task waits in the queue and runs. Requests signed with temporary credentials end with those credentials.
-- Each output file goes up in one request of at most 5 GiB, the S3 limit for one upload. A larger file fails the task with a clear message.
+- With presigned requests, each output file goes up in one request of at most 5 GiB, the S3 limit for one upload. A larger file fails the task with a clear message. With credentials it goes up in parts of 8 MiB, and S3 takes at most 10,000 parts, so about 78 GiB.
 - A task gives back at most `max_outputs` files (default 1024).
-- Anyone who can read the job script or the Job sees the address of its plan, which grants access to the files of that task until it expires.
+- With presigned requests, anyone who can read the job script or the Job sees the address of its plan, which grants access to the files of that task until it expires.
 - Tasks of several containers need `shared-path`.
 
 **`staging = "kubedal"`** (Kubernetes only): the [kubedal](https://github.com/arunaengine/kubedal) CSI driver places the inputs from a file list before the pod starts and uploads the outputs when the pod ends. The pod gets no iunctus binary.

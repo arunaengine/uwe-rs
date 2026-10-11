@@ -5,10 +5,12 @@
 mod backend;
 mod images;
 mod queue;
+mod remote;
 mod script;
 
 pub use backend::{SlurmBackend, TOOLS, executable};
 pub use images::{file_name, pull_script};
+pub use remote::{Helper, NodeStaging};
 pub use script::{
     CONTAINER_EXIT, Container, LOG, PullResources, SCRIPT, TIMED_OUT, container_script, job_script,
     pull_options, sbatch_options,

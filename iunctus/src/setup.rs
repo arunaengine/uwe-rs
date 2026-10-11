@@ -85,6 +85,9 @@ pub struct Executors {
     /// `[executor.kubernetes] helper_image` and `helper_mount`: the image that holds only the
     /// static iunctus binary, for object-store staging.
     pub kubernetes_helper: Option<kubernetes_executor::Helper>,
+    /// `[executor.kubernetes.shared_volume]`: a claim or an NFS export that holds the store and
+    /// scratch folders, instead of `hostPath` volumes.
+    pub kubernetes_volumes: kubernetes_executor::Volumes,
 }
 
 /// A site of `[executor.tes.sites.<name>]`: a TES server, and the address prefixes or folders
@@ -165,6 +168,7 @@ impl Executors {
         }
         if let Some(kubernetes) = section.table("kubernetes")? {
             let mut keys = vec!["kubeconfig", "namespace", "helper_image", "helper_mount"];
+            keys.push("shared_volume");
             keys.extend(crate::staging::Settings::KEYS);
             kubernetes.only(&keys)?;
             settings.kubeconfig = kubernetes.text("kubeconfig")?.map(PathBuf::from);
@@ -192,9 +196,49 @@ impl Executors {
                     "an image that holds only the static iunctus binary at /iunctus",
                 ));
             }
+            if let Some(shared) = kubernetes.table("shared_volume")? {
+                if settings.kubernetes_staging.mode != crate::staging::Mode::SharedPath {
+                    let message = "needs staging = \"shared-path\"";
+                    return Err(kubernetes.invalid("shared_volume", message));
+                }
+                settings.kubernetes_volumes = shared_volume(&shared)?;
+            }
         }
         Ok(settings)
     }
+}
+
+/// The volume of `[executor.kubernetes.shared_volume]`: a `claim` or an `nfs_server` with its
+/// `nfs_path`, which pods mount at `path`, where this machine sees it too.
+fn shared_volume(shared: &Table<'_>) -> Result<kubernetes_executor::Volumes, ConfigError> {
+    shared.only(&["claim", "nfs_server", "nfs_path", "path"])?;
+    let path = shared.text("path")?.ok_or_else(|| {
+        shared.missing(
+            "path",
+            "the folder where this machine and the pods see the volume",
+        )
+    })?;
+    if !path.starts_with('/') {
+        return Err(shared.invalid("path", "must be an absolute path"));
+    }
+    let claim = shared.text("claim")?;
+    let nfs = (shared.text("nfs_server")?, shared.text("nfs_path")?);
+    let source = match (claim, nfs) {
+        (Some(claim), (None, None)) => {
+            serde_json::json!({"persistentVolumeClaim": {"claimName": claim}})
+        }
+        (None, (Some(server), Some(path))) => {
+            serde_json::json!({"nfs": {"server": server, "path": path}})
+        }
+        _ => {
+            let message = "needs either claim, or nfs_server with nfs_path";
+            return Err(shared.invalid("claim", message));
+        }
+    };
+    Ok(kubernetes_executor::Volumes::Under {
+        root: PathBuf::from(path),
+        source,
+    })
 }
 
 /// Where the SLURM jobs get the iunctus binary: `helper_path` on the nodes, or `helper_url` with
@@ -585,6 +629,40 @@ mod tests {
         assert_eq!(settings.kubernetes_namespace.as_deref(), Some("x"));
         assert!(settings.tes_sites.is_empty());
         assert!(read("").expect("no settings").engine.is_none());
+    }
+
+    #[test]
+    fn loads_remote_staging() {
+        let text = "[executor.slurm]\nstaging = 'object-store'\nstaging_root = 's3://b/s'\n\
+                    helper_url = 'https://example.org/iunctus'\nhelper_sha256 = '";
+        let settings = read(&format!("{text}{}'\n", "AB".repeat(32))).expect("settings");
+        let helper = settings.slurm_helper.expect("a helper");
+        assert!(
+            matches!(helper, slurm_executor::Helper::Download { sha256, .. }
+            if sha256 == "ab".repeat(32))
+        );
+        assert!(read(&format!("{text}ab'\n")).is_err(), "a short digest");
+        let missing = read("[executor.slurm]\nstaging = 'object-store'\nstaging_root = 's3://b'");
+        assert!(missing.unwrap_err().contains("helper_path"));
+        let text = "[executor.kubernetes]\nstaging = 'object-store'\nstaging_root = 's3://b'\n\
+                    helper_image = 'helper:1'\nhelper_mount = 'init-container'\n";
+        let helper = read(text)
+            .expect("settings")
+            .kubernetes_helper
+            .expect("a helper");
+        assert_eq!(helper.image, "helper:1");
+        assert!(!helper.image_volume);
+        let text = "[executor.kubernetes.shared_volume]\nnfs_server = 'nfs.example.org'\n\
+                    nfs_path = '/export'\npath = '/mnt/iunctus'\n";
+        let volumes = read(text).expect("settings").kubernetes_volumes;
+        let kubernetes_executor::Volumes::Under { root, source } = volumes else {
+            panic!("one volume");
+        };
+        assert_eq!(root, Path::new("/mnt/iunctus"));
+        assert_eq!(source["nfs"]["server"], "nfs.example.org");
+        let claim = "[executor.kubernetes.shared_volume]\nclaim = 'cache'\nnfs_path = '/x'\n\
+                     path = '/mnt'\n";
+        assert!(read(claim).is_err(), "a claim and an export");
     }
 
     #[test]

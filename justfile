@@ -486,6 +486,7 @@ s3-test:
 	cargo test -p content-store --test store -- --ignored
 	AWS_ACCESS_KEY_ID=rustfsadmin AWS_SECRET_ACCESS_KEY=rustfsadmin AWS_REGION=us-east-1 \
 	IUNCTUS_S3_BUCKET=iunctus-test IUNCTUS_S3_ENDPOINT=http://127.0.0.1:9000 \
+	IUNCTUS_STAGING_STORAGE='storage.test = { type = "s3", prefixes = ["s3://iunctus-test/"], endpoint = "http://127.0.0.1:9000", region = "us-east-1", access_key_id = "rustfsadmin", secret_access_key = "rustfsadmin" }' \
 	cargo test -p executor --lib remote -- --ignored
 
 # Runs the tests of two S3 storage providers against two local RustFS servers, one for inputs

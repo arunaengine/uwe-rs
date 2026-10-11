@@ -25,6 +25,9 @@ pub struct RemoteStage {
     pub expiry: Duration,
     /// How many output files an attempt may send back.
     pub max_outputs: usize,
+    /// Whether the nodes reach the staging root with credentials of their own, which the helper
+    /// gets from [`crate::helper::STORAGE`], instead of with presigned requests.
+    pub credentials: bool,
 }
 
 /// The inputs of an attempt in the staging root, by their paths in the folder of the attempt.
@@ -271,15 +274,23 @@ impl RemoteStage {
         }
     }
 
-    /// A request that reads or writes `location`: presigned, or a `file://` URL for a staging
-    /// root in a folder.
+    /// A request that reads or writes `location`: presigned, the address of the object for
+    /// nodes with credentials, or a `file://` URL for a staging root in a folder.
     async fn request(&self, location: &str, write: bool) -> Result<Request, ExecutorError> {
+        let method = if write { "PUT" } else { "GET" };
         if let Some(path) = self.objects.local_path(location) {
             let url = reqwest::Url::from_file_path(&path)
                 .map_err(|()| failed(format!("{} is not an absolute path", path.display())))?;
             return Ok(Request {
-                method: if write { "PUT" } else { "GET" }.into(),
+                method: method.into(),
                 url: url.into(),
+                headers: Vec::new(),
+            });
+        }
+        if self.credentials {
+            return Ok(Request {
+                method: method.into(),
+                url: self.objects.url(location),
                 headers: Vec::new(),
             });
         }

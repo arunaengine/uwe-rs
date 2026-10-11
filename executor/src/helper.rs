@@ -6,6 +6,7 @@
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,9 @@ pub const PLAN: &str = "plan.json";
 pub const TRANSFER: &str = "transfer";
 /// The largest file that one upload sends: S3 takes at most 5 GiB in one request.
 pub const MOST_BYTES: u64 = 5 << 30;
+/// The environment variable that holds the storage providers of the staging root, as the
+/// `[storage.<name>]` tables of a config file, for a plan of object addresses.
+pub const STORAGE: &str = "IUNCTUS_STAGING_STORAGE";
 
 /// What a node places before a task starts and sends back after it ended.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -55,7 +59,8 @@ pub struct Record {
     pub request: Request,
 }
 
-/// A presigned request, or a `file://` URL for a staging root in a folder.
+/// A presigned request, a `file://` URL for a staging root in a folder, or the address of an
+/// object, like `s3://bucket/key`, which the helper reaches with the providers of [`STORAGE`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Request {
@@ -69,7 +74,7 @@ pub struct Request {
 pub fn main(arguments: &[String]) -> Result<(), String> {
     match arguments {
         [command, folder, plan] if command == "in" => {
-            let text = read_plan(plan)?;
+            let text = read_plan(Path::new(folder), plan)?;
             let parsed: Plan =
                 serde_json::from_str(&text).map_err(|error| format!("invalid plan: {error}"))?;
             stage_in(Path::new(folder), &parsed)?;
@@ -148,10 +153,18 @@ fn install(file: &Path) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
-/// The text of a plan from a URL or a local file.
-fn read_plan(location: &str) -> Result<String, String> {
+/// The text of a plan from a URL, an object address or a local file. A plan at an address
+/// goes to `folder` first.
+fn read_plan(folder: &Path, location: &str) -> Result<String, String> {
     if !location.contains("://") {
         return std::fs::read_to_string(location).map_err(|error| error.to_string());
+    }
+    if is_object(location) {
+        let path = folder.join(PLAN);
+        std::fs::create_dir_all(folder).map_err(|error| error.to_string())?;
+        retried(|| (objects()?.download(location, &path)).map_err(|error| error.to_string()))
+            .map_err(|error| format!("cannot download the plan: {error}"))?;
+        return std::fs::read_to_string(path).map_err(|error| error.to_string());
     }
     let request = Request {
         method: "GET".into(),
@@ -225,7 +238,17 @@ fn download(
         .create_new(true)
         .open(&partial)
         .map_err(|error| error.to_string())?;
-    let mut source = send(client, &input.request, None)?;
+    // An object goes to the file whole, and is read back for its digest.
+    let object = is_object(&input.request.url);
+    let mut source = match object {
+        true => {
+            (objects()?.download(&input.request.url, &partial))
+                .map_err(|error| error.to_string())?;
+            file = std::fs::File::open(&partial).map_err(|error| error.to_string())?;
+            Box::new(file.try_clone().map_err(|error| error.to_string())?)
+        }
+        false => send(client, &input.request, None)?,
+    };
     let mut hash = Sha256::new();
     let mut size = 0;
     let mut buffer = vec![0; 1 << 16];
@@ -237,8 +260,10 @@ fn download(
             break;
         }
         hash.update(&buffer[..count]);
-        file.write_all(&buffer[..count])
-            .map_err(|error| error.to_string())?;
+        if !object {
+            file.write_all(&buffer[..count])
+                .map_err(|error| error.to_string())?;
+        }
         size += count as u64;
     }
     let digest = task_model::Digest::from_sha256(&hash.finalize());
@@ -267,12 +292,15 @@ fn download(
     std::fs::rename(&partial, path).map_err(|error| error.to_string())
 }
 
-/// Uploads a file in one request.
+/// Uploads a file in one request, or an object in parts.
 fn upload(
     client: &reqwest::blocking::Client,
     path: &Path,
     request: &Request,
 ) -> Result<(), String> {
+    if is_object(&request.url) {
+        return (objects()?.upload(path, &request.url)).map_err(|error| error.to_string());
+    }
     let file = std::fs::File::open(path).map_err(|error| error.to_string())?;
     let size = file.metadata().map_err(|error| error.to_string())?.len();
     if size > MOST_BYTES {
@@ -335,6 +363,29 @@ fn client() -> Result<reqwest::blocking::Client, String> {
         .tls_certs_merge(roots)
         .build()
         .map_err(|error| without_url(&error))
+}
+
+/// Whether a request names an object of a storage provider instead of a URL.
+fn is_object(url: &str) -> bool {
+    !["http://", "https://", "file://"]
+        .iter()
+        .any(|scheme| url.starts_with(scheme))
+}
+
+/// The storage providers of [`STORAGE`], read once. Their errors name where a value is wrong,
+/// never a secret.
+fn objects() -> Result<storage::Blocking, String> {
+    static OBJECTS: OnceLock<Result<storage::Blocking, String>> = OnceLock::new();
+    let objects = OBJECTS.get_or_init(|| {
+        let text = std::env::var(STORAGE).map_err(|_| {
+            format!("the plan names objects, but {STORAGE} holds no storage providers")
+        })?;
+        let config = config_file::ConfigFile::parse(&text, Path::new(STORAGE));
+        let storage = config.and_then(|config| storage::Storage::from_config(&config));
+        storage::trust_mozilla_roots();
+        Ok(storage.map_err(|error| error.to_string())?.blocking())
+    });
+    objects.clone()
 }
 
 /// Runs a transfer up to three times, as networks fail now and then.

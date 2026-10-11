@@ -22,8 +22,8 @@ pub enum Mode {
     Kubedal,
 }
 
-/// The staging settings of an executor, from `staging`, `staging_root`, `presign_hours` and
-/// `max_outputs`.
+/// The staging settings of an executor, from `staging`, `staging_root`, `staging_access`,
+/// `presign_hours` and `max_outputs`.
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub mode: Mode,
@@ -33,6 +33,9 @@ pub struct Settings {
     pub presign_hours: u64,
     /// How many output files a task may give back.
     pub max_outputs: usize,
+    /// Whether the nodes reach the staging root with credentials of their own instead of with
+    /// presigned requests (`staging_access = "credentials"`).
+    pub credentials: bool,
 }
 
 impl Default for Settings {
@@ -42,6 +45,7 @@ impl Default for Settings {
             root: None,
             presign_hours: MOST_HOURS,
             max_outputs: 1024,
+            credentials: false,
         }
     }
 }
@@ -50,8 +54,13 @@ impl Default for Settings {
 const MOST_HOURS: u64 = 7 * 24;
 
 impl Settings {
-    pub const KEYS: &'static [&'static str] =
-        &["staging", "staging_root", "presign_hours", "max_outputs"];
+    pub const KEYS: &'static [&'static str] = &[
+        "staging",
+        "staging_root",
+        "staging_access",
+        "presign_hours",
+        "max_outputs",
+    ];
 
     /// The settings of a table, whose `staging` may be one of `modes`.
     pub fn read(table: &Table<'_>, modes: &[&str]) -> Result<Settings, ConfigError> {
@@ -75,6 +84,17 @@ impl Settings {
             }
             _ => {}
         }
+        settings.credentials = match table.text("staging_access")?.as_deref() {
+            None | Some("presigned") => false,
+            Some("credentials") if settings.mode == Mode::ObjectStore => true,
+            Some("credentials") => {
+                let message = "needs staging = \"object-store\"";
+                return Err(table.invalid("staging_access", message));
+            }
+            Some(_) => {
+                return Err(table.invalid("staging_access", "must be presigned or credentials"));
+            }
+        };
         if let Some(hours) = table.integer("presign_hours")? {
             if !(1..=MOST_HOURS as i64).contains(&hours) {
                 let message =
@@ -109,6 +129,7 @@ impl Settings {
             objects: objects.map_err(|error| error.to_string())?,
             expiry: Duration::from_secs(self.presign_hours * 3600),
             max_outputs: self.max_outputs,
+            credentials: self.credentials,
         }))
     }
 }
@@ -141,5 +162,14 @@ mod tests {
         assert_eq!(settings.root.as_deref(), Some("s3://b/p"));
         assert_eq!(settings.presign_hours, 48);
         assert!(read(&format!("{text}0")).is_err(), "more than seven days");
+        assert!(!settings.credentials);
+        let settings = read(&format!("{text}\nstaging_access = 'credentials'")).unwrap();
+        assert!(settings.credentials);
+        assert!(read(&format!("{text}\nstaging_access = 'keys'")).is_err());
+        let shared = "[executor.slurm]\nstaging_access = 'credentials'";
+        assert!(
+            read(shared).is_err(),
+            "credentials without object-store staging"
+        );
     }
 }

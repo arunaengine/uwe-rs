@@ -1303,6 +1303,7 @@ async fn stages_through_objects() {
             objects,
             expiry: Duration::from_secs(600),
             max_outputs: 4,
+            credentials: false,
         },
         helper: Helper::Path(text(&helper)),
         folder: Some(text(&root.path().join("node"))),

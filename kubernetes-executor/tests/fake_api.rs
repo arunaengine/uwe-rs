@@ -1192,6 +1192,7 @@ async fn stages_through_objects() {
                 objects,
                 expiry: Duration::from_secs(600),
                 max_outputs: 4,
+                credentials: false,
             },
             via: Via::Helper(Helper {
                 image: "iunctus-helper:test".into(),
@@ -1278,6 +1279,7 @@ async fn stages_through_kubedal() {
             objects,
             expiry: Duration::from_secs(600),
             max_outputs: 4,
+            credentials: false,
         },
         via: Via::Kubedal(Kubedal {
             driver: "kubedal.arunaengine.org".into(),

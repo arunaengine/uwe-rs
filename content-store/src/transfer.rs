@@ -52,8 +52,8 @@ impl Store {
         let capability = self.operator.info().capability();
         if !(capability.presign_read && capability.presign_write) {
             return Err(StoreError::Location(format!(
-                "the store at {} cannot sign requests; use S3, Google Cloud Storage or Azure \
-                 Blob Storage",
+                "the store at {} cannot sign requests; use S3, Google Cloud Storage with a \
+                 service account, or Azure Blob Storage with a sas_token",
                 self.url("")
             )));
         }

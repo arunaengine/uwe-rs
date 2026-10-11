@@ -52,11 +52,9 @@ pub(crate) fn run_id() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|elapsed| elapsed.as_millis() as u64)
         .unwrap_or_default();
-    let previous = LAST
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |previous| {
-            Some(now.max(previous.saturating_add(1)))
-        })
-        .expect("the update always succeeds");
+    let previous = LAST.update(Ordering::Relaxed, Ordering::Relaxed, |previous| {
+        now.max(previous.saturating_add(1))
+    });
     let now = now.max(previous.saturating_add(1));
     format!("{now:x}-{:x}", std::process::id())
 }

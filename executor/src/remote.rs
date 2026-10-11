@@ -28,6 +28,8 @@ pub struct RemoteStage {
     /// Whether the nodes reach the staging root with credentials of their own, which the helper
     /// gets from [`crate::helper::STORAGE`], instead of with presigned requests.
     pub credentials: bool,
+    /// Whether [`RemoteStage::clean`] removes the objects of an attempt after its collection.
+    pub cleanup: bool,
 }
 
 /// The inputs of an attempt in the staging root, by their paths in the folder of the attempt.
@@ -55,6 +57,8 @@ pub struct Planned {
     pub prefix: String,
     /// Where the node reads the plan: a presigned URL or a `file://` URL.
     pub location: String,
+    /// Where the plan is in the staging root, in `cas/`.
+    pub plan: String,
     pub mounts: Vec<Mount>,
 }
 
@@ -103,10 +107,12 @@ impl RemoteStage {
             .put_content(text.into())
             .await
             .map_err(failed)?;
-        let location = self.request(&layout::content(&digest), false).await?.url;
+        let plan = layout::content(&digest);
+        let location = self.request(&plan, false).await?.url;
         Ok(Planned {
             prefix,
             location,
+            plan,
             mounts: layout.mounts,
         })
     }
@@ -252,6 +258,26 @@ impl RemoteStage {
             crate::capture::arrange(&finished).await?;
         }
         Ok(())
+    }
+
+    /// Removes what an attempt sent back to `prefix` and its plan at `plan`, when the stage
+    /// cleans up. The inputs in `cas/` stay, as other attempts may use them. A failure only
+    /// leaves objects behind, so it is a warning.
+    pub async fn clean(&self, prefix: &str, plan: &str) {
+        if !self.cleanup {
+            return;
+        }
+        let objects = self.objects.objects(&format!("{prefix}/")).await;
+        let mut locations: Vec<String> = match objects {
+            Ok(objects) => objects.into_iter().map(|object| object.location).collect(),
+            Err(error) => return tracing::warn!(prefix, %error, "cannot list an attempt"),
+        };
+        locations.push(plan.to_owned());
+        for location in locations {
+            if let Err(error) = self.objects.remove(&location).await {
+                tracing::warn!(location, %error, "cannot remove an object of an attempt");
+            }
+        }
     }
 
     /// Downloads one record of an attempt into the control folder of `root`, if it is there.

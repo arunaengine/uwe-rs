@@ -353,7 +353,8 @@ impl SlurmBackend {
             access: &access,
         };
         let gpus = job.placement.accelerators.iter().any(|gpu| gpu.count > 0);
-        let mut prefix = None;
+        // The prefix and the plan of the attempt in the staging root.
+        let mut staged = None;
         let script = match (&self.remote, spec.containers.is_empty()) {
             (Some(remote), _) => {
                 let text = |path: PathBuf| path.to_string_lossy().into_owned();
@@ -379,7 +380,7 @@ impl SlurmBackend {
                     ..run
                 };
                 let time = job.placement.time_seconds;
-                prefix = Some(planned.prefix);
+                staged = Some((planned.prefix, planned.plan));
                 let plan = &planned.location;
                 crate::remote::job_script(&self.container, &run, remote, gpus, time, plan)
             }
@@ -465,13 +466,15 @@ impl SlurmBackend {
             .submit(options, &control.join(SCRIPT), root, cancel)
             .await?;
         self.queue.add(&id).await;
-        let ended = self.wait(&id, &control, prefix.as_deref(), cancel).await;
+        let prefix = staged.as_ref().map(|(prefix, _)| prefix.as_str());
+        let ended = self.wait(&id, &control, prefix, cancel).await;
         let stopped = self.stop(&id, root, CANCEL_GRACE, ended.is_err()).await;
         self.queue.remove(&id).await;
         stopped?;
         let ended = ended?;
-        if let (Some(remote), Some(prefix)) = (&self.remote, &prefix) {
+        if let (Some(remote), Some((prefix, plan))) = (&self.remote, &staged) {
             remote.stage.collect(prefix, root, &records()).await?;
+            remote.stage.clean(prefix, plan).await;
         }
         // A job that left no log at all ran on a node that does not see the scratch folder.
         let lost = self.remote.is_none()

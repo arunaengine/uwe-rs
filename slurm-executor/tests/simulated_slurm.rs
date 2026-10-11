@@ -1288,8 +1288,8 @@ async fn stages_with_credentials() {
     stage_objects(true).await;
 }
 
-/// Runs a task through a staging root, with presigned requests or with the credentials of the
-/// file of storage providers.
+/// Runs a task through a staging root, with presigned requests, or with the credentials of the
+/// file of storage providers and a cleanup of the staging root.
 async fn stage_objects(credentials: bool) {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), NODE_APPTAINER);
@@ -1335,6 +1335,7 @@ async fn stage_objects(credentials: bool) {
             expiry: Duration::from_secs(600),
             max_outputs: 4,
             credentials,
+            cleanup: credentials,
         },
         helper: Helper::Path(text(&helper)),
         folder: Some(text(&root.path().join("node"))),
@@ -1369,6 +1370,15 @@ async fn stage_objects(credentials: bool) {
     );
     assert!(!root.path().join("node/iunctus-run-P-1-1").exists());
     assert!(finished.root.join("control/slurm.log").is_file());
+    let stage = &backend.remote.as_ref().expect("the staging").stage;
+    let left = stage
+        .objects
+        .objects("attempts/")
+        .await
+        .expect("the attempts");
+    assert_eq!(left.is_empty(), credentials, "{left:?}");
+    let input = task_model::Digest::sha256(b"hello\n");
+    assert!(stage.objects.has_content(&input).await.expect("the input"));
     if let Some(file) = secret_file {
         // The job script names the plan, but not the providers, which come in the environment.
         let command = std::fs::read_to_string(bin.join("state/101.command")).expect("a script");

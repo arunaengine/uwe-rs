@@ -163,6 +163,7 @@ mod tests {
             expiry: std::time::Duration::from_secs(60),
             max_outputs: 1,
             credentials: false,
+            cleanup: false,
         };
         let mut staging = NodeStaging {
             stage,

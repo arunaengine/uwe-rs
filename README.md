@@ -206,7 +206,7 @@ helm install kubedal oci://ghcr.io/arunaengine/charts/kubedal --namespace kube-s
 
 Make a DataNode that may write, with its credentials Secret, whose `config` names the bucket and the `root` of the staging root. Put it in the namespace of the Jobs, or give their service account the right to `get` it. iunctus waits until Kubernetes removed the pod, which happens only once kubedal uploaded the outputs, and then checks that every output file that the task listed is there. The pod gets the group of the user who runs iunctus as `fsGroup`, so that the task can write to the volume.
 
-Both modes keep inputs under `cas/` and the results of attempts under `attempts/` in the staging root. iunctus does not remove them; a lifecycle rule of the bucket can.
+Both modes keep inputs under `cas/` and the results of attempts under `attempts/` in the staging root. With `staging_cleanup = true`, iunctus removes the results and the plan of an attempt once it has collected them. It never removes the inputs, as other tasks may use them; a lifecycle rule of the bucket can.
 
 ## Known pitfalls
 

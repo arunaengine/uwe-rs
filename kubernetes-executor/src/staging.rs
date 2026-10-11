@@ -52,8 +52,10 @@ pub struct Prepared {
     /// What the container sees besides the folder of the attempt.
     pub mounts: Vec<Mount>,
     pub volumes: Volumes,
-    /// The plan of the helper, or the file list of kubedal, in the staging root.
+    /// Where the node reads the plan of the helper, or the file list of kubedal.
     location: String,
+    /// The plan or the file list in the staging root, in `cas/`.
+    plan: String,
     /// The group that kubedal gives the files of the volume, so that the task may change them.
     group: Option<u32>,
 }
@@ -96,6 +98,7 @@ impl PodStaging {
                         source: json!({"emptyDir": {}}),
                     },
                     location: planned.location,
+                    plan: planned.plan,
                     group: None,
                 });
             }
@@ -147,6 +150,7 @@ impl PodStaging {
         let digest = (self.stage.objects.put_content(text.into()).await).map_err(failed)?;
         let location = content_store::layout::content(&digest);
         attributes["manifest"] = json!(location);
+        let plan = location.clone();
         let source = json!({"csi": {"driver": kubedal.driver, "volumeAttributes": attributes}});
         Ok(Prepared {
             prefix,
@@ -156,6 +160,7 @@ impl PodStaging {
                 source,
             },
             location,
+            plan,
             group: match run.access.run_as {
                 None => Some(run.owner.1),
                 Some(run_as) => run_as.group,
@@ -183,9 +188,12 @@ impl PodStaging {
         }
     }
 
-    /// Downloads what the attempt sent back into its folder `root`.
+    /// Downloads what the attempt sent back into its folder `root`, and then removes it from
+    /// the staging root if the stage cleans up.
     pub async fn collect(&self, prepared: &Prepared, root: &Path) -> Result<(), ExecutorError> {
-        self.stage.collect(&prepared.prefix, root, RECORDS).await
+        self.stage.collect(&prepared.prefix, root, RECORDS).await?;
+        self.stage.clean(&prepared.prefix, &prepared.plan).await;
+        Ok(())
     }
 }
 

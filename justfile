@@ -28,6 +28,17 @@ release-binary:
 	strip --strip-debug target/x86_64-unknown-linux-musl/release/iunctus
 	file target/x86_64-unknown-linux-musl/release/iunctus
 
+# Builds the image of Kubernetes object-store staging, which holds only the static iunctus
+# binary, at /iunctus.
+helper-image tag="iunctus-helper:dev": release-binary
+	#!/usr/bin/env bash
+	set -euo pipefail
+	context="$(mktemp -d)"
+	trap 'rm -rf "$context"' EXIT
+	cp target/x86_64-unknown-linux-musl/release/iunctus "$context/iunctus"
+	printf 'FROM scratch\nCOPY iunctus /iunctus\n' > "$context/Dockerfile"
+	docker build -t "{{tag}}" "$context"
+
 # Runs four demos and checks failure, resume, cancellation and simulation with local Docker.
 container-runs:
 	nice -n 19 cargo build --offline --locked -p iunctus -j 8

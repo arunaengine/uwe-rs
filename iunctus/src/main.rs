@@ -1,4 +1,4 @@
-//! Dispatches CLI commands and the internal CWL JavaScript worker.
+//! Dispatches CLI commands, the internal CWL JavaScript worker and the staging helper.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -12,6 +12,19 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
                 eprintln!("{message}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    // The helper that moves the files of a task on a node without shared folders.
+    if arguments
+        .first()
+        .is_some_and(|command| command == "__stage")
+    {
+        return match executor::helper::main(&arguments[1..]) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                eprintln!("iunctus: {message}");
                 ExitCode::FAILURE
             }
         };

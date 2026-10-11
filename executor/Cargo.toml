@@ -19,7 +19,9 @@ conda-environment.workspace = true
 content-store.workspace = true
 futures-util.workspace = true
 reqwest.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 storage.workspace = true
 task-model.workspace = true
 tempfile.workspace = true
@@ -27,6 +29,7 @@ thiserror.workspace = true
 tracing.workspace = true
 tokio = { workspace = true, features = ["process", "time", "sync"] }
 tokio-util = { workspace = true, features = ["io"] }
+webpki-root-certs.workspace = true
 
 [dev-dependencies]
 tar.workspace = true

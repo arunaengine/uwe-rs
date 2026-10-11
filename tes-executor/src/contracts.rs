@@ -166,7 +166,7 @@ async fn recovers_lost_response() {
         .unwrap();
     task.tags.insert(
         backend.settings.idempotency_tag.clone().unwrap(),
-        attempt_prefix(job).unwrap(),
+        executor::capture::attempt_prefix(job).unwrap(),
     );
     backend.client.create(&task).await.unwrap();
     let root = backend.scratch.join(job.name);
@@ -270,7 +270,7 @@ async fn preserves_encoded_paths() {
     };
     let task = stage.prepare(job, false).await.unwrap();
     let path = "/iunctus/work/out/a %+#?.txt";
-    let prefix = attempt_prefix(job).unwrap();
+    let prefix = executor::capture::attempt_prefix(job).unwrap();
     operator
         .write(&format!("{prefix}/root{path}"), b"data".to_vec())
         .await

@@ -8,7 +8,9 @@ use std::path::Path;
 use content_store::Store;
 use executor::{ExecutorError, Finished, Job, manifest};
 
-use crate::capture::{INDEX, RECORDS, TRANSFER};
+use executor::capture::RECORDS;
+
+use crate::capture::TRANSFER;
 use crate::client::{FileLog, FileType, Output, State, Status, Task};
 use crate::staging::{
     ObjectStage, container_path, destination, storage_error, unsupported, wildcard,
@@ -153,7 +155,7 @@ impl ObjectStage {
                 usage: None,
             });
         }
-        let prefix = super::staging::attempt_prefix(job)?;
+        let prefix = executor::capture::attempt_prefix(job)?;
         let mut outputs: BTreeMap<String, (Option<u64>, Option<String>)> = BTreeMap::new();
         if let Some(log) = status.logs.last() {
             for file in &log.outputs {
@@ -181,26 +183,13 @@ impl ObjectStage {
             root: root.into(),
             usage: None,
         };
-        let mut transferred = BTreeMap::new();
         for (location, (size, version)) in outputs {
             let relative = location
                 .strip_prefix(&format!("{prefix}/"))
                 .ok_or_else(|| storage_error("TES output is outside its attempt prefix"))?;
             let target = if shell {
-                if let Some(name) = relative
-                    .strip_prefix("control/")
-                    .filter(|name| RECORDS.contains(name))
-                {
-                    control.join(name)
-                } else if let Some(name) = relative.strip_prefix("files/").filter(|name| {
-                    !name.is_empty() && name.bytes().all(|byte| byte.is_ascii_digit())
-                }) {
-                    let target = root.join("transfer").join(name);
-                    transferred.insert(name.to_owned(), target.clone());
-                    target
-                } else {
-                    return Err(storage_error("TES returned an undeclared capture object"));
-                }
+                executor::capture::target(root, relative, RECORDS)
+                    .ok_or_else(|| storage_error("TES returned an undeclared capture object"))?
             } else {
                 let path = relative
                     .strip_prefix("root/")
@@ -241,32 +230,7 @@ impl ObjectStage {
                 return Err(storage_error("TES did not return the captured exit code"));
             }
             if finished.exit_code == Some(0) {
-                let text = tokio::fs::read_to_string(control.join(INDEX)).await?;
-                for line in text.lines() {
-                    let (number, path) = line
-                        .split_once(' ')
-                        .ok_or_else(|| storage_error("TES capture index is invalid"))?;
-                    let parsed = manifest::parse(&format!("file {path}"))?;
-                    let path = &parsed[0].path;
-                    let target = finished.local_path(path.trim_start_matches("./"));
-                    let source = transferred
-                        .remove(number)
-                        .ok_or_else(|| storage_error("TES capture object is missing"))?;
-                    tokio::fs::create_dir_all(target.parent().unwrap()).await?;
-                    tokio::fs::rename(source, target).await?;
-                }
-                if !transferred.is_empty() {
-                    return Err(storage_error(
-                        "TES returned capture objects without layout records",
-                    ));
-                }
-                for file in &finished.files {
-                    if file.directory {
-                        tokio::fs::create_dir_all(finished.local_path(&file.path)).await?;
-                    } else if !finished.local_path(&file.path).is_file() {
-                        return Err(storage_error("TES declared output is missing"));
-                    }
-                }
+                executor::capture::arrange(&finished).await?;
             }
         }
         Ok(finished)

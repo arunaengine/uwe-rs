@@ -148,6 +148,7 @@ async fn folder_round_trip() {
         objects: Store::local(folder.path()).unwrap(),
         expiry: Duration::from_secs(60),
         max_outputs: 8,
+        credentials: false,
     };
     round_trip(&stage).await;
 }
@@ -159,6 +160,7 @@ async fn refuses_unplaceable_inputs() {
         objects: Store::local(folder.path()).unwrap(),
         expiry: Duration::from_secs(60),
         max_outputs: 1,
+        credentials: false,
     };
     let spec = spec();
     let placement = Placement::default();
@@ -190,19 +192,68 @@ async fn refuses_unplaceable_inputs() {
     }
 }
 
-#[tokio::test]
-#[ignore = "needs an S3 bucket; set IUNCTUS_S3_BUCKET and AWS credentials, then run with --ignored"]
-async fn presigned_round_trip() {
+/// A staging root in the S3 bucket of the environment, below its own prefix.
+fn s3_stage(name: &str, credentials: bool) -> RemoteStage {
     let options = content_store::S3Options {
         bucket: std::env::var("IUNCTUS_S3_BUCKET").expect("IUNCTUS_S3_BUCKET is set"),
-        prefix: Some(format!("iunctus-remote-{}", std::process::id())),
+        prefix: Some(format!("iunctus-{name}-{}", std::process::id())),
         endpoint: std::env::var("IUNCTUS_S3_ENDPOINT").ok(),
         region: Some(std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".into())),
     };
-    let stage = RemoteStage {
+    RemoteStage {
         objects: Store::s3(&options).unwrap(),
         expiry: Duration::from_secs(600),
         max_outputs: 8,
+        credentials,
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs an S3 bucket; set IUNCTUS_S3_BUCKET and AWS credentials, then run with --ignored"]
+async fn presigned_round_trip() {
+    round_trip(&s3_stage("remote", false)).await;
+}
+
+#[tokio::test]
+#[ignore = "needs an S3 bucket and its provider in IUNCTUS_STAGING_STORAGE; run `just s3-test`"]
+async fn credentials_round_trip() {
+    round_trip(&s3_stage("credentials", true)).await;
+}
+
+/// Sends an output larger than one part as an object in parts, which S3 marks with the count of
+/// its parts in the ETag.
+#[tokio::test]
+#[ignore = "needs an S3 bucket and its provider in IUNCTUS_STAGING_STORAGE; run `just s3-test`"]
+async fn credentials_send_large_outputs() {
+    let stage = s3_stage("large", true);
+    let folder = tempfile::tempdir().unwrap();
+    let source = folder.path().join("transfer/1");
+    std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+    let mut file = std::io::BufWriter::new(std::fs::File::create(&source).unwrap());
+    for index in 0u32..(300 << 14) {
+        std::io::Write::write_all(&mut file, &index.to_le_bytes().repeat(16)).unwrap();
+    }
+    drop(file);
+    let request = stage.request("attempts/large/files/1", true).await.unwrap();
+    assert!(request.url.starts_with("s3://"), "{}", request.url);
+    let plan = Plan {
+        files: vec![request.clone()],
+        ..Plan::default()
     };
-    round_trip(&stage).await;
+    let path = folder.path().to_owned();
+    (tokio::task::spawn_blocking(move || crate::helper::stage_out(&path, &plan)).await)
+        .unwrap()
+        .unwrap();
+    let back = folder.path().join("back");
+    let read = stage
+        .objects
+        .read_object("attempts/large/files/1", None, &back, None);
+    assert_eq!(read.await.unwrap(), hash_file(&source).await.unwrap());
+    let text = std::env::var(crate::helper::STORAGE).unwrap();
+    let config = config_file::ConfigFile::parse(&text, Path::new("storage.toml")).unwrap();
+    let storage = storage::Storage::from_config(&config).unwrap();
+    let metadata = storage.stat(&request.url).await.unwrap().unwrap();
+    assert_eq!(metadata.size, 300 << 20);
+    let tag = metadata.version.unwrap();
+    assert!(tag.trim_matches('"').ends_with("-38"), "{tag}");
 }

@@ -143,6 +143,7 @@ mod tests {
             objects: content_store::Store::memory().unwrap(),
             expiry: std::time::Duration::from_secs(60),
             max_outputs: 1,
+            credentials: false,
         };
         let mut staging = NodeStaging {
             stage,

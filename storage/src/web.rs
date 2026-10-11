@@ -33,6 +33,12 @@ pub fn http_client() -> Result<&'static reqwest::Client, String> {
             .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(30))
             .read_timeout(Duration::from_secs(300));
+        if MOZILLA_ROOTS.get().is_some() {
+            let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
+                .iter()
+                .filter_map(|root| reqwest::Certificate::from_der(root.as_ref()).ok());
+            builder = builder.tls_certs_merge(roots);
+        }
         if let Some(address) = PROXY.get().filter(|_| !proxy_in_environment()) {
             let proxy = reqwest::Proxy::all(address)
                 .map_err(|error| format!("the proxy {address} of the config file: {error}"))?;
@@ -45,6 +51,15 @@ pub fn http_client() -> Result<&'static reqwest::Client, String> {
 
 /// The web proxy of `[network] proxy` of the config file.
 static PROXY: OnceLock<String> = OnceLock::new();
+
+/// Whether the client trusts the roots of Mozilla besides those of the system.
+static MOZILLA_ROOTS: OnceLock<()> = OnceLock::new();
+
+/// Trusts the roots of Mozilla besides those of the system, for the helper on a node whose
+/// image may have no certificates of its own. Takes effect only before the first request.
+pub fn trust_mozilla_roots() {
+    let _ = MOZILLA_ROOTS.set(());
+}
 
 /// Sends the requests of iunctus through this web proxy, like `http://proxy.example.org:3128`,
 /// unless the environment names one (`HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, in either

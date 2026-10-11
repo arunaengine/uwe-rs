@@ -1,8 +1,10 @@
-//! Streams task objects into verified local files and exposes remote content addresses.
+//! Streams task objects into verified local files, exposes remote content addresses and signs
+//! requests for machines without credentials.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;
+use std::time::Duration;
 
 use sha2::{Digest as _, Sha256};
 use task_model::Digest;
@@ -11,7 +13,69 @@ use tokio::io::AsyncWriteExt;
 use crate::store::PART_SIZE;
 use crate::{Store, StoreError, layout};
 
+/// A request that a machine without credentials of its own sends to read or write one object,
+/// until the time it was signed for has passed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Presigned {
+    pub method: String,
+    pub url: String,
+    /// Headers that the request must send as they are, like `x-ms-blob-type` of Azure.
+    pub headers: Vec<(String, String)>,
+}
+
 impl Store {
+    /// A signed request that reads the object at `location` for `expire`. Only object stores
+    /// that sign requests have them, like S3, Google Cloud Storage and Azure Blob Storage.
+    pub async fn presign_read(
+        &self,
+        location: &str,
+        expire: Duration,
+    ) -> Result<Presigned, StoreError> {
+        self.presign(location, expire, false).await
+    }
+
+    /// A signed request that writes the object at `location` in one piece for `expire`.
+    pub async fn presign_write(
+        &self,
+        location: &str,
+        expire: Duration,
+    ) -> Result<Presigned, StoreError> {
+        self.presign(location, expire, true).await
+    }
+
+    async fn presign(
+        &self,
+        location: &str,
+        expire: Duration,
+        write: bool,
+    ) -> Result<Presigned, StoreError> {
+        let capability = self.operator.info().capability();
+        if !(capability.presign_read && capability.presign_write) {
+            return Err(StoreError::Location(format!(
+                "the store at {} cannot sign requests; use S3, Google Cloud Storage or Azure \
+                 Blob Storage",
+                self.url("")
+            )));
+        }
+        let request = match write {
+            true => self.operator.presign_write(location, expire).await?,
+            false => self.operator.presign_read(location, expire).await?,
+        };
+        let headers = (request.header().iter())
+            .map(|(name, value)| {
+                let value = value.to_str().map_err(|error| {
+                    StoreError::Location(format!("a signed header is not text: {error}"))
+                })?;
+                Ok((name.as_str().to_owned(), value.to_owned()))
+            })
+            .collect::<Result<_, StoreError>>()?;
+        Ok(Presigned {
+            method: request.method().as_str().to_owned(),
+            url: request.uri().to_string(),
+            headers,
+        })
+    }
+
     /// The S3 address of existing content, including the shared layer of a local store.
     pub async fn content_address(&self, digest: &Digest) -> Result<Option<String>, StoreError> {
         let location = layout::content(digest);
@@ -102,5 +166,30 @@ mod tests {
             (digest, 6)
         );
         assert_eq!(std::fs::read(target).unwrap(), b"output");
+    }
+
+    #[tokio::test]
+    async fn signs_object_requests() {
+        let memory = Store::memory().unwrap();
+        let error = memory.presign_read("cas/a", Duration::from_secs(60)).await;
+        assert!(error.unwrap_err().to_string().contains("cannot sign"));
+        let s3 = opendal::services::S3::default()
+            .bucket("bucket")
+            .root("staging")
+            .endpoint("http://127.0.0.1:9")
+            .region("us-east-1")
+            .access_key_id("key")
+            .secret_access_key("secret");
+        let store = Store::remote(opendal::Operator::new(s3).unwrap(), "s3://bucket/staging");
+        let store = store.unwrap();
+        let read = store.presign_read("cas/a", Duration::from_secs(60)).await;
+        let read = read.unwrap();
+        assert_eq!(read.method, "GET");
+        assert!(read.url.contains("/bucket/staging/cas/a?"), "{}", read.url);
+        assert!(read.url.contains("X-Amz-Expires=60"), "{}", read.url);
+        let write = store
+            .presign_write("files/1", Duration::from_secs(60))
+            .await;
+        assert_eq!(write.unwrap().method, "PUT");
     }
 }

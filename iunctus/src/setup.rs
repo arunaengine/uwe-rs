@@ -88,6 +88,9 @@ pub struct Executors {
     /// `[executor.kubernetes.shared_volume]`: a claim or an NFS export that holds the store and
     /// scratch folders, instead of `hostPath` volumes.
     pub kubernetes_volumes: kubernetes_executor::Volumes,
+    /// `[executor.kubernetes] kubedal_data_node` and the other kubedal settings, for
+    /// `staging = "kubedal"`.
+    pub kubernetes_kubedal: Option<kubernetes_executor::Kubedal>,
 }
 
 /// A site of `[executor.tes.sites.<name>]`: a TES server, and the address prefixes or folders
@@ -168,12 +171,13 @@ impl Executors {
         }
         if let Some(kubernetes) = section.table("kubernetes")? {
             let mut keys = vec!["kubeconfig", "namespace", "helper_image", "helper_mount"];
-            keys.push("shared_volume");
+            keys.extend(["shared_volume", "kubedal_driver", "kubedal_data_node"]);
+            keys.extend(["kubedal_namespace", "kubedal_upload_minutes"]);
             keys.extend(crate::staging::Settings::KEYS);
             kubernetes.only(&keys)?;
             settings.kubeconfig = kubernetes.text("kubeconfig")?.map(PathBuf::from);
             settings.kubernetes_namespace = kubernetes.text("namespace")?;
-            let modes = ["object-store"];
+            let modes = ["object-store", "kubedal"];
             settings.kubernetes_staging = crate::staging::Settings::read(&kubernetes, &modes)?;
             let image_volume = match kubernetes.text("helper_mount")?.as_deref() {
                 None | Some("image-volume") => true,
@@ -196,6 +200,13 @@ impl Executors {
                     "an image that holds only the static iunctus binary at /iunctus",
                 ));
             }
+            settings.kubernetes_kubedal = kubedal(&kubernetes)?;
+            if (settings.kubernetes_staging.mode == crate::staging::Mode::Kubedal)
+                != settings.kubernetes_kubedal.is_some()
+            {
+                let message = "names the DataNode of the staging root for staging = \"kubedal\"";
+                return Err(kubernetes.invalid("kubedal_data_node", message));
+            }
             if let Some(shared) = kubernetes.table("shared_volume")? {
                 if settings.kubernetes_staging.mode != crate::staging::Mode::SharedPath {
                     let message = "needs staging = \"shared-path\"";
@@ -206,6 +217,26 @@ impl Executors {
         }
         Ok(settings)
     }
+}
+
+/// The kubedal setup of `[executor.kubernetes]`: the DataNode whose folder is the staging root,
+/// its namespace, the name of the driver, and how long kubedal may upload after a pod.
+fn kubedal(kubernetes: &Table<'_>) -> Result<Option<kubernetes_executor::Kubedal>, ConfigError> {
+    let Some(data_node) = kubernetes.text("kubedal_data_node")? else {
+        return Ok(None);
+    };
+    let minutes = match kubernetes.integer("kubedal_upload_minutes")? {
+        None => 60,
+        Some(minutes) if minutes > 0 => minutes as u64,
+        Some(_) => return Err(kubernetes.invalid("kubedal_upload_minutes", "must be above 0")),
+    };
+    Ok(Some(kubernetes_executor::Kubedal {
+        driver: (kubernetes.text("kubedal_driver")?)
+            .unwrap_or_else(|| "kubedal.arunaengine.org".into()),
+        data_node,
+        namespace: kubernetes.text("kubedal_namespace")?,
+        upload: std::time::Duration::from_secs(minutes * 60),
+    }))
 }
 
 /// The volume of `[executor.kubernetes.shared_volume]`: a `claim` or an `nfs_server` with its

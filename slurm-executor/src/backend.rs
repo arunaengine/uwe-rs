@@ -372,7 +372,7 @@ impl SlurmBackend {
                 let extra = [("control/wrapper.sh", wrapper)];
                 let planned = remote
                     .stage
-                    .plan(job, root, &extra, &records(), false)
+                    .plan(job, root, &extra, &records(), access.hand_back.is_some())
                     .await?;
                 let run = ContainerRun {
                     mounts: &planned.mounts,

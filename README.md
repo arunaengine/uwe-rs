@@ -178,7 +178,13 @@ kubedal_driver = "kubedal.arunaengine.org"  # the default
 kubedal_upload_minutes = 60                 # how long kubedal may upload after a pod (default)
 ```
 
-Install kubedal with its Helm chart. Make a DataNode that may write, with its credentials Secret, whose `config` names the bucket and the `root` of the staging root. Put it in the namespace of the Jobs, or give their service account the right to `get` it. iunctus waits until Kubernetes removed the pod, which happens only once kubedal uploaded the outputs, and then checks that every output file that the task listed is there. The pod gets the group of the user who runs iunctus as `fsGroup`, so that the task can write to the volume.
+Install [kubedal](https://github.com/arunaengine/kubedal) with its Helm chart:
+
+```sh
+helm install kubedal oci://ghcr.io/arunaengine/charts/kubedal --namespace kube-system
+```
+
+Make a DataNode that may write, with its credentials Secret, whose `config` names the bucket and the `root` of the staging root. Put it in the namespace of the Jobs, or give their service account the right to `get` it. iunctus waits until Kubernetes removed the pod, which happens only once kubedal uploaded the outputs, and then checks that every output file that the task listed is there. The pod gets the group of the user who runs iunctus as `fsGroup`, so that the task can write to the volume.
 
 Both modes keep inputs under `cas/` and the results of attempts under `attempts/` in the staging root. iunctus does not remove them; a lifecycle rule of the bucket can.
 

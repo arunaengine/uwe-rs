@@ -80,6 +80,11 @@ pub struct Executors {
     pub kubeconfig: Option<PathBuf>,
     /// `[executor.kubernetes] namespace`, like `-kubernetes-namespace`.
     pub kubernetes_namespace: Option<String>,
+    /// `[executor.kubernetes] staging` and the settings of its staging root.
+    pub kubernetes_staging: crate::staging::Settings,
+    /// `[executor.kubernetes] helper_image` and `helper_mount`: the image that holds only the
+    /// static iunctus binary, for object-store staging.
+    pub kubernetes_helper: Option<kubernetes_executor::Helper>,
 }
 
 /// A site of `[executor.tes.sites.<name>]`: a TES server, and the address prefixes or folders
@@ -159,9 +164,34 @@ impl Executors {
             }
         }
         if let Some(kubernetes) = section.table("kubernetes")? {
-            kubernetes.only(&["kubeconfig", "namespace"])?;
+            let mut keys = vec!["kubeconfig", "namespace", "helper_image", "helper_mount"];
+            keys.extend(crate::staging::Settings::KEYS);
+            kubernetes.only(&keys)?;
             settings.kubeconfig = kubernetes.text("kubeconfig")?.map(PathBuf::from);
             settings.kubernetes_namespace = kubernetes.text("namespace")?;
+            let modes = ["object-store"];
+            settings.kubernetes_staging = crate::staging::Settings::read(&kubernetes, &modes)?;
+            let image_volume = match kubernetes.text("helper_mount")?.as_deref() {
+                None | Some("image-volume") => true,
+                Some("init-container") => false,
+                Some(_) => {
+                    let message = "must be image-volume or init-container";
+                    return Err(kubernetes.invalid("helper_mount", message));
+                }
+            };
+            settings.kubernetes_helper =
+                (kubernetes.text("helper_image")?).map(|image| kubernetes_executor::Helper {
+                    image,
+                    image_volume,
+                });
+            if settings.kubernetes_staging.mode == crate::staging::Mode::ObjectStore
+                && settings.kubernetes_helper.is_none()
+            {
+                return Err(kubernetes.missing(
+                    "helper_image",
+                    "an image that holds only the static iunctus binary at /iunctus",
+                ));
+            }
         }
         Ok(settings)
     }

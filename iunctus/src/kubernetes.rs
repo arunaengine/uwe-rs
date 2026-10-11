@@ -1,11 +1,12 @@
-//! Builds Kubernetes task executors with explicit kubeconfig and shared host paths.
+//! Builds Kubernetes task executors with explicit kubeconfig, and shared host paths or a staging
+//! root.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;
 
 use content_store::Store;
-use kubernetes_executor::{Cluster, KubernetesBackend};
+use kubernetes_executor::{Cluster, KubernetesBackend, PodStaging, Via};
 use task_runner::{Runner, RunnerExecutor};
 
 /// An executor that runs each task as a Job in the cluster of `kubeconfig`, in `namespace` or
@@ -36,7 +37,16 @@ pub fn executor(
     let cluster = runtime
         .block_on(Cluster::connect(&kubeconfig, namespace))
         .map_err(|error| error.lines().next().unwrap_or_default().to_owned())?;
-    let backend = KubernetesBackend::new(cluster, scratch.join("kubernetes"));
+    let mut backend = KubernetesBackend::new(cluster, scratch.join("kubernetes"));
+    let executors = &setup.executors;
+    if let Some(stage) = executors.kubernetes_staging.stage(&setup.storage)? {
+        let helper = (executors.kubernetes_helper.clone())
+            .ok_or("Kubernetes object-store staging needs helper_image")?;
+        backend.remote = Some(PodStaging {
+            stage,
+            via: Via::Helper(helper),
+        });
+    }
     runtime
         .block_on(backend.reconcile())
         .map_err(|error| error.to_string())?;

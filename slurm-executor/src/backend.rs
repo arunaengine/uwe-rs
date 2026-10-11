@@ -1069,6 +1069,8 @@ async fn finish(
             .open(control.join(STDERR))
             .await?;
         file.write_all(note.as_bytes()).await?;
+        // A file of Tokio writes in the background until it is flushed.
+        file.flush().await?;
     }
     let files = match exit_code {
         0 => {

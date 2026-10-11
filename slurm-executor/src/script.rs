@@ -221,7 +221,7 @@ fn durable(root: &Path) -> String {
 }
 
 /// The start of a command that stops it at the time of its task, then kills it after a grace.
-fn timeout(time: Option<u64>) -> String {
+pub(crate) fn timeout(time: Option<u64>) -> String {
     match time {
         Some(seconds) => format!("timeout --kill-after={STOP_GRACE} {seconds} "),
         None => String::new(),
@@ -229,7 +229,7 @@ fn timeout(time: Option<u64>) -> String {
 }
 
 /// The line that records a container that needed the kill after its time as out of time too.
-fn timed_out(time: Option<u64>) -> String {
+pub(crate) fn timed_out(time: Option<u64>) -> String {
     match time {
         Some(seconds) => {
             format!("[ $status -eq 137 ] && [ $SECONDS -ge {seconds} ] && status={TIMED_OUT}\n")
@@ -239,7 +239,7 @@ fn timed_out(time: Option<u64>) -> String {
 }
 
 /// The command that runs the wrapper of `run` in its container.
-fn command(container: &Container, run: &ContainerRun<'_>, gpus: bool) -> Vec<String> {
+pub(crate) fn command(container: &Container, run: &ContainerRun<'_>, gpus: bool) -> Vec<String> {
     match container {
         Container::Apptainer(program) => apptainer(program, run, gpus),
         Container::Engine(engine) => {

@@ -13,8 +13,8 @@ use executor::poll::{CANCEL_GRACE, Poll};
 use executor::registry::{ImageConfig, ImageConfigs};
 use executor::wrapper::{MANIFEST, STDERR};
 use executor::{
-    Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, containers, place,
-    registry,
+    Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, Staging, containers,
+    place, registry,
 };
 use tokio::process::Command;
 use tokio::sync::Mutex;
@@ -22,6 +22,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::images::{Images, file_name, pull_script, tag_file_name};
 use crate::queue::{Look, Queue};
+use crate::remote::{NodeStaging, records};
 use crate::script::{
     CONTAINER_EXIT, Container, LOG, NOT_SEEN, PullResources, SCRIPT, TIMED_OUT, container_script,
     job_script, pull_options, sbatch_options,
@@ -84,6 +85,9 @@ pub struct SlurmBackend {
     pub proxy: Option<String>,
     /// The entrypoints and default commands of images of registries, from the registries.
     pub configs: ImageConfigs,
+    /// How the jobs get their files when the nodes share no folders with this machine; `None`
+    /// when they see the scratch folder at the same path.
+    pub remote: Option<NodeStaging>,
     queue: Queue,
     made: Images,
     recovery: Mutex<()>,
@@ -125,6 +129,7 @@ impl SlurmBackend {
             pull_pause: PULL_PAUSE,
             proxy: None,
             configs: ImageConfigs::default(),
+            remote: None,
             scratch,
             container,
             options: Vec::new(),
@@ -188,7 +193,12 @@ impl Backend for SlurmBackend {
         }
         let root = self.scratch.join(job.name);
         let placed = {
-            let (root, staging) = (root.clone(), job.staging.clone());
+            // Without shared folders the inputs go to the node through the staging root.
+            let staging = match self.remote {
+                Some(_) => Staging::default(),
+                None => job.staging.clone(),
+            };
+            let root = root.clone();
             tokio::task::spawn_blocking(move || place(&root, &staging))
                 .await
                 .map_err(|error| std::io::Error::other(error.to_string()))?
@@ -301,8 +311,17 @@ impl SlurmBackend {
                 .await?;
         }
         let spec = &spec;
+        if self.remote.is_some() && !spec.containers.is_empty() {
+            return Err(ExecutorError::Unsupported(
+                "SLURM object-store staging runs only tasks of one container".into(),
+            ));
+        }
         let image = spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
-        let image = &self.runnable(image, cancel).await?;
+        // Without shared folders each node pulls the image itself.
+        let image = &match self.remote {
+            Some(_) => image.clone(),
+            None => self.runnable(image, cancel).await?,
+        };
         let control = root.join(CONTROL);
         let owner = tokio::fs::metadata(root).await?;
         let access = match &self.container {
@@ -334,8 +353,34 @@ impl SlurmBackend {
             access: &access,
         };
         let gpus = job.placement.accelerators.iter().any(|gpu| gpu.count > 0);
-        let script = match spec.containers.is_empty() {
-            true => {
+        let mut prefix = None;
+        let script = match (&self.remote, spec.containers.is_empty()) {
+            (Some(remote), _) => {
+                let text = |path: PathBuf| path.to_string_lossy().into_owned();
+                let (control, home) = (text(control.clone()), text(root.join(executor::HOME)));
+                let (outbox, owner) = (text(root.join("outbox")), access.owner());
+                let folders = executor::wrapper::Folders {
+                    work: &run.inside(),
+                    control: &control,
+                    home: &home,
+                    outbox: &outbox,
+                    owner: &owner,
+                };
+                let transfer = text(root.join(executor::helper::TRANSFER));
+                let wrapper = executor::wrapper::wrapper(spec, &folders);
+                let wrapper = executor::capture::capture(&wrapper, &transfer)?;
+                let extra = [("control/wrapper.sh", wrapper)];
+                let planned = remote.stage.plan(job, root, &extra, &records()).await?;
+                let run = ContainerRun {
+                    mounts: &planned.mounts,
+                    ..run
+                };
+                let time = job.placement.time_seconds;
+                prefix = Some(planned.prefix);
+                let plan = &planned.location;
+                crate::remote::job_script(&self.container, &run, remote, gpus, time, plan)
+            }
+            (None, true) => {
                 let wrapper = run.wrapper(spec);
                 tokio::fs::write(run.script(), &wrapper).await?;
                 let size = wrapper.len() as u64;
@@ -348,7 +393,7 @@ impl SlurmBackend {
                 )
             }
             // A task of several containers starts a container for each image, all at once.
-            false => {
+            (None, false) => {
                 let home = root.join(executor::HOME).to_string_lossy().into_owned();
                 let owner = access.owner();
                 let folders = executor::wrapper::Folders {
@@ -401,39 +446,58 @@ impl SlurmBackend {
         tokio::task::spawn_blocking(move || sync_files(&synced))
             .await
             .map_err(|error| std::io::Error::other(error.to_string()))??;
-        let options = self
-            .with_excluded(sbatch_options(job, root, &self.options))
-            .await;
+        let mut options = sbatch_options(job, root, &self.options);
+        if self.remote.is_some() {
+            // The node has no scratch folder; the job keeps its log in the folder of the node.
+            for option in &mut options {
+                if option.starts_with("--chdir=") {
+                    *option = "--chdir=/tmp".into();
+                } else if option.starts_with("--output=") {
+                    *option = "--output=/dev/null".into();
+                }
+            }
+        }
+        let options = self.with_excluded(options).await;
         let id = self
             .submit(options, &control.join(SCRIPT), root, cancel)
             .await?;
         self.queue.add(&id).await;
-        let ended = self.wait(&id, &control, cancel).await;
+        let ended = self.wait(&id, &control, prefix.as_deref(), cancel).await;
         let stopped = self.stop(&id, root, CANCEL_GRACE, ended.is_err()).await;
         self.queue.remove(&id).await;
         stopped?;
         let ended = ended?;
+        if let (Some(remote), Some(prefix)) = (&self.remote, &prefix) {
+            remote.stage.collect(prefix, root, &records()).await?;
+        }
         // A job that left no log at all ran on a node that does not see the scratch folder.
-        let lost = !tokio::fs::try_exists(control.join(LOG))
-            .await
-            .unwrap_or(true);
+        let lost = self.remote.is_none()
+            && !tokio::fs::try_exists(control.join(LOG))
+                .await
+                .unwrap_or(true);
         let node = match lost {
             true => self.leave_out(&id).await,
             false => None,
         };
         let time = job.placement.time_seconds;
-        finish(ended, root.to_owned(), time, job.spec)
-            .await
-            .map_err(|error| match (error, node) {
-                (ExecutorError::Engine { engine, message }, Some(node)) => ExecutorError::Engine {
-                    engine,
-                    message: format!(
-                        "{message} It ran on the node {node}, which the later jobs of this run \
+        finish(
+            ended,
+            root.to_owned(),
+            time,
+            job.spec,
+            self.remote.is_none(),
+        )
+        .await
+        .map_err(|error| match (error, node) {
+            (ExecutorError::Engine { engine, message }, Some(node)) => ExecutorError::Engine {
+                engine,
+                message: format!(
+                    "{message} It ran on the node {node}, which the later jobs of this run \
                          leave out."
-                    ),
-                },
-                (error, _) => error,
-            })
+                ),
+            },
+            (error, _) => error,
+        })
     }
 
     /// Asks SLURM for the node of a job, and leaves that node out of the later jobs.
@@ -569,7 +633,7 @@ impl SlurmBackend {
             .submit(options, &control.join(SCRIPT), &root, cancel)
             .await?;
         self.queue.add(&id).await;
-        let ended = self.wait(&id, &control, cancel).await;
+        let ended = self.wait(&id, &control, None, cancel).await;
         let stopped = self.stop(&id, &root, CANCEL_GRACE, ended.is_err()).await;
         self.queue.remove(&id).await;
         stopped?;
@@ -587,7 +651,7 @@ impl SlurmBackend {
         };
         let pulled = match pulled {
             Ok(path) => Ok(path),
-            Err(message) => Err(machine(explain(message, &root).await)),
+            Err(message) => Err(machine(explain(message, &root, true).await)),
         };
         let _ = tokio::fs::remove_dir_all(&root).await;
         pulled
@@ -792,11 +856,13 @@ impl SlurmBackend {
         Ok(())
     }
 
-    /// Waits for a job outcome or cancellation before confirming termination.
+    /// Waits for a job outcome or cancellation before confirming termination. A job that sends
+    /// its records to `prefix` of the staging root shows its end there.
     async fn wait(
         &self,
         id: &str,
         control: &Path,
+        prefix: Option<&str>,
         cancel: &CancellationToken,
     ) -> Result<Ended, ExecutorError> {
         let squeue = self.command("squeue");
@@ -808,6 +874,11 @@ impl SlurmBackend {
             poll.read(cancel, std::future::ready(()))
                 .await
                 .map_err(|_| ExecutorError::Cancelled)?;
+            if let (Some(remote), Some(prefix), Some(root)) =
+                (&self.remote, prefix, control.parent())
+            {
+                remote.stage.fetch(prefix, CONTAINER_EXIT, root).await?;
+            }
             if let Some(status) = read_number(&control.join(CONTAINER_EXIT)).await {
                 return Ok(Ended::Done(status));
             }
@@ -954,6 +1025,7 @@ async fn finish(
     root: PathBuf,
     time: Option<u64>,
     spec: &task_model::TaskSpec,
+    shared: bool,
 ) -> Result<Finished, ExecutorError> {
     let control = root.join(CONTROL);
     let recorded = match ended {
@@ -962,7 +1034,7 @@ async fn finish(
     };
     let (exit_code, note) = match outcome(recorded, &ended, time) {
         Ok(outcome) => outcome,
-        Err(message) => return Err(machine(explain(message, &root).await)),
+        Err(message) => return Err(machine(explain(message, &root, shared).await)),
     };
     if let Some(note) = note {
         use tokio::io::AsyncWriteExt;
@@ -1063,8 +1135,17 @@ fn too_long(time: Option<u64>) -> String {
 }
 
 /// A failure of the machine with the end of the job's log, or a hint when the job left none.
-async fn explain(message: String, root: &Path) -> String {
+/// A job on a node without the `shared` folders keeps its log on the node when it could not
+/// send it back.
+async fn explain(message: String, root: &Path, shared: bool) -> String {
     let log = tokio::fs::read_to_string(root.join(CONTROL).join(LOG)).await;
+    if log.is_err() && !shared {
+        return format!(
+            "{message}, and sent back no log; look for iunctus-{} in the node folder of the \
+             node",
+            root.file_name().unwrap_or_default().to_string_lossy()
+        );
+    }
     let Ok(log) = log else {
         return format!(
             "{message}, and left no log; do the nodes see {} at the same path?",

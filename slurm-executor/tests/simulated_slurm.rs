@@ -8,8 +8,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use executor::registry::{ImageConfig, ImageConfigs};
+use executor::remote::RemoteStage;
 use executor::{Backend, EngineCommand, ExecutorError, Job, Staged, Staging};
-use slurm_executor::{Container, PullResources, SlurmBackend};
+use slurm_executor::{Container, Helper, NodeStaging, PullResources, SlurmBackend};
 use task_model::{ContainerSpec, FORMAT, Image, OutputRule, Placement, TaskSpec};
 use tokio_util::sync::CancellationToken;
 
@@ -151,6 +152,39 @@ record="$(dirname "$2")/exit"
 mv "$record" "$record.late"
 (sleep 2; mv "$record.late" "$record") > /dev/null 2>&1 &
 exit $status
+"#;
+
+/// Runs the command after the image without a container, as `APPTAINER` does, but sees the
+/// folders of the binds at their targets: it rewrites the paths of the wrapper, which runs on a
+/// node that does not see the scratch folder.
+const NODE_APPTAINER: &str = r#"#!/bin/bash
+binds=()
+while [ $# -gt 0 ]; do
+    case $1 in
+        --pwd) start=$2; shift 2 ;;
+        --bind) rest=${2#*:}; binds+=("${rest%%:*}" "${2%%:*}"); shift 2 ;;
+        exec|--*) shift ;;
+        *) shift; break ;;
+    esac
+done
+place() {
+    local path=$1 index
+    for ((index = 0; index < ${#binds[@]}; index += 2)); do
+        case $path in
+            "${binds[index]}"|"${binds[index]}"/*)
+                printf '%s' "${binds[index + 1]}${path#"${binds[index]}"}"; return ;;
+        esac
+    done
+    printf '%s' "$path"
+}
+text=$(cat "$(place "$2")")
+for ((index = 0; index < ${#binds[@]}; index += 2)); do
+    text=${text//"${binds[index]}"/"${binds[index + 1]}"}
+done
+wrapper=$(mktemp)
+printf '%s\n' "$text" > "$wrapper"
+cd "$(place "$start")" || exit 255
+exec sh "$wrapper"
 "#;
 
 /// An Apptainer that cannot get the image.
@@ -1242,6 +1276,76 @@ async fn docker_groups_images() {
     assert_eq!(finished.exit_code, Some(0));
     let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
     assert_eq!(output, "1\nhello\n");
+}
+
+#[tokio::test]
+async fn stages_through_objects() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), NODE_APPTAINER);
+    let mut backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    // The job starts this test program as the helper, which runs `stage_helper`.
+    let helper = root.path().join("iunctus");
+    let program = std::env::current_exe().expect("this program");
+    let script = format!(
+        "#!/bin/sh\nIFS=$(printf '\\037')\nIUNCTUS_TEST_STAGE=\"$*\" exec {} --exact stage_helper \
+         --nocapture --test-threads=1\n",
+        text(&program)
+    );
+    std::fs::write(&helper, script).expect("writes the helper");
+    std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).expect("runs");
+    let objects = content_store::Store::local(&root.path().join("staging")).expect("a store");
+    backend.remote = Some(NodeStaging {
+        stage: RemoteStage {
+            objects,
+            expiry: Duration::from_secs(600),
+            max_outputs: 4,
+        },
+        helper: Helper::Path(text(&helper)),
+        folder: Some(text(&root.path().join("node"))),
+    });
+    let spec = spec("tr a-z A-Z < in.txt > out.txt && cat /opt/iunctus-test/extra.txt >> out.txt");
+    let mut staging = staging(root.path(), "hello\n");
+    let extra = root.path().join("source/extra.txt");
+    std::fs::write(&extra, "extra\n").expect("writes the input");
+    staging.inputs.push(Staged {
+        path: "/opt/iunctus-test/extra.txt".into(),
+        source: extra,
+        ..Staged::default()
+    });
+    let placement = placement();
+    let job = Job {
+        name: "run-P-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
+    assert_eq!(output, "HELLO\nextra\n");
+    // The node pulled nothing for this machine, and the job had no shared folder.
+    assert!(!bin.join("state/pulls").exists());
+    let options = std::fs::read_to_string(bin.join("state/101.options")).expect("the options");
+    assert!(
+        options.contains("--chdir=/tmp\n--output=/dev/null\n"),
+        "{options}"
+    );
+    assert!(!root.path().join("node/iunctus-run-P-1-1").exists());
+    assert!(finished.root.join("control/slurm.log").is_file());
+}
+
+/// Runs the staging helper when a job of `stages_through_objects` starts this program as it.
+#[test]
+fn stage_helper() {
+    if let Ok(arguments) = std::env::var("IUNCTUS_TEST_STAGE") {
+        let arguments: Vec<String> = arguments.split('\u{1f}').map(str::to_owned).collect();
+        // The first argument is `__stage`, as the iunctus program takes it.
+        executor::helper::main(&arguments[1..]).expect("the helper stages");
+    }
 }
 
 fn text(path: &Path) -> String {

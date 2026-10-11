@@ -467,13 +467,13 @@ impl KubernetesBackend {
                         ));
                     }
                     Err(TryLockError::Error(error)) => return Err(unresolved(&root, error)),
-                    Ok(()) => lock,
+                    Ok(()) => Owned(lock),
                 }
             } else {
                 if live_owner {
                     continue;
                 }
-                File::open(&path)?
+                Owned(File::open(&path)?)
             };
             if !path.try_exists()? {
                 continue;
@@ -610,14 +610,24 @@ impl KubernetesBackend {
     }
 }
 
-fn ownership(root: &Path) -> Result<File, ExecutorError> {
+/// The lock of an attempt. It lets go of the lock before it closes the file, as a process that
+/// this one starts holds a copy of the file, and so the lock, until it runs its program.
+struct Owned(File);
+
+impl Drop for Owned {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
+fn ownership(root: &Path) -> Result<Owned, ExecutorError> {
     let lock = File::options()
         .write(true)
         .create_new(true)
         .open(root.join("remote.lock"))?;
     lock.try_lock()
         .map_err(|error| std::io::Error::other(error.to_string()))?;
-    Ok(lock)
+    Ok(Owned(lock))
 }
 
 fn owner_start(pid: u32) -> Option<String> {

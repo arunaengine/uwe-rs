@@ -2863,6 +2863,7 @@ dependencies = [
 name = "kubernetes-executor"
 version = "0.1.0"
 dependencies = [
+ "content-store",
  "executor",
  "k8s-openapi",
  "kube",

@@ -86,6 +86,68 @@ pub enum Volumes {
 /// The name of the volume of [`Volumes::Under`].
 pub const FOLDERS: &str = "folders";
 
+/// How the pods of object-store staging get the static iunctus binary: from an image that holds
+/// only the binary, at `/iunctus`.
+#[derive(Clone, Debug)]
+pub struct Helper {
+    pub image: String,
+    /// Whether the task container sees the image as an image volume, which needs Kubernetes
+    /// 1.31 or later with the `ImageVolume` feature; else an init container copies the binary.
+    pub image_volume: bool,
+}
+
+/// Where the task container finds the helper.
+const HELPER: &str = "/iunctus-helper";
+
+/// Runs the wrapper and then sends the outputs back, with the helper `$1` and the folder `$2`
+/// of the attempt. A failed upload is a failure of the machine.
+const SEND: &str = "sh \"$2/control/wrapper.sh\"\nstatus=$?\n\"$1\" __stage out \"$2\" || exit 125\n\
+                    exit \"$status\"\n";
+
+/// Stages the files of a Job through the plan at `plan`: an init container of the helper image
+/// downloads the inputs into the folder `root`, and the task container sends the outputs back
+/// after the wrapper. The image of the task stays as it is.
+pub fn stage(job: &mut Value, helper: &Helper, root: &str, plan: &str) {
+    let pod = &mut job["spec"]["template"]["spec"];
+    let task = pod["containers"][0].clone();
+    let base = json!({
+        "image": helper.image,
+        "resources": task["resources"],
+        "securityContext": task["securityContext"],
+    });
+    let binary = format!("{HELPER}/iunctus");
+    let mut init = Vec::new();
+    let volume = match helper.image_volume {
+        true => json!({
+            "name": "helper",
+            "image": {"reference": helper.image, "pullPolicy": "IfNotPresent"},
+        }),
+        false => {
+            let mut copy = base.clone();
+            copy["name"] = json!("helper");
+            copy["command"] = json!(["/iunctus", "__stage", "install", binary]);
+            copy["volumeMounts"] = json!([{"name": "helper", "mountPath": HELPER}]);
+            init.push(copy);
+            json!({"name": "helper", "emptyDir": {}})
+        }
+    };
+    let mut inputs = base;
+    inputs["name"] = json!("stage-in");
+    inputs["command"] = json!(["/iunctus", "__stage", "in", root, plan]);
+    inputs["volumeMounts"] = json!([{"name": FOLDERS, "mountPath": root}]);
+    init.push(inputs);
+    pod["initContainers"] = json!(init);
+    (pod["volumes"].as_array_mut())
+        .expect("volumes")
+        .push(volume);
+    let container = &mut pod["containers"][0];
+    container["command"] = json!(["sh", "-c", SEND, "iunctus", binary, root]);
+    let mount = json!({"name": "helper", "mountPath": HELPER, "readOnly": true});
+    (container["volumeMounts"].as_array_mut())
+        .expect("mounts")
+        .push(mount);
+}
+
 /// Builds labelled Jobs with image-group containers sharing task folders and the task memory
 /// limit. A folder outside the one volume of `place` is an error.
 pub fn job(

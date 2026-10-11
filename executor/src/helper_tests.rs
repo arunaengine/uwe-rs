@@ -120,3 +120,18 @@ fn sends_captured_outputs() {
         "a record the task did not write"
     );
 }
+
+#[test]
+fn installs_this_program() {
+    let folder = tempfile::tempdir().unwrap();
+    let file = folder.path().join("iunctus");
+    main(&["install".into(), file.to_string_lossy().into_owned()]).unwrap();
+    let metadata = std::fs::metadata(&file).unwrap();
+    assert_eq!(metadata.permissions().mode() & 0o777, 0o755);
+    assert_eq!(
+        metadata.len(),
+        std::fs::metadata(std::env::current_exe().unwrap())
+            .unwrap()
+            .len()
+    );
+}

@@ -6,8 +6,10 @@ mod backend;
 mod cluster;
 mod manifest;
 mod pods;
+mod staging;
 
 pub use backend::KubernetesBackend;
 pub use cluster::Cluster;
-pub use manifest::{FOLDERS, LABEL, Limits, Volumes, job, job_name};
+pub use manifest::{FOLDERS, Helper, LABEL, Limits, Volumes, job, job_name};
 pub use pods::{Look, Pods};
+pub use staging::{PodStaging, Via};

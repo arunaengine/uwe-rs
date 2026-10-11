@@ -25,6 +25,7 @@ use tokio_util::sync::CancellationToken;
 use crate::cluster::Cluster;
 use crate::manifest::{Limits, Volumes, job_name};
 use crate::pods::{Look, Pods};
+use crate::staging::PodStaging;
 
 /// How often the cluster is asked about the pods, by default.
 const POLL: Duration = Duration::from_secs(5);
@@ -45,6 +46,9 @@ pub struct KubernetesBackend {
     pub configs: ImageConfigs,
     /// Where the containers see the folders of an attempt.
     pub volumes: Volumes,
+    /// How the pods get their files when the nodes share no folders with this machine; `None`
+    /// when they see the scratch folder.
+    pub remote: Option<PodStaging>,
     /// The label value of the Jobs of this backend.
     label: String,
     pods: Pods,
@@ -71,6 +75,7 @@ impl KubernetesBackend {
             poll: POLL,
             configs: ImageConfigs::default(),
             volumes: Volumes::Host,
+            remote: None,
             label: format!("{}-{millis}", std::process::id()),
             pods: Pods::default(),
         }
@@ -101,7 +106,12 @@ impl Backend for KubernetesBackend {
         }
         let root = self.scratch.join(job.name);
         let placed = {
-            let (root, staging) = (root.clone(), job.staging.clone());
+            // Without shared folders the inputs go to the pod through the staging root.
+            let staging = match self.remote {
+                Some(_) => executor::Staging::default(),
+                None => job.staging.clone(),
+            };
+            let root = root.clone();
             tokio::task::spawn_blocking(move || place(&root, &staging))
                 .await
                 .map_err(|error| std::io::Error::other(error.to_string()))?
@@ -224,10 +234,29 @@ impl KubernetesBackend {
             wrapper_path: None,
             access: &access,
         };
+        let prepared = match &self.remote {
+            Some(_) if !spec.containers.is_empty() => {
+                return Err(ExecutorError::Unsupported(
+                    "Kubernetes object-store and kubedal staging run only tasks of one container"
+                        .into(),
+                ));
+            }
+            Some(remote) => Some(remote.prepare(job, &run, &spec).await?),
+            None => None,
+        };
+        let run = match &prepared {
+            Some(prepared) => ContainerRun {
+                mounts: &prepared.mounts,
+                ..run
+            },
+            None => run,
+        };
         // A task of several containers is one pod with a container for each image, which runs
         // the wrappers of the containers of that image, as the local executor runs them.
         let mut groups: Vec<(task_model::Image, PathBuf)> = Vec::new();
         match spec.containers.is_empty() {
+            // With a staging root the pod gets its wrapper from there.
+            true if prepared.is_some() => {}
             true => tokio::fs::write(run.script(), run.wrapper(&spec)).await?,
             false => {
                 let (control, home) = (root.join(CONTROL), text(&root.join(executor::HOME)));
@@ -267,8 +296,12 @@ impl KubernetesBackend {
                 "Kubernetes GPU sharing across several image groups is not supported".into(),
             ));
         }
-        let mut manifest = crate::manifest::job(&name, &self.label, &runs, &limits, &self.volumes)
+        let volumes = (prepared.as_ref()).map_or(&self.volumes, |prepared| &prepared.volumes);
+        let mut manifest = crate::manifest::job(&name, &self.label, &runs, &limits, volumes)
             .map_err(ExecutorError::Unsupported)?;
+        if let (Some(remote), Some(prepared)) = (&self.remote, &prepared) {
+            remote.complete(&mut manifest, prepared, root);
+        }
         let platforms: Vec<&str> = runs
             .iter()
             .filter_map(|run| run.image.platform.as_deref())
@@ -309,9 +342,16 @@ impl KubernetesBackend {
             }
             _ => None,
         };
-        let stopped = self.stop(root, &journal, CANCEL_GRACE).await;
+        // Kubernetes removes the pod of a kubedal volume once kubedal uploaded its outputs.
+        let grace = (self.remote.as_ref()).and_then(PodStaging::grace);
+        let stopped = self
+            .stop(root, &journal, grace.unwrap_or(CANCEL_GRACE))
+            .await;
         self.pods.remove(&name).await;
         stopped?;
+        if let (Some(remote), Some(prepared), Ok(_)) = (&self.remote, &prepared, &ended) {
+            remote.collect(prepared, root).await?;
+        }
         let finished = finish(ended?, root.to_owned(), limits.seconds, &spec).await;
         match (finished, log) {
             (Err(ExecutorError::Engine { engine, message }), Some(log)) => {

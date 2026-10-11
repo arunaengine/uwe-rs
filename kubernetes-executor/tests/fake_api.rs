@@ -11,8 +11,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use executor::remote::RemoteStage;
 use executor::{Backend, ExecutorError, Job, Staged, Staging};
-use kubernetes_executor::{Cluster, KubernetesBackend, LABEL, Look, Pods};
+use kubernetes_executor::{Cluster, Helper, KubernetesBackend, LABEL, Look, PodStaging, Pods, Via};
 use serde_json::{Value, json};
 use task_model::{ContainerSpec, FORMAT, Image, OutputRule, Placement, TaskSpec};
 use tokio_util::sync::CancellationToken;
@@ -83,24 +84,57 @@ fn quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', r"'\''"))
 }
 
-/// Runs the containers of a Job at once as a process group of its own, in which each writes
-/// its exit code.
+/// Runs the init containers of a Job in turn, then its containers at once, as a process group
+/// in which each container writes its exit code. The helper is the file `helper` of the folder,
+/// and an `emptyDir` folder of the attempt goes away before the exit codes show.
 fn start(folder: &Path, job: &Value) -> Running {
     let name = job["metadata"]["name"].as_str().unwrap_or_default();
-    let containers =
-        (job["spec"]["template"]["spec"]["containers"].as_array()).expect("containers");
+    let pod = &job["spec"]["template"]["spec"];
+    let containers = (pod["containers"].as_array()).expect("containers");
+    let helper = folder.join("helper");
+    let words = |container: &Value| -> Vec<String> {
+        let command = container["command"].as_array().expect("a command");
+        // The copy of the helper that an init container makes is the helper itself here.
+        if command.get(2).is_some_and(|word| word == "install") {
+            return vec!["true".into()];
+        }
+        command
+            .iter()
+            .map(|word| match word.as_str().unwrap_or_default() {
+                "/iunctus" | "/iunctus-helper/iunctus" => quote(&helper.to_string_lossy()),
+                word => quote(word),
+            })
+            .collect()
+    };
+    let node = (pod["volumes"].as_array().into_iter().flatten())
+        .any(|volume| volume["name"] == "folders" && volume["emptyDir"].is_object())
+        .then(|| {
+            let mounts = containers[0]["volumeMounts"].as_array().expect("mounts");
+            let mount = mounts.iter().find(|mount| mount.get("subPath").is_none());
+            mount.expect("the folder")["mountPath"]
+                .as_str()
+                .expect("a path")
+                .to_owned()
+        });
+    let suffix = if node.is_some() { ".partial" } else { "" };
     let mut script = String::new();
+    for container in pod["initContainers"].as_array().into_iter().flatten() {
+        let exit = folder.join(format!("{name}.exit.0"));
+        script.push_str(&format!(
+            "{} || {{ echo $? > {}; exit; }}\n",
+            words(container).join(" "),
+            quote(&exit.to_string_lossy())
+        ));
+    }
     for (index, container) in containers.iter().enumerate() {
-        let words: Vec<String> = (container["command"].as_array().expect("a command").iter())
-            .map(|word| quote(word.as_str().unwrap_or_default()))
-            .collect();
+        let words = words(container);
         // An image without Bash cannot run the wrapper.
         let command = match container["image"].as_str() {
             Some("without-shell") => "(echo 'exec: \"sh\": not found' >&2; exit 127)".to_owned(),
             _ => words.join(" "),
         };
         let directory = container["workingDir"].as_str().unwrap_or("/");
-        let exit = folder.join(format!("{name}.exit.{index}"));
+        let exit = folder.join(format!("{name}.exit.{index}{suffix}"));
         script.push_str(&format!(
             "(cd {} && {command}; echo $? > {}) &\n",
             quote(directory),
@@ -108,6 +142,15 @@ fn start(folder: &Path, job: &Value) -> Running {
         ));
     }
     script.push_str("wait\n");
+    if let Some(node) = node {
+        let node = quote(&node);
+        script.push_str(&format!(
+            "rm -rf {node}/work {node}/control {node}/home {node}/outbox {node}/transfer \
+             {node}/plan.json\n"
+        ));
+        let exit = quote(&folder.join(format!("{name}.exit.0")).to_string_lossy());
+        script.push_str(&format!("mv {exit}{suffix} {exit}\n"));
+    }
     let log = std::fs::File::create(folder.join(format!("{name}.log"))).expect("a log");
     let mut child = std::process::Command::new("bash")
         .arg("-c")
@@ -1061,4 +1104,97 @@ async fn containers_share_pod() {
     let ended = executor::containers::ended(&spec, &control);
     let codes: Vec<Option<i32>> = ended.iter().map(|ended| ended.exit_code).collect();
     assert_eq!(codes, [Some(0), Some(0)]);
+}
+
+/// Runs a task with object-store staging, with the helper as an image volume or copied by an
+/// init container, on a node whose folder of the attempt goes away with the pod.
+#[tokio::test]
+async fn stages_through_objects() {
+    for image_volume in [true, false] {
+        let root = tempfile::tempdir().expect("a folder");
+        let (mut backend, state) = backend(root.path()).await;
+        // The pod starts this test program as the helper, which runs `stage_helper`.
+        let program = std::env::current_exe().expect("this program");
+        let script = format!(
+            "#!/bin/sh\nIFS=$(printf '\\037')\nIUNCTUS_TEST_STAGE=\"$*\" exec {} --exact \
+             stage_helper --nocapture --test-threads=1\n",
+            quote(&program.to_string_lossy())
+        );
+        let helper = root.path().join("server/helper");
+        std::fs::write(&helper, script).expect("writes the helper");
+        let mode = std::os::unix::fs::PermissionsExt::from_mode(0o755);
+        std::fs::set_permissions(&helper, mode).expect("runs");
+        let objects = content_store::Store::local(&root.path().join("staging")).expect("a store");
+        backend.remote = Some(PodStaging {
+            stage: RemoteStage {
+                objects,
+                expiry: Duration::from_secs(600),
+                max_outputs: 4,
+            },
+            via: Via::Helper(Helper {
+                image: "iunctus-helper:test".into(),
+                image_volume,
+            }),
+        });
+        let source = root.path().join("source/in.txt");
+        std::fs::create_dir_all(source.parent().expect("a folder")).expect("makes the folder");
+        std::fs::write(&source, "hello\n").expect("writes the input");
+        let staging = Staging {
+            inputs: vec![Staged {
+                path: "in.txt".into(),
+                source,
+                ..Default::default()
+            }],
+            ..Staging::default()
+        };
+        let spec = spec("debian:stable-slim", "tr a-z A-Z < in.txt > out.txt");
+        let placement = placement();
+        let job = Job {
+            name: "run-P-1-1",
+            spec: &spec,
+            staging: &staging,
+            placement: &placement,
+        };
+        let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+        assert_eq!(finished.exit_code, Some(0));
+        let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
+        assert_eq!(output, "HELLO\n");
+        let submitted = state.lock().expect("the state").submitted[0].clone();
+        let pod = &submitted["spec"]["template"]["spec"];
+        let names: Vec<&str> = (pod["initContainers"].as_array().expect("init containers"))
+            .iter()
+            .map(|container| container["name"].as_str().unwrap_or_default())
+            .collect();
+        let volumes = pod["volumes"].as_array().expect("volumes");
+        let helper = volumes.iter().find(|volume| volume["name"] == "helper");
+        let helper = helper.expect("the helper volume");
+        match image_volume {
+            true => {
+                assert_eq!(names, ["stage-in"]);
+                assert_eq!(helper["image"]["reference"], "iunctus-helper:test");
+            }
+            false => {
+                assert_eq!(names, ["helper", "stage-in"]);
+                assert!(helper["emptyDir"].is_object());
+            }
+        }
+        let folders = volumes.iter().find(|volume| volume["name"] == "folders");
+        assert!(folders.expect("the folders")["emptyDir"].is_object());
+        assert!(
+            !volumes
+                .iter()
+                .any(|volume| volume.get("hostPath").is_some())
+        );
+        assert_eq!(pod["containers"][0]["image"], "debian:stable-slim");
+    }
+}
+
+/// Runs the staging helper when a pod of `stages_through_objects` starts this program as it.
+#[test]
+fn stage_helper() {
+    if let Ok(arguments) = std::env::var("IUNCTUS_TEST_STAGE") {
+        let arguments: Vec<String> = arguments.split('\u{1f}').map(str::to_owned).collect();
+        // The first argument is `__stage`, as the iunctus program takes it.
+        executor::helper::main(&arguments[1..]).expect("the helper stages");
+    }
 }

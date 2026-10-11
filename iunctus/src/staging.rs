@@ -1,0 +1,145 @@
+//! Reads how the SLURM and Kubernetes executors move the files of tasks, and opens their staging
+//! root.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::time::Duration;
+
+use config_file::{ConfigError, Table};
+use content_store::Store;
+use executor::remote::RemoteStage;
+use storage::{Storage, StoreLocation};
+
+/// How the nodes get the inputs of tasks and give back their outputs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Mode {
+    /// The nodes see the store and scratch folders at the same paths as this machine.
+    #[default]
+    SharedPath,
+    /// The files go through the staging root, with presigned requests.
+    ObjectStore,
+    /// The kubedal CSI driver places the inputs and uploads the outputs.
+    Kubedal,
+}
+
+/// The staging settings of an executor, from `staging`, `staging_root`, `presign_hours` and
+/// `max_outputs`.
+#[derive(Clone, Debug)]
+pub struct Settings {
+    pub mode: Mode,
+    /// The address of the staging root, like `s3://bucket/prefix`.
+    pub root: Option<String>,
+    /// How long presigned requests work: the time that a task waits in the queue and runs.
+    pub presign_hours: u64,
+    /// How many output files a task may give back.
+    pub max_outputs: usize,
+}
+
+impl Default for Settings {
+    fn default() -> Settings {
+        Settings {
+            mode: Mode::SharedPath,
+            root: None,
+            presign_hours: MOST_HOURS,
+            max_outputs: 1024,
+        }
+    }
+}
+
+/// The longest time that S3 signs a request for: seven days.
+const MOST_HOURS: u64 = 7 * 24;
+
+impl Settings {
+    pub const KEYS: &'static [&'static str] =
+        &["staging", "staging_root", "presign_hours", "max_outputs"];
+
+    /// The settings of a table, whose `staging` may be one of `modes`.
+    pub fn read(table: &Table<'_>, modes: &[&str]) -> Result<Settings, ConfigError> {
+        let mut settings = Settings::default();
+        let mode = table.text("staging")?;
+        settings.mode = match mode.as_deref() {
+            None | Some("shared-path") => Mode::SharedPath,
+            Some(mode) if !modes.contains(&mode) => {
+                return Err(table.invalid("staging", format!("must be {}", modes.join(" or "))));
+            }
+            Some("object-store") => Mode::ObjectStore,
+            Some(_) => Mode::Kubedal,
+        };
+        settings.root = table.text("staging_root")?;
+        match (settings.mode, &settings.root) {
+            (Mode::SharedPath, Some(_)) => {
+                return Err(table.invalid("staging_root", "needs staging = \"object-store\""));
+            }
+            (Mode::ObjectStore | Mode::Kubedal, None) => {
+                return Err(table.missing("staging_root", "the address of the staging root"));
+            }
+            _ => {}
+        }
+        if let Some(hours) = table.integer("presign_hours")? {
+            if !(1..=MOST_HOURS as i64).contains(&hours) {
+                let message =
+                    format!("must be between 1 and {MOST_HOURS}, the most that S3 allows");
+                return Err(table.invalid("presign_hours", message));
+            }
+            settings.presign_hours = hours as u64;
+        }
+        if let Some(count) = table.integer("max_outputs")? {
+            if !(1..=100_000).contains(&count) {
+                return Err(table.invalid("max_outputs", "must be between 1 and 100000"));
+            }
+            settings.max_outputs = count as usize;
+        }
+        Ok(settings)
+    }
+
+    /// The staging root through the storage providers, or `None` for shared paths.
+    pub fn stage(&self, storage: &Storage) -> Result<Option<RemoteStage>, String> {
+        let Some(root) = self
+            .root
+            .as_deref()
+            .filter(|_| self.mode != Mode::SharedPath)
+        else {
+            return Ok(None);
+        };
+        let objects = match storage.store(root).map_err(|error| error.to_string())? {
+            StoreLocation::Objects(operator) => Store::remote(operator, root),
+            StoreLocation::Folder(folder) => Store::local(&folder),
+        };
+        Ok(Some(RemoteStage {
+            objects: objects.map_err(|error| error.to_string())?,
+            expiry: Duration::from_secs(self.presign_hours * 3600),
+            max_outputs: self.max_outputs,
+        }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use config_file::ConfigFile;
+
+    fn read(text: &str) -> Result<Settings, ConfigError> {
+        let config = ConfigFile::parse(text, std::path::Path::new("iunctus.toml"))?;
+        let section = config.section("executor")?.expect("a section");
+        Settings::read(
+            &section.table("slurm")?.expect("a table"),
+            &["object-store"],
+        )
+    }
+
+    #[test]
+    fn reads_staging_root() {
+        let settings = read("[executor.slurm]").unwrap();
+        assert_eq!(settings.mode, Mode::SharedPath);
+        assert!(read("[executor.slurm]\nstaging = 'object-store'").is_err());
+        assert!(read("[executor.slurm]\nstaging = 'kubedal'\nstaging_root = 's3://b'").is_err());
+        assert!(read("[executor.slurm]\nstaging_root = 's3://b'").is_err());
+        let text = "[executor.slurm]\nstaging = 'object-store'\nstaging_root = 's3://b/p'\n\
+                    presign_hours = 48";
+        let settings = read(text).unwrap();
+        assert_eq!(settings.mode, Mode::ObjectStore);
+        assert_eq!(settings.root.as_deref(), Some("s3://b/p"));
+        assert_eq!(settings.presign_hours, 48);
+        assert!(read(&format!("{text}0")).is_err(), "more than seven days");
+    }
+}

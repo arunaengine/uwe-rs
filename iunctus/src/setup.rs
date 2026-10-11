@@ -69,6 +69,13 @@ pub struct Executors {
     /// `[executor.slurm.pull]`: `cpus`, `memory_mb` and `minutes` of the job that pulls an
     /// image into a SIF file.
     pub slurm_pull: PullResources,
+    /// `[executor.slurm] staging` and the settings of its staging root.
+    pub slurm_staging: crate::staging::Settings,
+    /// `[executor.slurm] helper_path`, or `helper_url` with `helper_sha256`: where the jobs get
+    /// the static iunctus binary for object-store staging.
+    pub slurm_helper: Option<slurm_executor::Helper>,
+    /// `[executor.slurm] node_folder`: the folder of the nodes for the files of a job.
+    pub slurm_node_folder: Option<String>,
     /// `[executor.kubernetes] kubeconfig`, like `-kubeconfig`.
     pub kubeconfig: Option<PathBuf>,
     /// `[executor.kubernetes] namespace`, like `-kubernetes-namespace`.
@@ -129,7 +136,22 @@ impl Executors {
             }
         }
         if let Some(slurm) = section.table("slurm")? {
-            slurm.only(&["container", "options", "pull"])?;
+            let mut keys = vec!["container", "options", "pull", "node_folder"];
+            keys.extend(["helper_path", "helper_url", "helper_sha256"]);
+            keys.extend(crate::staging::Settings::KEYS);
+            slurm.only(&keys)?;
+            settings.slurm_staging = crate::staging::Settings::read(&slurm, &["object-store"])?;
+            settings.slurm_helper = helper(&slurm)?;
+            settings.slurm_node_folder = slurm.text("node_folder")?;
+            if settings.slurm_staging.mode == crate::staging::Mode::ObjectStore
+                && settings.slurm_helper.is_none()
+            {
+                return Err(slurm.missing(
+                    "helper_path",
+                    "the path of the static iunctus binary on the nodes, or helper_url and \
+                     helper_sha256",
+                ));
+            }
             settings.slurm_container = slurm.text("container")?;
             settings.slurm_options = slurm.texts("options")?;
             if let Some(pull) = slurm.table("pull")? {
@@ -142,6 +164,31 @@ impl Executors {
             settings.kubernetes_namespace = kubernetes.text("namespace")?;
         }
         Ok(settings)
+    }
+}
+
+/// Where the SLURM jobs get the iunctus binary: `helper_path` on the nodes, or `helper_url` with
+/// its `helper_sha256`.
+fn helper(slurm: &Table<'_>) -> Result<Option<slurm_executor::Helper>, ConfigError> {
+    let (path, url) = (slurm.text("helper_path")?, slurm.text("helper_url")?);
+    let sha256 = slurm.text("helper_sha256")?;
+    match (path, url, sha256) {
+        (None, None, None) => Ok(None),
+        (Some(path), None, None) => Ok(Some(slurm_executor::Helper::Path(path))),
+        (None, Some(url), Some(sha256))
+            if sha256.len() == 64 && sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) =>
+        {
+            let sha256 = sha256.to_ascii_lowercase();
+            Ok(Some(slurm_executor::Helper::Download { url, sha256 }))
+        }
+        (None, Some(_), _) => Err(slurm.invalid(
+            "helper_sha256",
+            "must be the SHA-256 of the file at helper_url, as 64 hex digits",
+        )),
+        _ => Err(slurm.invalid(
+            "helper_path",
+            "takes no helper_url; name the binary on the nodes or the address to download",
+        )),
     }
 }
 

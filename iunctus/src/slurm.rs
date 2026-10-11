@@ -1,4 +1,5 @@
-//! Builds SLURM container executors with shared store and scratch paths.
+//! Builds SLURM container executors with shared store and scratch paths, or with object-store
+//! staging.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -42,6 +43,24 @@ pub fn backend(
     backend.pull = pull;
     backend.proxy = storage::config_proxy().map(str::to_owned);
     backend
+}
+
+/// How the jobs get their files when the config file names object-store staging; `None` when
+/// the nodes see the scratch folder at the same path.
+pub fn remote(
+    executors: &crate::setup::Executors,
+    storage: &Storage,
+) -> Result<Option<slurm_executor::NodeStaging>, String> {
+    let Some(stage) = executors.slurm_staging.stage(storage)? else {
+        return Ok(None);
+    };
+    let helper = (executors.slurm_helper.clone())
+        .ok_or("SLURM object-store staging needs helper_path or helper_url")?;
+    Ok(Some(slurm_executor::NodeStaging {
+        stage,
+        helper,
+        folder: executors.slurm_node_folder.clone(),
+    }))
 }
 
 /// An executor that submits each task as a batch job of `backend`. Tasks without an image get

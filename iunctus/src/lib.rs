@@ -37,6 +37,7 @@ mod runs;
 pub mod setup;
 mod slurm;
 mod sources;
+mod staging;
 mod terminal;
 mod tes;
 mod tracked;

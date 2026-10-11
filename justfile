@@ -488,7 +488,7 @@ s3-test:
 	AWS_ACCESS_KEY_ID=rustfsadmin AWS_SECRET_ACCESS_KEY=rustfsadmin AWS_REGION=us-east-1 \
 	IUNCTUS_S3_BUCKET=iunctus-test IUNCTUS_S3_ENDPOINT=http://127.0.0.1:9000 \
 	IUNCTUS_STAGING_STORAGE='storage.test = { type = "s3", prefixes = ["s3://iunctus-test/"], endpoint = "http://127.0.0.1:9000", region = "us-east-1", access_key_id = "rustfsadmin", secret_access_key = "rustfsadmin" }' \
-	cargo test -p executor --lib remote -- --ignored
+	cargo test -p executor --lib -- --ignored presigned_round_trip credentials_round_trip sends_large_outputs
 
 # Runs the tests of presigned requests of object-store staging against local emulators of
 # Google Cloud Storage (fake-gcs-server) and Azure Blob Storage (Azurite), which stop at the end.

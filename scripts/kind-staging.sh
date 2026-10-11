@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Runs a workflow with the Kubernetes executor on a kind cluster, with object-store and kubedal staging,
-# and with shared paths on a claim.
+# with object-store staging through credentials and a cleanup, and with shared paths on a claim.
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 #
 # Needs docker, kind, kubectl and helm, the static binary of `just release-binary` (IUNCTUS),
 # a checkout of kubedal (KUBEDAL, default ../kubedal) and its image (KUBEDAL_IMAGE, default
-# kubedal:e2e). MODES picks some of image-volume, init-container, kubedal and shared-claim;
+# kubedal:e2e). MODES picks some of image-volume, init-container, kubedal, credentials and
+# shared-claim;
 # KIND_CLUSTER names the cluster (default iunctus-staging); KEEP_CLUSTER=1 keeps the cluster
 # and the S3 server after the run.
 set -euo pipefail
@@ -66,6 +67,19 @@ kind: Secret
 metadata: {name: staging-credentials, namespace: iunctus}
 stringData: {access_key_id: staging-user, secret_access_key: staging-secret-4410}
 ---
+apiVersion: v1
+kind: Secret
+metadata: {name: staging-storage, namespace: iunctus}
+stringData:
+  IUNCTUS_STAGING_STORAGE: |
+    [storage.staging]
+    type = "s3"
+    prefixes = ["s3://staging/"]
+    endpoint = "$endpoint"
+    region = "us-east-1"
+    access_key_id = "staging-user"
+    secret_access_key = "staging-secret-4410"
+---
 apiVersion: kubedal.arunaengine.org/v1alpha1
 kind: DataNode
 metadata: {name: staging, namespace: iunctus}
@@ -96,9 +110,14 @@ spec:
 EOF
 
 export STAGING_KEY=staging-user STAGING_SECRET=staging-secret-4410
+# The keys of the objects below a prefix of the bucket; a cleanup leaves no attempts.
+keys() {
+    curl -sf --aws-sigv4 aws:amz:us-east-1:s3 --user "$STAGING_KEY:$STAGING_SECRET" \
+        "$endpoint/staging?list-type=2&prefix=$1"
+}
 export XDG_CONFIG_HOME="$work/config" IUNCTUS_SITE_CONFIG=""
 status=0
-for mode in ${MODES:-image-volume init-container kubedal shared-claim}; do
+for mode in ${MODES:-image-volume init-container kubedal credentials shared-claim}; do
     echo "=== $mode"
     export XDG_CACHE_HOME="$work/cache"
     staging="staging = \"object-store\"
@@ -109,6 +128,13 @@ helper_mount = \"$mode\""
         staging='staging = "kubedal"
 staging_root = "s3://staging/kubedal"
 kubedal_data_node = "staging"'
+    elif [ "$mode" = credentials ]; then
+        staging='staging = "object-store"
+staging_root = "s3://staging/credentials"
+staging_access = "credentials"
+staging_secret = "staging-storage"
+staging_cleanup = true
+helper_image = "iunctus-helper:kind"'
     elif [ "$mode" = shared-claim ]; then
         # The cache of iunctus is on the claim, which the pods mount at the same path.
         export XDG_CACHE_HOME="$shared/cache"
@@ -134,7 +160,9 @@ EOF
     cp "$repository/demo/snakemake/hello.smk" "$work/run/"
     if (cd "$work/run" && "$binary" run hello.smk -executor kubernetes -kubeconfig "$work/kubeconfig" \
         -iunctus-config "$work/$mode.toml") \
-        && [ "$(cat "$work/run/hello/all.txt")" = "$(printf '%s world!\n' Hello Hola Bonjour Ciao)" ]; then
+        && [ "$(cat "$work/run/hello/all.txt")" = "$(printf '%s world!\n' Hello Hola Bonjour Ciao)" ] \
+        && { [ "$mode" != credentials ] || { keys credentials/cas/ | grep -q '<Key>' \
+            && ! keys credentials/attempts/ | grep -q '<Key>'; }; }; then
         echo "=== $mode: passed"
     else
         echo "=== $mode: FAILED"

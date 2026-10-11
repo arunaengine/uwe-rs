@@ -53,7 +53,15 @@ pub fn executor(
     if let Some(stage) = executors.kubernetes_staging.stage(&setup.storage)? {
         let via = match (&executors.kubernetes_kubedal, &executors.kubernetes_helper) {
             (Some(kubedal), _) => Via::Kubedal(kubedal.clone()),
-            (None, Some(helper)) => Via::Helper(helper.clone()),
+            (None, Some(helper)) => {
+                let mut helper = helper.clone();
+                if let Some(file) = &executors.kubernetes_helper_file {
+                    let binary = executor::binary::Binary::open(file)
+                        .map_err(|error| format!("{error}, or set helper_image"))?;
+                    helper.binary = Some(binary);
+                }
+                Via::Helper(helper)
+            }
             (None, None) => return Err("Kubernetes object-store staging needs helper_image".into()),
         };
         backend.remote = Some(PodStaging { stage, via });

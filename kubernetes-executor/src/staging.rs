@@ -58,6 +58,8 @@ pub struct Prepared {
     plan: String,
     /// The group that kubedal gives the files of the volume, so that the task may change them.
     group: Option<u32>,
+    /// Where the pod downloads the binary of [`crate::Helper::binary`].
+    binary: Option<String>,
 }
 
 /// The folder of the attempt that kubedal uploads to the attempt prefix.
@@ -84,7 +86,11 @@ impl PodStaging {
         };
         let script = wrapper(spec, &folders);
         let kubedal = match &self.via {
-            Via::Helper(_) => {
+            Via::Helper(helper) => {
+                let binary = match &helper.binary {
+                    Some(binary) => Some(self.stage.binary(binary).await?),
+                    None => None,
+                };
                 let transfer = text(&root.join(executor::helper::TRANSFER));
                 let extra = [("control/wrapper.sh", capture(&script, &transfer)?)];
                 // A task that runs as a user that the image names may differ from the helper.
@@ -100,6 +106,7 @@ impl PodStaging {
                     location: planned.location,
                     plan: planned.plan,
                     group: None,
+                    binary,
                 });
             }
             Via::Kubedal(kubedal) => kubedal,
@@ -165,13 +172,17 @@ impl PodStaging {
                 None => Some(run.owner.1),
                 Some(run_as) => run_as.group,
             },
+            binary: None,
         })
     }
 
     /// Adds to the Job what its pod needs for staging: the helper, or the group of kubedal.
     pub fn complete(&self, job: &mut Value, prepared: &Prepared, root: &Path) {
         match &self.via {
-            Via::Helper(helper) => stage(job, helper, &root.to_string_lossy(), &prepared.location),
+            Via::Helper(helper) => {
+                let (root, binary) = (root.to_string_lossy(), prepared.binary.as_deref());
+                stage(job, helper, &root, &prepared.location, binary)
+            }
             Via::Kubedal(_) => {
                 if let Some(group) = prepared.group {
                     job["spec"]["template"]["spec"]["securityContext"] = json!({"fsGroup": group});

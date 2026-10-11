@@ -178,6 +178,47 @@ async fn cleans_attempts() {
     assert!(stage.objects.has_content(&input).await.unwrap());
 }
 
+/// A binary for the jobs in the folder `folder`.
+fn binary(folder: &Path, bytes: &[u8]) -> Binary {
+    let file = folder.join("iunctus");
+    std::fs::write(&file, bytes).unwrap();
+    Binary {
+        file,
+        digest: Digest::sha256(bytes),
+        machine: crate::binary::Machine::Amd64,
+        uploaded: Default::default(),
+    }
+}
+
+#[tokio::test]
+async fn uploads_binary_once() {
+    let (folder, sources) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let stage = RemoteStage {
+        objects: Store::local(folder.path()).unwrap(),
+        expiry: Duration::from_secs(60),
+        max_outputs: 1,
+        credentials: true,
+        cleanup: false,
+    };
+    let binary = binary(sources.path(), b"static binary\n");
+    let object = folder.path().join(layout::content(&binary.digest));
+    let url = stage.binary(&binary).await.unwrap();
+    assert_eq!(url, reqwest::Url::from_file_path(&object).unwrap().as_str());
+    assert_eq!(std::fs::read(&object).unwrap(), b"static binary\n");
+    // A later attempt neither checks nor uploads it again.
+    std::fs::remove_file(&object).unwrap();
+    stage.binary(&binary).await.unwrap();
+    assert!(!object.exists());
+    // Another process finds it in the staging root and does not read its file.
+    let other = Binary {
+        uploaded: Default::default(),
+        ..binary.clone()
+    };
+    std::fs::write(&object, "static binary\n").unwrap();
+    std::fs::remove_file(&other.file).unwrap();
+    stage.binary(&other).await.unwrap();
+}
+
 #[tokio::test]
 async fn refuses_unplaceable_inputs() {
     let folder = tempfile::tempdir().unwrap();
@@ -304,6 +345,24 @@ async fn presigned_round_trip() {
 #[ignore = "needs an S3 bucket and its provider in IUNCTUS_STAGING_STORAGE; run `just s3-test`"]
 async fn credentials_round_trip() {
     round_trip(&s3_stage("credentials", true)).await;
+}
+
+/// Nodes with credentials download the binary through a presigned URL too, as they have no
+/// helper yet.
+#[tokio::test]
+#[ignore = "needs an S3 bucket and its provider in IUNCTUS_STAGING_STORAGE; run `just s3-test`"]
+async fn presigns_binary_download() {
+    let stage = s3_stage("binary", true);
+    let sources = tempfile::tempdir().unwrap();
+    let binary = binary(sources.path(), b"static binary\n");
+    let url = stage.binary(&binary).await.unwrap();
+    assert!(url.starts_with("http"), "{url}");
+    let body = reqwest::get(&url)
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+    assert_eq!(body.text().await.unwrap(), "static binary\n");
 }
 
 /// Sends an output larger than one part as an object in parts, which S3 marks with the count of

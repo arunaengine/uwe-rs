@@ -448,7 +448,17 @@ impl KubernetesBackend {
                     Err(_) if !path.try_exists()? => continue,
                     Err(error) => return Err(unresolved(&root, error)),
                 };
-                match lock.try_lock() {
+                let mut locked = lock.try_lock();
+                // A process that this one starts holds a copy of the lock until it runs its
+                // program, so a lock without a live owner gets a moment to go away.
+                for _ in 0..100 {
+                    if live_owner || !matches!(locked, Err(TryLockError::WouldBlock)) {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    locked = lock.try_lock();
+                }
+                match locked {
                     Err(TryLockError::WouldBlock) if live_owner => continue,
                     Err(TryLockError::WouldBlock) => {
                         return Err(unresolved(

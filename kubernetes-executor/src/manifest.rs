@@ -110,9 +110,14 @@ const SEND: &str = "sh \"$2/control/wrapper.sh\"\nstatus=$?\n\"$1\" __stage out 
 pub fn stage(job: &mut Value, helper: &Helper, root: &str, plan: &str) {
     let pod = &mut job["spec"]["template"]["spec"];
     let task = pod["containers"][0].clone();
+    // The init containers need no GPU of the task.
+    let mut resources = task["resources"].clone();
+    if let Some(limits) = resources["limits"].as_object_mut() {
+        limits.remove("nvidia.com/gpu");
+    }
     let base = json!({
         "image": helper.image,
-        "resources": task["resources"],
+        "resources": resources,
         "securityContext": task["securityContext"],
     });
     let binary = format!("{HELPER}/iunctus");

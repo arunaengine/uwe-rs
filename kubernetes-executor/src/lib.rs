@@ -9,5 +9,5 @@ mod pods;
 
 pub use backend::KubernetesBackend;
 pub use cluster::Cluster;
-pub use manifest::{LABEL, Limits, job, job_name};
+pub use manifest::{FOLDERS, LABEL, Limits, Volumes, job, job_name};
 pub use pods::{Look, Pods};

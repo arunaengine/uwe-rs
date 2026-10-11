@@ -1,7 +1,9 @@
 //! The Kubernetes Job of an attempt: one pod with one container, which runs the wrapper of the
-//! task as the user, with the folders of the task as `hostPath` volumes at the same paths.
+//! task as the user, with the folders of the task at the same paths.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
@@ -69,21 +71,66 @@ pub struct Limits {
     pub seconds: Option<u64>,
 }
 
+/// Where the containers of a Job see the folders of their attempt.
+#[derive(Clone, Debug, Default)]
+pub enum Volumes {
+    /// A `hostPath` volume for each folder: the nodes see the folders at the same paths.
+    #[default]
+    Host,
+    /// One volume that holds every folder, below the folder `root` of this machine, mounted
+    /// with a `subPath` for each folder: a shared claim or NFS export, an `emptyDir`, or a
+    /// kubedal volume. `source` is the volume without its name.
+    Under { root: PathBuf, source: Value },
+}
+
+/// The name of the volume of [`Volumes::Under`].
+pub const FOLDERS: &str = "folders";
+
 /// Builds labelled Jobs with image-group containers sharing task folders and the task memory
-/// limit.
-pub fn job(name: &str, label: &str, runs: &[ContainerRun<'_>], limits: &Limits) -> Value {
+/// limit. A folder outside the one volume of `place` is an error.
+pub fn job(
+    name: &str,
+    label: &str,
+    runs: &[ContainerRun<'_>],
+    limits: &Limits,
+    place: &Volumes,
+) -> Result<Value, String> {
     let run = &runs[0];
     let mut mounts = Vec::new();
     let mut volumes = Vec::new();
+    if let Volumes::Under { source, .. } = place {
+        let mut volume = source.clone();
+        volume["name"] = json!(FOLDERS);
+        volumes.push(volume);
+    }
     for (index, bind) in run.binds().iter().enumerate() {
-        let volume = format!("folder-{index}");
-        mounts.push(json!({
-            "name": volume,
+        let Volumes::Under { root, .. } = place else {
+            let volume = format!("folder-{index}");
+            mounts.push(json!({
+                "name": volume,
+                "mountPath": bind.target,
+                "readOnly": bind.read_only,
+            }));
+            let source = bind.source.to_string_lossy();
+            volumes.push(json!({"name": volume, "hostPath": {"path": source}}));
+            continue;
+        };
+        let inside = bind.source.strip_prefix(root).map_err(|_| {
+            format!(
+                "{} is not in the folder {}",
+                bind.source.display(),
+                root.display()
+            )
+        })?;
+        let mut mount = json!({
+            "name": FOLDERS,
             "mountPath": bind.target,
             "readOnly": bind.read_only,
-        }));
-        let source = bind.source.to_string_lossy();
-        volumes.push(json!({"name": volume, "hostPath": {"path": source}}));
+        });
+        if !inside.as_os_str().is_empty() {
+            mount["subPath"] = json!(inside.to_string_lossy());
+        }
+        mounts.push(mount);
     }
     let mut requests = json!({"cpu": run.cpus.max(1).to_string()});
     let mut limits_of_container = json!({});
@@ -133,12 +180,12 @@ pub fn job(name: &str, label: &str, runs: &[ContainerRun<'_>], limits: &Limits) 
     if let Some(seconds) = limits.seconds {
         spec["template"]["spec"]["activeDeadlineSeconds"] = json!(seconds);
     }
-    json!({
+    Ok(json!({
         "apiVersion": "batch/v1",
         "kind": "Job",
         "metadata": {"name": name, "labels": labels},
         "spec": spec,
-    })
+    }))
 }
 
 #[cfg(test)]
@@ -197,7 +244,7 @@ mod tests {
             gpus: 1,
             seconds: Some(60),
         };
-        let job = job("iunctus-run-p-1-1", "7-9", &[run], &limits);
+        let job = job("iunctus-run-p-1-1", "7-9", &[run], &limits, &Volumes::Host).unwrap();
         let spec = &job["spec"];
         assert_eq!(spec["backoffLimit"], 0);
         let pod = &spec["template"]["spec"];
@@ -236,7 +283,8 @@ mod tests {
             access: &access,
             ..run
         };
-        let changed = super::job("iunctus-run-p-1-1", "7-9", &[run], &limits);
+        let changed = super::job("iunctus-run-p-1-1", "7-9", &[run], &limits, &Volumes::Host);
+        let changed = changed.unwrap();
         let container = &changed["spec"]["template"]["spec"]["containers"][0];
         assert_eq!(container["workingDir"], "/data");
         assert_eq!(
@@ -246,5 +294,63 @@ mod tests {
         assert!(container["securityContext"].get("runAsUser").is_none());
         let mounts = container["volumeMounts"].as_array().expect("mounts");
         assert!(!mounts.iter().any(|mount| mount["mountPath"] == "/data"));
+    }
+
+    #[test]
+    fn mounts_one_volume() {
+        let image = Image {
+            reference: "debian@sha256:ab".into(),
+            platform: None,
+        };
+        let mounts = [Mount {
+            source: PathBuf::from("/cache/store/cas"),
+            target: "/cache/store/cas".into(),
+            read_only: true,
+        }];
+        let access = Access::of((1000, 100), false, None, "");
+        let run = ContainerRun {
+            name: "iunctus-run-P-1-1",
+            image: &image,
+            root: Path::new("/cache/scratch/run-P-1-1"),
+            workdir: Some("/data"),
+            mounts: &mounts,
+            owner: (1000, 100),
+            cpus: 1,
+            memory: None,
+            offline: false,
+            wrapper_path: None,
+            access: &access,
+        };
+        let claim = Volumes::Under {
+            root: PathBuf::from("/cache"),
+            source: json!({"persistentVolumeClaim": {"claimName": "iunctus"}}),
+        };
+        let limits = Limits::default();
+        let manifest = job("iunctus-run-p-1-1", "7-9", &[run], &limits, &claim).unwrap();
+        let pod = &manifest["spec"]["template"]["spec"];
+        let volumes = pod["volumes"].as_array().expect("volumes");
+        assert_eq!(volumes.len(), 1);
+        assert_eq!(volumes[0]["name"], FOLDERS);
+        assert_eq!(volumes[0]["persistentVolumeClaim"]["claimName"], "iunctus");
+        let mounts: Vec<(&str, &str)> = (pod["containers"][0]["volumeMounts"].as_array())
+            .expect("mounts")
+            .iter()
+            .map(|mount| {
+                let path = mount["subPath"].as_str().unwrap_or_default();
+                (path, mount["mountPath"].as_str().unwrap_or_default())
+            })
+            .collect();
+        let expected = [
+            ("scratch/run-P-1-1", "/cache/scratch/run-P-1-1"),
+            ("scratch/run-P-1-1/work", "/data"),
+            ("store/cas", "/cache/store/cas"),
+        ];
+        assert_eq!(mounts, expected);
+        let elsewhere = Volumes::Under {
+            root: PathBuf::from("/shared"),
+            source: json!({"emptyDir": {}}),
+        };
+        let error = job("iunctus-run-p-1-1", "7-9", &[run], &limits, &elsewhere);
+        assert!(error.unwrap_err().contains("is not in the folder /shared"));
     }
 }

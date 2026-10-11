@@ -23,7 +23,7 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
 use crate::cluster::Cluster;
-use crate::manifest::{Limits, job_name};
+use crate::manifest::{Limits, Volumes, job_name};
 use crate::pods::{Look, Pods};
 
 /// How often the cluster is asked about the pods, by default.
@@ -43,6 +43,8 @@ pub struct KubernetesBackend {
     pub poll: Duration,
     /// The entrypoints and default commands of images, from their registries.
     pub configs: ImageConfigs,
+    /// Where the containers see the folders of an attempt.
+    pub volumes: Volumes,
     /// The label value of the Jobs of this backend.
     label: String,
     pods: Pods,
@@ -68,6 +70,7 @@ impl KubernetesBackend {
             scratch,
             poll: POLL,
             configs: ImageConfigs::default(),
+            volumes: Volumes::Host,
             label: format!("{}-{millis}", std::process::id()),
             pods: Pods::default(),
         }
@@ -264,7 +267,8 @@ impl KubernetesBackend {
                 "Kubernetes GPU sharing across several image groups is not supported".into(),
             ));
         }
-        let mut manifest = crate::manifest::job(&name, &self.label, &runs, &limits);
+        let mut manifest = crate::manifest::job(&name, &self.label, &runs, &limits, &self.volumes)
+            .map_err(ExecutorError::Unsupported)?;
         let platforms: Vec<&str> = runs
             .iter()
             .filter_map(|run| run.image.platform.as_deref())

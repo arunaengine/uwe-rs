@@ -156,7 +156,7 @@ helper_image = "registry.example.org/iunctus-helper:0.1.0"   # built with `just 
 helper_mount = "image-volume"                                # or "init-container"
 ```
 
-The helper image holds only the static binary, at `/iunctus`. An init container of that image stages the inputs into an `emptyDir` volume. The task container sees the binary as a read-only image volume and sends the outputs back after the task. Image volumes need Kubernetes 1.31 or later with the `ImageVolume` feature gate on, and a container runtime that supports them. On other clusters, `helper_mount = "init-container"` copies the binary into an `emptyDir` volume instead.
+The helper image holds only the static binary, at `/iunctus`. An init container of that image stages the inputs into an `emptyDir` volume. This happens before the task container starts, because the kubelet would make each missing `subPath` folder of the task container as root, and then the task could not write there. The task container sees the binary as a read-only image volume and sends the outputs back after the task. Image volumes need Kubernetes 1.31 or later with the `ImageVolume` feature gate on, and a container runtime that supports them. On other clusters, `helper_mount = "init-container"` copies the binary into an `emptyDir` volume instead.
 
 With `staging_access = "credentials"`, the nodes reach the staging root with credentials of their own instead of presigned requests. The plan then names the objects, and the helper sends each output in parts, so a file may be larger than 5 GiB. The helper reads the storage providers of the staging root from the environment variable `IUNCTUS_STAGING_STORAGE`, as `[storage.<name>]` tables like those of the config file:
 

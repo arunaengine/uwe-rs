@@ -100,8 +100,8 @@ EOF
     rm -rf "$work/cache" "$work/run"
     mkdir "$work/run"
     cp "$repository/demo/snakemake/hello.smk" "$work/run/"
-    if "$binary" run "$work/run/hello.smk" -executor kubernetes -kubeconfig "$work/kubeconfig" \
-        -iunctus-config "$work/$mode.toml" \
+    if (cd "$work/run" && "$binary" run hello.smk -executor kubernetes -kubeconfig "$work/kubeconfig" \
+        -iunctus-config "$work/$mode.toml") \
         && [ "$(cat "$work/run/hello/all.txt")" = "$(printf '%s world!\n' Hello Hola Bonjour Ciao)" ]; then
         echo "=== $mode: passed"
     else

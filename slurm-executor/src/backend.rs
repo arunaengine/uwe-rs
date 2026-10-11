@@ -800,19 +800,26 @@ impl SlurmBackend {
                     Err(_) if !path.try_exists()? => continue,
                     Err(error) => return Err(unresolved(&root, error)),
                 };
-                match lock.try_lock() {
-                    Err(TryLockError::WouldBlock)
-                        if journal["locked"] == true
-                            && journal["started"].is_string()
-                            && journal["owner"]
-                                .as_u64()
-                                .and_then(|pid| u32::try_from(pid).ok())
-                                .and_then(owner_start)
-                                .as_deref()
-                                == journal["started"].as_str() =>
-                    {
-                        continue;
+                let live_owner = journal["locked"] == true
+                    && journal["started"].is_string()
+                    && journal["owner"]
+                        .as_u64()
+                        .and_then(|pid| u32::try_from(pid).ok())
+                        .and_then(owner_start)
+                        .as_deref()
+                        == journal["started"].as_str();
+                let mut locked = lock.try_lock();
+                // A process that this one starts holds a copy of the lock until it runs its
+                // program, so a lock without a live owner gets a moment to go away.
+                for _ in 0..100 {
+                    if live_owner || !matches!(locked, Err(TryLockError::WouldBlock)) {
+                        break;
                     }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    locked = lock.try_lock();
+                }
+                match locked {
+                    Err(TryLockError::WouldBlock) if live_owner => continue,
                     Err(TryLockError::Error(error)) => return Err(unresolved(&root, error)),
                     Err(TryLockError::WouldBlock) => {
                         return Err(unresolved(
@@ -1234,6 +1241,30 @@ esac"#,
         );
         assert!(folder.path().join("remote.json").is_file());
         assert!(!folder.path().join("scancel.called").exists());
+    }
+
+    #[tokio::test]
+    async fn waits_for_released_locks() {
+        let folder = tempfile::tempdir().unwrap();
+        let backend = SlurmBackend::new(
+            folder.path().to_owned(),
+            Container::Apptainer("apptainer".into()),
+        );
+        let root = folder.path().join("orphan");
+        std::fs::create_dir(&root).unwrap();
+        let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap();
+        let journal = serde_json::json!({"backend":"SLURM", "host":host, "locked":true,
+            "owner":0, "started":"0", "id":null});
+        journal_at(&root, &journal).unwrap();
+        // Another handle stands in for a process that holds a copy of the lock for a moment.
+        let held = File::create(root.join("remote.lock")).unwrap();
+        held.try_lock().unwrap();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            drop(held);
+        });
+        let error = backend.reconcile().await.unwrap_err();
+        assert!(!error.to_string().contains("live coordinator"), "{error}");
     }
 
     #[tokio::test]

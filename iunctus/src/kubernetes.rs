@@ -51,12 +51,12 @@ pub fn executor(
     }
     backend.volumes = executors.kubernetes_volumes.clone();
     if let Some(stage) = executors.kubernetes_staging.stage(&setup.storage)? {
-        let helper = (executors.kubernetes_helper.clone())
-            .ok_or("Kubernetes object-store staging needs helper_image")?;
-        backend.remote = Some(PodStaging {
-            stage,
-            via: Via::Helper(helper),
-        });
+        let via = match (&executors.kubernetes_kubedal, &executors.kubernetes_helper) {
+            (Some(kubedal), _) => Via::Kubedal(kubedal.clone()),
+            (None, Some(helper)) => Via::Helper(helper.clone()),
+            (None, None) => return Err("Kubernetes object-store staging needs helper_image".into()),
+        };
+        backend.remote = Some(PodStaging { stage, via });
     }
     runtime
         .block_on(backend.reconcile())

@@ -5,6 +5,7 @@
 
 pub mod access;
 mod braces;
+pub mod capture;
 pub mod conda;
 pub mod conda_cache;
 pub mod containers;

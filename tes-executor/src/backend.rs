@@ -105,7 +105,7 @@ impl TesBackend {
         // The command runs through the entrypoint of the image, as `docker run` and the local
         // executor run it; a task without one runs the image's default command.
         let mut spec = job.spec.clone();
-        let attempt_key = crate::staging::attempt_prefix(job)?;
+        let attempt_key = executor::capture::attempt_prefix(job)?;
         let image = spec.image.as_mut().ok_or(ExecutorError::NoImage)?;
         let config = if image.platform.is_some() {
             let resolved = self

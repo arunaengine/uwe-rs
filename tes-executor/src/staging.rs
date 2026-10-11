@@ -181,7 +181,7 @@ impl ObjectStage {
         if files.len() + usize::from(shell) > self.settings.max_inputs {
             return Err(unsupported("TES expanded inputs exceed max_inputs"));
         }
-        let prefix = attempt_prefix(job)?;
+        let prefix = executor::capture::attempt_prefix(job)?;
         let mut task = Task {
             name: job.name.into(),
             resources: Some(Resources {
@@ -279,14 +279,6 @@ impl ObjectStage {
             .map_err(storage_error)?;
         destination(&self.objects, &content_store::layout::content(digest))
     }
-}
-
-pub(crate) fn attempt_prefix(job: Job<'_>) -> Result<String, ExecutorError> {
-    let key = job.spec.cache_key().map_err(unsupported)?;
-    Ok(format!(
-        "attempts/{}",
-        Digest::sha256(format!("{key}\0{}", job.name).as_bytes()).hex()
-    ))
 }
 
 pub(crate) fn destination(objects: &Store, location: &str) -> Result<String, ExecutorError> {

@@ -15,3 +15,4 @@ pub use objects::{FileIdentity, Object};
 pub use store::{
     EntrySnapshot, S3Options, Store, StoreError, StoredDirectory, StoredOutput, hash_file,
 };
+pub use transfer::Presigned;

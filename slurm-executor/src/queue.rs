@@ -438,9 +438,19 @@ async fn accounted(sacct: &Path, id: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// Writes a tool from a child process. A process that another test starts meanwhile gets a
+    /// copy of what this one has open, and a tool open for writing cannot run.
+    fn write_tool(path: &Path, text: &str) {
+        let script = "printf '%s' \"$1\" > \"$2\" && chmod 755 \"$2\"";
+        let status = std::process::Command::new("sh")
+            .args(["-c", script, "sh", text])
+            .arg(path)
+            .status();
+        assert!(status.unwrap().success());
+    }
+
     #[tokio::test]
     async fn preserves_array_members() {
-        use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
         let tool = folder.path().join("squeue");
         for (answer, expected) in [
@@ -453,8 +463,7 @@ mod tests {
             ("unexpected", Look::Unknown),
             ("", Look::Gone),
         ] {
-            std::fs::write(&tool, format!("#!/bin/bash\nprintf '%b' '{answer}'\n")).unwrap();
-            std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+            write_tool(&tool, &format!("#!/bin/bash\nprintf '%b' '{answer}'\n"));
             assert_eq!(look_one(&tool, "101", None).await, expected);
         }
     }
@@ -491,11 +500,9 @@ mod tests {
 
     #[tokio::test]
     async fn poll_releases_lock() {
-        use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
         let tool = folder.path().join("squeue");
-        std::fs::write(&tool, "#!/bin/bash\necho $$ > \"$0.pid\"\nexec sleep 30\n").unwrap();
-        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+        write_tool(&tool, "#!/bin/bash\necho $$ > \"$0.pid\"\nexec sleep 30\n");
         let queue = Queue::default();
         queue.add("1").await;
         let poll = queue.look("1", Duration::ZERO, &tool);

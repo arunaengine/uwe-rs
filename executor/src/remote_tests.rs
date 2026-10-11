@@ -224,7 +224,7 @@ async fn credentials_round_trip() {
 /// its parts in the ETag.
 #[tokio::test]
 #[ignore = "needs an S3 bucket and its provider in IUNCTUS_STAGING_STORAGE; run `just s3-test`"]
-async fn credentials_send_large_outputs() {
+async fn sends_large_outputs() {
     let stage = s3_stage("large", true);
     let folder = tempfile::tempdir().unwrap();
     let source = folder.path().join("transfer/1");

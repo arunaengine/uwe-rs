@@ -6,6 +6,7 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
+use executor::binary::Binary;
 use executor::remote::RemoteStage;
 use executor::wrapper::quote;
 use executor::{CONTROL, ContainerRun};
@@ -45,6 +46,9 @@ pub enum Helper {
     Path(String),
     /// An address that the job downloads with `curl` or `wget`, and the SHA-256 of the file.
     Download { url: String, sha256: String },
+    /// A binary of this machine, which iunctus uploads to the staging root, and which the job
+    /// downloads from there like [`Helper::Download`].
+    Upload(Binary),
 }
 
 /// The records that an attempt sends back: those of the wrapper, then the log of the job, and
@@ -56,7 +60,8 @@ pub fn records() -> Vec<&'static str> {
 }
 
 /// The job script that runs `run` with its folder on the node instead of at its scratch
-/// directory, between stage-in from the plan at `plan` and stage-out.
+/// directory, between stage-in from the plan at `plan` and stage-out. `binary` is where the job
+/// downloads the binary of [`Helper::Upload`].
 pub fn job_script(
     container: &Container,
     run: &ContainerRun<'_>,
@@ -64,6 +69,7 @@ pub fn job_script(
     gpus: bool,
     time: Option<u64>,
     plan: &str,
+    binary: Option<&str>,
 ) -> String {
     let base = match &staging.folder {
         Some(folder) => quote(folder),
@@ -81,9 +87,26 @@ pub fn job_script(
          exec >> \"$node/{CONTROL}/{LOG}\" 2>&1\n",
         quote(&format!("iunctus-{name}"))
     );
-    match &staging.helper {
-        Helper::Path(path) => script.push_str(&format!("helper={}\n", quote(path))),
-        Helper::Download { url, sha256 } => script.push_str(&format!(
+    let download = match &staging.helper {
+        Helper::Path(path) => {
+            script.push_str(&format!("helper={}\n", quote(path)));
+            None
+        }
+        Helper::Download { url, sha256 } => Some((url.as_str(), sha256.as_str(), url.as_str())),
+        Helper::Upload(uploaded) => {
+            // The nodes may differ from this machine, and the binary runs only on its own.
+            let machine = uploaded.machine.uname();
+            script.push_str(&format!(
+                "[ \"$(uname -m)\" = {machine} ] || {{ echo \"iunctus: the helper runs on \
+                 {machine}, but $(hostname) is $(uname -m); name a binary for it with \
+                 helper_file\" >&2; exit 1; }}\n"
+            ));
+            let url = binary.expect("the address of the uploaded binary");
+            Some((url, uploaded.digest.hex(), "the staging root"))
+        }
+    };
+    if let Some((url, sha256, address)) = download {
+        script.push_str(&format!(
             "helper=\"$node/iunctus\"\n\
              {{ curl -fsSL -o \"$helper\" {url} || wget -q -O \"$helper\" {url}; }} && \
              echo {sha256}'  '\"$helper\" | sha256sum -c --status - && chmod +x \"$helper\" || \
@@ -91,8 +114,8 @@ pub fn job_script(
              exit 1; }}\n",
             url = quote(url),
             sha256 = quote(sha256),
-            address = url.replace(['"', '$', '`', '\\'], ""),
-        )),
+            address = address.replace(['"', '$', '`', '\\'], ""),
+        ));
     }
     let words = node_words(&command(container, run, gpus), &run.root.to_string_lossy());
     script.push_str(&format!(
@@ -172,7 +195,15 @@ mod tests {
             secret_file: None,
         };
         let apptainer = Container::Apptainer("apptainer".into());
-        let script = job_script(&apptainer, &run, &staging, false, Some(60), "https://plan");
+        let script = job_script(
+            &apptainer,
+            &run,
+            &staging,
+            false,
+            Some(60),
+            "https://plan",
+            None,
+        );
         let expected = "node=\"${TMPDIR:-/tmp}\"/'iunctus-run-P-1-1'\n\
             mkdir -p \"$node/control\" || exit 1\n\
             exec >> \"$node/control/slurm.log\" 2>&1\nhelper='/opt/iunctus'\nstatus=125\n\
@@ -192,7 +223,7 @@ mod tests {
         };
         staging.folder = Some("/local".into());
         let docker = Container::Engine(EngineCommand::docker("docker"));
-        let script = job_script(&docker, &run, &staging, false, None, "https://plan");
+        let script = job_script(&docker, &run, &staging, false, None, "https://plan", None);
         assert!(
             script.contains("umask 077\nnode='/local'/'iunctus-run-P-1-1'\n"),
             "{script}"
@@ -206,5 +237,24 @@ mod tests {
             script.contains("'--volume' \"$node\"'/work:/data'"),
             "{script}"
         );
+        staging.helper = Helper::Upload(Binary {
+            file: "/usr/bin/iunctus".into(),
+            digest: task_model::Digest::sha256(b"iunctus"),
+            machine: executor::binary::Machine::Arm64,
+            uploaded: Default::default(),
+        });
+        let url = Some("https://staging/cas/x?signature");
+        let script = job_script(&docker, &run, &staging, false, None, "https://plan", url);
+        let expected = "[ \"$(uname -m)\" = aarch64 ] || { echo \"iunctus: the helper runs on \
+            aarch64, but $(hostname) is $(uname -m); name a binary for it with helper_file\" \
+            >&2; exit 1; }\nhelper=\"$node/iunctus\"\n{ curl -fsSL -o \"$helper\" \
+            'https://staging/cas/x?signature' || wget";
+        assert!(script.contains(expected), "{script}");
+        let digest = task_model::Digest::sha256(b"iunctus");
+        assert!(
+            script.contains(&format!("echo '{}'", digest.hex())),
+            "{script}"
+        );
+        assert!(script.contains("from the staging root on"), "{script}");
     }
 }

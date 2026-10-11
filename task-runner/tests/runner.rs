@@ -2,6 +2,9 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+// The futures of attempts nest deeply, deeper than the default limit lets the compiler check.
+#![recursion_limit = "256"]
+
 use std::path::Path;
 use std::sync::Mutex;
 

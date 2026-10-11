@@ -95,8 +95,7 @@ fn chars(text: &str, bytes: &mut Vec<u8>) {
 fn murmur(bytes: &[u8]) -> [u8; 16] {
     let mut first = 0u64;
     let mut second = 0u64;
-    let blocks = bytes.chunks_exact(16);
-    let tail = blocks.remainder();
+    let (blocks, tail) = bytes.as_chunks::<16>();
     for block in blocks {
         let left = u64::from_le_bytes(block[..8].try_into().unwrap());
         let right = u64::from_le_bytes(block[8..].try_into().unwrap());

@@ -63,16 +63,11 @@ impl Run {
                 }
             }
         }
-        for (field, what) in [(
-            "memoize",
-            "memoize is left out: tasks use the native content-addressed cache",
-        )] {
-            if node
-                .get(field)
-                .is_some_and(|value| value.value != Yaml::Null)
-            {
-                self.warn(what.to_owned());
-            }
+        if node
+            .get("memoize")
+            .is_some_and(|value| value.value != Yaml::Null)
+        {
+            self.warn("memoize is left out: tasks use the native content-addressed cache".into());
         }
     }
 }

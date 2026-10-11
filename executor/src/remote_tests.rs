@@ -101,7 +101,10 @@ async fn round_trip(stage: &RemoteStage) {
         wrapper(&spec, &folders).replace("/opt/", &format!("{}/mounts/opt/", text(root.clone())));
     let script = crate::capture::capture(&script, &text(root.join("transfer"))).unwrap();
     let extra = [("control/wrapper.sh", script)];
-    let planned = stage.plan(job, &root, &extra, RECORDS).await.unwrap();
+    let planned = stage
+        .plan(job, &root, &extra, RECORDS, false)
+        .await
+        .unwrap();
     assert_eq!(planned.mounts.len(), 1);
     assert_eq!(planned.mounts[0].target, "/opt/data/c.txt");
     assert_eq!(planned.mounts[0].source, root.join("mounts/opt/data/c.txt"));

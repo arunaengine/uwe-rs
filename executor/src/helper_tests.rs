@@ -48,6 +48,13 @@ fn places_checked_inputs() {
     assert_eq!(mode("mounts/opt/tool/run.sh"), 0o755);
     assert!(root.join("work/empty dir").is_dir());
     assert!(stage_in(root, &plan).is_err(), "an input placed twice");
+    let open = Plan { open: true, ..plan };
+    let folder = tempfile::tempdir().unwrap();
+    stage_in(folder.path(), &open).unwrap();
+    let metadata = std::fs::metadata(folder.path().join("work")).unwrap();
+    assert_eq!(metadata.permissions().mode() & 0o777, 0o777);
+    let metadata = std::fs::metadata(folder.path().join("work/in.txt")).unwrap();
+    assert_eq!(metadata.permissions().mode() & 0o777, 0o666);
 }
 
 #[test]

@@ -1,6 +1,5 @@
-//! The job script of an attempt on a node that shares no folders with this machine: it gets the
-//! iunctus helper, stages the inputs into a folder of the node, runs the container and sends the
-//! outputs back.
+//! The job script of an attempt on a node that shares no folders with this machine, which stages
+//! the files of the task with the iunctus helper.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -1244,7 +1244,7 @@ esac"#,
     }
 
     #[tokio::test]
-    async fn waits_for_released_locks() {
+    async fn waits_for_locks() {
         let folder = tempfile::tempdir().unwrap();
         let backend = SlurmBackend::new(
             folder.path().to_owned(),

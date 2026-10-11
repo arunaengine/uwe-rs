@@ -201,10 +201,14 @@ fn cluster(root: &Path, apptainer: &str) -> PathBuf {
         ("sacct", SACCT),
         ("apptainer", apptainer),
     ] {
-        let path = bin.join(name);
-        std::fs::write(&path, text).expect("writes the command");
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-            .expect("makes it executable");
+        // A child process writes the command. A process that another test starts meanwhile
+        // gets a copy of what this one has open, and a command open for writing cannot run.
+        let script = "printf '%s' \"$1\" > \"$2\" && chmod 755 \"$2\"";
+        let status = std::process::Command::new("sh")
+            .args(["-c", script, "sh", text])
+            .arg(bin.join(name))
+            .status();
+        assert!(status.expect("writes the command").success());
     }
     bin
 }
@@ -722,7 +726,8 @@ async fn cancelled_jobs_stop() {
         &bin,
         Container::Apptainer(text(&bin.join("apptainer"))),
     );
-    let spec = spec("sleep 30");
+    let mut spec = spec("sleep 30");
+    spec.image.as_mut().unwrap().reference = "/images/tool.sif".into();
     let (staging, placement) = (Staging::default(), placement());
     let job = Job {
         name: "run-P-4-1",
@@ -731,12 +736,14 @@ async fn cancelled_jobs_stop() {
         placement: &placement,
     };
     let cancel = CancellationToken::new();
-    let stopper = {
-        let cancel = cancel.clone();
-        async move {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            cancel.cancel();
-        }
+    // The job is cancelled once it runs and its journal names it.
+    let started = bin.join("state/101.pid");
+    let journal = backend.scratch.join("run-P-4-1/remote.json");
+    let ready =
+        || std::fs::metadata(&started).is_ok_and(|data| data.len() > 0) && submitted(&journal);
+    let stopper = async {
+        until(ready).await;
+        cancel.cancel();
     };
     let (result, ()) = tokio::join!(backend.run(job, &cancel), stopper);
     assert!(
@@ -846,11 +853,11 @@ async fn recovers_dropped_attempts() {
         staging: &staging,
         placement: &placement,
     };
-    assert!(
-        tokio::time::timeout(Duration::from_millis(500), active.run(old, &cancel))
-            .await
-            .is_err()
-    );
+    let journal = active.scratch.join("dropped/remote.json");
+    tokio::select! {
+        result = active.run(old, &cancel) => panic!("{result:?}"),
+        () = until(|| submitted(&journal)) => {}
+    }
     let delay = bin.join("completing");
     std::fs::write(&delay, "").unwrap();
     let mut next = spec.clone();
@@ -864,7 +871,9 @@ async fn recovers_dropped_attempts() {
         &cancel,
     );
     let verify = async {
-        tokio::time::sleep(Duration::from_millis(400)).await;
+        // The peer stopped the dropped job, which completes for now.
+        let calls = bin.join("state/scancel.calls");
+        until(|| std::fs::read_to_string(&calls).is_ok_and(|text| text.contains("dropped"))).await;
         assert!(active.scratch.join("dropped/remote.json").is_file());
         assert!(!peer.scratch.join("next").exists());
         std::fs::remove_file(delay).unwrap();
@@ -895,23 +904,16 @@ async fn preserves_changed_identity() {
         staging: &staging,
         placement: &placement,
     };
-    assert!(
-        tokio::time::timeout(Duration::from_millis(500), active.run(job, &cancel))
-            .await
-            .is_err()
-    );
     let journal = active.scratch.join("original/remote.json");
+    tokio::select! {
+        result = active.run(job, &cancel) => panic!("{result:?}"),
+        () = until(|| submitted(&journal)) => {}
+    }
     let lock = std::fs::File::options()
         .write(true)
         .open(active.scratch.join("original/remote.lock"))
         .unwrap();
-    tokio::time::timeout(Duration::from_secs(5), async {
-        while lock.try_lock().is_err() {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap();
+    until(|| lock.try_lock().is_ok()).await;
     lock.unlock().unwrap();
     drop(lock);
     let bytes = std::fs::read(&journal).unwrap();
@@ -977,13 +979,7 @@ async fn completing_retains_ownership() {
             .scratch
             .join("completing/control")
             .join(slurm_executor::CONTAINER_EXIT);
-        for _ in 0..100 {
-            if marker.exists() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        assert!(marker.is_file());
+        until(|| marker.is_file()).await;
         tokio::time::sleep(Duration::from_millis(400)).await;
         let journal = backend.scratch.join("completing/remote.json");
         let record: serde_json::Value =
@@ -1399,6 +1395,24 @@ fn stage_helper() {
         // The first argument is `__stage`, as the iunctus program takes it.
         executor::helper::main(&arguments[1..]).expect("the helper stages");
     }
+}
+
+/// Waits until `ready` holds, for at most 30 seconds, as a busy machine may be slow.
+async fn until(ready: impl Fn() -> bool) {
+    for _ in 0..3000 {
+        if ready() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("the test waited too long");
+}
+
+/// Whether the journal of an attempt names the identity of its submitted job.
+fn submitted(journal: &Path) -> bool {
+    let record = std::fs::read(journal).ok();
+    let record = record.and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+    record.is_some_and(|record| record["identity"].is_object())
 }
 
 fn text(path: &Path) -> String {

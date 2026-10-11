@@ -134,7 +134,7 @@ path = "/mnt/iunctus"     # where iunctus and the pods see the volume
 
 A ReadWriteMany folder that all pods share is an antipattern on Kubernetes: it is slow, it fails as one piece, and it does not scale. Prefer `object-store` or `kubedal`.
 
-**`staging = "object-store"`**: nothing is shared. iunctus uploads the inputs to the staging root and writes a plan of presigned requests. On the node, the static iunctus binary downloads the inputs, checks their SHA-256, and uploads the outputs after the task. The nodes need no credentials. The staging root is an address of a configured storage provider that signs requests: S3, Google Cloud Storage or Azure Blob Storage.
+**`staging = "object-store"`**: nothing is shared. iunctus uploads the inputs to the staging root and writes a plan of presigned requests. On the node, the static iunctus binary downloads the inputs, checks their SHA-256, and uploads the outputs after the task. The nodes need no credentials. The staging root is an address of a configured storage provider that signs requests: S3, Google Cloud Storage with the key file of a service account (`credential_file`), or Azure Blob Storage with a `sas_token`, whose end is also the end of the requests.
 
 ```toml
 [executor.slurm]

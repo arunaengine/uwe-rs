@@ -74,6 +74,9 @@ pub struct Executors {
     /// `[executor.slurm] helper_path`, or `helper_url` with `helper_sha256`: where the jobs get
     /// the static iunctus binary for object-store staging.
     pub slurm_helper: Option<slurm_executor::Helper>,
+    /// Without `slurm_helper`: `[executor.slurm] helper_file`, or else the running binary,
+    /// which iunctus uploads to the staging root for the jobs.
+    pub slurm_helper_file: Option<PathBuf>,
     /// `[executor.slurm] node_folder`: the folder of the nodes for the files of a job.
     pub slurm_node_folder: Option<String>,
     /// `[executor.slurm] staging_secret_file`: the storage providers of the staging root for
@@ -152,7 +155,7 @@ impl Executors {
         if let Some(slurm) = section.table("slurm")? {
             let mut keys = vec!["container", "options", "pull", "node_folder"];
             keys.push("staging_secret_file");
-            keys.extend(["helper_path", "helper_url", "helper_sha256"]);
+            keys.extend(["helper_path", "helper_url", "helper_sha256", "helper_file"]);
             keys.extend(crate::staging::Settings::KEYS);
             slurm.only(&keys)?;
             settings.slurm_staging = crate::staging::Settings::read(&slurm, &["object-store"])?;
@@ -164,14 +167,9 @@ impl Executors {
                                \"credentials\"";
                 return Err(slurm.invalid("staging_secret_file", message));
             }
-            if settings.slurm_staging.mode == crate::staging::Mode::ObjectStore
-                && settings.slurm_helper.is_none()
-            {
-                return Err(slurm.missing(
-                    "helper_path",
-                    "the path of the static iunctus binary on the nodes, or helper_url and \
-                     helper_sha256",
-                ));
+            settings.slurm_helper_file = helper_file(&slurm, settings.slurm_helper.is_some())?;
+            if settings.slurm_staging.mode != crate::staging::Mode::ObjectStore {
+                settings.slurm_helper_file = None;
             }
             settings.slurm_container = slurm.text("container")?;
             settings.slurm_options = slurm.texts("options")?;
@@ -312,6 +310,22 @@ fn helper(slurm: &Table<'_>) -> Result<Option<slurm_executor::Helper>, ConfigErr
             "helper_path",
             "takes no helper_url; name the binary on the nodes or the address to download",
         )),
+    }
+}
+
+/// The file of `helper_file`, or else the running binary, unless the table names where the jobs
+/// get the binary already.
+fn helper_file(table: &Table<'_>, named: bool) -> Result<Option<PathBuf>, ConfigError> {
+    match (table.text("helper_file")?, named) {
+        (Some(_), true) => {
+            let message = "takes no other helper setting; name one place for the binary";
+            Err(table.invalid("helper_file", message))
+        }
+        (Some(file), false) => Ok(Some(PathBuf::from(file))),
+        (None, true) => Ok(None),
+        (None, false) => std::env::current_exe()
+            .map(Some)
+            .map_err(|error| table.invalid("helper_file", format!("is needed: {error}"))),
     }
 }
 
@@ -699,8 +713,22 @@ mod tests {
         let text = format!("{text}staging_secret_file = '/home/me/staging.toml'\n");
         let file = read(&text).expect("settings").slurm_secret_file;
         assert_eq!(file.as_deref(), Some(Path::new("/home/me/staging.toml")));
-        let missing = read("[executor.slurm]\nstaging = 'object-store'\nstaging_root = 's3://b'");
-        assert!(missing.unwrap_err().contains("helper_path"));
+        assert!(read(&format!("{text}helper_file = '/a'\n")).is_err());
+        // Without a helper setting the jobs get the running binary, or the file of helper_file.
+        let text = "[executor.slurm]\nstaging = 'object-store'\nstaging_root = 's3://b'\n";
+        let settings = read(text).expect("settings");
+        assert!(settings.slurm_helper.is_none());
+        let current = std::env::current_exe().expect("this program");
+        assert_eq!(settings.slurm_helper_file, Some(current));
+        let file = read(&format!("{text}helper_file = '/opt/iunctus-arm64'\n"));
+        let file = file.expect("settings").slurm_helper_file;
+        assert_eq!(file.as_deref(), Some(Path::new("/opt/iunctus-arm64")));
+        assert!(
+            read("[executor.slurm]\n")
+                .expect("settings")
+                .slurm_helper_file
+                .is_none()
+        );
         let text = "[executor.kubernetes]\nstaging = 'object-store'\nstaging_root = 's3://b'\n\
                     helper_image = 'helper:1'\nhelper_mount = 'init-container'\n";
         let helper = read(text)

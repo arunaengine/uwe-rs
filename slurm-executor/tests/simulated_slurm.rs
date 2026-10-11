@@ -7,6 +7,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use executor::binary::{Binary, Machine};
 use executor::registry::{ImageConfig, ImageConfigs};
 use executor::remote::RemoteStage;
 use executor::{Backend, EngineCommand, ExecutorError, Job, Staged, Staging};
@@ -1276,17 +1277,23 @@ async fn docker_groups_images() {
 
 #[tokio::test]
 async fn stages_through_objects() {
-    stage_objects(false).await;
+    stage_objects(false, false).await;
 }
 
 #[tokio::test]
 async fn stages_with_credentials() {
-    stage_objects(true).await;
+    stage_objects(true, false).await;
+}
+
+#[tokio::test]
+async fn stages_uploaded_helper() {
+    stage_objects(false, true).await;
 }
 
 /// Runs a task through a staging root, with presigned requests, or with the credentials of the
-/// file of storage providers and a cleanup of the staging root.
-async fn stage_objects(credentials: bool) {
+/// file of storage providers and a cleanup of the staging root. An `upload` job downloads the
+/// helper from the staging root.
+async fn stage_objects(credentials: bool, upload: bool) {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), NODE_APPTAINER);
     let mut backend = backend(
@@ -1302,7 +1309,7 @@ async fn stage_objects(credentials: bool) {
          --nocapture --test-threads=1\n",
         text(&program)
     );
-    std::fs::write(&helper, script).expect("writes the helper");
+    std::fs::write(&helper, &script).expect("writes the helper");
     std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).expect("runs");
     let staging_root = root.path().join("staging");
     let objects = match credentials {
@@ -1333,7 +1340,18 @@ async fn stage_objects(credentials: bool) {
             credentials,
             cleanup: credentials,
         },
-        helper: Helper::Path(text(&helper)),
+        helper: match upload {
+            false => Helper::Path(text(&helper)),
+            true => Helper::Upload(Binary {
+                digest: task_model::Digest::sha256(script.as_bytes()),
+                file: helper.clone(),
+                machine: match std::env::consts::ARCH {
+                    "aarch64" => Machine::Arm64,
+                    _ => Machine::Amd64,
+                },
+                uploaded: Default::default(),
+            }),
+        },
         folder: Some(text(&root.path().join("node"))),
         secret_file: secret_file.clone(),
     });
@@ -1375,6 +1393,19 @@ async fn stage_objects(credentials: bool) {
     assert_eq!(left.is_empty(), credentials, "{left:?}");
     let input = task_model::Digest::sha256(b"hello\n");
     assert!(stage.objects.has_content(&input).await.expect("the input"));
+    if upload {
+        let command = std::fs::read_to_string(bin.join("state/101.command")).expect("a script");
+        let script = std::fs::read_to_string(command.trim()).expect("the script");
+        assert!(script.contains("[ \"$(uname -m)\" = "), "{script}");
+        let helper = task_model::Digest::sha256(&std::fs::read(&helper).expect("the helper"));
+        assert!(
+            stage
+                .objects
+                .has_content(&helper)
+                .await
+                .expect("the helper")
+        );
+    }
     if let Some(file) = secret_file {
         // The job script names the plan, but not the providers, which come in the environment.
         let command = std::fs::read_to_string(bin.join("state/101.command")).expect("a script");

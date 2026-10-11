@@ -379,10 +379,14 @@ impl SlurmBackend {
                     mounts: &planned.mounts,
                     ..run
                 };
+                let binary = match &remote.helper {
+                    crate::Helper::Upload(binary) => Some(remote.stage.binary(binary).await?),
+                    _ => None,
+                };
                 let time = job.placement.time_seconds;
                 staged = Some((planned.prefix, planned.plan));
-                let plan = &planned.location;
-                crate::remote::job_script(&self.container, &run, remote, gpus, time, plan)
+                let (plan, binary) = (&planned.location, binary.as_deref());
+                crate::remote::job_script(&self.container, &run, remote, gpus, time, plan, binary)
             }
             (None, true) => {
                 let wrapper = run.wrapper(spec);

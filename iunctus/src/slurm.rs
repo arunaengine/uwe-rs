@@ -54,8 +54,14 @@ pub fn remote(
     let Some(stage) = executors.slurm_staging.stage(storage)? else {
         return Ok(None);
     };
-    let helper = (executors.slurm_helper.clone())
-        .ok_or("SLURM object-store staging needs helper_path or helper_url")?;
+    let helper = match (&executors.slurm_helper, &executors.slurm_helper_file) {
+        (Some(helper), _) => helper.clone(),
+        (None, Some(file)) => slurm_executor::Helper::Upload(
+            executor::binary::Binary::open(file)
+                .map_err(|error| format!("{error}, or set helper_path or helper_url"))?,
+        ),
+        (None, None) => return Err("SLURM object-store staging needs helper_path".into()),
+    };
     if let Some(file) = &executors.slurm_secret_file {
         slurm_executor::secret_text(file)?;
     }

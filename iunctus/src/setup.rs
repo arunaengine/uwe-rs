@@ -89,8 +89,12 @@ pub struct Executors {
     /// `[executor.kubernetes] staging` and the settings of its staging root.
     pub kubernetes_staging: crate::staging::Settings,
     /// `[executor.kubernetes] helper_image` and `helper_mount`: the image that holds only the
-    /// static iunctus binary, for object-store staging.
+    /// static iunctus binary, for object-store staging; or else `helper_download_image`, which
+    /// downloads the binary.
     pub kubernetes_helper: Option<kubernetes_executor::Helper>,
+    /// Without `helper_image`: `[executor.kubernetes] helper_file`, or else the running binary,
+    /// which iunctus uploads to the staging root for the pods.
+    pub kubernetes_helper_file: Option<PathBuf>,
     /// `[executor.kubernetes.shared_volume]`: a claim or an NFS export that holds the store and
     /// scratch folders, instead of `hostPath` volumes.
     pub kubernetes_volumes: kubernetes_executor::Volumes,
@@ -179,7 +183,7 @@ impl Executors {
         }
         if let Some(kubernetes) = section.table("kubernetes")? {
             let mut keys = vec!["kubeconfig", "namespace", "helper_image", "helper_mount"];
-            keys.push("staging_secret");
+            keys.extend(["staging_secret", "helper_file", "helper_download_image"]);
             keys.extend(["shared_volume", "kubedal_driver", "kubedal_data_node"]);
             keys.extend(["kubedal_namespace", "kubedal_upload_minutes"]);
             keys.extend(crate::staging::Settings::KEYS);
@@ -202,20 +206,34 @@ impl Executors {
                                \"credentials\"";
                 return Err(kubernetes.invalid("staging_secret", message));
             }
-            settings.kubernetes_helper =
-                (kubernetes.text("helper_image")?).map(|image| kubernetes_executor::Helper {
-                    image,
-                    image_volume,
-                    secret,
-                });
-            if settings.kubernetes_staging.mode == crate::staging::Mode::ObjectStore
-                && settings.kubernetes_helper.is_none()
-            {
-                return Err(kubernetes.missing(
-                    "helper_image",
-                    "an image that holds only the static iunctus binary at /iunctus",
-                ));
+            let image = kubernetes.text("helper_image")?;
+            let download = kubernetes.text("helper_download_image")?;
+            if image.is_some() && download.is_some() {
+                return Err(kubernetes.invalid("helper_download_image", "needs no helper_image"));
             }
+            if image.is_none() && kubernetes.text("helper_mount")?.is_some() {
+                return Err(kubernetes.invalid("helper_mount", "needs helper_image"));
+            }
+            let object_store =
+                settings.kubernetes_staging.mode == crate::staging::Mode::ObjectStore;
+            settings.kubernetes_helper_file = helper_file(&kubernetes, image.is_some())?;
+            if !object_store {
+                settings.kubernetes_helper_file = None;
+            }
+            // Without helper_image the pods download the binary with busybox.
+            let image = match (image, object_store) {
+                (Some(image), _) => Some(image),
+                (None, true) => {
+                    Some(download.unwrap_or_else(|| kubernetes_executor::DOWNLOAD_IMAGE.into()))
+                }
+                (None, false) => None,
+            };
+            settings.kubernetes_helper = image.map(|image| kubernetes_executor::Helper {
+                image,
+                image_volume,
+                secret,
+                binary: None,
+            });
             settings.kubernetes_kubedal = kubedal(&kubernetes)?;
             if (settings.kubernetes_staging.mode == crate::staging::Mode::Kubedal)
                 != settings.kubernetes_kubedal.is_some()
@@ -745,6 +763,26 @@ mod tests {
             helper.expect("a helper").secret.as_deref(),
             Some("iunctus-staging")
         );
+        assert!(read(&format!("{text}helper_file = '/a'\n")).is_err());
+        assert!(read(&format!("{text}helper_download_image = 'b'\n")).is_err());
+        // Without helper_image the pods download the running binary with busybox.
+        let text = "[executor.kubernetes]\nstaging = 'object-store'\nstaging_root = 's3://b'\n";
+        let settings = read(text).expect("settings");
+        let helper = settings.kubernetes_helper.expect("a helper");
+        assert_eq!(helper.image, kubernetes_executor::DOWNLOAD_IMAGE);
+        let current = std::env::current_exe().expect("this program");
+        assert_eq!(settings.kubernetes_helper_file, Some(current));
+        let text = format!(
+            "{text}helper_file = '/opt/iunctus-arm64'\nhelper_download_image = 'mirror/busybox'\n"
+        );
+        let settings = read(&text).expect("settings");
+        assert_eq!(
+            settings.kubernetes_helper.expect("a helper").image,
+            "mirror/busybox"
+        );
+        let file = settings.kubernetes_helper_file;
+        assert_eq!(file.as_deref(), Some(Path::new("/opt/iunctus-arm64")));
+        assert!(read(&format!("{text}helper_mount = 'init-container'\n")).is_err());
         let text = "[executor.kubernetes.shared_volume]\nnfs_server = 'nfs.example.org'\n\
                     nfs_path = '/export'\npath = '/mnt/iunctus'\n";
         let volumes = read(text).expect("settings").kubernetes_volumes;

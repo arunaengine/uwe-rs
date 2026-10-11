@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use serde_json::{Value, json};
 
 use executor::ContainerRun;
+use executor::binary::Binary;
 
 /// The label that marks the Jobs of one backend, so that one request lists all their pods.
 pub const LABEL: &str = "iunctus.dev/attempts";
@@ -97,7 +98,18 @@ pub struct Helper {
     /// For nodes with credentials: the Secret whose keys the helper gets as environment
     /// variables, among them the storage providers of the staging root.
     pub secret: Option<String>,
+    /// A binary of this machine, which an init container of `image` downloads from the staging
+    /// root instead; `image` then needs a shell, `wget` and `sha256sum`, like busybox.
+    pub binary: Option<Binary>,
 }
+
+/// The image that downloads the binary of [`Helper::binary`]: busybox, pinned to its digest.
+pub const DOWNLOAD_IMAGE: &str = "docker.io/library/busybox:1.37.0@sha256:\
+                                  bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e";
+
+/// Downloads the binary `$1` from the address `$2` and checks its SHA-256 `$3`.
+const DOWNLOAD: &str = "wget -q -O \"$1\" \"$2\" && echo \"$3  $1\" | sha256sum -c - > /dev/null \
+                        && chmod +x \"$1\"";
 
 /// Where the task container finds the helper.
 const HELPER: &str = "/iunctus-helper";
@@ -109,8 +121,9 @@ const SEND: &str = "sh \"$2/control/wrapper.sh\"\nstatus=$?\n\"$1\" __stage out 
 
 /// Stages the files of a Job through the plan at `plan`: an init container of the helper image
 /// downloads the inputs into the folder `root`, and the task container sends the outputs back
-/// after the wrapper. The image of the task stays as it is.
-pub fn stage(job: &mut Value, helper: &Helper, root: &str, plan: &str) {
+/// after the wrapper. The image of the task stays as it is. `binary` is where the pod downloads
+/// the binary of [`Helper::binary`].
+pub fn stage(job: &mut Value, helper: &Helper, root: &str, plan: &str, binary: Option<&str>) {
     let pod = &mut job["spec"]["template"]["spec"];
     let task = pod["containers"][0].clone();
     // The init containers need no GPU of the task.
@@ -123,14 +136,30 @@ pub fn stage(job: &mut Value, helper: &Helper, root: &str, plan: &str) {
         "resources": resources,
         "securityContext": task["securityContext"],
     });
+    let address = binary;
     let binary = format!("{HELPER}/iunctus");
     let mut init = Vec::new();
-    let volume = match helper.image_volume {
-        true => json!({
+    let mut program = "/iunctus".to_owned();
+    let volume = match (&helper.binary, helper.image_volume) {
+        (Some(uploaded), _) => {
+            let mut download = base.clone();
+            download["name"] = json!("helper");
+            let address = address.expect("the address of the uploaded binary");
+            let sha256 = uploaded.digest.hex();
+            download["command"] = json!(["sh", "-c", DOWNLOAD, "sh", binary, address, sha256]);
+            download["volumeMounts"] = json!([{"name": "helper", "mountPath": HELPER}]);
+            init.push(download);
+            program = binary.clone();
+            // The binary runs only on the nodes of its own machine.
+            let arch = uploaded.machine.kubernetes();
+            pod["nodeSelector"] = json!({"kubernetes.io/arch": arch});
+            json!({"name": "helper", "emptyDir": {}})
+        }
+        (None, true) => json!({
             "name": "helper",
             "image": {"reference": helper.image, "pullPolicy": "IfNotPresent"},
         }),
-        false => {
+        (None, false) => {
             let mut copy = base.clone();
             copy["name"] = json!("helper");
             copy["command"] = json!(["/iunctus", "__stage", "install", binary]);
@@ -141,8 +170,14 @@ pub fn stage(job: &mut Value, helper: &Helper, root: &str, plan: &str) {
     };
     let mut inputs = base;
     inputs["name"] = json!("stage-in");
-    inputs["command"] = json!(["/iunctus", "__stage", "in", root, plan]);
+    inputs["command"] = json!([program, "__stage", "in", root, plan]);
     inputs["volumeMounts"] = json!([{"name": FOLDERS, "mountPath": root}]);
+    if helper.binary.is_some() {
+        let mount = json!({"name": "helper", "mountPath": HELPER, "readOnly": true});
+        (inputs["volumeMounts"].as_array_mut())
+            .expect("mounts")
+            .push(mount);
+    }
     let secret = (helper.secret.as_ref()).map(|name| json!([{"secretRef": {"name": name}}]));
     if let Some(secret) = &secret {
         inputs["envFrom"] = secret.clone();
@@ -372,6 +407,88 @@ mod tests {
         assert!(container["securityContext"].get("runAsUser").is_none());
         let mounts = container["volumeMounts"].as_array().expect("mounts");
         assert!(!mounts.iter().any(|mount| mount["mountPath"] == "/data"));
+    }
+
+    #[test]
+    fn downloads_uploaded_helper() {
+        let image = Image {
+            reference: "debian@sha256:ab".into(),
+            platform: None,
+        };
+        let access = Access::of((1000, 100), false, None, "");
+        let run = ContainerRun {
+            name: "iunctus-run-P-1-1",
+            image: &image,
+            root: Path::new("/cache/scratch/run-P-1-1"),
+            workdir: None,
+            mounts: &[],
+            owner: (1000, 100),
+            cpus: 1,
+            memory: None,
+            offline: false,
+            wrapper_path: None,
+            access: &access,
+        };
+        let place = Volumes::Under {
+            root: PathBuf::from("/cache/scratch/run-P-1-1"),
+            source: json!({"emptyDir": {}}),
+        };
+        let limits = Limits {
+            gpus: 1,
+            seconds: None,
+        };
+        let mut manifest = job("iunctus-run-p-1-1", "7-9", &[run], &limits, &place).unwrap();
+        let digest = task_model::Digest::sha256(b"iunctus");
+        let helper = Helper {
+            image: DOWNLOAD_IMAGE.into(),
+            image_volume: true,
+            secret: None,
+            binary: Some(Binary {
+                file: PathBuf::from("/usr/bin/iunctus"),
+                digest: digest.clone(),
+                machine: executor::binary::Machine::Amd64,
+                uploaded: Default::default(),
+            }),
+        };
+        let (root, url) = ("/cache/scratch/run-P-1-1", Some("https://staging/cas/x"));
+        stage(&mut manifest, &helper, root, "https://plan", url);
+        let pod = &manifest["spec"]["template"]["spec"];
+        assert_eq!(pod["nodeSelector"]["kubernetes.io/arch"], "amd64");
+        let download = &pod["initContainers"][0];
+        assert_eq!(download["image"], DOWNLOAD_IMAGE);
+        let command = json!([
+            "sh",
+            "-c",
+            DOWNLOAD,
+            "sh",
+            "/iunctus-helper/iunctus",
+            "https://staging/cas/x",
+            digest.hex(),
+        ]);
+        assert_eq!(download["command"], command);
+        // The init containers run as the task, without its GPU.
+        assert!(
+            download["resources"]["limits"]
+                .get("nvidia.com/gpu")
+                .is_none()
+        );
+        assert_eq!(download["securityContext"]["runAsUser"], 1000);
+        let stage_in = &pod["initContainers"][1];
+        assert_eq!(stage_in["image"], DOWNLOAD_IMAGE);
+        let command = json!([
+            "/iunctus-helper/iunctus",
+            "__stage",
+            "in",
+            root,
+            "https://plan"
+        ]);
+        assert_eq!(stage_in["command"], command);
+        assert_eq!(stage_in["volumeMounts"][1]["mountPath"], "/iunctus-helper");
+        let volumes = pod["volumes"].as_array().expect("volumes");
+        assert_eq!(volumes[1], json!({"name": "helper", "emptyDir": {}}));
+        let task = &pod["containers"][0];
+        assert_eq!(task["image"], "debian@sha256:ab");
+        assert_eq!(task["command"][4], "/iunctus-helper/iunctus");
     }
 
     #[test]

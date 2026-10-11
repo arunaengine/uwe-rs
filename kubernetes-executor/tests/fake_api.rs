@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use executor::binary::{Binary, Machine};
 use executor::registry::{ImageConfig, ImageConfigs};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -119,6 +120,10 @@ fn start(folder: &Path, job: &Value) -> Running {
                 .iter()
                 .map(|word| match word.as_str().unwrap_or_default() {
                     "/iunctus" | "/iunctus-helper/iunctus" => quote(&helper.to_string_lossy()),
+                    // This machine has no busybox, whose `wget` the pod downloads the helper with.
+                    word if word.starts_with("wget ") => {
+                        quote(&word.replacen("wget -q -O", "curl -fsSL -o", 1))
+                    }
                     word => quote(word),
                 }),
         );
@@ -1189,19 +1194,20 @@ async fn containers_share_pod() {
     assert_eq!(codes, [Some(0), Some(0)]);
 }
 
-/// Runs a task with object-store staging, with the helper as an image volume or copied by an
-/// init container, and with the credentials of a Secret and a cleanup, on a node whose folder
-/// of the attempt goes away with the pod.
+/// Runs a task with object-store staging, with the helper as an image volume, copied by an
+/// init container or downloaded from the staging root, and with the credentials of a Secret and
+/// a cleanup, on a node whose folder of the attempt goes away with the pod.
 #[tokio::test]
 async fn stages_through_objects() {
-    // The last runs as the user of its image, which may differ from the helper.
+    // The fourth runs as the user of its image, which may differ from the helper.
     let variants = [
-        (true, false, false),
-        (false, false, false),
-        (true, true, false),
-        (false, false, true),
+        (true, false, false, false),
+        (false, false, false, false),
+        (true, true, false, false),
+        (false, false, true, false),
+        (false, false, false, true),
     ];
-    for (image_volume, credentials, open) in variants {
+    for (image_volume, credentials, open, upload) in variants {
         let root = tempfile::tempdir().expect("a folder");
         let (mut backend, state) = backend(root.path()).await;
         // The pod starts this test program as the helper, which runs `stage_helper`.
@@ -1212,7 +1218,8 @@ async fn stages_through_objects() {
             quote(&program.to_string_lossy())
         );
         let helper = root.path().join("server/helper");
-        std::fs::write(&helper, script).expect("writes the helper");
+        std::fs::write(&helper, &script).expect("writes the helper");
+        let digest = task_model::Digest::sha256(script.as_bytes());
         let mode = std::os::unix::fs::PermissionsExt::from_mode(0o755);
         std::fs::set_permissions(&helper, mode).expect("runs");
         let staging_root = root.path().join("staging");
@@ -1242,9 +1249,18 @@ async fn stages_through_objects() {
                 cleanup: credentials,
             },
             via: Via::Helper(Helper {
-                image: "iunctus-helper:test".into(),
+                image: match upload {
+                    false => "iunctus-helper:test".into(),
+                    true => kubernetes_executor::DOWNLOAD_IMAGE.into(),
+                },
                 image_volume,
                 secret: credentials.then(|| "staging".into()),
+                binary: upload.then(|| Binary {
+                    digest: digest.clone(),
+                    file: helper.clone(),
+                    machine: Machine::Arm64,
+                    uploaded: Default::default(),
+                }),
             }),
         });
         let source = root.path().join("source/in.txt");
@@ -1294,6 +1310,19 @@ async fn stages_through_objects() {
                 assert_eq!(names, ["helper", "stage-in"]);
                 assert!(helper["emptyDir"].is_object());
             }
+        }
+        // The pod downloads the helper with busybox, on a node of the machine of the helper.
+        let arch = pod["nodeSelector"]["kubernetes.io/arch"].as_str();
+        assert_eq!(arch, upload.then_some("arm64"));
+        if upload {
+            let init = &pod["initContainers"];
+            assert_eq!(init[0]["image"], kubernetes_executor::DOWNLOAD_IMAGE);
+            assert_eq!(
+                init[0]["securityContext"],
+                pod["containers"][0]["securityContext"]
+            );
+            assert_eq!(init[1]["command"][0], "/iunctus-helper/iunctus");
+            assert_eq!(init[0]["command"][6].as_str(), Some(digest.hex()));
         }
         // The Job names the Secret, but holds none of it.
         let secret = credentials.then(|| json!([{"secretRef": {"name": "staging"}}]));

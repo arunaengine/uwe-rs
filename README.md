@@ -136,27 +136,44 @@ A ReadWriteMany folder that all pods share is an antipattern on Kubernetes: it i
 
 **`staging = "object-store"`**: nothing is shared. iunctus uploads the inputs to the staging root and writes a plan of presigned requests. On the node, the static iunctus binary downloads the inputs, checks their SHA-256, and uploads the outputs after the task. The nodes need no credentials. The staging root is an address of a configured storage provider that signs requests: S3, Google Cloud Storage with the key file of a service account (`credential_file`), or Azure Blob Storage with a `sas_token`, whose end is also the end of the requests.
 
+By default iunctus sends its own binary with the jobs. It uploads its running binary once to `cas/` in the staging root, by its SHA-256, and each job downloads it from there through a presigned request and checks its SHA-256. This works only when iunctus itself is a statically linked Linux binary for the machine of the nodes, like the one of `just release-binary`. Otherwise, for example on macOS or with a dynamically linked build, iunctus stops before the first job and says so. Then `helper_file` names a static binary on this machine to upload instead, for example one for arm64 nodes.
+
 ```toml
 [executor.slurm]
 staging = "object-store"
 staging_root = "s3://bucket/iunctus-staging"
-helper_url = "https://example.org/iunctus"   # the static binary of `just release-binary`
-helper_sha256 = "<its SHA-256, 64 hex digits>"
-# helper_path = "/opt/iunctus/bin/iunctus"   # instead, when the nodes have it already
+# helper_file = "/home/me/iunctus-x86_64"    # instead of the running binary
 node_folder = "/local/scratch"               # the default is $TMPDIR, else /tmp
 ```
 
-A SLURM job gets the binary with `curl` or `wget` and checks it, stages the inputs into the node folder, runs the container with binds to that folder, and sends the outputs back. Apptainer pulls the image on each node.
+A SLURM job gets the binary with `curl` or `wget` and checks it, stages the inputs into the node folder, runs the container with binds to that folder, and sends the outputs back. Apptainer pulls the image on each node. iunctus cannot see the machine of the nodes, so it must match the binary: the job checks `uname -m` and fails with a clear message when it differs. Instead of the uploaded binary, a job may get it from a path on the nodes, or from an address of your own:
+
+```toml
+[executor.slurm]
+helper_url = "https://example.org/iunctus"   # the static binary of `just release-binary`
+helper_sha256 = "<its SHA-256, 64 hex digits>"
+# helper_path = "/opt/iunctus/bin/iunctus"   # instead, when the nodes have it already
+```
+
+On Kubernetes the task image stays as it is, so the binary comes in through init containers. The first one runs busybox, which downloads the binary into an `emptyDir` volume and checks it. The second one runs the binary in the same busybox image and stages the inputs into an `emptyDir` volume. This happens before the task container starts, because the kubelet would make each missing `subPath` folder of the task container as root, and then the task could not write there. The task container sees the binary in the `emptyDir` volume and sends the outputs back after the task. The Job asks for nodes of the machine of the binary with the `kubernetes.io/arch` node selector. The busybox image is pinned by its digest; `helper_download_image` names another image with a shell, `wget` and `sha256sum`, for example from a registry mirror.
 
 ```toml
 [executor.kubernetes]
 staging = "object-store"
 staging_root = "s3://bucket/iunctus-staging"
+# helper_file = "/home/me/iunctus-arm64"                 # instead of the running binary
+# helper_download_image = "mirror.example.org/busybox"   # instead of docker.io/library/busybox
+```
+
+Instead, a helper image may hold the binary:
+
+```toml
+[executor.kubernetes]
 helper_image = "registry.example.org/iunctus-helper:0.1.0"   # built with `just helper-image`
 helper_mount = "image-volume"                                # or "init-container"
 ```
 
-The helper image holds only the static binary, at `/iunctus`. An init container of that image stages the inputs into an `emptyDir` volume. This happens before the task container starts, because the kubelet would make each missing `subPath` folder of the task container as root, and then the task could not write there. The task container sees the binary as a read-only image volume and sends the outputs back after the task. Image volumes need Kubernetes 1.31 or later with the `ImageVolume` feature gate on, and a container runtime that supports them. On other clusters, `helper_mount = "init-container"` copies the binary into an `emptyDir` volume instead.
+The helper image holds only the static binary, at `/iunctus`. An init container of that image stages the inputs. The task container sees the binary as a read-only image volume. Image volumes need Kubernetes 1.31 or later with the `ImageVolume` feature gate on, and a container runtime that supports them. On other clusters, `helper_mount = "init-container"` copies the binary into an `emptyDir` volume instead.
 
 With `staging_access = "credentials"`, the nodes reach the staging root with credentials of their own instead of presigned requests. The plan then names the objects, and the helper sends each output in parts, so a file may be larger than 5 GiB. The helper reads the storage providers of the staging root from the environment variable `IUNCTUS_STAGING_STORAGE`, as `[storage.<name>]` tables like those of the config file:
 
@@ -185,6 +202,7 @@ Limits of object-store staging:
 - A task gives back at most `max_outputs` files (default 1024).
 - With presigned requests, anyone who can read the job script or the Job sees the address of its plan, which grants access to the files of that task until it expires.
 - Tasks of several containers need `shared-path`.
+- The uploaded binary is downloaded through a presigned request also with `staging_access = "credentials"`, as the job has no helper yet to read the staging root. The staging root must sign requests then too.
 
 **`staging = "kubedal"`** (Kubernetes only): the [kubedal](https://github.com/arunaengine/kubedal) CSI driver places the inputs from a file list before the pod starts and uploads the outputs when the pod ends. The pod gets no iunctus binary.
 

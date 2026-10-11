@@ -21,6 +21,7 @@ pub mod poll;
 mod pool;
 pub mod process;
 pub mod registry;
+pub mod remote;
 mod stage;
 pub mod wrapper;
 

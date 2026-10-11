@@ -671,6 +671,13 @@ impl SlurmBackend {
         if cancel.is_cancelled() {
             return Err(ExecutorError::Cancelled);
         }
+        let secret = (self
+            .remote
+            .as_ref()
+            .and_then(|remote| remote.secret_file.as_deref()))
+        .map(crate::remote::secret_text)
+        .transpose()
+        .map_err(std::io::Error::other)?;
         let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
         let started = owner_start(std::process::id()).ok_or_else(|| {
             std::io::Error::other("cannot identify the SLURM coordinator process")
@@ -686,6 +693,9 @@ impl SlurmBackend {
             for name in ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"] {
                 sbatch.env(name, proxy);
             }
+        }
+        if let Some(secret) = secret {
+            sbatch.env(executor::helper::STORAGE, secret);
         }
         sbatch.args(options).arg(&script);
         let output = tokio::select! {

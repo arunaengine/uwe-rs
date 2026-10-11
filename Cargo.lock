@@ -5708,6 +5708,7 @@ version = "0.1.0"
 dependencies = [
  "content-store",
  "executor",
+ "opendal",
  "serde_json",
  "task-model",
  "tempfile",

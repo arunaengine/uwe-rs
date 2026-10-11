@@ -1280,6 +1280,17 @@ async fn docker_groups_images() {
 
 #[tokio::test]
 async fn stages_through_objects() {
+    stage_objects(false).await;
+}
+
+#[tokio::test]
+async fn stages_with_credentials() {
+    stage_objects(true).await;
+}
+
+/// Runs a task through a staging root, with presigned requests or with the credentials of the
+/// file of storage providers.
+async fn stage_objects(credentials: bool) {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), NODE_APPTAINER);
     let mut backend = backend(
@@ -1297,16 +1308,37 @@ async fn stages_through_objects() {
     );
     std::fs::write(&helper, script).expect("writes the helper");
     std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).expect("runs");
-    let objects = content_store::Store::local(&root.path().join("staging")).expect("a store");
+    let staging_root = root.path().join("staging");
+    let objects = match credentials {
+        false => content_store::Store::local(&staging_root).expect("a store"),
+        true => {
+            // The nodes reach the staging root as `s3://staging` through a folder provider.
+            std::fs::create_dir_all(&staging_root).expect("makes the folder");
+            let folder = opendal::services::Fs::default().root(&text(&staging_root));
+            let operator = opendal::Operator::new(folder).expect("an operator");
+            content_store::Store::remote(operator, "s3://staging").expect("a store")
+        }
+    };
+    let secret_file = credentials.then(|| {
+        let file = root.path().join("staging.toml");
+        let providers = format!(
+            "[storage.staging]\ntype = \"folder\"\npath = {:?}\nprefixes = [\"s3://staging/\"]\n",
+            text(&staging_root)
+        );
+        std::fs::write(&file, providers).expect("writes the providers");
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).expect("private");
+        file
+    });
     backend.remote = Some(NodeStaging {
         stage: RemoteStage {
             objects,
             expiry: Duration::from_secs(600),
             max_outputs: 4,
-            credentials: false,
+            credentials,
         },
         helper: Helper::Path(text(&helper)),
         folder: Some(text(&root.path().join("node"))),
+        secret_file: secret_file.clone(),
     });
     let spec = spec("tr a-z A-Z < in.txt > out.txt && cat /opt/iunctus-test/extra.txt >> out.txt");
     let mut staging = staging(root.path(), "hello\n");
@@ -1337,9 +1369,19 @@ async fn stages_through_objects() {
     );
     assert!(!root.path().join("node/iunctus-run-P-1-1").exists());
     assert!(finished.root.join("control/slurm.log").is_file());
+    if let Some(file) = secret_file {
+        // The job script names the plan, but not the providers, which come in the environment.
+        let command = std::fs::read_to_string(bin.join("state/101.command")).expect("a script");
+        let script = std::fs::read_to_string(command.trim()).expect("the script");
+        assert!(script.contains("'s3://staging/cas/"), "{script}");
+        assert!(!script.contains("storage.staging"), "{script}");
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).expect("shared");
+        let error = slurm_executor::secret_text(&file).unwrap_err();
+        assert!(error.contains("chmod 600"), "{error}");
+    }
 }
 
-/// Runs the staging helper when a job of `stages_through_objects` starts this program as it.
+/// Runs the staging helper when a job of `stage_objects` starts this program as it.
 #[test]
 fn stage_helper() {
     if let Ok(arguments) = std::env::var("IUNCTUS_TEST_STAGE") {

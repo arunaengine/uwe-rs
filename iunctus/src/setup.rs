@@ -76,6 +76,9 @@ pub struct Executors {
     pub slurm_helper: Option<slurm_executor::Helper>,
     /// `[executor.slurm] node_folder`: the folder of the nodes for the files of a job.
     pub slurm_node_folder: Option<String>,
+    /// `[executor.slurm] staging_secret_file`: the storage providers of the staging root for
+    /// `staging_access = "credentials"`, in a file that only its owner may read.
+    pub slurm_secret_file: Option<PathBuf>,
     /// `[executor.kubernetes] kubeconfig`, like `-kubeconfig`.
     pub kubeconfig: Option<PathBuf>,
     /// `[executor.kubernetes] namespace`, like `-kubernetes-namespace`.
@@ -148,12 +151,19 @@ impl Executors {
         }
         if let Some(slurm) = section.table("slurm")? {
             let mut keys = vec!["container", "options", "pull", "node_folder"];
+            keys.push("staging_secret_file");
             keys.extend(["helper_path", "helper_url", "helper_sha256"]);
             keys.extend(crate::staging::Settings::KEYS);
             slurm.only(&keys)?;
             settings.slurm_staging = crate::staging::Settings::read(&slurm, &["object-store"])?;
             settings.slurm_helper = helper(&slurm)?;
             settings.slurm_node_folder = slurm.text("node_folder")?;
+            settings.slurm_secret_file = slurm.text("staging_secret_file")?.map(PathBuf::from);
+            if settings.slurm_staging.credentials != settings.slurm_secret_file.is_some() {
+                let message = "names the file of the storage providers for staging_access = \
+                               \"credentials\"";
+                return Err(slurm.invalid("staging_secret_file", message));
+            }
             if settings.slurm_staging.mode == crate::staging::Mode::ObjectStore
                 && settings.slurm_helper.is_none()
             {
@@ -673,6 +683,11 @@ mod tests {
             if sha256 == "ab".repeat(32))
         );
         assert!(read(&format!("{text}ab'\n")).is_err(), "a short digest");
+        let text = format!("{text}{}'\nstaging_access = 'credentials'\n", "ab".repeat(32));
+        assert!(read(&text).unwrap_err().contains("staging_secret_file"));
+        let text = format!("{text}staging_secret_file = '/home/me/staging.toml'\n");
+        let file = read(&text).expect("settings").slurm_secret_file;
+        assert_eq!(file.as_deref(), Some(Path::new("/home/me/staging.toml")));
         let missing = read("[executor.slurm]\nstaging = 'object-store'\nstaging_root = 's3://b'");
         assert!(missing.unwrap_err().contains("helper_path"));
         let text = "[executor.kubernetes]\nstaging = 'object-store'\nstaging_root = 's3://b'\n\

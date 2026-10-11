@@ -56,10 +56,14 @@ pub fn remote(
     };
     let helper = (executors.slurm_helper.clone())
         .ok_or("SLURM object-store staging needs helper_path or helper_url")?;
+    if let Some(file) = &executors.slurm_secret_file {
+        slurm_executor::secret_text(file)?;
+    }
     Ok(Some(slurm_executor::NodeStaging {
         stage,
         helper,
         folder: executors.slurm_node_folder.clone(),
+        secret_file: executors.slurm_secret_file.clone(),
     }))
 }
 

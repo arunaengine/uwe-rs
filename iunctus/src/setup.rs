@@ -181,6 +181,7 @@ impl Executors {
         }
         if let Some(kubernetes) = section.table("kubernetes")? {
             let mut keys = vec!["kubeconfig", "namespace", "helper_image", "helper_mount"];
+            keys.push("staging_secret");
             keys.extend(["shared_volume", "kubedal_driver", "kubedal_data_node"]);
             keys.extend(["kubedal_namespace", "kubedal_upload_minutes"]);
             keys.extend(crate::staging::Settings::KEYS);
@@ -197,10 +198,17 @@ impl Executors {
                     return Err(kubernetes.invalid("helper_mount", message));
                 }
             };
+            let secret = kubernetes.text("staging_secret")?;
+            if settings.kubernetes_staging.credentials != secret.is_some() {
+                let message = "names the Secret of the storage providers for staging_access = \
+                               \"credentials\"";
+                return Err(kubernetes.invalid("staging_secret", message));
+            }
             settings.kubernetes_helper =
                 (kubernetes.text("helper_image")?).map(|image| kubernetes_executor::Helper {
                     image,
                     image_volume,
+                    secret,
                 });
             if settings.kubernetes_staging.mode == crate::staging::Mode::ObjectStore
                 && settings.kubernetes_helper.is_none()
@@ -701,6 +709,14 @@ mod tests {
             .expect("a helper");
         assert_eq!(helper.image, "helper:1");
         assert!(!helper.image_volume);
+        let text = format!("{text}staging_access = 'credentials'\n");
+        assert!(read(&text).unwrap_err().contains("staging_secret"));
+        let text = format!("{text}staging_secret = 'iunctus-staging'\n");
+        let helper = read(&text).expect("settings").kubernetes_helper;
+        assert_eq!(
+            helper.expect("a helper").secret.as_deref(),
+            Some("iunctus-staging")
+        );
         let text = "[executor.kubernetes.shared_volume]\nnfs_server = 'nfs.example.org'\n\
                     nfs_path = '/export'\npath = '/mnt/iunctus'\n";
         let volumes = read(text).expect("settings").kubernetes_volumes;

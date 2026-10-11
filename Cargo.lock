@@ -2867,6 +2867,7 @@ dependencies = [
  "executor",
  "k8s-openapi",
  "kube",
+ "opendal",
  "serde_json",
  "sha2 0.11.0",
  "task-model",

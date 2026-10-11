@@ -100,13 +100,27 @@ fn start(folder: &Path, job: &Value) -> Running {
         if command.get(2).is_some_and(|word| word == "install") {
             return vec!["true".into()];
         }
-        command
-            .iter()
-            .map(|word| match word.as_str().unwrap_or_default() {
-                "/iunctus" | "/iunctus-helper/iunctus" => quote(&helper.to_string_lossy()),
-                word => quote(word),
-            })
-            .collect()
+        let mut words = Vec::new();
+        // The keys of a Secret are in the JSON file `secret-<name>` of the folder.
+        for source in container["envFrom"].as_array().into_iter().flatten() {
+            let name = source["secretRef"]["name"].as_str().expect("a Secret");
+            let keys = std::fs::read(folder.join(format!("secret-{name}"))).expect("the Secret");
+            let keys: BTreeMap<String, String> = serde_json::from_slice(&keys).expect("keys");
+            words.push("env".into());
+            words.extend(
+                keys.iter()
+                    .map(|(key, value)| quote(&format!("{key}={value}"))),
+            );
+        }
+        words.extend(
+            command
+                .iter()
+                .map(|word| match word.as_str().unwrap_or_default() {
+                    "/iunctus" | "/iunctus-helper/iunctus" => quote(&helper.to_string_lossy()),
+                    word => quote(word),
+                }),
+        );
+        words
     };
     let volume = (pod["volumes"].as_array().into_iter().flatten())
         .find(|volume| volume["name"] == "folders" && volume.get("hostPath").is_none())
@@ -1169,10 +1183,11 @@ async fn containers_share_pod() {
 }
 
 /// Runs a task with object-store staging, with the helper as an image volume or copied by an
-/// init container, on a node whose folder of the attempt goes away with the pod.
+/// init container, and with the credentials of a Secret, on a node whose folder of the attempt
+/// goes away with the pod.
 #[tokio::test]
 async fn stages_through_objects() {
-    for image_volume in [true, false] {
+    for (image_volume, credentials) in [(true, false), (false, false), (true, true)] {
         let root = tempfile::tempdir().expect("a folder");
         let (mut backend, state) = backend(root.path()).await;
         // The pod starts this test program as the helper, which runs `stage_helper`.
@@ -1186,17 +1201,35 @@ async fn stages_through_objects() {
         std::fs::write(&helper, script).expect("writes the helper");
         let mode = std::os::unix::fs::PermissionsExt::from_mode(0o755);
         std::fs::set_permissions(&helper, mode).expect("runs");
-        let objects = content_store::Store::local(&root.path().join("staging")).expect("a store");
+        let staging_root = root.path().join("staging");
+        let objects = match credentials {
+            false => content_store::Store::local(&staging_root).expect("a store"),
+            true => {
+                // The pods reach the staging root as `s3://staging` through a folder provider.
+                std::fs::create_dir_all(&staging_root).expect("makes the folder");
+                let path = staging_root.to_string_lossy();
+                let operator = opendal::Operator::new(opendal::services::Fs::default().root(&path));
+                let providers = format!(
+                    "[storage.staging]\ntype = \"folder\"\npath = {path:?}\n\
+                     prefixes = [\"s3://staging/\"]\n"
+                );
+                let keys = json!({executor::helper::STORAGE: providers}).to_string();
+                std::fs::write(root.path().join("server/secret-staging"), keys).expect("writes");
+                let objects = operator.expect("an operator");
+                content_store::Store::remote(objects, "s3://staging").expect("a store")
+            }
+        };
         backend.remote = Some(PodStaging {
             stage: RemoteStage {
                 objects,
                 expiry: Duration::from_secs(600),
                 max_outputs: 4,
-                credentials: false,
+                credentials,
             },
             via: Via::Helper(Helper {
                 image: "iunctus-helper:test".into(),
                 image_volume,
+                secret: credentials.then(|| "staging".into()),
             }),
         });
         let source = root.path().join("source/in.txt");
@@ -1241,6 +1274,17 @@ async fn stages_through_objects() {
                 assert!(helper["emptyDir"].is_object());
             }
         }
+        // The Job names the Secret, but holds none of it.
+        let secret = credentials.then(|| json!([{"secretRef": {"name": "staging"}}]));
+        let stage_in = pod["initContainers"]
+            .as_array()
+            .and_then(|list| list.last());
+        let stage_in = stage_in.expect("stage-in");
+        assert_eq!(stage_in.get("envFrom"), secret.as_ref());
+        let plan = stage_in["command"][4].as_str().unwrap_or_default();
+        assert_eq!(plan.starts_with("s3://staging/cas/"), credentials, "{plan}");
+        assert_eq!(pod["containers"][0].get("envFrom"), secret.as_ref());
+        assert!(!submitted.to_string().contains("storage.staging"));
         let folders = volumes.iter().find(|volume| volume["name"] == "folders");
         assert!(folders.expect("the folders")["emptyDir"].is_object());
         assert!(

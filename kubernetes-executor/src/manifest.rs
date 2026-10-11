@@ -119,10 +119,9 @@ const HELPER: &str = "/iunctus-helper";
 const SEND: &str = "sh \"$2/control/wrapper.sh\"\nstatus=$?\n\"$1\" __stage out \"$2\" || exit 125\n\
                     exit \"$status\"\n";
 
-/// Stages the files of a Job through the plan at `plan`: an init container of the helper image
-/// downloads the inputs into the folder `root`, and the task container sends the outputs back
-/// after the wrapper. The image of the task stays as it is. `binary` is where the pod downloads
-/// the binary of [`Helper::binary`].
+/// Stages the files of a Job through the plan at `plan`: an init container downloads the inputs
+/// into the folder `root`, and the task container sends the outputs back after the wrapper, with
+/// its image unchanged. `binary` is where the pod downloads the binary of [`Helper::binary`].
 pub fn stage(job: &mut Value, helper: &Helper, root: &str, plan: &str, binary: Option<&str>) {
     let pod = &mut job["spec"]["template"]["spec"];
     let task = pod["containers"][0].clone();

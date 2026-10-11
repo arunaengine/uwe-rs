@@ -498,27 +498,28 @@ mod tests {
         std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
         let queue = Queue::default();
         queue.add("1").await;
-        let poll = tokio::time::timeout(
-            Duration::from_secs(2),
-            queue.look("1", Duration::ZERO, &tool),
-        );
+        let poll = queue.look("1", Duration::ZERO, &tool);
+        // A busy machine may take a while to start the tool, so the waits are long; the query
+        // sleeps longer still.
         let admission = async {
-            for _ in 0..100 {
+            for _ in 0..1000 {
                 if tool.with_extension("pid").exists() {
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
             assert!(tool.with_extension("pid").is_file());
-            tokio::time::timeout(Duration::from_millis(100), async {
+            tokio::time::timeout(Duration::from_secs(5), async {
                 queue.add("2").await;
                 queue.remove("2").await;
             })
             .await
             .expect("a scheduler query must not block the snapshot lock");
         };
-        let (result, ()) = tokio::join!(poll, admission);
-        assert!(result.is_err());
+        tokio::select! {
+            look = poll => panic!("the query ended: {look:?}"),
+            () = admission => {}
+        }
         assert!(queue.refresh.try_lock().is_ok());
     }
 

@@ -17,7 +17,9 @@ use kubernetes_executor::{
     Cluster, Helper, Kubedal, KubernetesBackend, LABEL, Look, PodStaging, Pods, Via,
 };
 use serde_json::{Value, json};
-use task_model::{ContainerSpec, FORMAT, Image, OutputRule, Placement, TaskSpec};
+use task_model::{
+    ContainerSpec, EnvironmentValue, FORMAT, Image, OutputRule, Placement, RunAs, TaskSpec,
+};
 use tokio_util::sync::CancellationToken;
 
 const TOKEN: &str = "iunctus-test-token";
@@ -1187,7 +1189,14 @@ async fn containers_share_pod() {
 /// of the attempt goes away with the pod.
 #[tokio::test]
 async fn stages_through_objects() {
-    for (image_volume, credentials) in [(true, false), (false, false), (true, true)] {
+    // The last runs as the user of its image, which may differ from the helper.
+    let variants = [
+        (true, false, false),
+        (false, false, false),
+        (true, true, false),
+        (false, false, true),
+    ];
+    for (image_volume, credentials, open) in variants {
         let root = tempfile::tempdir().expect("a folder");
         let (mut backend, state) = backend(root.path()).await;
         // The pod starts this test program as the helper, which runs `stage_helper`.
@@ -1244,7 +1253,12 @@ async fn stages_through_objects() {
             }],
             ..Staging::default()
         };
-        let spec = spec("debian:stable-slim", "tr a-z A-Z < in.txt > out.txt");
+        // A task that runs as its image says starts where the image says.
+        let script =
+            "cd \"$WORK\" && tr a-z A-Z < in.txt > out.txt && stat -c %a in.txt >> out.txt";
+        let mut spec = spec("debian:stable-slim", script);
+        spec.run_as = open.then_some(RunAs::default());
+        (spec.environment).insert("WORK".into(), EnvironmentValue::WorkDirectory);
         let placement = placement();
         let job = Job {
             name: "run-P-1-1",
@@ -1255,7 +1269,8 @@ async fn stages_through_objects() {
         let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
         assert_eq!(finished.exit_code, Some(0));
         let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
-        assert_eq!(output, "HELLO\n");
+        let mode = if open { 666 } else { 644 };
+        assert_eq!(output, format!("HELLO\n{mode}\n"));
         let submitted = state.lock().expect("the state").submitted[0].clone();
         let pod = &submitted["spec"]["template"]["spec"];
         let names: Vec<&str> = (pod["initContainers"].as_array().expect("init containers"))

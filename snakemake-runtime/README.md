@@ -161,7 +161,9 @@ is not part of a workflow.
 The workflow profile: settings in `profiles/default/profile.yaml` (or `config.yaml`) that
 Snakemake reads by itself as default command-line options. The ones that change how the
 workflow is planned are kept: config files and values, default resources, and resources
-and threads per rule.
+and threads per rule. `cores`, `max-threads`, `jobs` and `resources` set the global resources
+of the run, as Snakemake's command line does: threads are capped at `max-threads` and at the
+cores, and a local run without `cores` takes `jobs` as its cores.
 
 ## src/python.rs
 
@@ -184,6 +186,14 @@ The resources of a job, as Snakemake gives them to jobs that run on a remote exe
 the defaults for memory, disk and the temporary folder, under the `default-resources` of the
 workflow profile, under the rule's `resources:`, under the profile's `set-resources`. Memory
 and disk are kept in megabytes, and shown also as a human-readable size and in mebibytes.
+
+## src/scheduling.rs
+
+The global resources of a run, as Snakemake's scheduler shares them: a job starts only when
+its threads (`_cores`), its count (`_nodes`) and its integer resources fit beside the jobs
+that run. The others wait until a running job ends. As in Snakemake, `_cores` limits the
+threads of all jobs only when `_nodes` does not limit their number. Each integer resource of a
+job is capped at the global resource of its name.
 
 ## src/services.rs
 

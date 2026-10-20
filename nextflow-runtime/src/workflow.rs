@@ -16,10 +16,9 @@ use crate::Options;
 /// The Nextflow version that iunctus follows, as `nextflow.version` shows it.
 pub const NEXTFLOW_VERSION: &str = "26.04.6";
 
-/// The containers of the `process` scope, as Nextflow's `fetchContainers`: the one text of
-/// `process.container`, else a map by selector with the default as `default`, else `[:]`.
-/// A closure runs as Nextflow runs it at the start: with empty params and without `workflow`
-/// and `task`, where it fails and shows as `(dynamic resolved)`.
+/// The containers of the `process` scope, as Nextflow's `fetchContainers` gives them. A closure
+/// runs with empty params and without `workflow` and `task`, where it shows as
+/// `(dynamic resolved)`.
 fn containers(config: &Config) -> Value {
     struct Quiet;
     impl Host for Quiet {

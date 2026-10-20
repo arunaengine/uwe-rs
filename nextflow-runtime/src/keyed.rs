@@ -83,23 +83,22 @@ fn joined(by: &[usize], parts: &[&Value]) -> Value {
 pub(crate) struct GroupTuple {
     pub output: ChannelId,
     pub by: Vec<usize>,
-    /// A group is emitted as soon as it has this many tuples.
+    /// A group is emitted when a tuple fills its last list to this size.
     pub size: Option<usize>,
     /// Whether incomplete groups are emitted at the end when there is a size.
     pub remainder: bool,
     /// Whether each list of a group is sorted before it is emitted.
     pub sort: Sort,
-    /// The open groups in first-seen key order, with their number of tuples and their size.
-    pub groups: IndexMap<Vec<Key>, (Vec<Value>, usize, Option<usize>)>,
+    /// The open groups in first-seen key order, with their size.
+    pub groups: IndexMap<Vec<Key>, (Vec<Value>, Option<usize>)>,
 }
 
 impl Behaviour for GroupTuple {
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while let Some(message) = context.read(0) {
             let Message::Value(value) = message else {
-                for (_, (group, count, size)) in std::mem::take(&mut self.groups) {
-                    let complete = size.is_none_or(|size| count == size);
-                    if complete || self.remainder {
+                for (_, (group, size)) in std::mem::take(&mut self.groups) {
+                    if self.ready(&group, size) {
                         let value = self.group_value(context, group)?;
                         context.emit(self.output, value);
                     }
@@ -127,23 +126,34 @@ impl Behaviour for GroupTuple {
                 },
                 _ => None,
             });
-            let (group, count, size) = self.groups.entry(key.clone()).or_insert_with(|| {
+            let (group, size) = self.groups.entry(key.clone()).or_insert_with(|| {
                 let group = (0..tuple.len())
                     .map(|index| match by.contains(&index) {
                         true => string_key(&tuple[index]),
                         false => Value::list(Vec::new()),
                     })
                     .collect();
-                (group, 0, size)
+                (group, size)
             });
+            // As Nextflow, a longer tuple adds lists, and a group is full when the last list
+            // this tuple added to has `size` items.
+            let mut last = None;
             for (index, item) in tuple.into_iter().enumerate() {
-                if let (false, Some(Value::List(bag))) = (by.contains(&index), group.get(index)) {
+                if by.contains(&index) {
+                    continue;
+                }
+                if index == group.len() {
+                    group.push(Value::list(Vec::new()));
+                }
+                if let Some(Value::List(bag)) = group.get(index) {
                     bag.borrow_mut().items.push(item);
+                    last = Some(bag.borrow().items.len());
                 }
             }
-            *count += 1;
-            if *size == Some(*count)
-                && let Some((group, _, _)) = self.groups.shift_remove(&key)
+            if last.is_some()
+                && *size == last
+                && let Some((group, size)) = self.groups.shift_remove(&key)
+                && self.ready(&group, size)
             {
                 let value = self.group_value(context, group)?;
                 context.emit(self.output, value);
@@ -154,6 +164,17 @@ impl Behaviour for GroupTuple {
 }
 
 impl GroupTuple {
+    /// Whether a group may be emitted: Nextflow checks the size of its first list only.
+    fn ready(&self, group: &[Value], size: Option<usize>) -> bool {
+        let Some(size) = size.filter(|_| !self.remainder) else {
+            return true;
+        };
+        group.iter().find_map(|item| match item {
+            Value::List(list) => Some(list.borrow().items.len() == size),
+            _ => None,
+        }) == Some(true)
+    }
+
     fn group_value(&self, context: &mut Context, group: Vec<Value>) -> Result<Value, Error> {
         if !matches!(self.sort, Sort::None) {
             for item in &group {

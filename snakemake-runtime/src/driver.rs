@@ -131,6 +131,8 @@ pub struct Session {
     cwl_jobs: HashMap<usize, crate::cwl::Job>,
     cwl_engine: Option<(String, executor::CancellationToken)>,
     storage: Storage,
+    /// Temporary files whose removal waits until no checkpoint is pending, with their jobs.
+    deferred: Vec<(String, usize)>,
 }
 
 struct SignaturePublication {
@@ -240,6 +242,7 @@ impl Session {
             cwl_jobs: HashMap::new(),
             cwl_engine: None,
             storage: storage.clone(),
+            deferred: Vec::new(),
         })
     }
 
@@ -1402,15 +1405,11 @@ impl Session {
 
     /// Removes the `temp()` outputs of the shared directory that no job waits for anymore,
     /// as Snakemake's `handle_temp`: those of the `finished` jobs and of their inputs.
-    fn release_temporary(&self, finished: &[usize]) -> Result<(), DriverError> {
+    fn release_temporary(&mut self, finished: &[usize]) -> Result<(), DriverError> {
         let Some(planner) = self.planner.as_ref().filter(|_| self.shared) else {
             return Ok(());
         };
-        // A job that waits for a checkpoint may still need any file.
-        if self.replan || self.order.iter().any(|job| planner.jobs[*job].incomplete) {
-            return Ok(());
-        }
-        let mut candidates: Vec<(String, usize)> = Vec::new();
+        let mut candidates = std::mem::take(&mut self.deferred);
         for job in finished {
             let own = planner.jobs[*job].temporary_files();
             candidates.extend(own.into_iter().map(|file| (file, *job)));
@@ -1419,6 +1418,11 @@ impl Session {
                     candidates.push((file.clone(), *producer));
                 }
             }
+        }
+        // A job that waits for a checkpoint may still need any file.
+        if self.replan || self.order.iter().any(|job| planner.jobs[*job].incomplete) {
+            self.deferred = candidates;
+            return Ok(());
         }
         for (file, producer) in candidates {
             let waiting = self.order.iter().any(|consumer| {
@@ -2349,6 +2353,7 @@ impl Session {
                 waiting[0]
             )));
         }
+        self.release_temporary(&[])?;
         if self.hooks_started && !self.hooks_finished {
             self.hooks_finished = true;
             self.run_hook(GlobalKeyword::OnSuccess)?;

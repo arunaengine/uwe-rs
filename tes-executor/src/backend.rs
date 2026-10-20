@@ -90,8 +90,15 @@ impl Backend for TesBackend {
         tokio::fs::create_dir_all(&root).await?;
         let _ownership = ownership(&root)?;
         tokio::fs::create_dir_all(root.join("empty")).await?;
-        let result = self.attempt(job, &root, cancel).await;
-        if result.is_err() && !root.join("remote.json").exists() {
+        let mut prefix = None;
+        let result = self.attempt(job, &root, &mut prefix, cancel).await;
+        // Without a journal the task cannot run any more. A task that may still run keeps its
+        // journal, and the recovery of the attempt cleans the staging root.
+        let ended = !root.join("remote.json").exists();
+        if let (Some(staging), Some(prefix), true) = (&self.staging, &prefix, ended) {
+            staging.clean(prefix).await;
+        }
+        if result.is_err() && ended {
             let _ = tokio::fs::remove_dir_all(&root).await;
         }
         result
@@ -99,10 +106,13 @@ impl Backend for TesBackend {
 }
 
 impl TesBackend {
+    /// Submits the task of an attempt and waits for its end. The prefix of its objects in the
+    /// staging root goes to `prefix` before they are there.
     async fn attempt(
         &self,
         job: Job<'_>,
         root: &Path,
+        prefix: &mut Option<String>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
         // The command runs through the entrypoint of the image, as `docker run` and the local
@@ -152,6 +162,9 @@ impl TesBackend {
             }
         }
         let job = Job { spec: &spec, ..job };
+        if self.staging.is_some() {
+            *prefix = Some(executor::capture::attempt_prefix(job)?);
+        }
         let mut task = match &self.staging {
             Some(staging) => staging.prepare(job, shell).await?,
             None => task(job, root)?,
@@ -202,6 +215,9 @@ impl TesBackend {
             "name": job.name, "id": null, "owner": std::process::id(), "host": host,
             "started": started, "locked": true, "auth": self.client.identity(),
             "submission": submission});
+        if let Some(prefix) = prefix {
+            journal["staging"] = serde_json::json!({"prefix": prefix});
+        }
         if self.settings.idempotency_tag.is_some() {
             journal["request"] =
                 serde_json::to_value(&task).map_err(|error| unresolved(root, error))?;
@@ -435,6 +451,7 @@ impl TesBackend {
                         tracing::warn!(attempt = %root.display(),
                             "the task of an unclear submission is not on the TES server; the attempt is lost");
                         std::fs::remove_file(&path)?;
+                        backend.clean_staging(&journal).await;
                         continue;
                     }
                     Submitted::Unclear(reason) => {
@@ -446,8 +463,17 @@ impl TesBackend {
             }
             let id = journal["id"].as_str().unwrap_or_default();
             backend.stop(id, &root, CANCEL_GRACE).await?;
+            backend.clean_staging(&journal).await;
         }
         Ok(())
+    }
+
+    /// Removes the objects in the staging root that the journal of an attempt names.
+    async fn clean_staging(&self, journal: &serde_json::Value) {
+        let prefix = journal["staging"]["prefix"].as_str();
+        if let (Some(staging), Some(prefix)) = (&self.staging, prefix) {
+            staging.clean(prefix).await;
+        }
     }
 
     /// Finds the task of a journal whose submission left no id, by the tag value that only

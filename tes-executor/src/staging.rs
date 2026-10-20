@@ -263,6 +263,25 @@ impl ObjectStage {
         Ok(task)
     }
 
+    /// Removes what the attempt at `prefix` left in the staging root, when the settings ask for
+    /// it. The inputs in `cas/` stay, as other tasks may use them. A failure only leaves
+    /// objects behind, so it is a warning.
+    pub(crate) async fn clean(&self, prefix: &str) {
+        if !self.settings.staging_cleanup {
+            return;
+        }
+        let objects = match self.objects.objects(&format!("{prefix}/")).await {
+            Ok(objects) => objects,
+            Err(error) => return tracing::warn!(prefix, %error, "cannot list an attempt"),
+        };
+        for object in objects {
+            if let Err(error) = self.objects.remove(&object.location).await {
+                let location = object.location;
+                tracing::warn!(location, %error, "cannot remove an object of an attempt");
+            }
+        }
+    }
+
     async fn input_url(&self, source: &Path, digest: &Digest) -> Result<String, ExecutorError> {
         if let Some(address) = self
             .source

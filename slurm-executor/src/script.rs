@@ -29,10 +29,10 @@ pub enum Container {
     Engine(EngineCommand),
 }
 
-/// The options of `sbatch` for an attempt whose scratch directory is `root`: its name, its
-/// folder and log, its CPUs, memory, time, GPUs and queue, then the `extra` options of the
-/// user, which come last and so win.
-pub fn sbatch_options(job: Job<'_>, root: &Path, extra: &[String]) -> Vec<String> {
+/// The options of `sbatch` for an attempt whose scratch directory is `root`, then the `extra`
+/// options of the user, which win. The job may run `margin` seconds longer than its task, for
+/// staging and the start of its container; the task itself keeps its time.
+pub fn sbatch_options(job: Job<'_>, root: &Path, margin: u64, extra: &[String]) -> Vec<String> {
     let placement = job.placement;
     let mut options = head(job.name, root);
     options.push(format!("--cpus-per-task={}", placement.cpus.max(1)));
@@ -40,7 +40,7 @@ pub fn sbatch_options(job: Job<'_>, root: &Path, extra: &[String]) -> Vec<String
         options.push(format!("--mem={}M", bytes.div_ceil(1 << 20)));
     }
     if let Some(seconds) = placement.time_seconds {
-        options.push(format!("--time={}", time(seconds)));
+        options.push(format!("--time={}", time(seconds.saturating_add(margin))));
     }
     let gpus: u32 = placement.accelerators.iter().map(|gpu| gpu.count).sum();
     if gpus > 0 {
@@ -132,11 +132,12 @@ pub fn job_script(
     let exit = quote(&control.join(CONTAINER_EXIT).to_string_lossy());
     let record = quote(&control.join(executor::wrapper::EXIT).to_string_lossy());
     format!(
-        "#!/bin/bash\n# The iunctus job of one attempt of a task.\n{}{}{}\nstatus=$?\n{}{}\
+        "#!/bin/bash\n# The iunctus job of one attempt of a task.\n{}{}{}{}\nstatus=$?\n{}{}\
          [ \"$status\" -ne 0 ] || [ -s {record} ] || echo \"iunctus: the container ended, but \
          the wrapper of the task recorded no exit code on $(hostname)\" >&2\n\
          echo $status > {exit}\n",
         wait_for(&[(PathBuf::from(run.script()), size)], &exit),
+        clock(time),
         timeout(time),
         words.join(" "),
         timed_out(time),
@@ -160,6 +161,7 @@ pub fn container_script(
         .map(|(run, size)| (PathBuf::from(run.script()), *size))
         .collect();
     script.push_str(&wait_for(&wrappers, &quote(&exit.to_string_lossy())));
+    script.push_str(clock(time));
     script.push_str("pids=\n");
     for (index, run) in runs.iter().enumerate() {
         let words: Vec<String> = (command(container, run, gpus).iter())
@@ -218,6 +220,15 @@ fn durable(root: &Path) -> String {
         "find {} -type f -exec sync -- {{}} + 2> /dev/null\n",
         quote(&root.to_string_lossy())
     )
+}
+
+/// The line that starts the clock of the task, which [`timed_out`] reads, after the job waited
+/// for its files.
+pub(crate) fn clock(time: Option<u64>) -> &'static str {
+    match time {
+        Some(_) => "SECONDS=0\n",
+        None => "",
+    }
 }
 
 /// The start of a command that stops it at the time of its task, then kills it after a grace.
@@ -383,7 +394,7 @@ mod tests {
             placement: &placement,
         };
         let root = Path::new("/shared/scratch/run-P-1-1");
-        let options = sbatch_options(job, root, &["--account=lab".into()]);
+        let options = sbatch_options(job, root, 0, &["--account=lab".into()]);
         let expected = [
             "--parsable",
             "--job-name=iunctus-run-P-1-1",
@@ -399,6 +410,12 @@ mod tests {
             "--account=lab",
         ];
         assert_eq!(options, expected);
+        // The job gets more time than its task, for staging.
+        let options = sbatch_options(job, root, 600, &[]);
+        assert!(
+            options.contains(&"--time=1-01:11:01".to_owned()),
+            "{options:?}"
+        );
     }
 
     #[test]
@@ -542,7 +559,7 @@ mod tests {
         assert!(script.contains("'--network' 'none'"), "{script}");
         // A task with a time runs under `timeout`.
         assert!(
-            script.contains("\ntimeout --kill-after=10 90 'docker' 'run' '--init' "),
+            script.contains("\nSECONDS=0\ntimeout --kill-after=10 90 'docker' 'run' '--init' "),
             "{script}"
         );
         assert!(

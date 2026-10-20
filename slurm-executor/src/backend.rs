@@ -39,6 +39,9 @@ const EXIT_GRACE: Duration = Duration::from_secs(30);
 /// lost is found again by its name and script.
 const SUBMIT_GRACE: Duration = Duration::from_secs(60);
 
+/// How much longer than its task a job may run, by default.
+const STAGING_TIME: Duration = Duration::from_secs(5 * 60);
+
 /// How long to wait after the first failed pull of an image.
 const PULL_PAUSE: Duration = Duration::from_secs(20);
 
@@ -94,6 +97,9 @@ pub struct SlurmBackend {
     /// How the jobs get their files when the nodes share no folders with this machine; `None`
     /// when they see the scratch folder at the same path.
     pub remote: Option<NodeStaging>,
+    /// How much longer than its task a job may run: for staging, the wait for its files and the
+    /// start of its container. The task itself keeps its time.
+    pub staging_time: Duration,
     queue: Queue,
     made: Images,
     recovery: Mutex<()>,
@@ -138,6 +144,7 @@ impl SlurmBackend {
             proxy: None,
             configs: ImageConfigs::default(),
             remote: None,
+            staging_time: STAGING_TIME,
             scratch,
             container,
             options: Vec::new(),
@@ -465,7 +472,8 @@ impl SlurmBackend {
         tokio::task::spawn_blocking(move || sync_files(&synced))
             .await
             .map_err(|error| std::io::Error::other(error.to_string()))??;
-        let mut options = sbatch_options(job, root, &self.options);
+        let margin = self.staging_time.as_secs();
+        let mut options = sbatch_options(job, root, margin, &self.options);
         if self.remote.is_some() {
             // The node has no scratch folder; the job keeps its log in the folder of the node.
             for option in &mut options {

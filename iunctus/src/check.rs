@@ -111,6 +111,21 @@ impl Report {
         }
     }
 
+    /// The CWL steps that run an abstract `Operation`, the tasks that do nothing, which a real
+    /// run refuses as cwltool does.
+    fn operations(&mut self, graph: &ExecutionGraph) {
+        let tasks = graph.nodes.iter().map(|node| &node.task);
+        let steps: BTreeSet<&str> = (tasks.filter(|task| task.is_no_op()))
+            .map(|task| task.step.as_str())
+            .collect();
+        for step in steps {
+            self.add(
+                Kind::Error,
+                format!("step {step} runs an abstract Operation: Workflow has unrunnable abstract Operation"),
+            );
+        }
+    }
+
     /// The tasks of the planned run: those without a container image, when `-default-image`
     /// gives none, and the local files they read that do not exist. Files in `scratch` are
     /// iunctus's own, like the made-up values of inputs that have none.
@@ -380,6 +395,9 @@ fn plan(
         arguments.default_image.as_deref(),
         &scratch,
     );
+    if driver.language() == Language::Cwl {
+        report.operations(&execution.graph);
+    }
     if let Some(error) = &execution.error {
         report.execute_error(error);
     }

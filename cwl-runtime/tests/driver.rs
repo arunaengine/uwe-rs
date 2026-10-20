@@ -645,7 +645,7 @@ fn run_for_real(files: &[(&str, &str)]) -> Result<usize, String> {
 }
 
 #[test]
-fn operations_skip_execution() {
+fn refuses_abstract_operations() {
     let index = |kind: &str| {
         format!("cwlVersion: v1.2\nclass: Operation\ninputs: []\noutputs:\n  indexed: {kind}\n")
     };
@@ -658,29 +658,20 @@ fn operations_skip_execution() {
     let main = "cwlVersion: v1.2\nclass: Workflow\ninputs: []\noutputs: []\nsteps:\n  \
         index: {run: index.cwl, in: [], out: [indexed]}\n  \
         align: {run: align.cwl, in: {reference: index/indexed}, out: []}\n";
-    // An optional output is null, and the next step runs without it.
+    // A real run refuses abstract steps before any task, even optional ones, as cwltool does.
     let (optional_index, optional_align) = (index("File?"), align("File?"));
     let files = [
         ("index.cwl", optional_index.as_str()),
         ("align.cwl", optional_align.as_str()),
         ("main.cwl", main),
     ];
-    assert_eq!(run_for_real(&files), Ok(2));
-    // A required output has no value, which the error says.
-    let (required_index, required_align) = (index("File"), align("File"));
-    let files = [
-        ("index.cwl", required_index.as_str()),
-        ("align.cwl", required_align.as_str()),
-        ("main.cwl", main),
-    ];
-    let error = run_for_real(&files).expect_err("nothing makes the output");
+    let error = run_for_real(&files).expect_err("an abstract step");
     assert!(
-        error.contains(
-            "the output `indexed`: the step runs an abstract Operation, which has no tool, so a \
-             real run has no value for this output"
-        ),
+        error.contains("index.cwl:1:1: Workflow has unrunnable abstract Operation"),
         "{error}"
     );
+    // A simulated run plans it, for graphs.
+    assert_eq!(run(&files), Ok(2));
 }
 
 /// Notes the targets of deliveries.

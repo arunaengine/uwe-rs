@@ -9,7 +9,9 @@ use std::sync::Arc;
 
 use cwl_parser::iri;
 use cwl_parser::model::record::Context;
-use cwl_parser::model::{Process, Requirement, Type, Version, read_requirements, short_name};
+use cwl_parser::model::{
+    Class, Process, Requirement, Type, Version, read_requirements, short_name,
+};
 use cwl_parser::salad::context::Namespaces;
 use cwl_parser::source::Remote;
 use storage::Storage;
@@ -161,6 +163,17 @@ pub fn driver_with_options(
     Ok(Box::new(CwlDriver::new(launch, options)?))
 }
 
+/// Where the first abstract `Operation` of a process or of its steps is.
+fn abstract_operation(process: &Process) -> Option<&cwl_parser::Location> {
+    match &process.class {
+        Class::Operation => Some(&process.location),
+        Class::Workflow(workflow) => {
+            (workflow.steps.iter()).find_map(|step| abstract_operation(&step.run.process))
+        }
+        _ => None,
+    }
+}
+
 /// A driver error from a message; messages of unsupported features give exit code 33.
 fn error(message: String) -> DriverError {
     match message.find(UNSUPPORTED) {
@@ -179,6 +192,14 @@ impl Driver for CwlDriver {
     }
 
     fn start(&mut self) -> Result<Vec<Task>, DriverError> {
+        // cwltool refuses the whole run, even for a step that `when` would skip; a simulated
+        // run plans the operation as a task that does nothing, for graphs.
+        if !self.simulated
+            && let Some(at) = abstract_operation(&self.process)
+        {
+            let message = format!("{at}: Workflow has unrunnable abstract Operation");
+            return Err(DriverError::new(message));
+        }
         let job = self.input_object().map_err(error)?;
         // Without a job file, required inputs that nothing sets get placeholders.
         if self.launch.inputs.is_none() {

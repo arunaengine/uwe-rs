@@ -5,6 +5,17 @@
 use iunctus::{CancellationToken, Resume, RunRequest, run::Settings, setup::Setup};
 use serde_json::json;
 
+/// The cache folder of this test process, below the target folder and empty at its start,
+/// so that no test writes into the cache folder of the user.
+fn cache_folder() -> std::path::PathBuf {
+    static EMPTIED: std::sync::Once = std::sync::Once::new();
+    let folder = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("embedding-cache");
+    EMPTIED.call_once(|| {
+        let _ = std::fs::remove_dir_all(&folder);
+    });
+    folder
+}
+
 fn request(root: &std::path::Path) -> RunRequest {
     let target = root.join("tool.cwl");
     std::fs::write(&target,
@@ -15,6 +26,7 @@ fn request(root: &std::path::Path) -> RunRequest {
     request.settings.database = Some(root.join("runs.sqlite"));
     request.settings.store = Some(root.join("store").to_string_lossy().into_owned());
     request.settings.cache = false;
+    request.settings.cache_folder = Some(cache_folder());
     request.settings.setup = Some(Setup::default());
     request.settings.inputs = Some(json!({"count": 3}));
     request
@@ -81,6 +93,11 @@ async fn records_async_runs() {
     assert!(
         !cancel.is_cancelled(),
         "completion must not cancel the host token"
+    );
+    let scratch = cache_folder().join("scratch/simulator").join(&run.id);
+    assert!(
+        scratch.is_dir(),
+        "the run uses the cache folder that it names"
     );
 
     let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
@@ -196,6 +213,7 @@ async fn records_target_controls() {
     request.settings.omit_from = vec!["absent".into()];
     request.settings.forcerun = vec!["make".into()];
     request.settings.forceall = true;
+    request.settings.cache_folder = Some(cache_folder());
     request.settings.setup = Some(Setup::default());
     let run = request.run().await.unwrap();
     assert!(run.execution.error.is_none(), "{:?}", run.execution.error);

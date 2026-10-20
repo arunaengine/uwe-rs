@@ -216,6 +216,7 @@ impl Run {
                     // A mounted host file is read, not written.
                     let mut file = host.as_ref().is_some_and(|host| host.file);
                     let host_input = host.as_ref().is_some_and(|host| !host.path.is_empty());
+                    let mut host_folder = None;
                     if let Some(host) = host.filter(|host| !host.path.is_empty()) {
                         let selected = if sub_path.is_empty() {
                             PathBuf::from(&host.path)
@@ -230,13 +231,7 @@ impl Run {
                             file = selected.is_file();
                         }
                         if exists || self.options.assume_inputs {
-                            task.inputs.push(Input {
-                                path: path.clone(),
-                                source: selected.to_string_lossy().into_owned(),
-                                directory: !file,
-                                content: None,
-                                ..Default::default()
-                            });
+                            host_folder = Some(selected);
                         } else if !host.create {
                             return Err(Failure::error(format!(
                                 "template {} mounts the host path {}, which does not exist on this machine",
@@ -249,23 +244,43 @@ impl Run {
                         "" => String::new(),
                         folder => format!("{folder}/"),
                     };
-                    // Volume files are writable copies committed on task completion; mounted
-                    // host paths stay read-only.
-                    let writable = match read_only || host_input {
+                    // A real task gets a writable volume as one folder, so it can remove files;
+                    // its changes are committed on completion, to the host for a host path.
+                    let whole = !self.options.assume_inputs && !read_only && !file;
+                    if let Some(selected) = host_folder.as_ref().filter(|_| !whole) {
+                        task.inputs.push(Input {
+                            path: path.clone(),
+                            source: selected.to_string_lossy().into_owned(),
+                            directory: !file,
+                            content: None,
+                            ..Default::default()
+                        });
+                    }
+                    // Volume files are writable copies; mounted host paths stay read-only.
+                    let writable = match (read_only || host_input) && !whole {
                         true => workflow_graph::Writable::No,
                         false => workflow_graph::Writable::Copy,
                     };
                     let files = self.volumes.get(&key).cloned().unwrap_or_default();
                     let mut given = Vec::new();
-                    // A real task gets a writable volume as one folder, so it can remove files.
-                    let whole = !self.options.assume_inputs && !read_only && !file && !host_input;
                     if whole {
-                        let below: Vec<(String, PathBuf)> = (files.iter())
-                            .filter_map(|(relative, location)| {
-                                let inside = relative.strip_prefix(&prefix)?;
-                                Some((inside.to_owned(), location.clone()))
-                            })
-                            .collect();
+                        let mut found = Vec::new();
+                        if let Some(selected) =
+                            host_folder.as_ref().filter(|folder| folder.is_dir())
+                        {
+                            walk(selected, selected, &mut found).map_err(|error| {
+                                Failure::error(format!(
+                                    "cannot read the host path {}: {error}",
+                                    selected.display()
+                                ))
+                            })?;
+                        }
+                        let mut below: BTreeMap<String, PathBuf> = found.into_iter().collect();
+                        below.extend(files.iter().filter_map(|(relative, location)| {
+                            let inside = relative.strip_prefix(&prefix)?;
+                            Some((inside.to_owned(), location.clone()))
+                        }));
+                        let below: Vec<(String, PathBuf)> = below.into_iter().collect();
                         let folder = self.volume_copy(&below).map_err(Failure::error)?;
                         given = (below.into_iter())
                             .map(|(inside, _)| format!("{prefix}{inside}"))
@@ -455,6 +470,32 @@ impl Run {
                     .collect();
                 for relative in mount.given.iter().filter(|path| !kept.contains(*path)) {
                     volume.remove(relative);
+                    // On a real host path, the task removed the file of the host.
+                    if let (Some(host), Some(selected)) = (&host, &selected) {
+                        let target = host.join(relative);
+                        confined(selected, &target)?;
+                        match std::fs::remove_file(&target) {
+                            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                                return Err(format!(
+                                    "cannot remove {} from the host path: {error}",
+                                    target.display()
+                                ));
+                            }
+                            _ => {}
+                        }
+                        // Folders that the task removed too go, if nothing else is in them.
+                        let inside = relative.strip_prefix(&mount.sub_path).unwrap_or(relative);
+                        let mut parent = Path::new(inside).parent();
+                        while let Some(folder) =
+                            parent.filter(|folder| !folder.as_os_str().is_empty())
+                        {
+                            if location.join(folder).exists() {
+                                break;
+                            }
+                            let _ = std::fs::remove_dir(selected.join(folder));
+                            parent = folder.parent();
+                        }
+                    }
                 }
             }
             for (relative, file) in files {

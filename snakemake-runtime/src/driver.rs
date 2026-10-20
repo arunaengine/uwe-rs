@@ -91,6 +91,11 @@ pub struct Session {
     attempts: HashMap<usize, u32>,
     signatures: HashMap<usize, serde_json::Value>,
     prepared: HashMap<usize, Task>,
+    /// What the built tasks of jobs take of the global resources, until they run.
+    usages: HashMap<usize, crate::scheduling::Usage>,
+    /// The jobs that wait for global resources, which running jobs free when they end.
+    held: Vec<usize>,
+    gate: crate::scheduling::Gate,
     publications: Vec<SignaturePublication>,
     protections: Vec<Delivery>,
     /// The files that stay even when they are temporary, as Snakemake's `derived_targetfiles`:
@@ -201,6 +206,9 @@ impl Session {
             attempts: HashMap::new(),
             signatures: HashMap::new(),
             prepared: HashMap::new(),
+            usages: HashMap::new(),
+            held: Vec::new(),
+            gate: crate::scheduling::Gate::default(),
             publications: Vec::new(),
             protections: Vec::new(),
             kept: Vec::new(),
@@ -303,7 +311,16 @@ impl Session {
         } else {
             self.launch.params.clone()
         };
-        self.state.borrow_mut().profile = profile;
+        {
+            let mut state = self.state.borrow_mut();
+            for (name, value) in profile.global_resources() {
+                if let ("_cores", Value::Int(cores)) = (name.as_str(), &value) {
+                    state.cores = *cores;
+                }
+                state.global_resources.insert(name, value);
+            }
+            state.profile = profile;
+        }
         let overwrite = Value::dict(python_evaluator::Dict::default());
         let mut configfiles = Vec::new();
         for path in &config_paths {
@@ -478,7 +495,11 @@ impl Session {
                 };
                 let id = TaskId(self.next_task.get());
                 self.next_task.set(id.0 + 1);
-                let (task, signature) = crate::task::build(
+                let crate::task::Built {
+                    task,
+                    signature,
+                    usage,
+                } = crate::task::build(
                     &mut self.interpreter,
                     &setting,
                     &planner.rules[entry.rule],
@@ -487,6 +508,7 @@ impl Session {
                     1,
                 )
                 .map_err(|error| driver_error(&error, &self.workdir))?;
+                self.usages.insert(*job, usage);
                 if outputs.iter().any(|output| {
                     crate::metadata::signature_changed(
                         &self.workdir,
@@ -661,6 +683,8 @@ impl Session {
             None => self.order.clone(),
             Some(job) => {
                 let mut waiting = self.dependents.get(&job).cloned().unwrap_or_default();
+                // A job that ended freed global resources that held jobs wait for.
+                waiting.extend(self.held.iter().copied());
                 waiting.sort_by_key(|job| self.position.get(job).copied().unwrap_or(usize::MAX));
                 waiting.dedup();
                 waiting
@@ -745,18 +769,14 @@ impl Session {
             );
             let rule = planner.rules[entry.rule].clone();
             let entry = entry.clone();
-            if rule.checkpoint {
-                let reason = format!(
-                    "rule `{}` is a checkpoint: Snakemake plans the workflow again after it",
-                    rule.name
-                );
-                let marker = Marker::new(MarkerKind::Checkpoint, reason);
-                self.notes.push(Note::Mark(id, marker));
-            }
             let task = if let Some(task) = prepared {
                 task
             } else {
-                let (task, signature) = {
+                let crate::task::Built {
+                    task,
+                    signature,
+                    usage,
+                } = {
                     let state = self.state.borrow();
                     let setting = crate::task::TaskSetting {
                         state: &state,
@@ -769,8 +789,29 @@ impl Session {
                 }
                 .map_err(|error| self.error(&error))?;
                 self.signatures.insert(job, signature);
+                self.usages.insert(job, usage);
                 task
             };
+            let usage = self.usages.get(&job).cloned().unwrap_or_default();
+            let limits = crate::scheduling::limits(&self.state.borrow().global_resources);
+            if !self.gate.fits(&usage, &limits) {
+                self.prepared.insert(job, task);
+                if !self.held.contains(&job) {
+                    self.held.push(job);
+                }
+                continue;
+            }
+            self.held.retain(|held| *held != job);
+            self.usages.remove(&job);
+            self.gate.take(id, usage);
+            if rule.checkpoint {
+                let reason = format!(
+                    "rule `{}` is a checkpoint: Snakemake plans the workflow again after it",
+                    rule.name
+                );
+                let marker = Marker::new(MarkerKind::Checkpoint, reason);
+                self.notes.push(Note::Mark(id, marker));
+            }
             let mut task = task;
             if self.forced.contains(&job) {
                 task.reuse = workflow_graph::Reuse::Denied;
@@ -985,11 +1026,14 @@ impl Session {
             return Err(DriverError::new(format!("unknown task {}", outcome.id)));
         };
         self.outstanding = self.outstanding.saturating_sub(1);
+        // A retry keeps what the job took of the global resources.
+        let freed = self.gate.release(outcome.id).unwrap_or_default();
         // Only reads while this outcome is handled explain an error of it.
         *self.files.last_output_read.borrow_mut() = None;
         if outcome.exit_code != 0
             && let Some(task) = self.retry(job, outcome.id)?
         {
+            self.gate.take(task.id, freed);
             return Ok(vec![task]);
         }
         if outcome.exit_code != 0 {
@@ -1005,6 +1049,7 @@ impl Session {
             && let Err(error) = self.check_outputs(job, &mut outcome)
         {
             if let Some(task) = self.retry(job, outcome.id)? {
+                self.gate.take(task.id, freed);
                 return Ok(vec![task]);
             }
             return self.failed(error.message);
@@ -1415,7 +1460,9 @@ impl Session {
             })?;
             let rule = planner.rules[planner.jobs[member].rule].clone();
             let entry = planner.jobs[member].clone();
-            let (task, signature) = {
+            let crate::task::Built {
+                task, signature, ..
+            } = {
                 let state = self.state.borrow();
                 let setting = crate::task::TaskSetting {
                     state: &state,
@@ -1542,7 +1589,9 @@ impl Session {
                 embedded: &self.embedded,
                 sources: &self.sources,
             };
-            let (task, signature) = crate::task::build(
+            let crate::task::Built {
+                task, signature, ..
+            } = crate::task::build(
                 &mut self.interpreter,
                 &setting,
                 &planner.rules[entry.rule],
@@ -1635,6 +1684,10 @@ impl Session {
         if self.launch.keep_going && self.replan && self.outstanding == 0 {
             self.replan = false;
             self.plan()?;
+            return self.ready_tasks(None);
+        }
+        // A run that keeps going starts the held jobs that the failed job made room for.
+        if self.launch.keep_going && !self.held.is_empty() {
             return self.ready_tasks(None);
         }
         Ok(Vec::new())
@@ -1868,7 +1921,9 @@ impl Session {
             rule.name,
             attempt + 1
         );
-        let (task, signature) = {
+        let crate::task::Built {
+            task, signature, ..
+        } = {
             let state = self.state.borrow();
             let setting = crate::task::TaskSetting {
                 state: &state,

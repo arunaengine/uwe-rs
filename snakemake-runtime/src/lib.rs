@@ -31,6 +31,7 @@ mod python;
 mod remote;
 mod resources;
 mod rule;
+mod scheduling;
 mod schema;
 mod services;
 mod shadow;

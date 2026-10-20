@@ -207,6 +207,13 @@ pub struct TaskSetting<'a> {
     pub sources: &'a crate::sources::Sources,
 }
 
+/// The task of a job, its signature for reruns, and its share of the global resources.
+pub struct Built {
+    pub task: Task,
+    pub signature: serde_json::Value,
+    pub usage: crate::scheduling::Usage,
+}
+
 /// Builds the task of a job.
 pub fn build(
     interpreter: &mut Interpreter,
@@ -215,7 +222,7 @@ pub fn build(
     job: &Job,
     id: TaskId,
     attempt: u32,
-) -> Result<(Task, serde_json::Value), Error> {
+) -> Result<Built, Error> {
     if rule.shadow.is_some() {
         for file in job
             .input
@@ -288,6 +295,24 @@ pub fn build(
             ))
         })?,
     };
+    // Snakemake caps threads at `max-threads` and at the cores of the run.
+    let cores = match setting
+        .state
+        .global_resources
+        .get("_cores")
+        .map(Value::plain)
+    {
+        Some(Value::Int(cores)) => Some(*cores),
+        _ => None,
+    };
+    let cap = setting
+        .state
+        .profile
+        .max_threads
+        .into_iter()
+        .chain(cores)
+        .min();
+    let threads = cap.map_or(threads, |cap| threads.min(cap));
     // Snakemake's `expand_priority`: a priority function must give a number. iunctus leaves
     // the order of tasks to the executor.
     if let Some(priority) = &rule.priority
@@ -318,8 +343,7 @@ pub fn build(
         threads,
         rulename: &rulename,
     };
-    let resources =
-        crate::resources::evaluate(interpreter, rule, &setting.state.profile, &job_values)?;
+    let resources = crate::resources::evaluate(interpreter, rule, setting.state, &job_values)?;
     let resource_value = crate::resources::named_list(threads, &resources);
     let mut params = NamedList::new("Params", Vec::new());
     for (name, values, many) in rule.params.named_entries() {
@@ -827,8 +851,9 @@ pub fn build(
         "input_sources": job.input.values.iter().map(|value| value.tag(crate::storage::TAG).and_then(Value::as_str)).collect::<Vec<_>>(),
         "code": code_identity(rule, job, setting), "software": software,
     });
-    Ok((
-        Task {
+    let usage = crate::scheduling::usage(threads, &resources);
+    Ok(Built {
+        task: Task {
             run_as: None,
             id,
             name: label,
@@ -849,7 +874,8 @@ pub fn build(
             reuse: workflow_graph::Reuse::Allowed,
         },
         signature,
-    ))
+        usage,
+    })
 }
 
 fn code_identity(rule: &Rule, job: &Job, setting: &TaskSetting<'_>) -> serde_json::Value {

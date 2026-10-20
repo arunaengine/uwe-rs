@@ -295,6 +295,8 @@ pub struct State {
     pub unused: Vec<Rule>,
     /// Resources that `workflow.register_resource` added.
     pub global_resources: IndexMap<String, Value>,
+    /// The scopes of resources that `resource_scopes:` gives, like `mem_mb="local"`.
+    pub resource_scopes: IndexMap<String, String>,
     /// The `validate` calls of the workflow code, for the schema of its inputs.
     pub validations: Vec<crate::inputs::Validation>,
     /// The PEP project of `pepfile:` and `pepschema:`.
@@ -346,6 +348,7 @@ impl State {
             snakefiles: HashMap::new(),
             unused: Vec::new(),
             global_resources: IndexMap::new(),
+            resource_scopes: IndexMap::new(),
         }
     }
 
@@ -855,17 +858,25 @@ impl Hook {
                 }
             }
             GlobalKeyword::ResourceScopes => {
-                if !args.keywords.is_empty() {
-                    return Err(workflow_error(
-                        "resource_scopes are not supported by iunctus",
-                    ));
-                }
+                // A mapping in the place of the names gives them too.
+                let mut scopes: Vec<(String, Value)> = Vec::new();
                 for value in &args.positional {
-                    if interpreter.truthy(value)? {
-                        return Err(workflow_error(
-                            "resource_scopes are not supported by iunctus",
-                        ));
+                    for (name, scope) in interpreter.mapping_items(value)? {
+                        scopes.push((interpreter.to_str(&name)?, scope));
                     }
+                }
+                scopes.extend(
+                    (args.keywords.iter()).map(|(name, value)| (name.to_string(), value.clone())),
+                );
+                for (name, value) in &scopes {
+                    let scope = interpreter.to_str(value)?;
+                    if !["local", "global", "excluded"].contains(&scope.as_str()) {
+                        return Err(workflow_error(format!(
+                            "ResourceScopesException: Invalid resource scopes: entries must be defined as RESOURCE=SCOPE pairs, where SCOPE is either 'local' or 'global': {{'{name}': '{scope}'}}"
+                        )));
+                    }
+                    let mut state = self.state.borrow_mut();
+                    state.resource_scopes.insert(name.clone(), scope);
                 }
             }
             GlobalKeyword::Report => {}

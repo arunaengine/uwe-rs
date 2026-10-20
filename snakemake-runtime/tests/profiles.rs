@@ -420,3 +420,23 @@ fn joins_group_components() {
         );
     }
 }
+
+/// Snakemake 9.27 with `prioritize: [b2, x]` runs `x`, which no target needs, and starts the
+/// jobs for `x` and `b2` before the others.
+#[test]
+fn starts_prioritized_jobs() {
+    let snakefile = "rule all:\n    input: expand('b{i}', i=range(3))\nrule a:\n    output: 'a{i}'\n    shell: 'touch {output}'\nrule b:\n    input: 'a{i}'\n    output: 'b{i}'\n    shell: 'cp {input} {output}'\nrule x:\n    output: 'x'\n    shell: 'touch {output}'\n";
+    let folder = tempfile::tempdir().expect("a folder");
+    let launch = profile_launch(folder.path(), "prioritize: [b2, x]\n", snakefile);
+    let started = snakemake_runtime::driver(&launch)
+        .expect("a driver")
+        .start()
+        .expect("starts");
+    let outputs: Vec<&str> = (started.iter())
+        .flat_map(|task| task.outputs.iter().map(String::as_str))
+        .collect();
+    assert_eq!(outputs.len(), 4, "{outputs:?}");
+    let mut first = outputs[..2].to_vec();
+    first.sort();
+    assert_eq!(first, ["a2", "x"]);
+}

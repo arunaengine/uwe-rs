@@ -93,15 +93,15 @@ impl Scope {
     }
 
     /// The evaluator for expressions: with JavaScript and its `expressionLib` when
-    /// `InlineJavascriptRequirement` is a requirement or a hint.
+    /// `InlineJavascriptRequirement` is a requirement; cwltool ignores it as a hint.
     pub fn evaluator(&self, settings: &JavaScriptSettings) -> Evaluator {
         let library = self.find(|class| match class {
             RequirementClass::InlineJavascript { expression_lib } => Some(expression_lib),
             _ => None,
         });
         let mut evaluator = match library {
-            Some((library, _)) => Evaluator::with_javascript(library.clone()),
-            None => Evaluator::default(),
+            Some((library, true)) => Evaluator::with_javascript(library.clone()),
+            _ => Evaluator::default(),
         };
         evaluator.settings = settings.clone();
         evaluator

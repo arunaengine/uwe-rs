@@ -40,18 +40,10 @@ fn evaluates_parameter_references() {
     assert_eq!(eval(&plain, "$(self)"), Ok(Value::string("me")));
     assert_eq!(eval(&plain, "$(null)"), Ok(Value::Null));
     assert!(eval(&plain, "$(inputs.missing.basename)").is_err());
-    assert_eq!(
-        eval(&plain, "$(inputs.nothing)"),
-        Err("there is no input `nothing`".to_owned())
-    );
-    assert_eq!(
-        eval(&plain, "$(inputs.record.c)"),
-        Err("`inputs.record` has no `c`".to_owned())
-    );
-    assert_eq!(
-        eval(&plain, "$(inputs.list.length + 1)"),
-        Ok(Value::Integer(4))
-    );
+    let error = eval(&plain, "$(inputs.nothing)").expect_err("no input");
+    assert!(error.contains("there is no input `nothing`"), "{error}");
+    let error = eval(&plain, "$(inputs.record.c)").expect_err("no key");
+    assert!(error.contains("`inputs.record` has no `c`"), "{error}");
 }
 
 #[test]
@@ -124,14 +116,18 @@ fn preserves_dirent_whitespace() {
 }
 
 #[test]
-fn preserves_shell_variables() {
+fn rejects_code_without() {
     let plain = Evaluator::default();
-    assert_eq!(
-        eval(&plain, "OUT=${HOME}/out; echo ${@:2}"),
-        Ok(Value::string("OUT=${HOME}/out; echo ${@:2}"))
-    );
-    assert_eq!(eval(&plain, "$(runtime.cores * 2)"), Ok(Value::Integer(4)));
-    assert_eq!(eval(&plain, "$(1)"), Ok(Value::Integer(1)));
+    for text in [
+        "OUT=${HOME}/out",
+        "$(runtime.cores * 2)",
+        "$(1)",
+        "$(inputs.nothing)",
+    ] {
+        let error = eval(&plain, text).expect_err(text);
+        assert!(error.contains("InlineJavascriptRequirement"), "{error}");
+    }
+    assert_eq!(eval(&plain, "\\${HOME}"), Ok(Value::string("${HOME}")));
     let javascript = Evaluator::with_javascript(Vec::new());
     assert!(eval(&javascript, "${HOME}").is_err());
 }

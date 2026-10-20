@@ -9,6 +9,10 @@ use cwl_parser::model::{Expression, ExpressionKind, Part};
 use crate::javascript::helper::{FRAME_LIMIT, Failure, JavaScriptSettings};
 use crate::value::Value;
 
+/// The end of cwltool's message for code without `InlineJavascriptRequirement`.
+const NO_JAVASCRIPT: &str =
+    "This could be due to using Javascript code without specifying InlineJavascriptRequirement.";
+
 /// What an expression sees: `inputs`, `self` and `runtime`.
 #[derive(Clone, Copy, Debug)]
 pub struct Variables<'a> {
@@ -100,22 +104,26 @@ impl Evaluator {
             Part::Text(text) => Ok(Value::String(text.clone())),
             Part::Reference(code) => match reference(code, variables) {
                 Ok(value) => Ok(value),
-                // Without the requirement only real references fail here; `$(1)` or `$(true)`
-                // are not references and run as JavaScript.
-                Err(error) if self.javascript.is_none() && refers(code) => Err(error),
+                Err(error) if self.javascript.is_none() => Err(format!(
+                    "Syntax error in parameter reference '{code}': {error}. {NO_JAVASCRIPT}"
+                )),
                 Err(_) => self
                     .javascript_expression(code, variables)
                     .map_err(Failure::text),
             },
+            // As in cwltool, code is an error unless InlineJavascriptRequirement is required.
+            Part::Javascript(code) if self.javascript.is_none() => Err(format!(
+                "Syntax error in parameter reference '({code})'. {NO_JAVASCRIPT}"
+            )),
+            Part::Function(body) if self.javascript.is_none() => Err(format!(
+                "Syntax error in parameter reference '{{{body}}}'. {NO_JAVASCRIPT}"
+            )),
             Part::Javascript(code) => self
                 .javascript_expression(code, variables)
                 .map_err(Failure::text),
-            Part::Function(body) => match self.javascript(body, body, variables) {
-                Err(error) if self.javascript.is_none() && error.language() => {
-                    Ok(Value::String(format!("${{{body}}}")))
-                }
-                result => result.map_err(Failure::text),
-            },
+            Part::Function(body) => self
+                .javascript(body, body, variables)
+                .map_err(Failure::text),
         }
     }
 
@@ -152,25 +160,9 @@ impl Evaluator {
                     return error;
                 };
                 let error = error.lines().next().unwrap_or_default().to_owned();
-                let note = if self.javascript.is_none() {
-                    " (the process has no InlineJavascriptRequirement)"
-                } else {
-                    ""
-                };
-                Failure::Language(format!(
-                    "JavaScript error in `{}`: {error}{note}",
-                    shown(code)
-                ))
+                Failure::Language(format!("JavaScript error in `{}`: {error}", shown(code)))
             })
     }
-}
-
-/// Whether a reference starts with `inputs`, `self` or `runtime`.
-fn refers(code: &str) -> bool {
-    let end = code
-        .find(|c: char| !(c.is_alphanumeric() || c == '_'))
-        .unwrap_or(code.len());
-    matches!(&code[..end], "inputs" | "self" | "runtime")
 }
 
 /// Code for messages: on one line, and cut after 80 characters.

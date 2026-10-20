@@ -136,10 +136,14 @@ mod tests {
                 .map(|bytes| FileMetadata {
                     directory: false,
                     size: bytes.len() as u64,
+                    modified: 0,
+                    mode: 0o777,
                 })
                 .or(directory.then_some(FileMetadata {
                     directory: true,
                     size: 0,
+                    modified: 0,
+                    mode: 0o777,
                 })))
         }
         fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {

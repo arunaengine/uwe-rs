@@ -565,3 +565,38 @@ fn removes_operator_scratch() {
     .expect("the thread ends");
     assert!(!folder.exists(), "{}", folder.display());
 }
+
+/// Relative paths, hidden names, change times and permissions, as Nextflow 26.04.6 gives
+/// them.
+#[test]
+fn relates_checked_files() {
+    assert_eq!(value("file('/tmp').relativize(file('/tmp/a/b'))"), "a/b");
+    assert_eq!(
+        value("file('/tmp/a/b').relativize(file('/tmp/c'))"),
+        "../../c"
+    );
+    assert_eq!(
+        value("[file('/tmp/.x').isHidden(), file('/tmp/x').isHidden()]"),
+        "[true, false]"
+    );
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let file = folder.path().join("a.txt");
+    std::fs::write(&file, "hi").expect("writes");
+    let time = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_767_225_600);
+    let handle = std::fs::File::options()
+        .write(true)
+        .open(&file)
+        .expect("opens");
+    handle.set_modified(time).expect("sets the time");
+    let path = file.display();
+    assert_eq!(
+        value(&format!(
+            "def f = file('{path}')\n[f.lastModified(), f.canRead(), f.canExecute()]"
+        )),
+        "[1767225600000, true, false]"
+    );
+    assert_eq!(
+        value("[file('/nonexist/x').lastModified(), file('/nonexist/x').canRead()]"),
+        "[0, false]"
+    );
+}

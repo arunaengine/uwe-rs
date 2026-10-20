@@ -78,10 +78,7 @@ impl Host for Console {
     fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
         if path.prefix.is_none() {
             return match std::fs::metadata(&path.path) {
-                Ok(metadata) => Ok(Some(FileMetadata {
-                    directory: metadata.is_dir(),
-                    size: metadata.len(),
-                })),
+                Ok(metadata) => Ok(Some(FileMetadata::of(&metadata))),
                 // As in Java, a path below a file does not exist.
                 Err(error)
                     if matches!(
@@ -100,6 +97,8 @@ impl Host for Console {
         Ok(found.map(|found| FileMetadata {
             directory: found.directory,
             size: found.size,
+            modified: 0,
+            mode: 0o777,
         }))
     }
 

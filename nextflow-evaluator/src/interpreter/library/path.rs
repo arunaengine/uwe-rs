@@ -88,6 +88,28 @@ pub(super) fn path_method(path: &Rc<PathValue>, name: &str, arguments: &[Value])
         ("isAbsolute", []) => Some(Value::Boolean(path.is_absolute())),
         ("resolve", [other]) => path_value(path.resolve(&text(other)?)),
         ("resolveSibling", [other]) => path_value(path.resolve_sibling(&text(other)?)),
+        // A relative path from this one to the other, as `Path.relativize` gives it.
+        ("relativize", [Value::Path(other)]) if other.prefix == path.prefix => {
+            let parts = |path: &str| -> Vec<String> {
+                path.split('/')
+                    .filter(|part| !part.is_empty())
+                    .map(str::to_owned)
+                    .collect()
+            };
+            let (from, to) = (parts(&path.path), parts(&other.path));
+            let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
+            let mut relative = vec![String::from(".."); from.len() - common];
+            relative.extend(to[common..].iter().cloned());
+            let relative = relative.join("/");
+            path_value(PathValue {
+                prefix: None,
+                path: relative.clone(),
+                staged: None,
+                relative: Some(relative),
+            })
+        }
+        // Java's `isHidden` on Unix: a name that starts with a dot.
+        ("isHidden", []) => Some(Value::Boolean(path.name().starts_with('.'))),
         _ => None,
     }
 }
@@ -348,7 +370,8 @@ impl Interpreter<'_> {
                     return self.string_method(&text, "readLines", &[], span);
                 }
             }
-            "exists" | "isFile" | "isDirectory" | "size" | "length" | "isEmpty" => {
+            "exists" | "isFile" | "isDirectory" | "size" | "length" | "isEmpty"
+            | "lastModified" | "canRead" | "canWrite" | "canExecute" => {
                 let metadata = self
                     .host
                     .metadata(path)
@@ -362,7 +385,19 @@ impl Interpreter<'_> {
                         Value::Number(Number::Long(metadata.map_or(0, |file| file.size as i64)))
                     }
                     // Nextflow's `isEmpty`: missing, or no bytes.
-                    _ => Value::Boolean(metadata.is_none_or(|file| file.size == 0)),
+                    "isEmpty" => Value::Boolean(metadata.is_none_or(|file| file.size == 0)),
+                    "lastModified" => {
+                        Value::Number(Number::Long(metadata.map_or(0, |file| file.modified)))
+                    }
+                    // The permission bits of the owner, as the owner runs iunctus.
+                    _ => {
+                        let bit = match name {
+                            "canRead" => 0o400,
+                            "canWrite" => 0o200,
+                            _ => 0o100,
+                        };
+                        Value::Boolean(metadata.is_some_and(|file| file.mode & bit != 0))
+                    }
                 }
             }
             _ => return Ok(None),

@@ -102,10 +102,7 @@ pub trait Host {
             None => PathBuf::from(&path.path),
         };
         match std::fs::metadata(local) {
-            Ok(metadata) => Ok(Some(FileMetadata {
-                directory: metadata.is_dir(),
-                size: metadata.len(),
-            })),
+            Ok(metadata) => Ok(Some(FileMetadata::of(&metadata))),
             // As in Java, a path below a file does not exist.
             Err(error)
                 if matches!(
@@ -244,6 +241,26 @@ pub trait Host {
 pub struct FileMetadata {
     pub directory: bool,
     pub size: u64,
+    /// When the file last changed, in milliseconds since 1970, or 0 when not known.
+    pub modified: i64,
+    /// The Unix permission bits, or all of them when not known.
+    pub mode: u32,
+}
+
+impl FileMetadata {
+    /// The metadata of a local file.
+    pub fn of(metadata: &std::fs::Metadata) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+        let modified = (metadata.modified().ok())
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |since| since.as_millis() as i64);
+        FileMetadata {
+            directory: metadata.is_dir(),
+            size: metadata.len(),
+            modified,
+            mode: metadata.permissions().mode(),
+        }
+    }
 }
 
 /// The entries of a local directory: each name and whether it is a directory.

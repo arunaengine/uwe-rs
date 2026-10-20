@@ -768,7 +768,7 @@ async fn cancelled_jobs_stop() {
 }
 
 #[tokio::test]
-async fn retains_ambiguous_submissions() {
+async fn recovers_lost_submissions() {
     let root = tempfile::tempdir().unwrap();
     let bin = cluster(root.path(), APPTAINER);
     std::fs::write(bin.join("missing-response"), "").unwrap();
@@ -1019,7 +1019,7 @@ async fn completing_retains_ownership() {
 }
 
 #[tokio::test]
-async fn retains_unresolved_pulls() {
+async fn recovers_unresolved_pulls() {
     let root = tempfile::tempdir().unwrap();
     let bin = cluster(root.path(), APPTAINER);
     std::fs::write(bin.join("missing-response"), "").unwrap();

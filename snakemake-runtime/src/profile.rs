@@ -40,6 +40,24 @@ pub struct Profile {
 
 pub const RERUN_TRIGGERS: [&str; 5] = ["mtime", "params", "input", "software-env", "code"];
 
+/// The executor plugins of Snakemake, whose settings start with their name and a hyphen.
+const EXECUTOR_PLUGINS: &[&str] = &[
+    "slurm",
+    "slurm-jobstep",
+    "lsf",
+    "googlebatch",
+    "kubernetes",
+    "tes",
+    "aws-batch",
+    "azure-batch",
+    "flux",
+    "htcondor",
+    "drmaa",
+    "pcluster",
+    "cluster-generic",
+    "cluster-sync",
+];
+
 pub fn validate_triggers(triggers: &[String]) -> Result<(), Error> {
     if let Some(trigger) = triggers
         .iter()
@@ -382,7 +400,43 @@ impl Profile {
                 | "reason"
                 | "keep-going"
                 | "rerun-incomplete"
-                | "keep-incomplete" => {}
+                | "keep-incomplete"
+                | "nolock"
+                | "jobname"
+                | "jn"
+                | "seconds-between-status-checks"
+                | "shadow-prefix"
+                | "max-inventory-time"
+                | "wait-for-free-local-storage"
+                | "local-storage-prefix"
+                | "remote-job-local-storage-prefix"
+                | "shared-fs-usage"
+                | "keep-storage-local-copies"
+                | "conda-base-path"
+                | "conda-not-block-search-path-envvars"
+                | "conda-cleanup-envs"
+                | "container-cleanup-images"
+                | "greediness"
+                | "scheduler-greediness"
+                | "scheduler-subsample"
+                | "scheduler-solver-path"
+                | "debug-dag"
+                | "logger"
+                | "runtime-profile"
+                | "max-checksum-file-size"
+                | "skip-script-cleanup"
+                | "trust-io-cache"
+                | "output-wait"
+                | "envvars"
+                | "precommand"
+                | "preemptible-rules"
+                | "preemptible-retries" => {}
+                // The settings of Snakemake's executor plugins configure an executor that
+                // iunctus replaces with its own.
+                key if EXECUTOR_PLUGINS.iter().any(|plugin| {
+                    key.strip_prefix(plugin)
+                        .is_some_and(|rest| rest.starts_with('-'))
+                }) => {}
                 key => {
                     return Err(Error::unsupported(format!(
                         "Snakemake profile setting '{key}'"

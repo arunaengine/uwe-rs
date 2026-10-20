@@ -182,6 +182,17 @@ impl Interpreter<'_> {
         span: Span,
     ) -> Result<Value, Error> {
         match (name, arguments.as_slice()) {
+            // `record(a: 1, b: 2)`: a `RecordMap` of the named arguments, in their order.
+            ("record", [] | [Value::Map(_)]) => {
+                let record = match arguments.first() {
+                    Some(fields) => super::library::copy_map(fields),
+                    None => Value::map([]),
+                };
+                if let Value::Map(map) = &record {
+                    map.borrow_mut().kind = crate::value::MapKind::Record;
+                }
+                return Ok(record);
+            }
             ("println", []) => self.host.print("\n"),
             ("println", [value]) => self.host.print(&format!("{value}\n")),
             ("print", [value]) => self.host.print(&value.to_string()),

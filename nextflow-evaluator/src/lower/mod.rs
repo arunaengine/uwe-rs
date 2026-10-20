@@ -12,6 +12,7 @@ mod output;
 mod process;
 mod scope;
 mod statement;
+mod typed;
 mod workflow;
 
 use std::collections::{HashMap, HashSet};
@@ -180,6 +181,7 @@ pub fn lower_script(
     }
     let mut lowering = Lowering::new(source);
     let mut module = Module::default();
+    lowering.types = typed::enabled(script);
     lowering.declare_definitions(script, imports, &mut module);
     lowering.declare_classes(script, imports);
     let statements: Vec<&ast::Statement> = script
@@ -343,6 +345,8 @@ pub(crate) struct Lowering<'a> {
     in_process: bool,
     /// Whether the code is the body of a function, which cannot set a constant of the script.
     in_function: bool,
+    /// Whether the script sets `nextflow.enable.types = true`, which makes its processes typed.
+    types: bool,
     /// Whether the code is the statements of a script without declarations, which legacy
     /// syntax runs as the script itself.
     top_level: bool,
@@ -387,6 +391,7 @@ impl<'a> Lowering<'a> {
             escape_paths: false,
             in_process: false,
             in_function: false,
+            types: false,
             top_level: false,
             implicit_declarations: false,
             config: false,

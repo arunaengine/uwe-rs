@@ -20,15 +20,19 @@ impl Lowering<'_> {
     pub(super) fn process(&mut self, process: &ast::Process) -> Process {
         self.scopes.push_frame(false);
         self.in_process = true;
-        let inputs = process
-            .inputs
-            .iter()
-            .filter(|input| {
-                !matches!(input, ProcessInput::Statement(statement) if statement.is_variable_statement())
-            })
-            .filter_map(|input| self.input(input))
-            .collect();
-        if let Some(first) = process.stage.first().or(process.topics.first()) {
+        let mut inputs: Vec<Input> = match self.types {
+            true => (process.inputs.iter())
+                .filter_map(|input| self.typed_input(input))
+                .collect(),
+            false => (process.inputs.iter())
+                .filter(|input| {
+                    !matches!(input, ProcessInput::Statement(statement) if statement.is_variable_statement())
+                })
+                .filter_map(|input| self.input(input))
+                .collect(),
+        };
+        let (stage_env, stage_stdin) = self.stage(&process.stage, &mut inputs);
+        if let Some(first) = process.topics.first() {
             self.error("Typed process sections are not supported yet", first.span);
         }
         let when = process.when.as_ref().map(|when| match &when.kind {
@@ -153,6 +157,8 @@ impl Lowering<'_> {
             variables: layout.names,
             section_variables,
             setup,
+            stage_env,
+            stage_stdin,
             span: process.span,
         }
     }
@@ -197,17 +203,14 @@ impl Lowering<'_> {
             },
             ProcessInput::Named(typed) if typed.name.text == "stdin" => Some(Input::Stdin),
             ProcessInput::Named(typed) => {
-                self.error(
-                    "Typed process inputs are not supported yet",
-                    typed.name.span,
-                );
+                self.error(super::typed::LEGACY_INPUT, typed.name.span);
                 None
             }
             ProcessInput::Record(fields) | ProcessInput::Tuple(fields) => {
                 let span = fields
                     .first()
                     .map_or(Span::default(), |field| field.name.span);
-                self.error("Typed process inputs are not supported yet", span);
+                self.error(super::typed::LEGACY_INPUT, span);
                 None
             }
         }
@@ -240,12 +243,14 @@ impl Lowering<'_> {
                         pattern: None,
                         options,
                         coerce: name == "path",
+                        listed: false,
                     }),
                     _ => Some(Input::Path {
                         slot: None,
                         pattern: Some(self.expression(value)),
                         options,
                         coerce: name == "path",
+                        listed: false,
                     }),
                 }
             }
@@ -320,7 +325,7 @@ impl Lowering<'_> {
     /// Declares an input, which the legacy parser keeps in the task's binding. Legacy syntax
     /// may declare a name twice, as in `tuple val(meta), path(a)` and `tuple val(meta),
     /// path(b)`; the last input wins.
-    fn declare_name(&mut self, name: &str, span: Span) -> usize {
+    pub(super) fn declare_name(&mut self, name: &str, span: Span) -> usize {
         let name = ast::Name {
             text: name.to_owned(),
             span,

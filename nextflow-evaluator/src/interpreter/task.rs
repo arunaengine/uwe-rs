@@ -131,6 +131,21 @@ impl Interpreter<'_> {
                 }
             }
         }
+        // The `stage:` section of a typed process sets variables and standard input from them.
+        if bound.is_ok() {
+            for (name, value) in &process.stage_env {
+                match self.expression(&mut task.frame, value) {
+                    Ok(value) => task.input_environment.push((name.clone(), value)),
+                    Err(error) => bound = Err(error),
+                }
+            }
+            if let Some(value) = &process.stage_stdin {
+                match self.expression(&mut task.frame, value) {
+                    Ok(value) => task.stdin = Some(value),
+                    Err(error) => bound = Err(error),
+                }
+            }
+        }
         self.task_variables = outer;
         bound.map(|()| task)
     }
@@ -166,12 +181,26 @@ impl Interpreter<'_> {
                     self.bind_input(task, part, item, paths, span)?;
                 }
             }
+            // A record binds its fields by name; a missing field is null.
+            Input::Record(fields) => {
+                for (name, field) in fields {
+                    let item = match value {
+                        Value::Map(map) => (map.borrow().entries)
+                            .get(&crate::value::Key(Value::String(name.clone())))
+                            .cloned()
+                            .unwrap_or(Value::Null),
+                        _ => Value::Null,
+                    };
+                    self.bind_input(task, field, &item, paths, span)?;
+                }
+            }
             Input::Path { .. } if !paths => {}
             Input::Path {
                 slot,
                 pattern,
                 options,
                 coerce,
+                listed,
             } => {
                 let options = self.arguments(&mut task.frame, options)?;
                 let option = |name: &str| match options.first() {
@@ -201,11 +230,17 @@ impl Interpreter<'_> {
                     (None, Some(name)) => Some(name.to_string()),
                     (None, None) => None,
                 };
-                let value = match coerce {
-                    true => value.clone(),
-                    false => self.file_values(task, value)?,
+                let value = match (coerce, value) {
+                    // A set of files, as a typed input takes it, stages as a list.
+                    (true, Value::Set(_)) => Value::list(super::library::elements(value)),
+                    (true, _) => value.clone(),
+                    (false, _) => self.file_values(task, value)?,
                 };
-                let staged = stage(task, &value, name.as_deref(), single, span)?;
+                let mut staged = stage(task, &value, name.as_deref(), single, span)?;
+                if let (true, Value::List(list)) = (listed, &staged) {
+                    let items = list.borrow().items.clone();
+                    staged = Value::list(items);
+                }
                 if let Some(slot) = slot {
                     task.frame.set(Place::Local(*slot), staged);
                 }

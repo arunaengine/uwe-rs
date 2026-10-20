@@ -218,6 +218,11 @@ pub struct Process {
     /// Legacy syntax: `if` statements among the directives, like a check that exits for
     /// some profiles, which run for each task before the directives.
     pub setup: Vec<Statement>,
+    /// The `env` directives of the `stage:` section of a typed process: each variable with
+    /// the code of its value.
+    pub stage_env: Vec<(Rc<str>, Expression)>,
+    /// The `stdin` directive of the `stage:` section of a typed process.
+    pub stage_stdin: Option<Expression>,
     pub span: Span,
 }
 
@@ -256,11 +261,16 @@ pub enum Input {
         /// Whether text values are paths, as for `path`. The legacy `file` qualifier writes
         /// every value that is not a path into a file of its own instead.
         coerce: bool,
+        /// Whether several files are a plain list, as typed inputs give them, instead of a
+        /// list that prints its names separated by blanks.
+        listed: bool,
     },
     /// `env(NAME)`
     Env(Rc<str>),
     Stdin,
     Tuple(Vec<Input>),
+    /// `record(a: A, b: B)` of a typed process, which binds the fields of a record by name.
+    Record(Vec<(Rc<str>, Input)>),
     /// `each x`, which repeats the task for every element.
     Each(Box<Input>),
 }

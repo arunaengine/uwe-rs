@@ -136,6 +136,7 @@ pub fn place(workdir: &Path, task: &mut Task, placed: &mut Placed) -> std::io::R
             copy_into(source, &target)?;
         }
     }
+    kept.extend(local_time());
     let folder = workdir.to_string_lossy().into_owned();
     kept.push(Input {
         path: folder.clone(),
@@ -147,6 +148,17 @@ pub fn place(workdir: &Path, task: &mut Task, placed: &mut Placed) -> std::io::R
     task.inputs = kept;
     task.workdir = Some(folder);
     Ok(())
+}
+
+/// The time zone of this machine for the container, as Snakemake runs commands here: its
+/// `/etc/localtime`, where the system has one.
+pub fn local_time() -> Option<Input> {
+    let source = std::fs::canonicalize("/etc/localtime").ok()?;
+    Some(Input {
+        path: "/etc/localtime".to_owned(),
+        source: source.to_string_lossy().into_owned(),
+        ..Input::default()
+    })
 }
 
 /// Takes back what a task left in the working directory once it ended: moves the outputs of

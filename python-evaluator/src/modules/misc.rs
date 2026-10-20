@@ -1823,13 +1823,15 @@ pub fn shlex() -> Vec<(&'static str, Value)> {
     ]
 }
 
+/// The words of `keyword.kwlist`.
+pub(crate) const KEYWORDS: &[&str] = &[
+    "False", "None", "True", "and", "as", "assert", "async", "await", "break", "class", "continue",
+    "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import",
+    "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return", "try", "while",
+    "with", "yield",
+];
+
 pub fn keyword() -> Vec<(&'static str, Value)> {
-    const KEYWORDS: &[&str] = &[
-        "False", "None", "True", "and", "as", "assert", "async", "await", "break", "class",
-        "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global",
-        "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return",
-        "try", "while", "with", "yield",
-    ];
     vec![
         (
             "kwlist",

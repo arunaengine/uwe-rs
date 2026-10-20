@@ -1,0 +1,14 @@
+Point(x=1, y=2, z=0) Point(x=1, y=2, z=3)
+TypeError Point.__new__() takes from 3 to 4 positional arguments but 5 were given
+TypeError Point.__new__() got an unexpected keyword argument 'w'
+TypeError Point.__new__() missing 2 required positional arguments: 'x' and 'y'
+TypeError Point.__new__() got multiple values for argument 'x'
+TypeError Empty.__new__() takes 1 positional argument but 2 were given
+TypeError Triple.__new__() missing 3 required positional arguments: 'a', 'b', and 'c'
+ValueError Encountered duplicate field name: 'x'
+ValueError Field names cannot start with an underscore: '_y'
+ValueError Type names and field names cannot be a keyword: 'def'
+ValueError Type names and field names must be valid identifiers: '1y'
+ValueError Type names and field names must be valid identifiers: '1Pair'
+TypeError Got more default values than field names
+('x', '_1', '_2', '_3')

@@ -135,6 +135,8 @@ pub struct Planner {
     pub made_folders: Vec<PathBuf>,
     /// The rules of `allowed-rules`, the only ones that make files when given.
     pub allowed: Option<Vec<String>>,
+    /// The `batch` of a profile: the rule, the batch and the number of batches.
+    pub batch: Option<(String, usize, usize)>,
 }
 
 impl Planner {
@@ -167,6 +169,7 @@ impl Planner {
             code: true,
             made_folders: Vec::new(),
             allowed: None,
+            batch: None,
         }
     }
 
@@ -743,6 +746,10 @@ impl Planner {
             }
             inputs
         };
+        let inputs = match &self.batch {
+            Some(batch) if batch.0 == rule.name => self.batched(interpreter, batch, inputs)?,
+            _ => inputs,
+        };
         for (file, dependency, stored, before) in inputs {
             // Snakemake plans no job for a file that the job reads as it was before an update.
             if before {
@@ -792,6 +799,47 @@ impl Planner {
             }
         }
         Ok(job)
+    }
+
+    /// The inputs of the batch of the `batch` rule, as Snakemake's `Batch.get_batch`: the
+    /// sorted inputs split in equal parts. The final batch needs the others to be there.
+    fn batched<T>(
+        &self,
+        interpreter: &Interpreter,
+        (rule, number, total): &(String, usize, usize),
+        inputs: Vec<(String, T, bool, bool)>,
+    ) -> Result<Vec<(String, T, bool, bool)>, Failure> {
+        let error = |message: String| Failure::Error(crate::workflow::workflow_error(message));
+        if inputs.len() < *total {
+            return Err(error(format!(
+                "Batching rule {rule} has less input files than batches. Please choose a smaller number of batches."
+            )));
+        }
+        let mut files: Vec<&str> = inputs.iter().map(|(file, ..)| file.as_str()).collect();
+        files.sort_unstable();
+        let (size, rest) = (files.len() / total, files.len() % total);
+        let index = number - 1;
+        let start = index * size + index.min(rest);
+        let end = match number == total {
+            true => files.len(),
+            false => (index + 1) * size + (index + 1).min(rest),
+        };
+        let batch: Vec<String> = files[start..end]
+            .iter()
+            .map(|file| file.to_string())
+            .collect();
+        let earlier = files
+            .iter()
+            .filter(|file| !batch.iter().any(|kept| kept == *file));
+        if number == total && earlier.clone().any(|file| !self.exists(interpreter, file)) {
+            return Err(error(format!(
+                "Unable to execute batch {number}/{total} (rule {rule}) because not all previous batches have been completed before or files have been deleted."
+            )));
+        }
+        Ok(inputs
+            .into_iter()
+            .filter(|(file, ..)| batch.contains(file))
+            .collect())
     }
 
     /// Plans a target rule, whose job has no wildcards.

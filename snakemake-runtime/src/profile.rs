@@ -362,13 +362,6 @@ impl Profile {
             if value.is_none() {
                 continue;
             }
-            let pending = ["batch"];
-            if pending.contains(&interpreter.to_str(&key)?.as_str()) {
-                return Err(Error::unsupported(format!(
-                    "Snakemake profile setting '{}'",
-                    interpreter.to_str(&key)?
-                )));
-            }
             match interpreter.to_str(&key)?.as_str() {
                 "configfile" | "configfiles" => {
                     let files = match value.plain() {

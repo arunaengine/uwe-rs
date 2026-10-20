@@ -302,3 +302,25 @@ fn formats_string_arguments() {
         "[a-b, a\nb]"
     );
 }
+
+/// More of Groovy's string methods, as Nextflow 26.04.6 prints them.
+#[test]
+fn translates_and_finds() {
+    let cases = [
+        ("'Abc'.uncapitalize()", "abc"),
+        ("'hello'.tr('a-y', 'b-z')", "ifmmp"),
+        ("'abc'.tr('abc', 'x')", "xxx"),
+        ("'abc'.toCharArray().size()", "3"),
+        ("'abca'.toSet().size()", "3"),
+        ("'abc'.findAll(/[ab]/)", "[a, b]"),
+        ("'a1b22'.findAll(/(\\d)(\\d)?/)", "[1, 22]"),
+        ("'a1b2'.findAll(/\\d/) { it + 'x' }", "[1x, 2x]"),
+        ("'abc'.codePointAt(0)", "97"),
+        ("['abc'.getAt(0..1), 'abc'.getAt(1)]", "[ab, b]"),
+        ("'abc'.contentEquals('abc')", "true"),
+        ("'abc'.getBytes('UTF-8').size()", "3"),
+    ];
+    for (code, expected) in cases {
+        assert_eq!(value(code), expected, "{code}");
+    }
+}

@@ -194,7 +194,7 @@ impl Inputs<'_> {
         let mut groups: BTreeMap<PathBuf, Vec<(usize, PathBuf)>> = BTreeMap::new();
         for (index, input) in inputs.iter().enumerate() {
             if input.content.is_some()
-                || input.writable == Writable::InPlace
+                || matches!(input.writable, Writable::InPlace | Writable::Shared)
                 || input.source.contains("://")
                 || !Path::new(&input.source).exists()
             {
@@ -308,7 +308,8 @@ impl Inputs<'_> {
     /// Materializes shared-only inputs into the local store for runs; cache lookups download
     /// nothing.
     async fn taken_into_folder(&self, input: &Input) -> Result<Option<Input>, RunnerError> {
-        let shared = self.store.shared().is_some() && input.writable != Writable::InPlace;
+        let shared = self.store.shared().is_some()
+            && !matches!(input.writable, Writable::InPlace | Writable::Shared);
         let decoded = input
             .source
             .strip_prefix("file://")
@@ -358,7 +359,7 @@ impl Inputs<'_> {
             return Box::pin(self.input(&local, siblings)).await;
         }
         let source = Path::new(&input.source);
-        if input.writable == Writable::InPlace {
+        if matches!(input.writable, Writable::InPlace | Writable::Shared) {
             if input.source.contains("://") || input.content.is_some() {
                 return Err(RunnerError::NotInPlace(input.source.clone()));
             }
@@ -441,6 +442,54 @@ impl Inputs<'_> {
             writable: input.writable == Writable::Copy,
         };
         Ok((file, from))
+    }
+}
+
+impl Inputs<'_> {
+    /// A declared input that lies in a folder that the task sees in place: hashed where it
+    /// is for the cache key, and staged by nothing.
+    pub(crate) async fn present(&self, input: &Input) -> Result<(InputFile, Source), RunnerError> {
+        let path = Path::new(&input.source);
+        let metadata = tokio::fs::metadata(path).await.map_err(|error| {
+            std::io::Error::new(error.kind(), format!("{}: {error}", path.display()))
+        })?;
+        let (kind, digest) = match metadata.is_dir() {
+            true => (FileKind::Directory, self.directory(path).await?.0),
+            false => (FileKind::File, self.file(path).await?.0),
+        };
+        let file = InputFile {
+            path: input.path.clone(),
+            kind,
+            digest,
+            executable: metadata.permissions().mode() & 0o111 != 0 && kind == FileKind::File,
+            writable: false,
+        };
+        Ok((file, Source::Present))
+    }
+}
+
+/// Whether an input already lies, as itself, in a folder that the task sees in place.
+pub(crate) fn present(input: &Input, folders: &[PathBuf], workdir: Option<&str>) -> bool {
+    if input.writable != Writable::No
+        || input.content.is_some()
+        || input.source.is_empty()
+        || input.source.contains("://")
+    {
+        return false;
+    }
+    let target = match (Path::new(&input.path).is_absolute(), workdir) {
+        (true, _) => PathBuf::from(&input.path),
+        (false, Some(workdir)) => Path::new(workdir).join(&input.path),
+        (false, None) => return false,
+    };
+    match (
+        std::fs::canonicalize(&input.source),
+        std::fs::canonicalize(&target),
+    ) {
+        (Ok(source), Ok(target)) => {
+            source == target && folders.iter().any(|folder| target.starts_with(folder))
+        }
+        _ => false,
     }
 }
 

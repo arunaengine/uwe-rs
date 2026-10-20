@@ -1925,6 +1925,59 @@ fn disables_unstable_sharing() {
     );
 }
 
+/// A task that works in a shared folder in place, like a Snakemake job, is keyed by the path
+/// of the folder and the content of the declared inputs in it, which are not staged, and a
+/// later run reuses its result; a file of the folder that it does not declare is not read.
+#[test]
+fn caches_shared_folders() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let project = root.path().join("project");
+    std::fs::create_dir_all(&project).expect("makes the folder");
+    std::fs::write(project.join("in.txt"), "in\n").expect("writes");
+    std::fs::write(project.join("other.txt"), "other\n").expect("writes");
+    let folder = project.to_string_lossy().into_owned();
+    let mut task = task(root.path(), "a");
+    task.workdir = Some(folder.clone());
+    task.inputs.push(Input {
+        path: folder.clone(),
+        source: folder.clone(),
+        directory: true,
+        writable: workflow_graph::Writable::Shared,
+        ..Input::default()
+    });
+    task.inputs.push(Input {
+        path: "in.txt".into(),
+        source: project.join("in.txt").to_string_lossy().into_owned(),
+        ..Input::default()
+    });
+    let first = runner_of(root.path(), "run1", std::time::Duration::ZERO, 0);
+    let prepared = request(&first, &task);
+    assert_eq!(prepared.request.scope, task_model::ReuseScope::Shared);
+    let declared = &prepared.request.spec.inputs[2];
+    assert_eq!(declared.digest, task_model::Digest::sha256(b"in\n"));
+    let key = prepared.request.spec.cache_key().expect("a key");
+    assert!(!execute(&first, &prepared).reused);
+    {
+        let staged = first.backend().staged.lock().unwrap();
+        let paths: Vec<&str> = (staged[0].inputs.iter())
+            .map(|input| input.path.as_str())
+            .collect();
+        assert_eq!(
+            paths,
+            ["input.txt", folder.as_str()],
+            "the declared input is in place"
+        );
+    }
+    std::fs::write(project.join("other.txt"), "changed\n").expect("writes");
+    let second = runner_of(root.path(), "run2", std::time::Duration::ZERO, 0);
+    let again = request(&second, &task);
+    assert_eq!(again.request.spec.cache_key().expect("a key"), key);
+    assert!(execute(&second, &again).reused);
+    std::fs::write(project.join("in.txt"), "new\n").expect("writes");
+    let changed = request(&second, &task);
+    assert_ne!(changed.request.spec.cache_key().expect("a key"), key);
+}
+
 #[test]
 fn changed_inputs_uncached() {
     let root = tempfile::tempdir().expect("a temporary directory");

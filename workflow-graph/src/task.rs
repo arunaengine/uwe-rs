@@ -206,6 +206,10 @@ pub enum Writable {
     Copy,
     /// Changes a local input in place for later tasks; this task never reuses a cached result.
     InPlace,
+    /// The task works in the folder where it is, like Snakemake's working directory. A stored
+    /// result may answer it, by the path of the folder and the declared inputs in it, which
+    /// are hashed where they are; the driver then puts the outputs back into the folder.
+    Shared,
 }
 
 impl Writable {

@@ -36,6 +36,8 @@ impl<B: Backend> Runner<B> {
             };
             match source {
                 Source::Local(path) => staging.inputs.push(staged(path.clone(), false)),
+                // The folder that the task sees in place holds it already.
+                Source::Present => {}
                 Source::InPlace(path) => staging.inputs.push(Staged {
                     path: input.path.clone(),
                     source: path.clone(),

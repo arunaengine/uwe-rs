@@ -644,6 +644,8 @@ pub fn build(
         }
         Action::Wrapper(value) => {
             let wrapper = format(interpreter, value)?;
+            let prefix = setting.state.profile.wrapper_prefix.as_deref();
+            let wrapper = embedded::wrapper::prefixed(&wrapper, prefix);
             let simulated = setting.embedded.simulated;
             // Snakemake's dry run does not look for the wrapper's script.
             let source = match embedded::wrapper::source(

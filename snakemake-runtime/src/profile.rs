@@ -340,7 +340,6 @@ impl Profile {
                 continue;
             }
             let pending = [
-                "wrapper-prefix",
                 "groups",
                 "group-components",
                 "prioritize",

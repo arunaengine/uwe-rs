@@ -748,10 +748,9 @@ impl Native for WorkflowObject {
                 record.insert("cores", Value::Int(borrowed.cores));
                 record.insert("nodes", Value::Int(1));
                 record.insert("keep_going", Value::Bool(false));
-                record.insert(
-                    "wrapper_prefix",
-                    Value::str(crate::embedded::wrapper::DEFAULT_PREFIX),
-                );
+                let prefix = borrowed.profile.wrapper_prefix.as_deref();
+                let prefix = prefix.unwrap_or(crate::embedded::wrapper::DEFAULT_PREFIX);
+                record.insert("wrapper_prefix", Value::str(prefix));
                 Value::native(python_evaluator::builtins::Record(
                     RefCell::new(record),
                     "Settings",

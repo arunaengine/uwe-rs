@@ -33,6 +33,19 @@ fn is_version(reference: &str) -> bool {
         && parts[2].chars().next().is_some_and(|c| c.is_ascii_digit())
 }
 
+/// The wrapper `name` under the `wrapper-prefix` of a profile, as Snakemake's `get_path`; a
+/// `git+file` prefix takes the first part of the name as the ref.
+pub fn prefixed(name: &str, prefix: Option<&str>) -> String {
+    match prefix.filter(|_| !is_address(name)) {
+        Some(prefix) if prefix.starts_with("git+file") => {
+            let (reference, path) = name.split_once('/').unwrap_or((name, ""));
+            format!("{prefix}/{path}@{reference}")
+        }
+        Some(prefix) => format!("{prefix}{name}"),
+        None => name.to_owned(),
+    }
+}
+
 /// The folder or script of a wrapper: a local path or a web address.
 pub fn location(name: &str, workdir: &Path) -> String {
     let name = name.trim_end_matches('/');

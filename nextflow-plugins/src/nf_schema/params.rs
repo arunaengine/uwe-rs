@@ -19,6 +19,8 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
     let ignored = ignored(context);
     let groups = groups(&schema.tree);
     let mut instance = serde_json::Map::new();
+    // The names of the params in the order they were set, which the JSON map loses.
+    let mut names = Vec::new();
     let mut unknown = Vec::new();
     // From 2.7.0 on, nf-schema leaves out only null params instead of all false ones.
     let cleans = version(context).is_some_and(|parts| parts.as_slice() < [2, 7, 0].as_slice());
@@ -39,7 +41,16 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
         }
         // As in nf-schema, all params are checked, also those the groups do not name, like
         // the params of a schema whose groups are not below `$defs` or `definitions`.
+        names.push(name.clone());
         instance.insert(name, json(&value));
+    }
+    // From 2.7.0 on, the false help params that nf-schema adds stay in the checked params.
+    if !cleans {
+        for name in help_names(context) {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
     }
     if !unknown.is_empty() {
         let message = format!(
@@ -54,7 +65,7 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
     }
     let validator = super::paths::validator(&schema.json, &instance, context, false)
         .map_err(|error| thrown(format!("Invalid parameters schema: {error}")))?;
-    let order = Some(&schema.tree);
+    let order = Some((&schema.tree, names.as_slice()));
     let errors: Vec<String> = errors(&validator, &instance, "parameter", context, order)
         .into_iter()
         .map(|(path, message)| {
@@ -77,6 +88,22 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
         "The following invalid input values have been detected:\n\n{}\n\n",
         errors.join("\n")
     )))
+}
+
+/// The names of the help params of `validation.help`, with nf-schema's defaults.
+fn help_names(context: &Context) -> Vec<String> {
+    let defaults = [
+        ("shortParameter", "help"),
+        ("fullParameter", "helpFull"),
+        ("showHiddenParameter", "showHidden"),
+    ];
+    defaults
+        .into_iter()
+        .map(|(key, default)| {
+            let value = context.config.get(&["validation", "help", key]);
+            value.map_or(default.to_owned(), |value| value.to_string())
+        })
+        .collect()
 }
 
 /// Whether the check reads command-line texts as numbers and booleans: the `cast_cli_params`

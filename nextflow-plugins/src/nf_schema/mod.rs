@@ -187,15 +187,15 @@ pub(crate) fn lenient(context: &Context) -> bool {
         .is_some_and(|value| value.truth())
 }
 
-/// Returns nf-schema errors by value path; missing fields form one object error.
-/// `what` labels the fields; the config may relax type checking. With the schema as
-/// `order`, the errors come in the order of nf-schema's validator.
+/// Returns nf-schema errors by value path; missing fields form one object error. `what` labels
+/// the fields; the config may relax type checking. With the schema and the names of the params
+/// in the order they were set as `order`, the errors come in the order of nf-schema.
 pub(crate) fn errors(
     validator: &jsonschema::Validator,
     instance: &serde_json::Value,
     what: &str,
     context: &Context,
-    order: Option<&Value>,
+    order: Option<(&Value, &[String])>,
 ) -> Vec<(String, String)> {
     use jsonschema::error::{TypeKind, ValidationErrorKind as Kind};
     let lenient = lenient(context);
@@ -283,8 +283,8 @@ pub(crate) fn errors(
         let message = format!("Missing required {what}(s): {}", names.join(", "));
         errors.push((location, path, message));
     }
-    if let Some(schema) = order {
-        errors.sort_by_cached_key(|(location, _, _)| java_order(schema, location));
+    if let Some((schema, names)) = order {
+        errors.sort_by_cached_key(|(location, _, _)| java_order(schema, names, location));
     }
     errors
         .into_iter()
@@ -294,12 +294,20 @@ pub(crate) fn errors(
 
 /// The place of a schema location in the order of nf-schema's validator, which reads the
 /// schema into Java hash maps and checks the keywords of each in the order of the map.
-fn java_order(schema: &Value, location: &str) -> Vec<usize> {
+/// The params of one `properties` keyword come in the order of the hash map of the params.
+fn java_order(schema: &Value, params: &[String], location: &str) -> Vec<usize> {
     let mut node = schema.clone();
     let mut order = Vec::new();
+    let mut previous = String::new();
+    let mut top = true;
     for segment in location.split('/').skip(1) {
         let segment = segment.replace("~1", "/").replace("~0", "~");
         let next = match &node {
+            Value::Map(_) if top && previous == "properties" => {
+                top = false;
+                order.push(hash_position(params, &segment));
+                get(&node, &segment)
+            }
             Value::Map(_) => {
                 let names: Vec<String> = entries(&node).into_iter().map(|(name, _)| name).collect();
                 order.push(hash_position(&names, &segment));
@@ -319,6 +327,7 @@ fn java_order(schema: &Value, location: &str) -> Vec<usize> {
             Some(next) => node = next,
             None => break,
         }
+        previous = segment;
     }
     order
 }

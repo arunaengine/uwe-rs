@@ -1,0 +1,5 @@
+closing
+[5.0, 'fine', 'cleanup', 'caught division by zero', 'cleanup', 'last']
+[1, 'handled', 'finally', "outer KeyError('inner')", False]
+[0, 'left 0', 'left 1', 'left 2', 'returned']
+[('list', 1, [2, 3]), ('dict', 2), 'other', ('int', 5), ('again', 5)]

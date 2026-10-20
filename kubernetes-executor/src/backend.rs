@@ -75,6 +75,8 @@ pub struct KubernetesBackend {
     pods: Pods,
     /// Whether the warning that events cannot be listed was logged.
     warned: AtomicBool,
+    /// The tasks that stop the daemons of the run when it asks them to.
+    pub(crate) daemons: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>,
 }
 
 /// How the container of a Job ended.
@@ -105,6 +107,7 @@ impl KubernetesBackend {
             label: format!("{}-{millis}", std::process::id()),
             pods: Pods::default(),
             warned: AtomicBool::new(false),
+            daemons: std::sync::Mutex::default(),
         }
     }
 }
@@ -112,6 +115,10 @@ impl KubernetesBackend {
 impl Backend for KubernetesBackend {
     async fn pin(&self, image: &str) -> Result<Option<String>, ExecutorError> {
         registry::pin(image).await
+    }
+
+    async fn release(&self) {
+        self.release_daemons().await;
     }
 
     async fn run(
@@ -151,8 +158,9 @@ impl Backend for KubernetesBackend {
             }
             Err(error) => Err(error.into()),
             Ok(mounts) => {
-                let _ownership = ownership(&root)?;
-                self.attempt(job, &root, &mounts, &mut staged, cancel).await
+                let ownership = ownership(&root)?;
+                self.attempt(job, &root, &mounts, &mut staged, ownership, cancel)
+                    .await
             }
         };
         // Without a journal no Job of the attempt can run any more. A Job that may still run
@@ -177,11 +185,19 @@ impl KubernetesBackend {
         root: &Path,
         mounts: &[Mount],
         prepared: &mut Option<Prepared>,
+        ownership: Owned,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
         // The command runs through the entrypoint of the image, as `docker run` and the local
         // executor run it; a task without one runs the image's default command.
         let mut spec = job.spec.clone();
+        let daemon = match spec.environment.remove(executor::daemon::DAEMON_ENV) {
+            Some(task_model::EnvironmentValue::Literal(text)) => Some(
+                serde_json::from_str::<executor::daemon::Daemon>(&text)
+                    .map_err(|_| ExecutorError::Unsupported("invalid daemon settings".into()))?,
+            ),
+            _ => None,
+        };
         let platforms: Vec<&str> = spec
             .image
             .iter()
@@ -340,6 +356,9 @@ impl KubernetesBackend {
         if let (Some(remote), Some(prepared)) = (&self.remote, prepared) {
             remote.complete(&mut manifest, prepared, root, limits.seconds);
         }
+        if let Some(probe) = daemon.as_ref().and_then(crate::daemons::readiness) {
+            manifest["spec"]["template"]["spec"]["containers"][0]["readinessProbe"] = probe;
+        }
         let platforms: Vec<&str> = runs
             .iter()
             .filter_map(|run| run.image.platform.as_deref())
@@ -373,6 +392,11 @@ impl KubernetesBackend {
         };
         journal["uid"] = serde_json::json!(uid);
         journal_at(root, &journal)?;
+        if daemon.is_some() {
+            return self
+                .serve(&name, &uid, root.to_owned(), ownership, cancel)
+                .await;
+        }
         self.pods.add(&name).await;
         let ended = self.wait(&name, cancel).await;
         // The log of a container that failed tells why, as when it could not run the wrapper.

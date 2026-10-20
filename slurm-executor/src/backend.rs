@@ -346,6 +346,11 @@ impl SlurmBackend {
                 .await?;
         }
         let spec = &spec;
+        if spec.containers.iter().any(|container| container.service) {
+            return Err(ExecutorError::Unsupported(
+                "SLURM jobs cannot run sidecars: their containers share no network of their own and do not stop together".into(),
+            ));
+        }
         if self.remote.is_some() && !spec.containers.is_empty() {
             return Err(ExecutorError::Unsupported(
                 "SLURM object-store staging runs only tasks of one container".into(),

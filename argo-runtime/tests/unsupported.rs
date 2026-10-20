@@ -98,13 +98,7 @@ fn rejects_lifecycle_controls() {
 
 #[test]
 fn refuses_service_lifetimes() {
-    for (field, reason) in [
-        ("daemon: true", "service readiness"),
-        (
-            "sidecars: [{name: server, image: debian:stable-slim}]",
-            "shared task network",
-        ),
-    ] {
+    for (field, reason) in [("daemon: true", "service readiness")] {
         let error = start_error(&format!(
             "  templates:\n  - name: main\n    {field}\n    container: {{image: debian:stable-slim}}\n"
         ));

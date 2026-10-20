@@ -328,6 +328,7 @@ fn continues_killed_dependencies() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let [work, control, home] = ["work", "control", "home"].map(|name| root.path().join(name));
     let container = |name: &str, script: &str, after: &[&str]| ContainerSpec {
+        service: false,
         replaces_entrypoint: false,
         name: name.into(),
         image: Some(Image {

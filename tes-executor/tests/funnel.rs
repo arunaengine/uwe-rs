@@ -128,6 +128,7 @@ fn funnel_cancels_tasks() {
 fn funnel_refuses_containers() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let container = |name: &str, image: &str, script: &str, after: &[&str]| ContainerSpec {
+        service: false,
         replaces_entrypoint: false,
         name: name.into(),
         image: Some(Image {

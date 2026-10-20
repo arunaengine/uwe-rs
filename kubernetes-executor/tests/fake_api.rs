@@ -924,6 +924,7 @@ async fn inherits_pod_platform() {
     };
     spec.containers = vec![
         ContainerSpec {
+            service: false,
             name: "main".into(),
             image: Some(main),
             replaces_entrypoint: false,
@@ -938,6 +939,7 @@ async fn inherits_pod_platform() {
             attempts: 1,
         },
         ContainerSpec {
+            service: false,
             name: "secondary".into(),
             image: Some(Image {
                 reference: format!("{registry}/secondary:1"),
@@ -1001,6 +1003,7 @@ async fn rejects_gpu_groups() {
         .into_iter()
         .enumerate()
         .map(|(index, image)| ContainerSpec {
+            service: false,
             replaces_entrypoint: true,
             name: format!("container-{index}"),
             image: Some(Image {
@@ -1302,6 +1305,7 @@ async fn failure_retains_scratch() {
         .into_iter()
         .enumerate()
         .map(|(index, image)| ContainerSpec {
+            service: false,
             name: format!("container-{index}"),
             image: Some(Image {
                 reference: image.into(),
@@ -1353,6 +1357,7 @@ async fn containers_share_pod() {
     let root = tempfile::tempdir().expect("a folder");
     let (backend, state) = backend(root.path()).await;
     let container = |name: &str, image: &str, script: &str, after: &[&str]| ContainerSpec {
+        service: false,
         replaces_entrypoint: false,
         name: name.into(),
         image: Some(Image {

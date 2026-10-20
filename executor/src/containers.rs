@@ -165,11 +165,15 @@ pub fn container_wrapper(spec: &TaskSpec, position: usize, folders: &Folders<'_>
         _ => String::new(),
     };
     script.push_str(&format!("{NOW} > \"$own/{START}\"\n"));
-    script.push_str(&format!(
+    if container.service {
+        script.push_str(&service_lines(spec, &arguments.join(" ")));
+    } else {
+        script.push_str(&format!(
         "if [ \"$status\" -eq 0 ]; then\n    attempt=1\n    : > \"$own/{STDOUT}\"\n    : > \"$own/{STDERR}\"\n    while :; do\n        {} >> \"$own/{STDOUT}\" 2>> \"$own/{STDERR}\"{stdin}\n        status=$?\n        {{ [ \"$status\" -eq 0 ] || [ \"$status\" -eq 127 ] || [ \"$attempt\" -ge {} ]; }} && break\n        attempt=$((attempt + 1))\n    done\nfi\n",
         arguments.join(" "),
         container.attempts.max(1)
     ));
+    }
     script.push_str(&format!(
         "{NOW} > \"$own/{END}\"\necho \"$status\" > \"$own/{EXIT}\"\n"
     ));
@@ -177,7 +181,7 @@ pub fn container_wrapper(spec: &TaskSpec, position: usize, folders: &Folders<'_>
         // The outputs are complete when every container that does not come after the main
         // one has ended, whether it failed or not.
         for other in 1..spec.containers.len() {
-            if !comes_after(spec, other, 0) {
+            if !comes_after(spec, other, 0) && !spec.containers[other].service {
                 script.push_str(&format!("waited {} || :\n", exit_path(spec, other)));
             }
         }
@@ -202,6 +206,24 @@ pub fn container_wrapper(spec: &TaskSpec, position: usize, folders: &Folders<'_>
     }
     script.push_str(&format!("echo {}\nexit 0\n", quote(ENDED)));
     script
+}
+
+/// The lines that run a service in the background until every other container of the task
+/// ended, then stop it, as Argo stops sidecars; a service counts as ended well.
+fn service_lines(spec: &TaskSpec, command: &str) -> String {
+    let mut lines = format!(
+        "if [ \"$status\" -eq 0 ]; then\n    : > \"$own/{STDOUT}\"\n    : > \"$own/{STDERR}\"\n    {command} >> \"$own/{STDOUT}\" 2>> \"$own/{STDERR}\" &\n    service=$!\nfi\n"
+    );
+    for (position, other) in spec.containers.iter().enumerate() {
+        if !other.service {
+            lines.push_str(&format!("waited {} || :\n", exit_path(spec, position)));
+        }
+    }
+    // A service that ignores the stop is killed after five seconds.
+    lines.push_str(
+        "if [ -n \"${service:-}\" ]; then\n    kill \"$service\" 2> /dev/null\n    tries=0\n    while kill -0 \"$service\" 2> /dev/null && [ \"$tries\" -lt 50 ]; do\n        sleep 0.1\n        tries=$((tries + 1))\n    done\n    kill -9 \"$service\" 2> /dev/null\nfi\nstatus=0\n",
+    );
+    lines
 }
 
 /// Waits until a file of an exit code has one, then tells whether it is 0.
@@ -381,6 +403,7 @@ mod tests {
                     after: after.iter().map(|name| (*name).to_owned()).collect(),
                     attempts: 2,
                     replaces_entrypoint: false,
+                    service: false,
                 })
                 .collect(),
             replaces_entrypoint: false,
@@ -410,6 +433,31 @@ mod tests {
             ("d", "a", &[]),
         ]);
         assert_eq!(sequence(&spec), Some(vec![1, 3, 0, 2]));
+    }
+
+    #[test]
+    fn stops_service_containers() {
+        let mut spec = spec(&[("main", "a", &[]), ("web", "b", &[])]);
+        spec.containers[1].service = true;
+        let folders = Folders {
+            work: "/w",
+            control: "/c",
+            home: "/h",
+            outbox: "",
+            owner: "",
+        };
+        // The main container collects without waiting for the service, which never ends.
+        let main = container_wrapper(&spec, 0, &folders);
+        assert!(!main.contains("containers/web/exit"), "{main}");
+        // The service runs in the background until the main container ended.
+        let web = container_wrapper(&spec, 1, &folders);
+        assert!(
+            web.contains("'echo' 'web' >> \"$own/stdout\" 2>> \"$own/stderr\" &"),
+            "{web}"
+        );
+        assert!(web.contains("waited \"$control/exit\" || :"), "{web}");
+        assert!(web.contains("kill \"$service\""), "{web}");
+        assert!(web.contains("status=0\n"), "{web}");
     }
 
     #[test]

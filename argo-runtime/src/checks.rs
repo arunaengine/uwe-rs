@@ -221,8 +221,6 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
         format!("is a resource template that manages Kubernetes objects{objects}")
     } else if template.data.is_some() {
         "is a data template, which reads an artifact repository from inside a cluster".to_owned()
-    } else if !template.sidecars.is_empty() {
-        "has sidecars; the local executor waits for every container and has no shared task network or service lifetime cleanup".to_owned()
     } else if template.daemon == Some(true) {
         "runs as a daemon; the executor cannot report service readiness, publish a reachable task address or stop the service when its dependent steps end".to_owned()
     } else {

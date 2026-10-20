@@ -67,6 +67,9 @@ pub struct Session {
     roots: Vec<usize>,
     needrun: HashMap<usize, bool>,
     forced: HashSet<usize>,
+    /// The jobs that `prioritize` of the profile names and the jobs they wait for, which
+    /// start first, as Snakemake gives them the highest priority.
+    urgent: HashSet<usize>,
     tasks: HashMap<usize, TaskId>,
     jobs_of_tasks: HashMap<TaskId, usize>,
     /// The tasks of service jobs with the jobs that use them, which run as one task: each
@@ -207,6 +210,7 @@ impl Session {
             roots: Vec::new(),
             needrun: HashMap::new(),
             forced: HashSet::new(),
+            urgent: HashSet::new(),
             tasks: HashMap::new(),
             jobs_of_tasks: HashMap::new(),
             groups: HashMap::new(),
@@ -408,7 +412,7 @@ impl Session {
                 planner.allowed = state.profile.allowed_rules.clone();
             }
         }
-        let targets: Vec<String> = if self.launch.targets.is_empty() {
+        let mut targets: Vec<String> = if self.launch.targets.is_empty() {
             self.state.borrow().default_target.iter().cloned().collect()
         } else {
             self.launch.targets.clone()
@@ -418,10 +422,12 @@ impl Session {
             .as_mut()
             .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         planner.reset();
-        let [until, omit_from, forcerun] = [
+        let prioritize = self.state.borrow().profile.prioritize.clone();
+        let [until, omit_from, forcerun, prioritize] = [
             &self.launch.until,
             &self.launch.omit_from,
             &self.launch.forcerun,
+            &prioritize,
         ]
         .map(|targets| {
             targets
@@ -439,6 +445,13 @@ impl Session {
         });
         planner.forcerun = forcerun;
         planner.forceall = self.launch.forceall;
+        // Prioritized files and rules without wildcards are targets too.
+        for target in &prioritize {
+            let rule = planner.rules.iter().find(|rule| rule.name == *target);
+            if !targets.contains(target) && rule.is_none_or(|rule| !rule.has_wildcards()) {
+                targets.push(target.clone());
+            }
+        }
         planner.mtime = self
             .state
             .borrow()
@@ -471,6 +484,22 @@ impl Session {
         self.needrun = planner.needrun(&self.interpreter, &roots);
         self.forced = planner.forced_jobs(&roots);
         self.order = planner.ordered_jobs(&roots);
+        let mut pending: Vec<usize> = (self.order.iter().copied())
+            .filter(|job| {
+                let entry = &planner.jobs[*job];
+                prioritize.contains(&planner.rules[entry.rule].name)
+                    || entry
+                        .output_files()
+                        .iter()
+                        .any(|file| prioritize.contains(file))
+            })
+            .collect();
+        self.urgent.clear();
+        while let Some(job) = pending.pop() {
+            if self.needrun.get(&job).copied().unwrap_or(false) && self.urgent.insert(job) {
+                pending.extend(planner.jobs[job].dependencies.iter().map(|(_, job)| *job));
+            }
+        }
         self.prepared.clear();
         if !self.launch.simulated {
             for job in &self.order {
@@ -763,6 +792,7 @@ impl Session {
                 candidates.push(anchor);
             }
         }
+        candidates.sort_by_key(|job| !self.urgent.contains(job));
         let mut tasks = Vec::new();
         for job in candidates {
             if !self.needrun.get(&job).copied().unwrap_or(false) || self.tasks.contains_key(&job) {

@@ -8,11 +8,14 @@ use std::path::PathBuf;
 use content_store::layout;
 use executor::{Backend, Staged, Staging};
 use task_model::{Digest, FileKind, TreeEntry};
-use tokio::io::AsyncWriteExt;
 
 use crate::inputs::Snapshots;
 use crate::runner::{Prepared, Source, at};
 use crate::{Runner, RunnerError};
+
+/// The folder of the downloads with copies of contents of a store elsewhere, by digest. They
+/// stay apart from copies of remote files, and clean-up removes the old ones.
+pub const CONTENTS: &str = "contents";
 
 impl<B: Backend> Runner<B> {
     /// What the backend places for a request: a local input as itself, literal content as a
@@ -161,43 +164,29 @@ impl<B: Backend> Runner<B> {
     }
 
     /// A local file with the content of a digest: the store's own file for a local store or a
-    /// store in layers, else a download.
+    /// store in layers, else a copy in [`CONTENTS`] of the downloads, streamed in parts.
     pub(crate) async fn local_content(&self, digest: &Digest) -> Result<PathBuf, RunnerError> {
-        if let Some(path) = self.store.local_file(&layout::content(digest)).await? {
+        let location = layout::content(digest);
+        if let Some(path) = self.store.local_file(&location).await? {
             let (actual, _) = content_store::hash_file(&path).await?;
             if actual != *digest {
-                return Err(content_store::StoreError::Corrupt {
-                    expected: digest.clone(),
-                    actual,
-                }
-                .into());
+                let _ = self.store.repair(&location, digest).await;
+                let expected = digest.clone();
+                return Err(content_store::StoreError::Corrupt { expected, actual }.into());
             }
             return Ok(path);
         }
+        // Clean-up removes no download while a process holds the folder.
         let downloads = &self.settings.downloads;
-        let path = downloads.join(digest.hex());
-        if !tokio::fs::try_exists(&path).await.map_err(at(&path))? {
-            (tokio::fs::create_dir_all(downloads).await).map_err(at(downloads))?;
-            let bytes = self.store.get_content(digest).await?;
-            let part = tempfile::Builder::new()
-                .permissions(std::fs::Permissions::from_mode(0o666))
-                .tempfile_in(downloads)
-                .map_err(at(downloads))?;
-            let mut file = tokio::fs::File::from_std(part.reopen().map_err(at(part.path()))?);
-            file.write_all(&bytes).await.map_err(at(part.path()))?;
-            file.flush().await.map_err(at(part.path()))?;
-            drop(file);
-            part.persist(&path)
-                .map_err(|error| at(&path)(error.error))?;
+        self.settings.storage.hold(downloads).await?;
+        let path = downloads.join(CONTENTS).join(digest.hex());
+        if tokio::fs::try_exists(&path).await.map_err(at(&path))?
+            && content_store::hash_file(&path).await?.0 == *digest
+        {
+            return Ok(path);
         }
-        let (actual, _) = content_store::hash_file(&path).await?;
-        if actual != *digest {
-            return Err(content_store::StoreError::Corrupt {
-                expected: digest.clone(),
-                actual,
-            }
-            .into());
-        }
+        // A damaged copy is replaced by a new download, checked as it streams in.
+        self.store.materialize_content(digest, &path).await?;
         Ok(path)
     }
 }

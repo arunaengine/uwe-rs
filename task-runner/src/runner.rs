@@ -834,6 +834,8 @@ impl<B: Backend> Runner<B> {
             error = self.watch(task, None) => error,
             () = cancel.cancelled() => ExecutorError::Cancelled.into(),
             result = &mut work => {
+                // A failed daemon may still hold a container that waits for this stop.
+                if result.is_err() { stop.cancel(); }
                 self.authority(task, None).await?;
                 if cancel.is_cancelled() { return Err(ExecutorError::Cancelled.into()); }
                 return result.map_err(Into::into);

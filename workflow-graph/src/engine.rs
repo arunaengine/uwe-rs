@@ -391,8 +391,10 @@ impl<'a> Engine<'a> {
             self.asked(next, notes, recorder, &mut queue, Some(id))?;
             if !again {
                 queue.finished(id);
-                if !daemon {
-                    self.task_cancel.remove(&id);
+                // A task that ended, or a daemon that failed, may still hold work that waits
+                // for its token, like the container of a daemon that was never ready.
+                if !daemon && let Some(cancel) = self.task_cancel.remove(&id) {
+                    cancel.cancel();
                 }
             }
             self.deliver(driver, files.as_deref())?;

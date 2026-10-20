@@ -197,6 +197,13 @@ fn inputs_match(task: &Task, outcome: &Outcome) -> bool {
         };
         let actual = match &input.content {
             Some(content) if !input.directory => Digest::sha256(content.as_bytes()),
+            // The runner keys a shared folder by its path.
+            None if input.writable == Writable::Shared => {
+                let Ok(place) = std::fs::canonicalize(&input.source) else {
+                    return false;
+                };
+                Digest::sha256(place.to_string_lossy().as_bytes())
+            }
             Some(_) => return false,
             None if input.directory
                 || input.source.contains("://")
@@ -504,6 +511,63 @@ mod tests {
             .unwrap();
         assert!(!found.cached);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    /// A Snakemake job of a shared folder resumes by the path of the folder and the bytes of
+    /// the declared inputs in it.
+    #[test]
+    fn resumes_shared_folders() {
+        let runtime = workflow_graph::runtime().unwrap();
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let input = folder.path().join("in.txt");
+        std::fs::write(&input, "in").expect("writes the input");
+        let place = folder.path().canonicalize().expect("a path");
+        let path = place.to_string_lossy().into_owned();
+        let mut task = real_task();
+        task.inputs.push(Input {
+            path: path.clone(),
+            source: path.clone(),
+            directory: true,
+            writable: Writable::Shared,
+            ..Input::default()
+        });
+        task.inputs.push(Input {
+            path: "in.txt".into(),
+            source: input.to_string_lossy().into_owned(),
+            ..Input::default()
+        });
+        let prior = Outcome {
+            image: task.image.clone(),
+            accepted: Some(true),
+            inputs: [
+                (path.clone(), Digest::sha256(path.as_bytes()).to_string()),
+                ("in.txt".into(), Digest::sha256(b"in").to_string()),
+            ]
+            .into(),
+            ..Outcome::default()
+        };
+        let history = [(
+            fingerprint(&task, &input_states(&task)),
+            Reusable {
+                run: "prior".into(),
+                outcome: prior,
+            },
+        )]
+        .into();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut resumed = Resumed::new(
+            fresh(calls.clone(), Arc::new(FakeFiles::default())),
+            history,
+            Taken::default(),
+            Mode::Real,
+            NetworkRule::default(),
+            false,
+        );
+        let found = runtime
+            .block_on(resumed.run(attempt(Arc::new(task))))
+            .unwrap();
+        assert!(found.cached);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]

@@ -10,7 +10,7 @@ use task_model::{
     Accelerator, ContainerSpec, Digest, EnvironmentValue, FORMAT, Image, InputFile, OutputRule,
     Placement, ReuseScope, TaskRequest, TaskSpec,
 };
-use workflow_graph::{Network, Reuse, Task};
+use workflow_graph::{Network, Reuse, Task, Writable};
 
 use crate::inputs::Inputs;
 use crate::runner::{Prepared, segment};
@@ -46,8 +46,16 @@ pub(crate) async fn prepare(
     let mut files = Vec::new();
     let mut sources = Vec::new();
     let (siblings, layout) = inputs.siblings(&task.inputs).await?;
+    let folders: Vec<std::path::PathBuf> = (task.inputs.iter())
+        .filter(|input| input.writable == Writable::Shared)
+        .filter_map(|input| std::fs::canonicalize(&input.source).ok())
+        .collect();
     for input in &task.inputs {
-        let (file, source) = inputs.input(input, &siblings).await?;
+        let workdir = task.workdir.as_deref();
+        let (file, source) = match crate::inputs::present(input, &folders, workdir) {
+            true => inputs.present(input).await?,
+            false => inputs.input(input, &siblings).await?,
+        };
         files.push(file);
         sources.push(source);
     }
@@ -59,8 +67,9 @@ pub(crate) async fn prepare(
     if let Some(layout) = layout {
         request.spec.namespace = format!("{}siblings-{}", request.spec.namespace, layout.hex());
     }
-    // A task that changes an input where it is has effects that no stored result has.
-    if (sources.iter()).any(|source| matches!(source, crate::runner::Source::InPlace(_))) {
+    // A task that changes an input where it is has effects that no stored result has; a
+    // task of a shared folder is answered by its declared inputs and outputs.
+    if (task.inputs.iter()).any(|input| input.writable == Writable::InPlace) {
         request.scope = ReuseScope::None;
     }
     Ok(Prepared {

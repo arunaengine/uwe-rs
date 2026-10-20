@@ -169,6 +169,8 @@ pub(crate) enum Source {
     Stored,
     /// A local file or directory that the task changes where it is.
     InPlace(PathBuf),
+    /// A declared input that already lies in a folder that the task sees where it is.
+    Present,
 }
 
 /// A task request, with where the content of each input comes from.

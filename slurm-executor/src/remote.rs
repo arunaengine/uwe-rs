@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use executor::ContainerRun;
 use executor::binary::Binary;
+use executor::helper::Request;
 use executor::remote::RemoteStage;
 use executor::wrapper::quote;
 
@@ -59,17 +60,27 @@ pub fn records() -> Vec<&'static str> {
     records
 }
 
+/// Where a job reaches the staging root without the helper.
+#[derive(Clone, Copy, Debug)]
+pub struct Links<'a> {
+    /// The plan of the helper.
+    pub plan: &'a str,
+    /// Where the job downloads the binary of [`Helper::Upload`].
+    pub binary: Option<&'a str>,
+    /// The upload of the log of the job, when the helper did not send it.
+    pub log: Option<&'a Request>,
+}
+
 /// The job script that runs `run` with its folder on the node instead of at its scratch
-/// directory, between stage-in from the plan at `plan` and stage-out. `binary` is where the job
-/// downloads the binary of [`Helper::Upload`].
+/// directory, between stage-in and stage-out. On every exit it removes its folder, after it
+/// sent its log back, or else kept it beside the folder.
 pub fn job_script(
     container: &Container,
     run: &ContainerRun<'_>,
     staging: &NodeStaging,
     gpus: bool,
     time: Option<u64>,
-    plan: &str,
-    binary: Option<&str>,
+    links: Links<'_>,
 ) -> String {
     let base = match &staging.folder {
         Some(folder) => quote(folder),
@@ -78,10 +89,17 @@ pub fn job_script(
     let name = run.root.file_name().unwrap_or_default().to_string_lossy();
     // The folder of the job is new and private: it keeps the helper, the plan and the log, which
     // run or count after the task. Only its `data` folder is the folder of the task.
+    let keep = format!("mv -f \"$node/{LOG}\" \"$node.log\"");
+    let send = match links.log {
+        Some(request) => format!("{} || {keep}", send_log(request)),
+        None => keep,
+    };
+    // A signal ends the script through its exit trap, once the running command ended.
     let mut script = format!(
         "#!/bin/bash\n# The iunctus job of one attempt of a task, on a node without the shared \
          folders.\numask 077\nmkdir -p {base} && node=$(mktemp -d {base}/{}) || exit 1\n\
-         exec >> \"$node/{LOG}\" 2>&1\n",
+         exec >> \"$node/{LOG}\" 2>&1\nsent=\nfinish() {{\n    [ -n \"$sent\" ] || {send}\n    \
+         rm -rf \"$node\"\n}}\ntrap finish EXIT\ntrap 'exit 143' TERM INT HUP\n",
         quote(&format!("iunctus-{name}.XXXXXXXX"))
     );
     let download = match &staging.helper {
@@ -98,7 +116,7 @@ pub fn job_script(
                  {machine}, but $(hostname) is $(uname -m); name a binary for it with \
                  helper_file\" >&2; exit 1; }}\n"
             ));
-            let url = binary.expect("the address of the uploaded binary");
+            let url = links.binary.expect("the address of the uploaded binary");
             Some((url, uploaded.digest.hex(), "the staging root"))
         }
     };
@@ -122,14 +140,45 @@ pub fn job_script(
     script.push_str(&format!(
         "status={NOT_SEEN}\nif \"$helper\" __stage in \"$node/data\" {} \"$node\"; then\n    \
          {}{}{}\n    status=$?\n    {}fi\necho \"$status\" > \"$node/{CONTAINER_EXIT}\"\n\
-         \"$helper\" __stage out \"$node/data\" \"$node\" || exit 1\nrm -rf \"$node\"\n",
-        quote(plan),
+         \"$helper\" __stage out \"$node/data\" \"$node\" || exit 1\nsent=1\n",
+        quote(links.plan),
         clock(time).replace('\n', "\n    "),
         timeout(time),
         words.join(" "),
         timed_out(time),
     ));
     script
+}
+
+/// The command that uploads the log of the job with `request`, with `curl` or `wget`, or copies
+/// it for a staging root in a folder.
+fn send_log(request: &Request) -> String {
+    let log = format!("\"$node/{LOG}\"");
+    if let Some(path) = executor::helper::local_file(&request.url) {
+        let folder = path
+            .parent()
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .into_owned();
+        let path = path.to_string_lossy();
+        return format!(
+            "{{ mkdir -p {} && cp {log} {}; }}",
+            quote(&folder),
+            quote(&path)
+        );
+    }
+    let headers = |option: &str| -> String {
+        (request.headers.iter())
+            .map(|(name, value)| format!(" {option}{}", quote(&format!("{name}: {value}"))))
+            .collect()
+    };
+    format!(
+        "{{ curl -fsS --max-time 300 -X PUT -T {log}{} {url} || wget -q -O /dev/null \
+         --timeout=60 --method=PUT --body-file={log}{} {url}; }}",
+        headers("-H "),
+        headers("--header="),
+        url = quote(&request.url),
+    )
 }
 
 /// The words of a command as shell words, with the folders of binds that are in the scratch
@@ -197,18 +246,17 @@ mod tests {
             secret_file: None,
         };
         let apptainer = Container::Apptainer("apptainer".into());
-        let script = job_script(
-            &apptainer,
-            &run,
-            &staging,
-            false,
-            Some(60),
-            "https://plan",
-            None,
-        );
+        let links = Links {
+            plan: "https://plan",
+            binary: None,
+            log: None,
+        };
+        let script = job_script(&apptainer, &run, &staging, false, Some(60), links);
         let expected = "umask 077\nmkdir -p \"${TMPDIR:-/tmp}\" && \
             node=$(mktemp -d \"${TMPDIR:-/tmp}\"/'iunctus-run-P-1-1.XXXXXXXX') || exit 1\n\
-            exec >> \"$node/slurm.log\" 2>&1\nhelper='/opt/iunctus'\nstatus=125\n\
+            exec >> \"$node/slurm.log\" 2>&1\nsent=\nfinish() {\n    \
+            [ -n \"$sent\" ] || mv -f \"$node/slurm.log\" \"$node.log\"\n    rm -rf \"$node\"\n}\n\
+            trap finish EXIT\ntrap 'exit 143' TERM INT HUP\nhelper='/opt/iunctus'\nstatus=125\n\
             if \"$helper\" __stage in \"$node/data\" 'https://plan' \"$node\"; then\n    \
             SECONDS=0\n    timeout --kill-after=10 60 'apptainer' 'exec' '--containall' '--pwd' '/data' \
             '--bind' \"$node/data\"':/shared/scratch/run-P-1-1' \
@@ -217,7 +265,7 @@ mod tests {
             'sh' '/shared/scratch/run-P-1-1/control/wrapper.sh'\n    status=$?\n    \
             [ $status -eq 137 ] && [ $SECONDS -ge 60 ] && status=124\nfi\n\
             echo \"$status\" > \"$node/container-exit\"\n\
-            \"$helper\" __stage out \"$node/data\" \"$node\" || exit 1\nrm -rf \"$node\"\n";
+            \"$helper\" __stage out \"$node/data\" \"$node\" || exit 1\nsent=1\n";
         assert!(script.ends_with(expected), "{script}");
         staging.helper = Helper::Download {
             url: "https://example.org/iunctus".into(),
@@ -225,7 +273,22 @@ mod tests {
         };
         staging.folder = Some("/local".into());
         let docker = Container::Engine(EngineCommand::docker("docker"));
-        let script = job_script(&docker, &run, &staging, false, None, "https://plan", None);
+        let log = Request {
+            method: "PUT".into(),
+            url: "https://staging/log?signature".into(),
+            headers: vec![("x-ms-blob-type".into(), "BlockBlob".into())],
+        };
+        let links = Links {
+            log: Some(&log),
+            ..links
+        };
+        let script = job_script(&docker, &run, &staging, false, None, links);
+        let expected = "[ -n \"$sent\" ] || { curl -fsS --max-time 300 -X PUT -T \
+            \"$node/slurm.log\" -H 'x-ms-blob-type: BlockBlob' 'https://staging/log?signature' || \
+            wget -q -O /dev/null --timeout=60 --method=PUT --body-file=\"$node/slurm.log\" \
+            --header='x-ms-blob-type: BlockBlob' 'https://staging/log?signature'; } || \
+            mv -f \"$node/slurm.log\" \"$node.log\"\n";
+        assert!(script.contains(expected), "{script}");
         assert!(
             script.contains("node=$(mktemp -d '/local'/'iunctus-run-P-1-1.XXXXXXXX')"),
             "{script}"
@@ -245,8 +308,11 @@ mod tests {
             machine: executor::binary::Machine::Arm64,
             uploaded: Default::default(),
         });
-        let url = Some("https://staging/cas/x?signature");
-        let script = job_script(&docker, &run, &staging, false, None, "https://plan", url);
+        let links = Links {
+            binary: Some("https://staging/cas/x?signature"),
+            ..links
+        };
+        let script = job_script(&docker, &run, &staging, false, None, links);
         let expected = "[ \"$(uname -m)\" = aarch64 ] || { echo \"iunctus: the helper runs on \
             aarch64, but $(hostname) is $(uname -m); name a binary for it with helper_file\" \
             >&2; exit 1; }\nhelper=\"$node/iunctus\"\n{ curl -fsSL -o \"$helper\" \
@@ -267,7 +333,7 @@ mod tests {
             access: &access,
             ..run
         };
-        let script = job_script(&docker, &run, &staging, false, None, "https://plan", url);
+        let script = job_script(&docker, &run, &staging, false, None, links);
         let open = script.find("umask 000\n").expect("an open umask");
         assert!(
             open > script.find("chmod +x").expect("the helper"),

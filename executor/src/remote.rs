@@ -329,6 +329,18 @@ impl RemoteStage {
             .url)
     }
 
+    /// A presigned upload, or a `file://` URL, of the record `name` of the attempt at `prefix`,
+    /// which a job sends without the helper, like its log when the helper cannot run.
+    pub async fn record(&self, prefix: &str, name: &str) -> Result<Request, ExecutorError> {
+        let stage = RemoteStage {
+            credentials: false,
+            ..self.clone()
+        };
+        stage
+            .request(&format!("{prefix}/control/{name}"), true)
+            .await
+    }
+
     /// A request that reads or writes `location`: presigned, the address of the object for
     /// nodes with credentials, or a `file://` URL for a staging root in a folder.
     async fn request(&self, location: &str, write: bool) -> Result<Request, ExecutorError> {

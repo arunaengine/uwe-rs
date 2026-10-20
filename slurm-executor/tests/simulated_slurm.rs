@@ -1486,6 +1486,53 @@ async fn stage_objects(credentials: bool, upload: bool) {
     }
 }
 
+#[tokio::test]
+async fn reports_helper_failures() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), NODE_APPTAINER);
+    let mut backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    let objects = content_store::Store::local(&root.path().join("staging")).expect("a store");
+    backend.remote = Some(NodeStaging {
+        stage: RemoteStage {
+            objects,
+            expiry: Duration::from_secs(600),
+            max_outputs: 4,
+            credentials: false,
+            cleanup: true,
+        },
+        helper: Helper::Download {
+            url: "file:///nonexistent/iunctus".into(),
+            sha256: "ab".repeat(32),
+        },
+        folder: Some(text(&root.path().join("node"))),
+        secret_file: None,
+    });
+    let spec = spec("echo never > out.txt");
+    let (staging, placement) = (staging(root.path(), "hello\n"), placement());
+    let job = Job {
+        name: "run-P-13-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = (backend.run(job, &CancellationToken::new()).await).unwrap_err();
+    // The job sends its log back without the helper, which tells why it failed.
+    let expected = "cannot get the helper from file:///nonexistent/iunctus on ";
+    assert!(error.to_string().contains(expected), "{error}");
+    let node = std::fs::read_dir(root.path().join("node")).expect("the node folder");
+    assert_eq!(node.count(), 0, "the job removes its folder");
+    // The failed attempt leaves its input and wrapper, but no plan and no results.
+    let stage = &backend.remote.as_ref().expect("the staging").stage;
+    let left = (stage.objects.objects("attempts/").await).expect("the attempts");
+    assert!(left.is_empty(), "{left:?}");
+    let contents = (stage.objects.objects("cas/").await).expect("the contents");
+    assert_eq!(contents.len(), 2, "{contents:?}");
+}
+
 /// Runs the staging helper when a job of `stage_objects` starts this program as it.
 #[test]
 fn stage_helper() {

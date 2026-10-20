@@ -52,10 +52,12 @@ pub(crate) fn signature_changed(
     current: &serde_json::Value,
     triggers: Option<&[String]>,
 ) -> bool {
-    let Some(mut recorded) = std::fs::read(signature_path(workdir, output))
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-    else {
+    // An output without a record, like one that Snakemake or a person made, is up to date,
+    // as Snakemake takes outputs with missing metadata.
+    let Ok(bytes) = std::fs::read(signature_path(workdir, output)) else {
+        return false;
+    };
+    let Ok(mut recorded) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
         return true;
     };
     let mut current = current.clone();

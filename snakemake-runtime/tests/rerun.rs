@@ -540,3 +540,23 @@ fn compares_link_times() {
     let tasks = snakemake_runtime::driver(&launch).unwrap().start().unwrap();
     assert_eq!(tasks.len(), 1, "the output is older than the input");
 }
+
+/// Snakemake 9.27 takes an output without metadata, like one that it did not make, as up to
+/// date: "Nothing to be done", with a note on the missing metadata.
+#[test]
+fn keeps_unrecorded_outputs() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        "rule a:\n    output: 'a.txt'\n    params: x=1\n    shell: 'echo new > {output}'\n",
+    )
+    .unwrap();
+    std::fs::write(folder.path().join("a.txt"), "old").unwrap();
+    let launch = Launch {
+        target: folder.path().into(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let tasks = snakemake_runtime::driver(&launch).unwrap().start().unwrap();
+    assert!(tasks.is_empty(), "{tasks:?}");
+}

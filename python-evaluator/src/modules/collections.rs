@@ -751,23 +751,67 @@ impl Native for NamedTupleClass {
             }),
             None => return Ok(None),
         };
-        let mut values = Vec::with_capacity(class.fields.len());
-        let first_default = class.fields.len() - class.defaults.len();
+        let count = class.fields.len();
+        let first_default = count - class.defaults.len();
+        if args.positional.len() > count {
+            let accepted = if first_default == count {
+                let noun = if count == 0 { "argument" } else { "arguments" };
+                format!("{} positional {noun}", count + 1)
+            } else {
+                format!(
+                    "from {} to {} positional arguments",
+                    first_default + 1,
+                    count + 1
+                )
+            };
+            return Err(Error::type_error(format!(
+                "{}.__new__() takes {accepted} but {} were given",
+                class.name,
+                args.positional.len() + 1
+            )));
+        }
+        let mut values = Vec::with_capacity(count);
+        let mut missing = Vec::new();
         for (index, field) in class.fields.iter().enumerate() {
-            let value = match args.take_keyword(field) {
-                Some(value) => value,
-                None => match args.positional.get(index) {
-                    Some(value) => value.clone(),
-                    None if index >= first_default => class.defaults[index - first_default].clone(),
-                    None => {
-                        return Err(Error::type_error(format!(
-                            "{}() missing required argument: '{field}'",
-                            class.name
-                        )));
-                    }
-                },
+            let keyword = args.take_keyword(field);
+            let value = match (keyword, args.positional.get(index)) {
+                (Some(_), Some(_)) => {
+                    return Err(Error::type_error(format!(
+                        "{}.__new__() got multiple values for argument '{field}'",
+                        class.name
+                    )));
+                }
+                (Some(value), None) => value,
+                (None, Some(value)) => value.clone(),
+                (None, None) if index >= first_default => {
+                    class.defaults[index - first_default].clone()
+                }
+                (None, None) => {
+                    missing.push(format!("'{field}'"));
+                    Value::None
+                }
             };
             values.push(value);
+        }
+        if let Some((name, _)) = args.keywords.first() {
+            return Err(Error::type_error(format!(
+                "{}.__new__() got an unexpected keyword argument '{name}'",
+                class.name
+            )));
+        }
+        if !missing.is_empty() {
+            let total = missing.len();
+            let noun = if total == 1 { "argument" } else { "arguments" };
+            let names = match missing.split_last() {
+                Some((last, [])) => last.clone(),
+                Some((last, [first])) => format!("{first} and {last}"),
+                Some((last, rest)) => format!("{}, and {last}", rest.join(", ")),
+                None => String::new(),
+            };
+            return Err(Error::type_error(format!(
+                "{}.__new__() missing {total} required positional {noun}: {names}",
+                class.name
+            )));
         }
         Ok(Some(Value::native(NamedTuple { class, values })))
     }
@@ -918,7 +962,7 @@ impl Native for NamedTuple {
 
 fn namedtuple(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
     let defaults = args.take_keyword("defaults");
-    args.take_keyword("rename");
+    let rename = args.take_keyword("rename");
     args.take_keyword("module");
     let name = args
         .take(0, "typename")
@@ -927,7 +971,7 @@ fn namedtuple(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Er
     let fields = args
         .take(1, "field_names")
         .unwrap_or(Value::list(Vec::new()));
-    let fields: Vec<String> = match fields.plain() {
+    let mut fields: Vec<String> = match fields.plain() {
         Value::Str(text) => text
             .replace(',', " ")
             .split_whitespace()
@@ -939,15 +983,71 @@ fn namedtuple(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Er
             .map(|field| interpreter.to_str(field))
             .collect::<Result<_, _>>()?,
     };
+    let rename = match rename {
+        Some(rename) => interpreter.truthy(&rename)?,
+        None => false,
+    };
+    if rename {
+        let mut seen = Vec::new();
+        for (index, field) in fields.iter_mut().enumerate() {
+            if !is_identifier(field) || field.starts_with('_') || seen.contains(field) {
+                *field = format!("_{index}");
+            }
+            seen.push(field.clone());
+        }
+    }
+    check_names(&name, &fields, rename)?;
     let defaults = match defaults {
         Some(defaults) if !defaults.is_none() => interpreter.iterate(&defaults)?,
         _ => Vec::new(),
     };
+    if defaults.len() > fields.len() {
+        return Err(Error::type_error(
+            "Got more default values than field names",
+        ));
+    }
     Ok(Value::native(NamedTupleClass {
         name,
         fields,
         defaults,
     }))
+}
+
+/// Whether a name is a Python identifier and not a keyword, as `str.isidentifier` checks.
+fn is_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|c| c.is_alphabetic() || c == '_')
+        && chars.all(|c| c.is_alphanumeric() || c == '_')
+        && !crate::modules::misc::KEYWORDS.contains(&name)
+}
+
+/// The checks of `namedtuple` on its type name and field names.
+fn check_names(name: &str, fields: &[String], rename: bool) -> Result<(), Error> {
+    for word in std::iter::once(name).chain(fields.iter().map(String::as_str)) {
+        if crate::modules::misc::KEYWORDS.contains(&word) {
+            return Err(Error::value_error(format!(
+                "Type names and field names cannot be a keyword: '{word}'"
+            )));
+        }
+        if !is_identifier(word) {
+            return Err(Error::value_error(format!(
+                "Type names and field names must be valid identifiers: '{word}'"
+            )));
+        }
+    }
+    for (index, field) in fields.iter().enumerate() {
+        if field.starts_with('_') && !rename {
+            return Err(Error::value_error(format!(
+                "Field names cannot start with an underscore: '{field}'"
+            )));
+        }
+        if fields[..index].contains(field) {
+            return Err(Error::value_error(format!(
+                "Encountered duplicate field name: '{field}'"
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// `collections.deque`, as a list with operations at both ends.

@@ -6,7 +6,9 @@
 use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::value::Value;
 
-use super::{Schema, entries, errors, get, json, plain, schema, thrown};
+use nextflow_evaluator::exception::Exception;
+
+use super::{Schema, entries, errors, get, json, plain, schema, thrown, version};
 use crate::Context;
 
 /// Validates params, warns for unknown nonignored names, and checks all known names.
@@ -18,8 +20,14 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
     let groups = groups(&schema.tree);
     let mut instance = serde_json::Map::new();
     let mut unknown = Vec::new();
+    // From 2.7.0 on, nf-schema leaves out only null params instead of all false ones.
+    let cleans = version(context).is_some_and(|parts| parts.as_slice() < [2, 7, 0].as_slice());
     for (name, value) in entries(&context.params) {
-        let Some(value) = cleaned(&value) else {
+        let value = match cleans {
+            true => cleaned(&value),
+            false => without_nulls(&value),
+        };
+        let Some(value) = value else {
             continue;
         };
         let known = groups
@@ -46,12 +54,13 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
     }
     let validator = super::paths::validator(&schema.json, &instance, context, false)
         .map_err(|error| thrown(format!("Invalid parameters schema: {error}")))?;
-    let errors: Vec<String> = errors(&validator, &instance, "parameter", super::lenient(context))
+    let order = Some(&schema.tree);
+    let errors: Vec<String> = errors(&validator, &instance, "parameter", context, order)
         .into_iter()
         .map(|(path, message)| {
             let name = path.trim_start_matches('/');
             match instance.get(name) {
-                Some(value) => format!("* --{name} ({}): {message}", plain(value)),
+                Some(value) => format!("* --{name} ({}): {message}", shown(value)),
                 None => format!("* {message}"),
             }
         })
@@ -76,20 +85,31 @@ fn casts(options: Option<&Value>, context: &Context) -> bool {
     if let Some(cast) = options.and_then(|options| get(options, "cast_cli_params")) {
         return cast.truth();
     }
-    let Some(Value::Set(plugins)) = context.config.get(&["plugins"]) else {
-        return true;
-    };
-    let plugins = plugins.borrow();
-    let version = plugins.items.iter().find_map(|id| {
-        let id = id.0.to_string();
-        let version = id.strip_prefix("nf-schema@")?.to_owned();
-        let parts: Vec<u32> = version
-            .split('.')
-            .map_while(|part| part.parse().ok())
-            .collect();
-        Some(parts)
-    });
-    version.is_none_or(|parts| parts.as_slice() >= [2, 7, 2].as_slice())
+    version(context).is_none_or(|parts| parts.as_slice() >= [2, 7, 2].as_slice())
+}
+
+/// A value in an error line as nf-schema shows it: Groovy's `value ?: ''`, so `false`, zero
+/// and empty text show as nothing, but lists and maps, which are JSON there, as JSON.
+fn shown(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Bool(false) => String::new(),
+        serde_json::Value::Number(number) if number.as_f64() == Some(0.0) => String::new(),
+        other => plain(other),
+    }
+}
+
+/// A param as nf-schema checks it from 2.7.0 on: left out if null, with nulls left out of
+/// its maps.
+fn without_nulls(value: &Value) -> Option<Value> {
+    Some(match value {
+        Value::Null => return None,
+        Value::Map(_) => Value::map(
+            entries(value)
+                .into_iter()
+                .filter_map(|(key, value)| Some((Value::string(key), without_nulls(&value)?))),
+        ),
+        other => other.clone(),
+    })
 }
 
 /// Reads the texts of command-line params as Nextflow's legacy parser did, in every map of
@@ -171,7 +191,11 @@ pub(super) fn summary(
     let schema = parameters_schema(options, context)?;
     let mut core = Vec::new();
     for name in ["revision", "runName", "containerEngine", "container"] {
-        if let Some(value) = get(workflow, name).filter(Value::truth) {
+        let value = match name {
+            "containerEngine" => engine(context).map(Value::string),
+            _ => get(workflow, name),
+        };
+        if let Some(value) = value.filter(Value::truth) {
             core.push((Value::string(name), value));
         }
     }
@@ -225,16 +249,36 @@ pub(super) fn summary_log(
     context: &mut Context,
 ) -> Result<Value, Error> {
     let summary = summary(options, workflow, context)?;
-    let groups = entries(&summary);
+    let mut groups: Vec<(String, Vec<(String, Value)>)> = entries(&summary)
+        .into_iter()
+        .map(|(title, group)| (title, flattened(&group)))
+        .collect();
+    // From 2.7.0 on the log leaves out the containers, which it takes for a map.
+    if version(context).is_none_or(|parts| parts.as_slice() >= [2, 7, 0].as_slice())
+        && let Some((_, core)) = groups.last_mut()
+    {
+        if let Some((_, container)) = core.iter().find(|(name, _)| name == "container")
+            && !matches!(container, Value::Map(_))
+        {
+            let message = format!(
+                "Cannot cast object '{container}' with class '{}' to class 'java.util.Map'",
+                container.java_class_name()
+            );
+            return Err(Error::Thrown {
+                exception: std::rc::Rc::new(Exception::new("ClassCastException", message)),
+                span: Default::default(),
+            });
+        }
+        core.retain(|(name, _)| !name.starts_with("container."));
+    }
     let width = groups
         .iter()
-        .flat_map(|(_, group)| entries(group))
+        .flat_map(|(_, group)| group)
         .map(|(name, _)| name.chars().count())
         .max()
         .unwrap_or(0);
     let mut output = String::new();
-    for (title, group) in groups {
-        let params = entries(&group);
+    for (title, params) in groups {
         if params.is_empty() {
             continue;
         }
@@ -242,10 +286,45 @@ pub(super) fn summary_log(
         for (name, value) in params {
             output.push_str(&format!("  {name:width$}: {value}\n"));
         }
+        output.push('\n');
     }
     output.push_str("!! Only displaying parameters that differ from the pipeline defaults !!\n");
     output.push_str(&"-".repeat(54));
     Ok(Value::string(output))
+}
+
+/// The entries of a summary group, with maps inside as `name.key` entries.
+fn flattened(group: &Value) -> Vec<(String, Value)> {
+    let mut flat = Vec::new();
+    for (name, value) in entries(group) {
+        match value {
+            Value::Map(_) => flat.extend(
+                (flattened(&value).into_iter())
+                    .map(|(key, value)| (format!("{name}.{key}"), value)),
+            ),
+            other => flat.push((name, other)),
+        }
+    }
+    flat
+}
+
+/// The container engines of Nextflow, in the order it looks for the enabled one.
+const ENGINES: [&str; 7] = [
+    "docker",
+    "podman",
+    "sarus",
+    "shifter",
+    "singularity",
+    "apptainer",
+    "charliecloud",
+];
+
+/// The container engine that the config enables, which `workflow.containerEngine` gives in
+/// Nextflow, else none.
+fn engine(context: &Context) -> Option<&'static str> {
+    ENGINES.into_iter().find(|engine| {
+        (context.config.get(&[engine, "enabled"])).is_some_and(|enabled| enabled.truth())
+    })
 }
 
 /// `paramsHelp`: each group of the schema with its params and their descriptions.

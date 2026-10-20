@@ -71,7 +71,7 @@ fn validate(
     let instance = json(input);
     let validator = paths::validator(&schema.json, &instance, context, false)
         .map_err(|error| thrown(format!("Invalid JSON schema: {error}")))?;
-    let errors: Vec<String> = errors(&validator, &instance, "object", lenient(context))
+    let errors: Vec<String> = errors(&validator, &instance, "object", context, None)
         .into_iter()
         .map(|(location, message)| {
             let value = instance.pointer(&location).map(plain).unwrap_or_default();
@@ -161,6 +161,23 @@ pub(crate) fn json(value: &Value) -> serde_json::Value {
     }
 }
 
+/// The version of nf-schema that the config asks for, if it names one; else the latest runs.
+pub(crate) fn version(context: &Context) -> Option<Vec<u32>> {
+    let Some(Value::Set(plugins)) = context.config.get(&["plugins"]) else {
+        return None;
+    };
+    let plugins = plugins.borrow();
+    plugins.items.iter().find_map(|id| {
+        let id = id.0.to_string();
+        let version = id.strip_prefix("nf-schema@")?.to_owned();
+        let parts: Vec<u32> = version
+            .split('.')
+            .map_while(|part| part.parse().ok())
+            .collect();
+        Some(parts)
+    })
+}
+
 /// Whether types are checked leniently, as `validation.lenientMode` asks: a `string` then also
 /// takes a number, a boolean or null, as nf-schema's `LenientTypeEvaluator` does.
 pub(crate) fn lenient(context: &Context) -> bool {
@@ -171,30 +188,36 @@ pub(crate) fn lenient(context: &Context) -> bool {
 }
 
 /// Returns nf-schema errors by value path; missing fields form one object error.
-/// `what` labels the fields, and `lenient` relaxes type checking.
+/// `what` labels the fields; the config may relax type checking. With the schema as
+/// `order`, the errors come in the order of nf-schema's validator.
 pub(crate) fn errors(
     validator: &jsonschema::Validator,
     instance: &serde_json::Value,
     what: &str,
-    lenient: bool,
+    context: &Context,
+    order: Option<&Value>,
 ) -> Vec<(String, String)> {
     use jsonschema::error::{TypeKind, ValidationErrorKind as Kind};
-    let mut errors: Vec<(String, String)> = Vec::new();
+    let lenient = lenient(context);
+    // From 2.7.3 on, a newer validator words patterns and enums without extra brackets.
+    let bare = version(context).is_none_or(|parts| parts.as_slice() >= [2, 7, 3].as_slice());
+    // Each error with the schema location that reports it.
+    let mut errors: Vec<(String, String, String)> = Vec::new();
     // Missing fields by the value and the `required` keyword that asks for them.
     let mut missing: Vec<(String, String, Vec<String>)> = Vec::new();
     for error in validator.iter_errors(instance) {
         let path = error.instance_path().to_string();
+        let location = error.evaluation_path().to_string();
         let value = error.instance();
         let message = match error.kind() {
             Kind::Required { property } => {
                 let property = property.as_str().unwrap_or_default().to_owned();
-                let keyword = error.schema_path().to_string();
                 let group = missing
                     .iter_mut()
-                    .find(|(at, by, _)| *at == path && *by == keyword);
+                    .find(|(at, by, _)| *at == path && *by == location);
                 match group {
                     Some((_, _, names)) => names.push(property),
-                    None => missing.push((path, keyword, vec![property])),
+                    None => missing.push((path, location, vec![property])),
                 }
                 continue;
             }
@@ -215,6 +238,9 @@ pub(crate) fn errors(
                 let expected = expected.join(", ");
                 format!("Value is [{}] but should be [{expected}]", json_type(value))
             }
+            Kind::Pattern { pattern } if bare => {
+                format!("{value} does not match regular expression {pattern}")
+            }
             Kind::Pattern { pattern } => {
                 format!("{value} does not match regular expression [{pattern}]")
             }
@@ -223,20 +249,112 @@ pub(crate) fn errors(
                     .as_array()
                     .map(|items| items.iter().map(plain).collect())
                     .unwrap_or_default();
-                format!("Expected any of [[{}]]", options.join(", "))
+                match bare {
+                    true => format!("Expected any of [{}]", options.join(", ")),
+                    false => format!("Expected any of [[{}]]", options.join(", ")),
+                }
+            }
+            // The wording of nf-schema's validator, which differs from the crate's.
+            Kind::Minimum { limit } => format!("{value} is less than {limit}"),
+            Kind::Maximum { limit } => format!("{value} is greater than {limit}"),
+            Kind::ExclusiveMinimum { limit } => {
+                format!("{value} is less than or equal to {limit}")
+            }
+            Kind::ExclusiveMaximum { limit } if bare => {
+                format!("{value} is greater than or equal to {limit}")
+            }
+            Kind::ExclusiveMaximum { limit } => format!("{value} is greater or equal to {limit}"),
+            Kind::MinLength { limit } => format!("{value} is shorter than {limit} characters"),
+            Kind::MaxLength { limit } => format!("{value} is longer than {limit} characters"),
+            Kind::MultipleOf { multiple_of } => {
+                format!("{value} is not multiple of {multiple_of}")
             }
             _ => error.to_string(),
         };
-        errors.push((path, message));
+        errors.push((location, path, message));
     }
-    for (path, _, mut names) in missing {
+    for (path, location, mut names) in missing {
         names.sort();
-        errors.push((
-            path,
-            format!("Missing required {what}(s): {}", names.join(", ")),
-        ));
+        let message = format!("Missing required {what}(s): {}", names.join(", "));
+        errors.push((location, path, message));
+    }
+    if let Some(schema) = order {
+        errors.sort_by_cached_key(|(location, _, _)| java_order(schema, location));
     }
     errors
+        .into_iter()
+        .map(|(_, path, message)| (path, message))
+        .collect()
+}
+
+/// The place of a schema location in the order of nf-schema's validator, which reads the
+/// schema into Java hash maps and checks the keywords of each in the order of the map.
+fn java_order(schema: &Value, location: &str) -> Vec<usize> {
+    let mut node = schema.clone();
+    let mut order = Vec::new();
+    for segment in location.split('/').skip(1) {
+        let segment = segment.replace("~1", "/").replace("~0", "~");
+        let next = match &node {
+            Value::Map(_) => {
+                let names: Vec<String> = entries(&node).into_iter().map(|(name, _)| name).collect();
+                order.push(hash_position(&names, &segment));
+                match (segment.as_str(), get(&node, &segment)) {
+                    ("$ref", Some(reference)) => pointer(schema, &reference.to_string()),
+                    (_, next) => next,
+                }
+            }
+            Value::List(list) => {
+                let index = segment.parse().unwrap_or(usize::MAX);
+                order.push(index);
+                list.borrow().items.get(index).cloned()
+            }
+            _ => None,
+        };
+        match next {
+            Some(next) => node = next,
+            None => break,
+        }
+    }
+    order
+}
+
+/// The place of a key in a Java `HashMap` with these keys, put in this order: by the bucket of
+/// its hash, then in the order the keys were put.
+fn hash_position(names: &[String], name: &str) -> usize {
+    let mut capacity = 16;
+    while names.len() * 4 > capacity * 3 {
+        capacity *= 2;
+    }
+    let bucket = |name: &str| {
+        let hash = name.encode_utf16().fold(0u32, |hash, unit| {
+            hash.wrapping_mul(31).wrapping_add(u32::from(unit))
+        });
+        ((hash ^ (hash >> 16)) as usize) & (capacity - 1)
+    };
+    let mut order: Vec<usize> = (0..names.len()).collect();
+    order.sort_by_key(|index| (bucket(&names[*index]), *index));
+    order
+        .iter()
+        .position(|index| names[*index] == name)
+        .unwrap_or(names.len())
+}
+
+/// The part of a schema that a local reference like `#/$defs/group` points to.
+fn pointer(schema: &Value, reference: &str) -> Option<Value> {
+    let path = reference.strip_prefix('#')?;
+    let mut node = schema.clone();
+    for segment in path.split('/').skip(1) {
+        let segment = segment.replace("~1", "/").replace("~0", "~");
+        node = match &node {
+            Value::List(list) => list
+                .borrow()
+                .items
+                .get(segment.parse::<usize>().ok()?)
+                .cloned()?,
+            _ => get(&node, &segment)?,
+        };
+    }
+    Some(node)
 }
 
 /// The JSON type of a value, as nf-schema names it.

@@ -252,6 +252,10 @@ impl Run {
             return Ok(None);
         };
         self.check_endpoint(artifact, &url)?;
+        if let Some(git) = &artifact.git {
+            self.git_sources
+                .insert(url.clone(), crate::git::source(git));
+        }
         // An artifact that a task of this run wrote is read from the task's output.
         if let Some(file) = self.store.get(&url) {
             return Ok(Some(Location::File(file.clone())));
@@ -381,13 +385,12 @@ pub(crate) fn artifact_url(artifact: &Artifact) -> Result<Option<String>> {
 }
 
 pub(crate) fn check_artifact(artifact: &Artifact) -> Result<()> {
-    if artifact.git.is_some()
-        || artifact.hdfs.is_some()
-        || artifact.oss.is_some()
-        || artifact.plugin.is_some()
-    {
+    if let Some(git) = &artifact.git {
+        crate::git::check(&artifact.name, git)?;
+    }
+    if artifact.hdfs.is_some() || artifact.oss.is_some() || artifact.plugin.is_some() {
         return Err(Failure::unsupported(format!(
-            "artifact {}: Git, HDFS, OSS and artifact plugin transfers are not supported",
+            "artifact {}: HDFS, OSS and artifact plugin transfers are not supported",
             artifact.name
         )));
     }

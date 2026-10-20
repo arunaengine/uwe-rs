@@ -436,7 +436,11 @@ fn matches_s3_endpoints() {
         address: Some(address.into()),
     };
     let start = |endpoints| {
-        argo_runtime::driver_with(&launch, endpoints, None)
+        let services = argo_runtime::Services {
+            endpoints,
+            ..Default::default()
+        };
+        argo_runtime::driver_with(&launch, services)
             .unwrap()
             .start()
     };
@@ -454,5 +458,48 @@ fn matches_s3_endpoints() {
             .message
             .contains("add one with endpoint minio.lab.example.org:9000"),
         "{error}"
+    );
+}
+
+#[test]
+fn checks_out_git() {
+    let folder = tempfile::tempdir().unwrap();
+    let target = folder.path().join("workflow.yaml");
+    let artifact = "{name: code, path: /src, git: {repo: 'https://git.example.org/team/code.git', revision: v1.0, depth: 1, fetch: ['refs/meta/*:refs/meta/*'], disableSubmodules: true, insecureIgnoreHostKey: false, usernameSecret: {name: git, key: user}, passwordSecret: {name: git, key: password}}}";
+    std::fs::write(&target, format!("apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {{name: git}}\nspec:\n  entrypoint: main\n  templates:\n  - name: main\n    inputs: {{artifacts: [{artifact}]}}\n    container: {{image: alpine}}\n")).unwrap();
+    let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = Arc::clone(&asked);
+    let client = move |source: &argo_runtime::GitSource, folder: &Path| {
+        seen.lock().unwrap().push(source.clone());
+        std::fs::create_dir_all(folder).map_err(|error| error.to_string())?;
+        std::fs::write(folder.join("README"), "code").map_err(|error| error.to_string())
+    };
+    let services = argo_runtime::Services {
+        git: Some(argo_runtime::GitClient(Arc::new(client))),
+        ..Default::default()
+    };
+    let launch = Launch {
+        target,
+        ..Launch::default()
+    };
+    // The run keeps the checkout as long as it lives.
+    let mut run = argo_runtime::driver_with(&launch, services).unwrap();
+    let tasks = run.start().unwrap();
+    let input = &tasks[0].inputs[0];
+    assert!(input.directory, "{input:?}");
+    assert_eq!(
+        std::fs::read_to_string(Path::new(&input.source).join("README")).unwrap(),
+        "code"
+    );
+    assert_eq!(
+        asked.lock().unwrap()[0],
+        argo_runtime::GitSource {
+            repo: "https://git.example.org/team/code.git".into(),
+            reference: Some("v1.0".into()),
+            depth: Some(1),
+            fetch: vec!["refs/meta/*:refs/meta/*".into()],
+            submodules: false,
+            account: true,
+        }
     );
 }

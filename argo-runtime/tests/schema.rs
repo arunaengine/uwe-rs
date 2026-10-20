@@ -152,8 +152,8 @@ fn omits_unsupported_providers() {
         ("HDFS", "hdfs: {path: /data/in.txt}"),
         ("OSS", "oss: {bucket: data, key: in.txt}"),
         (
-            "Git",
-            "git: {repo: 'https://example.org/repository.git', revision: abc123}",
+            "HTTPS",
+            "git: {repo: 'git@example.org:team/repository.git'}",
         ),
     ] {
         let folder = tempfile::tempdir().expect("a folder");

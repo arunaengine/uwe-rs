@@ -199,6 +199,24 @@ impl Run {
         let Some(mut input) = crate::pod::input_of(value) else {
             return Ok(None);
         };
+        if let Some(Location::Url(url)) = &value.location
+            && let Some(source) = self.git_sources.get(url).cloned()
+            && !self.options.assume_inputs
+        {
+            let failed =
+                |message: String| Failure::error(format!("artifact {}: {message}", value.name));
+            let client = (self.options.git.clone()).ok_or_else(|| {
+                Failure::unsupported("git artifacts need a Git client, which this run has not")
+            })?;
+            let folder = self
+                .private_folder()
+                .map_err(|error| failed(error.to_string()))?
+                .join("content");
+            (client.0)(&source, &folder).map_err(failed)?;
+            input.source = folder.to_string_lossy().into_owned();
+            input.directory = true;
+            return Ok(Some(input));
+        }
         let Some(declared) = declared else {
             return Ok(Some(input));
         };

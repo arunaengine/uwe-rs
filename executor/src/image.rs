@@ -207,7 +207,7 @@ async fn pull(
     platform: Option<&str>,
 ) -> Result<(), ExecutorError> {
     let options = CreateImageOptions {
-        from_image: Some(reference.to_owned()),
+        from_image: Some(tagged(reference)),
         platform: platform.unwrap_or_default().to_owned(),
         ..CreateImageOptions::default()
     };
@@ -228,6 +228,16 @@ async fn pull(
         }
     }
     Ok(())
+}
+
+/// The reference with `:latest` when it names no tag or digest, as `docker pull` does;
+/// the Engine API would pull every tag of the repository instead.
+fn tagged(reference: &str) -> String {
+    let name = reference.rsplit('/').next().unwrap_or(reference);
+    match name.contains([':', '@']) {
+        true => reference.to_owned(),
+        false => format!("{reference}:latest"),
+    }
 }
 
 /// What a container of an image runs by default: its entrypoint and its command.
@@ -412,6 +422,17 @@ mod tests {
             requests[7].contains("platform=linux%2Farm64"),
             "{requests:?}"
         );
+    }
+
+    #[test]
+    fn pulls_latest_tag() {
+        assert_eq!(tagged("busybox"), "busybox:latest");
+        assert_eq!(tagged("localhost:5000/tool"), "localhost:5000/tool:latest");
+        assert_eq!(
+            tagged("quay.io/biocontainers/fastqc:0.12"),
+            "quay.io/biocontainers/fastqc:0.12"
+        );
+        assert_eq!(tagged("debian@sha256:ab"), "debian@sha256:ab");
     }
 
     #[test]

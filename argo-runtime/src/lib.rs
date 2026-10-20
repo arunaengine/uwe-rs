@@ -74,6 +74,16 @@ pub struct Options {
     /// Whether a DAG that does not set `failFast` goes on after a task failed, with the tasks
     /// that do not depend on it, as `failFast: false` does (`Launch.keep_going`).
     pub keep_going: bool,
+    /// The S3 providers of the config file, for artifacts that name an endpoint.
+    pub endpoints: Vec<Endpoint>,
+}
+
+/// An S3 storage provider: its name, the addresses it serves and its service, `None` for AWS.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Endpoint {
+    pub provider: String,
+    pub prefixes: Vec<String>,
+    pub address: Option<String>,
 }
 
 /// A run of one Argo document as a [`Driver`].
@@ -262,6 +272,14 @@ impl Driver for ArgoDriver {
 
 /// The driver for an Argo workflow file.
 pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
+    driver_with(launch, Vec::new())
+}
+
+/// The driver for an Argo workflow file, with the S3 providers of the config file.
+pub fn driver_with(
+    launch: &Launch,
+    endpoints: Vec<Endpoint>,
+) -> Result<Box<dyn Driver>, DriverError> {
     let target = &launch.target;
     if target.is_dir() {
         return Err(DriverError::new(format!(
@@ -304,6 +322,7 @@ pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
         now: None,
         assume_inputs: launch.simulated,
         keep_going: launch.keep_going,
+        endpoints,
     };
     let mut driver = ArgoDriver::new(document, Rc::new(library), options);
     if !launch.simulated {

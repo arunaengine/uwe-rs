@@ -23,6 +23,7 @@ mod node;
 mod objects;
 mod plugin;
 mod pod;
+mod references;
 mod resources;
 mod retry;
 mod run;

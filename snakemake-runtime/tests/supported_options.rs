@@ -22,8 +22,8 @@ fn rejects_active_options() {
                 ..Launch::default()
             };
             let result = snakemake_runtime::driver(&launch).and_then(|mut driver| driver.start());
-            let supported = (option == "shadow" && value == "'minimal'")
-                || (option == "cache" && value == "True");
+            // Snakemake 9.27 takes `shadow: True` as the full shadow.
+            let supported = option == "shadow" || (option == "cache" && value == "True");
             if matches!(value, "True" | "'minimal'") && !supported {
                 let error = result.expect_err("unsupported option must fail");
                 assert!(error.message.contains(option), "{error}");
@@ -123,11 +123,7 @@ fn stages_minimal_shadow() {
 
 #[test]
 fn rejects_shadow_modes() {
-    for directive in [
-        "shadow: 'copy-minimal'",
-        "shadow: True",
-        "shadow: 'minimal'\n    output: '../out'",
-    ] {
+    for directive in ["shadow: 'deep'", "shadow: 'minimal'\n    output: '../out'"] {
         let folder = tempfile::tempdir().expect("a folder");
         std::fs::write(
             folder.path().join("Snakefile"),
@@ -143,7 +139,7 @@ fn rejects_shadow_modes() {
             .unwrap()
             .start()
             .expect_err("refused");
-        assert_eq!(error.unsupported, !directive.contains("../out"), "{error}");
+        assert!(!error.unsupported, "{error}");
     }
 }
 
@@ -216,4 +212,32 @@ fn confines_shadow_outputs() {
         };
         assert!(snakemake_runtime::driver(&launch).unwrap().start().is_err());
     }
+}
+
+/// A `copy-minimal` shadow job gets copies of its inputs, not links (test_shadow_copy).
+#[test]
+fn copies_minimal_inputs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    std::fs::write(folder.path().join("in.txt"), "x").expect("an input");
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        "rule make:\n    input: 'in.txt'\n    output: 'out.txt'\n    shadow: 'copy-minimal'\n    shell: 'cp {input} {output}'\n",
+    )
+    .expect("Snakefile");
+    let launch = Launch {
+        target: folder.path().to_path_buf(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let task = snakemake_runtime::driver(&launch)
+        .unwrap()
+        .start()
+        .unwrap()
+        .remove(0);
+    let input = task
+        .inputs
+        .iter()
+        .find(|input| input.path == "in.txt")
+        .unwrap();
+    assert_eq!(input.writable, workflow_graph::Writable::Copy);
 }

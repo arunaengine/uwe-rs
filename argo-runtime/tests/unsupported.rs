@@ -22,7 +22,7 @@ fn start_error(spec: &str) -> DriverError {
 #[test]
 fn rejects_workflow_controls() {
     for field in [
-        "synchronization: {mutexes: [{name: lock, database: true}]}",
+        "synchronization: {semaphores: [{database: {key: lock}}]}",
         "artifactRepositoryRef: {configMap: artifacts}",
         "podSpecPatch: '{}'",
         "podResources: {}",
@@ -44,7 +44,7 @@ fn rejects_workflow_controls() {
 #[test]
 fn rejects_template_controls() {
     for field in [
-        "synchronization: {mutexes: [{name: lock, database: true}]}",
+        "synchronization: {semaphores: [{database: {key: lock}}]}",
         "podSpecPatch: '{}'",
         "podResources: {}",
         "resourceClaims: []",

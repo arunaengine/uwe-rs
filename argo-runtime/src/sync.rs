@@ -79,14 +79,6 @@ fn entries<'a>(node: &'a Node, plural: &str, single: &str) -> Result<Vec<&'a Nod
 pub(crate) fn check(node: &Node) -> Result<()> {
     for mutex in entries(node, "mutexes", "mutex")? {
         if mutex
-            .get("database")
-            .is_some_and(|value| value.value == Yaml::Bool(true))
-        {
-            return Err(Failure::unsupported(
-                "synchronization database mutexes require an Argo controller; use a local mutex",
-            ));
-        }
-        if mutex
             .get("name")
             .map(scalar_text)
             .is_none_or(|name| name.is_empty())
@@ -133,9 +125,13 @@ fn limits(
             .unwrap_or_else(|| namespace.into())
     };
     for mutex in entries(node, "mutexes", "mutex")? {
+        // Argo keeps database mutexes apart from the others of the same name. One iunctus
+        // process holds all locks of its runs, as one controller would.
+        let database = (mutex.get("database")).is_some_and(|value| value.value == Yaml::Bool(true));
+        let kind = if database { "database" } else { "mutex" };
         limits.push((
             format!(
-                "{}/mutex/{}",
+                "{}/{kind}/{}",
                 namespace_of(mutex),
                 scalar_text(mutex.get("name").unwrap())
             ),

@@ -36,6 +36,24 @@ pub struct Profile {
     pub executor: Option<String>,
     /// `all-temp:`, which marks every output of every rule `temp()`.
     pub all_temp: bool,
+    /// `notemp:`, which keeps the outputs marked `temp()`.
+    pub notemp: bool,
+    /// `wrapper-prefix:`, where the wrappers that rules name by their path are.
+    pub wrapper_prefix: Option<String>,
+    /// `groups:` as rule and group, and `group-components:` as group and how many connected
+    /// parts one job of the group takes.
+    pub groups: Vec<(String, String)>,
+    pub group_components: Vec<(String, usize)>,
+    /// `prioritize:`, the targets whose jobs start first.
+    pub prioritize: Vec<String>,
+    /// `set-scatter:` as name and number of items.
+    pub set_scatter: Vec<(String, i64)>,
+    /// `consider-ancient:` as rule and its input items, by name or position.
+    pub consider_ancient: Vec<(String, Vec<String>)>,
+    /// `allowed-rules:`, the only rules that may make files, when given.
+    pub allowed_rules: Option<Vec<String>>,
+    /// `batch:` as rule, batch and number of batches.
+    pub batch: Option<(String, usize, usize)>,
 }
 
 pub const RERUN_TRIGGERS: [&str; 5] = ["mtime", "params", "input", "software-env", "code"];
@@ -155,6 +173,29 @@ fn pairs(interpreter: &mut Interpreter, value: &Value) -> Result<Vec<(String, St
     Ok(result)
 }
 
+/// The words of a setting given as a list or as text with spaces, like `prioritize`.
+fn words(interpreter: &mut Interpreter, value: &Value) -> Result<Vec<String>, Error> {
+    if let Some(text) = value.as_str() {
+        return Ok(text.split_whitespace().map(str::to_owned).collect());
+    }
+    let items = interpreter.iterate(value)?;
+    items.iter().map(|item| interpreter.to_str(item)).collect()
+}
+
+/// `RULE=BATCH/BATCHES` of `batch`, as Snakemake's `parse_batch` takes it.
+fn batch(text: &str) -> Result<(String, usize, usize), Error> {
+    let message = "Invalid batch definition: batch entry has to be defined as RULE=BATCH/BATCHES (with integers BATCH <= BATCHES, BATCH >= 1).";
+    let invalid = || workflow_error(message);
+    let (rule, definition) = text.split_once('=').ok_or_else(invalid)?;
+    let (number, total) = definition.split_once('/').ok_or_else(invalid)?;
+    let number: usize = number.trim().parse().map_err(|_| invalid())?;
+    let total: usize = total.trim().parse().map_err(|_| invalid())?;
+    if number < 1 || number > total {
+        return Err(invalid());
+    }
+    Ok((rule.trim().to_owned(), number, total))
+}
+
 impl Profile {
     /// The settings of profiles given at launch, like `--profile` and `--workflow-profile`: a
     /// folder or a settings file each. A later profile replaces the settings it has.
@@ -226,6 +267,31 @@ impl Profile {
             self.executor = other.executor;
         }
         self.all_temp = self.all_temp || other.all_temp;
+        self.notemp = self.notemp || other.notemp;
+        if other.wrapper_prefix.is_some() {
+            self.wrapper_prefix = other.wrapper_prefix;
+        }
+        if !other.groups.is_empty() {
+            self.groups = other.groups;
+        }
+        if !other.group_components.is_empty() {
+            self.group_components = other.group_components;
+        }
+        if !other.prioritize.is_empty() {
+            self.prioritize = other.prioritize;
+        }
+        if !other.set_scatter.is_empty() {
+            self.set_scatter = other.set_scatter;
+        }
+        if !other.consider_ancient.is_empty() {
+            self.consider_ancient = other.consider_ancient;
+        }
+        if other.allowed_rules.is_some() {
+            self.allowed_rules = other.allowed_rules;
+        }
+        if other.batch.is_some() {
+            self.batch = other.batch;
+        }
     }
 
     /// The global resources of the run as Snakemake's command line sets them: `_cores` and
@@ -272,6 +338,23 @@ impl Profile {
         for (key, value) in interpreter.mapping_items(&settings)? {
             if value.is_none() {
                 continue;
+            }
+            let pending = [
+                "wrapper-prefix",
+                "groups",
+                "group-components",
+                "prioritize",
+                "P",
+                "set-scatter",
+                "consider-ancient",
+                "allowed-rules",
+                "batch",
+            ];
+            if pending.contains(&interpreter.to_str(&key)?.as_str()) {
+                return Err(Error::unsupported(format!(
+                    "Snakemake profile setting '{}'",
+                    interpreter.to_str(&key)?
+                )));
             }
             match interpreter.to_str(&key)?.as_str() {
                 "configfile" | "configfiles" => {
@@ -322,6 +405,40 @@ impl Profile {
                 "resources" | "res" => profile.resources = pairs(interpreter, &value)?,
                 "executor" => profile.executor = Some(interpreter.to_str(&value)?),
                 "all-temp" => profile.all_temp = interpreter.truthy(&value)?,
+                "notemp" | "nt" | "no-temp" => profile.notemp = interpreter.truthy(&value)?,
+                "wrapper-prefix" => profile.wrapper_prefix = Some(interpreter.to_str(&value)?),
+                "groups" => profile.groups = pairs(interpreter, &value)?,
+                "group-components" => {
+                    let message = "Invalid group components definition: entries have to be defined as GROUP=COMPONENTS pairs (with COMPONENTS being a positive integer)";
+                    for (group, number) in pairs(interpreter, &value)? {
+                        let number = (number.trim_matches(['\'', '"']).parse::<usize>().ok())
+                            .filter(|number| *number > 0)
+                            .ok_or_else(|| workflow_error(message))?;
+                        profile.group_components.push((group, number));
+                    }
+                }
+                "prioritize" | "P" => profile.prioritize = words(interpreter, &value)?,
+                "allowed-rules" => profile.allowed_rules = Some(words(interpreter, &value)?),
+                "set-scatter" => {
+                    let message = "Invalid scatter definition: entries have to be defined as NAME=SCATTERITEMS pairs (with SCATTERITEMS being a positive integer).";
+                    for (name, number) in pairs(interpreter, &value)? {
+                        let number = (number.trim_matches(['\'', '"']).parse::<i64>().ok())
+                            .filter(|number| *number >= 0)
+                            .ok_or_else(|| workflow_error(message))?;
+                        profile.set_scatter.push((name, number));
+                    }
+                }
+                "consider-ancient" => {
+                    for (rule, items) in pairs(interpreter, &value)? {
+                        let items = items.trim_matches(['\'', '"']);
+                        let items = items
+                            .split(',')
+                            .map(|item| item.trim().to_owned())
+                            .collect();
+                        profile.consider_ancient.push((rule, items));
+                    }
+                }
+                "batch" => profile.batch = Some(batch(&interpreter.to_str(&value)?)?),
                 "rerun-triggers" => {
                     let values = if let Some(text) = value.as_str() {
                         text.split_whitespace().map(str::to_owned).collect()

@@ -1563,7 +1563,8 @@ impl Session {
     /// Removes the `temp()` outputs of the shared directory that no job waits for anymore,
     /// as Snakemake's `handle_temp`: those of the `finished` jobs and of their inputs.
     fn release_temporary(&mut self, finished: &[usize]) -> Result<(), DriverError> {
-        let Some(planner) = self.planner.as_ref().filter(|_| self.shared) else {
+        let notemp = self.state.borrow().profile.notemp;
+        let Some(planner) = self.planner.as_ref().filter(|_| self.shared && !notemp) else {
             return Ok(());
         };
         let mut candidates = std::mem::take(&mut self.deferred);
@@ -1726,6 +1727,10 @@ impl Session {
             .map(|planner| planner.jobs[job].temporary_files())
             .unwrap_or_default();
         temporary.retain(|file| !self.kept.contains(file));
+        // `notemp` keeps them, as Snakemake skips `handle_temp`.
+        if self.state.borrow().profile.notemp {
+            temporary.clear();
+        }
         // An executor may give an absolute output without its leading `/`, as the simulator does.
         let declared = self
             .planner

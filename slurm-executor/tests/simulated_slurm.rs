@@ -865,6 +865,62 @@ async fn recovers_lost_submissions() {
 }
 
 #[tokio::test]
+async fn recovery_cleans_staging() {
+    let root = tempfile::tempdir().unwrap();
+    let bin = cluster(root.path(), NODE_APPTAINER);
+    std::fs::write(bin.join("missing-response"), "").unwrap();
+    let mut backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    backend.submit_grace = Duration::from_secs(2);
+    let objects = content_store::Store::local(&root.path().join("staging")).unwrap();
+    // A helper that fails ends the job at once, after it sent its log.
+    backend.remote = Some(NodeStaging {
+        stage: RemoteStage {
+            objects,
+            expiry: Duration::from_secs(600),
+            max_outputs: 4,
+            credentials: false,
+            cleanup: true,
+        },
+        helper: Helper::Path("/bin/false".into()),
+        folder: Some(text(&root.path().join("node"))),
+        secret_file: None,
+    });
+    let spec = spec("true");
+    let (staging, placement) = (staging(root.path(), "hello\n"), placement());
+    let job = Job {
+        name: "unclear",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    assert!(backend.run(job, &CancellationToken::new()).await.is_err());
+    // The job may still run, so its objects stay, and the journal names them.
+    let path = backend.scratch.join("unclear/remote.json");
+    let record: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let plan = record["staging"]["plan"]
+        .as_str()
+        .expect("the plan")
+        .to_owned();
+    let stage = &backend.remote.as_ref().unwrap().stage;
+    let contents = stage.objects.objects("cas/").await.unwrap();
+    assert!(
+        contents.iter().any(|object| object.location == plan),
+        "{contents:?}"
+    );
+    // Recovery finds the job, and then removes the plan and what the job sent back.
+    until(|| bin.join("state/101.exit").exists()).await;
+    backend.reconcile().await.unwrap();
+    assert!(!path.exists());
+    let contents = stage.objects.objects("cas/").await.unwrap();
+    assert_eq!(contents.len(), 2, "{contents:?}");
+    assert!(stage.objects.objects("attempts/").await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn admits_active_owner() {
     let root = tempfile::tempdir().unwrap();
     let bin = cluster(root.path(), APPTAINER);

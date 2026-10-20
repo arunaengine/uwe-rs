@@ -148,7 +148,7 @@ staging_root = "s3://bucket/iunctus-staging"
 node_folder = "/local/scratch"               # the default is $TMPDIR, else /tmp
 ```
 
-A SLURM job makes a new private folder in the node folder. It gets the binary there with `curl` or `wget` and checks it, stages the inputs into the `data` folder in it, runs the container with binds to the `data` folder only, and sends the outputs back. The task cannot change the binary, the plan or the log of the job, which run or count after the task. Apptainer pulls the image on each node. iunctus cannot see the machine of the nodes, so it must match the binary: the job checks `uname -m` and fails with a clear message when it differs. Instead of the uploaded binary, a job may get it from a path on the nodes, or from an address of your own:
+A SLURM job makes a new private folder in the node folder. It gets the binary there with `curl` or `wget` and checks it, stages the inputs into the `data` folder in it, runs the container with binds to the `data` folder only, and sends the outputs back. The task cannot change the binary, the plan or the log of the job, which run or count after the task. Apptainer pulls the image on each node. iunctus cannot see the machine of the nodes, so it must match the binary: the job checks `uname -m` and fails with a clear message when it differs. On every exit, also after a failure or a cancellation, the job removes its folder. Before that it sends its log back, with the helper or else with `curl` or `wget`, and iunctus shows the end of the log in the error of the task. A log that cannot go back stays beside the folder on the node, as `iunctus-<attempt>.<random>.log`. Instead of the uploaded binary, a job may get it from a path on the nodes, or from an address of your own:
 
 ```toml
 [executor.slurm]
@@ -157,14 +157,14 @@ helper_sha256 = "<its SHA-256, 64 hex digits>"
 # helper_path = "/opt/iunctus/bin/iunctus"   # instead, when the nodes have it already
 ```
 
-On Kubernetes the task image stays as it is, so the binary comes in through init containers. The first one runs busybox, which downloads the binary into an `emptyDir` volume and checks it. The second one runs the binary in the same busybox image and stages the inputs into an `emptyDir` volume. This happens before the task container starts, because the kubelet would make each missing `subPath` folder of the task container as root, and then the task could not write there. The task container sees the binary in the `emptyDir` volume and sends the outputs back after the task. The Job asks for nodes of the machine of the binary with the `kubernetes.io/arch` node selector. The busybox image is pinned by its digest; `helper_download_image` names another image with a shell, `wget` and `sha256sum`, for example from a registry mirror.
+On Kubernetes the task image stays as it is, so the binary comes in through init containers. The first one runs Alpine, which downloads the binary into an `emptyDir` volume and checks it. The second one runs the binary in the same Alpine image and stages the inputs into an `emptyDir` volume. This happens before the task container starts, because the kubelet would make each missing `subPath` folder of the task container as root, and then the task could not write there. The task container sees the binary in the `emptyDir` volume and sends the outputs back after the task. The Job asks for nodes of the machine of the binary with the `kubernetes.io/arch` node selector. The Alpine image is pinned by its digest; `helper_download_image` names another image with a shell, `wget` and `sha256sum`, for example from a registry mirror. Alpine is used rather than busybox because the `wget` of busybox does not check the certificate of the server, and the presigned address of the binary should not go to a server that pretends to be the staging root. A mirror image should check certificates too.
 
 ```toml
 [executor.kubernetes]
 staging = "object-store"
 staging_root = "s3://bucket/iunctus-staging"
 # helper_file = "/home/me/iunctus-arm64"                 # instead of the running binary
-# helper_download_image = "mirror.example.org/busybox"   # instead of docker.io/library/busybox
+# helper_download_image = "mirror.example.org/alpine"    # instead of docker.io/library/alpine
 ```
 
 Instead, a helper image may hold the binary:
@@ -199,6 +199,7 @@ On Kubernetes the task container holds these credentials too, as it sends the ou
 
 Limits of object-store staging:
 
+- A SLURM job or Kubernetes pod may run `staging_minutes` longer than the time of its task (default 30, or 5 with `shared-path`), for image pulls, staging and the start of its container. The task itself still stops at its own time.
 - Presigned requests work for `presign_hours` (default 168, the most that S3 allows). This must cover the time that a task waits in the queue and runs. Requests signed with temporary credentials end with those credentials.
 - With presigned requests, each output file goes up in one request of at most 5 GiB, the S3 limit for one upload. A larger file fails the task with a clear message. With credentials it goes up in parts of 8 MiB, and S3 takes at most 10,000 parts, so about 78 GiB.
 - A task gives back at most `max_outputs` files (default 1024).
@@ -226,7 +227,7 @@ helm install kubedal oci://ghcr.io/arunaengine/charts/kubedal --namespace kube-s
 
 Make a DataNode that may write, with its credentials Secret, whose `config` names the bucket and the `root` of the staging root. Put it in the namespace of the Jobs, or give their service account the right to `get` it. iunctus waits until Kubernetes removed the pod, which happens only once kubedal uploaded the outputs, and then checks that every output file that the task listed is there. The pod gets the group of the user who runs iunctus as `fsGroup`, so that the task can write to the volume.
 
-Both modes keep inputs under `cas/` and the results of attempts under `attempts/` in the staging root. With `staging_cleanup = true`, iunctus removes the results and the plan of an attempt once it has collected them. It never removes the inputs, as other tasks may use them; a lifecycle rule of the bucket can.
+Both modes keep inputs under `cas/` and the results of attempts under `attempts/` in the staging root. With `staging_cleanup = true`, iunctus removes the results and the plan of every attempt once its job surely ended: after a success, a failure or a cancellation, once it has collected what it needs. For a job that may still run, iunctus keeps the journal of the attempt, and the recovery at the next run removes them. It never removes the inputs, as other tasks may use them; a lifecycle rule of the bucket can.
 
 ## Known pitfalls
 

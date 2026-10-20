@@ -78,6 +78,7 @@ const OPERATORS: &[&str] = &[
     "toSortedList",
     "transpose",
     "typedCombine",
+    "typedReduce",
     "unique",
     "until",
     "view",
@@ -344,7 +345,8 @@ impl Host for Builder<'_> {
             };
             let channel = match argument {
                 Value::Channel(channel) => channel,
-                Value::Null => {
+                // A typed process takes null as a value, which its input type may refuse.
+                Value::Null if !module.types => {
                     return Err(thrown("A process input channel evaluates to null".into()));
                 }
                 plain => {
@@ -662,6 +664,9 @@ impl Host for Builder<'_> {
             }
             ("reduce", [Value::Closure(closure)]) => {
                 (Kind::Gather(Gather::Reduce(closure.clone())), true)
+            }
+            ("typedReduce", [Value::Closure(closure)]) => {
+                (Kind::Gather(Gather::TypedReduce(closure.clone())), true)
             }
             ("reduce", [seed, Value::Closure(closure)]) => {
                 let output = self.network.channel(true);

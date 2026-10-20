@@ -316,3 +316,37 @@ workflow {
         ]
     );
 }
+
+/// A typed input takes null only with `?` on its type, and `reduce` of typed workflows fails
+/// for an empty channel, as in Nextflow 26.04.6.
+#[test]
+fn checks_typed_nulls() {
+    let script = |body: &str| {
+        format!(
+            "nextflow.enable.types = true\nprocess P {{\n    input:\n    x: Integer\n    output:\n    \
+             y = x\n    script:\n    'true'\n}}\nprocess Q {{\n    input:\n    x: String?\n    output:\n    \
+             y = x\n    script:\n    'true'\n}}\nworkflow {{\n    {body}\n}}\n"
+        )
+    };
+    let error = run(&script("P(null)")).unwrap_err();
+    assert!(
+        error.ends_with(
+            "[P] input at index 0 cannot be null -- append `?` to the type annotation to mark it \
+             as nullable"
+        ),
+        "{error}"
+    );
+    let (tasks, _) = run(&script("Q(null)")).expect("runs");
+    assert_eq!(tasks.len(), 1);
+    let error = run(&script(
+        "channel.empty().reduce { a, b -> a + b }.subscribe { v -> println v }",
+    ))
+    .unwrap_err();
+    assert!(
+        error.ends_with(
+            "Operator `reduce` received an empty channel with no initial value -- make sure to \
+             provide an initial value if the channel might be empty"
+        ),
+        "{error}"
+    );
+}

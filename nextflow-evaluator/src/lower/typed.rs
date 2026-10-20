@@ -28,6 +28,17 @@ pub(super) fn enabled(script: &ast::Script) -> bool {
     })
 }
 
+/// The indexes of the typed inputs that may not be null: those without `?` on their type.
+pub(super) fn non_null(inputs: &[ProcessInput]) -> Vec<usize> {
+    (inputs.iter().enumerate())
+        .filter(|(_, input)| match input {
+            ProcessInput::Named(typed) => typed.annotation.as_ref().is_none_or(|t| !t.nullable),
+            _ => true,
+        })
+        .map(|(index, _)| index)
+        .collect()
+}
+
 /// How many files a typed input takes: one for `Path`, any number for a collection of paths.
 fn path_arity(annotation: Option<&ast::Type>) -> Option<&'static str> {
     let annotation = annotation?;

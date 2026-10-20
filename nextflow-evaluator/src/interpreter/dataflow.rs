@@ -468,6 +468,7 @@ impl Interpreter<'_> {
         let name = match (self.types, name, arguments.as_slice()) {
             (true, "collect", []) => "toList",
             (true, "combine", _) => "typedCombine",
+            (true, "reduce", [Value::Closure(_)]) => "typedReduce",
             _ => name,
         };
         if self.types && matches!(name, "set" | "tap") {

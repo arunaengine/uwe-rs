@@ -77,6 +77,16 @@ pub fn encode(interpreter: &mut Interpreter, value: &Value) -> Result<Json, Erro
                 object.reference()?
             } else if let Some(path) = object.as_any().downcast_ref::<PathObject>() {
                 tagged("path", Json::String(path.path.clone()))
+            } else if let Some(record) = object.as_any().downcast_ref::<super::Record>() {
+                let mut names = Vec::with_capacity(record.names.len());
+                for (name, item) in &record.names {
+                    names.push(Json::Array(vec![
+                        Json::String(name.clone()),
+                        encode(interpreter, item)?,
+                    ]));
+                }
+                let items = all(interpreter, &record.items)?;
+                tagged("record", Json::Array(vec![items, Json::Array(names)]))
             } else if object.instance_of("str") {
                 Json::String(interpreter.to_str(value)?)
             } else if let Ok(items) = interpreter.iterate(value) {

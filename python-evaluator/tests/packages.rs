@@ -385,3 +385,36 @@ fn installs_pinned_versions() {
         json!({"op": "import", "module": "toy", "packages": ["Toy==1.0"]})
     );
 }
+
+/// A list with names, like Snakemake's `input`, goes to the process as plain data that the
+/// process makes a list with attributes of, for jinja2 templates.
+#[test]
+fn sends_named_records() {
+    use python_evaluator::Value;
+    let mut test = interpreter(
+        vec![
+            handle(1, "module", false),
+            handle(2, "function", true),
+            value(json!("rendered")),
+        ],
+        None,
+    );
+    let record = python_evaluator::packages::Record {
+        items: vec![Value::str("a.txt"), Value::str("t.j2")],
+        names: vec![("template".into(), Value::str("t.j2"))],
+    };
+    let globals = test.interpreter.new_globals("__main__", None);
+    globals.set("input", Value::native(record));
+    test.interpreter
+        .exec_text(
+            "<test>",
+            "import toy\nprint(toy.render(input=input))\n",
+            &globals,
+        )
+        .expect("runs");
+    let call = requests(&test).pop().expect("a call");
+    assert_eq!(
+        call["kwargs"],
+        json!([["input", {"record": [["a.txt", "t.j2"], [["template", "t.j2"]]]}]])
+    );
+}

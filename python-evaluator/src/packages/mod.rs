@@ -21,6 +21,27 @@ use crate::error::Error;
 use crate::interpreter::Interpreter;
 use crate::value::Value;
 
+/// A list with named items for the Python process, like Snakemake's `Namedlist`: there it
+/// becomes a list whose names are attributes, made of plain data only.
+pub struct Record {
+    pub items: Vec<Value>,
+    pub names: Vec<(String, Value)>,
+}
+
+impl crate::value::Native for Record {
+    fn type_name(&self) -> &str {
+        "Namedlist"
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn iterate(&self, _: &mut Interpreter) -> Result<Option<Vec<Value>>, Error> {
+        Ok(Some(self.items.clone()))
+    }
+}
+
 /// The script of the Python process, which answers the requests of the interpreter.
 pub const SERVER: &str = include_str!("server.py");
 

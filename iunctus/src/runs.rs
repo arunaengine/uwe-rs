@@ -674,7 +674,13 @@ mod tests {
         let digest = runtime.block_on(store.put_tree(&tree)).expect("keeps tree");
         let folder = crate::repeat::restoration_folder(root.path(), "export")
             .unwrap_or_else(|error| panic!("{}", error.message));
-        std::fs::write(
+        // Store files are read-only; a user can unlock and change them.
+        let damage = |path: std::path::PathBuf, bytes: &str| {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
+                .and_then(|()| std::fs::write(&path, bytes))
+        };
+        damage(
             store
                 .local_path(&content_store::layout::content(&file))
                 .expect("local CAS"),
@@ -692,7 +698,7 @@ mod tests {
                 .count(),
             0
         );
-        std::fs::write(
+        damage(
             store
                 .local_path(&content_store::layout::tree(&digest))
                 .expect("local manifest"),

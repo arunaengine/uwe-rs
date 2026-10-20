@@ -207,3 +207,35 @@ fn limits_group_resources() {
     assert_eq!(next.len(), 1, "the other group starts: {next:?}");
     assert_ne!(next[0].id, started[0].id);
 }
+
+/// Snakemake 9.27 takes `all-temp` from a profile and marks every output `temp()`, and
+/// ignores `max-jobs-per-timespan`, which only paces job submission.
+#[test]
+fn marks_all_temporary() {
+    let snakefile = "rule all:\n    input: 'b'\nrule a:\n    output: 'a'\n    shell: 'touch {output}'\nrule b:\n    input: 'a'\n    output: 'b'\n    shell: 'cp {input} {output}'\n";
+    let folder = tempfile::tempdir().expect("a folder");
+    let settings = "all-temp: true\nmax-jobs-per-timespan: 10/1s\n";
+    let launch = profile_launch(folder.path(), settings, snakefile);
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    let mut executor = workflow_graph::Simulator::new(folder.path().join("made"));
+    let mut delivered = Delivered::default();
+    let run = workflow_graph::Engine::new(&mut executor)
+        .observer(&mut delivered)
+        .run("temp", driver.as_mut());
+    assert!(run.error.is_none(), "{:?}", run.error);
+    // The target stays; the file that only the next job reads goes.
+    assert_eq!(delivered.0, ["b"]);
+}
+
+#[derive(Default)]
+struct Delivered(Vec<String>);
+
+impl workflow_graph::Observer for Delivered {
+    fn event(&mut self, event: workflow_graph::Event<'_>) {
+        if let workflow_graph::Event::Delivered { delivery } = event {
+            let name = std::path::Path::new(&delivery.target).file_name();
+            self.0
+                .push(name.unwrap_or_default().to_string_lossy().into_owned());
+        }
+    }
+}

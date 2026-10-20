@@ -1154,6 +1154,12 @@ impl Hook {
                     }
                     if output {
                         crate::rule::check_output_duplicates(&rule.name, &rule.output)?;
+                        // `--all-temp` marks every output as temporary, as Snakemake's `Rule`.
+                        if self.state.borrow().profile.all_temp {
+                            for value in &mut rule.output.values {
+                                *value = value.with_tag("temp", Value::Bool(true));
+                            }
+                        }
                     }
                 }
                 RuleKeyword::Benchmark => {

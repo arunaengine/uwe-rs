@@ -185,6 +185,14 @@ impl Interpreter<'_> {
                 Ok(Value::list(items))
             }
             Input::Each(inner) => self.entry_argument(process, inner, params),
+            Input::Record(fields) => {
+                let mut entries = Vec::new();
+                for (name, inner) in fields {
+                    let value = self.entry_argument(process, inner, params)?;
+                    entries.push((Value::String(name.clone()), value));
+                }
+                Ok(Value::map(entries))
+            }
         }
     }
 

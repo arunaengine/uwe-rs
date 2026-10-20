@@ -350,3 +350,83 @@ fn checks_typed_nulls() {
         "{error}"
     );
 }
+
+/// Runs `main.nf` with an included `sub.nf` and gives the printed lines, sorted.
+fn run_pair(main: &str, sub: &str) -> Vec<String> {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(root.path().join("main.nf"), main).expect("writes main.nf");
+    std::fs::write(root.path().join("sub.nf"), sub).expect("writes sub.nf");
+    let module = nextflow_runtime::Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).expect("runs");
+    let mut lines: Vec<String> = output.0.lines().map(str::to_owned).collect();
+    lines.sort_unstable();
+    lines
+}
+
+/// `nextflow.enable.types` types the operators of its own script only, also for channels
+/// that come from the other script, as Nextflow 26.04.6 prints for these scripts.
+#[test]
+fn types_per_script() {
+    let lines = run_pair(
+        "nextflow.enable.types = true
+include { SUB } from './sub'
+workflow {
+    SUB(channel.of([1, [2, 3]], [4]))
+    channel.of([1, [2, 3]], [4]).collect().subscribe { v -> println \"main collect $v\" }
+    channel.of(1).combine(channel.of('a')).subscribe { v -> println \"main combine $v\" }
+    println \"main class ${channel.of(1).getClass().name}\"
+}
+",
+        "workflow SUB {
+    take:
+    ch
+    main:
+    ch.collect().subscribe { v -> println \"sub collect $v\" }
+    channel.of([1]).combine(channel.of(['a'])).subscribe { v -> println \"sub combine $v\" }
+    println \"sub class ${channel.of(1).getClass().name}\"
+    channel.of(5).set { x }
+    x.tap { y }.subscribe { v -> println \"sub set $v\" }
+}
+",
+    );
+    assert_eq!(
+        lines,
+        [
+            "main class nextflow.dataflow.ChannelImpl",
+            "main collect [[1, [2, 3]], [4]]",
+            "main combine [1, a]",
+            "sub class groovyx.gpars.dataflow.DataflowBroadcast",
+            "sub collect [1, [2, 3], 4]",
+            "sub combine [1, a]",
+            "sub set 5",
+        ]
+    );
+    let lines = run_pair(
+        "include { SUB } from './sub'
+workflow {
+    SUB(channel.of([1, [2, 3]], [4]))
+    channel.of([1, [2, 3]], [4]).collect().subscribe { v -> println \"main collect $v\" }
+}
+",
+        "nextflow.enable.types = true
+workflow SUB {
+    take:
+    ch
+    main:
+    ch.collect().subscribe { v -> println \"sub collect $v\" }
+    channel.of([1]).combine(channel.of(['a'])).subscribe { v -> println \"sub combine $v\" }
+}
+",
+    );
+    assert_eq!(
+        lines,
+        [
+            "main collect [1, [2, 3], 4]",
+            "sub collect [[1, [2, 3]], [4]]",
+            "sub combine [[1], [a]]",
+        ]
+    );
+}

@@ -294,9 +294,23 @@ impl Interpreter<'_> {
         Ok(outputs)
     }
 
+    /// Runs a workflow body with the typed operators of its own script, as Nextflow does.
+    fn call_workflow(
+        &mut self,
+        module: &Rc<Module>,
+        workflow: &Rc<Workflow>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> Result<Value, Error> {
+        let outer = std::mem::replace(&mut self.types, module.types);
+        let result = self.workflow_body(module, workflow, arguments, span);
+        self.types = outer;
+        result
+    }
+
     /// Runs a workflow body with its takes bound; the result is its emits. A plain value
     /// that a workflow emits becomes a value channel.
-    fn call_workflow(
+    fn workflow_body(
         &mut self,
         module: &Rc<Module>,
         workflow: &Rc<Workflow>,

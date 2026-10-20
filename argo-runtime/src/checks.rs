@@ -183,7 +183,6 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
         ("podResources", template.pod_resources.is_some()),
         ("resourceClaims", template.resource_claims.is_some()),
         ("pendingTimeout", template.pending_timeout.is_some()),
-        ("archiveLocation", template.archive_location.is_some()),
     ] {
         if present {
             return Some(format!("template {name}: `{field}` is not supported"));

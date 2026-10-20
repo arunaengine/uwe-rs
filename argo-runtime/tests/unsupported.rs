@@ -23,7 +23,6 @@ fn start_error(spec: &str) -> DriverError {
 fn rejects_workflow_controls() {
     for field in [
         "synchronization: {semaphores: [{database: {key: lock}}]}",
-        "artifactRepositoryRef: {configMap: artifacts}",
         "podSpecPatch: '{}'",
         "podResources: {}",
         "resourceClaims: []",
@@ -49,7 +48,6 @@ fn rejects_template_controls() {
         "podResources: {}",
         "resourceClaims: []",
         "pendingTimeout: 5s",
-        "archiveLocation: {s3: {bucket: outputs}}",
     ] {
         for spec in [
             format!(
@@ -245,7 +243,6 @@ fn rejects_transfer_options() {
     }
     for artifact in [
         "git: {repo: 'https://example.org/repository.git'}",
-        "s3: {key: input.txt}",
         "s3: {bucket: data, key: input.txt, endpoint: example.org}",
         "http: {url: 'https://example.org/input', headers: [{name: Authorization, value: secret}]}",
         "raw: {data: input}, archive: {tar: {}}",

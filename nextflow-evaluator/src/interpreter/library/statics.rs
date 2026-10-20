@@ -115,6 +115,52 @@ impl Interpreter<'_> {
             }
             ("Runtime", "getRuntime", []) => Value::Namespace("Runtime.runtime".into()),
             ("String", "valueOf", [value]) => Value::string(value.to_string()),
+            ("String", "join", [separator, items @ ..]) if !items.is_empty() => {
+                let items = match items {
+                    [single @ (Value::List(_) | Value::Set(_))] => super::elements(single),
+                    several => several.to_vec(),
+                };
+                let texts: Vec<String> = items.iter().map(Value::to_string).collect();
+                Value::string(texts.join(&separator.to_string()))
+            }
+            // Java's `Boolean.parseBoolean`: only `true` in any case is true.
+            ("Boolean", "parseBoolean" | "valueOf", [Value::Boolean(value)]) => {
+                Value::Boolean(*value)
+            }
+            ("Boolean", "parseBoolean" | "valueOf", [text]) => {
+                Value::Boolean(text.to_string().eq_ignore_ascii_case("true"))
+            }
+            ("Integer" | "Long", "toString", [Value::Number(number)]) => {
+                Value::string(number.to_i64().to_string())
+            }
+            ("Integer" | "Long", "toString", [Value::Number(number), Value::Number(radix)]) => {
+                Value::string(radix_text(number.to_i64(), radix.to_i64() as u32))
+            }
+            // The digits of the unsigned 32 or 64 bits, as Java gives them for negatives.
+            (
+                "Integer" | "Long",
+                "toHexString" | "toBinaryString" | "toOctalString",
+                [Value::Number(number)],
+            ) => {
+                let bits = match class {
+                    "Integer" => u64::from(number.to_i64() as i32 as u32),
+                    _ => number.to_i64() as u64,
+                };
+                Value::string(match name {
+                    "toHexString" => format!("{bits:x}"),
+                    "toBinaryString" => format!("{bits:b}"),
+                    _ => format!("{bits:o}"),
+                })
+            }
+            // Nextflow's `Duration.of` and `MemoryUnit.of`: text, or milliseconds and bytes.
+            ("Duration", "of", [Value::Number(millis)]) => Value::Duration(millis.to_i64()),
+            ("Duration", "of", [text]) => {
+                Value::Duration(crate::units::parse_duration(&text.to_string()).at(span)?)
+            }
+            ("MemoryUnit", "of", [Value::Number(bytes)]) => Value::MemoryUnit(bytes.to_i64()),
+            ("MemoryUnit", "of", [text]) => {
+                Value::MemoryUnit(crate::units::parse_memory(&text.to_string()).at(span)?)
+            }
             ("System", "getenv", [variable]) => self
                 .host
                 .environment(&variable.to_string())
@@ -144,6 +190,12 @@ impl Interpreter<'_> {
         let number = |number| Some(Value::Number(number));
         match (class, name) {
             ("Integer", "MAX_VALUE") => number(Number::Integer(i32::MAX)),
+            // A `RoundingMode` is its name, which `setScale` reads.
+            (
+                "RoundingMode",
+                "UP" | "DOWN" | "CEILING" | "FLOOR" | "HALF_UP" | "HALF_DOWN" | "HALF_EVEN"
+                | "UNNECESSARY",
+            ) => Some(Value::string(name)),
             ("Integer", "MIN_VALUE") => number(Number::Integer(i32::MIN)),
             ("Double", "POSITIVE_INFINITY") => number(Number::Double(f64::INFINITY)),
             ("Double", "NEGATIVE_INFINITY") => number(Number::Double(f64::NEG_INFINITY)),
@@ -305,4 +357,23 @@ fn parse_uuid(text: &str) -> Result<uuid::Uuid, crate::exception::Exception> {
         ((parts[0] & 0xffffffff) << 32) | ((parts[1] & 0xffff) << 16) | (parts[2] & 0xffff),
         ((parts[3] & 0xffff) << 48) | (parts[4] & 0xffffffffffff),
     ))
+}
+
+/// Java's `Long.toString(value, radix)`: lowercase digits with a minus sign.
+fn radix_text(value: i64, radix: u32) -> String {
+    let radix = if (2..=36).contains(&radix) { radix } else { 10 };
+    let mut magnitude = value.unsigned_abs();
+    let mut digits = Vec::new();
+    loop {
+        let digit = (magnitude % u64::from(radix)) as u32;
+        digits.push(char::from_digit(digit, radix).unwrap_or('0'));
+        magnitude /= u64::from(radix);
+        if magnitude == 0 {
+            break;
+        }
+    }
+    if value < 0 {
+        digits.push('-');
+    }
+    digits.iter().rev().collect()
 }

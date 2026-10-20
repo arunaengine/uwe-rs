@@ -220,6 +220,38 @@ impl BigDecimal {
         }
     }
 
+    /// Java's `setScale(scale, mode)` with a `RoundingMode` by name; `None` when the mode is
+    /// unknown or is `UNNECESSARY` and the value would need rounding.
+    pub fn set_scale(&self, scale: i32, mode: &str) -> Option<Self> {
+        if scale >= self.scale {
+            return Some(self.round_scale(scale));
+        }
+        let divisor = ten_to((self.scale - scale) as u32);
+        let quotient = &self.unscaled / &divisor;
+        let remainder = &self.unscaled % &divisor;
+        if remainder.is_zero() {
+            return Some(Self::new(quotient, scale));
+        }
+        let half = (remainder.abs() * BigInt::from(2)).cmp(&divisor);
+        let away = match mode {
+            "UP" => true,
+            "DOWN" => false,
+            "CEILING" => self.unscaled.is_positive(),
+            "FLOOR" => self.unscaled.is_negative(),
+            "HALF_UP" => half.is_ge(),
+            "HALF_DOWN" => half.is_gt(),
+            "HALF_EVEN" => {
+                half.is_gt() || (half.is_eq() && !(&quotient % BigInt::from(2)).is_zero())
+            }
+            _ => return None,
+        };
+        let quotient = match away {
+            true => quotient + self.unscaled.signum(),
+            false => quotient,
+        };
+        Some(Self::new(quotient, scale))
+    }
+
     /// Compares the values, ignoring the scales: `1.0` and `1.00` are equal.
     pub fn compare(&self, other: &Self) -> Ordering {
         let (left, right, _) = aligned(self, other);

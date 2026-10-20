@@ -667,6 +667,15 @@ impl Interpreter<'_> {
                 Ok(Value::Exception(Rc::new(exception)))
             }
             (None, []) if class == "Date" => Ok(Value::Date(crate::date::now())),
+            // `new BigDecimal(text or number)` and `new BigInteger(text)`, as `toBigDecimal()`
+            // and `toBigInteger()` read them.
+            (None, [value]) if matches!(class, "BigDecimal" | "BigInteger") => {
+                let method = match class {
+                    "BigDecimal" => "toBigDecimal",
+                    _ => "toBigInteger",
+                };
+                self.call_method(value, method, Vec::new(), span)
+            }
             (None, []) if matches!(class, "LinkedHashMap" | "HashMap" | "TreeMap") => {
                 Ok(Value::map([]))
             }

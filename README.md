@@ -19,7 +19,7 @@ So far, the answer is a confident yes. A Snakemake rule and a Nextflow process t
 **Workflow languages**
 
 - **Nextflow** DSL2: processes, workflows, channels and operators, configs and profiles, `publishDir`, `storeDir` and `-entry`. Groovy is evaluated natively in Rust, no JVM needed.
-- **Snakemake**: rules, wildcards, checkpoints, shadow rules, embedded Python and lifecycle hooks. Python is evaluated natively in Rust.
+- **Snakemake**: rules, wildcards, checkpoints, shadow rules, embedded Python, lifecycle hooks, yte and jinja2 templates, and `cwl:` rules, which run on the CWL runtime of iunctus. Python is evaluated natively in Rust.
 - **CWL**: CommandLineTools and workflows with scatter, `when`, `valueFrom`, secondary files and JavaScript expressions (through the Boa engine, no Node.js).
 - **Argo Workflows**: steps, DAGs, loops, conditions, artifacts, retries, timeouts, exit hooks, mutexes and semaphores.
 - Run workflows straight from GitHub, GitLab, Bitbucket or Gitea, pinned to a tag, branch or commit with `-r`.
@@ -237,6 +237,7 @@ Both modes keep inputs under `cas/` and the results of attempts under `attempts/
 - **Languages are native subsets.** iunctus implements the languages in Rust instead of calling the original engines. A workflow that runs on Nextflow or Snakemake can still use a feature iunctus does not support yet. Run `iunctus check <workflow>` first, unsupported features give exit code 33 with a clear message.
 - **Flags differ from the original engines.** iunctus options use one hyphen (`-executor`, `-profile`), workflow parameters use two (`--outdir`). Many Nextflow and Snakemake flags are not accepted. Nextflow `-c FILE` configures the workflow, not iunctus, use `-iunctus-config FILE` for that.
 - **Nextflow work and resume layouts differ.** iunctus has its own store and resume, so tools that read Nextflow `work/` folders or `.nextflow` logs will not find them.
+- **Snakemake jobs share the working directory.** With the local executor, and with SLURM on shared folders, Snakemake jobs run in place in the working directory, as in Snakemake: a file that a job writes without declaring it reaches the next job, and links stay links. Their outputs are still stored, but these jobs are never answered from the cache; Snakemake's own checks decide what runs again. Other executors give each job a folder with its declared files only. A local run forms no group jobs, as Snakemake does locally.
 - **Python packages in Snakemake.** Embedded Python runs natively, but third-party packages run in container helpers, and arbitrary Python objects cannot cross that boundary.
 - **Conda and pip.** Conda environments become container images for local runs and are published for remote executors. Editable, local or VCS `pip:` requirements are not supported.
 - **CWL images that tools build need a registry on remote executors.** A `DockerRequirement` with `dockerFile`, `dockerLoad` or `dockerImport` makes the image with the local engine. For SLURM, Kubernetes and TES, set `registry = "host/team/cwl"` in a `[cwl]` section of the config file: iunctus pushes the image there, and the jobs pull it by its digest. Without it, such tools are refused, even when the requirement is only a hint.

@@ -178,7 +178,8 @@ async fn recovers_lost_response() {
     let original = backend.client.clone();
     let mut backend = backend;
     backend.client = Client::new(&server.address, Some("another-caller".into())).unwrap();
-    assert!(backend.reconcile(&[&backend]).await.is_err());
+    // Other credentials neither submit again nor drop the journal, and block nothing.
+    backend.reconcile(&[&backend]).await.unwrap();
     assert_eq!(server.documents.lock().unwrap().len(), 1);
     assert!(root.join("remote.json").exists());
     backend.client = original;
@@ -244,13 +245,9 @@ async fn omits_unconfigured_idempotency() {
         )
         .await
         .unwrap();
-    assert_eq!(
-        server.documents.lock().unwrap()[0]["tags"]
-            .as_object()
-            .unwrap()
-            .len(),
-        1
-    );
+    let tags = &server.documents.lock().unwrap()[0]["tags"];
+    let keys: Vec<&String> = tags.as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["iunctus-attempt", "iunctus-submission"]);
 }
 
 #[tokio::test]

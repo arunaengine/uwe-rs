@@ -21,7 +21,7 @@ fn evaluate(evaluator: &Evaluator, body: &str) -> Result<Value, String> {
 #[test]
 #[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
 fn preserves_worker_fallback() {
-    let evaluator = Evaluator::default();
+    let evaluator = Evaluator::with_javascript(Vec::new());
     let value =
         evaluate(&evaluator, "${leaked = 1; return {b: 2, a: 1, n: 1e21};}").expect("value");
     let Value::Map(map) = value else {
@@ -40,17 +40,16 @@ fn preserves_worker_fallback() {
         evaluate(&evaluator, "${return undefined;}"),
         Ok(Value::Null)
     );
-    assert_eq!(
-        evaluate(&evaluator, "${HOME}"),
-        Ok(Value::string("${HOME}"))
-    );
+    // As in cwltool, `${...}` is code, and only code under the requirement.
+    let error = evaluate(&Evaluator::default(), "${HOME}").expect_err("no requirement");
+    assert!(error.contains("InlineJavascriptRequirement"), "{error}");
 }
 
 #[tokio::test]
 #[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
 async fn supports_async_callers() {
     tokio::spawn(async {
-        let evaluator = Evaluator::default();
+        let evaluator = Evaluator::with_javascript(Vec::new());
         assert_eq!(
             evaluate(&evaluator, "${return 42;}"),
             Ok(Value::Integer(42))
@@ -74,7 +73,7 @@ fn bounds_native_work() {
                 .collect::<String>()
         ),
     ] {
-        let evaluator = Evaluator::default();
+        let evaluator = Evaluator::with_javascript(Vec::new());
         assert_eq!(evaluate(&evaluator, "${return 1;}"), Ok(Value::Integer(1)));
         let started = Instant::now();
         let error = evaluate(&evaluator, &body).expect_err("bounded computation must fail");
@@ -93,7 +92,7 @@ fn rejects_unbounded_results() {
         "${return 'x'.repeat(20 << 20);}",
         "${var x=null; for(var i=0;i<80;i++) x=[x]; return x;}",
     ] {
-        let evaluator = Evaluator::default();
+        let evaluator = Evaluator::with_javascript(Vec::new());
         assert_eq!(evaluate(&evaluator, "${return 1;}"), Ok(Value::Integer(1)));
         let error = evaluate(&evaluator, body).expect_err("output limit");
         assert!(
@@ -112,7 +111,7 @@ fn rejects_unbounded_results() {
 #[test]
 #[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
 fn cancellation_cleans_worker() {
-    let evaluator = Evaluator::default();
+    let evaluator = Evaluator::with_javascript(Vec::new());
     assert_eq!(evaluate(&evaluator, "${return 1;}"), Ok(Value::Integer(1)));
     let cancel = evaluator.settings.cancel.clone();
     let canceller = std::thread::spawn(move || {

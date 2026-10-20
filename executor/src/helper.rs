@@ -22,6 +22,13 @@ pub const MOST_BYTES: u64 = 5 << 30;
 /// `[storage.<name>]` tables of a config file, for a plan of object addresses.
 pub const STORAGE: &str = "IUNCTUS_STAGING_STORAGE";
 
+/// How long a transfer may get no data before it fails and is tried again. A large file has no
+/// limit on its whole time.
+const IDLE: Duration = match cfg!(test) {
+    true => Duration::from_secs(2),
+    false => Duration::from_secs(120),
+};
+
 /// What a node places before a task starts and sends back after it ended.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -349,9 +356,11 @@ fn send(
     for (name, value) in &request.headers {
         built = built.header(name, value);
     }
-    if let Some((file, size)) = body {
-        built = built.body(reqwest::blocking::Body::sized(file, size));
-    }
+    // A request without a body waits at most `IDLE` for its answer and for each read after.
+    built = match body {
+        Some((file, size)) => built.body(reqwest::blocking::Body::sized(file, size)),
+        None => built.timeout(IDLE),
+    };
     let response = built.send().map_err(|error| without_url(&error))?;
     let status = response.status();
     if !status.is_success() {
@@ -361,7 +370,8 @@ fn send(
 }
 
 /// The HTTP client of the helper. It trusts the certificates of the system and the roots of
-/// Mozilla, as the image of a task may have no certificates of its own.
+/// Mozilla, as the image of a task may have no certificates of its own. An upload has no read
+/// to time, so the kernel drops a connection whose data stays unacknowledged for `IDLE`.
 fn client() -> Result<reqwest::blocking::Client, String> {
     let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
         .iter()
@@ -369,6 +379,8 @@ fn client() -> Result<reqwest::blocking::Client, String> {
     reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(30))
         .timeout(None)
+        .tcp_keepalive(Duration::from_secs(30))
+        .tcp_user_timeout(IDLE)
         .tls_certs_merge(roots)
         .build()
         .map_err(|error| without_url(&error))

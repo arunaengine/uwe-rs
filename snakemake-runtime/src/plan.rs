@@ -372,15 +372,29 @@ impl Planner {
         best.map(|(_, values)| values)
     }
 
-    /// The rules whose outputs, logs or benchmarks match a file.
-    fn candidates(&self, file: &str) -> Vec<usize> {
-        (0..self.rules.len())
-            .filter(|rule| {
-                self.matchers[*rule]
-                    .iter()
-                    .any(|matcher| matcher.matches(file).is_some())
-            })
-            .collect()
+    /// The rules whose outputs, logs or benchmarks match a file. A constraint that is no
+    /// valid regex fails once a rule may make the file, as `Rule.is_producer` does.
+    fn candidates(&self, file: &str) -> Result<Vec<usize>, Failure> {
+        let mut found = Vec::new();
+        for (rule, matchers) in self.matchers.iter().enumerate() {
+            if !matchers.iter().any(|matcher| matcher.may_match(file)) {
+                continue;
+            }
+            for matcher in matchers {
+                if let Some(error) = matcher.error() {
+                    let rule = &self.rules[rule];
+                    return Err(Failure::Error(crate::workflow::workflow_error(format!(
+                        "IOFileException in file \"{}\", line {}:\n{error} in wildcard statement",
+                        rule.snakefile, rule.line
+                    ))));
+                }
+                if matcher.matches(file).is_some() {
+                    found.push(rule);
+                    break;
+                }
+            }
+        }
+        Ok(found)
     }
 
     /// Whether a job would repeat a rule of the jobs that ask for it with growing wildcard
@@ -421,7 +435,7 @@ impl Planner {
             self.producers.insert(file.to_owned(), None);
             return Ok(None);
         }
-        let mut candidates = self.candidates(file);
+        let mut candidates = self.candidates(file)?;
         if candidates.is_empty() {
             self.producers.insert(file.to_owned(), None);
             return Ok(None);

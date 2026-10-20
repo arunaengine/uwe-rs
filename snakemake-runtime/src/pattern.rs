@@ -210,7 +210,8 @@ pub fn regex_text(pattern: &str) -> String {
 /// A compiled pattern for matching files.
 pub struct Matcher {
     pub pattern: String,
-    regex: Option<Regex>,
+    /// The compiled regex, or the error of a constraint that is not a valid regex.
+    regex: Result<Regex, String>,
     names: Vec<String>,
     /// The text before the first wildcard and after the last, to rule out most files fast.
     prefix: String,
@@ -237,7 +238,7 @@ impl Matcher {
         };
         let matcher = Rc::new(Matcher {
             pattern: pattern.to_owned(),
-            regex: Regex::new(&regex_text(pattern)).ok(),
+            regex: Regex::new(&regex_text(pattern)).map_err(|error| error.to_string()),
             names: wildcard_names(pattern),
             prefix,
             suffix,
@@ -250,9 +251,14 @@ impl Matcher {
         matcher
     }
 
-    /// Whether the pattern could be compiled; a constraint may be an invalid regex.
-    pub fn is_valid(&self) -> bool {
-        self.regex.is_some()
+    /// The error of a constraint that is not a valid regex.
+    pub fn error(&self) -> Option<&str> {
+        self.regex.as_ref().err().map(String::as_str)
+    }
+
+    /// Whether the file has the text before the first and after the last wildcard.
+    pub fn may_match(&self, file: &str) -> bool {
+        file.starts_with(&self.prefix) && file.ends_with(&self.suffix)
     }
 
     /// The wildcard values if the file matches the whole pattern.
@@ -260,10 +266,10 @@ impl Matcher {
         if self.names.is_empty() {
             return (file == self.pattern).then(Wildcards::new);
         }
-        if !file.starts_with(&self.prefix) || !file.ends_with(&self.suffix) {
+        if !self.may_match(file) {
             return None;
         }
-        let captures = self.regex.as_ref()?.captures(file).ok()??;
+        let captures = self.regex.as_ref().ok()?.captures(file).ok()??;
         let mut values = Wildcards::new();
         for name in &self.names {
             let value = captures.name(name)?.as_str().to_owned();
@@ -345,6 +351,8 @@ mod tests {
         );
         assert_eq!(matcher.matches("results/A/B.12.bam"), None);
         assert_eq!(matcher.matches("results/A/A.x.bam"), None);
+        assert!(matcher.error().is_none());
+        assert!(Matcher::of("{x,[}.txt").error().is_some());
         assert_eq!(
             Matcher::of("plain.txt").matches("plain.txt"),
             Some(Wildcards::new())

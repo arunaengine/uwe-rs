@@ -120,14 +120,21 @@ impl CommandRunner {
             script,
             workdir: Some(workdir.to_string_lossy().into_owned()),
             environment: Default::default(),
-            inputs: vec![Input {
+            inputs: std::iter::once(Input {
                 executable: false,
                 path: ".".into(),
                 source: workdir.to_string_lossy().into_owned(),
                 directory: true,
                 content: None,
                 writable: Writable::InPlace,
-            }],
+            })
+            .chain(
+                self.settings
+                    .shared_workdir
+                    .then(crate::shared::local_time)
+                    .flatten(),
+            )
+            .collect(),
             outputs: Vec::new(),
             stdin: None,
             resources: Default::default(),

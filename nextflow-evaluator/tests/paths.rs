@@ -550,3 +550,18 @@ fn gzip_headers() {
         "[java.io.EOFException, java.util.zip.ZipException: Not in GZIP format]"
     );
 }
+
+/// The default operator scratch stays while its thread runs and is removed when it ends.
+#[test]
+fn removes_operator_scratch() {
+    let folder = std::thread::spawn(|| {
+        let folder = Launch.operator_directory().expect("reserves scratch");
+        let folder = std::path::PathBuf::from(&folder.path);
+        std::fs::write(folder.join("chunk.txt"), "a\n").expect("writes a chunk");
+        assert!(folder.is_dir());
+        folder
+    })
+    .join()
+    .expect("the thread ends");
+    assert!(!folder.exists(), "{}", folder.display());
+}

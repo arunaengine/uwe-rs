@@ -425,3 +425,19 @@ fn reshapes_lists() {
         assert_eq!(value(code), expected, "{code}");
     }
 }
+
+/// Groovy's `with` and `tap` of any object, as Nextflow 26.04.6 gives them.
+#[test]
+fn passes_objects_on() {
+    let cases = [
+        ("[1, 2, 3].with { it.size() }", "3"),
+        ("1.with { it + 1 }", "2"),
+        ("'abc'.tap { it.size() }", "abc"),
+        ("def l = [1]\nl.tap { it.add(2) }", "[1, 2]"),
+        ("[a: 1].with { it.a }", "1"),
+        ("'x'.with { v -> v * 2 }", "xx"),
+    ];
+    for (code, expected) in cases {
+        assert_eq!(value(code), expected, "{code}");
+    }
+}

@@ -135,6 +135,8 @@ pub struct Session {
     deferred: Vec<(String, usize)>,
     /// Whether jobs run on this machine, where Snakemake forms no group jobs.
     local: bool,
+    /// The files written into the shared directory for running tasks, with how many need them.
+    written: HashMap<PathBuf, usize>,
 }
 
 struct SignaturePublication {
@@ -246,6 +248,7 @@ impl Session {
             storage: storage.clone(),
             deferred: Vec::new(),
             local: false,
+            written: HashMap::new(),
         })
     }
 
@@ -1226,9 +1229,14 @@ impl Session {
         let mut outcome = outcome;
         if let Some(placed) = self.placed.remove(&outcome.id) {
             let succeeded = outcome.exit_code == 0;
+            let written = placed.written.clone();
             crate::shared::finish(placed, &mut outcome, succeeded).map_err(|error| {
                 DriverError::new(format!("cannot finish task {}: {error}", outcome.id))
             })?;
+            self.release_written(&written);
+            if outcome.cached && succeeded {
+                self.restore(&outcome)?;
+            }
         }
         if let Some(members) = self.groups.remove(&outcome.id) {
             return self.complete_group(members, outcome);
@@ -1410,8 +1418,47 @@ impl Session {
         let mut task = combine(&mut members)?;
         crate::shared::place(&self.workdir, &mut task, &mut placed)
             .map_err(|error| DriverError::new(format!("cannot place a job: {error}")))?;
+        for file in &placed.written {
+            *self.written.entry(file.clone()).or_default() += 1;
+        }
         self.placed.insert(task.id, placed);
         Ok(Some(task))
+    }
+
+    /// Removes the files written for a task that ended once no running task needs them.
+    fn release_written(&mut self, files: &[PathBuf]) {
+        for file in files {
+            let Some(count) = self.written.get_mut(file) else {
+                continue;
+            };
+            *count -= 1;
+            if *count == 0 {
+                self.written.remove(file);
+                let _ = std::fs::remove_file(file);
+            }
+        }
+    }
+
+    /// Puts the outputs of a stored result that answered a job of the shared directory into
+    /// the directory, where the job would have written them; Snakemake's checks then see a
+    /// job that ran.
+    fn restore(&self, outcome: &Outcome) -> Result<(), DriverError> {
+        for file in &outcome.files {
+            let target = self.interpreter.host.resolve(&file.path);
+            let restored = self
+                .files
+                .local_location(Path::new(&file.location))
+                .and_then(|local| {
+                    crate::shared::remove(&target)?;
+                    crate::shared::copy_into(&local, &target)?;
+                    // The store keeps its files read-only; the job's own outputs are not.
+                    crate::shared::make_writable(&target)
+                });
+            restored.map_err(|error| {
+                DriverError::new(format!("cannot restore output {}: {error}", file.path))
+            })?;
+        }
+        Ok(())
     }
 
     /// Whether a job updates a file in the shared directory that another job still has to

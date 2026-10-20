@@ -219,19 +219,34 @@ impl Backend for SlurmBackend {
                 .await
                 .map_err(|error| std::io::Error::other(error.to_string()))?
         };
+        let mut staged = None;
         let result = match placed {
             // Another attempt has this name; its directory is not ours to remove.
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 return Err(error.into());
             }
             Err(error) => Err(error.into()),
-            Ok(mounts) => self.attempt(job, &root, &mounts, cancel).await,
+            Ok(mounts) => self.attempt(job, &root, &mounts, &mut staged, cancel).await,
         };
-        if result.is_err() && !root.join("remote.json").try_exists().unwrap_or(true) {
+        // Without a journal no job of the attempt can run any more. A job that may still run
+        // keeps its journal, and the recovery of the attempt cleans the staging root.
+        let ended = !root.join("remote.json").try_exists().unwrap_or(true);
+        if let (Some(remote), Some(staged), true) = (&self.remote, &staged, ended) {
+            remote.stage.clean(&staged.prefix, &staged.plan).await;
+        }
+        if result.is_err() && ended {
             let _ = tokio::fs::remove_dir_all(&root).await;
         }
         result
     }
+}
+
+/// Where an attempt keeps its objects in the staging root: what it sends back below `prefix`,
+/// and its plan at `plan`.
+#[derive(Debug)]
+struct Staged {
+    prefix: String,
+    plan: String,
 }
 
 impl SlurmBackend {
@@ -306,12 +321,13 @@ impl SlurmBackend {
     }
 
     /// Writes the wrapper and the job script of a staged attempt, submits the job and waits
-    /// for its end.
+    /// for its end. A plan in the staging root goes to `staged` as soon as it is there.
     async fn attempt(
         &self,
         job: Job<'_>,
         root: &Path,
         mounts: &[executor::process::Mount],
+        staged: &mut Option<Staged>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
         let _ownership = ownership(root)?;
@@ -370,8 +386,6 @@ impl SlurmBackend {
         };
         let gpus = job.placement.accelerators.iter().any(|gpu| gpu.count > 0);
         crate::script::check_binds(&self.container, &run)?;
-        // The prefix and the plan of the attempt in the staging root.
-        let mut staged = None;
         let script = match (&self.remote, spec.containers.is_empty()) {
             (Some(remote), _) => {
                 let text = |path: PathBuf| path.to_string_lossy().into_owned();
@@ -388,23 +402,38 @@ impl SlurmBackend {
                 let wrapper = executor::wrapper::wrapper(spec, &folders);
                 let wrapper = executor::capture::capture(&wrapper, &transfer)?;
                 let extra = [("control/wrapper.sh", wrapper)];
+                let binary = match &remote.helper {
+                    crate::Helper::Upload(binary) => Some(remote.stage.binary(binary).await?),
+                    _ => None,
+                };
                 let planned = remote
                     .stage
                     .plan(job, root, &extra, &records(), access.hand_back.is_some())
                     .await?;
+                *staged = Some(Staged {
+                    prefix: planned.prefix.clone(),
+                    plan: planned.plan.clone(),
+                });
                 let run = ContainerRun {
                     mounts: &planned.mounts,
                     ..run
                 };
                 crate::script::check_binds(&self.container, &run)?;
-                let binary = match &remote.helper {
-                    crate::Helper::Upload(binary) => Some(remote.stage.binary(binary).await?),
-                    _ => None,
+                // Without it, a job whose helper cannot start keeps its log on the node.
+                let log = match remote.stage.record(&planned.prefix, LOG).await {
+                    Ok(log) => Some(log),
+                    Err(error) => {
+                        tracing::warn!(%error, "jobs cannot send their logs without the helper");
+                        None
+                    }
+                };
+                let links = crate::remote::Links {
+                    plan: &planned.location,
+                    binary: binary.as_deref(),
+                    log: log.as_ref(),
                 };
                 let time = job.placement.time_seconds;
-                staged = Some((planned.prefix, planned.plan));
-                let (plan, binary) = (&planned.location, binary.as_deref());
-                crate::remote::job_script(&self.container, &run, remote, gpus, time, plan, binary)
+                crate::remote::job_script(&self.container, &run, remote, gpus, time, links)
             }
             (None, true) => {
                 let wrapper = run.wrapper(spec);
@@ -486,10 +515,16 @@ impl SlurmBackend {
         }
         let options = self.with_excluded(options).await;
         let id = self
-            .submit(options, &control.join(SCRIPT), root, cancel)
+            .submit(
+                options,
+                &control.join(SCRIPT),
+                root,
+                staged.as_ref(),
+                cancel,
+            )
             .await?;
         self.queue.add(&id).await;
-        let prefix = staged.as_ref().map(|(prefix, _)| prefix.as_str());
+        let prefix = staged.as_ref().map(|staged| staged.prefix.as_str());
         let ended = self.wait(&id, &control, prefix, cancel).await;
         let held = matches!(ended, Ok(Ended::Held(_)));
         let stopped = self
@@ -498,9 +533,8 @@ impl SlurmBackend {
         self.queue.remove(&id).await;
         stopped?;
         let ended = ended?;
-        if let (Some(remote), Some((prefix, plan))) = (&self.remote, &staged) {
+        if let (Some(remote), Some(prefix)) = (&self.remote, prefix) {
             remote.stage.collect(prefix, root, &records()).await?;
-            remote.stage.clean(prefix, plan).await;
         }
         // A job that left no log at all ran on a node that does not see the scratch folder.
         let lost = self.remote.is_none()
@@ -662,7 +696,7 @@ impl SlurmBackend {
             .with_excluded(pull_options(&name, &root, &self.pull, &self.options))
             .await;
         let id = self
-            .submit(options, &control.join(SCRIPT), &root, cancel)
+            .submit(options, &control.join(SCRIPT), &root, None, cancel)
             .await?;
         self.queue.add(&id).await;
         let ended = self.wait(&id, &control, None, cancel).await;
@@ -696,12 +730,14 @@ impl SlurmBackend {
         pulled
     }
 
-    /// Submits a job with its options and script, and gives its id.
+    /// Submits a job with its options and script, and gives its id. The journal names the
+    /// objects of the attempt in the staging root, which its recovery removes.
     async fn submit(
         &self,
         options: Vec<String>,
         script: &Path,
         root: &Path,
+        staged: Option<&Staged>,
         cancel: &CancellationToken,
     ) -> Result<String, ExecutorError> {
         if cancel.is_cancelled() {
@@ -723,6 +759,9 @@ impl SlurmBackend {
             "options":options, "working_directory":std::path::absolute(root)?, "id":null, "cluster":null,
             "owner":std::process::id(), "host":host, "started":started, "locked":true,
             "script":script, "identity":null, "configuration":self.configuration()});
+        if let Some(staged) = staged {
+            journal["staging"] = serde_json::json!({"prefix":staged.prefix, "plan":staged.plan});
+        }
         journal_at(root, &journal)?;
         let mut sbatch = Command::new(self.command("sbatch"));
         if let Some(proxy) = &self.proxy {
@@ -935,6 +974,14 @@ impl SlurmBackend {
                     )?);
                 journal_at(&root, &journal)?;
                 self.stop(&id, &root, CANCEL_GRACE, true).await?;
+                let staging = &journal["staging"];
+                if let (Some(remote), Some(prefix), Some(plan)) = (
+                    &self.remote,
+                    staging["prefix"].as_str(),
+                    staging["plan"].as_str(),
+                ) {
+                    remote.stage.clean(prefix, plan).await;
+                }
             }
         }
         Ok(())
@@ -1283,14 +1330,14 @@ fn too_long(time: Option<u64>) -> String {
 }
 
 /// A failure of the machine with the end of the job's log, or a hint when the job left none.
-/// A job on a node without the `shared` folders keeps its log on the node when it could not
-/// send it back.
+/// A job on a node without the `shared` folders keeps its log beside its folder on the node
+/// when it could not send it back.
 async fn explain(message: String, root: &Path, shared: bool) -> String {
     let log = tokio::fs::read_to_string(root.join(CONTROL).join(LOG)).await;
     if log.is_err() && !shared {
         return format!(
-            "{message}, and sent back no log; look for {LOG} in the folder iunctus-{}.* in \
-             the node folder of the node",
+            "{message}, and sent back no log; look for iunctus-{}.*.log in the node folder \
+             of the node",
             root.file_name().unwrap_or_default().to_string_lossy()
         );
     }
@@ -1371,7 +1418,7 @@ esac"#,
         let folder = tempfile::tempdir().unwrap();
         let root = folder.path().join("run-P-1-1");
         let text = explain("the job failed".into(), &root, false).await;
-        let hint = "look for slurm.log in the folder iunctus-run-P-1-1.* in the node folder";
+        let hint = "look for iunctus-run-P-1-1.*.log in the node folder";
         assert!(text.contains(hint), "{text}");
     }
 

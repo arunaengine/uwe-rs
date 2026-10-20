@@ -88,8 +88,10 @@ pub fn main(arguments: &[String]) -> Result<(), String> {
             let text = read_plan(keep, plan)?;
             let parsed: Plan =
                 serde_json::from_str(&text).map_err(|error| format!("invalid plan: {error}"))?;
-            stage_in(folder, &parsed)?;
-            std::fs::write(keep.join(PLAN), text).map_err(|error| error.to_string())
+            // Kept first, so that stage-out sends the log of a failed stage-in back.
+            std::fs::create_dir_all(keep).map_err(|error| error.to_string())?;
+            std::fs::write(keep.join(PLAN), text).map_err(|error| error.to_string())?;
+            stage_in(folder, &parsed)
         }
         [command, folder, control @ ..] if command == "out" && control.len() < 2 => {
             let (folder, control) = (Path::new(folder), control.first().map(Path::new));
@@ -333,8 +335,7 @@ fn send(
     request: &Request,
     body: Option<(std::fs::File, u64)>,
 ) -> Result<Box<dyn Read>, String> {
-    if let Some(path) = request.url.strip_prefix("file://") {
-        let path = PathBuf::from(storage::address::decode(path));
+    if let Some(path) = local_file(&request.url) {
         return match body {
             Some((mut file, _)) => {
                 let parent = path.parent().expect("a parent");
@@ -367,6 +368,12 @@ fn send(
         return Err(format!("the server answered {status}"));
     }
     Ok(Box::new(response))
+}
+
+/// The path of a `file://` URL, for a staging root in a folder.
+pub fn local_file(url: &str) -> Option<PathBuf> {
+    let path = url.strip_prefix("file://")?;
+    Some(PathBuf::from(storage::address::decode(path)))
 }
 
 /// The HTTP client of the helper. It trusts the certificates of the system and the roots of

@@ -137,6 +137,35 @@ fn installs_this_program() {
 }
 
 #[test]
+fn failed_stage_reports() {
+    let store = tempfile::tempdir().unwrap();
+    let node = tempfile::tempdir().unwrap();
+    let (data, control) = (node.path().join("data"), node.path().join("control"));
+    let mut missing = input(store.path(), "work/in.txt", b"input", false);
+    missing.request = request("GET", &store.path().join("missing"));
+    let plan = Plan {
+        inputs: vec![missing],
+        records: vec![Record {
+            name: "slurm.log".into(),
+            request: request("PUT", &store.path().join("slurm.log")),
+        }],
+        ..Plan::default()
+    };
+    let file = store.path().join("plan.json");
+    std::fs::write(&file, serde_json::to_string(&plan).unwrap()).unwrap();
+    let text = |path: &Path| path.to_string_lossy().into_owned();
+    let error = main(&["in".into(), text(&data), text(&file), text(&control)]).unwrap_err();
+    assert!(error.contains("cannot download work/in.txt"), "{error}");
+    // The plan is kept, so the log of the job that tells why still goes back.
+    std::fs::write(control.join("slurm.log"), "why").unwrap();
+    main(&["out".into(), text(&data), text(&control)]).unwrap();
+    assert_eq!(
+        std::fs::read(store.path().join("slurm.log")).unwrap(),
+        b"why"
+    );
+}
+
+#[test]
 fn keeps_plan_apart() {
     let store = tempfile::tempdir().unwrap();
     let node = tempfile::tempdir().unwrap();

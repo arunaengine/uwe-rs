@@ -217,7 +217,7 @@ impl Interpreter<'_> {
             }
             (
                 "add" | "addAll" | "remove" | "removeAll" | "clear" | "set" | "leftShift" | "push"
-                | "pop",
+                | "pop" | "retainAll" | "swap",
                 _,
             ) if fixed => {
                 if name == "set" && kind == ListKind::Array {
@@ -287,6 +287,81 @@ impl Interpreter<'_> {
                 }
                 Value::Boolean(position.is_some())
             }
+            // Groovy's `removeAll` and `retainAll` with a closure that picks the items.
+            ("removeAll" | "retainAll", [Value::Closure(f)]) => {
+                let mut kept = Vec::new();
+                for item in &items {
+                    let picked = self.call_closure_value(f, vec![item.clone()], span)?;
+                    if picked.truth() == (name == "retainAll") {
+                        kept.push(item.clone());
+                    }
+                }
+                let changed = kept.len() != items.len();
+                list.borrow_mut().items = kept;
+                Value::Boolean(changed)
+            }
+            ("retainAll", [others]) => {
+                let others = elements(others);
+                list.borrow_mut()
+                    .items
+                    .retain(|item| others.iter().any(|o| o.java_equals(item)));
+                Value::Boolean(list.borrow().items.len() != items.len())
+            }
+            ("swap", [Value::Number(first), Value::Number(second)]) => {
+                let (first, second) = (first.to_i64(), second.to_i64());
+                let valid = |index: i64| usize::try_from(index).ok().filter(|i| *i < items.len());
+                let (Some(first), Some(second)) = (valid(first), valid(second)) else {
+                    let message = format!("Index {first} out of bounds for length {}", items.len());
+                    let exception = Exception::new("IndexOutOfBoundsException", message);
+                    return Err(thrown(exception, span));
+                };
+                list.borrow_mut().items.swap(first, second);
+                Value::List(list.clone())
+            }
+            // Groovy's `split(Closure)`: the items the closure accepts, then the others.
+            ("split", [Value::Closure(f)]) => {
+                let (mut accepted, mut rejected) = (Vec::new(), Vec::new());
+                for item in &items {
+                    match self
+                        .call_closure_value(f, vec![item.clone()], span)?
+                        .truth()
+                    {
+                        true => accepted.push(item.clone()),
+                        false => rejected.push(item.clone()),
+                    }
+                }
+                Value::list(vec![Value::list(accepted), Value::list(rejected)])
+            }
+            // Groovy's `chop(sizes)`: consecutive parts of these sizes, `-1` for the rest.
+            ("chop", sizes) if sizes.iter().all(|size| matches!(size, Value::Number(_))) => {
+                let mut rest = items.as_slice();
+                let mut parts = Vec::new();
+                for size in sizes {
+                    let Value::Number(size) = size else {
+                        continue;
+                    };
+                    let count = match size.to_i64() {
+                        -1 => rest.len(),
+                        count => (count.max(0) as usize).min(rest.len()),
+                    };
+                    parts.push(Value::list(rest[..count].to_vec()));
+                    rest = &rest[count..];
+                }
+                Value::list(parts)
+            }
+            ("multiply", [Value::Number(count)]) => {
+                let count = count.to_i64().max(0) as usize;
+                Value::list((0..count).flat_map(|_| items.iter().cloned()).collect())
+            }
+            ("indexed", []) => Value::map(
+                (items.iter().enumerate())
+                    .map(|(index, item)| (Value::integer(index as i32), item.clone())),
+            ),
+            ("toArray", []) => Value::List(Rc::new(RefCell::new(List::new(
+                ListKind::Array,
+                items.clone(),
+            )))),
+            ("asImmutable" | "asUnmodifiable", []) => Value::List(list.clone()),
             ("removeAll", [others]) => {
                 let others = elements(others);
                 list.borrow_mut()

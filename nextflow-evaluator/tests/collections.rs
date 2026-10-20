@@ -390,3 +390,38 @@ fn compares_extremes() {
         "[1, 3]"
     );
 }
+
+/// More of Groovy's list methods, as Nextflow 26.04.6 prints them.
+#[test]
+fn reshapes_lists() {
+    let cases = [
+        ("[3, 1, 2].sum(10)", "16"),
+        ("[1, 2].sum('x')", "x12"),
+        (
+            "[[3, 1, 2].average(), [1, 2].average(), [1.5, 2].average()]",
+            "[2, 1.5, 1.75]",
+        ),
+        (
+            "[[3, 1, 2].disjoint([4]), [3, 1, 2].disjoint([1])]",
+            "[true, false]",
+        ),
+        (
+            "def r = [1, 2, 3]\n[r.retainAll { it > 1 }, r]",
+            "[true, [2, 3]]",
+        ),
+        (
+            "def r = [1, 2, 3]\n[r.removeAll { it > 2 }, r]",
+            "[true, [1, 2]]",
+        ),
+        ("[3, 1, 2].toArray().size()", "3"),
+        ("[3, 1, 2].indexed()", "[0:3, 1:1, 2:2]"),
+        ("[1, 2, 3].split { it > 1 }", "[[2, 3], [1]]"),
+        ("[1, 2, 3, 4].chop(1, 2)", "[[1], [2, 3]]"),
+        ("[1, 2].multiply(2)", "[1, 2, 1, 2]"),
+        ("[1, 2].swap(0, 1)", "[2, 1]"),
+        ("[3, 1, 2].asImmutable()", "[3, 1, 2]"),
+    ];
+    for (code, expected) in cases {
+        assert_eq!(value(code), expected, "{code}");
+    }
+}

@@ -140,6 +140,28 @@ impl Interpreter<'_> {
             ("inject", [initial, Value::Closure(f)]) => {
                 self.fold(initial.clone(), items, f, span)?
             }
+            // Groovy's `sum(initial)`: the initial value plus each item in turn.
+            ("sum", [initial]) if !matches!(initial, Value::Closure(_)) => {
+                let mut total = initial.clone();
+                for item in items {
+                    total = total.apply(Operator::Add, item).at(span)?;
+                }
+                total
+            }
+            // The sum divided by the count, as Groovy's division gives it.
+            ("average", []) if !items.is_empty() => {
+                let total = sum(items.iter().cloned(), span)?;
+                let count = Value::integer(items.len() as i32);
+                total.apply(Operator::Divide, &count).at(span)?
+            }
+            ("disjoint", [others]) => {
+                let others = elements(others);
+                Value::Boolean(!items.iter().any(|item| {
+                    others
+                        .iter()
+                        .any(|other| item.number_aware_compare(other) == Ordering::Equal)
+                }))
+            }
             ("max" | "min", []) => extreme(items, name == "max", span)?,
             // A closure of two parameters compares, as a `Comparator`.
             ("max" | "min", [Value::Closure(f)]) if f.code.parameters.len() == 2 => {

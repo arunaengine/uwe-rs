@@ -397,3 +397,26 @@ fn overrides_scatter_items() {
     outputs.sort();
     assert_eq!(outputs, ["o/1-of-3.txt", "o/2-of-3.txt", "o/3-of-3.txt"]);
 }
+
+/// Snakemake 9.27 puts the rules of `groups` in group `g`, one group job per connected part,
+/// and with `group-components: [g=2]` joins two parts: two group jobs instead of three.
+#[test]
+fn joins_group_components() {
+    let snakefile = "rule all:\n    input: expand('b{i}', i=range(3))\nrule a:\n    output: 'a{i}'\n    shell: 'touch {output}'\nrule b:\n    input: 'a{i}'\n    output: 'b{i}'\n    shell: 'cp {input} {output}'\n";
+    for (settings, jobs) in [
+        ("groups: [a=g, b=g]\n", 3),
+        ("groups: [a=g, b=g]\ngroup-components: [g=2]\n", 2),
+    ] {
+        let folder = tempfile::tempdir().expect("a folder");
+        let launch = profile_launch(folder.path(), settings, snakefile);
+        let started = snakemake_runtime::driver(&launch)
+            .expect("a driver")
+            .start()
+            .expect("starts");
+        assert_eq!(started.len(), jobs, "{settings}: {started:?}");
+        assert!(
+            started.iter().all(|task| task.outputs.len() >= 2),
+            "{started:?}"
+        );
+    }
+}

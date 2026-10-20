@@ -668,6 +668,7 @@ impl Session {
         }
         // A local run of Snakemake forms no group jobs; jobs of pipes and services still
         // run together.
+        let profile = self.state.borrow().profile.clone();
         self.components = match self.local {
             true => HashMap::new(),
             false => crate::groups::components(
@@ -676,6 +677,7 @@ impl Session {
                 &self.order,
                 &self.needrun,
                 &self.tasks,
+                &profile,
             )
             .map_err(|error| driver_error(&error, &self.workdir))?,
         };

@@ -89,6 +89,20 @@ def encode(value):
     return handle_of(value)
 
 
+class Namedlist(list):
+    """A list whose names are attributes, as Snakemake's `Namedlist`."""
+
+    def __init__(self, items, names):
+        super().__init__(items)
+        self.__dict__.update(names)
+
+    def keys(self):
+        return self.__dict__.keys()
+
+    def __str__(self):
+        return " ".join(map(str, self))
+
+
 def decode(value):
     if isinstance(value, dict):
         tag, inner = next(iter(value.items()))
@@ -112,6 +126,9 @@ def decode(value):
             return {decode(item) for item in inner}
         if tag == "dict":
             return {decode(key): decode(item) for key, item in inner}
+        if tag == "record":
+            items, names = inner
+            return Namedlist([decode(item) for item in items], {name: decode(item) for name, item in names})
         raise ValueError(f"iunctus sent a value of the unknown kind {tag}")
     return value
 

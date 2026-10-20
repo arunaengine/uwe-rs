@@ -908,6 +908,50 @@ pub fn build(
     })
 }
 
+/// Renders a jinja2 template in the Python process of the packages, as Snakemake's
+/// `Jinja2Renderer` does; the job's named lists go there as plain data.
+fn jinja(
+    interpreter: &mut Interpreter,
+    text: &str,
+    variables: &[(&str, Value)],
+) -> Result<String, Error> {
+    let module = interpreter.import_module("jinja2")?;
+    let class = interpreter.get_attribute(&module, "Template")?;
+    let template = interpreter.call(&class, Args::new(vec![Value::str(text)]))?;
+    let render = interpreter.get_attribute(&template, "render")?;
+    let keywords = (variables.iter())
+        .map(|(name, value)| ((*name).into(), record(value)))
+        .collect();
+    let rendered = interpreter.call(
+        &render,
+        Args {
+            positional: Vec::new(),
+            keywords,
+        },
+    )?;
+    interpreter.to_str(&rendered)
+}
+
+/// A named list as plain data for the Python process; other values as they are.
+fn record(value: &Value) -> Value {
+    let Some(list) = value.as_native::<NamedList>() else {
+        return value.clone();
+    };
+    let names = (list.names.iter())
+        .map(|(name, start, end)| {
+            let item = match end {
+                Some(end) => Value::list(list.values[*start..*end].to_vec()),
+                None => list.values[*start].clone(),
+            };
+            (name.clone(), item)
+        })
+        .collect();
+    Value::native(python_evaluator::packages::Record {
+        items: list.values.clone(),
+        names,
+    })
+}
+
 /// A `template_engine:` rule, whose template Snakemake renders on its main process.
 struct Template<'a> {
     engine: &'a str,
@@ -931,13 +975,7 @@ impl Template<'_> {
             ))
         };
         match self.engine {
-            "yte" => {}
-            "jinja2" => {
-                return Err(Error::unsupported(format!(
-                    "the jinja2 template engine of rule {}: iunctus renders yte templates natively, but not jinja2 ones",
-                    self.rule
-                )));
-            }
+            "yte" | "jinja2" => {}
             engine => {
                 return Err(workflow_error(format!(
                     "Unsupported template engine {engine} in rule {}. So far, only yte and jinja2 are supported.",
@@ -973,14 +1011,22 @@ impl Template<'_> {
             Err(_) if self.simulated => return Ok((String::new(), output.clone())),
             Err(error) => return Err(failed(format!("{template}: {error}"))),
         };
-        let mut scope = python_evaluator::Dict::default();
-        for (name, value) in variables {
-            scope.insert(name, value.clone());
-        }
         let wrap = |error: Error| match error.is_unsupported() {
             true => error,
             false => failed(format!("{}: {}", error.class_name(), error.message())),
         };
+        if self.engine == "jinja2" {
+            // A simulated run starts no Python process.
+            if self.simulated {
+                return Ok((String::new(), output.clone()));
+            }
+            let rendered = jinja(interpreter, &text, variables).map_err(wrap)?;
+            return Ok((rendered, output.clone()));
+        }
+        let mut scope = python_evaluator::Dict::default();
+        for (name, value) in variables {
+            scope.insert(name, value.clone());
+        }
         let document = python_evaluator::modules::data::load_yaml(&text).map_err(wrap)?;
         let scope = Value::dict(scope);
         let result =

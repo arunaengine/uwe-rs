@@ -1,5 +1,5 @@
-//! Rules of `template_engine:`, which iunctus renders natively for yte, and directives that
-//! iunctus refuses as unsupported: jinja2 templates and `cwl:`.
+//! Rules of `template_engine:`, which iunctus renders natively for yte and in the Python
+//! process for jinja2, and the `cwl:` directive, which iunctus refuses as unsupported.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -42,9 +42,21 @@ fn renders_yte_templates() {
     assert_eq!(rendered, expected);
 }
 
+/// A simulated run renders no jinja2 template, which needs the Python process of a real one.
+#[test]
+fn accepts_jinja_templates() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let launch = launch(folder.path(), "template_engine: 'jinja2'");
+    let task = snakemake_runtime::driver(&launch)
+        .expect("a driver")
+        .start()
+        .expect("starts");
+    assert_eq!(task[0].command[0], "cp");
+}
+
 #[test]
 fn refuses_unsupported_actions() {
-    for action in ["template_engine: 'jinja2'", "cwl: 'tool.cwl'"] {
+    for action in ["cwl: 'tool.cwl'"] {
         let folder = tempfile::tempdir().expect("a folder");
         let launch = launch(folder.path(), action);
         let error = snakemake_runtime::driver(&launch)

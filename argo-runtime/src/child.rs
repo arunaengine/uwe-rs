@@ -216,6 +216,7 @@ impl Run {
         (self.root.is_none() && self.spec.synchronization.is_some())
             || !self.tasks.is_empty()
             || !self.waits.is_empty()
+            || self.held
             || self.nodes.iter().any(|node| node.phase == Phase::Pending)
             || self.children.iter().any(|child| child.run.busy())
     }

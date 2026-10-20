@@ -26,6 +26,7 @@ mod plugin;
 mod pod;
 mod references;
 mod resources;
+pub mod resume;
 mod retry;
 mod run;
 mod schema;
@@ -76,6 +77,9 @@ pub struct Options {
     pub keep_going: bool,
     /// The S3 providers of the config file, for artifacts that name an endpoint.
     pub endpoints: Vec<Endpoint>,
+    /// The folder where `iunctus resume` leaves requests for the suspended steps of this run;
+    /// without it, a real run cannot suspend without a duration.
+    pub resume: Option<PathBuf>,
 }
 
 /// An S3 storage provider: its name, the addresses it serves and its service, `None` for AWS.
@@ -225,6 +229,10 @@ impl Driver for ArgoDriver {
             return Err(DriverError::new("the run has not started"));
         };
         let result = run.result().map_err(DriverError::new);
+        // Requests that came after the last suspended step are of no use any more.
+        if let Some(folder) = &run.options.resume {
+            let _ = std::fs::remove_dir_all(folder);
+        }
         if let Some(folder) = &self.results {
             for (step, artifact, location) in run.output_artifacts() {
                 self.deliveries.push(Delivery {
@@ -272,13 +280,15 @@ impl Driver for ArgoDriver {
 
 /// The driver for an Argo workflow file.
 pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
-    driver_with(launch, Vec::new())
+    driver_with(launch, Vec::new(), None)
 }
 
-/// The driver for an Argo workflow file, with the S3 providers of the config file.
+/// The driver for an Argo workflow file, with the S3 providers of the config file and the
+/// folder of resume requests.
 pub fn driver_with(
     launch: &Launch,
     endpoints: Vec<Endpoint>,
+    resume: Option<PathBuf>,
 ) -> Result<Box<dyn Driver>, DriverError> {
     let target = &launch.target;
     if target.is_dir() {
@@ -323,6 +333,7 @@ pub fn driver_with(
         assume_inputs: launch.simulated,
         keep_going: launch.keep_going,
         endpoints,
+        resume,
     };
     let mut driver = ArgoDriver::new(document, Rc::new(library), options);
     if !launch.simulated {

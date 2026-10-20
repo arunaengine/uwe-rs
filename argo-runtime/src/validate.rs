@@ -244,12 +244,6 @@ impl<'a> Check<'a> {
                     .as_ref()
                     .is_some_and(|node| node.as_str().is_none_or(|value| !value.is_empty())),
             ),
-            (
-                "suspend",
-                spec.suspend
-                    .as_ref()
-                    .is_some_and(|node| node.value != Yaml::Bool(false)),
-            ),
         ] {
             if present {
                 self.unsupported = true;

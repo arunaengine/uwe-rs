@@ -132,6 +132,8 @@ struct Setup {
     keep_going: bool,
     containers: Vec<(&'static str, Vec<(&'static str, i32)>)>,
     mounts: bool,
+    /// The folder of `iunctus resume` requests.
+    resume: Option<std::path::PathBuf>,
 }
 
 struct Ran {
@@ -245,6 +247,7 @@ fn run_with(workflow: &str, setup: Setup) -> Ran {
         now: Some("2026-09-28T12:00:00Z".parse().expect("a time")),
         assume_inputs: !setup.real_inputs,
         keep_going: setup.keep_going,
+        resume: setup.resume.clone(),
         ..Options::default()
     };
     let mut driver = ArgoDriver::new(document, Rc::new(library), options);
@@ -585,6 +588,40 @@ fn removes_host_files() {
         std::fs::read_to_string(host.path().join("keep")).unwrap(),
         "keep"
     );
+}
+
+#[test]
+fn resumes_suspended_steps() {
+    let text = r#"
+  - name: main
+    steps:
+    - - {name: approve, template: approve}
+    - - name: show
+        template: print
+        arguments: {parameters: [{name: message, value: "{{steps.approve.outputs.parameters.message}}"}]}
+  - name: approve
+    suspend: {}
+    outputs: {parameters: [{name: message, valueFrom: {supplied: {}}}]}
+"#;
+    // Without a way to hear `iunctus resume`, a real run cannot wait.
+    assert!(
+        run_with(&workflow(text), real())
+            .error()
+            .contains("iunctus resume")
+    );
+    let folder = tempfile::tempdir().expect("a folder");
+    let request = argo_runtime::resume::Request {
+        step: Some("approve".into()),
+        outputs: [("message".to_owned(), "yes".to_owned())].into(),
+    };
+    request.write(folder.path()).expect("writes the request");
+    let resumable = Setup {
+        resume: Some(folder.path().to_owned()),
+        ..real()
+    };
+    let ran = run_with(&workflow(text), resumable);
+    ran.succeeded();
+    assert_eq!(ran.task("[1].show").command, ["echo", "yes"]);
 }
 
 #[test]

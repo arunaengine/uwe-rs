@@ -364,6 +364,41 @@ fn group_tuple() {
     );
 }
 
+/// Tuples of different lengths, as Nextflow 26.04.6 groups them: a longer tuple adds lists,
+/// and with a `size` only the first list must be full.
+#[test]
+fn groups_ragged_tuples() {
+    let cases = [
+        ("[1, 'a'], [1, 'b', 'extra']", "", "[1, [a, b], [extra]]"),
+        ("[1, 'a', 'p'], [1, 'b']", "", "[1, [a, b], [p]]"),
+        ("[1, 'a'], [1, 'b', 'c', 'd']", "", "[1, [a, b], [c], [d]]"),
+        ("[1, 'a'], [1, 'b', 'c']", "size: 2", "[1, [a, b], [c]]"),
+        ("[1, 'a'], [1, 'b', 'c'], [1, 'd', 'e']", "size: 2", ""),
+        ("[1, 'a', 'x'], [1, 'b']", "size: 2", "[1, [a, b], [x]]"),
+        ("[1, 'a'], [1, 'b'], [1, 'c']", "size: 2", "[1, [a, b]]"),
+        ("['k', 1, 'a'], ['k', 1]", "by: [0, 1]", "[k, 1, [a]]"),
+    ];
+    for (values, options, expected) in cases {
+        let printed = run(&format!(
+            "channel.of({values}).groupTuple({options}).view()"
+        ))
+        .expect("runs");
+        assert_eq!(printed.trim_end(), expected, "{values} {options}");
+    }
+    assert_eq!(
+        sorted(
+            "channel.of([1, 'a', 3], [1, 'b', 3, 'q'], [2, 'c', 3]).groupTuple(by: [2, 0]).view()"
+        ),
+        ["[1, [a, b], 3, [q]]", "[2, [c], 3]"]
+    );
+    assert_eq!(
+        lines(
+            "channel.of([1, 'a'], [1, 'b'], [1, 'c']).groupTuple(size: 2, remainder: true).view()"
+        ),
+        ["[1, [a, b]]", "[1, [c]]"]
+    );
+}
+
 #[test]
 fn preserves_group_sorting() {
     let source = "channel.of(['k', 3], ['k', 1], ['k', 2])";

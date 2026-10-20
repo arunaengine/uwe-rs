@@ -21,6 +21,10 @@ impl Run {
         let Some(processed) = self.nodes[index].processed.clone() else {
             return Ok(());
         };
+        if self.fail_fast(index) {
+            self.settle_fail_fast(index);
+            return Ok(());
+        }
         let groups: Vec<Vec<Node>> = match processed.node.get("steps").map(|node| &node.value) {
             Some(Yaml::Sequence(groups)) => groups
                 .iter()

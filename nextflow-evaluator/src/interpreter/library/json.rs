@@ -136,6 +136,17 @@ impl Interpreter<'_> {
         if let Some(value) = self.org_json_method(object, name, arguments, span)? {
             return Ok(Some(value));
         }
+        let builder = match &object.borrow().state {
+            State::Builder(text) => Some(text.clone()),
+            _ => None,
+        };
+        if let Some(text) = builder {
+            // Methods that only read the text are those of a string.
+            return match super::builder::builder_method(object, name, arguments, span)? {
+                Some(value) => Ok(Some(value)),
+                None => self.string_method(&text, name, arguments, span),
+            };
+        }
         if let State::Writer(text) = &mut object.borrow_mut().state {
             return Ok(Some(match (name, arguments) {
                 ("write" | "print" | "append", [value]) | ("leftShift", [value]) => {

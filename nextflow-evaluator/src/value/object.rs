@@ -46,6 +46,8 @@ pub enum State {
     Bytes(Rc<[u8]>),
     /// The writer of `path.withWriter { w -> ... }`, with the text written so far.
     Writer(String),
+    /// `java.lang.StringBuilder` or `StringBuffer`, with its text.
+    Builder(String),
     /// `java.security.MessageDigest`, by its algorithm.
     Digest(&'static str),
     /// An object of a plugin class that is known by its text, like fgbio's `ReadStructure`.

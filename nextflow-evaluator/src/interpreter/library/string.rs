@@ -241,6 +241,19 @@ impl Interpreter<'_> {
             ("getAt", [index]) => {
                 self.index(&Value::string(text), std::slice::from_ref(index), span)?
             }
+            ("charAt", [index]) if integer(index).is_some() => {
+                let index = integer(index).unwrap_or(-1);
+                let units: Vec<u16> = text.encode_utf16().collect();
+                match usize::try_from(index).ok().and_then(|i| units.get(i)) {
+                    Some(unit) => Value::Character(*unit),
+                    None => {
+                        let message =
+                            format!("Index {index} out of bounds for length {}", units.len());
+                        let exception = Exception::new("StringIndexOutOfBoundsException", message);
+                        return Err(thrown(exception, span));
+                    }
+                }
+            }
             ("contentEquals", [other]) => Value::Boolean(other.to_string() == text),
             ("stripMargin", rest) if rest.len() <= 1 => {
                 let marker = match rest {

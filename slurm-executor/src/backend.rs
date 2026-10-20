@@ -360,6 +360,7 @@ impl SlurmBackend {
             access: &access,
         };
         let gpus = job.placement.accelerators.iter().any(|gpu| gpu.count > 0);
+        crate::script::check_binds(&self.container, &run)?;
         // The prefix and the plan of the attempt in the staging root.
         let mut staged = None;
         let script = match (&self.remote, spec.containers.is_empty()) {
@@ -386,6 +387,7 @@ impl SlurmBackend {
                     mounts: &planned.mounts,
                     ..run
                 };
+                crate::script::check_binds(&self.container, &run)?;
                 let binary = match &remote.helper {
                     crate::Helper::Upload(binary) => Some(remote.stage.binary(binary).await?),
                     _ => None,

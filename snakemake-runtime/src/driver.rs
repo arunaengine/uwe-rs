@@ -1280,6 +1280,7 @@ impl Session {
     ) -> Result<Vec<Task>, DriverError> {
         let identity = (outcome.id, outcome.attempt);
         self.outstanding = self.outstanding.saturating_sub(1);
+        self.gate.release(outcome.id);
         *self.files.last_output_read.borrow_mut() = None;
         if outcome.exit_code != 0 {
             if let Some(task) = self.retry_group(&members, outcome.id)? {
@@ -1388,6 +1389,21 @@ impl Session {
             .map_err(|error| DriverError::new(format!("cannot place a job: {error}")))?;
         self.placed.insert(task.id, placed);
         Ok(Some(task))
+    }
+
+    /// Whether a task of several jobs fits beside the running ones; a job of it waits for the
+    /// global resources otherwise, as Snakemake's scheduler holds a group job back. A retry
+    /// keeps what its task took.
+    fn admit(&mut self, anchor: usize, retry: bool, usage: &crate::scheduling::Usage) -> bool {
+        let limits = crate::scheduling::limits(&self.state.borrow().global_resources);
+        if !retry && !self.gate.fits(usage, &limits) {
+            if !self.held.contains(&anchor) {
+                self.held.push(anchor);
+            }
+            return false;
+        }
+        self.held.retain(|held| *held != anchor);
+        true
     }
 
     /// Removes the outputs of failed jobs in the shared directory, as Snakemake does since
@@ -1782,6 +1798,7 @@ impl Session {
         };
         let mut members = Vec::new();
         let mut declared = Vec::new();
+        let mut usages = Vec::new();
         for member in std::iter::once(job).chain(users) {
             let planner = self.planner.as_ref().ok_or_else(|| {
                 DriverError::new("the Snakemake session has not planned its jobs")
@@ -1792,7 +1809,7 @@ impl Session {
                 task,
                 signature,
                 cwl,
-                ..
+                usage,
             } = {
                 let state = self.state.borrow();
                 let setting = crate::task::TaskSetting {
@@ -1811,6 +1828,7 @@ impl Session {
             self.signatures.insert(member, signature);
             declared.push((member, task.outputs.clone()));
             members.push(task);
+            usages.push(usage);
         }
         if expanded
             && members
@@ -1826,12 +1844,18 @@ impl Session {
             return self.service_group(job, services, retry);
         }
         let jobs: Vec<usize> = declared.iter().map(|(member, _)| *member).collect();
+        // The jobs of a service run at once.
+        let usage = crate::scheduling::combined(&usages, &vec![0; usages.len()]);
+        if !self.admit(job, retry.is_some(), &usage) {
+            return Ok(None);
+        }
         let combine = |members: &mut Vec<Task>| {
             crate::services::combine(members, services, id).map_err(DriverError::new)
         };
         let Some(mut task) = self.share(&jobs, members, combine)? else {
             return Ok(None);
         };
+        self.gate.take(id, usage);
         if retry.is_some()
             || declared
                 .iter()
@@ -1918,6 +1942,7 @@ impl Session {
         let attempt = retry.map_or(1, |_| self.attempts.get(&jobs[0]).copied().unwrap_or(1) + 1);
         let mut members = Vec::new();
         let mut declared = Vec::new();
+        let mut usages = Vec::new();
         for job in jobs {
             let entry = &planner.jobs[*job];
             let state = self.state.borrow();
@@ -1932,7 +1957,7 @@ impl Session {
                 task,
                 signature,
                 cwl,
-                ..
+                usage,
             } = crate::task::build(
                 &mut self.interpreter,
                 &setting,
@@ -1948,6 +1973,7 @@ impl Session {
             self.signatures.insert(*job, signature);
             declared.push((*job, task.outputs.clone()));
             members.push(task);
+            usages.push(usage);
         }
         let pipes = crate::pipes::files(planner, jobs);
         let services: Vec<_> = jobs
@@ -1993,12 +2019,22 @@ impl Session {
             }
             return Ok(None);
         }
+        // Jobs joined by pipes or services run at once; the others in layers.
+        let layers = match pipes.is_empty() && services.is_empty() {
+            true => crate::groups::layers(planner, jobs),
+            false => vec![0; jobs.len()],
+        };
+        let usage = crate::scheduling::combined(&usages, &layers);
+        if !self.admit(jobs[0], retry.is_some(), &usage) {
+            return Ok(None);
+        }
         let combine = |members: &mut Vec<Task>| {
             crate::groups::combine(members, id, &pipes, &services).map_err(DriverError::new)
         };
         let Some(mut task) = self.share(jobs, members, combine)? else {
             return Ok(None);
         };
+        self.gate.take(id, usage);
         if retry.is_some() || jobs.iter().any(|job| self.forced.contains(job)) {
             task.reuse = workflow_graph::Reuse::Denied;
         }

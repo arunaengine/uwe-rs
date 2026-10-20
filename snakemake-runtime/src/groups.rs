@@ -125,6 +125,22 @@ pub fn components(
     Ok(result)
 }
 
+/// The layer of each job of a group: one more than the latest job of the group it waits for.
+pub fn layers(planner: &Planner, jobs: &[usize]) -> Vec<usize> {
+    let mut layers: Vec<usize> = Vec::with_capacity(jobs.len());
+    for job in jobs {
+        let layer = (jobs.iter().zip(&layers))
+            .filter(|(other, _)| {
+                (planner.jobs[*job].dependencies.iter()).any(|(_, producer)| producer == *other)
+            })
+            .map(|(_, layer)| layer + 1)
+            .max()
+            .unwrap_or(0);
+        layers.push(layer);
+    }
+    layers
+}
+
 pub fn combine(
     members: &[Task],
     id: TaskId,

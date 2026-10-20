@@ -24,6 +24,15 @@ pub struct Profile {
     pub rerun_triggers: Option<Vec<String>>,
     pub storage_provider: Option<String>,
     pub storage_prefix: Option<String>,
+    /// `cores:`, which caps the threads of each job, and run locally the threads of all.
+    pub cores: Option<i64>,
+    /// `jobs:`, the jobs that may run at once.
+    pub jobs: Option<i64>,
+    pub max_threads: Option<i64>,
+    /// `resources:`, the global resources that running jobs share.
+    pub resources: Vec<(String, String)>,
+    /// `executor:`, which decides whether `jobs` stands for `cores`.
+    pub executor: Option<String>,
 }
 
 pub const RERUN_TRIGGERS: [&str; 5] = ["mtime", "params", "input", "software-env", "code"];
@@ -93,6 +102,14 @@ fn value_text(interpreter: &mut Interpreter, value: &Value) -> Result<String, Er
     match value.plain() {
         Value::Str(text) if text.parse::<f64>().is_ok() => Ok(interpreter.repr(value)?),
         _ => interpreter.to_str(value),
+    }
+}
+
+/// A whole number of a setting, given as a number or as text, as the command line takes it.
+fn count(value: &Value) -> Option<i64> {
+    match value.plain() {
+        Value::Str(text) => text.trim().parse().ok(),
+        other => other.as_int(),
     }
 }
 
@@ -172,6 +189,42 @@ impl Profile {
         if other.storage_prefix.is_some() {
             self.storage_prefix = other.storage_prefix;
         }
+        if other.cores.is_some() {
+            self.cores = other.cores;
+        }
+        if other.jobs.is_some() {
+            self.jobs = other.jobs;
+        }
+        if other.max_threads.is_some() {
+            self.max_threads = other.max_threads;
+        }
+        if !other.resources.is_empty() {
+            self.resources = other.resources;
+        }
+        if other.executor.is_some() {
+            self.executor = other.executor;
+        }
+    }
+
+    /// The global resources of the run as Snakemake's command line sets them: `_cores` and
+    /// `_nodes`, then `resources:`. A local run without `cores` takes `jobs` as its cores.
+    pub fn global_resources(&self) -> Vec<(String, Value)> {
+        let local = (self.executor.as_deref()).is_none_or(|name| name == "local");
+        let (cores, nodes) = match (self.cores, self.jobs) {
+            (None, Some(jobs)) if local => (Some(jobs), None),
+            given => given,
+        };
+        let mut resources = Vec::new();
+        if let Some(cores) = cores {
+            resources.push(("_cores".to_owned(), Value::Int(cores)));
+        }
+        if let Some(nodes) = nodes {
+            resources.push(("_nodes".to_owned(), Value::Int(nodes)));
+        }
+        for (name, value) in &self.resources {
+            resources.push((name.clone(), crate::config::parse_value(value)));
+        }
+        resources
     }
 
     /// Reads the settings of a profile folder.
@@ -222,6 +275,29 @@ impl Profile {
                     profile.default_resources = pairs(interpreter, &value)?
                 }
                 "set-threads" => profile.set_threads = pairs(interpreter, &value)?,
+                "cores" => {
+                    let message =
+                        "Error parsing number of cores (--cores, -c): must be integer or 'all'.";
+                    profile.cores = Some(match value.as_str() {
+                        Some("all") => std::thread::available_parallelism()
+                            .map_or(1, |count| count.get() as i64),
+                        _ => count(&value).ok_or_else(|| workflow_error(message))?,
+                    });
+                }
+                "jobs" => {
+                    let message = "Error parsing number of jobs (--jobs, -j): must be integer.";
+                    profile.jobs = Some(match value.as_str() {
+                        Some("unlimited") => i64::MAX,
+                        _ => count(&value).ok_or_else(|| workflow_error(message))?,
+                    });
+                }
+                "max-threads" => {
+                    let message = "Profile max-threads must be an integer";
+                    profile.max_threads =
+                        Some(count(&value).ok_or_else(|| workflow_error(message))?);
+                }
+                "resources" | "res" => profile.resources = pairs(interpreter, &value)?,
+                "executor" => profile.executor = Some(interpreter.to_str(&value)?),
                 "rerun-triggers" => {
                     let values = if let Some(text) = value.as_str() {
                         text.split_whitespace().map(str::to_owned).collect()
@@ -284,12 +360,7 @@ impl Profile {
                 | "apptainer-args"
                 | "singularity-prefix"
                 | "apptainer-prefix"
-                | "jobs"
-                | "cores"
                 | "local-cores"
-                | "max-threads"
-                | "resources"
-                | "executor"
                 | "cluster"
                 | "cluster-status"
                 | "cluster-cancel"

@@ -7,9 +7,9 @@ use workflow_graph::Resources;
 
 use crate::objects::NamedList;
 use crate::plan::incomplete_target;
-use crate::profile::Profile;
 use crate::rule::Rule;
 use crate::task::evaluate as evaluate_value;
+use crate::workflow::State;
 use crate::workflow::workflow_error;
 
 /// Snakemake's default resources for remote execution (`Resources.DEFAULTS["full"]`). iunctus
@@ -88,9 +88,10 @@ fn expression(
 pub fn evaluate(
     interpreter: &mut Interpreter,
     rule: &Rule,
-    profile: &Profile,
+    state: &State,
     job: &JobValues<'_>,
 ) -> Result<Vec<(String, Value)>, Error> {
+    let profile = &state.profile;
     let mut resources: Vec<(String, Value)> = Vec::new();
     for (name, text) in DEFAULTS {
         let value = expression(interpreter, text, job)?;
@@ -127,7 +128,30 @@ pub fn evaluate(
             set(&mut resources, name, value);
         }
     }
+    constrain(&mut resources, state, &rule.name)?;
     expand_sized(interpreter, resources)
+}
+
+/// Caps each integer resource at the global resource of its name, as Snakemake's
+/// `Resource.constrain` does; another type than the global integer is an error.
+fn constrain(resources: &mut [(String, Value)], state: &State, rule: &str) -> Result<(), Error> {
+    for (name, value) in resources.iter_mut() {
+        let Some(Value::Int(limit)) = state.global_resources.get(name.as_str()).map(Value::plain)
+        else {
+            continue;
+        };
+        match value.plain() {
+            Value::Int(amount) => *value = Value::Int((*amount).min(*limit)),
+            Value::None => {}
+            other => {
+                return Err(workflow_error(format!(
+                    "Specified resource is of different type than global constraint provided by --resources:\n    {name} of type '{}' was constrained by mismatched type 'int' with value '{limit}'. (rule {rule})",
+                    python_evaluator::types::type_name(other)
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Megabytes, rounded, of a sized resource given in any unit.

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use executor::containers::recording_its_end;
 use executor::wrapper::quote;
-use executor::{CONTROL, ContainerRun, EngineCommand, Job};
+use executor::{CONTROL, ContainerRun, EngineCommand, ExecutorError, Job};
 
 /// The job script in the control folder of an attempt.
 pub const SCRIPT: &str = "job.sh";
@@ -252,6 +252,15 @@ pub(crate) fn command(container: &Container, run: &ContainerRun<'_>, gpus: bool)
     }
 }
 
+/// Refuses binds of `run` that the command of `container` cannot carry.
+pub(crate) fn check_binds(
+    container: &Container,
+    run: &ContainerRun<'_>,
+) -> Result<(), ExecutorError> {
+    let apptainer = matches!(container, Container::Apptainer(_));
+    (run.binds().iter()).try_for_each(|bind| executor::local::check_volume(bind, apptainer))
+}
+
 /// The command of Apptainer: a container with its own `/tmp`, home and environment, which sees
 /// the scratch directory at the same path, the work directory, and the other mounts.
 fn apptainer(program: &str, run: &ContainerRun<'_>, gpus: bool) -> Vec<String> {
@@ -473,6 +482,29 @@ mod tests {
         );
         assert_eq!(super::image("/images/tool.sif"), "/images/tool.sif");
         assert_eq!(super::image("oras://host/tool:1"), "oras://host/tool:1");
+    }
+
+    #[test]
+    fn refuses_split_binds() {
+        let image = spec(None).image.expect("an image");
+        let apptainer = Container::Apptainer("apptainer".into());
+        let docker = Container::Engine(EngineCommand::docker("docker"));
+        let mount = |target: &str| Mount {
+            source: PathBuf::from("/shared/store/cas"),
+            target: target.into(),
+            read_only: true,
+        };
+        let comma = [mount("/data/a,b")];
+        let error = check_binds(&apptainer, &run(&image, &comma, None)).unwrap_err();
+        assert!(matches!(error, ExecutorError::Unsupported(_)), "{error}");
+        assert!(error.to_string().contains("/data/a,b"), "{error}");
+        // The `--volume` of an engine splits only at `:`.
+        assert!(check_binds(&docker, &run(&image, &comma, None)).is_ok());
+        let colon = [mount("/data/a:b")];
+        assert!(check_binds(&docker, &run(&image, &colon, None)).is_err());
+        assert!(check_binds(&apptainer, &run(&image, &colon, None)).is_err());
+        let plain = [mount("/data/a b")];
+        assert!(check_binds(&apptainer, &run(&image, &plain, None)).is_ok());
     }
 
     #[test]

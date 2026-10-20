@@ -1059,6 +1059,24 @@ pub fn volume(mount: &Mount) -> String {
     format!("{}:{}{mode}", text(&mount.source), mount.target)
 }
 
+/// Refuses a bind that [`volume`] cannot write: a `:` splits the parts of the spec, and for
+/// the `--bind` of Apptainer a `,` starts the next bind. Neither has an escape.
+pub fn check_volume(mount: &Mount, apptainer: bool) -> Result<(), ExecutorError> {
+    let marks: &[char] = if apptainer { &[':', ','] } else { &[':'] };
+    let source = text(&mount.source);
+    match [source.as_str(), mount.target.as_str()]
+        .into_iter()
+        .find(|path| path.contains(marks))
+    {
+        Some(path) => Err(ExecutorError::Unsupported(format!(
+            "the container cannot see {path:?}, as a bind of the {} command cannot hold {}",
+            if apptainer { "Apptainer" } else { "engine" },
+            if apptainer { "`:` or `,`" } else { "`:`" },
+        ))),
+        None => Ok(()),
+    }
+}
+
 fn text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }

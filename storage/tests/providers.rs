@@ -1002,6 +1002,32 @@ async fn refetches_changed_files() {
 }
 
 #[tokio::test]
+async fn holds_read_downloads() {
+    let root = tempfile::tempdir().unwrap();
+    let downloads = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("data"), "data").unwrap();
+    let text = format!(
+        "[storage.mirror]\ntype='folder'\nprefixes='s3://bucket/'\npath='{}'",
+        root.path().display()
+    );
+    let alone = storage::hold_downloads(downloads.path()).unwrap();
+    // A run that wants to read downloads waits while clean-up holds them.
+    let reading = storage(&text);
+    let fetch = reading.fetch("s3://bucket/data", downloads.path());
+    let waited = tokio::time::timeout(std::time::Duration::from_millis(200), fetch).await;
+    assert!(waited.is_err());
+    drop(alone);
+    let copy = reading
+        .fetch("s3://bucket/data", downloads.path())
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(copy).unwrap(), "data");
+    assert!(storage::hold_downloads(downloads.path()).unwrap().is_none());
+    drop(reading);
+    assert!(storage::hold_downloads(downloads.path()).unwrap().is_some());
+}
+
+#[tokio::test]
 async fn rejects_unverifiable_cache() {
     let server = WebServer::start(&[("/data", "fresh")], None);
     let address = format!("{}/data", server.address);
@@ -1143,7 +1169,8 @@ async fn publishes_immutable_versions() {
     assert_eq!(repeat.fetch(&address, downloads.path()).await.unwrap(), a);
     assert_eq!(std::fs::read_to_string(b).unwrap(), bytes);
     assert_eq!(repeat.fetched(), first.fetched());
-    assert_eq!(std::fs::read_dir(downloads.path()).unwrap().count(), 1);
+    // The one bundle, and the lock that readers of downloads hold.
+    assert_eq!(std::fs::read_dir(downloads.path()).unwrap().count(), 2);
 }
 
 #[tokio::test]

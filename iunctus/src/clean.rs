@@ -131,13 +131,14 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         .block_on(plan(&store, &keep))
         .map_err(|error| broken(&error))?;
     let scratch = scratch_folders(&database, &kept, &running_ids(&running, &leases))?;
+    let (_reading, downloads) = old_downloads(&cache_directory().join("downloads"), used_since)?;
     let active = running.len().max(leases.len());
-    print!(
-        "{}",
-        listing(&location, &rules, active, &planned, &scratch, &database)
+    let listed = listing(
+        &location, &rules, active, &planned, &scratch, &downloads, &database,
     );
+    print!("{listed}");
     if !arguments.remove {
-        if !planned.is_empty() || !scratch.is_empty() {
+        if !planned.is_empty() || !scratch.is_empty() || !downloads.is_empty() {
             println!("Nothing was removed; add -remove to remove it.");
         }
         return Ok(());
@@ -177,7 +178,54 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         space(planned.freed()),
         count(scratch.len(), "scratch folder"),
     );
+    for download in &downloads {
+        let removed = match download.path.is_dir() {
+            true => std::fs::remove_dir_all(&download.path),
+            false => std::fs::remove_file(&download.path),
+        };
+        removed
+            .map_err(|error| failure(format!("iunctus: {}: {error}", download.path.display())))?;
+    }
+    if !downloads.is_empty() {
+        let size = downloads.iter().map(|download| download.size).sum();
+        println!(
+            "Removed {} ({}).",
+            count(downloads.len(), "download"),
+            bytes(size)
+        );
+    }
     Ok(())
+}
+
+/// The copies of remote files that no rule keeps by time, which runs download again when they
+/// need them, with the lock that keeps runs from reading downloads meanwhile. While a run may
+/// read them, none go.
+fn old_downloads(
+    folder: &Path,
+    used_since: Option<SystemTime>,
+) -> Result<(Option<std::fs::File>, Vec<Scratch>), Failure> {
+    let broken = |error: std::io::Error| failure(format!("iunctus: {}: {error}", folder.display()));
+    let Some(reading) = storage::hold_downloads(folder).map_err(broken)? else {
+        return Ok((None, Vec::new()));
+    };
+    let mut old = Vec::new();
+    for entry in std::fs::read_dir(folder).map_err(broken)?.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Ok(found) = entry.metadata() else {
+            continue;
+        };
+        let modified = found.modified().ok();
+        let recent = used_since.is_some_and(|since| modified.is_none_or(|time| time >= since));
+        if (name.starts_with("v2-") || name.ends_with(".metadata")) && !recent {
+            let path = entry.path();
+            let size = match found.is_dir() {
+                true => folder_size(&path),
+                false => found.len(),
+            };
+            old.push(Scratch { path, size });
+        }
+    }
+    Ok((Some(reading), old))
 }
 
 /// The folders in the scratch folder where the TES, Kubernetes and SLURM executors keep the
@@ -325,6 +373,7 @@ fn listing(
     active: usize,
     planned: &Plan,
     scratch: &[Scratch],
+    downloads: &[Scratch],
     database: &Database,
 ) -> String {
     let mut text = String::new();
@@ -349,7 +398,7 @@ fn listing(
             let _ = writeln!(text, "It keeps {}.", words(&keeps));
         }
     }
-    if planned.is_empty() && scratch.is_empty() {
+    if planned.is_empty() && scratch.is_empty() && downloads.is_empty() {
         let _ = writeln!(text, "Nothing else is there to remove.");
         return text;
     }
@@ -402,6 +451,15 @@ fn listing(
             text,
             "  scratch folders of runs that ended: {} ({})",
             count(scratch.len(), "folder"),
+            bytes(size)
+        );
+    }
+    if !downloads.is_empty() {
+        let size: u64 = downloads.iter().map(|download| download.size).sum();
+        let _ = writeln!(
+            text,
+            "  downloads that runs fetch again when they need them: {} ({})",
+            count(downloads.len(), "download"),
             bytes(size)
         );
     }
@@ -523,6 +581,39 @@ mod tests {
         };
         assert_eq!(found(&BTreeSet::from(["running".to_owned()])), ["ended"]);
         assert_eq!(found(&BTreeSet::new()), [".tmpOld", "ended", "running"]);
+    }
+
+    #[test]
+    fn removes_old_downloads() {
+        let folder = tempfile::tempdir().expect("downloads");
+        for name in ["v2-ab", "input-snapshots"] {
+            std::fs::create_dir(folder.path().join(name)).expect("a folder");
+        }
+        std::fs::write(folder.path().join("v2-ab/content"), "data").expect("a copy");
+        for name in ["v2-cd.metadata", "0123abcd"] {
+            std::fs::write(folder.path().join(name), "file 4\n").expect("a file");
+        }
+        let names = |used_since| {
+            let (_, old) = old_downloads(folder.path(), used_since).expect("lists");
+            let mut names: Vec<String> = (old.iter())
+                .map(|download| {
+                    download
+                        .path
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned()
+                })
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(names(None), ["v2-ab", "v2-cd.metadata"]);
+        let day = SystemTime::now() - Duration::from_secs(86_400);
+        assert!(names(Some(day)).is_empty(), "recent downloads stay");
+        let reading = std::fs::File::open(folder.path().join("in-use.lock")).expect("the lock");
+        reading.lock_shared().expect("locks");
+        assert!(names(None).is_empty(), "a process reads downloads");
     }
 
     #[test]

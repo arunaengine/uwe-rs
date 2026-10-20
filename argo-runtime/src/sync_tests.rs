@@ -39,20 +39,26 @@ fn run(control: &str, library: Rc<Library>) -> Run {
 
 #[test]
 fn mutex_serializes_calls() {
-    let mut run = run("{mutexes: [{name: one}]}", Rc::new(Library::new()));
-    for name in ["a", "b", "c"] {
-        let tasks = run.operate().unwrap();
-        assert_eq!(tasks.len(), 1);
-        assert!(tasks[0].name.ends_with(name));
-        let next = run
-            .complete(Outcome {
-                id: tasks[0].id,
-                ..Outcome::default()
-            })
-            .unwrap();
-        run.emitted.extend(next);
+    // A database mutex locks as a local one does inside one controller.
+    for control in [
+        "{mutexes: [{name: one}]}",
+        "{mutexes: [{name: one, database: true}]}",
+    ] {
+        let mut run = run(control, Rc::new(Library::new()));
+        for name in ["a", "b", "c"] {
+            let tasks = run.operate().unwrap();
+            assert_eq!(tasks.len(), 1, "{control}");
+            assert!(tasks[0].name.ends_with(name));
+            let next = run
+                .complete(Outcome {
+                    id: tasks[0].id,
+                    ..Outcome::default()
+                })
+                .unwrap();
+            run.emitted.extend(next);
+        }
+        assert!(run.result().is_ok());
     }
-    assert!(run.result().is_ok());
 }
 
 #[test]

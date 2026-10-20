@@ -70,9 +70,6 @@ pub(crate) enum Failure {
 }
 
 impl Failure {
-    pub(crate) fn language(&self) -> bool {
-        matches!(self, Self::Language(_))
-    }
     pub(crate) fn text(self) -> String {
         match self {
             Self::Language(text) => text,

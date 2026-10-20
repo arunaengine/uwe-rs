@@ -488,9 +488,28 @@ fn locates_expression_errors() {
         steps:\n  echo: {run: step.cwl, in: [], out: [], when: $(inputs.useStep)}\n";
     let error = run(&[("step.cwl", step), ("main.cwl", main)]).expect_err("fails");
     assert!(
-        error.ends_with("`when`: there is no input `useStep`"),
+        error.ends_with("`when`: Syntax error in parameter reference 'inputs.useStep': there is no input `useStep`. This could be due to using Javascript code without specifying InlineJavascriptRequirement."),
         "{error}"
     );
+}
+
+#[test]
+fn requires_inline_javascript() {
+    // cwltool runs code only under the requirement, not under a hint, in every version.
+    for (version, hints) in [
+        ("v1.0", ""),
+        ("v1.2", "hints: {InlineJavascriptRequirement: {}}\n"),
+    ] {
+        let tool = format!(
+            "cwlVersion: {version}\nclass: CommandLineTool\n{hints}baseCommand: echo\n\
+             inputs: {{n: {{type: int, default: 2}}}}\narguments: [$(inputs.n + 1)]\noutputs: []\n"
+        );
+        let error = run(&[("main.cwl", &tool)]).expect_err("fails");
+        assert!(
+            error.contains("Syntax error in parameter reference '(inputs.n + 1)'"),
+            "{error}"
+        );
+    }
 }
 
 #[test]

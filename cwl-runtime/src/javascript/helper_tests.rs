@@ -29,7 +29,7 @@ fn preserves_javascript_literals() {
 
 #[test]
 fn cancellation_preserves_references() {
-    let evaluator = Evaluator::default();
+    let evaluator = Evaluator::with_javascript(Vec::new());
     evaluator.settings.cancel.cancel();
     let inputs = Value::parse("{value: 42}").expect("inputs");
     let vars = Variables {
@@ -70,7 +70,7 @@ fn bounds_helper_requests() {
         }
         value
     }] {
-        let evaluator = Evaluator::default();
+        let evaluator = Evaluator::with_javascript(Vec::new());
         let expression = Expression::parse("${return self;}", false).expect("expression");
         let error = evaluator
             .evaluate(

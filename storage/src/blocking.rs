@@ -29,6 +29,12 @@ impl Blocking {
         self.storage.download_name(target)
     }
 
+    /// Locks a folder of downloads shared until the process ends; see [`Storage::hold`].
+    pub fn hold(&self, downloads: &Path) -> Result<(), StorageError> {
+        let (storage, downloads) = (self.storage.clone(), downloads.to_owned());
+        run(async move { storage.hold(&downloads).await })
+    }
+
     /// A local copy of a file; see [`Storage::fetch`].
     pub fn fetch(&self, target: &str, downloads: &Path) -> Result<PathBuf, StorageError> {
         let (storage, target, downloads) = self.owned(target, downloads);

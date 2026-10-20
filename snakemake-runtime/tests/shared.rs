@@ -121,6 +121,71 @@ rule b:
     assert_eq!(task.outputs, [work.join("b.txt").to_string_lossy()]);
 }
 
+/// Snakemake 9.27 fails test_symlink_temp: the temporary file is gone once the job after it
+/// ended, so the link to it that the next job reads points nowhere.
+#[test]
+fn removes_temporary_targets() {
+    let snakefile = r#"
+rule all:
+    input: "3.a"
+rule one:
+    output: temp("1.a")
+    shell: "unused"
+rule two:
+    input: "1.a"
+    output: temp("2.a")
+    shell: "unused"
+rule three:
+    input: "2.a"
+    output: "3.a"
+    shell: "unused"
+"#;
+    let steps: [(&str, Step); 3] = [
+        ("one", |folder| {
+            std::fs::write(folder.join("1.a"), "").unwrap();
+            0
+        }),
+        ("two", |folder| {
+            std::os::unix::fs::symlink("1.a", folder.join("2.a")).unwrap();
+            0
+        }),
+        ("three", |folder| {
+            std::fs::write(folder.join("3.a"), "").unwrap();
+            0
+        }),
+    ];
+    let (folder, host, error) = run(folder(), snakefile, &steps);
+    assert!(
+        !folder.path().join("work/1.a").exists(),
+        "the temporary file is gone"
+    );
+    let error = error.expect("the run fails");
+    assert!(
+        error.contains("Missing files") && error.contains("2.a"),
+        "{error}"
+    );
+    assert!(host.tasks.iter().all(|task| task.step != "three"));
+}
+
+#[test]
+fn removes_failed_outputs() {
+    let snakefile =
+        "rule broken:\n    output: 'half.txt'\n    log: 'broken.log'\n    shell: 'unused'\n";
+    let steps: [(&str, Step); 1] = [("broken", |folder| {
+        std::fs::write(folder.join("half.txt"), "half").unwrap();
+        std::fs::write(folder.join("broken.log"), "why").unwrap();
+        1
+    })];
+    let (folder, _host, error) = run(folder(), snakefile, &steps);
+    assert!(error.is_some());
+    let work = folder.path().join("work");
+    assert!(
+        !work.join("half.txt").exists(),
+        "Snakemake removes the outputs"
+    );
+    assert!(work.join("broken.log").exists(), "and keeps the log");
+}
+
 #[test]
 fn touches_shared_outputs() {
     let snakefile = r#"

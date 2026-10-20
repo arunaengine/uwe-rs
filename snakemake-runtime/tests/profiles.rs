@@ -86,7 +86,7 @@ fn ignores_execution_settings() {
     std::fs::create_dir_all(&profile).expect("a profile folder");
     std::fs::write(
         profile.join("config.yaml"),
-        "cores: 3\njobs: 8\nuse-conda: true\nsoftware-deployment-method: conda\nexecutor: slurm\nrerun-triggers: [mtime]\n",
+        "cores: 3\njobs: 8\nuse-conda: true\nsoftware-deployment-method: conda\nexecutor: slurm\nrerun-triggers: [mtime]\nnolock: true\njobname: x\nshadow-prefix: /tmp\nslurm-logdir: logs\nseconds-between-status-checks: 5\n",
     )
     .expect("a profile");
     std::fs::write(

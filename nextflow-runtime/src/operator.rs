@@ -4,6 +4,7 @@
 
 use std::rc::Rc;
 
+use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{ChannelId, Closure, Value};
@@ -292,6 +293,8 @@ pub(crate) enum Gather {
     Max(Option<Rc<Closure>>),
     /// `reduce([seed], closure)`: the accumulator, which starts as the seed.
     Reduce(Rc<Closure>),
+    /// `reduce(closure)` of typed workflows, which fails for an empty channel.
+    TypedReduce(Rc<Closure>),
     /// `last()`: the last value, `null` when nothing came.
     Last,
 }
@@ -352,6 +355,16 @@ impl Behaviour for Gathering {
                             .map_err(thrown)?,
                     };
                     self.items.push(total);
+                }
+                // Typed workflows keep whatever the closure gives, null too.
+                Gather::TypedReduce(closure) => {
+                    let next = match self.items.pop() {
+                        None => value,
+                        Some(accumulator) => {
+                            (context.interpreter).call_closure(closure, vec![accumulator, value])?
+                        }
+                    };
+                    self.items.push(next);
                 }
                 Gather::Reduce(closure) => {
                     let accumulator = self.items.pop();
@@ -421,7 +434,16 @@ impl Gathering {
             Gather::Count(_) => {
                 context.emit(self.output, Value::integer(items.len() as i32));
             }
-            Gather::Sum(_) | Gather::Reduce(_) | Gather::Last => {
+            Gather::TypedReduce(_) if items.is_empty() => {
+                let message = "Operator `reduce` received an empty channel with no initial value \
+                               -- make sure to provide an initial value if the channel might be \
+                               empty";
+                return Err(Error::Thrown {
+                    exception: Rc::new(Exception::new("ScriptRuntimeException", message)),
+                    span: Default::default(),
+                });
+            }
+            Gather::Sum(_) | Gather::Reduce(_) | Gather::TypedReduce(_) | Gather::Last => {
                 context.emit(self.output, items.into_iter().next().unwrap_or(Value::Null));
             }
             Gather::Min(closure) | Gather::Max(closure) => {

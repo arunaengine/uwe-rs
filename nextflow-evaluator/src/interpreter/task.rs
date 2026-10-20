@@ -143,6 +143,19 @@ impl Interpreter<'_> {
             );
             return Err(unsupported(message, process.span));
         }
+        // A typed input may only be null when its type allows it.
+        if let Some(index) =
+            (process.non_null.iter()).find(|index| matches!(inputs.get(**index), Some(Value::Null)))
+        {
+            let message = format!(
+                "[{name}] input at index {index} cannot be null -- append `?` to the type \
+                 annotation to mark it as nullable"
+            );
+            return Err(thrown(
+                Exception::new("ScriptRuntimeException", message),
+                process.span,
+            ));
+        }
         // Values come first, as the names of staged files may use any of them, like
         // `path("${dir}/*")` with a later `val dir`, which the task's variables give.
         let outer = std::mem::replace(&mut self.task_variables, task.variables.clone());

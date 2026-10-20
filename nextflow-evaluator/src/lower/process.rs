@@ -160,6 +160,10 @@ impl Lowering<'_> {
             setup,
             stage_env,
             stage_stdin,
+            non_null: match self.types {
+                true => super::typed::non_null(&process.inputs),
+                false => Vec::new(),
+            },
             span: process.span,
         }
     }

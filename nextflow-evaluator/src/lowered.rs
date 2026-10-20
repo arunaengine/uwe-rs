@@ -226,6 +226,9 @@ pub struct Process {
     pub stage_env: Vec<(Rc<str>, Expression)>,
     /// The `stdin` directive of the `stage:` section of a typed process.
     pub stage_stdin: Option<Expression>,
+    /// The indexes of the inputs of a typed process whose type is not nullable, like `x: Int`
+    /// but not `x: Int?`.
+    pub non_null: Vec<usize>,
     pub span: Span,
 }
 

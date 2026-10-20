@@ -44,32 +44,21 @@ NEEDS = [
 ]
 # Why a test differs or fails in iunctus alone, where the reason is known and by design or
 # not done yet: the record names it after the result. Each reason is one plain sentence.
-LINKS = ("an output is a symbolic link, which iunctus stores as the file that it points to, "
-         "so the link itself is not delivered")
-UNDECLARED = ("its jobs share files that they do not declare, which only a shared working "
-              "directory gives; iunctus runs each job in a folder of its own")
+BENCHMARK = "the benchmark file holds the time and memory that each run measured"
 KNOWN = {
     "profile": "4000 jobs of one container each take longer than the time limit of this script",
-    "test_access_patterns": "a job reads where its input links point; iunctus gives inputs as "
-                            "links into its store",
     "test_all_temp": "it needs --all-temp, an option of Snakemake's test suite",
-    "test_checkpoint_rerun": LINKS,
-    "test_delete_output": LINKS,
-    "test_directory": LINKS,
-    "test_github_issue3687": LINKS,
-    "test_github_issue413": LINKS,
-    "test_github_issue806": UNDECLARED,
-    "test_group_parallel": UNDECLARED,
+    "test_delete_output": "Snakemake fails here too: its job finds output.file, which the setup "
+                          "code of the Snakefile makes",
     "test_module_workflow_snakefile_usage": "a job reads a file of the workflow at its absolute "
                                             "path on this machine, which its container does not "
                                             "see",
-    "test_priority": UNDECLARED,
-    "test_protected_symlink_output": LINKS,
-    "test_shadow": LINKS,
-    "test_shadow_copy": UNDECLARED,
-    "test_symlink_temp": LINKS,
-    "test_symlink_time_handling": LINKS,
-    "test_template_engine": "iunctus does not render the templates of template_engine rules yet",
+    "test_priority": "jobs that run at once append to one file in the order their containers "
+                     "start",
+    "test_shadow": BENCHMARK,
+    "test_shadow_copy": BENCHMARK,
+    "test_template_engine": "these runs are offline, and jinja2 comes from PyPI into the Python "
+                            "container; with the network iunctus renders the same files",
 }
 IMAGES = re.compile(r"^\s*(?:container|singularity)\s*:\s*[\"']([^\"']+)[\"']", re.M)
 

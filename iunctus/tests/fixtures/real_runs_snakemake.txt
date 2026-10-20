@@ -1,5 +1,5 @@
 # The tests of Snakemake run for real by iunctus and by Snakemake 9.27.0, compared by the files each run made; written by real_runs_snakemake.py. A tab ends the name.
-# 422 tests: 7 differs, 10 iunctus fails, 315 same, 85 skipped, 5 snakemake fails.
+# 422 tests: 3 differs, 3 iunctus fails, 325 same, 85 skipped, 6 snakemake fails.
 knapsack	same (4 files)
 profile	iunctus fails (exit timeout): timeout (known: 4000 jobs of one container each take longer than the time limit of this script)
 test (with parenthese's)	same (1 files)
@@ -18,7 +18,7 @@ test12	same (1 files)
 test13	same (2 files)
 test15	same (1 files)
 testHighWorkload	same (33 files)
-test_access_patterns	differs: test2.1.out: other content (known: a job reads where its input links point; iunctus gives inputs as links into its store)
+test_access_patterns	same: both differ from expected-results in fs-storage/test1.out
 test_all_temp	snakemake fails (exit 1): RuleException: ValueError in file "/tmp/iunctus-real-snakemake-wt2br1qh/test/test_all_temp/Snakefile", line 7: (known: it needs --all-temp, an option of Snakemake's test suite)
 test_ambiguousruleexception	same: both fail
 test_ancient	skipped: reads remote files
@@ -38,7 +38,7 @@ test_checkpoint_allowed_rules	same (2 files)
 test_checkpoint_missing_output	same (3 files)
 test_checkpoint_omit_from	same (6 files)
 test_checkpoint_open	same: both differ from expected-results in storage/test2.txt
-test_checkpoint_rerun	differs: linkout/a/0.out: other content (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_checkpoint_rerun	same (6 files)
 test_checkpoint_running_job_storage_race	same: both differ from expected-results in storage/slow_output.txt
 test_checkpoint_until	same (6 files)
 test_checkpoints	same (6 files)
@@ -77,12 +77,12 @@ test_default_storage_local_job	same (3 files)
 test_default_target	same (2 files)
 test_deferred_func_eval	same (1 files)
 test_delete_all_output	same: both fail
-test_delete_output	iunctus fails (exit 1): iunctus: Error in rule make_the_links: the task ended with exit code 1 (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_delete_output	snakemake fails (exit 1): RuleException: CalledProcessError in file "/tmp/iunctus-real-snakemake-g8dehxd1/test/test_delete_output/Snakefile", line 36: (known: Snakemake fails here too: its job finds output.file, which the setup code of the Snakefile makes)
 test_delete_temp_fs	same (1 files)
 test_deploy_hashing	skipped: needs a Conda environment
 test_deploy_script	skipped: needs a Conda environment
 test_deploy_sources	same: both fail
-test_directory	differs: dir_to_link_to: only Snakemake changed it (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_directory	same (5 files)
 test_dryrun_executor_validation	same (1 files)
 test_dup_out_patterns	same: fails as the test expects
 test_dynamic_container	skipped: images not on this machine: {image}
@@ -136,10 +136,10 @@ test_github_issue2848	same: fails as the test expects
 test_github_issue3213	same (2 files)
 test_github_issue3271	same (1 files)
 test_github_issue3556	same: both differ from expected-results in dag.mmd
-test_github_issue3687	differs: dir2/D: only Snakemake changed it (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_github_issue3687	same (3 files)
 test_github_issue3913	same (3 files)
 test_github_issue4003	same (5 files)
-test_github_issue413	differs: test_dir/other_file: other content (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_github_issue413	same (0 files)
 test_github_issue456	same (1 files)
 test_github_issue52	same (3 files)
 test_github_issue627	same (0 files)
@@ -147,7 +147,7 @@ test_github_issue640	same (5 files)
 test_github_issue672	same (4 files)
 test_github_issue727	same (40 files)
 test_github_issue78	skipped: images not on this machine: bash
-test_github_issue806	iunctus fails (exit 1): iunctus: WorkflowError: Missing input files for rule combine: affected files: (known: its jobs share files that they do not declare, which only a shared working directory gives; iunctus runs each job in a folder of its own)
+test_github_issue806	same (63 files)
 test_github_issue929	same (1 files)
 test_github_issue988	same (14 files)
 test_github_issue_14	same (1 files)
@@ -162,7 +162,7 @@ test_group_job_fail	same: fails as the test expects
 test_group_jobs	same (11 files)
 test_group_jobs_attempts	same: both fail
 test_group_jobs_resources	same (16 files)
-test_group_parallel	iunctus fails (exit 1): iunctus: Error in rule a: the task ended with exit code 1 (known: its jobs share files that they do not declare, which only a shared working directory gives; iunctus runs each job in a folder of its own)
+test_group_parallel	same (2 files)
 test_group_temp	same (3 files)
 test_group_with_pipe	same (5 files)
 test_groupid_expand	same (4 files)
@@ -303,7 +303,7 @@ test_pipes2	same (1 files)
 test_pipes_fail	same: fails as the test expects
 test_pipes_multiple	same (1 files)
 test_prebuilt_conda_script	skipped: needs a Conda environment
-test_priority	differs: order.out: only Snakemake changed it (known: its jobs share files that they do not declare, which only a shared working directory gives; iunctus runs each job in a folder of its own)
+test_priority	differs: order.out: other content (known: jobs that run at once append to one file in the order their containers start)
 test_priority_invalid	same: fails as the test expects
 test_profile_double_dash	same (1 files)
 test_profile_filename	same: both fail
@@ -312,7 +312,7 @@ test_profile_new	same: both fail
 test_profile_none	same: both fail
 test_profile_old	same: both fail
 test_profile_with_env_var	same: both fail
-test_protected_symlink_output	iunctus fails (exit 1): iunctus: Error in rule main: the task ended with exit code 1 (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_protected_symlink_output	same (4 files)
 test_python_import_from_github_module	skipped: reads remote files
 test_queue_input	same (20 files)
 test_r_wrapper	skipped: needs a Snakemake wrapper from the network
@@ -360,8 +360,8 @@ test_service_jobs	same: both differ from expected-results in test.txt
 test_set_resources	same: both differ from expected-results in test.txt
 test_set_resources_complex	same (1 files)
 test_set_threads	same: both differ from expected-results in test.out
-test_shadow	iunctus fails (exit 1): iunctus: task absolute_link: /tmp/iunctus-real-snakemake-wt2br1qh/cache/iunctus/scratch/1a0f5d52f8b-c4d7d-absolute_link-3-1/work/absolute_link.out: No such file (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
-test_shadow_copy	iunctus fails (exit 1): iunctus: Error in rule minimal_absolute: the task ended with exit code 1; and 1 more jobs failed (known: its jobs share files that they do not declare, which only a shared working directory gives; iunctus runs each job in a folder of its own)
+test_shadow	differs: benchmark.txt: other content (known: the benchmark file holds the time and memory that each run measured)
+test_shadow_copy	differs: benchmark_minimal.txt: other content (known: the benchmark file holds the time and memory that each run measured)
 test_shadow_prefix	same: both fail
 test_shadowed_log	same (2 files)
 test_shell	same (1 files)
@@ -388,13 +388,13 @@ test_string_resources	same: both fail
 test_subpath	same (1 files)
 test_subworkflow_config	same: both fail
 test_subworkflows	same: both fail
-test_symlink_temp	differs: iunctus succeeds where the test expects a failure (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
-test_symlink_time_handling	iunctus fails (exit 1): iunctus: Error in rule main: the task ended with exit code 1 (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_symlink_temp	same: fails as the test expects
+test_symlink_time_handling	same (4 files)
 test_temp	same (1 files)
 test_temp_and_all_input	same (1 files)
 test_temp_checkpoint	same (3 files)
 test_temp_expand	same (1 files)
-test_template_engine	iunctus fails (exit 1): iunctus: Error in rule render_yte_template: the task ended with exit code 1; and 1 more jobs failed (known: iunctus does not render the templates of template_engine rules yet)
+test_template_engine	iunctus fails (exit 1): iunctus: WorkflowError: Error rendering template in rule render_jinja2_template: ModuleNotFoundError: No module named 'jinja2' (known: these runs are offline, and jinja2 comes from PyPI into the Python container; with the network iunctus renders the same files)
 test_tes	same: both fail
 test_threads	same (1 files)
 test_threads0	same (1 files)

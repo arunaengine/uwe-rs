@@ -69,6 +69,9 @@ pub struct Executors {
     /// `[executor.slurm.pull]`: `cpus`, `memory_mb` and `minutes` of the job that pulls an
     /// image into a SIF file.
     pub slurm_pull: PullResources,
+    /// `[executor.slurm] query_seconds`: how long one call of `squeue`, `sacct` or `scancel`
+    /// may take, for a busy controller.
+    pub slurm_query: Option<u64>,
     /// `[executor.slurm] staging` and the settings of its staging root.
     pub slurm_staging: crate::staging::Settings,
     /// `[executor.slurm] helper_path`, or `helper_url` with `helper_sha256`: where the jobs get
@@ -157,7 +160,13 @@ impl Executors {
             }
         }
         if let Some(slurm) = section.table("slurm")? {
-            let mut keys = vec!["container", "options", "pull", "node_folder"];
+            let mut keys = vec![
+                "container",
+                "options",
+                "pull",
+                "node_folder",
+                "query_seconds",
+            ];
             keys.push("staging_secret_file");
             keys.extend(["helper_path", "helper_url", "helper_sha256", "helper_file"]);
             keys.extend(crate::staging::Settings::KEYS);
@@ -179,6 +188,12 @@ impl Executors {
             settings.slurm_options = slurm.texts("options")?;
             if let Some(pull) = slurm.table("pull")? {
                 settings.slurm_pull = pull_resources(&pull)?;
+            }
+            if let Some(seconds) = slurm.integer("query_seconds")? {
+                if !(1..=3600).contains(&seconds) {
+                    return Err(slurm.invalid("query_seconds", "must be between 1 and 3600"));
+                }
+                settings.slurm_query = Some(seconds as u64);
             }
         }
         if let Some(kubernetes) = section.table("kubernetes")? {
@@ -810,6 +825,9 @@ mod tests {
         assert!(error.contains("use a number above 0"), "{error}");
         let error = read("[executor.slurm.pull]\nmemory = 8\n").expect_err("an error");
         assert!(error.contains("memory"), "{error}");
+        let settings = read("[executor.slurm]\nquery_seconds = 120\n").expect("settings");
+        assert_eq!(settings.slurm_query, Some(120));
+        assert!(read("[executor.slurm]\nquery_seconds = 0\n").is_err());
     }
 
     #[test]

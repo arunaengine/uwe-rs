@@ -451,6 +451,18 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
                 json!({"apiVersion": "v1", "kind": "PodList", "metadata": {}, "items": items});
             reply(&mut stream, "200 OK", "application/json", &list.to_string());
         }
+        // A file `forbidden` denies the right to list events.
+        ("GET", EVENTS) if folder.join("forbidden").exists() => {
+            let status = json!({"kind": "Status", "apiVersion": "v1", "status": "Failure",
+                "message": "events is forbidden: cannot list resource \"events\"",
+                "reason": "Forbidden", "code": 403});
+            reply(
+                &mut stream,
+                "403 Forbidden",
+                "application/json",
+                &status.to_string(),
+            );
+        }
         ("GET", EVENTS) => {
             // The events of the file `events.json` that match every field of the selector.
             let selector = parameter(&target, "fieldSelector").unwrap_or_default();
@@ -764,6 +776,47 @@ async fn waits_for_quota() {
     assert!(
         error.to_string().contains("violates PodSecurity"),
         "{error}"
+    );
+}
+
+#[tokio::test]
+async fn waits_without_events() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (mut backend, _) = backend(root.path()).await;
+    backend.start_grace = Duration::from_millis(500);
+    backend.unschedulable_time = Duration::from_secs(3);
+    let server = root.path().join("server");
+    std::fs::write(server.join("quota"), "").expect("takes the quota");
+    std::fs::write(server.join("forbidden"), "").expect("denies events");
+    let spec = spec("debian:stable-slim", "echo done > out.txt");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-P-23-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    // Without events the Job waits past the start grace, as for quota.
+    let free = async {
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        std::fs::remove_file(server.join("quota")).expect("frees the quota");
+    };
+    let cancel = CancellationToken::new();
+    let (finished, ()) = tokio::join!(backend.run(job, &cancel), free);
+    assert_eq!(finished.expect("the job ends").exit_code, Some(0));
+    // A Job that never gets a pod fails after the time of an unschedulable pod.
+    std::fs::write(server.join("quota"), "").expect("takes the quota");
+    let job = Job {
+        name: "run-P-24-1",
+        ..job
+    };
+    let begun = std::time::Instant::now();
+    let error = (backend.run(job, &CancellationToken::new()).await).unwrap_err();
+    assert!(error.to_string().contains("cannot be listed"), "{error}");
+    assert!(
+        begun.elapsed() >= Duration::from_secs(3),
+        "{:?}",
+        begun.elapsed()
     );
 }
 

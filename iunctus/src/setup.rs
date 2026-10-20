@@ -93,6 +93,9 @@ pub struct Executors {
     pub kubernetes_staging: crate::staging::Settings,
     /// `[executor.kubernetes] unschedulable_minutes`: how long a pod may find no node.
     pub kubernetes_unschedulable: Option<u64>,
+    /// `[executor.kubernetes] start_grace_seconds`: how long a Job may have no pod, or a pod
+    /// that cannot start, before iunctus asks the cluster why.
+    pub kubernetes_start_grace: Option<u64>,
     /// `[executor.kubernetes] helper_image` and `helper_mount`: the image that holds only the
     /// static iunctus binary, for object-store staging; or else `helper_download_image`, which
     /// downloads the binary.
@@ -206,6 +209,7 @@ impl Executors {
                 "kubedal_namespace",
                 "kubedal_upload_minutes",
                 "unschedulable_minutes",
+                "start_grace_seconds",
             ]);
             keys.extend(crate::staging::Settings::KEYS);
             kubernetes.only(&keys)?;
@@ -217,6 +221,13 @@ impl Executors {
                     return Err(kubernetes.invalid("unschedulable_minutes", message));
                 }
                 settings.kubernetes_unschedulable = Some(minutes as u64);
+            }
+            if let Some(seconds) = kubernetes.integer("start_grace_seconds")? {
+                if !(10..=3600).contains(&seconds) {
+                    let message = "must be between 10 and 3600";
+                    return Err(kubernetes.invalid("start_grace_seconds", message));
+                }
+                settings.kubernetes_start_grace = Some(seconds as u64);
             }
             let modes = ["object-store", "kubedal"];
             settings.kubernetes_staging = crate::staging::Settings::read(&kubernetes, &modes)?;
@@ -842,6 +853,11 @@ mod tests {
         let settings = read(text).expect("settings");
         assert_eq!(settings.kubernetes_unschedulable, Some(90));
         assert!(read("[executor.kubernetes]\nunschedulable_minutes = 0\n").is_err());
+        let settings =
+            read("[executor.kubernetes]\nstart_grace_seconds = 300\n").expect("settings");
+        assert_eq!(settings.kubernetes_start_grace, Some(300));
+        assert!(read("[executor.kubernetes]\nstart_grace_seconds = 5\n").is_err());
+        assert!(read("[executor.kubernetes]\nstart_grace_seconds = 3601\n").is_err());
         let settings = read("[executor.slurm]\nquery_seconds = 120\n").expect("settings");
         assert_eq!(settings.slurm_query, Some(120));
         assert!(read("[executor.slurm]\nquery_seconds = 0\n").is_err());

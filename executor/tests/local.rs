@@ -748,3 +748,34 @@ fn replaces_set_entrypoint() {
         "the files are the user's"
     );
 }
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn releases_failed_daemons() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let executor = executor(root.path());
+    let mut spec = spec(Some("debian:stable-slim"), &[]);
+    spec.arguments = vec!["sh".into(), "-c".into(), "exit 3".into()];
+    spec.replaces_entrypoint = true;
+    let daemon = r#"{"probe":{"check":{"command":["false"]},"period_seconds":1}}"#;
+    spec.environment.insert(
+        executor::daemon::DAEMON_ENV.into(),
+        task_model::EnvironmentValue::Literal(daemon.into()),
+    );
+    let name = format!("failed-daemon-{}", std::process::id());
+    let result = run(&executor, &name, &spec, &Staging::default());
+    assert!(result.is_err(), "a daemon that ends is never ready");
+    let release = Backend::release(&executor);
+    let limit = std::time::Duration::from_secs(60);
+    let released = runtime().block_on(async { tokio::time::timeout(limit, release).await });
+    assert!(released.is_ok(), "release waits for no stop");
+    let engine = runtime()
+        .block_on(ContainerEngine::find())
+        .expect("an engine");
+    let found = runtime().block_on(
+        engine
+            .client()
+            .inspect_container(&format!("iunctus-{name}"), None),
+    );
+    assert!(found.is_err(), "the container of the daemon is gone");
+}

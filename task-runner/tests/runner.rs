@@ -171,6 +171,8 @@ fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
 
 struct ChangingPin {
     calls: std::sync::atomic::AtomicUsize,
+    /// The stop token of each run, which fails.
+    stops: Mutex<Vec<CancellationToken>>,
 }
 
 impl Backend for ChangingPin {
@@ -186,8 +188,9 @@ impl Backend for ChangingPin {
     async fn run(
         &self,
         _job: Job<'_>,
-        _cancel: &CancellationToken,
+        cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
+        self.stops.lock().unwrap().push(cancel.clone());
         Err(ExecutorError::Unsupported("not run by this test".into()))
     }
 }
@@ -197,6 +200,7 @@ fn pinning_runner(root: &Path) -> Runner<ChangingPin> {
         Store::memory().unwrap(),
         ChangingPin {
             calls: std::sync::atomic::AtomicUsize::new(0),
+            stops: Mutex::default(),
         },
         "pinning",
         Settings {
@@ -228,6 +232,24 @@ async fn refreshes_conda_pins() {
             .load(std::sync::atomic::Ordering::SeqCst),
         3
     );
+}
+
+#[tokio::test]
+async fn failure_stops_work() {
+    let root = tempfile::tempdir().unwrap();
+    let runner = pinning_runner(root.path());
+    let task = Task {
+        id: TaskId(7),
+        image: Some("debian".into()),
+        command: vec!["true".into()],
+        ..Task::default()
+    };
+    let prepared = runner.request(&task, None).await.unwrap();
+    let result = runner.execute(&prepared, &CancellationToken::new()).await;
+    assert!(result.is_err());
+    let stops = runner.backend().stops.lock().unwrap().clone();
+    assert_eq!(stops.len(), 1);
+    assert!(stops[0].is_cancelled(), "a failed daemon gets its stop");
 }
 
 #[tokio::test]

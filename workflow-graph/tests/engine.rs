@@ -143,6 +143,30 @@ impl Executor for Reusing {
     }
 }
 
+/// The simulator, which keeps the token of each attempt.
+struct Keeping(Simulator, Vec<tokio_util::sync::CancellationToken>);
+
+impl Executor for Keeping {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        self.1.push(attempt.cancel.clone());
+        Running::ended(self.0.simulate(&attempt.task))
+    }
+}
+
+#[test]
+fn cancels_ended_tasks() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let mut executor = Keeping(Simulator::new(directory.path()), Vec::new());
+    execute("toy", &mut Toy::default(), &mut executor)
+        .into_result()
+        .expect("the run succeeds");
+    assert_eq!(executor.1.len(), 3);
+    assert!(
+        executor.1.iter().all(|cancel| cancel.is_cancelled()),
+        "work that waits for the token of an ended task stops"
+    );
+}
+
 #[test]
 fn records_reused_tasks() {
     let directory = tempfile::tempdir().expect("a temporary directory");

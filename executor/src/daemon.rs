@@ -111,7 +111,6 @@ impl LocalContainer {
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
         let client = self.engine.client().clone();
-        let failed = |error| crate::image::failed(&self.engine, error);
         let options = CreateContainerOptions {
             name: Some(name.to_owned()),
             ..Default::default()
@@ -122,11 +121,12 @@ impl LocalContainer {
                 engine: self.engine.name.clone(),
                 message: error.to_string(),
             })?;
-        let watched = (client.clone(), id.clone(), root.clone(), cancel.clone());
-        // The daemon stops when its run says so, whether it got ready or not.
+        // The daemon stops when its run says so, or at once when it fails before it is ready.
+        let stop = cancel.child_token();
+        let watched = (client.clone(), id.clone(), root.clone(), stop.clone());
         let watcher = tokio::spawn(async move {
-            let (client, id, root, cancel) = watched;
-            cancel.cancelled().await;
+            let (client, id, root, stop) = watched;
+            stop.cancelled().await;
             let options = StopContainerOptions {
                 t: Some(10),
                 ..Default::default()
@@ -136,9 +136,32 @@ impl LocalContainer {
             let _ = tokio::fs::remove_dir_all(&root).await;
         });
         self.daemons.lock().expect("the daemons").push(watcher);
-        client.start_container(&id, None).await.map_err(failed)?;
+        let address = self.start_daemon(name, &id, &daemon, cancel).await;
+        if address.is_err() {
+            stop.cancel();
+        }
+        Ok(Finished {
+            exit_code: Some(0),
+            files: Vec::new(),
+            root,
+            usage: None,
+            address: Some(address?),
+        })
+    }
+
+    /// Starts the created container of a daemon and gives its address once it is ready.
+    async fn start_daemon(
+        &self,
+        name: &str,
+        id: &str,
+        daemon: &Daemon,
+        cancel: &CancellationToken,
+    ) -> Result<String, ExecutorError> {
+        let client = self.engine.client();
+        let failed = |error| crate::image::failed(&self.engine, error);
+        client.start_container(id, None).await.map_err(failed)?;
         let network = self.daemon_network().await?;
-        let inspected = client.inspect_container(&id, None).await.map_err(failed)?;
+        let inspected = client.inspect_container(id, None).await.map_err(failed)?;
         let address = (inspected
             .network_settings
             .and_then(|settings| settings.networks))
@@ -150,15 +173,9 @@ impl LocalContainer {
             message: format!("daemon {name} has no address on the network {network}"),
         })?;
         if let Some(probe) = &daemon.probe {
-            self.wait_ready(&id, &address, probe, cancel).await?;
+            self.wait_ready(id, &address, probe, cancel).await?;
         }
-        Ok(Finished {
-            exit_code: Some(0),
-            files: Vec::new(),
-            root,
-            usage: None,
-            address: Some(address),
-        })
+        Ok(address)
     }
 
     /// Probes a daemon until it is ready; a daemon that ended is not.

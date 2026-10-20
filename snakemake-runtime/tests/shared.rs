@@ -392,6 +392,49 @@ fn marks_running_outputs() {
     assert_eq!(names.len(), 1, "only the failed output: {names:?}");
 }
 
+/// As in Snakemake's test_github_issue988, a job may write into the directory output of a
+/// checkpoint that ended: Snakemake checks for outputs inside others only at the start.
+#[test]
+fn writes_checkpoint_folders() {
+    let snakefile = r#"
+rule all:
+    input: "all.txt"
+checkpoint make:
+    output: directory("files")
+    shell: "unused"
+def reports(wildcards):
+    folder = checkpoints.make.get().output[0]
+    names, = glob_wildcards(folder + "/{name}.fasta")
+    return expand(folder + "/{name}.faa", name=names)
+rule pattern:
+    input: "{any}.fasta"
+    output: "{any}.faa"
+    shell: "unused"
+rule gather:
+    input: reports
+    output: "all.txt"
+    shell: "unused"
+"#;
+    let steps: [(&str, Step); 3] = [
+        ("make", |folder| {
+            std::fs::create_dir(folder.join("files")).unwrap();
+            std::fs::write(folder.join("files/f0.fasta"), ">a").unwrap();
+            0
+        }),
+        ("pattern", |folder| {
+            std::fs::copy(folder.join("files/f0.fasta"), folder.join("files/f0.faa")).unwrap();
+            0
+        }),
+        ("gather", |folder| {
+            std::fs::write(folder.join("all.txt"), "").unwrap();
+            0
+        }),
+    ];
+    let (folder, _host, error) = run(folder(), snakefile, &steps);
+    assert_eq!(error, None);
+    assert!(folder.path().join("work/files/f0.faa").is_file());
+}
+
 /// Runs a Snakefile in the working directory of `folder` with jobs in the shared directory;
 /// the folder, the tasks and the error.
 fn run(

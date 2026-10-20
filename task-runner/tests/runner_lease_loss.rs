@@ -36,6 +36,7 @@ impl Backend for Waiting {
         cancel.cancelled().await;
         std::fs::write(root.join("cleanup-observed"), "cancelled")?;
         Ok(Finished {
+            address: None,
             exit_code: Some(0),
             files: Vec::new(),
             root,

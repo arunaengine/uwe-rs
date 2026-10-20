@@ -53,6 +53,10 @@ pub struct LocalContainer {
     /// What containers of each image run by default, asked once per run, as the runner pins
     /// each image once per run.
     commands: Mutex<ImageCommands>,
+    /// The network of the run that daemons and the tasks after them share, once a daemon ran.
+    pub(crate) network: OnceCell<String>,
+    /// The tasks that stop the daemons of the run when it asks them to.
+    pub(crate) daemons: Mutex<Vec<JoinHandle<()>>>,
 }
 
 /// How a container ended.
@@ -75,6 +79,10 @@ impl crate::Backend for LocalContainer {
 
     fn hold(&self) {
         self.pool.hold();
+    }
+
+    async fn release(&self) {
+        self.release_daemons().await;
     }
 
     /// Runs a task in `<scratch>/<name>`, a name that must not be in use: stages its inputs,
@@ -193,8 +201,8 @@ impl Flags {
     }
 
     fn apply(&self, config: &mut HostConfig) {
-        if let Some(owner) = &self.network {
-            config.network_mode = Some(format!("container:{owner}"));
+        if let Some(network) = &self.network {
+            config.network_mode = Some(network.clone());
         }
         if let Some(cpus) = self.cpus {
             config.nano_cpus = Some(config.nano_cpus.map_or(cpus, |granted| granted.min(cpus)));
@@ -428,6 +436,8 @@ impl LocalContainer {
             scratch,
             pool,
             commands: Mutex::default(),
+            network: OnceCell::new(),
+            daemons: Mutex::default(),
         }
     }
 
@@ -445,8 +455,22 @@ impl LocalContainer {
         }
         let image = job.spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
         let mut spec = job.spec.clone();
-        let flags = Flags::of(&spec)?;
+        let mut flags = Flags::of(&spec)?;
         spec.environment.remove(FLAGS_ENV);
+        let daemon = match spec.environment.remove(crate::daemon::DAEMON_ENV) {
+            Some(task_model::EnvironmentValue::Literal(text)) => Some(
+                serde_json::from_str::<crate::daemon::Daemon>(&text)
+                    .map_err(|_| ExecutorError::Unsupported("invalid daemon settings".into()))?,
+            ),
+            _ => None,
+        };
+        // Tasks after a daemon reach it on the network of the run, as pods reach each other.
+        if !job.placement.offline {
+            flags.network = match &daemon {
+                Some(_) => Some(self.daemon_network().await?),
+                None => self.network.get().cloned(),
+            };
+        }
         if let Some(task_model::EnvironmentValue::Literal(names)) =
             spec.environment.remove("IUNCTUS_WORK_VARIABLES")
         {
@@ -489,6 +513,16 @@ impl LocalContainer {
             access: &access,
         };
         tokio::fs::write(run.script(), run.wrapper(&spec)).await?;
+        if let Some(daemon) = daemon {
+            let mut body = run.create_with_cpus(i64::from(share.cpus) * 1_000_000_000);
+            if let Some(config) = &mut body.host_config {
+                flags.apply(config);
+                config.auto_remove = Some(false);
+            }
+            return self
+                .serve(&container, body, daemon, root.to_owned(), cancel)
+                .await;
+        }
         let time = job.placement.time_seconds.map(Duration::from_secs);
         let ending = self
             .run_to_end(
@@ -600,19 +634,22 @@ impl LocalContainer {
         // at `localhost` as in a pod.
         let sharing = (groups.iter())
             .position(|(group, _)| group.members.iter().any(|&at| spec.containers[at].service));
+        let shared = (self.network.get().cloned()).filter(|_| !job.placement.offline);
         let flags: Vec<Flags> = (0..runs.len())
             .map(|index| Flags {
-                network: sharing
-                    .filter(|&at| at != index)
-                    .map(|at| names[at].clone()),
+                network: match sharing.filter(|&at| at != index) {
+                    Some(at) => Some(format!("container:{}", names[at])),
+                    None => shared.clone(),
+                },
                 ..Flags::default()
             })
             .collect();
         let mut running: futures_util::stream::FuturesUnordered<_> = (runs.iter().enumerate())
             .map(|(index, run)| {
                 let (flags, stop, cpus) = (&flags[index], &stop, resources[index].0);
+                let owner = sharing.filter(|&at| at != index).map(|at| &names[at]);
                 async move {
-                    if let Some(owner) = &flags.network {
+                    if let Some(owner) = owner {
                         self.wait_running(owner, stop).await?;
                     }
                     self.run_to_end(run, cpus, time, stop, flags).await
@@ -985,6 +1022,7 @@ impl LocalContainer {
             _ => Vec::new(),
         };
         Ok(Finished {
+            address: None,
             exit_code: Some(exit_code),
             files,
             usage,

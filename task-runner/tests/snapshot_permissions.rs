@@ -28,6 +28,7 @@ impl Backend for Inspect {
         let root = self.root.join(job.name);
         std::fs::create_dir_all(root.join("control"))?;
         Ok(Finished {
+            address: None,
             root,
             exit_code: Some(0),
             files: Vec::new(),

@@ -220,6 +220,10 @@ impl Backend for Local {
     fn hold(&self) {
         self.backend.hold();
     }
+
+    async fn release(&self) {
+        self.backend.release().await;
+    }
 }
 
 pub struct Remote<B> {
@@ -299,5 +303,9 @@ impl<B: Backend> Backend for Remote<B> {
 
     fn hold(&self) {
         self.backend.hold();
+    }
+
+    async fn release(&self) {
+        self.backend.release().await;
     }
 }

@@ -58,6 +58,7 @@ impl Backend for Fake {
         };
         std::fs::write(work.join(path), bytes)?;
         Ok(Finished {
+            address: None,
             exit_code: Some(0),
             files: vec![Collected {
                 path: path.into(),

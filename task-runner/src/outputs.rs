@@ -128,6 +128,7 @@ pub(crate) async fn store_outputs(
         ended: times.map(|(_, ended)| ended),
         check: None,
         containers: Vec::new(),
+        address: finished.address.clone(),
     })
 }
 
@@ -515,6 +516,7 @@ mod tests {
         let scratch = root.join("scratch").join("attempt");
         std::fs::create_dir_all(scratch.join("work")).expect("makes the work directory");
         Finished {
+            address: None,
             exit_code: Some(0),
             files: (files.iter())
                 .map(|(path, directory)| Collected {

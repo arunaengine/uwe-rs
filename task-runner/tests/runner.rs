@@ -49,6 +49,7 @@ impl Backend for Fake {
             .push((job.spec.replaces_entrypoint, job.placement.time_seconds));
         tokio::time::sleep(self.delay).await;
         let mut finished = Finished {
+            address: None,
             exit_code: Some(self.exit_code),
             files: Vec::new(),
             root: self.scratch.join(job.name),

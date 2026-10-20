@@ -205,6 +205,11 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
     fn hold(&mut self) {
         self.runner.backend().hold();
     }
+
+    fn release(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        let backend = self.runner.backend.clone();
+        Box::pin(async move { backend.release().await })
+    }
 }
 
 impl<B> Drop for RunnerExecutor<B> {
@@ -403,6 +408,7 @@ pub(crate) async fn outcome_of(
         }),
         reproducibility: result.check,
         containers: containers(store, &result.containers).await?,
+        address: result.address.clone(),
         ..Outcome::default()
     })
 }

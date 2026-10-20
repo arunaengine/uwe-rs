@@ -32,6 +32,7 @@ impl Backend for Fake {
         std::fs::create_dir_all(root.join("control"))?;
         std::fs::write(root.join("work/out"), job.name)?;
         Ok(Finished {
+            address: None,
             exit_code: Some(self.exit_code.load(Ordering::SeqCst)),
             files: vec![Collected {
                 path: "out".into(),

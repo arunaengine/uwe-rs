@@ -346,6 +346,11 @@ impl SlurmBackend {
                 .await?;
         }
         let spec = &spec;
+        if spec.environment.contains_key(executor::daemon::DAEMON_ENV) {
+            return Err(ExecutorError::Unsupported(
+                "SLURM jobs cannot run daemons: the run cannot reach them on a network of its own or stop them while it goes on".into(),
+            ));
+        }
         if spec.containers.iter().any(|container| container.service) {
             return Err(ExecutorError::Unsupported(
                 "SLURM jobs cannot run sidecars: their containers share no network of their own and do not stop together".into(),
@@ -1279,6 +1284,7 @@ async fn finish(
         _ => Vec::new(),
     };
     Ok(Finished {
+        address: None,
         exit_code: Some(exit_code),
         files,
         usage: executor::Usage::of(&root),

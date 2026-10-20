@@ -146,6 +146,7 @@ mod tests {
         std::fs::write(&file, "out").unwrap();
         std::fs::write(root.join("control/objects"), "1 ./out/a.txt\n").unwrap();
         let finished = Finished {
+            address: None,
             exit_code: Some(0),
             files: manifest::parse("file out/a.txt\ndirectory empty\n").unwrap(),
             root: root.to_owned(),

@@ -949,6 +949,7 @@ async fn finish(
         _ => Vec::new(),
     };
     Ok(Finished {
+        address: None,
         exit_code: Some(exit_code),
         files,
         usage: executor::Usage::of(&root),

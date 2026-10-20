@@ -58,6 +58,7 @@ impl CacheEntry {
             started: None,
             ended: None,
             check: None,
+            address: None,
             containers: self.containers,
         }
     }

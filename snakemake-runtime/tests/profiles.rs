@@ -50,7 +50,6 @@ fn applies_retry_aliases() {
 #[test]
 fn diagnoses_profile_settings() {
     for (settings, unsupported) in [
-        ("notemp: true\n", true),
         ("no-hooks: true\n", true),
         ("retries: -1\n", false),
         ("restart-times: two\n", false),
@@ -225,6 +224,22 @@ fn marks_all_temporary() {
     assert!(run.error.is_none(), "{:?}", run.error);
     // The target stays; the file that only the next job reads goes.
     assert_eq!(delivered.0, ["b"]);
+}
+
+/// Snakemake 9.27 with `notemp` keeps `a`, which `temp()` would remove after `b` read it.
+#[test]
+fn keeps_temporary_outputs() {
+    let snakefile = "rule all:\n    input: 'b'\nrule a:\n    output: temp('a')\n    shell: 'touch {output}'\nrule b:\n    input: 'a'\n    output: 'b'\n    shell: 'cp {input} {output}'\n";
+    let folder = tempfile::tempdir().expect("a folder");
+    let launch = profile_launch(folder.path(), "notemp: true\n", snakefile);
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    let mut executor = workflow_graph::Simulator::new(folder.path().join("made"));
+    let mut delivered = Delivered::default();
+    let run = workflow_graph::Engine::new(&mut executor)
+        .observer(&mut delivered)
+        .run("notemp", driver.as_mut());
+    assert!(run.error.is_none(), "{:?}", run.error);
+    assert_eq!(delivered.0, ["a", "b"]);
 }
 
 #[derive(Default)]

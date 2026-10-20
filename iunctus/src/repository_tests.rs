@@ -56,6 +56,16 @@ fn parses_host_identities() {
             Host::Gitea,
             "http://localhost:1234/api/v1/repos/owner/workflow",
         ),
+        (
+            "https://git.example.org/team/pipeline.git",
+            Host::Git,
+            "https://git.example.org/team/pipeline.git",
+        ),
+        (
+            "https://git.example.org/group/team/pipeline",
+            Host::Git,
+            "https://git.example.org/group/team/pipeline",
+        ),
     ] {
         let repository = Repository::parse(url).unwrap().unwrap();
         assert_eq!(repository.host, host);
@@ -228,4 +238,23 @@ fn fetches_github_demo() {
         revision::revision(&folder).as_deref(),
         Some("32893afef8076a03a2767a020b3f0cab2e0b40b2")
     );
+}
+
+#[test]
+#[ignore = "fetches https://github.com/nextflow-io/hello.git over the network"]
+fn fetches_plain_git() {
+    let cache = tempfile::tempdir().unwrap();
+    let mut repository = Repository::parse("https://github.com/nextflow-io/hello.git")
+        .unwrap()
+        .unwrap();
+    repository.host = Host::Git;
+    let folder = repository
+        .fetch_git(cache.path(), Some("master"), false, None)
+        .unwrap();
+    assert!(folder.join("main.nf").is_file(), "{folder:?}");
+    let commit = std::fs::read_to_string(folder.join(MARKER)).unwrap();
+    let again = repository
+        .fetch_git(cache.path(), Some(&commit), false, None)
+        .unwrap();
+    assert_eq!(again, folder);
 }

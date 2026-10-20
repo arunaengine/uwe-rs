@@ -15,7 +15,8 @@ pub(crate) fn target_and_language(arguments: &Arguments) -> Result<(PathBuf, Lan
             "iunctus: name a workflow file or a project directory to run",
         ));
     };
-    let target = repository::prepare(target, arguments.revision.as_deref(), arguments.latest)?;
+    let revision = arguments.revision.as_deref();
+    let target = repository::prepare(target, revision, arguments.latest, arguments)?;
     let remote = target.to_string_lossy();
     let remote = remote.starts_with("https://") || remote.starts_with("http://");
     let cwl = remote

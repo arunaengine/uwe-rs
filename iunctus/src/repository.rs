@@ -23,6 +23,8 @@ enum Host {
     Gitlab,
     Bitbucket,
     Gitea,
+    /// Any server, through Git over HTTP or HTTPS.
+    Git,
 }
 
 pub(crate) struct Repository {
@@ -30,6 +32,8 @@ pub(crate) struct Repository {
     origin: String,
     owner: String,
     name: String,
+    /// The address as given, which Git fetches from.
+    url: String,
 }
 
 impl Repository {
@@ -55,17 +59,19 @@ impl Repository {
         if url.query().is_some() || url.fragment().is_some() {
             return Ok(None);
         }
+        let path = url.path().trim_matches('/').trim_end_matches(".git");
+        let parts: Vec<_> = path.split('/').collect();
+        // Other servers speak Git; one at `owner/name` without `.git` may be a Gitea.
         let host = match url.host_str().unwrap_or_default() {
             "github.com" => Host::Github,
             "gitlab.com" => Host::Gitlab,
             "bitbucket.org" => Host::Bitbucket,
             name if name.split('.').any(|part| part == "gitlab") => Host::Gitlab,
+            _ if url.path().trim_end_matches('/').ends_with(".git") || parts.len() > 2 => Host::Git,
             _ => Host::Gitea,
         };
-        let path = url.path().trim_matches('/').trim_end_matches(".git");
-        let parts: Vec<_> = path.split('/').collect();
         if parts.len() < 2
-            || (host != Host::Gitlab && parts.len() != 2)
+            || (!matches!(host, Host::Gitlab | Host::Git) && parts.len() != 2)
             || !parts.iter().all(|part| valid_name(part))
             || parts.last().is_some_and(|name| {
                 [".cwl", ".yaml", ".yml", ".json", ".nf", ".smk"]
@@ -80,6 +86,7 @@ impl Repository {
             origin: url.origin().ascii_serialization(),
             owner: parts[..parts.len() - 1].join("/"),
             name: parts[parts.len() - 1].into(),
+            url: address.trim_end_matches('/').to_owned(),
         }))
     }
 
@@ -99,6 +106,7 @@ impl Repository {
             Host::Gitlab => format!("{}/api/v4/projects/{}", self.origin, encode(&path)),
             Host::Bitbucket => format!("https://api.bitbucket.org/2.0/repositories/{path}"),
             Host::Gitea => format!("{}/api/v1/repos/{path}", self.origin),
+            Host::Git => self.url.clone(),
         }
     }
 
@@ -108,6 +116,7 @@ impl Repository {
             Host::Gitlab => &["GITLAB_TOKEN"],
             Host::Bitbucket => &["BITBUCKET_TOKEN"],
             Host::Gitea => &["GITEA_TOKEN"],
+            Host::Git => &[],
         };
         names
             .iter()
@@ -192,7 +201,7 @@ impl Repository {
                 "{}/{}/{}/get/{commit}.tar.gz",
                 self.origin, self.owner, self.name
             ),
-            Host::Gitea => format!("{}/archive/{commit}.tar.gz", self.api()),
+            Host::Gitea | Host::Git => format!("{}/archive/{commit}.tar.gz", self.api()),
         };
         let mut response = self.request(&url, token).await?;
         let mut archive = tempfile::tempfile().map_err(local)?;
@@ -296,6 +305,57 @@ impl Repository {
     }
 }
 
+impl Repository {
+    /// Fetches a commit with Git, for servers without a known API: a commit by its ID, else
+    /// the commit that the branch or tag names now, or that of the default branch.
+    fn fetch_git(
+        &self,
+        cache: &Path,
+        reference: Option<&str>,
+        latest: bool,
+        account: Option<(String, String)>,
+    ) -> Result<PathBuf, Failure> {
+        let parent = self.folder(cache);
+        let commit = reference
+            .and_then(revision::commit)
+            .map(|text| text.to_ascii_lowercase());
+        // A full commit ID needs the whole history; a branch or tag only its last commit.
+        let fetch = crate::git::Fetch {
+            url: self.url.clone(),
+            reference: commit.clone().or(reference.map(str::to_owned)),
+            depth: commit.is_none().then_some(1),
+            refspecs: Vec::new(),
+            submodules: true,
+            account,
+        };
+        let commit = match commit {
+            Some(commit) => commit,
+            None => crate::git::resolve(&fetch).map_err(failure)?,
+        };
+        let folder = parent.join(&commit);
+        if ready(&folder, &commit) && !(latest && reference.is_none()) {
+            return Ok(folder);
+        }
+        std::fs::create_dir_all(&parent).map_err(local)?;
+        let temporary = tempfile::tempdir_in(&parent).map_err(local)?;
+        let stop = std::sync::atomic::AtomicBool::new(false);
+        let fetched = crate::git::checkout(&fetch, temporary.path(), &stop).map_err(failure)?;
+        if fetched != commit {
+            return Err(failure(
+                "the repository moved while it was fetched; run again",
+            ));
+        }
+        std::fs::write(temporary.path().join(MARKER), &commit).map_err(local)?;
+        // Another process may have published this immutable commit while we fetched it.
+        if let Err(error) = std::fs::rename(temporary.path(), &folder)
+            && !ready(&folder, &commit)
+        {
+            return Err(local(error));
+        }
+        Ok(folder)
+    }
+}
+
 pub(crate) fn root(path: &Path) -> Option<(PathBuf, String)> {
     let path = std::path::absolute(path).ok()?;
     path.ancestors().find_map(|folder| {
@@ -308,6 +368,7 @@ pub(crate) fn prepare(
     target: &Path,
     reference: Option<&str>,
     latest: bool,
+    arguments: &crate::arguments::Arguments,
 ) -> Result<PathBuf, Failure> {
     if target.exists() {
         if reference.is_some() || latest {
@@ -320,13 +381,31 @@ pub(crate) fn prepare(
     let Some(repository) = Repository::parse(&target.to_string_lossy())? else {
         return Ok(target.to_owned());
     };
+    let cache = crate::cache_directory();
+    // Git signs in with the account of the https provider of the config file for the address.
+    let address = repository.url.clone();
+    let account = || -> Result<Option<(String, String)>, Failure> {
+        let setup = crate::setup::Setup::load(arguments)?;
+        (setup.storage.account(&address)).map_err(|error| Failure::setup(error.to_string()))
+    };
+    if repository.host == Host::Git {
+        return repository.fetch_git(&cache, reference, latest, account()?);
+    }
     let runtime = workflow_graph::runtime().map_err(|error| Failure::setup(error.to_string()))?;
-    runtime.block_on(repository.fetch(
-        &crate::cache_directory(),
-        reference,
-        latest,
-        repository.token().as_deref(),
-    ))
+    let token = repository.token();
+    let fetched = runtime.block_on(repository.fetch(&cache, reference, latest, token.as_deref()));
+    match fetched {
+        // A server at `owner/name` that is no Gitea may still speak Git.
+        Err(error) if repository.host == Host::Gitea => {
+            let git = Repository {
+                host: Host::Git,
+                ..repository
+            };
+            git.fetch_git(&cache, reference, latest, account()?)
+                .map_err(|_| error)
+        }
+        fetched => fetched,
+    }
 }
 
 fn ready(folder: &Path, commit: &str) -> bool {

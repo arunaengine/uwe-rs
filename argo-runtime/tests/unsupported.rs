@@ -245,7 +245,8 @@ fn rejects_transfer_options() {
         );
     }
     for artifact in [
-        "git: {repo: 'https://example.org/repository.git'}",
+        "git: {repo: 'git@github.com:owner/repository.git'}",
+        "git: {repo: 'https://example.org/repository.git', sshPrivateKeySecret: {name: s, key: k}}",
         "s3: {bucket: data, key: input.txt, endpoint: example.org}",
         "http: {url: 'https://example.org/input', headers: [{name: Authorization, value: secret}]}",
         "raw: {data: input}, archive: {tar: {}}",

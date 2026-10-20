@@ -212,6 +212,8 @@ pub(crate) struct Run {
     pub deadlines: HashMap<usize, crate::timers::Limit>,
     pub workflow_limit: Option<std::time::Instant>,
     pub stopped: bool,
+    /// The Git checkouts that artifacts ask for, by their address.
+    pub git_sources: HashMap<String, crate::GitSource>,
     /// The requests of `iunctus resume` that arrived since the run last went on.
     pub requests: Vec<crate::resume::Request>,
     /// Whether the workflow waits for `iunctus resume` before it starts (`spec.suspend`).
@@ -366,6 +368,7 @@ impl Run {
             workflow_limit: None,
             stopped: false,
             requests: Vec::new(),
+            git_sources: HashMap::new(),
             held: false,
             expired: HashMap::new(),
             cancel_tasks: Vec::new(),

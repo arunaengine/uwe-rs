@@ -10,6 +10,7 @@ mod conditions;
 mod dag;
 mod environment;
 pub mod expr;
+mod git;
 mod hooks;
 mod http;
 mod ignored;
@@ -52,6 +53,7 @@ use workflow_graph::{
     Task,
 };
 
+pub use git::{Checkout, GitClient, GitSource};
 pub use library::{Document, Kind, Library, load_file, repository_of};
 pub use validate::{Rejection, validate};
 
@@ -80,6 +82,17 @@ pub struct Options {
     /// The folder where `iunctus resume` leaves requests for the suspended steps of this run;
     /// without it, a real run cannot suspend without a duration.
     pub resume: Option<PathBuf>,
+    /// The Git client that checks out git artifacts in a real run.
+    pub git: Option<GitClient>,
+}
+
+/// What a run of the command line gets from its host: the S3 providers of the config file,
+/// the folder of resume requests and a Git client.
+#[derive(Clone, Debug, Default)]
+pub struct Services {
+    pub endpoints: Vec<Endpoint>,
+    pub resume: Option<PathBuf>,
+    pub git: Option<GitClient>,
 }
 
 /// An S3 storage provider: its name, the addresses it serves and its service, `None` for AWS.
@@ -280,16 +293,11 @@ impl Driver for ArgoDriver {
 
 /// The driver for an Argo workflow file.
 pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
-    driver_with(launch, Vec::new(), None)
+    driver_with(launch, Services::default())
 }
 
-/// The driver for an Argo workflow file, with the S3 providers of the config file and the
-/// folder of resume requests.
-pub fn driver_with(
-    launch: &Launch,
-    endpoints: Vec<Endpoint>,
-    resume: Option<PathBuf>,
-) -> Result<Box<dyn Driver>, DriverError> {
+/// The driver for an Argo workflow file, with the services of its host.
+pub fn driver_with(launch: &Launch, services: Services) -> Result<Box<dyn Driver>, DriverError> {
     let target = &launch.target;
     if target.is_dir() {
         return Err(DriverError::new(format!(
@@ -332,8 +340,9 @@ pub fn driver_with(
         now: None,
         assume_inputs: launch.simulated,
         keep_going: launch.keep_going,
-        endpoints,
-        resume,
+        endpoints: services.endpoints,
+        resume: services.resume,
+        git: services.git,
     };
     let mut driver = ArgoDriver::new(document, Rc::new(library), options);
     if !launch.simulated {

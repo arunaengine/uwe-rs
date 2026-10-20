@@ -5,7 +5,7 @@
 use crate::arguments::Arguments;
 use crate::setup::Setup;
 use crate::{Failure, cache_directory, detect, failure, nextflow, repository};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use workflow_graph::{CancellationToken, Driver, DriverError, Language, Launch};
 
 /// The workflow of a command and its language: `-lang`, else what the target tells.
@@ -124,7 +124,34 @@ pub(crate) fn driver(
                     address,
                 })
                 .collect();
-            argo_runtime::driver_with(launch, endpoints, Some(resume_folder(run)))
+            let storage = setup.storage.clone();
+            let git = move |source: &argo_runtime::GitSource, folder: &Path| {
+                let account = storage
+                    .account(&source.repo)
+                    .map_err(|error| error.to_string())?;
+                if source.account && account.is_none() {
+                    return Err(format!(
+                        "{} signs in; give it an account with an https storage provider of the config file",
+                        source.repo
+                    ));
+                }
+                let fetch = crate::git::Fetch {
+                    url: source.repo.clone(),
+                    reference: source.reference.clone(),
+                    depth: source.depth,
+                    refspecs: source.fetch.clone(),
+                    submodules: source.submodules,
+                    account,
+                };
+                let stop = std::sync::atomic::AtomicBool::new(false);
+                crate::git::checkout(&fetch, folder, &stop).map(|_| ())
+            };
+            let services = argo_runtime::Services {
+                endpoints,
+                resume: Some(resume_folder(run)),
+                git: Some(argo_runtime::GitClient(std::sync::Arc::new(git))),
+            };
+            argo_runtime::driver_with(launch, services)
         }
     }
 }

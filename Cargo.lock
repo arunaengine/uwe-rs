@@ -3114,6 +3114,7 @@ dependencies = [
  "sha2 0.11.0",
  "stacker",
  "tempfile",
+ "unicode-normalization",
  "uuid",
 ]
 

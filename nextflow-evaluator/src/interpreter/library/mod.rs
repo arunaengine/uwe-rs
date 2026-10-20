@@ -228,6 +228,15 @@ fn inspect(value: &Value) -> String {
     }
 }
 
+/// A `java.util.Random` seeded as Java seeds it.
+pub(super) fn random(seed: i64) -> Value {
+    let state = crate::value::State::Random((seed ^ 0x5DEECE66D) & ((1 << 48) - 1));
+    let class = "java.util.Random";
+    Value::Object(std::rc::Rc::new(std::cell::RefCell::new(
+        crate::value::Object { class, state },
+    )))
+}
+
 /// A `java.util.Optional` of the value, empty for null.
 pub(super) fn optional(value: Value) -> Value {
     let state = crate::value::State::Optional(value);

@@ -52,6 +52,8 @@ pub enum State {
     Builder(String),
     /// A `java.util.Iterator` over a copy of the items, with the position of the next one.
     Iterator(Vec<super::Value>, usize),
+    /// `java.util.Random` with the state of its generator.
+    Random(i64),
     /// `java.util.Optional`, empty when it holds null.
     Optional(super::Value),
     /// `java.security.MessageDigest`, by its algorithm.

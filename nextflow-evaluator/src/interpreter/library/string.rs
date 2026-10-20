@@ -254,6 +254,33 @@ impl Interpreter<'_> {
                     }
                 }
             }
+            ("decodeBase64", []) => {
+                super::bytes::bytes(super::bytes::decode_base64(text).at(span)?)
+            }
+            // `chars()`: an `IntStream` of the UTF-16 code units.
+            ("chars", []) => Value::List(Rc::new(RefCell::new(List::new(
+                ListKind::Stream,
+                text.encode_utf16()
+                    .map(|unit| Value::integer(i32::from(unit)))
+                    .collect(),
+            )))),
+            ("normalize", []) => {
+                use unicode_normalization::UnicodeNormalization;
+                Value::string(text.nfc().collect::<String>())
+            }
+            // Each line split by the pattern, given to the closure.
+            ("splitEachLine", [separator, Value::Closure(f)]) => {
+                let pattern = pattern(separator, span)?;
+                for line in text.lines() {
+                    let parts = pattern
+                        .split(line, 0)
+                        .into_iter()
+                        .map(Value::string)
+                        .collect();
+                    self.call_closure_value(f, vec![Value::list(parts)], span)?;
+                }
+                Value::Null
+            }
             ("contentEquals", [other]) => Value::Boolean(other.to_string() == text),
             ("stripMargin", rest) if rest.len() <= 1 => {
                 let marker = match rest {

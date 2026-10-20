@@ -65,6 +65,12 @@ pub(super) fn path_method(path: &Rc<PathValue>, name: &str, arguments: &[Value])
             path.parent()
                 .map_or(Value::Null, |p| Value::Path(Rc::new(p))),
         ),
+        // `java.io.File.getParentFile()` and `getPath()`.
+        ("getParentFile", []) => Some(
+            path.parent()
+                .map_or(Value::Null, |p| Value::Path(Rc::new(p))),
+        ),
+        ("getPath", []) => Some(Value::string(path.text())),
         ("getScheme", []) => Some(Value::string(path.scheme())),
         ("toUriString", []) => Some(Value::string(path.uri())),
         ("toUri", []) => {

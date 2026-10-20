@@ -296,13 +296,15 @@ fn retains_storage_times() {
 }
 
 /// Snakemake's test_storage registers S3 with `retries=5`, a setting that changes no file;
-/// settings with credentials or addresses stay with the storage settings of iunctus.
+/// settings with credentials or addresses stay with the storage settings of iunctus, which
+/// the refusal names.
 #[test]
 fn accepts_pacing_settings() {
     let folder = tempfile::tempdir().unwrap();
     for (setting, accepted) in [
         ("retries=5, keep_local=True", true),
         ("endpoint_url='x'", false),
+        ("access_key='x'", false),
     ] {
         let workflow = format!(
             "storage:\n    provider='s3', {setting}\nrule make:\n    output: 'out'\n    shell: 'touch {{output}}'\n"
@@ -311,7 +313,18 @@ fn accepts_pacing_settings() {
         let mut session = Session::new(&launch, &Storage::default()).unwrap();
         match session.start() {
             Ok(tasks) => assert!(accepted && tasks.len() == 1, "{setting}"),
-            Err(error) => assert!(!accepted && error.unsupported, "{setting}: {error}"),
+            Err(error) => {
+                assert!(!accepted && error.unsupported, "{setting}: {error}");
+                // It names the setting of the iunctus config file that replaces it.
+                let key = setting.split('=').next().unwrap();
+                let replaced = if key == "endpoint_url" {
+                    "`endpoint`"
+                } else {
+                    "`access_key_id`"
+                };
+                assert!(error.message.contains(replaced), "{error}");
+                assert!(error.message.contains("type = \"s3\""), "{error}");
+            }
         }
     }
 }

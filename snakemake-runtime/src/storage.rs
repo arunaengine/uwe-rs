@@ -33,6 +33,45 @@ pub fn check_provider(provider: Option<&str>) -> Result<(), Error> {
     }
 }
 
+/// Why a setting of a Snakemake storage plugin is refused, naming the setting of the iunctus
+/// config file that takes its place, since iunctus reads providers from there.
+pub fn plugin_setting(provider: &str, key: &str) -> String {
+    let kind = match provider {
+        "gcs" => "google-cloud-storage",
+        "azure" => "azure-blob-storage",
+        "http" => "https",
+        "fs" => "folder",
+        other => other,
+    };
+    let setting = match (provider, key) {
+        ("s3" | "gcs" | "azure", "endpoint_url" | "endpoint") => Some("endpoint"),
+        ("s3", "access_key" | "access_key_id") => Some("access_key_id"),
+        ("s3", "secret_key" | "secret_access_key") => Some("secret_access_key"),
+        ("s3", "token" | "session_token") => Some("session_token"),
+        ("s3", "region" | "region_name") => Some("region"),
+        ("s3", "addressing_style") => Some("path_style"),
+        ("gcs" | "http", "token") => Some("token"),
+        ("gcs", "credentials" | "credentials_file" | "credential_file") => Some("credential_file"),
+        ("azure", "account_name" | "account") => Some("account"),
+        ("azure", "account_key" | "access_key" | "key") => Some("key"),
+        ("azure", "sas_token") => Some("sas_token"),
+        ("http" | "ftp", "username" | "user") => Some("user"),
+        ("http" | "ftp", "password") => Some("password"),
+        _ => None,
+    };
+    let table = format!(
+        "a [storage.<name>] table of the iunctus config file with type = \"{kind}\" and the prefixes it serves"
+    );
+    match setting {
+        Some(setting) => format!(
+            "Snakemake storage setting '{key}' of provider {provider}; set `{setting}` in {table}"
+        ),
+        None => format!(
+            "Snakemake storage setting '{key}' of provider {provider}; configure the provider in {table}"
+        ),
+    }
+}
+
 /// The storage plugin whose queries look like `query`, by its scheme.
 fn infer_provider(query: &str) -> Result<&'static str, Error> {
     let scheme = query.split_once("://").map_or("", |(scheme, _)| scheme);

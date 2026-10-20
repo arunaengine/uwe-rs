@@ -335,7 +335,7 @@ impl KubernetesBackend {
         // The log of a container that failed tells why, as when it could not run the wrapper.
         let log = match &ended {
             Ok(Ended::Exited(status, _)) if *status != 0 => {
-                tokio::time::timeout(REQUEST_GRACE, self.log(&name))
+                tokio::time::timeout(REQUEST_GRACE, self.log(&name, None))
                     .await
                     .ok()
                     .flatten()
@@ -495,14 +495,16 @@ impl KubernetesBackend {
         Ok(())
     }
 
-    /// The last lines of the log of the pod of a Job, when there is one.
-    async fn log(&self, name: &str) -> Option<String> {
+    /// The last lines of the log of the pod of a Job, of its `container` or else its first one,
+    /// when there is one.
+    async fn log(&self, name: &str, container: Option<&str>) -> Option<String> {
         let pods = self.cluster.pods();
         let selector = ListParams::default().labels(&format!("job-name={name}"));
         let list = pods.list(&selector).await.ok()?;
         let pod = list.items.last()?.metadata.name.clone()?;
         let parameters = LogParams {
             tail_lines: Some(5),
+            container: container.map(str::to_owned),
             ..LogParams::default()
         };
         let log = pods.logs(&pod, &parameters).await.ok()?;
@@ -530,6 +532,24 @@ impl KubernetesBackend {
                 Look::Active | Look::Unknown => None,
                 Look::Ended { exit_code, reason } => return Ok(Ended::Exited(exit_code, reason)),
                 Look::Stopped(reason) => return Ok(Ended::Stopped(reason)),
+                Look::InitFailed {
+                    container,
+                    exit_code,
+                    reason,
+                } => {
+                    let log = self.log(name, Some(&container));
+                    let log = tokio::time::timeout(REQUEST_GRACE, log)
+                        .await
+                        .ok()
+                        .flatten();
+                    let message = format!(
+                        "the init container {container} failed (exit code {exit_code}, {reason})"
+                    );
+                    return Err(machine(match log {
+                        Some(log) => format!("{message}: {log}"),
+                        None => message,
+                    }));
+                }
                 Look::Stuck(reason) => Some(format!("the pod cannot start: {reason}")),
                 Look::Missing => Some("the Job has no pod".to_owned()),
                 Look::Unavailable(error) => Some(format!("cannot list the pods: {error}")),

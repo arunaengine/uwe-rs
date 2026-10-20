@@ -31,6 +31,13 @@ pub enum Look {
     Ended { exit_code: i32, reason: String },
     /// The container cannot start, like for an image that cannot be pulled; the text says why.
     Stuck(String),
+    /// An init container, like stage-in, ended badly with this exit code and reason, so the
+    /// task never starts.
+    InitFailed {
+        container: String,
+        exit_code: i32,
+        reason: String,
+    },
     /// The pod was stopped without its container ending, for this reason, like
     /// `DeadlineExceeded` or `Evicted`.
     Stopped(String),
@@ -136,7 +143,22 @@ fn look(pod: &Value) -> Look {
             reason: reason.clone(),
         };
     }
-    for container in statuses {
+    let init = (status["initContainerStatuses"].as_array())
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    for container in init {
+        let ended = &container["state"]["terminated"];
+        let exit_code = ended["exitCode"].as_i64().unwrap_or(0) as i32;
+        if ended.is_object() && exit_code != 0 {
+            return Look::InitFailed {
+                container: text(&container["name"]),
+                exit_code,
+                reason: text(&ended["reason"]),
+            };
+        }
+    }
+    // An init container that cannot be pulled is stuck like the task container.
+    for container in init.iter().chain(statuses) {
         if let Some(waiting) = container["state"].get("waiting") {
             let reason = text(&waiting["reason"]);
             if STUCK.contains(&reason.as_str()) {
@@ -194,5 +216,32 @@ mod tests {
         // A pod of several containers ends when all ended, or when one ended badly.
         assert_eq!(looks["f"], Look::Active);
         assert_eq!(looks["g"], ended(137, "OOMKilled"));
+    }
+
+    #[test]
+    fn reports_init_containers() {
+        let pod = |job: &str, init: Value| {
+            let waiting = json!([{"state": {"waiting": {"reason": "PodInitializing"}}}]);
+            let status = json!({"phase": "Pending", "initContainerStatuses": init,
+                "containerStatuses": waiting});
+            json!({"metadata": {"labels": {"job-name": job}}, "status": status})
+        };
+        let list = json!({"items": [
+            pod("a", json!([{"name": "helper", "state": {"waiting": {"reason": "ErrImagePull",
+                "message": "rate limit"}}}])),
+            pod("b", json!([{"name": "helper", "state": {"terminated": {"exitCode": 0}}},
+                {"name": "stage-in", "state": {"terminated": {"exitCode": 1,
+                "reason": "Error"}}}])),
+            pod("c", json!([{"name": "stage-in", "state": {"running": {}}}])),
+        ]});
+        let looks = looks(&list);
+        assert_eq!(looks["a"], Look::Stuck("ErrImagePull: rate limit".into()));
+        let failed = Look::InitFailed {
+            container: "stage-in".into(),
+            exit_code: 1,
+            reason: "Error".into(),
+        };
+        assert_eq!(looks["b"], failed);
+        assert_eq!(looks["c"], Look::Active);
     }
 }

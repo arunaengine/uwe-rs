@@ -35,6 +35,8 @@ struct Running {
     deleted: bool,
     /// How many containers its pod has.
     containers: usize,
+    /// The names of its init containers.
+    init: Vec<String>,
 }
 
 /// What the fake server knows: its folder, the Jobs, and each request as `METHOD path`.
@@ -173,8 +175,13 @@ fn start(folder: &Path, job: &Value) -> Running {
             data.join(list["upload"]["prefix"].as_str().expect("a prefix"))
         },
     );
-    for container in pod["initContainers"].as_array().into_iter().flatten() {
-        let exit = folder.join(format!("{name}.exit.0"));
+    let init: Vec<&Value> = pod["initContainers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .collect();
+    for (index, container) in init.iter().enumerate() {
+        let exit = folder.join(format!("{name}.init.{index}"));
         script.push_str(&format!(
             "{} || {{ echo $? > {}; exit; }}\n",
             words(container).join(" "),
@@ -232,6 +239,9 @@ fn start(folder: &Path, job: &Value) -> Running {
         process,
         deleted: false,
         containers: containers.len(),
+        init: (init.iter())
+            .map(|container| container["name"].as_str().unwrap_or_default().to_owned())
+            .collect(),
     }
 }
 
@@ -249,7 +259,25 @@ fn pod(folder: &Path, name: &str, running: &Running) -> Value {
             }
         })
         .collect();
+    // An init container that failed keeps the containers from starting.
+    let init: Vec<Value> = (running.init.iter().enumerate())
+        .filter_map(|(index, container)| {
+            let exit = std::fs::read_to_string(folder.join(format!("{name}.init.{index}")));
+            let code = exit.ok()?.trim().parse::<i32>().ok()?;
+            let ended = json!({"terminated": {"exitCode": code, "reason": "Error"}});
+            Some(json!({"name": container, "state": ended}))
+        })
+        .collect();
+    let states = match init.is_empty() {
+        true => states,
+        false => vec![json!({"waiting": {"reason": "PodInitializing"}}); states.len()],
+    };
     let running_now = states.iter().any(|state| state.get("running").is_some());
+    let phase = match (init.is_empty(), running_now) {
+        (false, _) => "Failed",
+        (true, true) => "Running",
+        (true, false) => "Succeeded",
+    };
     let statuses: Vec<Value> = (states.into_iter().enumerate())
         .map(|(index, state)| {
             json!({
@@ -267,7 +295,8 @@ fn pod(folder: &Path, name: &str, running: &Running) -> Value {
             "labels": {"job-name": name, LABEL: running.label},
         },
         "status": {
-            "phase": if running_now { "Running" } else { "Succeeded" },
+            "phase": phase,
+            "initContainerStatuses": init,
             "containerStatuses": statuses,
         },
     })
@@ -1353,6 +1382,49 @@ async fn stages_through_objects() {
         );
         assert_eq!(pod["containers"][0]["image"], "debian:stable-slim");
     }
+}
+
+/// A stage-in that fails ends the attempt with the end of its log, instead of a bare failure.
+#[tokio::test]
+async fn reports_stage_failures() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (mut backend, _) = backend(root.path()).await;
+    let helper = root.path().join("server/helper");
+    let script = "#!/bin/sh\necho 'iunctus: cannot download the plan: refused' >&2\nexit 1\n";
+    std::fs::write(&helper, script).expect("writes the helper");
+    let mode = std::os::unix::fs::PermissionsExt::from_mode(0o755);
+    std::fs::set_permissions(&helper, mode).expect("runs");
+    let objects = content_store::Store::local(&root.path().join("staging")).expect("a store");
+    backend.remote = Some(PodStaging {
+        stage: RemoteStage {
+            objects,
+            expiry: Duration::from_secs(600),
+            max_outputs: 1,
+            credentials: false,
+            cleanup: false,
+        },
+        via: Via::Helper(Helper {
+            image: "iunctus-helper:test".into(),
+            image_volume: true,
+            secret: None,
+            binary: None,
+        }),
+    });
+    let spec = spec("debian:stable-slim", "true");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-P-9-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = (backend.run(job, &CancellationToken::new()).await).expect_err("a failure");
+    let text = error.to_string();
+    assert!(
+        text.contains("init container stage-in failed (exit code 1"),
+        "{text}"
+    );
+    assert!(text.contains("cannot download the plan: refused"), "{text}");
 }
 
 /// Runs the staging helper when a pod of `stages_through_objects` starts this program as it.

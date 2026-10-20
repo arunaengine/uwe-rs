@@ -2,8 +2,10 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use storage::{Blocking, Storage, StorageError, address};
 use workflow_graph::{Delivery, DeliveryMode, Files, LocalFiles};
@@ -13,6 +15,8 @@ pub struct StorageFiles {
     storage: Blocking,
     /// Where copies of remote files go.
     downloads: PathBuf,
+    /// Whether this process copied each directory, by its download name.
+    copied: Mutex<HashMap<String, Arc<Mutex<bool>>>>,
 }
 
 impl StorageFiles {
@@ -20,6 +24,7 @@ impl StorageFiles {
         StorageFiles {
             storage: storage.blocking(),
             downloads,
+            copied: Mutex::default(),
         }
     }
 
@@ -29,14 +34,49 @@ impl StorageFiles {
             Some(found) if found.directory => {
                 // As fetch does, so that `iunctus clean` leaves the copy alone while it grows.
                 self.storage.hold(&self.downloads).map_err(other)?;
-                let folder = self
-                    .downloads
-                    .join(self.storage.download_name(location).map_err(other)?)
-                    .join("content");
-                self.download_directory(location, &folder)?;
-                Ok(folder)
+                let name = self.storage.download_name(location).map_err(other)?;
+                let turn = (self
+                    .copied
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner()))
+                .entry(name.clone())
+                .or_default()
+                .clone();
+                let mut done = turn.lock().unwrap_or_else(|poison| poison.into_inner());
+                let bundle = self.downloads.join(name);
+                if !*done {
+                    self.replace_directory(location, &bundle)?;
+                    *done = true;
+                }
+                Ok(bundle.join("content"))
             }
             _ => self.storage.fetch(location, &self.downloads).map_err(other),
+        }
+    }
+
+    /// Downloads a directory whole into a temporary folder and only then renames it to
+    /// `bundle`. A crash leaves a `.tmp` folder, which nothing reads and `iunctus clean`
+    /// removes. A directory may change under its name, so copies of earlier runs go.
+    fn replace_directory(&self, location: &str, bundle: &Path) -> io::Result<()> {
+        std::fs::create_dir_all(&self.downloads)?;
+        let ready = tempfile::tempdir_in(&self.downloads)?;
+        self.download_directory(location, &ready.path().join("content"))?;
+        let old = tempfile::tempdir_in(&self.downloads)?;
+        match std::fs::rename(bundle, old.path().join("bundle")) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+            _ => {}
+        }
+        match std::fs::rename(ready.path(), bundle) {
+            // Another process just put a whole copy there.
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::AlreadyExists | io::ErrorKind::DirectoryNotEmpty
+                ) && bundle.join("content").is_dir() =>
+            {
+                Ok(())
+            }
+            result => result,
         }
     }
 
@@ -264,6 +304,49 @@ mod tests {
         let files = copying.join().unwrap();
         assert!(storage::hold_downloads(&downloads).unwrap().is_none());
         drop(files);
+    }
+
+    #[test]
+    fn partial_copies_vanish() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let downloads = root.path().join("downloads");
+        let stored = root.path().join("store/runs/2/tree");
+        std::fs::create_dir_all(&stored).unwrap();
+        std::fs::write(stored.join("a.txt"), "a\n").unwrap();
+        let broken = stored.join("b.txt");
+        std::fs::write(&broken, "b\n").unwrap();
+        let location = "s3://store/runs/2/tree";
+        let storage = folders(root.path());
+        let bundle = downloads.join(storage.blocking().download_name(location).unwrap());
+        // A source that fails after some files, as a crash partway does.
+        std::fs::set_permissions(&broken, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::File::open(&broken).is_ok() {
+            return; // Root reads the file anyway.
+        }
+        let files = StorageFiles::new(&storage, downloads.clone());
+        assert!(files.local(location).is_err());
+        assert!(!bundle.exists(), "no partial copy under the download name");
+        // An older version left a partial copy with a stale file there.
+        std::fs::create_dir_all(bundle.join("content")).unwrap();
+        std::fs::write(bundle.join("content/a.txt"), "partial").unwrap();
+        std::fs::write(bundle.join("content/old.txt"), "old").unwrap();
+        std::fs::set_permissions(&broken, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let files = StorageFiles::new(&storage, downloads.clone());
+        let copy = files.local(location).expect("a copy");
+        assert_eq!(copy, bundle.join("content"));
+        assert_eq!(std::fs::read_to_string(copy.join("a.txt")).unwrap(), "a\n");
+        assert_eq!(std::fs::read_to_string(copy.join("b.txt")).unwrap(), "b\n");
+        assert!(
+            !copy.join("old.txt").exists(),
+            "the next run downloads again"
+        );
+        let mut left: Vec<String> = (std::fs::read_dir(&downloads).unwrap())
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        let name = bundle.file_name().unwrap().to_string_lossy().into_owned();
+        assert_eq!(left, ["in-use.lock".to_owned(), name]);
     }
 
     #[test]

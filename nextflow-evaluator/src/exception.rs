@@ -129,6 +129,16 @@ const CLASSES: &[(&str, &str, &str)] = &[
     ),
     ("IOException", "java.io.IOException", "Exception"),
     (
+        "ProcessException",
+        "nextflow.exception.ProcessException",
+        "Exception",
+    ),
+    (
+        "DuplicateProcessInvocation",
+        "nextflow.exception.DuplicateProcessInvocation",
+        "ProcessException",
+    ),
+    (
         "NoSuchFileException",
         "java.nio.file.NoSuchFileException",
         "IOException",

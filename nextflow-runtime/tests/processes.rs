@@ -349,14 +349,17 @@ fn preserves_round_inputs() {
     }
 }
 
+/// A process runs once for a plain value and for a value channel; the second call is in a
+/// workflow of its own, as Nextflow refuses a second call in one workflow.
 #[test]
 fn singletons_run_once() {
     let source = format!(
-        "{DOUBLE}workflow {{\n    DOUBLE(5).view()\n    DOUBLE(channel.value(7)).view()\n}}"
+        "{DOUBLE}workflow AGAIN {{\n    DOUBLE(channel.value(7)).view()\n}}\n\
+         workflow {{\n    DOUBLE(5).view()\n    AGAIN()\n}}"
     );
     let (tasks, printed) = run(&source, &Options::default()).expect("runs");
     let names: Vec<&str> = tasks.iter().map(|task| task.name.as_str()).collect();
-    assert_eq!(names, ["DOUBLE", "DOUBLE"]);
+    assert_eq!(names, ["DOUBLE", "AGAIN:DOUBLE"]);
     assert_eq!(printed, "10\n14\n");
 }
 

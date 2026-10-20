@@ -623,6 +623,53 @@ fn orders_like_validator() {
     assert!(error.ends_with(&lines(shorter)), "{error}");
 }
 
+/// The errors of one group follow the Java hash map of the params, not of the schema: by
+/// the number of params, which counts the help params from 2.7.0 on, and by the order the
+/// params were set, as Nextflow 26.04.6 prints them for these params.
+#[test]
+fn orders_like_params() {
+    let text = |name: &str, value: &str| (Value::string(name), Value::string(value));
+    let options = Value::map([text("parameters_schema", "schema_order.json")]);
+    let check = |version: &str, values: Value| {
+        let arguments = vec![options.clone()];
+        params_call_in(&pinned(version), "validateParameters", values, arguments)
+            .unwrap_err()
+            .to_string()
+    };
+    let mut values = vec![
+        text("n", "z"),
+        text("off", "w"),
+        text("d", "y"),
+        text("flag", "x"),
+        text("e", ""),
+        (Value::string("z"), Value::integer(0)),
+    ];
+    values.extend(["p1", "p2", "p3", "p4", "p5"].map(|name| text(name, "v")));
+    let error = check("2.8.0", Value::map(values));
+    let expected = ":\n\n* --flag (x): Value is [string] but should be [boolean]\n\
+         * --d (y): Value is [string] but should be [integer]\n\
+         * --e (): \"\" is shorter than 3 characters\n\
+         * --n (z): Value is [string] but should be [integer]\n\
+         * --off (w): Value is [string] but should be [boolean]\n\
+         * --z (): 0 is less than 1\n\n";
+    assert!(error.ends_with(expected), "{error}");
+    let values = Value::map([
+        text("off", "w"),
+        text("n", "z"),
+        text("d", "y"),
+        text("flag", "x"),
+        text("e", ""),
+        (Value::string("z"), Value::integer(0)),
+    ]);
+    let error = check("2.5.1", values);
+    let expected = ":\n\n* --flag (x): Value is [string] but should be [boolean]\n\
+         * --d (y): Value is [string] but should be [integer]\n\
+         * --z (): 0 is less than 1\n\
+         * --off (w): Value is [string] but should be [boolean]\n\
+         * --n (z): Value is [string] but should be [integer]\n\n";
+    assert!(error.ends_with(expected), "{error}");
+}
+
 #[test]
 fn validates_known_parameters() {
     let directory = Path::new(env!("CARGO_MANIFEST_DIR"))

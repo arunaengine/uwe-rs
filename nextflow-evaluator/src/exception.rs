@@ -63,6 +63,16 @@ const CLASSES: &[(&str, &str, &str)] = &[
     ),
     ("AssertionError", "java.lang.AssertionError", "Error"),
     (
+        "VirtualMachineError",
+        "java.lang.VirtualMachineError",
+        "Error",
+    ),
+    (
+        "StackOverflowError",
+        "java.lang.StackOverflowError",
+        "VirtualMachineError",
+    ),
+    (
         "RuntimeException",
         "java.lang.RuntimeException",
         "Exception",

@@ -308,6 +308,24 @@ fn exceptions() {
     assert_eq!(run(source), "Cannot get property 'x' on null object");
 }
 
+/// Deep recursion runs on a growing stack. Runaway recursion raises a `StackOverflowError`,
+/// which inside functions only `catch (Throwable t)` catches, as in Nextflow 26.04.6.
+#[test]
+fn stops_runaway_recursion() {
+    let depth = "def d(n) { n == 0 ? 0 : 1 + d(n - 1) }\n";
+    assert_eq!(run(&format!("{depth}def f() {{ d(3000) }}")), "3000");
+    let endless = "def g(n) { g(n + 1) }\n";
+    let source = format!(
+        "{endless}def f() {{ try {{ [1].each {{ g(0) }} }} catch (Exception e) {{ 'exception' }} \
+         catch (Throwable t) {{ t.getClass().getName() }} }}"
+    );
+    assert_eq!(run(&source), "java.lang.StackOverflowError");
+    let error = fails(&format!(
+        "{endless}def f() {{ try {{ g(0) }} catch (Exception e) {{ 1 }} }}"
+    ));
+    assert!(error.starts_with("StackOverflowError: "), "{error}");
+}
+
 #[test]
 fn indexing_and_assignment() {
     assert_eq!(run("def f() { [10, 20, 30][5] }"), "null");

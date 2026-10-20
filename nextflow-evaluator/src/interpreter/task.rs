@@ -457,7 +457,9 @@ impl Interpreter<'_> {
         let (statements, exec) = match (&process.stub, &process.body) {
             (Some(statements), _) if stub => (statements, false),
             (_, Some(body)) => (&body.statements, body.kind == BodyKind::Exec),
-            (_, None) => return Err(unsupported("processes without a script", process.span)),
+            // Legacy syntax: a process with only a stub runs it as its script.
+            (Some(statements), None) => (statements, false),
+            (None, None) => return Err(unsupported("processes without a script", process.span)),
         };
         // An `exec:` section is code that runs in the interpreter, as Nextflow runs it in its
         // own process: it makes its files in `task.workDir` and sets the variables of its

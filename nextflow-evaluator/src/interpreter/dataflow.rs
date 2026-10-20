@@ -279,7 +279,10 @@ impl Interpreter<'_> {
                 self.workflow_path.push(name.into());
                 let result = self.call_workflow(&target, &workflow, arguments, span);
                 self.workflow_path.pop();
-                result?
+                match target.types {
+                    true => typed_result(result?),
+                    false => result?,
+                }
             }
             (None, None) => {
                 let call = (&*target_name, reflective);
@@ -487,6 +490,14 @@ impl Interpreter<'_> {
             .operator(source, name, arguments)
             .map_err(|error| error.or_at(span))?
         {
+            // Typed workflows wrap channels in `ChannelImpl` and `ValueImpl`.
+            Some(Value::Class(class)) if self.types && name == "getClass" => Ok(Value::Class(
+                match &*class {
+                    "groovyx.gpars.dataflow.DataflowVariable" => "nextflow.dataflow.ValueImpl",
+                    _ => "nextflow.dataflow.ChannelImpl",
+                }
+                .into(),
+            )),
             Some(value) => Ok(value),
             None => Err(unsupported(format!("the operator `{name}`"), span)),
         }
@@ -531,8 +542,8 @@ fn resolve(module: &Rc<Module>, name: &str) -> (Rc<Module>, Rc<str>) {
     }
 }
 
-/// What a call of a typed process gives, as Nextflow's `normalizeV2`: its one output channel,
-/// else a record of the output channels by name.
+/// What a call of a typed process or workflow gives, as Nextflow's `normalizeV2`: its one
+/// channel, else a record of the channels by name.
 fn typed_result(outputs: Value) -> Value {
     let Value::ChannelOut(out) = &outputs else {
         return outputs;

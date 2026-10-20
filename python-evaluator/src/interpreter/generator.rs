@@ -23,6 +23,14 @@ enum Task {
     Comprehension(Rc<ast::ExprGenerator>, usize, Value),
     /// The `__exit__` methods of a `with` statement whose body yields, innermost last.
     Exit(Vec<Value>),
+    /// The `except` clauses of a `try` statement whose body runs; its `else` runs after.
+    Handlers(Rc<ast::StmtTry>),
+    /// The `finally` clause of a `try` statement, which runs however the statement ends.
+    Finally(Rc<ast::StmtTry>),
+    /// An `except` clause that runs, with its name and the exception it handles.
+    Handling(Option<String>, Error),
+    /// An exception that goes on once a `finally` clause ran.
+    Raise(Error),
 }
 
 pub struct Generator {
@@ -57,20 +65,51 @@ impl Generator {
         self.tasks.push(Task::Suite(Rc::new(body.to_vec()), 0));
     }
 
-    fn loop_flow(&mut self, keep: bool) {
+    /// Leaves the innermost loop, or the body for a `return` (`exit`), so that the `with`
+    /// and `finally` clauses that the jump leaves still run.
+    fn leave(&mut self, interpreter: &mut Interpreter, keep: bool, exit: bool) {
+        let mut cleanup = Vec::new();
         while let Some(task) = self.tasks.pop() {
-            if matches!(task, Task::For(..) | Task::While(..)) {
-                if keep {
-                    self.tasks.push(task);
+            match task {
+                Task::For(..) | Task::While(..) if !exit => {
+                    if keep {
+                        self.tasks.push(task);
+                    }
+                    break;
                 }
-                break;
+                Task::Exit(_) | Task::Finally(_) => cleanup.push(task),
+                Task::Handling(name, _) => self.release(interpreter, name),
+                _ => {}
             }
         }
+        self.tasks.extend(cleanup.into_iter().rev());
+    }
+
+    /// Ends an `except` clause: its exception is no longer handled and its name is unbound.
+    fn release(&self, interpreter: &mut Interpreter, name: Option<String>) {
+        interpreter.handling.pop();
+        if let Some(name) = name {
+            let _ = interpreter.unbind(&self.frame, &name);
+        }
+    }
+
+    /// The exceptions of the `except` clauses that the body is in, outermost first.
+    fn handled(&self) -> Vec<Error> {
+        (self.tasks.iter())
+            .filter_map(|task| match task {
+                Task::Handling(_, error) => Some(error.clone()),
+                _ => None,
+            })
+            .collect()
     }
 
     pub(crate) fn next(&mut self, interpreter: &mut Interpreter) -> Result<Option<Value>, Error> {
         interpreter.enter_call()?;
+        // The exceptions of the clauses that the body is in are handled while it runs.
+        interpreter.handling.extend(self.handled());
         let result = self.resume(interpreter);
+        let kept = interpreter.handling.len() - self.handled().len();
+        interpreter.handling.truncate(kept);
         interpreter.leave_call();
         if !matches!(result, Ok(Some(_))) {
             self.tasks.clear();
@@ -84,37 +123,72 @@ impl Generator {
         })
     }
 
-    /// Runs the body up to its next value; an error leaves the `with` statements it is in,
-    /// whose `__exit__` may suppress it.
+    /// Runs the body up to its next value; an error leaves the statements it is in up to an
+    /// `except` clause that takes it, a `finally` clause or a `with` that suppresses it.
     fn resume(&mut self, interpreter: &mut Interpreter) -> Result<Option<Value>, Error> {
         loop {
-            let error = match self.advance(interpreter) {
+            let mut error = match self.advance(interpreter) {
                 Err(error) => error,
                 done => return done,
             };
-            let Some(position) =
-                (self.tasks.iter()).rposition(|task| matches!(task, Task::Exit(_)))
-            else {
-                return Err(error);
-            };
-            let Task::Exit(exits) = self.tasks.remove(position) else {
-                unreachable!("an exit task")
-            };
-            self.tasks.truncate(position);
-            let crate::error::ErrorKind::Exception(exception) = &error.kind else {
-                return Err(error);
-            };
-            let class = Value::Class(crate::types::class_of(exception));
-            let mut suppressed = false;
-            for exit in exits.iter().rev() {
-                let args = vec![class.clone(), exception.clone(), Value::None];
-                let answer = interpreter.call(exit, crate::value::Args::new(args))?;
-                suppressed = suppressed || interpreter.truthy(&answer)?;
-            }
-            if !suppressed {
-                return Err(error);
+            loop {
+                match self.unwind(interpreter, error) {
+                    Ok(()) => break,
+                    Err(next) if !self.tasks.is_empty() => error = next,
+                    Err(next) => return Err(next),
+                }
             }
         }
+    }
+
+    /// Leaves tasks for an error until one takes it; an error of a clause goes on instead.
+    fn unwind(&mut self, interpreter: &mut Interpreter, error: Error) -> Result<(), Error> {
+        while let Some(task) = self.tasks.pop() {
+            let exception = match &error.kind {
+                crate::error::ErrorKind::Exception(exception) => Some(exception.clone()),
+                _ => None,
+            };
+            match (task, exception) {
+                (Task::Handling(name, _), _) => self.release(interpreter, name),
+                (Task::Exit(exits), Some(exception)) => {
+                    let class = Value::Class(crate::types::class_of(&exception));
+                    let mut suppressed = false;
+                    for exit in exits.iter().rev() {
+                        let args = vec![class.clone(), exception.clone(), Value::None];
+                        let answer = interpreter.call(exit, crate::value::Args::new(args))?;
+                        suppressed = suppressed || interpreter.truthy(&answer)?;
+                    }
+                    if suppressed {
+                        return Ok(());
+                    }
+                }
+                (Task::Handlers(attempt), Some(exception)) => {
+                    for ast::ExceptHandler::ExceptHandler(handler) in &attempt.handlers {
+                        if let Some(kind) = &handler.type_ {
+                            let kind = interpreter.eval(&self.frame, kind)?;
+                            if !interpreter.exception_matches(&exception, &kind)? {
+                                continue;
+                            }
+                        }
+                        let name = handler.name.as_ref().map(|name| name.id.to_string());
+                        if let Some(name) = &name {
+                            interpreter.bind(&self.frame, name, exception.clone());
+                        }
+                        interpreter.handling.push(error.clone());
+                        self.tasks.push(Task::Handling(name, error));
+                        self.suite(&handler.body);
+                        return Ok(());
+                    }
+                }
+                (Task::Finally(attempt), _) => {
+                    self.tasks.push(Task::Raise(error));
+                    self.suite(&attempt.finalbody);
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+        Err(error)
     }
 
     fn advance(&mut self, interpreter: &mut Interpreter) -> Result<Option<Value>, Error> {
@@ -202,6 +276,10 @@ impl Generator {
                         interpreter.call(exit, crate::value::Args::new(args))?;
                     }
                 }
+                Task::Handlers(attempt) => self.suite(&attempt.orelse),
+                Task::Finally(attempt) => self.suite(&attempt.finalbody),
+                Task::Handling(name, _) => self.release(interpreter, name),
+                Task::Raise(error) => return Err(error),
             }
         }
         Ok(None)
@@ -212,6 +290,7 @@ impl Generator {
         interpreter: &mut Interpreter,
         statement: &Stmt,
     ) -> Result<Option<Value>, Error> {
+        let statement_slice = std::slice::from_ref(statement);
         match statement {
             Stmt::Expr(expression) => match &*expression.value {
                 Expr::Yield(expression) => {
@@ -288,6 +367,30 @@ impl Generator {
                 self.tasks.push(Task::Exit(exits));
                 self.suite(&with.body);
             }
+            Stmt::Try(attempt) if !attempt.is_star && contains_yield(statement_slice) => {
+                let attempt = Rc::new(attempt.clone());
+                if !attempt.finalbody.is_empty() {
+                    self.tasks.push(Task::Finally(attempt.clone()));
+                }
+                self.tasks.push(Task::Handlers(attempt.clone()));
+                self.suite(&attempt.body);
+            }
+            Stmt::Match(choice) if (choice.cases.iter()).any(|case| contains_yield(&case.body)) => {
+                let subject = interpreter.eval(&self.frame, &choice.subject)?;
+                for case in &choice.cases {
+                    if !interpreter.pattern_matches(&self.frame, &case.pattern, &subject)? {
+                        continue;
+                    }
+                    if let Some(guard) = &case.guard {
+                        let test = interpreter.eval(&self.frame, guard)?;
+                        if !interpreter.truthy(&test)? {
+                            continue;
+                        }
+                    }
+                    self.suite(&case.body);
+                    break;
+                }
+            }
             _ => self.ordinary(interpreter, statement)?,
         }
         Ok(None)
@@ -301,9 +404,9 @@ impl Generator {
         }
         match interpreter.exec(&self.frame, statement)? {
             Flow::Next => {}
-            Flow::Return(_) => self.tasks.clear(),
-            Flow::Break => self.loop_flow(false),
-            Flow::Continue => self.loop_flow(true),
+            Flow::Return(_) => self.leave(interpreter, false, true),
+            Flow::Break => self.leave(interpreter, false, false),
+            Flow::Continue => self.leave(interpreter, true, false),
         }
         Ok(())
     }

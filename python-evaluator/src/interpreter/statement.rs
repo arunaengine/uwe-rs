@@ -389,7 +389,11 @@ impl Interpreter {
     }
 
     /// Whether an exception object matches a class or tuple of classes of an `except` clause.
-    fn exception_matches(&mut self, exception: &Value, kind: &Value) -> Result<bool, Error> {
+    pub(super) fn exception_matches(
+        &mut self,
+        exception: &Value,
+        kind: &Value,
+    ) -> Result<bool, Error> {
         match kind.plain() {
             Value::Class(class) => Ok(types::is_instance(exception, class)),
             Value::Native(object)
@@ -655,7 +659,7 @@ impl Interpreter {
         Ok(Flow::Next)
     }
 
-    fn pattern_matches(
+    pub(super) fn pattern_matches(
         &mut self,
         frame: &Frame,
         pattern: &Pattern,

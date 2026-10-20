@@ -140,6 +140,16 @@ fn checks_native_languages() {
             missing.display()
         )
     );
+    let abstract_workflow = "cwlVersion: v1.2\nclass: Workflow\ninputs: []\noutputs: []\nsteps:\n  \
+                op:\n    run: {class: Operation, inputs: [], outputs: {out: string?}}\n    in: []\n    \
+                out: [out]\n";
+    let directory = folder(&[("main.cwl", abstract_workflow)]);
+    let (code, stdout) = check(directory.path(), &["main.cwl"]);
+    assert_eq!(code, 1, "{stdout}");
+    assert!(
+        stdout.contains("error: step op runs an abstract Operation: Workflow has unrunnable"),
+        "{stdout}"
+    );
     let argo = "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {generateName: x-}\n\
                 spec:\n  entrypoint: main\n  templates:\n  - name: main\n    resource:\n      \
                 action: create\n      manifest: |\n        apiVersion: v1\n        kind: \

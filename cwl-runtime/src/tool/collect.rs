@@ -416,8 +416,7 @@ impl Collector<'_> {
     }
 
     /// The value of an output of an `Operation`: the file named after it, or a placeholder in
-    /// a simulated run. A real run makes no files for an `Operation`, which is a task that does
-    /// nothing, so its outputs are null, and an error when their type does not allow null.
+    /// a simulated run. Real runs refuse operations before they start, as cwltool does.
     fn operation(&self, output: &OutputParameter) -> Result<Value, String> {
         let name = short_name(&output.id);
         let types = &self.pending.types;

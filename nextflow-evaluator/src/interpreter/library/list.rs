@@ -353,6 +353,20 @@ impl Interpreter<'_> {
                 let count = count.to_i64().max(0) as usize;
                 Value::list((0..count).flat_map(|_| items.iter().cloned()).collect())
             }
+            // Groovy's `withDefault`: an index past the end gets what the closure gives for it.
+            ("withDefault", [Value::Closure(f)]) => {
+                list.borrow_mut().default = Some(f.clone());
+                Value::List(list.clone())
+            }
+            // A `HashSet` of the distinct orders of the items.
+            ("permutations", []) => super::hash_set(16, &permutations(&items)),
+            ("eachPermutation", [Value::Closure(f)]) => {
+                for permutation in permutations(&items) {
+                    self.call_closure_value(f, vec![permutation], span)?;
+                }
+                Value::Null
+            }
+            ("collectNested", [Value::Closure(f)]) => self.collect_nested(&items, f, span)?,
             ("indexed", []) => Value::map(
                 (items.iter().enumerate())
                     .map(|(index, item)| (Value::integer(index as i32), item.clone())),
@@ -449,6 +463,26 @@ impl Interpreter<'_> {
             }
             _ => return Ok(None),
         }))
+    }
+
+    /// Groovy's `collectNested`: the closure's result for each item, inside nested lists too.
+    fn collect_nested(
+        &mut self,
+        items: &[Value],
+        f: &Rc<Closure>,
+        span: Span,
+    ) -> Result<Value, Error> {
+        let mut results = Vec::new();
+        for item in items {
+            results.push(match item {
+                Value::List(inner) => {
+                    let inner = inner.borrow().items.clone();
+                    self.collect_nested(&inner, f, span)?
+                }
+                other => self.call_closure_value(f, vec![other.clone()], span)?,
+            });
+        }
+        Ok(Value::list(results))
     }
 
     /// Sorts stably with a closure: one parameter gives a key, two parameters compare.
@@ -565,4 +599,28 @@ pub fn combinations(items: &[Value]) -> Vec<Vec<Value>> {
             .collect();
     }
     combinations
+}
+
+/// Every order of the items, as Groovy's `PermutationGenerator` gives them: the orders of the
+/// positions from first to last.
+fn permutations(items: &[Value]) -> Vec<Value> {
+    let mut positions: Vec<usize> = (0..items.len()).collect();
+    let mut all = Vec::new();
+    loop {
+        all.push(Value::list(
+            positions.iter().map(|p| items[*p].clone()).collect(),
+        ));
+        // The next order of the positions, if there is one.
+        let Some(pivot) = (1..positions.len())
+            .rev()
+            .find(|i| positions[i - 1] < positions[*i])
+        else {
+            return all;
+        };
+        let swap = (pivot..positions.len())
+            .rev()
+            .find(|i| positions[*i] > positions[pivot - 1]);
+        positions.swap(pivot - 1, swap.unwrap_or(pivot));
+        positions[pivot..].reverse();
+    }
 }

@@ -225,6 +225,21 @@ impl Interpreter<'_> {
                 &several
             }
         };
+        // A list with a default gets the element of an index past its end from the closure.
+        if let (Value::List(list), Value::Number(position)) = (object, index) {
+            let default = list.borrow().default.clone();
+            let position = usize::try_from(position.to_i64()).ok();
+            if let (Some(f), Some(position)) = (default, position)
+                && position >= list.borrow().items.len()
+            {
+                let value =
+                    self.call_closure_value(&f, vec![Value::integer(position as i32)], span)?;
+                let mut list = list.borrow_mut();
+                list.items.resize(position + 1, Value::Null);
+                list.items[position] = value.clone();
+                return Ok(value);
+            }
+        }
         Ok(match (object, index) {
             (Value::Namespace(namespace), key) if &**namespace == "secrets" => {
                 return self.property(object, &key.to_string(), span);
@@ -631,7 +646,9 @@ impl Interpreter<'_> {
             ("List", Value::String(text) | Value::GString(text)) => {
                 Value::list(text.chars().map(|c| Value::string(c.to_string())).collect())
             }
-            ("Set", Value::List(_)) => Value::set(super::library::elements(&value)),
+            ("Set" | "LinkedHashSet", Value::List(_) | Value::Set(_)) => {
+                Value::set(super::library::elements(&value))
+            }
             ("Integer" | "Long", Value::String(text) | Value::GString(text)) => {
                 let trimmed = text.trim();
                 let parsed: Option<i64> = trimmed.parse().ok();
@@ -705,6 +722,20 @@ impl Interpreter<'_> {
                 ))
             }
             (None, []) if class == "LinkedHashSet" => Ok(Value::set([])),
+            (None, items) if class == "TreeSet" && items.len() <= 1 => {
+                let mut set = crate::value::Set {
+                    kind: crate::value::SetKind::TreeSet,
+                    items: Default::default(),
+                };
+                for item in items
+                    .first()
+                    .map(super::library::elements)
+                    .unwrap_or_default()
+                {
+                    set.add(item);
+                }
+                Ok(Value::Set(Rc::new(std::cell::RefCell::new(set))))
+            }
             (None, [items @ (Value::List(_) | Value::Set(_))]) if class == "LinkedHashSet" => {
                 Ok(Value::set(super::library::elements(items)))
             }

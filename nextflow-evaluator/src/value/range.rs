@@ -87,6 +87,7 @@ impl Value {
             kind: ListKind::Range,
             items,
             range: Some(range),
+            default: None,
         };
         Ok(Value::List(Rc::new(RefCell::new(list))))
     }

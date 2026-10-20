@@ -135,6 +135,12 @@ impl Value {
                 }
                 super::State::Uuid(value) => out.push_str(&value.to_string()),
                 super::State::Builder(text) => out.push_str(text),
+                super::State::Optional(super::Value::Null) => out.push_str("Optional.empty"),
+                super::State::Optional(value) => {
+                    out.push_str("Optional[");
+                    value.write_java(out);
+                    out.push(']');
+                }
                 super::State::Time(time) => out.push_str(&time.text()),
                 super::State::Bytes(bytes) => {
                     let items: Vec<String> = bytes.iter().map(|b| (*b as i8).to_string()).collect();

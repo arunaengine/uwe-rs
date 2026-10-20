@@ -441,3 +441,54 @@ fn passes_objects_on() {
         assert_eq!(value(code), expected, "{code}");
     }
 }
+
+/// Rarer collection helpers of Groovy and Java, as Nextflow 26.04.6 prints them.
+#[test]
+fn rare_collection_helpers() {
+    let cases = [
+        (
+            "def w = [1, 2, 3].withDefault { it * 10 }\n[w[5], w]",
+            "[50, [1, 2, 3, null, null, 50]]",
+        ),
+        (
+            "[[1, 2, 3].permutations().size(), [1, 2].permutations()]",
+            "[6, [[2, 1], [1, 2]]]",
+        ),
+        (
+            "def seen = []\n[1, 2].eachPermutation { seen << it }\nseen",
+            "[[1, 2], [2, 1]]",
+        ),
+        ("[1, [2, [3]]].collectNested { it * 2 }", "[2, [4, [6]]]"),
+        (
+            "[1, 2, 3, 4].groupBy({ it % 2 }, { it > 2 })",
+            "[1:[false:[1], true:[3]], 0:[false:[2], true:[4]]]",
+        ),
+        (
+            "def i = [1, 2].iterator()\n[i.hasNext(), i.next(), i.next(), i.hasNext()]",
+            "[true, 1, 2, false]",
+        ),
+        (
+            "def c = [3, 1, 2]\n[Collections.sort(c), c]",
+            "[null, [1, 2, 3]]",
+        ),
+        (
+            "[Collections.unmodifiableList([1]), Collections.emptyList(), Collections.emptyMap(), Collections.max([3, 1, 2])]",
+            "[[1], [], [:], 3]",
+        ),
+        (
+            "[Objects.equals(1, 1), Objects.hash(1, 2), Objects.requireNonNull('x'), Objects.isNull(null), Objects.nonNull(null)]",
+            "[true, 994, x, true, false]",
+        ),
+        (
+            "[Optional.ofNullable(null).isPresent(), Optional.of(3).get(), Optional.ofNullable(null).orElse(5)]",
+            "[false, 3, 5]",
+        ),
+        (
+            "[new TreeSet([3, 1, 2]), [3, 1, 2, 1] as LinkedHashSet]",
+            "[[1, 2, 3], [3, 1, 2]]",
+        ),
+    ];
+    for (code, expected) in cases {
+        assert_eq!(value(code), expected, "{code}");
+    }
+}

@@ -116,6 +116,8 @@ pub struct List {
     pub items: Vec<Value>,
     /// The bounds of a range, whose elements are in `items`.
     pub range: Option<Rc<Range>>,
+    /// Groovy's `withDefault`: the closure that gives the element of an index past the end.
+    pub default: Option<Rc<Closure>>,
 }
 
 impl List {
@@ -124,6 +126,7 @@ impl List {
             kind,
             items,
             range: None,
+            default: None,
         }
     }
 }
@@ -184,6 +187,8 @@ pub enum SetKind {
     /// `java.util.HashSet`, from `toSet()`; iterates in Java's hash table order. It has the
     /// size of its table, which doubles when the set gets more than three quarters full.
     HashSet(usize),
+    /// `java.util.TreeSet`, which keeps its items sorted.
+    TreeSet,
 }
 
 impl Set {
@@ -203,6 +208,9 @@ impl Set {
                 ((hash ^ (hash >> 16)) as usize) & mask
             };
             self.items.sort_by(|a, b| bucket(a).cmp(&bucket(b)));
+        }
+        if self.kind == SetKind::TreeSet {
+            self.items.sort_by(|a, b| a.0.number_aware_compare(&b.0));
         }
         true
     }
@@ -275,6 +283,7 @@ impl Value {
             Value::Set(set) => match set.borrow().kind {
                 SetKind::LinkedHashSet => "LinkedHashSet",
                 SetKind::HashSet(_) => "HashSet",
+                SetKind::TreeSet => "TreeSet",
             },
             Value::MapEntry(_) => "Entry",
             Value::MemoryUnit(_) => "MemoryUnit",
@@ -332,6 +341,7 @@ impl Value {
             Value::Set(set) => match set.borrow().kind {
                 SetKind::LinkedHashSet => "java.util.LinkedHashSet",
                 SetKind::HashSet(_) => "java.util.HashSet",
+                SetKind::TreeSet => "java.util.TreeSet",
             },
             Value::MapEntry(_) => "java.util.LinkedHashMap$Entry",
             Value::MemoryUnit(_) => "nextflow.util.MemoryUnit",

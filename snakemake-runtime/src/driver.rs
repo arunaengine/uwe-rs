@@ -1897,6 +1897,21 @@ impl Session {
             }
             missing.push(output.clone());
         }
+        if missing.is_empty()
+            && self.shared
+            && let Some(planner) = &self.planner
+        {
+            let improper = crate::shared::settle(&self.workdir, &planner.jobs[job])
+                .map_err(|error| DriverError::new(format!("cannot touch outputs: {error}")))?;
+            if !improper.is_empty() {
+                return Err(DriverError::new(format!(
+                    "ImproperOutputException in rule {rule}: Outputs of incorrect type \
+                     (directories when expecting files or vice versa). Output directories must \
+                     be flagged with directory(): {}",
+                    improper.join(", ")
+                )));
+            }
+        }
         if missing.is_empty() {
             for (output, options) in ensured {
                 let Value::Dict(options) = options.plain() else {

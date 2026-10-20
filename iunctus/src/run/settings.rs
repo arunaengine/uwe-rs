@@ -56,6 +56,9 @@ pub struct Settings {
     pub database: Option<PathBuf>,
     /// Local folder or writable storage address for cached results.
     pub store: Option<String>,
+    /// The folder of downloads, scratch folders and input digests, like `[cache] folder` of
+    /// the config file. It holds for the whole process, so the first run that names one sets it.
+    pub cache_folder: Option<PathBuf>,
     // The CLI retains its input syntax and presentation without exposing them to hosts.
     pub(crate) cli: Option<Arguments>,
 }
@@ -90,6 +93,7 @@ impl Default for Settings {
             output_dir: None,
             database: None,
             store: None,
+            cache_folder: None,
             cli: None,
         }
     }
@@ -135,6 +139,9 @@ impl Settings {
         arguments.output_dir = self.output_dir;
         arguments.database = self.database;
         arguments.store = self.store;
+        if let Some(folder) = self.cache_folder {
+            crate::use_cache_folder(folder);
+        }
         if !cli && self.setup.is_none() {
             Defaults::load(&arguments)?.apply("run", &mut arguments);
         }

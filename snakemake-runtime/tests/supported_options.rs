@@ -23,7 +23,7 @@ fn rejects_active_options() {
             };
             let result = snakemake_runtime::driver(&launch).and_then(|mut driver| driver.start());
             // Snakemake 9.27 takes `shadow: True` as the full shadow.
-            let supported = option == "shadow" || (option == "cache" && value == "True");
+            let supported = option != "cache" || value == "True";
             if matches!(value, "True" | "'minimal'") && !supported {
                 let error = result.expect_err("unsupported option must fail");
                 assert!(error.message.contains(option), "{error}");

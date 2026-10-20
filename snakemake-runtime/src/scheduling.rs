@@ -16,8 +16,13 @@ pub type Usage = Vec<(String, i64)>;
 pub fn usage(threads: i64, resources: &[(String, Value)]) -> Usage {
     let mut usage = vec![("_cores".to_owned(), threads), ("_nodes".to_owned(), 1)];
     for (name, value) in resources {
-        if let Value::Int(amount) = value.plain() {
-            usage.push((name.clone(), *amount));
+        let Value::Int(amount) = value.plain() else {
+            continue;
+        };
+        // A job that takes `_cores` or `_nodes` itself, like a handover job, takes the most.
+        match usage.iter_mut().find(|(used, _)| used == name) {
+            Some((_, taken)) => *taken = (*taken).max(*amount),
+            None => usage.push((name.clone(), *amount)),
         }
     }
     usage

@@ -158,6 +158,8 @@ pub struct Rule {
     pub retries: Option<Value>,
     pub group: Option<Value>,
     pub localrule: bool,
+    /// `handover: True`: the job takes the global resources, as the job of a foreign system.
+    pub handover: bool,
     pub shadow: Option<String>,
     pub action: Action,
     /// The f-string of a `shell:` directive, which Snakemake evaluates when the job runs,
@@ -209,6 +211,7 @@ impl Rule {
             retries: None,
             group: None,
             localrule: false,
+            handover: false,
             shadow: None,
             action: Action::None,
             shell_code: None,

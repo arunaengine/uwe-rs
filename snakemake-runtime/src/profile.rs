@@ -34,6 +34,8 @@ pub struct Profile {
     pub resources: Vec<(String, String)>,
     /// `executor:`, which decides whether `jobs` stands for `cores`.
     pub executor: Option<String>,
+    /// `all-temp:`, which marks every output of every rule `temp()`.
+    pub all_temp: bool,
 }
 
 pub const RERUN_TRIGGERS: [&str; 5] = ["mtime", "params", "input", "software-env", "code"];
@@ -205,6 +207,7 @@ impl Profile {
         if other.executor.is_some() {
             self.executor = other.executor;
         }
+        self.all_temp = self.all_temp || other.all_temp;
     }
 
     /// The global resources of the run as Snakemake's command line sets them: `_cores` and
@@ -300,6 +303,7 @@ impl Profile {
                 }
                 "resources" | "res" => profile.resources = pairs(interpreter, &value)?,
                 "executor" => profile.executor = Some(interpreter.to_str(&value)?),
+                "all-temp" => profile.all_temp = interpreter.truthy(&value)?,
                 "rerun-triggers" => {
                     let values = if let Some(text) = value.as_str() {
                         text.split_whitespace().map(str::to_owned).collect()
@@ -372,6 +376,7 @@ impl Profile {
                 | "jobscript"
                 | "latency-wait"
                 | "max-jobs-per-second"
+                | "max-jobs-per-timespan"
                 | "max-status-checks-per-second"
                 | "scheduler"
                 | "reason"

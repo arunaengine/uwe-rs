@@ -108,7 +108,7 @@ fn sends_captured_outputs() {
             .to_vec(),
         ..Plan::default()
     };
-    let error = stage_out(root, &plan).unwrap_err();
+    let error = stage_out(root, None, &plan).unwrap_err();
     assert!(error.contains("more than 1 output files"), "{error}");
     plan.files.push(request("PUT", &target("files/2")));
     std::fs::write(root.join(PLAN), serde_json::to_string(&plan).unwrap()).unwrap();
@@ -134,4 +134,45 @@ fn installs_this_program() {
             .unwrap()
             .len()
     );
+}
+
+#[test]
+fn keeps_plan_apart() {
+    let store = tempfile::tempdir().unwrap();
+    let node = tempfile::tempdir().unwrap();
+    let (data, control) = (node.path().join("data"), node.path().join("control"));
+    std::fs::create_dir_all(&control).unwrap();
+    let target = |name: &str| store.path().join(name);
+    let record = |name: &str| Record {
+        name: name.into(),
+        request: request("PUT", &target(name)),
+    };
+    let plan = Plan {
+        directories: vec!["control".into()],
+        records: vec![record("exit"), record("slurm.log")],
+        ..Plan::default()
+    };
+    let file = store.path().join("plan.json");
+    std::fs::write(&file, serde_json::to_string(&plan).unwrap()).unwrap();
+    let text = |path: &Path| path.to_string_lossy().into_owned();
+    main(&["in".into(), text(&data), text(&file), text(&control)]).unwrap();
+    assert!(control.join(PLAN).is_file());
+    assert!(!data.join(PLAN).exists(), "the task could change the plan");
+    // The log of the job wins over one that the task wrote.
+    std::fs::write(data.join("control/slurm.log"), "task").unwrap();
+    std::fs::write(control.join("slurm.log"), "job").unwrap();
+    std::fs::write(data.join("control/exit"), "0\n").unwrap();
+    main(&["out".into(), text(&data), text(&control)]).unwrap();
+    assert_eq!(std::fs::read(target("slurm.log")).unwrap(), b"job");
+    assert_eq!(std::fs::read(target("exit")).unwrap(), b"0\n");
+    for name in ["../../plan.json", "/etc/passwd", "a\0b", ""] {
+        let mut outside = record("exit");
+        outside.name = name.into();
+        let plan = Plan {
+            records: vec![outside],
+            ..Plan::default()
+        };
+        let error = stage_out(&data, Some(&control), &plan).unwrap_err();
+        assert!(error.contains("leaves the folder"), "{name:?}: {error}");
+    }
 }

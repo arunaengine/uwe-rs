@@ -386,7 +386,7 @@ async fn sends_large_outputs() {
         ..Plan::default()
     };
     let path = folder.path().to_owned();
-    (tokio::task::spawn_blocking(move || crate::helper::stage_out(&path, &plan)).await)
+    (tokio::task::spawn_blocking(move || crate::helper::stage_out(&path, None, &plan)).await)
         .unwrap()
         .unwrap();
     let back = folder.path().join("back");

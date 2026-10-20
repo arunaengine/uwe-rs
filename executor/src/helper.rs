@@ -70,27 +70,32 @@ pub struct Request {
     pub headers: Vec<(String, String)>,
 }
 
-/// Runs `__stage in <folder> <plan>`, `__stage out <folder>` or `__stage install <file>`.
+/// Runs `__stage in <folder> <plan> [<control>]`, `__stage out <folder> [<control>]` or
+/// `__stage install <file>`. The plan stays in `<control>`, a folder that the task cannot
+/// reach, else in `<folder>`.
 pub fn main(arguments: &[String]) -> Result<(), String> {
     match arguments {
-        [command, folder, plan] if command == "in" => {
-            let text = read_plan(Path::new(folder), plan)?;
+        [command, folder, plan, control @ ..] if command == "in" && control.len() < 2 => {
+            let folder = Path::new(folder);
+            let keep = control.first().map_or(folder, Path::new);
+            let text = read_plan(keep, plan)?;
             let parsed: Plan =
                 serde_json::from_str(&text).map_err(|error| format!("invalid plan: {error}"))?;
-            stage_in(Path::new(folder), &parsed)?;
-            std::fs::write(Path::new(folder).join(PLAN), text).map_err(|error| error.to_string())
+            stage_in(folder, &parsed)?;
+            std::fs::write(keep.join(PLAN), text).map_err(|error| error.to_string())
         }
-        [command, folder] if command == "out" => {
-            let text = std::fs::read_to_string(Path::new(folder).join(PLAN))
+        [command, folder, control @ ..] if command == "out" && control.len() < 2 => {
+            let (folder, control) = (Path::new(folder), control.first().map(Path::new));
+            let text = std::fs::read_to_string(control.unwrap_or(folder).join(PLAN))
                 .map_err(|error| format!("cannot read the plan of stage-in: {error}"))?;
             let plan: Plan =
                 serde_json::from_str(&text).map_err(|error| format!("invalid plan: {error}"))?;
-            stage_out(Path::new(folder), &plan)
+            stage_out(folder, control, &plan)
         }
         [command, file] if command == "install" => install(Path::new(file)),
         _ => Err(
-            "use `__stage in <folder> <plan>`, `__stage out <folder>` or `__stage \
-                  install <file>`"
+            "use `__stage in <folder> <plan> [<control>]`, `__stage out <folder> [<control>]` \
+             or `__stage install <file>`"
                 .into(),
         ),
     }
@@ -114,8 +119,9 @@ pub fn stage_in(folder: &Path, plan: &Plan) -> Result<(), String> {
     Ok(())
 }
 
-/// Uploads the numbered output files and then the control records that exist.
-pub fn stage_out(folder: &Path, plan: &Plan) -> Result<(), String> {
+/// Uploads the numbered output files and then the control records that exist. A record in
+/// `control`, like the log of the job, comes before one that the task wrote.
+pub fn stage_out(folder: &Path, control: Option<&Path>, plan: &Plan) -> Result<(), String> {
     let client = client()?;
     let mut number = 1;
     while let Ok(metadata) =
@@ -135,9 +141,12 @@ pub fn stage_out(folder: &Path, plan: &Plan) -> Result<(), String> {
             .map_err(|error| format!("cannot upload the output file {number}: {error}"))?;
         number += 1;
     }
+    let is_file = |path: &Path| std::fs::symlink_metadata(path).is_ok_and(|data| data.is_file());
     for record in &plan.records {
-        let path = folder.join(crate::CONTROL).join(&record.name);
-        if std::fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.is_file()) {
+        let path = inside(&folder.join(crate::CONTROL), &record.name)?;
+        let own = control.map(|control| control.join(&record.name));
+        let path = own.filter(|own| is_file(own)).unwrap_or(path);
+        if is_file(&path) {
             retried(|| upload(&client, &path, &record.request))
                 .map_err(|error| format!("cannot upload the record {}: {error}", record.name))?;
         }

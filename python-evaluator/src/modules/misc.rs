@@ -1305,7 +1305,33 @@ impl Native for FieldSpec {
     }
 }
 
-fn dataclass_decorate(interpreter: &mut Interpreter, class: Value) -> Result<Value, Error> {
+/// The options of `@dataclass(...)` that decide `__eq__` and `__hash__`.
+#[derive(Clone, Copy)]
+struct DataclassOptions {
+    eq: bool,
+    frozen: bool,
+    unsafe_hash: bool,
+}
+
+impl DataclassOptions {
+    fn read(interpreter: &mut Interpreter, args: &mut Args) -> Result<Self, Error> {
+        let mut flag = |name: &str, default: bool| match args.take_keyword(name) {
+            Some(value) => interpreter.truthy(&value),
+            None => Ok(default),
+        };
+        Ok(DataclassOptions {
+            eq: flag("eq", true)?,
+            frozen: flag("frozen", false)?,
+            unsafe_hash: flag("unsafe_hash", false)?,
+        })
+    }
+}
+
+fn dataclass_decorate(
+    interpreter: &mut Interpreter,
+    class: Value,
+    options: DataclassOptions,
+) -> Result<Value, Error> {
     let Value::Class(class_ref) = class.plain() else {
         return Err(Error::type_error(
             "dataclass() should be applied to a class",
@@ -1404,15 +1430,33 @@ fn dataclass_decorate(interpreter: &mut Interpreter, class: Value) -> Result<Val
         }
         Ok(Value::Bool(true))
     });
+    let hash_fields = fields.clone();
+    let hash = Value::builtin("__hash__", move |interpreter, args| {
+        let this = &args.positional[0];
+        let mut values = Vec::new();
+        for (name, _, _) in hash_fields.iter() {
+            values.push(interpreter.get_attribute(this, name)?);
+        }
+        let hash = interpreter.builtins.get("hash").unwrap_or(Value::None);
+        interpreter.call(&hash, Args::new(vec![Value::tuple(values)]))
+    });
     let mut dict = class_ref.dict.borrow_mut();
+    // Whether the class body defines `__hash__` itself.
+    let explicit_hash = dict.contains_key("__hash__");
     if !dict.contains_key("__init__") {
         dict.insert("__init__".into(), init);
     }
     if !dict.contains_key("__repr__") {
         dict.insert("__repr__".into(), repr);
     }
-    if !dict.contains_key("__eq__") {
+    if options.eq && !dict.contains_key("__eq__") {
         dict.insert("__eq__".into(), eq);
+    }
+    // The `__hash__` table of the dataclasses module.
+    if options.unsafe_hash || (options.eq && options.frozen && !explicit_hash) {
+        dict.insert("__hash__".into(), hash);
+    } else if options.eq && !options.frozen && !explicit_hash {
+        dict.insert("__hash__".into(), Value::None);
     }
     dict.insert("__dataclass_fields__".into(), Value::list(names));
     let _ = interpreter;
@@ -1423,13 +1467,17 @@ pub fn dataclasses() -> Vec<(&'static str, Value)> {
     vec![
         (
             "dataclass",
-            function("dataclass", |interpreter, args| {
+            function("dataclass", |interpreter, mut args| {
+                let options = DataclassOptions::read(interpreter, &mut args)?;
                 match args.positional.first() {
-                    Some(class @ Value::Class(_)) => dataclass_decorate(interpreter, class.clone()),
-                    _ => Ok(function("dataclass", |interpreter, args| {
+                    Some(class @ Value::Class(_)) => {
+                        dataclass_decorate(interpreter, class.clone(), options)
+                    }
+                    _ => Ok(Value::builtin("dataclass", move |interpreter, args| {
                         dataclass_decorate(
                             interpreter,
                             args.positional.first().cloned().unwrap_or(Value::None),
+                            options,
                         )
                     })),
                 }

@@ -165,6 +165,9 @@ pub struct Interpreter {
     /// Exceptions being handled, innermost last, for a bare `raise`.
     handling: Vec<Error>,
     representing: Vec<usize>,
+    /// Keys of classes that define `__hash__`, by hash, with their equality classes.
+    hashed: HashMap<i64, Vec<(std::rc::Weak<crate::value::Instance>, u64)>>,
+    equality_classes: u64,
     /// The `sys.argv` and similar values that code may ask for.
     pub argv: Vec<String>,
     /// The Python process of the packages without a stand-in (decision 19).
@@ -193,6 +196,8 @@ impl Interpreter {
             stack_limit: 1 << 20,
             handling: Vec::new(),
             representing: Vec::new(),
+            hashed: HashMap::new(),
+            equality_classes: 0,
             argv: vec!["snakemake".into()],
             packages: Rc::default(),
         };

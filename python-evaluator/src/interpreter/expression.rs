@@ -15,7 +15,7 @@ use ruff_text_size::Ranged;
 
 use super::{Frame, FrameKind, Interpreter, Operator};
 use crate::error::Error;
-use crate::value::{Args, Code, Declared, Dict, Function, Key, Scope, Value};
+use crate::value::{Args, Code, Declared, Dict, Function, Scope, Value};
 
 impl Interpreter {
     /// Evaluates an expression in a frame; errors get the expression's line.
@@ -128,7 +128,7 @@ impl Interpreter {
             Expr::Set(set) => {
                 let mut items = IndexSet::new();
                 for item in self.eval_elements(frame, &set.elts)? {
-                    items.insert(Key::new(item)?);
+                    items.insert(self.key(&item)?);
                 }
                 let value = Value::set(items);
                 if set.elts.len() >= 3
@@ -146,12 +146,12 @@ impl Interpreter {
                         Some(key) => {
                             let key = self.eval(frame, key)?;
                             let value = self.eval(frame, &item.value)?;
-                            result.entries.insert(Key::new(key.plain().clone())?, value);
+                            result.entries.insert(self.key(&key)?, value);
                         }
                         None => {
                             let mapping = self.eval(frame, &item.value)?;
                             for (key, value) in self.mapping_items(&mapping)? {
-                                result.entries.insert(Key::new(key)?, value);
+                                result.entries.insert(self.key(&key)?, value);
                             }
                         }
                     }
@@ -194,7 +194,7 @@ impl Interpreter {
                 let mut items = IndexSet::new();
                 self.comprehension(frame, &comprehension.generators, &mut |this, inner| {
                     let item = this.eval(inner, &comprehension.elt)?;
-                    items.insert(Key::new(item.plain().clone())?);
+                    items.insert(this.key(&item)?);
                     Ok(())
                 })?;
                 Value::set(items)
@@ -206,12 +206,12 @@ impl Interpreter {
                         Some(key) => {
                             let key = this.eval(inner, key)?;
                             let value = this.eval(inner, &comprehension.value)?;
-                            result.entries.insert(Key::new(key.plain().clone())?, value);
+                            result.entries.insert(this.key(&key)?, value);
                         }
                         None => {
                             let mapping = this.eval(inner, &comprehension.value)?;
                             for (key, value) in this.mapping_items(&mapping)? {
-                                result.entries.insert(Key::new(key)?, value);
+                                result.entries.insert(this.key(&key)?, value);
                             }
                         }
                     }

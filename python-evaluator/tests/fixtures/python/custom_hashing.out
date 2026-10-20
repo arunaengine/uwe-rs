@@ -1,0 +1,8 @@
+2 True
+1 second True
+2 1
+1 1
+1 True
+2 h
+TypeError unhashable type: 'OnlyEq'
+TypeError unhashable type: 'Mutable'

@@ -316,6 +316,10 @@ pub fn key_equal(a: &Value, b: &Value) -> bool {
         ) => crate::number::numbers_equal(a, b),
         (Class(a), Class(b)) => Rc::ptr_eq(a, b),
         (Native(a), Native(b)) => Rc::ptr_eq(a, b) || a.key_equal(b.as_ref()),
+        (Instance(a), Instance(b)) => {
+            Rc::ptr_eq(a, b)
+                || matches!((a.hashed.get(), b.hashed.get()), (Some((_, x)), Some((_, y))) if x == y)
+        }
         (a, b) => a.is(b),
     }
 }
@@ -343,6 +347,10 @@ fn key_hash<H: Hasher>(value: &Value, state: &mut H) {
         }
         Value::FrozenSet(items) => items.len().hash(state),
         Value::Native(object) => object.key_hash(state),
+        Value::Instance(instance) => match instance.hashed.get() {
+            Some((hash, _)) => hash.hash(state),
+            None => value.plain().address().hash(state),
+        },
         other => other.address().hash(state),
     }
 }
@@ -506,6 +514,9 @@ impl Class {
 pub struct Instance {
     pub class: Rc<Class>,
     pub dict: RefCell<IndexMap<Name, Value>>,
+    /// The `__hash__` value and the equality class of an object whose class defines them,
+    /// set when the object first becomes a dict key or set member.
+    pub hashed: std::cell::Cell<Option<(i64, u64)>>,
 }
 
 /// A module: a native one of the library, or one loaded from a `.py` file.

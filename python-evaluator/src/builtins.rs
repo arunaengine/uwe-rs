@@ -138,6 +138,7 @@ pub fn construct(
         TypeTag::Object => Ok(Value::Instance(Rc::new(crate::value::Instance {
             class: types::builtin_class(TypeTag::Object),
             dict: RefCell::new(IndexMap::new()),
+            hashed: Default::default(),
         }))),
         TypeTag::Type => match args.positional.len() {
             1 => Ok(Value::Class(types::class_of(&args.positional[0]))),
@@ -264,7 +265,7 @@ pub fn construct(
             let mut items = IndexSet::new();
             if let Some(value) = first {
                 for item in interpreter.iterate(&value)? {
-                    items.insert(Key::new(item.plain().clone())?);
+                    items.insert(interpreter.key(&item)?);
                 }
             }
             Ok(if tag == TypeTag::Set {
@@ -292,7 +293,7 @@ pub fn construct(
             if let Some(source) = positional.first() {
                 if tag == TypeTag::Counter && !matches!(source.plain(), Value::Dict(_)) {
                     for item in interpreter.iterate(source)? {
-                        let key = Key::new(item.plain().clone())?;
+                        let key = interpreter.key(&item)?;
                         let count = dict.entries.get(&key).and_then(Value::as_int).unwrap_or(0);
                         dict.entries.insert(key, Value::Int(count + 1));
                     }
@@ -357,7 +358,7 @@ pub fn update_dict(
             && !matches!(source.plain(), Value::List(_) | Value::Tuple(_));
     if is_mapping {
         for (key, value) in interpreter.mapping_items(source)? {
-            dict.entries.insert(Key::new(key.plain().clone())?, value);
+            dict.entries.insert(interpreter.key(&key)?, value);
         }
         return Ok(());
     }
@@ -370,7 +371,7 @@ pub fn update_dict(
             )));
         }
         dict.entries
-            .insert(Key::new(items[0].plain().clone())?, items[1].clone());
+            .insert(interpreter.key(&items[0])?, items[1].clone());
     }
     Ok(())
 }
@@ -649,6 +650,11 @@ fn hash(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
     use std::hash::{Hash, Hasher};
     let value = one(&args, "hash")?;
     let key = interpreter.key(&value)?;
+    if let Value::Instance(instance) = value.plain()
+        && let Some((hash, _)) = instance.hashed.get()
+    {
+        return Ok(Value::Int(hash));
+    }
     if let Some(hash) = crate::hashing::stable_hash(&value) {
         return Ok(Value::Int(hash));
     }
@@ -1218,6 +1224,7 @@ pub fn class_attribute(
                 Ok(Value::Instance(Rc::new(crate::value::Instance {
                     class,
                     dict: RefCell::new(IndexMap::new()),
+                    hashed: Default::default(),
                 })))
             })));
         }
@@ -1238,8 +1245,7 @@ pub fn class_attribute(
                 let value = args.positional.get(1).cloned().unwrap_or(Value::None);
                 let mut dict = Dict::default();
                 for key in interpreter.iterate(&args.positional[0])? {
-                    dict.entries
-                        .insert(Key::new(key.plain().clone())?, value.clone());
+                    dict.entries.insert(interpreter.key(&key)?, value.clone());
                 }
                 Ok(Value::dict(dict))
             },

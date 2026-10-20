@@ -610,6 +610,12 @@ impl Lowering<'_> {
                 if parts.len() < 2 || !PACKAGES.contains(first) || !class_like {
                     return None;
                 }
+                // A constant of a class, like `DateTimeFormatter.ISO_LOCAL_DATE`, is a property.
+                let constant = last.chars().all(|c| c.is_ascii_uppercase() || c == '_');
+                let owner = parts[parts.len() - 2];
+                if constant && owner.starts_with(|c: char| c.is_ascii_uppercase()) {
+                    return None;
+                }
                 if self.scopes.resolve(first).is_some() {
                     return None;
                 }
@@ -618,6 +624,10 @@ impl Lowering<'_> {
                         format!("The class `{}` is not supported yet", parts.join(".")),
                         target.span,
                     );
+                }
+                // Java's `Duration` is not Nextflow's, which the short name means.
+                if parts.as_slice() == ["java", "time", "Duration"] {
+                    return Some("java.time.Duration".into());
                 }
                 Some((*last).into())
             }

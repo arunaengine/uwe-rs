@@ -58,6 +58,12 @@ impl Interpreter<'_> {
             ("DateTimeFormatter", "ofPattern", [pattern]) => {
                 text_object("java.time.format.DateTimeFormatter", &pattern.to_string())
             }
+            ("LocalDate" | "LocalDateTime" | "Instant" | "java.time.Duration", _, _) => {
+                match super::time::time_static(class, name, arguments) {
+                    Some(result) => result.at(span)?,
+                    None => return Ok(None),
+                }
+            }
             ("ZoneId", "systemDefault", []) => text_object("java.time.ZoneId", "system"),
             ("MessageDigest", "getInstance", [algorithm]) => {
                 super::bytes::message_digest(&algorithm.to_string()).at(span)?
@@ -190,6 +196,14 @@ impl Interpreter<'_> {
         let number = |number| Some(Value::Number(number));
         match (class, name) {
             ("Integer", "MAX_VALUE") => number(Number::Integer(i32::MAX)),
+            ("DateTimeFormatter", "ISO_LOCAL_DATE") => Some(text_object(
+                "java.time.format.DateTimeFormatter",
+                "yyyy-MM-dd",
+            )),
+            ("DateTimeFormatter", "ISO_LOCAL_DATE_TIME") => Some(text_object(
+                "java.time.format.DateTimeFormatter",
+                "yyyy-MM-dd'T'HH:mm:ss",
+            )),
             // A `RoundingMode` is its name, which `setScale` reads.
             (
                 "RoundingMode",
@@ -314,7 +328,7 @@ fn math1(name: &str, a: &Number) -> Option<Value> {
 }
 
 /// An object of a Java class that is known by its text, like the pattern of a formatter.
-fn text_object(class: &'static str, text: &str) -> Value {
+pub(in crate::interpreter) fn text_object(class: &'static str, text: &str) -> Value {
     Value::Object(std::rc::Rc::new(std::cell::RefCell::new(
         crate::value::Object {
             class,

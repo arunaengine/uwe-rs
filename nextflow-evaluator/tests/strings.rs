@@ -347,3 +347,51 @@ fn builds_text() {
         "[4, false, Init, XXnit, nit, nitz, qr, 1, i, it]"
     );
 }
+
+/// Dates, times, instants and durations of `java.time`, and `SimpleDateFormat`, as Nextflow
+/// 26.04.6 prints them.
+#[test]
+fn formats_java_times() {
+    let pattern = |text: &str| format!("java.time.format.DateTimeFormatter.ofPattern('{text}')");
+    let cases = [
+        ("java.time.LocalDate.parse('2026-03-05')".to_owned(), "2026-03-05"),
+        (format!("java.time.LocalDate.parse('2026-03-05').format({})", pattern("yyyyMMdd")), "20260305"),
+        ("java.time.LocalDate.parse('2026-03-05').getYear()".into(), "2026"),
+        ("java.time.LocalDate.parse('2026-03-05').plusDays(30)".into(), "2026-04-04"),
+        ("java.time.LocalDate.parse('2026-03-05').getClass().name".into(), "java.time.LocalDate"),
+        ("java.time.LocalDateTime.parse('2026-03-05T07:08:09')".into(), "2026-03-05T07:08:09"),
+        (
+            format!("java.time.LocalDateTime.parse('2026-03-05T07:08:09').format({})", pattern("yyyy-MM-dd_HH-mm-ss")),
+            "2026-03-05_07-08-09",
+        ),
+        ("java.time.LocalDateTime.parse('2026-03-05T07:08:09').toLocalDate()".into(), "2026-03-05"),
+        ("java.time.Instant.parse('2026-03-05T07:08:09Z')".into(), "2026-03-05T07:08:09Z"),
+        ("java.time.Instant.parse('2026-03-05T07:08:09Z').toEpochMilli()".into(), "1772694489000"),
+        ("java.time.Instant.ofEpochMilli(1000)".into(), "1970-01-01T00:00:01Z"),
+        ("java.time.Duration.ofSeconds(3725)".into(), "PT1H2M5S"),
+        ("java.time.Duration.ofSeconds(3725).toMinutes()".into(), "62"),
+        (
+            "java.time.Duration.between(java.time.Instant.parse('2026-03-05T07:08:09Z'), \
+             java.time.Instant.parse('2026-03-05T08:08:10Z'))"
+                .into(),
+            "PT1H1S",
+        ),
+        ("new java.text.SimpleDateFormat('yyyy-MM-dd').format(new Date(0)).size()".into(), "10"),
+        ("java.time.LocalDate.now().getClass().name".into(), "java.time.LocalDate"),
+        (
+            "java.time.format.DateTimeFormatter.ISO_LOCAL_DATE.format(java.time.LocalDate.parse('2026-03-05'))".into(),
+            "2026-03-05",
+        ),
+        ("java.time.LocalDate.of(2026, 1, 2)".into(), "2026-01-02"),
+        ("java.time.LocalDateTime.parse('2026-03-05T07:08:09').getHour()".into(), "7"),
+        (
+            "java.time.LocalDate.parse('2026-03-05').isBefore(java.time.LocalDate.parse('2026-04-01'))".into(),
+            "true",
+        ),
+        ("java.time.LocalDateTime.parse('2026-03-05T07:08')".into(), "2026-03-05T07:08"),
+        ("java.time.LocalDateTime.of(2026, 3, 5, 7, 8, 0)".into(), "2026-03-05T07:08"),
+    ];
+    for (code, expected) in cases {
+        assert_eq!(value(&code), expected, "{code}");
+    }
+}

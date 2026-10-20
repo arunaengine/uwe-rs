@@ -560,3 +560,23 @@ fn keeps_unrecorded_outputs() {
     let tasks = snakemake_runtime::driver(&launch).unwrap().start().unwrap();
     assert!(tasks.is_empty(), "{tasks:?}");
 }
+
+/// Snakemake 9.27 runs test_uncreatable_checkpoint_input: the output of the checkpoint is
+/// there, so the checkpoint does not run and its missing input does not matter.
+#[test]
+fn reads_present_checkpoints() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        "with open('a.txt', 'w') as f:\n    f.write('a\\nb\\n')\ndef names(wildcards):\n    return open(checkpoints.a.get(**wildcards).output[0]).read().split()\nrule all:\n    input: lambda wildcards: [f'file/{i}' for i in names(wildcards)]\ncheckpoint a:\n    input: 'not-even-exists'\n    output: 'a.txt'\n    shell: 'true'\nrule i:\n    output: touch('file/{i}')\n",
+    )
+    .unwrap();
+    let launch = Launch {
+        target: folder.path().into(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let tasks = snakemake_runtime::driver(&launch).unwrap().start().unwrap();
+    let steps: Vec<_> = tasks.iter().map(|task| task.step.as_str()).collect();
+    assert_eq!(steps, ["i", "i"]);
+}

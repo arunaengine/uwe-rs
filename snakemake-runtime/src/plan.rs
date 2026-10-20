@@ -589,13 +589,25 @@ impl Planner {
                 let rule = self.rules.iter().position(|rule| rule.name == *name);
                 let producer = match rule {
                     Some(rule) => match self.wildcards_for(rule, file, Some(wildcards)) {
+                        // A checkpoint whose output is there runs not again, so its missing
+                        // inputs do not matter, as in Snakemake (test_uncreatable_checkpoint_input).
                         Some(values) => {
-                            Some(self.plan_job(interpreter, rule, values, Some(file))?)
+                            match self.plan_job(interpreter, rule, values, Some(file)) {
+                                Ok(job) => Some(job),
+                                Err(_) if self.exists(interpreter, file) => None,
+                                Err(failure) => return Err(failure),
+                            }
                         }
                         None => self.plan_file(interpreter, file, Some(wildcards))?,
                     },
                     None => self.plan_file(interpreter, file, Some(wildcards))?,
                 };
+                if producer.is_none()
+                    && self.exists(interpreter, file)
+                    && self.checkpoints_ready.borrow_mut().insert(file.clone())
+                {
+                    newly_ready = true;
+                }
                 if let Some(producer) = producer {
                     if !checkpoint_dependencies
                         .iter()

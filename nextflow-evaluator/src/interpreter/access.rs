@@ -667,6 +667,14 @@ impl Interpreter<'_> {
                 Ok(Value::Exception(Rc::new(exception)))
             }
             (None, []) if class == "Date" => Ok(Value::Date(crate::date::now())),
+            (None, [] | [Value::Number(_)])
+                if matches!(class, "StringBuilder" | "StringBuffer") =>
+            {
+                Ok(super::library::builder::builder(class, String::new()))
+            }
+            (None, [text]) if matches!(class, "StringBuilder" | "StringBuffer") => {
+                Ok(super::library::builder::builder(class, text.to_string()))
+            }
             // `new BigDecimal(text or number)` and `new BigInteger(text)`, as `toBigDecimal()`
             // and `toBigInteger()` read them.
             (None, [value]) if matches!(class, "BigDecimal" | "BigInteger") => {

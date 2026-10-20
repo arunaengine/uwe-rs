@@ -324,3 +324,26 @@ fn translates_and_finds() {
         assert_eq!(value(code), expected, "{code}");
     }
 }
+
+/// `StringBuilder` and `StringBuffer` change their text in place, as Nextflow 26.04.6 shows.
+#[test]
+fn builds_text() {
+    let code = "def sb = new StringBuilder()\nsb.append('ab').append(1).append(true)\nsb << 'x'\n\
+                def seen = [sb.toString(), sb.length(), \"${sb}\"]\nsb.insert(0, 'Z')\n\
+                seen << sb.toString()\nseen << sb.reverse().toString()\nsb.setLength(2)\n\
+                seen << sb.toString()\nsb.deleteCharAt(0)\nseen << sb.toString()\n\
+                seen << sb.getClass().name\nseen";
+    assert_eq!(
+        value(code),
+        "[ab1truex, 8, ab1truex, Zab1truex, xeurt1baZ, xe, e, java.lang.StringBuilder]"
+    );
+    let code = "def sb = new StringBuilder('init')\ndef seen = [sb.size(), sb == 'init']\n\
+                sb.setCharAt(0, 'I' as char)\nseen << sb.toString()\nsb.replace(0, 1, 'XX')\n\
+                seen << sb.toString()\nsb.delete(0, 2)\nseen << sb.toString()\n\
+                seen << (sb + 'z')\nseen << new StringBuffer('q').append('r').toString()\n\
+                seen << sb.indexOf('i') << sb.charAt(1) << sb.substring(1)\nseen";
+    assert_eq!(
+        value(code),
+        "[4, false, Init, XXnit, nit, nitz, qr, 1, i, it]"
+    );
+}

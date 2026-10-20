@@ -250,11 +250,19 @@ impl Interpreter<'_> {
                         Value::Channel(_),
                         _,
                     ) => self.operator(&left, operator.method(), vec![right], span)?,
-                    // `writer << text` writes the text.
+                    // `writer << text` writes the text, as it adds to a `StringBuilder`.
                     (Operator::LeftShift, Value::Object(object), _)
-                        if matches!(object.borrow().state, crate::value::State::Writer(_)) =>
+                        if matches!(
+                            object.borrow().state,
+                            crate::value::State::Writer(_) | crate::value::State::Builder(_)
+                        ) =>
                     {
                         self.call_method(&left, "leftShift", vec![right], span)?
+                    }
+                    (Operator::Add, Value::Object(object), _)
+                        if matches!(object.borrow().state, crate::value::State::Builder(_)) =>
+                    {
+                        self.call_method(&left, "plus", vec![right], span)?
                     }
                     // A group key stands for its key, as its `methodMissing` passes calls on.
                     (_, Value::Object(object), _)

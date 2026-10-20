@@ -56,15 +56,13 @@ fn accepts_jinja_templates() {
 
 #[test]
 fn refuses_unsupported_actions() {
-    for action in ["cwl: 'tool.cwl'"] {
-        let folder = tempfile::tempdir().expect("a folder");
-        let launch = launch(folder.path(), action);
-        let error = snakemake_runtime::driver(&launch)
-            .expect("a driver")
-            .start()
-            .expect_err("an unsupported action");
-        assert!(error.unsupported, "{action}: {error}");
-    }
+    let folder = tempfile::tempdir().expect("a folder");
+    let refused = launch(folder.path(), "cwl: 'tool.cwl'");
+    let error = snakemake_runtime::driver(&refused)
+        .expect("a driver")
+        .start()
+        .expect_err("an unsupported action");
+    assert!(error.unsupported, "{error}");
     let folder = tempfile::tempdir().expect("a folder");
     let launch = launch(folder.path(), "template_engine: 'mako'");
     let error = snakemake_runtime::driver(&launch)

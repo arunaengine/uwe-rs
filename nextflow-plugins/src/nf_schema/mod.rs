@@ -273,8 +273,13 @@ pub(crate) fn errors(
         };
         errors.push((location, path, message));
     }
-    for (path, location, mut names) in missing {
-        names.sort();
+    for (path, location, names) in missing {
+        // The validator collects the missing names in a Java hash set.
+        let mut order: Vec<(usize, String)> = (names.iter())
+            .map(|name| (hash_position(&names, name), name.clone()))
+            .collect();
+        order.sort();
+        let names: Vec<String> = order.into_iter().map(|(_, name)| name).collect();
         let message = format!("Missing required {what}(s): {}", names.join(", "));
         errors.push((location, path, message));
     }

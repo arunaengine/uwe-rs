@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["beta", "zeta", "a1", "q"],
+  "properties": {"beta": {"type": "string"}, "zeta": {"type": "string"}, "a1": {"type": "string"}, "q": {"type": "string"}}
+}

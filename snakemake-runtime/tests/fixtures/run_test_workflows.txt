@@ -10,13 +10,13 @@ catalog/AllenInstitute__Bulk-RNA-Snakeline ok 10
 catalog/AmberFu__snakemake_BAMmetrics_mosdepth 1 workflow/Snakefile:8: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/ArsenaultResearch__RNAseq_Pipeline ok 408
 catalog/ArsenaultResearch__windowRAxMLng ok 8
-catalog/BesenbacherLab__bbq_pipeline 33 Not supported yet: Snakemake profile setting '__use_yte__'
+catalog/BesenbacherLab__bbq_pipeline 1 <yte definitions>:1: KeyError: 'ACCOUNT_NAME'
 catalog/Bioinflows-Bioversity-CIAT__ont-target-dna-variant-calling ok 36
 catalog/Bioinflows-Bioversity-CIAT__tm-shift_designer ok 997
 catalog/CAST-genomics__snakemake-gfa-complexity 1 workflow/Snakefile:18: KeyError: 'trait'
 catalog/CBIbigA__hicstuff_pipeline 1 task makeChromSize: simulated path `../NathalieFrederic_HiC/W303.fa.fai` must stay inside its work directory without symlinks
 catalog/CSB-IG__GSE167150_HiC_matrices 1 workflow/rules/hicpro_allvalidpairs.smk:4: WorkflowError: Not all output, log and benchmark files of rule hicpro_allvalidpairs contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
-catalog/CVUA-RRW__FooDMe 33 workflow/rules/common.smk:25: Not supported yet: the library function time.asctime
+catalog/CVUA-RRW__FooDMe ok 68
 catalog/Cesconlab__ExomeSeq 1 workflow/Snakefile:6: PermissionError: [Errno 13] Permission denied: '/cluster'
 catalog/ChaissonLab__SegDupAnnotation2 ok 50
 catalog/ClavelLab__genome-assembly 1 workflow/rules/common.smk:7: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
@@ -146,7 +146,7 @@ catalog/bakerwm__snakemake-rnaseq-star 1 workflow/rules/common.smk:7: NotImpleme
 catalog/belowlab__ukbb-phecode-mapping ok 0
 catalog/bethanyyk__DENV_simulations ok 3
 catalog/bheimbu__annoSnake ok 114
-catalog/boulardlab__3t-seq 33 Not supported yet: Snakemake profile setting 'all-temp'
+catalog/boulardlab__3t-seq 1 workflow/rules/common.smk:87: WorkflowError: InputFunctionException in rule all (wildcards: ): FileNotFoundError: [Errno 2] No such file or directory: 'resources/sample-sheet.csv'
 catalog/broomej__serpent-DEFUNCT ok 2
 catalog/brunosate21-a11y__Metabolic-Modeling-Workflow. ok 22
 catalog/brunosate21-a11y__codigo-sem-commit ok 8
@@ -291,13 +291,13 @@ catalog/merfre__Hull_Microbiome_Cluster_Workflow ok 19
 catalog/merfre__MMCAW 1 workflow/Snakefile:63: TypeError: sequence item 31: expected str instance, float found
 catalog/metagenome-atlas__metagenome-assembly ok 2
 catalog/metagenome-atlas__metagenome_instrain ok 10
-catalog/milesroberts-123__poolseq-kmers 33 Not supported yet: Snakemake profile setting 'max-jobs-per-timespan'
+catalog/milesroberts-123__poolseq-kmers 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/milesroberts-123__slim-sweep-cnn 1 workflow/Snakefile:9: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/mkrg01__genome_assembly_pipeline ok 190
 catalog/modelblocks-org__geospatial_shapes_test_bench ok 449
 catalog/modelblocks-org__module_area_potentials ok 1
 catalog/modelblocks-org__module_co2stop_cdr ok 1
-catalog/modelblocks-org__module_demand_electricity 33 Not supported yet: Snakemake profile setting 'max-jobs-per-timespan'
+catalog/modelblocks-org__module_demand_electricity ok 1
 catalog/modelblocks-org__module_euro_building_heat ok 1
 catalog/modelblocks-org__module_euro_gas_grid ok 1
 catalog/modelblocks-org__module_geo_boundaries ok 1
@@ -356,7 +356,7 @@ catalog/recervictory__rna-seq-test ok 0
 catalog/regevs__tadpoles ok 0
 catalog/regulatory-genomics__hic_sm 1 workflow/rules/common.smk:38: FileNotFoundError: [Errno 2] No such file or directory: 'pep/../config/20260119_hic_sample_2.csv'
 catalog/rglez__bflow-smk ok 10
-catalog/richardstoeckl__QCforSeqCode 33 workflow/Snakefile:130: Not supported yet: shadow mode 'copy-minimal' for rule prepare16SrRNAdb; only 'minimal', 'shallow' and 'full' are supported
+catalog/richardstoeckl__QCforSeqCode 1 workflow/Snakefile:153: WorkflowError: InputFunctionException in rule infernal (wildcards: sampleID=Pfu): EmptyDataError: No columns to parse from file (the workflow read results/seqkit-stats/Pfu_assembly.tsv, a task output that the simulator made without its content)
 catalog/richardstoeckl__basecallNanopore 1 workflow/Snakefile:21: WorkflowError: A configuration file is required; use --configfile FILE.yaml
 catalog/rmFlynn__DRAM_testing_pipline ok 0
 catalog/rmFlynn__dram_validataion_pipline ok 0

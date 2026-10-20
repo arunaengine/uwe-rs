@@ -1263,8 +1263,8 @@ async fn explain(message: String, root: &Path, shared: bool) -> String {
     let log = tokio::fs::read_to_string(root.join(CONTROL).join(LOG)).await;
     if log.is_err() && !shared {
         return format!(
-            "{message}, and sent back no log; look for iunctus-{} in the node folder of the \
-             node",
+            "{message}, and sent back no log; look for {LOG} in the folder iunctus-{}.* in \
+             the node folder of the node",
             root.file_name().unwrap_or_default().to_string_lossy()
         );
     }
@@ -1338,6 +1338,15 @@ esac"#,
         );
         assert!(folder.path().join("remote.json").is_file());
         assert!(!folder.path().join("scancel.called").exists());
+    }
+
+    #[tokio::test]
+    async fn names_node_folder() {
+        let folder = tempfile::tempdir().unwrap();
+        let root = folder.path().join("run-P-1-1");
+        let text = explain("the job failed".into(), &root, false).await;
+        let hint = "look for slurm.log in the folder iunctus-run-P-1-1.* in the node folder";
+        assert!(text.contains(hint), "{text}");
     }
 
     #[tokio::test]

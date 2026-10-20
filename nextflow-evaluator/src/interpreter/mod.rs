@@ -370,6 +370,8 @@ pub struct Interpreter<'h> {
     /// While the `path` closure of a workflow output runs: its publish statements, like
     /// `file >> 'fastq/'`, each as its source and target.
     publishing: Option<Vec<(Value, String)>>,
+    /// How many functions and closures are running, to stop runaway recursion cleanly.
+    depth: usize,
 }
 
 impl<'h> Interpreter<'h> {
@@ -382,6 +384,7 @@ impl<'h> Interpreter<'h> {
             task_variables: Vec::new(),
             error_module: None,
             publishing: None,
+            depth: 0,
         }
     }
 

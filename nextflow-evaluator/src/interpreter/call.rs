@@ -12,6 +12,15 @@ use crate::exception::Exception;
 use crate::lowered::{Arguments, Code, Module, Place};
 use crate::value::{Closure, List, ListKind, PathValue, Value};
 
+/// The deepest nesting of function and closure calls. Nextflow 26.04.6 overflows its stack
+/// after several hundred calls, so scripts that run there stay well below this.
+const DEPTH_LIMIT: usize = 4000;
+
+/// When less stack than this is left at a call, the call runs on a new stack segment of
+/// `STACK_SEGMENT` bytes; debug builds need far more stack per call than release builds.
+const STACK_RESERVE: usize = 1 << 20;
+const STACK_SEGMENT: usize = 32 << 20;
+
 impl Interpreter<'_> {
     /// Evaluates call arguments. Named arguments become one map in first position.
     pub(super) fn arguments(
@@ -101,8 +110,31 @@ impl Interpreter<'_> {
         Err(no_signature("Script", name, &arguments, span))
     }
 
-    /// Runs code in a new frame, binding the arguments and evaluating missing defaults.
+    /// Runs code in a new frame, on a stack that grows as needed, up to a call depth where
+    /// Nextflow would have run out of stack long before.
     pub(super) fn run(
+        &mut self,
+        code: &Rc<Code>,
+        module: &Rc<Module>,
+        captured: Vec<Rc<RefCell<Value>>>,
+        arguments: Vec<Value>,
+    ) -> Result<Value, Error> {
+        if self.depth >= DEPTH_LIMIT {
+            // Like Groovy's, it is an `Error`, which `catch (Exception e)` does not catch.
+            let message = format!("more than {DEPTH_LIMIT} nested calls of functions or closures");
+            let error = Exception::new("StackOverflowError", message);
+            return Err(thrown(error, code.span));
+        }
+        self.depth += 1;
+        let result = stacker::maybe_grow(STACK_RESERVE, STACK_SEGMENT, || {
+            self.run_frame(code, module, captured, arguments)
+        });
+        self.depth -= 1;
+        result
+    }
+
+    /// Binds the arguments in a new frame, evaluating missing defaults, and runs the body.
+    fn run_frame(
         &mut self,
         code: &Rc<Code>,
         module: &Rc<Module>,

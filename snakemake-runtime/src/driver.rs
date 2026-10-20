@@ -120,6 +120,10 @@ pub struct Session {
     hooks_started: bool,
     hooks_finished: bool,
     rerun_triggers: Option<Vec<String>>,
+    /// Whether jobs run in the working directory itself, as in Snakemake, rather than each
+    /// in a folder of its own; the tasks that run there, with what the session must undo.
+    shared: bool,
+    placed: HashMap<TaskId, crate::shared::Placed>,
 }
 
 struct SignaturePublication {
@@ -222,6 +226,8 @@ impl Session {
             hooks_started: false,
             hooks_finished: false,
             rerun_triggers: None,
+            shared: false,
+            placed: HashMap::new(),
         })
     }
 
@@ -803,6 +809,10 @@ impl Session {
             }
             self.held.retain(|held| *held != job);
             self.usages.remove(&job);
+            let task = match self.share(&[job], vec![task], |members| Ok(members.remove(0)))? {
+                Some(task) => task,
+                None => continue,
+            };
             self.gate.take(id, usage);
             if rule.checkpoint {
                 let reason = format!(
@@ -1018,6 +1028,12 @@ impl Session {
     }
 
     pub fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+        let mut outcome = outcome;
+        if let Some(placed) = self.placed.remove(&outcome.id) {
+            crate::shared::finish(placed, &mut outcome).map_err(|error| {
+                DriverError::new(format!("cannot finish task {}: {error}", outcome.id))
+            })?;
+        }
         if let Some(members) = self.groups.remove(&outcome.id) {
             return self.complete_group(members, outcome);
         }
@@ -1044,7 +1060,6 @@ impl Session {
             );
             return self.failed(message);
         }
-        let mut outcome = outcome;
         if !self.launch.simulated
             && let Err(error) = self.check_outputs(job, &mut outcome)
         {
@@ -1136,6 +1151,34 @@ impl Session {
             self.accept(identity);
         }
         next
+    }
+
+    /// Readies the task of `jobs` for the shared working directory when jobs run there: each
+    /// job is prepared, then `combine` makes the task of their tasks.
+    fn share(
+        &mut self,
+        jobs: &[usize],
+        mut members: Vec<Task>,
+        combine: impl FnOnce(&mut Vec<Task>) -> Result<Task, DriverError>,
+    ) -> Result<Option<Task>, DriverError> {
+        if !self.shared {
+            return combine(&mut members).map(Some);
+        }
+        let planner = self
+            .planner
+            .as_ref()
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
+        let mut placed = crate::shared::Placed::default();
+        for (job, task) in jobs.iter().zip(&mut members) {
+            let entry = &planner.jobs[*job];
+            crate::shared::prepare(&self.workdir, entry, task, &mut placed)
+                .map_err(|error| DriverError::new(format!("cannot prepare a job: {error}")))?;
+        }
+        let mut task = combine(&mut members)?;
+        crate::shared::place(&self.workdir, &mut task, &mut placed)
+            .map_err(|error| DriverError::new(format!("cannot place a job: {error}")))?;
+        self.placed.insert(task.id, placed);
+        Ok(Some(task))
     }
 
     fn accept(&self, identity: (TaskId, u32)) {
@@ -1277,9 +1320,12 @@ impl Session {
                         .flatten()
                 })
             });
-            if !temporary
-                .iter()
-                .any(|output| self.interpreter.host.resolve(output) == path)
+            // A job of the shared directory left its outputs in place.
+            let in_place = self.shared && storage_target.is_none();
+            if !in_place
+                && !temporary
+                    .iter()
+                    .any(|output| self.interpreter.host.resolve(output) == path)
             {
                 let mut deliveries = self
                     .deliveries
@@ -1310,13 +1356,15 @@ impl Session {
             {
                 planner.made_folders.push(path.clone());
             }
-            self.files.add_output(
-                &path,
-                Produced {
-                    location: PathBuf::from(&file.location),
-                    directory: file.directory,
-                },
-            );
+            if !self.shared {
+                self.files.add_output(
+                    &path,
+                    Produced {
+                        location: PathBuf::from(&file.location),
+                        directory: file.directory,
+                    },
+                );
+            }
         }
         if !self.launch.simulated {
             self.empty_logs(job, &outcome)?;
@@ -1491,8 +1539,13 @@ impl Session {
             }
             return self.service_group(job, services, retry);
         }
-        let mut task =
-            crate::services::combine(&members, services, id).map_err(DriverError::new)?;
+        let jobs: Vec<usize> = declared.iter().map(|(member, _)| *member).collect();
+        let combine = |members: &mut Vec<Task>| {
+            crate::services::combine(members, services, id).map_err(DriverError::new)
+        };
+        let Some(mut task) = self.share(&jobs, members, combine)? else {
+            return Ok(None);
+        };
         if retry.is_some()
             || declared
                 .iter()
@@ -1648,8 +1701,12 @@ impl Session {
             }
             return Ok(None);
         }
-        let mut task =
-            crate::groups::combine(&members, id, &pipes, &services).map_err(DriverError::new)?;
+        let combine = |members: &mut Vec<Task>| {
+            crate::groups::combine(members, id, &pipes, &services).map_err(DriverError::new)
+        };
+        let Some(mut task) = self.share(jobs, members, combine)? else {
+            return Ok(None);
+        };
         if retry.is_some() || jobs.iter().any(|job| self.forced.contains(job)) {
             task.reuse = workflow_graph::Reuse::Denied;
         }
@@ -1943,7 +2000,10 @@ impl Session {
         }
         .map_err(|error| self.error(&error))?;
         self.signatures.insert(job, signature);
-        let mut task = task;
+        let Some(mut task) = self.share(&[job], vec![task], |members| Ok(members.remove(0)))?
+        else {
+            return Ok(None);
+        };
         task.reuse = workflow_graph::Reuse::Denied;
         self.attempts.insert(job, attempt + 1);
         self.outstanding += 1;
@@ -2150,6 +2210,9 @@ pub struct RunSettings {
     pub offline: bool,
     pub rerun_triggers: Option<Vec<String>>,
     pub conda: bool,
+    /// Whether the executor sees the working directory at its path, so that jobs run in it
+    /// as in Snakemake; a simulated run never does.
+    pub shared_workdir: bool,
 }
 
 /// The driver of a Snakemake workflow: `launch.target` is a Snakefile, or a folder with a
@@ -2191,6 +2254,7 @@ pub fn driver_with_options(
             let open = || -> Result<Session, DriverError> {
                 let mut session = Session::new(&launch, &settings.storage)?;
                 session.rerun_triggers = options.rerun_triggers.clone();
+                session.shared = options.shared_workdir && !launch.simulated;
                 session.state.borrow_mut().conda_enabled = options.conda;
                 session.state.borrow_mut().default_image = options.image.clone();
                 session.acceptance = session_acceptance.clone();

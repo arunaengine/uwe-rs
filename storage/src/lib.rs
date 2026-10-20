@@ -27,7 +27,7 @@ use backend::{Backend, Connection, Source};
 use error::Problem;
 
 pub use blocking::Blocking;
-pub use downloads::download_name;
+pub use downloads::{download_name, hold_downloads};
 pub use error::StorageError;
 pub use journal::Fetched;
 pub use settings::Settings;
@@ -100,6 +100,8 @@ struct Inner {
     /// process take turns: the first downloads it, the others find its copy.
     downloading: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     observed: Mutex<HashMap<String, Observed>>,
+    /// The folders of downloads that this process reads, each locked shared until it ends.
+    held: Mutex<HashMap<PathBuf, std::fs::File>>,
 }
 
 struct Observed {
@@ -211,6 +213,7 @@ impl Storage {
                 journal: journal::Journal::default(),
                 downloading: Mutex::default(),
                 observed: Mutex::default(),
+                held: Mutex::default(),
             }),
         }
     }

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
@@ -20,7 +21,67 @@ pub fn download_name(target: &str) -> String {
         .collect()
 }
 
+/// The file that processes lock shared while they may read from a folder of downloads.
+const IN_USE: &str = "in-use.lock";
+
+/// Locks a folder of downloads alone, so that no process reads from it until the file goes;
+/// `None` while one may, or when there is no such folder.
+pub fn hold_downloads(downloads: &Path) -> std::io::Result<Option<std::fs::File>> {
+    if !downloads.is_dir() {
+        return Ok(None);
+    }
+    let file = lock_file(&downloads.join(IN_USE))?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(std::fs::TryLockError::Error(error)) => Err(error),
+    }
+}
+
+fn lock_file(path: &Path) -> std::io::Result<std::fs::File> {
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+}
+
 impl Storage {
+    /// Locks a folder of downloads shared until this process ends, so that `iunctus clean`
+    /// removes nothing that it reads; waits while clean-up holds it alone.
+    async fn hold(&self, downloads: &Path) -> Result<(), StorageError> {
+        let known = |held: &HashMap<PathBuf, std::fs::File>| held.contains_key(downloads);
+        if known(
+            &self
+                .inner
+                .held
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner()),
+        ) {
+            return Ok(());
+        }
+        std::fs::create_dir_all(downloads).map_err(local(downloads))?;
+        let path = downloads.join(IN_USE);
+        let file = lock_file(&path).map_err(local(&path))?;
+        loop {
+            match file.try_lock_shared() {
+                Ok(()) => break,
+                Err(std::fs::TryLockError::WouldBlock) => {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+                Err(std::fs::TryLockError::Error(error)) => return Err(local(&path)(error)),
+            }
+        }
+        let mut held = self
+            .inner
+            .held
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        held.insert(downloads.to_owned(), file);
+        Ok(())
+    }
+
     /// The ready-bundle name for this provider and address, excluding provider credentials.
     pub fn download_name(&self, target: &str) -> Result<String, StorageError> {
         let (provider, prefix) = crate::longest(&self.inner.configured, target)
@@ -109,6 +170,7 @@ impl Storage {
             self.inner.journal.note(pinned);
             return Ok(copy);
         }
+        self.hold(downloads).await?;
         self.observe(target).await;
         let bundle = downloads.join(self.download_name(target)?);
         let copy = bundle.join("content");

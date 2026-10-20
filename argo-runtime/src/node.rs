@@ -89,6 +89,8 @@ pub(crate) struct NodeOutputs {
     pub artifacts: Vec<ArtifactValue>,
     pub result: Option<String>,
     pub exit_code: Option<String>,
+    /// The address of a daemon, which later steps read as `ip`.
+    pub ip: Option<String>,
 }
 
 /// A node: a template call, or a group of calls, and its state.

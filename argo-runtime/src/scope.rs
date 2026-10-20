@@ -114,7 +114,8 @@ impl Run {
             values.insert(format!("{prefix}.finishedAt"), time::rfc3339(finished));
         }
         if node.kind == NodeKind::Pod {
-            values.insert(format!("{prefix}.ip"), crate::run::pod_ip(&node.name));
+            let ip = (node.outputs.ip.clone()).unwrap_or_else(|| crate::run::pod_ip(&node.name));
+            values.insert(format!("{prefix}.ip"), ip);
             values.insert(format!("{prefix}.hostNodeName"), "iunctus".to_owned());
         }
         add_outputs(scope, prefix, &node.outputs);

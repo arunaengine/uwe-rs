@@ -1145,6 +1145,17 @@ impl Run {
     }
 
     pub fn set_phase(&mut self, index: usize, phase: Phase, message: String) {
+        // The daemons of a steps or DAG template stop when it ends, as Argo kills them.
+        if phase.fulfilled()
+            && !self.nodes[index].phase.fulfilled()
+            && matches!(self.nodes[index].kind, NodeKind::Steps | NodeKind::Dag)
+        {
+            let daemons = (self.nodes.iter())
+                .filter(|node| node.boundary == Some(index) && node.daemoned)
+                .flat_map(|node| node.tasks.iter().copied());
+            let daemons: Vec<TaskId> = daemons.collect();
+            self.cancel_tasks.extend(daemons);
+        }
         if phase.fulfilled() {
             self.locks.borrow_mut().release(&self.nodes[index].id);
             self.deadlines.remove(&index);

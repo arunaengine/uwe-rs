@@ -125,6 +125,7 @@ impl Run {
         }
         let first = init.len();
         let mut tasks: Vec<Task> = Vec::new();
+        let daemon = self.daemon(template)?;
         let mut dependencies: Vec<Vec<usize>> = Vec::new();
         if let Some(container) = &template.container {
             let mut task = base(&container.image, Some(container))?;
@@ -243,6 +244,18 @@ impl Run {
                     task.after.push(id);
                 }
             }
+            if let Some(daemon) = &daemon {
+                if !task.containers.is_empty() {
+                    return Err(Failure::unsupported(format!(
+                        "template {}: a daemon with sidecars or a container set is not supported",
+                        template.name
+                    )));
+                }
+                task.environment
+                    .insert(DAEMON_ENV.to_owned(), daemon.clone());
+                // A daemon serves the steps of this run; no earlier one can stand for it.
+                task.reuse = workflow_graph::Reuse::Denied;
+            }
             self.ask(index, task);
         }
         self.changed = true;
@@ -302,6 +315,7 @@ impl Run {
         let mut outputs = crate::node::NodeOutputs {
             result: Some(result.clone()),
             exit_code: Some(exit_code.to_string()),
+            ip: main.address.clone(),
             ..Default::default()
         };
         // Output files by the path the task asked for; paths the executor spelled
@@ -653,9 +667,31 @@ fn main_mounts(template: &Template) -> Vec<Node> {
     }
 }
 
-/// Fills a task from a container: one command line of `command` and `args` (decision 18), and
-/// the working directory.
+/// The variable of a task's environment that makes the executor run it as a daemon, with the
+/// JSON of its readiness probe, as `executor::daemon::Daemon` reads it.
+const DAEMON_ENV: &str = "IUNCTUS_DAEMON";
+
 impl Run {
+    /// The daemon settings of a template that runs as a daemon: the readiness probe of its
+    /// container in the form of the executor, or none, which counts it ready once it runs.
+    fn daemon(&self, template: &Template) -> Result<Option<String>> {
+        if template.daemon != Some(true) {
+            return Ok(None);
+        }
+        let container = template.container.as_ref().or(template.script.as_ref());
+        let probe = match container.and_then(|container| container.readiness_probe.as_ref()) {
+            None => Value::Nil,
+            Some(node) => readiness(node).map_err(|message| {
+                Failure::unsupported(format!("template {}: {message}", template.name))
+            })?,
+        };
+        let mut daemon = std::collections::BTreeMap::new();
+        if !matches!(probe, Value::Nil) {
+            daemon.insert("probe".to_owned(), probe);
+        }
+        Ok(Some(Value::Map(daemon).to_json()))
+    }
+
     /// Runs the sidecars of a template beside its main container, as services that stop
     /// when it ended; they share its network and the volumes that any of them mounts.
     fn add_sidecars(
@@ -711,6 +747,70 @@ impl Run {
     }
 }
 
+/// A readiness probe of Kubernetes in the form of the executor.
+fn readiness(node: &Node) -> std::result::Result<Value, String> {
+    let number = |key: &str, default: i64| {
+        node.get(key)
+            .map(scalar_text)
+            .and_then(|text| text.parse().ok())
+            .unwrap_or(default)
+    };
+    let port = |probe: &Node| -> std::result::Result<Value, String> {
+        let text = probe.get("port").map(scalar_text).unwrap_or_default();
+        text.parse::<i64>().map(Value::Int).map_err(|_| {
+            format!("readinessProbe port {text} is no number; named ports need Kubernetes")
+        })
+    };
+    let check = if let Some(exec) = node.get("exec") {
+        let command = match exec.get("command").map(|node| &node.value) {
+            Some(Yaml::Sequence(words)) => words
+                .iter()
+                .map(|word| Value::String(scalar_text(word)))
+                .collect(),
+            _ => Vec::new(),
+        };
+        Value::Map([("command".to_owned(), Value::Array(command))].into())
+    } else if let Some(http) = node.get("httpGet") {
+        let path = http
+            .get("path")
+            .map(scalar_text)
+            .unwrap_or_else(|| "/".into());
+        let fields = [
+            ("port".to_owned(), port(http)?),
+            ("path".to_owned(), Value::String(path)),
+        ];
+        Value::Map([("http".to_owned(), Value::Map(fields.into()))].into())
+    } else if let Some(tcp) = node.get("tcpSocket") {
+        Value::Map(
+            [(
+                "tcp".to_owned(),
+                Value::Map([("port".to_owned(), port(tcp)?)].into()),
+            )]
+            .into(),
+        )
+    } else {
+        return Err("readinessProbe needs exec, httpGet or tcpSocket".into());
+    };
+    let fields = [
+        ("check".to_owned(), check),
+        (
+            "delay_seconds".to_owned(),
+            Value::Int(number("initialDelaySeconds", 0)),
+        ),
+        (
+            "period_seconds".to_owned(),
+            Value::Int(number("periodSeconds", 10)),
+        ),
+        (
+            "timeout_seconds".to_owned(),
+            Value::Int(number("timeoutSeconds", 1)),
+        ),
+    ];
+    Ok(Value::Map(fields.into()))
+}
+
+/// Fills a task from a container: one command line of `command` and `args` (decision 18), and
+/// the working directory.
 pub(crate) fn fill_container(task: &mut Task, container: &Container) {
     task.command = container
         .command

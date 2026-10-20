@@ -503,3 +503,46 @@ fn checks_out_git() {
         }
     );
 }
+
+#[test]
+fn stops_daemons_after() {
+    let folder = tempfile::tempdir().unwrap();
+    let spec = r#"  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - {name: server, template: server}
+    - - {name: client, template: client, arguments: {parameters: [{name: ip, value: "{{steps.server.ip}}"}]}}
+  - name: server
+    daemon: true
+    container: {image: python, command: [python3, -m, http.server], readinessProbe: {httpGet: {path: /health, port: 8000}, periodSeconds: 2}}
+  - name: client
+    inputs: {parameters: [{name: ip}]}
+    container: {image: alpine, command: [wget, "http://{{inputs.parameters.ip}}:8000/"]}
+"#;
+    let mut run = driver(folder.path(), spec);
+    let server = run.start().unwrap().remove(0);
+    assert_eq!(
+        server.environment["IUNCTUS_DAEMON"],
+        r#"{"probe":{"check":{"http":{"path":"/health","port":8000}},"delay_seconds":0,"period_seconds":2,"timeout_seconds":1}}"#
+    );
+    assert_eq!(server.reuse, workflow_graph::Reuse::Denied);
+    // The daemon is ready at an address, which the next step reads as its `ip`.
+    let ready = Outcome {
+        id: server.id,
+        address: Some("172.18.0.2".into()),
+        ..Outcome::default()
+    };
+    let client = run.complete(ready).unwrap().remove(0);
+    assert_eq!(client.command, ["wget", "http://172.18.0.2:8000/"]);
+    assert!(
+        run.cancellations().is_empty(),
+        "the daemon serves until the steps end"
+    );
+    let done = Outcome {
+        id: client.id,
+        ..Outcome::default()
+    };
+    assert!(run.complete(done).unwrap().is_empty());
+    assert_eq!(run.cancellations(), [server.id]);
+}

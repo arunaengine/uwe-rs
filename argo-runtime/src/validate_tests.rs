@@ -215,13 +215,9 @@ fn rejects_cluster_templates() {
     );
     // A claim becomes a volume of the run.
     assert_eq!(check_document(&resource("PersistentVolumeClaim")), Ok(()));
+    // A daemon runs on the local executor and Kubernetes.
     let daemon = workflow("  - name: main\n    daemon: true\n    container: {image: nginx}\n");
-    let rejection = check_document(&daemon).expect_err("a daemon");
-    assert!(rejection.unsupported, "{rejection:?}");
-    assert!(
-        rejection.message.contains("runs as a daemon"),
-        "{rejection:?}"
-    );
+    assert_eq!(check_document(&daemon), Ok(()));
     // Argo's own checks are no question of support.
     let undefined = workflow("  - name: main\n    steps:\n    - - {name: a, template: nope}\n");
     assert!(

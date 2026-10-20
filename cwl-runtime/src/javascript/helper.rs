@@ -33,6 +33,9 @@ pub struct JavaScriptSettings {
     pub image: String,
     pub cancel: CancellationToken,
     helper: Arc<Mutex<Option<Helper>>>,
+    /// Whether the helper runs the image of the running binary, made when it is missing,
+    /// instead of `image`.
+    own: bool,
 }
 
 impl Default for JavaScriptSettings {
@@ -43,6 +46,7 @@ impl Default for JavaScriptSettings {
                 .unwrap_or_else(|_| "iunctus-cwl-js:0.1.0".into()),
             cancel: CancellationToken::new(),
             helper: Arc::default(),
+            own: false,
         }
     }
 }
@@ -53,13 +57,14 @@ impl fmt::Debug for JavaScriptSettings {
             .debug_struct("JavaScriptSettings")
             .field("engine", &self.engine)
             .field("image", &self.image)
+            .field("own", &self.own)
             .finish()
     }
 }
 
 impl PartialEq for JavaScriptSettings {
     fn eq(&self, other: &Self) -> bool {
-        self.engine == other.engine && self.image == other.image
+        self.engine == other.engine && self.image == other.image && self.own == other.own
     }
 }
 
@@ -264,20 +269,37 @@ impl JavaScriptSettings {
         }
     }
 
+    /// Settings whose helper runs the running iunctus binary, in an image that is made from
+    /// it when the engine lacks it; `IUNCTUS_CWL_JS_IMAGE` names another image instead.
+    pub fn from_binary(engine: String, cancel: CancellationToken) -> Self {
+        let own = std::env::var_os("IUNCTUS_CWL_JS_IMAGE").is_none();
+        Self {
+            own,
+            ..Self::new(engine, cancel)
+        }
+    }
+
     pub(crate) fn evaluate(
         &self,
         library: &[String],
         variables: &[(&str, &Value)],
         body: &str,
     ) -> Result<Value, Failure> {
+        // The first build of the image may take longer than an evaluation may.
+        let image = match self.own {
+            true => crate::javascript::image::own_image(&self.engine, &self.cancel)
+                .map_err(Failure::Boundary)?,
+            false => self.image.clone(),
+        };
         let deadline = Instant::now() + TIME_LIMIT;
         crate::javascript::thread::run(|| {
-            self.evaluate_blocking(library, variables, body, deadline)
+            self.evaluate_blocking(&image, library, variables, body, deadline)
         })?
     }
 
     fn evaluate_blocking(
         &self,
+        image: &str,
         library: &[String],
         variables: &[(&str, &Value)],
         body: &str,
@@ -335,7 +357,7 @@ impl JavaScriptSettings {
             static NEXT: AtomicU64 = AtomicU64::new(1);
             let spec = ContainerSpec {
                 engine: self.engine.clone(),
-                image: self.image.clone(),
+                image: image.to_owned(),
                 name: format!(
                     "iunctus-cwl-js-{}-{}",
                     std::process::id(),

@@ -105,13 +105,14 @@ pub struct Helper {
     /// variables, among them the storage providers of the staging root.
     pub secret: Option<String>,
     /// A binary of this machine, which an init container of `image` downloads from the staging
-    /// root instead; `image` then needs a shell, `wget` and `sha256sum`, like busybox.
+    /// root instead; `image` then needs a shell, `wget` and `sha256sum`, like Alpine.
     pub binary: Option<Binary>,
 }
 
-/// The image that downloads the binary of [`Helper::binary`]: busybox, pinned to its digest.
-pub const DOWNLOAD_IMAGE: &str = "docker.io/library/busybox:1.37.0@sha256:\
-                                  bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e";
+/// The image that downloads the binary of [`Helper::binary`]: Alpine, pinned to its digest. Its
+/// `wget` checks the certificate of the server, which that of busybox does not do.
+pub const DOWNLOAD_IMAGE: &str = "docker.io/library/alpine:3.24.2@sha256:\
+                                  294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6";
 
 /// Downloads the binary `$1` from the address `$2` and checks its SHA-256 `$3`.
 const DOWNLOAD: &str = "wget -q -O \"$1\" \"$2\" && echo \"$3  $1\" | sha256sum -c - > /dev/null \
@@ -498,6 +499,8 @@ mod tests {
         assert_eq!(pod["nodeSelector"]["kubernetes.io/arch"], "amd64");
         let download = &pod["initContainers"][0];
         assert_eq!(download["image"], DOWNLOAD_IMAGE);
+        // The presigned address must not go to a server whose certificate is not checked.
+        assert!(DOWNLOAD_IMAGE.starts_with("docker.io/library/alpine:"));
         let command = json!([
             "sh",
             "-c",

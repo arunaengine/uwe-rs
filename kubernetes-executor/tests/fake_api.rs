@@ -122,7 +122,7 @@ fn start(folder: &Path, job: &Value) -> Running {
                 .iter()
                 .map(|word| match word.as_str().unwrap_or_default() {
                     "/iunctus" | "/iunctus-helper/iunctus" => quote(&helper.to_string_lossy()),
-                    // This machine has no busybox, whose `wget` the pod downloads the helper with.
+                    // This machine may have no `wget`, which the pod downloads the helper with.
                     word if word.starts_with("wget ") => {
                         quote(&word.replacen("wget -q -O", "curl -fsSL -o", 1))
                     }
@@ -1348,7 +1348,7 @@ async fn stages_through_objects() {
                 assert!(helper["emptyDir"].is_object());
             }
         }
-        // The pod downloads the helper with busybox, on a node of the machine of the helper.
+        // The pod downloads the helper with Alpine, on a node of the machine of the helper.
         let arch = pod["nodeSelector"]["kubernetes.io/arch"].as_str();
         assert_eq!(arch, upload.then_some("arm64"));
         if upload {

@@ -220,7 +220,7 @@ impl Executors {
             if !object_store {
                 settings.kubernetes_helper_file = None;
             }
-            // Without helper_image the pods download the binary with busybox.
+            // Without helper_image the pods download the binary with Alpine.
             let image = match (image, object_store) {
                 (Some(image), _) => Some(image),
                 (None, true) => {
@@ -765,7 +765,7 @@ mod tests {
         );
         assert!(read(&format!("{text}helper_file = '/a'\n")).is_err());
         assert!(read(&format!("{text}helper_download_image = 'b'\n")).is_err());
-        // Without helper_image the pods download the running binary with busybox.
+        // Without helper_image the pods download the running binary with Alpine.
         let text = "[executor.kubernetes]\nstaging = 'object-store'\nstaging_root = 's3://b'\n";
         let settings = read(text).expect("settings");
         let helper = settings.kubernetes_helper.expect("a helper");

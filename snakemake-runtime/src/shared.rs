@@ -139,6 +139,18 @@ pub fn remove_outputs(workdir: &Path, job: &Job, logs: bool) -> std::io::Result<
     Ok(())
 }
 
+/// The local inputs of a job that are not there, by Snakemake's `wait_for_files`, which
+/// follows links. The files of `later` appear only while the task runs, like pipes.
+pub fn missing_inputs(workdir: &Path, job: &Job, later: &[String]) -> Vec<String> {
+    (job.input.values.iter())
+        .filter(|value| value.tag(crate::storage::TAG).is_none())
+        .filter_map(Value::as_str)
+        .filter(|file| !later.iter().any(|other| other == file))
+        .filter(|file| std::fs::metadata(workdir.join(file)).is_err())
+        .map(str::to_owned)
+        .collect()
+}
+
 /// Removes a file, a link or a directory, if it is there.
 pub fn remove(path: &Path) -> std::io::Result<()> {
     let result = match std::fs::symlink_metadata(path) {

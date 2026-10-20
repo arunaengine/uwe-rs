@@ -1058,6 +1058,7 @@ impl Session {
                 self.rule_name(job),
                 outcome.exit_code
             );
+            self.remove_failed(&[job])?;
             return self.failed(message);
         }
         if !self.launch.simulated
@@ -1067,6 +1068,7 @@ impl Session {
                 self.gate.take(task.id, freed);
                 return Ok(vec![task]);
             }
+            self.remove_failed(&[job])?;
             return self.failed(error.message);
         }
         let delivery_start = self
@@ -1078,6 +1080,7 @@ impl Session {
             return self.failed(message);
         }
         self.queue_signatures(&[job], delivery_start)?;
+        self.release_temporary(&[job])?;
         let next = self.next_tasks(&[job]);
         if next.is_ok() {
             self.accept(identity);
@@ -1107,6 +1110,8 @@ impl Session {
                 rules.join(", "),
                 outcome.exit_code
             );
+            let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
+            self.remove_failed(&jobs)?;
             return self.failed(message);
         }
         let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
@@ -1131,6 +1136,8 @@ impl Session {
                 if let Some(task) = self.retry_group(&members, outcome.id)? {
                     return Ok(vec![task]);
                 }
+                let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
+                self.remove_failed(&jobs)?;
                 return self.failed(error.message);
             }
             outcomes.push((*job, own));
@@ -1146,6 +1153,7 @@ impl Session {
             }
         }
         self.queue_signatures(&jobs, delivery_start)?;
+        self.release_temporary(&jobs)?;
         let next = self.next_tasks(&jobs);
         if next.is_ok() {
             self.accept(identity);
@@ -1154,7 +1162,8 @@ impl Session {
     }
 
     /// Readies the task of `jobs` for the shared working directory when jobs run there: each
-    /// job is prepared, then `combine` makes the task of their tasks.
+    /// job is prepared, then `combine` makes the task of their tasks. `None` when a job lacks
+    /// an input, which fails it, as Snakemake's `wait_for_files` does.
     fn share(
         &mut self,
         jobs: &[usize],
@@ -1168,6 +1177,22 @@ impl Session {
             .planner
             .as_ref()
             .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
+        // The jobs of one task make some inputs of the others while it runs.
+        let later: Vec<String> = (jobs.iter())
+            .flat_map(|job| planner.jobs[*job].output_files())
+            .collect();
+        for job in jobs {
+            let missing = crate::shared::missing_inputs(&self.workdir, &planner.jobs[*job], &later);
+            if !missing.is_empty() {
+                let message = format!(
+                    "WorkflowError in rule {}: Missing files after the jobs before it ended: {}",
+                    planner.rules[planner.jobs[*job].rule].name,
+                    missing.join(", ")
+                );
+                self.failures.push(message);
+                return Ok(None);
+            }
+        }
         let mut placed = crate::shared::Placed::default();
         for (job, task) in jobs.iter().zip(&mut members) {
             let entry = &planner.jobs[*job];
@@ -1179,6 +1204,56 @@ impl Session {
             .map_err(|error| DriverError::new(format!("cannot place a job: {error}")))?;
         self.placed.insert(task.id, placed);
         Ok(Some(task))
+    }
+
+    /// Removes the outputs of failed jobs in the shared directory, as Snakemake does since
+    /// they might be corrupted.
+    fn remove_failed(&self, jobs: &[usize]) -> Result<(), DriverError> {
+        let Some(planner) = self.planner.as_ref().filter(|_| self.shared) else {
+            return Ok(());
+        };
+        for job in jobs {
+            crate::shared::remove_outputs(&self.workdir, &planner.jobs[*job], false)
+                .map_err(|error| DriverError::new(format!("cannot remove outputs: {error}")))?;
+        }
+        Ok(())
+    }
+
+    /// Removes the `temp()` outputs of the shared directory that no job waits for anymore,
+    /// as Snakemake's `handle_temp`: those of the `finished` jobs and of their inputs.
+    fn release_temporary(&self, finished: &[usize]) -> Result<(), DriverError> {
+        let Some(planner) = self.planner.as_ref().filter(|_| self.shared) else {
+            return Ok(());
+        };
+        // A job that waits for a checkpoint may still need any file.
+        if self.replan || self.order.iter().any(|job| planner.jobs[*job].incomplete) {
+            return Ok(());
+        }
+        let mut candidates: Vec<(String, usize)> = Vec::new();
+        for job in finished {
+            let own = planner.jobs[*job].temporary_files();
+            candidates.extend(own.into_iter().map(|file| (file, *job)));
+            for (file, producer) in &planner.jobs[*job].dependencies {
+                if planner.jobs[*producer].temporary_files().contains(file) {
+                    candidates.push((file.clone(), *producer));
+                }
+            }
+        }
+        for (file, producer) in candidates {
+            let waiting = self.order.iter().any(|consumer| {
+                self.needrun.get(consumer).copied().unwrap_or(false)
+                    && !self.done.contains(consumer)
+                    && (planner.jobs[*consumer].dependencies.iter())
+                        .any(|(input, maker)| *input == file && *maker == producer)
+            });
+            if waiting || self.kept.contains(&file) {
+                continue;
+            }
+            crate::shared::remove(&self.workdir.join(&file)).map_err(|error| {
+                DriverError::new(format!("cannot remove temporary output {file}: {error}"))
+            })?;
+        }
+        Ok(())
     }
 
     fn accept(&self, identity: (TaskId, u32)) {

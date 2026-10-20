@@ -478,6 +478,15 @@ impl StatementHook for Hook {
                     .map(|value| interpreter.to_str(&value))
                     .transpose()?
                     .or_else(|| storage.tag.as_ref().map(|tag| tag.text.clone()));
+                // Settings that only pace or retry requests, or keep local copies, change no
+                // file; credentials and addresses come from the storage settings of iunctus.
+                let pacing = [
+                    "retries",
+                    "max_requests_per_second",
+                    "keep_local",
+                    "retrieve",
+                ];
+                args.keywords.retain(|(name, _)| !pacing.contains(&&**name));
                 if !args.keywords.is_empty() {
                     return Err(Error::unsupported(
                         "Snakemake storage plugin options; configure provider credentials in iunctus storage settings",

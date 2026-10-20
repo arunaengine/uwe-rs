@@ -77,6 +77,7 @@ const OPERATORS: &[&str] = &[
     "toLong",
     "toSortedList",
     "transpose",
+    "typedCombine",
     "unique",
     "until",
     "view",
@@ -846,6 +847,82 @@ impl Builder<'_> {
                     groups: Default::default(),
                 };
                 (vec![source], Box::new(node), Value::Channel(output))
+            }
+            // Typed workflows join records by a field.
+            ("join", [right]) if matches!(option(&options, "by"), Some(Value::String(_))) => {
+                let Some([right]) = channels(right)
+                    .as_deref()
+                    .map(<[ChannelId; 1]>::try_from)
+                    .and_then(Result::ok)
+                else {
+                    return Err(thrown(format!("Invalid `join` operand: {right}")));
+                };
+                let output = queue(self);
+                let node = crate::records::RecordJoin {
+                    output,
+                    by: option(&options, "by")
+                        .map(|by| by.to_string())
+                        .unwrap_or_default()
+                        .into(),
+                    remainder: option(&options, "remainder").is_some_and(|value| value.truth()),
+                    seen: Default::default(),
+                    emitted: Default::default(),
+                    done: [false; 2],
+                };
+                (vec![source, right], Box::new(node), Value::Channel(output))
+            }
+            ("groupBy", []) => {
+                let output = queue(self);
+                let node = crate::records::GroupBy {
+                    output,
+                    groups: Default::default(),
+                    sizes: Default::default(),
+                    emitted: Default::default(),
+                };
+                (vec![source], Box::new(node), Value::Channel(output))
+            }
+            // `combine` of typed workflows, with a channel or with named fields for records.
+            ("typedCombine", rest) if rest.len() <= 1 => {
+                let output = queue(self);
+                let fields = match (&options, rest) {
+                    (Some(Value::Map(map)), []) => Some(
+                        (map.borrow().entries.iter())
+                            .map(|(key, value)| (key.0.clone(), value.clone()))
+                            .collect::<Vec<_>>(),
+                    ),
+                    _ => None,
+                };
+                let inputs = match (rest, &fields) {
+                    ([right], None) => match channels(right).as_deref() {
+                        Some([right]) => vec![source, *right],
+                        _ => {
+                            let message = format!(
+                                "Operator `combine` expected a channel, dataflow value, or named \
+                                 arguments, but received: {right} [{}]",
+                                right.class_name()
+                            );
+                            return Err(thrown(message));
+                        }
+                    },
+                    _ => vec![source],
+                };
+                if fields
+                    .iter()
+                    .flatten()
+                    .any(|(_, value)| matches!(value, Value::Channel(_)))
+                {
+                    return Err(Error::Unsupported {
+                        message: "`combine` with a dataflow value as a named argument".into(),
+                        span: Default::default(),
+                    });
+                }
+                let node = crate::records::TypedCombine {
+                    output,
+                    fields,
+                    seen: Default::default(),
+                    done: [false; 2],
+                };
+                (inputs, Box::new(node), Value::Channel(output))
             }
             ("join", [right]) => {
                 let Some([right]) = channels(right)

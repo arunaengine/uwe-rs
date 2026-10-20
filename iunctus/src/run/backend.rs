@@ -209,6 +209,7 @@ pub(crate) fn executor(
             let mut backend = slurm::backend(&scratch, container, options, settings.slurm_pull);
             backend.remote = slurm::remote(settings, &storage)
                 .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
+            backend.staging_time = settings.slurm_staging.margin();
             let executor = slurm::executor(store, backend, run, default_image, storage, setup)
                 .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)

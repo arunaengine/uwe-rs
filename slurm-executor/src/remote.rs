@@ -11,7 +11,7 @@ use executor::binary::Binary;
 use executor::remote::RemoteStage;
 use executor::wrapper::quote;
 
-use crate::script::{CONTAINER_EXIT, Container, LOG, NOT_SEEN, command, timed_out, timeout};
+use crate::script::{CONTAINER_EXIT, Container, LOG, NOT_SEEN, clock, command, timed_out, timeout};
 
 /// How the jobs of a backend get their files when the nodes share no folders with this machine.
 #[derive(Clone, Debug)]
@@ -121,9 +121,10 @@ pub fn job_script(
     let words = node_words(&command(container, run, gpus), &run.root.to_string_lossy());
     script.push_str(&format!(
         "status={NOT_SEEN}\nif \"$helper\" __stage in \"$node/data\" {} \"$node\"; then\n    \
-         {}{}\n    status=$?\n    {}fi\necho \"$status\" > \"$node/{CONTAINER_EXIT}\"\n\
+         {}{}{}\n    status=$?\n    {}fi\necho \"$status\" > \"$node/{CONTAINER_EXIT}\"\n\
          \"$helper\" __stage out \"$node/data\" \"$node\" || exit 1\nrm -rf \"$node\"\n",
         quote(plan),
+        clock(time).replace('\n', "\n    "),
         timeout(time),
         words.join(" "),
         timed_out(time),
@@ -209,7 +210,7 @@ mod tests {
             node=$(mktemp -d \"${TMPDIR:-/tmp}\"/'iunctus-run-P-1-1.XXXXXXXX') || exit 1\n\
             exec >> \"$node/slurm.log\" 2>&1\nhelper='/opt/iunctus'\nstatus=125\n\
             if \"$helper\" __stage in \"$node/data\" 'https://plan' \"$node\"; then\n    \
-            timeout --kill-after=10 60 'apptainer' 'exec' '--containall' '--pwd' '/data' \
+            SECONDS=0\n    timeout --kill-after=10 60 'apptainer' 'exec' '--containall' '--pwd' '/data' \
             '--bind' \"$node/data\"':/shared/scratch/run-P-1-1' \
             '--bind' \"$node/data\"'/work:/data' \
             '--bind' \"$node/data\"'/mounts/opt/data:/opt/data' 'docker://debian@sha256:ab' \

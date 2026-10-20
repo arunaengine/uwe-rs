@@ -545,6 +545,9 @@ async fn enforces_task_deadline() {
         stderr.ends_with("ran longer than its time of 2 seconds\n"),
         "{stderr}"
     );
+    // The job after the pull has five more minutes than its task, for staging.
+    let options = std::fs::read_to_string(bin.join("state/102.options")).expect("the options");
+    assert!(options.contains("--time=0-00:05:02\n"), "{options}");
 }
 
 #[tokio::test]

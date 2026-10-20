@@ -23,7 +23,7 @@ pub enum Mode {
 }
 
 /// The staging settings of an executor, from `staging`, `staging_root`, `staging_access`,
-/// `staging_cleanup`, `presign_hours` and `max_outputs`.
+/// `staging_cleanup`, `staging_minutes`, `presign_hours` and `max_outputs`.
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub mode: Mode,
@@ -39,6 +39,9 @@ pub struct Settings {
     /// Whether the objects of an attempt go away once its results are collected
     /// (`staging_cleanup = true`).
     pub cleanup: bool,
+    /// How many minutes longer than its task a job or pod may run (`staging_minutes`); `None`
+    /// for the default of [`Settings::margin`].
+    pub minutes: Option<u64>,
 }
 
 impl Default for Settings {
@@ -50,6 +53,7 @@ impl Default for Settings {
             max_outputs: 1024,
             credentials: false,
             cleanup: false,
+            minutes: None,
         }
     }
 }
@@ -63,6 +67,7 @@ impl Settings {
         "staging_root",
         "staging_access",
         "staging_cleanup",
+        "staging_minutes",
         "presign_hours",
         "max_outputs",
     ];
@@ -112,6 +117,13 @@ impl Settings {
             }
             settings.presign_hours = hours as u64;
         }
+        if let Some(minutes) = table.integer("staging_minutes")? {
+            if !(0..=MOST_HOURS as i64 * 60).contains(&minutes) {
+                let message = format!("must be between 0 and {}", MOST_HOURS * 60);
+                return Err(table.invalid("staging_minutes", message));
+            }
+            settings.minutes = Some(minutes as u64);
+        }
         if let Some(count) = table.integer("max_outputs")? {
             if !(1..=100_000).contains(&count) {
                 return Err(table.invalid("max_outputs", "must be between 1 and 100000"));
@@ -119,6 +131,17 @@ impl Settings {
             settings.max_outputs = count as usize;
         }
         Ok(settings)
+    }
+
+    /// How much longer than its task a job or pod may run, for image pulls, staging and the
+    /// start of its container: 30 minutes with a staging root, else 5, unless set.
+    pub fn margin(&self) -> Duration {
+        let minutes = match (self.minutes, self.mode) {
+            (Some(minutes), _) => minutes,
+            (None, Mode::SharedPath) => 5,
+            (None, _) => 30,
+        };
+        Duration::from_secs(minutes * 60)
     }
 
     /// The staging root through the storage providers, or `None` for shared paths.
@@ -187,5 +210,11 @@ mod tests {
                 .cleanup
         );
         assert!(read("[executor.slurm]\nstaging_cleanup = true").is_err());
+        assert_eq!(settings.margin(), Duration::from_secs(1800));
+        let shared = read("[executor.slurm]").unwrap();
+        assert_eq!(shared.margin(), Duration::from_secs(300));
+        let set = read(&format!("{text}\nstaging_minutes = 90")).unwrap();
+        assert_eq!(set.margin(), Duration::from_secs(5400));
+        assert!(read(&format!("{text}\nstaging_minutes = -1")).is_err());
     }
 }

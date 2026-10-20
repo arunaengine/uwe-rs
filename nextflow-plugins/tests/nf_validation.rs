@@ -56,6 +56,7 @@ fn run(name: &str, params: Value, arguments: Vec<Value>) -> Result<String, Error
         config: &config,
         params,
         project_dir: &directory,
+        cli_params: &[],
     };
     call("nf-validation", name, arguments, &mut context).map(|value| value.to_string())
 }
@@ -210,6 +211,7 @@ fn requires_path_format() {
         config: &config,
         params,
         project_dir: &text,
+        cli_params: &[],
     };
     let error = call(
         "nf-validation",

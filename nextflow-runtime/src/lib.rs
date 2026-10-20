@@ -77,6 +77,8 @@ pub struct Options {
     /// Whether the run goes on after a task failed that would end it (`Launch.keep_going`):
     /// the task counts as ignored, and the run fails at its end.
     pub keep_going: bool,
+    /// The names of the params of the command line and the params file.
+    pub cli_params: Vec<String>,
 }
 
 /// A run of a script: its network, which asks for tasks and takes their outcomes.
@@ -329,6 +331,7 @@ impl Default for Options {
             command_line: String::new(),
             exec_folder: None,
             keep_going: false,
+            cli_params: Vec::new(),
         }
     }
 }

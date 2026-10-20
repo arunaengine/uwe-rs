@@ -40,7 +40,10 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
         );
         context.host.print(&message);
     }
-    let instance = serde_json::Value::Object(instance);
+    let mut instance = serde_json::Value::Object(instance);
+    if casts(options, context) {
+        cast(&mut instance, context.cli_params);
+    }
     let validator = super::paths::validator(&schema.json, &instance, context, false)
         .map_err(|error| thrown(format!("Invalid parameters schema: {error}")))?;
     let errors: Vec<String> = errors(&validator, &instance, "parameter", super::lenient(context))
@@ -65,6 +68,79 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
         "The following invalid input values have been detected:\n\n{}\n\n",
         errors.join("\n")
     )))
+}
+
+/// Whether the check reads command-line texts as numbers and booleans: the `cast_cli_params`
+/// option, else from nf-schema 2.7.2 on, which does so because Nextflow keeps them as text.
+fn casts(options: Option<&Value>, context: &Context) -> bool {
+    if let Some(cast) = options.and_then(|options| get(options, "cast_cli_params")) {
+        return cast.truth();
+    }
+    let Some(Value::Set(plugins)) = context.config.get(&["plugins"]) else {
+        return true;
+    };
+    let plugins = plugins.borrow();
+    let version = plugins.items.iter().find_map(|id| {
+        let id = id.0.to_string();
+        let version = id.strip_prefix("nf-schema@")?.to_owned();
+        let parts: Vec<u32> = version
+            .split('.')
+            .map_while(|part| part.parse().ok())
+            .collect();
+        Some(parts)
+    });
+    version.is_none_or(|parts| parts.as_slice() >= [2, 7, 2].as_slice())
+}
+
+/// Reads the texts of command-line params as Nextflow's legacy parser did, in every map of
+/// the params, as nf-schema's JSON converter does.
+fn cast(instance: &mut serde_json::Value, names: &[String]) {
+    match instance {
+        serde_json::Value::Object(entries) => {
+            for (name, value) in entries.iter_mut() {
+                match value {
+                    serde_json::Value::String(text) if names.contains(name) => {
+                        *value = typed(text);
+                    }
+                    other => cast(other, names),
+                }
+            }
+        }
+        serde_json::Value::Array(items) => items.iter_mut().for_each(|item| cast(item, names)),
+        _ => {}
+    }
+}
+
+/// nf-schema's `parseParamValue`: `true` and `false` in any case, then whole and decimal
+/// numbers as Integer, Long or Double, else the text.
+fn typed(text: &str) -> serde_json::Value {
+    match text.to_lowercase().as_str() {
+        "true" => return true.into(),
+        "false" => return false.into(),
+        _ => {}
+    }
+    let digits = |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
+    let unsigned = text.strip_prefix('-').unwrap_or(text);
+    let numeric = match unsigned.split_once('.') {
+        Some((whole, fraction)) => digits(whole) && digits(fraction),
+        None => digits(unsigned),
+    };
+    if numeric {
+        if let Ok(value) = text.parse::<i32>() {
+            return value.into();
+        }
+        if let Ok(value) = text.parse::<i64>() {
+            return value.into();
+        }
+        if let Some(value) = text
+            .parse::<f64>()
+            .ok()
+            .and_then(serde_json::Number::from_f64)
+        {
+            return serde_json::Value::Number(value);
+        }
+    }
+    serde_json::Value::String(text.to_owned())
 }
 
 /// A param as nf-schema's `cleanParameters` leaves it for validation: a value that Groovy

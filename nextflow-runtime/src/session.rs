@@ -156,6 +156,7 @@ impl Host for Session<'_> {
             config: &self.options.config,
             params: self.options.config.params(),
             project_dir: &self.options.project_dir,
+            cli_params: &self.options.cli_params,
         };
         nextflow_plugins::call(plugin, name, arguments, &mut context)
     }

@@ -157,7 +157,7 @@ workflow {
     r.other.subscribe { v -> println "other ${v}" }
     r.ev.subscribe { v -> println "ev ${v}" }
     r.all.subscribe { v -> println "all ${v*.name} ${v.getClass().simpleName}" }
-    r.pair.subscribe { v -> println "pair ${v[0]} ${v[1].name}" }
+    r.pair.subscribe { v -> println "pair ${v[0]} ${v[1].name} ${v.getClass().simpleName}" }
     r.rec.subscribe { v -> println "rec ${v}" }
     channel.topic('versions').subscribe { v -> println "topic ${v}" }
 }
@@ -174,7 +174,7 @@ workflow {
             "msg out",
             "n 3",
             "other env",
-            "pair hi out.txt",
+            "pair hi out.txt ArrayList",
             "rec [id:hi, size:2]",
             "text out.txt",
             "topic [GREET, 1.13]",

@@ -262,8 +262,7 @@ fn budgets_each_evaluation() {
     }
     let error = interpreter
         .exec_text("<test>", "for n in range(5):\n    f()\n", &globals)
-        .err()
-        .expect("one evaluation shares the budget");
+        .expect_err("one evaluation shares the budget");
     assert!(error.is_unsupported());
 }
 

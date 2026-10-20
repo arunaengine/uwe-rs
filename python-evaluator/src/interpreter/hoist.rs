@@ -33,7 +33,7 @@ pub(super) fn statement(statement: &Stmt) -> Result<Vec<Stmt>, Error> {
         Stmt::Return(ast::StmtReturn {
             value: Some(value), ..
         }) => hoist.replace(value, &mut out)?,
-        Stmt::If(each) if !(each.elif_else_clauses.iter()).any(|clause| clause_yields(clause)) => {
+        Stmt::If(each) if !(each.elif_else_clauses.iter()).any(clause_yields) => {
             hoist.replace(&mut each.test, &mut out)?
         }
         Stmt::For(each) if !yields(&each.target) => hoist.replace(&mut each.iter, &mut out)?,

@@ -1,4 +1,6 @@
-# Generators that suspend inside try, except, else, finally and match.
+"""Exercises generators that suspend inside try, except, else, finally and match."""
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
 def guarded(items):
     for item in items:
         try:

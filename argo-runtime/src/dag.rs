@@ -103,6 +103,10 @@ impl Run {
         let Some(processed) = self.nodes[index].processed.clone() else {
             return Ok(());
         };
+        if self.fail_fast(index) {
+            self.settle_fail_fast(index);
+            return Ok(());
+        }
         let Some(dag) = processed.template.dag.clone() else {
             return Ok(());
         };

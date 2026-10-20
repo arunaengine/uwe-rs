@@ -35,6 +35,9 @@ pub(crate) const MAX_TASKS: u64 = 100_000;
 /// The start of the value of a workflow parameter that has none.
 pub(crate) const PLACEHOLDER: &str = "placeholder_";
 
+/// Argo's message for a template that `failFast` ended.
+const FAIL_FAST: &str = "template has failed or errored children and failFast enabled";
+
 /// The value of a parameter that has none: one word, like `placeholder_run_data`, so that a
 /// `when` condition reads it as a string.
 pub(crate) fn placeholder(name: &str) -> AnyString {
@@ -925,6 +928,13 @@ impl Run {
             return true;
         }
         if let Some(boundary) = self.nodes[index].boundary
+            && self.fail_fast(boundary)
+        {
+            self.set_phase(index, Phase::Pending, FAIL_FAST.into());
+            self.settle_fail_fast(boundary);
+            return false;
+        }
+        if let Some(boundary) = self.nodes[index].boundary
             && let Some(limit) = self.nodes[boundary]
                 .processed
                 .as_ref()
@@ -964,6 +974,49 @@ impl Run {
             self.nodes[index].started = self.options.now.unwrap_or_else(Timestamp::now);
         }
         true
+    }
+
+    /// Whether a steps or DAG node with template-level `failFast` has a failed child, which
+    /// stops it from starting more, as Argo's `checkParallelism` does.
+    pub(crate) fn fail_fast(&self, boundary: usize) -> bool {
+        let processed = self.nodes[boundary].processed.as_ref();
+        let enabled = processed.is_some_and(|processed| processed.template.fail_fast == Some(true));
+        enabled
+            && self.nodes.iter().any(|node| {
+                node.boundary == Some(boundary)
+                    && matches!(node.kind, NodeKind::Pod | NodeKind::Steps | NodeKind::Dag)
+                    && node.phase.failed_or_error()
+            })
+    }
+
+    /// Fails a node that `failFast` stopped once none of its pods runs, with its last step
+    /// group, and drops the children that wait to start.
+    pub(crate) fn settle_fail_fast(&mut self, boundary: usize) {
+        let running = self.nodes.iter().any(|node| {
+            node.boundary == Some(boundary)
+                && node.kind == NodeKind::Pod
+                && node.outcomes.iter().any(Option::is_none)
+        });
+        if running || self.nodes[boundary].phase.fulfilled() {
+            return;
+        }
+        for index in 0..self.nodes.len() {
+            let node = &self.nodes[index];
+            if node.boundary == Some(boundary)
+                && node.phase == Phase::Pending
+                && node.tasks.is_empty()
+            {
+                self.set_phase(index, Phase::Omitted, FAIL_FAST.into());
+            }
+        }
+        let groups = self.nodes[boundary].children.iter().rev();
+        let last = groups
+            .copied()
+            .find(|&child| self.nodes[child].kind == NodeKind::StepGroup);
+        if let Some(group) = last {
+            self.set_phase(group, Phase::Failed, FAIL_FAST.into());
+        }
+        self.fail(boundary, Phase::Failed, FAIL_FAST.into());
     }
 
     pub fn new_node(&mut self, name: &str, kind: NodeKind, template: &str, call: &Call) -> usize {

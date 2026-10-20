@@ -561,6 +561,29 @@ fn failure_preserves_branches() {
 }
 
 #[test]
+fn stops_after_failure() {
+    let steps = r#"
+  - name: main
+    failFast: true
+    parallelism: 1
+    steps:
+    - - name: each
+        template: print
+        arguments: {parameters: [{name: message, value: "{{item}}"}]}
+        withItems: [a, b, c]
+"#;
+    let failing = Setup {
+        exit: vec![("print", vec![1, 0])],
+        ..Setup::default()
+    };
+    let ran = run_with(&workflow(steps), failing);
+    // Argo starts no more items once one failed, and fails the template.
+    assert_eq!(ran.names(), ["[0].each(0:a)"]);
+    let error = ran.error();
+    assert!(error.contains("each(0:a): Error (exit code 1)"), "{error}");
+}
+
+#[test]
 fn retries_continue_failures() {
     let steps = r#"
   - name: main

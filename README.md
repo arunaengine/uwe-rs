@@ -34,7 +34,7 @@ So far, the answer is a confident yes. A Snakemake rule and a Nextflow process t
 **Storage and caching**
 
 - A content-addressed store: every result is kept once, by digest.
-- One cache across all languages, with resume for interrupted runs.
+- One cache across all languages, with resume for interrupted runs. Like Nextflow's `-resume`, a resumed run also takes the results of its earlier runs for images without a registry digest, such as locally built tags.
 - Storage providers for **S3**, **Google Cloud Storage**, **Azure Blob Storage**, **HTTPS**, **FTP** and local folders. Configure as many as you like at the same time, for example several S3 providers side by side.
 - A remote store (for example on S3) with an optional local front store for speed.
 - `iunctus clean` removes data no run still needs, and shows you what it would remove first.
@@ -240,7 +240,9 @@ Both modes keep inputs under `cas/` and the results of attempts under `attempts/
 - **CWL JavaScript needs a helper image.** Build it once from your binary with `python3 scripts/cwl-js-image.py target/release/iunctus --engine docker` (or `--engine podman`).
 - **Repository sources.** SSH URLs, arbitrary Git servers, submodules and archive links are not supported. Cached branches stay on their remembered commit until you pass `-latest`.
 - **Remote executors move files in one of three ways.** By default SLURM and Kubernetes nodes must see the store and scratch folders at the same paths. With `staging = "object-store"` (SLURM and Kubernetes) or `staging = "kubedal"` (Kubernetes) nothing is shared and the files go through an object store, see [Remote executors without shared folders](#remote-executors-without-shared-folders). TES can use an S3 bucket too.
-- **Disk use grows.** The store, cache and engine images grow over time. Published results can link to data in the store, so preview with `iunctus clean` before removing anything with `-remove`.
+- **Disk use grows.** The store, cache and engine images grow over time. Preview with `iunctus clean` before removing anything with `-remove`.
+- **Published links point into the store.** Nextflow's default `publishDir` makes symbolic links to files in the store. `iunctus clean` keeps every stored file that such a link of a recorded run still points to, so no published result breaks, and the preview says how many files it keeps for that. To free that space, replace the links with copies (or remove them) first. Store files are read-only, so a write through a link fails instead of changing the cache; a damaged stored file is found when it is read and stored again by the next run that makes it.
+- **Clean-up waits for running tasks.** `iunctus clean -remove` waits up to five minutes while tasks prepare their inputs, and new tasks wait meanwhile. It removes old downloads too: copies of remote files, copies of contents of a remote store, and parts of crashed downloads.
 
 ## License
 

@@ -139,12 +139,10 @@ fn propagates_remote_volumes() {
     let input = next[0]
         .inputs
         .iter()
-        .find(|input| input.path == "/data/a.txt")
+        .find(|input| input.path == "/data")
         .unwrap();
-    assert_eq!(
-        std::fs::read_to_string(&input.source).unwrap(),
-        "remote bytes"
-    );
+    let file = std::path::Path::new(&input.source).join("a.txt");
+    assert_eq!(std::fs::read_to_string(file).unwrap(), "remote bytes");
 }
 
 #[test]
@@ -230,13 +228,13 @@ fn selects_host_subpaths() {
     };
     let mut run = driver(folder.path(), &spec("./selected"));
     let tasks = run.start().unwrap();
-    assert_eq!(
-        tasks[0].inputs[0].source,
-        host.join("selected").to_string_lossy()
-    );
+    // A writable host path comes as a copy of the selected folder.
     assert!(tasks[0].inputs[0].directory);
+    let copy = std::path::Path::new(&tasks[0].inputs[0].source).join("input.txt");
+    assert_eq!(std::fs::read_to_string(copy).unwrap(), "selected");
     let output = folder.path().join("output");
     std::fs::create_dir(&output).unwrap();
+    std::fs::write(output.join("input.txt"), "selected").unwrap();
     std::fs::write(output.join("new.txt"), "new").unwrap();
     run.complete(outcome(&tasks[0], "s3://store/output", true))
         .unwrap();

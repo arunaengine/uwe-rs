@@ -561,6 +561,33 @@ fn failure_preserves_branches() {
 }
 
 #[test]
+fn removes_host_files() {
+    let host = tempfile::tempdir().expect("a host folder");
+    for name in ["old", "keep"] {
+        std::fs::write(host.path().join(name), name).expect("writes a host file");
+    }
+    let text = format!(
+        r#"
+  - name: main
+    volumes: [{{name: data, hostPath: {{path: {}, type: Directory}}}}]
+    container: {{image: alpine, command: [sh, -c, "rm /data/old"], volumeMounts: [{{name: data, mountPath: /data}}]}}
+"#,
+        host.path().display()
+    );
+    let mounts = Setup {
+        mounts: true,
+        ..real()
+    };
+    run_with(&workflow(&text), mounts).succeeded();
+    // A real host path loses the file that the task removed, as in Argo.
+    assert!(!host.path().join("old").exists());
+    assert_eq!(
+        std::fs::read_to_string(host.path().join("keep")).unwrap(),
+        "keep"
+    );
+}
+
+#[test]
 fn stops_after_failure() {
     let steps = r#"
   - name: main

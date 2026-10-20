@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use python_evaluator::modules::data::load_yaml;
+use python_evaluator::modules::render_yte;
 use python_evaluator::{Error, Interpreter, Value};
 
 use crate::workflow::workflow_error;
@@ -240,7 +241,8 @@ impl Profile {
         let mut profile = Profile::default();
         let text = std::fs::read_to_string(file)
             .map_err(|error| Error::os_error(&error, &file.to_string_lossy()))?;
-        let settings = load_yaml(&text)?;
+        // Snakemake renders a profile that sets `__use_yte__: true` as a yte template.
+        let settings = render_yte(interpreter, load_yaml(&text)?, None, true)?;
         if !matches!(settings.plain(), Value::Dict(_)) {
             return Err(workflow_error(
                 "A profile must contain a mapping of settings",

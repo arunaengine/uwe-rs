@@ -130,6 +130,11 @@ fn caps_profile_threads() {
         ("cores: 8\nmax-threads: 2\n", 2),
         ("jobs: 6\n", 6),
         ("jobs: 6\nexecutor: slurm\n", 32),
+        // Snakemake 9.27 renders this yte profile and runs `bwa mem -t 3`.
+        (
+            "__use_yte__: true\ncores: ?2 * 4\nset-threads:\n  bwa: ?16 // 4\n?if True:\n  max-threads: 3\n",
+            3,
+        ),
     ] {
         let folder = tempfile::tempdir().expect("a folder");
         let launch = profile_launch(folder.path(), settings, snakefile);

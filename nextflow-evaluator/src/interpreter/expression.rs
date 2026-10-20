@@ -301,7 +301,7 @@ impl Interpreter<'_> {
             } => {
                 let item = self.expression(frame, item)?;
                 let container = self.expression(frame, container)?;
-                Value::Boolean(container.is_case(&item).at(span)? != *negated)
+                Value::Boolean(self.is_case(&container, &item, span)? != *negated)
             }
             Kind::Regex {
                 matches,

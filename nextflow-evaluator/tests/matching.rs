@@ -96,3 +96,19 @@ fn matches_full_patterns() {
     );
     assert_eq!(value("(~/b/).matcher('abcb').count"), "2");
 }
+
+/// `in` with a class or a closure, as Nextflow 26.04.6 gives it; `count(Number)` on a list
+/// uses equality, not `isCase`.
+#[test]
+fn matches_classes_closures() {
+    assert_eq!(
+        value(
+            "[[1, 'a', 2L, 2.5, null, 3.0d, 5G].findAll { v -> v in Number }, \
+             [1, 2L, 2.5].findAll { v -> v in Long }, [[1], [a: 1], 'x'].findAll { v -> v in Map }, \
+             [1, 'a'].findAll { v -> v in String }, null in Object, Integer in Number, \
+             Number in Integer, 3 in { v -> v > 2 }, 1 in { v -> v > 2 }, \
+             [1, 'a'].grep(Number), [1, 'a', 2L].count(Number)]"
+        ),
+        "[[1, 2, 2.5, 3.0, 5], [2], [[a:1]], [a], false, true, false, true, false, [1], 0]"
+    );
+}

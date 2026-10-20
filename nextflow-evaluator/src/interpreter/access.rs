@@ -850,7 +850,7 @@ const PATH_METHODS: &[&str] = &[
 ];
 
 /// `value instanceof Class`, by the simple class name and its supertypes.
-pub(super) fn instance_of(value: &Value, class: &str) -> bool {
+pub(crate) fn instance_of(value: &Value, class: &str) -> bool {
     let own = value.class_name();
     let supertypes: &[&str] = match value {
         Value::Null => return false,

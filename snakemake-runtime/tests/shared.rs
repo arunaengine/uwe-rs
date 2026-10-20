@@ -119,7 +119,10 @@ rule b:
     );
     assert_eq!(task.workdir.as_deref().map(Path::new), Some(work.as_path()));
     // The job sees the time zone of this machine, as Snakemake's commands do.
-    let zone = task.inputs.iter().any(|input| input.path == "/etc/localtime");
+    let zone = task
+        .inputs
+        .iter()
+        .any(|input| input.path == "/etc/localtime");
     assert_eq!(zone, Path::new("/etc/localtime").exists());
     assert_eq!(task.outputs, [work.join("b.txt").to_string_lossy()]);
 }

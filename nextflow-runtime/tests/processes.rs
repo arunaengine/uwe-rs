@@ -477,6 +477,27 @@ fn exposes_workflow_metadata() {
     assert_eq!(printed, "iunctus standard demo /launch /\ndone true 2\n");
 }
 
+/// `workflow.container` is what the `process` scope sets, as Nextflow 26.04.6 prints it.
+#[test]
+fn shows_config_containers() {
+    let source = "workflow {\n    println workflow.container\n}";
+    let shown = |text: &str| {
+        let options = Options {
+            config: config(text),
+            ..Options::default()
+        };
+        run(source, &options).expect("runs").1
+    };
+    assert_eq!(shown(""), "[:]\n");
+    assert_eq!(shown("process.container = 'ubuntu'\n"), "ubuntu\n");
+    let selectors = "process {\n    container = 'ubuntu'\n    withName: 'FOO' { container = 'x' }\n    \
+                     withLabel: 'big' { container = 'y' }\n    withName: 'BAR' { cpus = 2 }\n}\n";
+    assert_eq!(
+        shown(selectors),
+        "[FOO:x, withLabel:big:y, default:ubuntu]\n"
+    );
+}
+
 #[test]
 fn collects_topic_outputs() {
     let process = "process P {\n    input:\n    val x\n    output:\n    val y, topic: 'vers'\n    script:\n    y = \"A${x}\"\n    'true'\n}\n";

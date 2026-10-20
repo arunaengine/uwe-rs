@@ -5,15 +5,58 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nextflow_config::tree;
+use nextflow_config::{Config, tree};
 use nextflow_evaluator::date;
 use nextflow_evaluator::number::Number;
-use nextflow_evaluator::value::{Object, PathValue, State, Value, Workflow};
+use nextflow_evaluator::value::{Key, Object, PathValue, State, Value, Workflow};
 
 use crate::Options;
 
 /// The Nextflow version that iunctus follows, as `nextflow.version` shows it.
 pub const NEXTFLOW_VERSION: &str = "26.04.6";
+
+/// The containers of the `process` scope, as Nextflow's `fetchContainers`: the one text of
+/// `process.container`, else a map by selector with the default as `default`, else `[:]`.
+/// iunctus does not run config closures here and shows them as Nextflow shows failed ones.
+fn containers(config: &Config) -> Value {
+    let resolved = |value: &Value| match value {
+        Value::Closure(_) => Value::string("(dynamic resolved)"),
+        other => Value::string(other.to_string()),
+    };
+    let Some(process @ Value::Map(_)) = config.get(&["process"]) else {
+        return Value::map([]);
+    };
+    let mut found = Vec::new();
+    if let Value::Map(map) = &process {
+        for (name, value) in &map.borrow().entries {
+            let name = name.0.to_string();
+            let name = name.strip_prefix("withName:").unwrap_or(&name).to_owned();
+            if let Value::Map(_) = value
+                && let Some(container) = config_entry(value, "container").filter(Value::truth)
+            {
+                found.push((Value::string(name), resolved(&container)));
+            }
+        }
+    }
+    match config_entry(&process, "container").filter(Value::truth) {
+        Some(container) if found.is_empty() => resolved(&container),
+        Some(container) => {
+            found.push((Value::string("default"), resolved(&container)));
+            Value::map(found)
+        }
+        None => Value::map(found),
+    }
+}
+
+/// The value of a key of a config map.
+fn config_entry(map: &Value, key: &str) -> Option<Value> {
+    match map {
+        Value::Map(map) => (map.borrow().entries)
+            .get(&Key(Value::string(key)))
+            .cloned(),
+        _ => None,
+    }
+}
 
 /// `nextflow.script.WorkflowMetadata` for a run that starts now.
 pub(crate) fn metadata(options: &Options, launch_dir: &str) -> Value {
@@ -73,7 +116,7 @@ pub(crate) fn metadata(options: &Options, launch_dir: &str) -> Value {
         (text("repository"), Value::Null),
         (text("commitId"), Value::Null),
         (text("revision"), Value::Null),
-        (text("container"), Value::Null),
+        (text("container"), containers(&options.config)),
         (text("containerEngine"), engine),
         (text("stubRun"), Value::Boolean(options.stub)),
         (text("resume"), Value::Boolean(false)),

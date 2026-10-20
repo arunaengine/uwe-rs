@@ -31,6 +31,8 @@ pub enum Look {
     Ended { exit_code: i32, reason: String },
     /// The container cannot start, like for an image that cannot be pulled; the text says why.
     Stuck(String),
+    /// The scheduler finds no node for the pod yet; the text is its reason.
+    Unschedulable(String),
     /// An init container, like stage-in, ended badly with this exit code and reason, so the
     /// task never starts.
     InitFailed {
@@ -166,6 +168,17 @@ fn look(pod: &Value) -> Look {
             }
         }
     }
+    let conditions = (status["conditions"].as_array())
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let unscheduled = conditions.iter().find(|condition| {
+        condition["type"] == "PodScheduled"
+            && condition["status"] == "False"
+            && condition["reason"] == "Unschedulable"
+    });
+    if let Some(condition) = unscheduled {
+        return Look::Unschedulable(text(&condition["message"]));
+    }
     match status["phase"].as_str() {
         Some("Failed") => Look::Stopped(match text(&status["reason"]) {
             reason if reason.is_empty() => "Failed".to_owned(),
@@ -199,6 +212,9 @@ mod tests {
             pod("g", json!({"phase": "Running", "containerStatuses": [
                 {"state": {"running": {}}},
                 {"state": {"terminated": {"exitCode": 137, "reason": "OOMKilled"}}}]})),
+            pod("h", json!({"phase": "Pending", "conditions": [{"type": "PodScheduled",
+                "status": "False", "reason": "Unschedulable",
+                "message": "0/3 nodes are available: 3 Insufficient memory."}]})),
         ]});
         let looks = looks(&list);
         assert_eq!(looks["a"], Look::Active);
@@ -216,6 +232,8 @@ mod tests {
         // A pod of several containers ends when all ended, or when one ended badly.
         assert_eq!(looks["f"], Look::Active);
         assert_eq!(looks["g"], ended(137, "OOMKilled"));
+        let message = "0/3 nodes are available: 3 Insufficient memory.";
+        assert_eq!(looks["h"], Look::Unschedulable(message.into()));
     }
 
     #[test]

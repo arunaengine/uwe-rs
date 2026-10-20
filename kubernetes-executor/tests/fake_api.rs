@@ -27,6 +27,7 @@ const TOKEN: &str = "iunctus-test-token";
 const NAMESPACE: &str = "iunctus-test";
 const JOBS: &str = "/apis/batch/v1/namespaces/iunctus-test/jobs";
 const PODS: &str = "/api/v1/namespaces/iunctus-test/pods";
+const EVENTS: &str = "/api/v1/namespaces/iunctus-test/events";
 
 /// A Job that the fake server runs.
 struct Running {
@@ -272,6 +273,18 @@ fn pod(folder: &Path, name: &str, running: &Running) -> Value {
         true => states,
         false => vec![json!({"waiting": {"reason": "PodInitializing"}}); states.len()],
     };
+    // A file `unschedulable` keeps every pod waiting for a node.
+    if folder.join("unschedulable").exists() {
+        let condition = json!({"type": "PodScheduled", "status": "False", "reason": "Unschedulable",
+            "message": "0/3 nodes are available: 3 Insufficient memory."});
+        return json!({
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {"name": format!("{name}-pod"), "namespace": NAMESPACE,
+                "labels": {"job-name": name, LABEL: running.label}},
+            "status": {"phase": "Pending", "conditions": [condition]},
+        });
+    }
     let running_now = states.iter().any(|state| state.get("running").is_some());
     let phase = match (init.is_empty(), running_now) {
         (false, _) => "Failed",
@@ -429,12 +442,31 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
                     } else {
                         &running.label
                     };
-                    !running.deleted && label == value
+                    // A file `quota` keeps the Job controller from making pods.
+                    !running.deleted && label == value && !folder.join("quota").exists()
                 })
                 .map(|(name, running)| pod(&folder, name, running))
                 .collect();
             let list =
                 json!({"apiVersion": "v1", "kind": "PodList", "metadata": {}, "items": items});
+            reply(&mut stream, "200 OK", "application/json", &list.to_string());
+        }
+        ("GET", EVENTS) => {
+            // The events of the file `events.json` that match every field of the selector.
+            let selector = parameter(&target, "fieldSelector").unwrap_or_default();
+            let events = std::fs::read(folder.join("events.json")).unwrap_or_default();
+            let events: Vec<Value> = serde_json::from_slice(&events).unwrap_or_default();
+            let items: Vec<Value> = (events.into_iter())
+                .filter(|event| {
+                    selector.split(',').all(|pair| {
+                        let (key, value) = pair.split_once('=').unwrap_or_default();
+                        let field = key.split('.').fold(event, |value, part| &value[part]);
+                        field.as_str() == Some(value)
+                    })
+                })
+                .collect();
+            let list =
+                json!({"apiVersion": "v1", "kind": "EventList", "metadata": {}, "items": items});
             reply(&mut stream, "200 OK", "application/json", &list.to_string());
         }
         ("GET", log) if log.starts_with(PODS) && log.ends_with("/log") => {
@@ -682,6 +714,91 @@ async fn returns_job_outputs() {
             .last()
             .is_some_and(|call| call == &format!("GET {PODS}")),
         "{calls:?}"
+    );
+}
+
+/// An event about an object of the namespace.
+fn event(kind: &str, name: &str, reason: &str, message: &str) -> Value {
+    json!({"metadata": {"name": format!("{name}.1"), "namespace": NAMESPACE},
+        "involvedObject": {"kind": kind, "name": name}, "reason": reason, "message": message,
+        "count": 1})
+}
+
+#[tokio::test]
+async fn waits_for_quota() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (mut backend, _) = backend(root.path()).await;
+    backend.start_grace = Duration::from_millis(500);
+    let server = root.path().join("server");
+    std::fs::write(server.join("quota"), "").expect("takes the quota");
+    let quota = "pods \"iunctus-run-p-20-1-x\" is forbidden: exceeded quota: compute";
+    let refused = "pods \"iunctus-run-p-21-1-x\" is forbidden: violates PodSecurity";
+    let events = json!([
+        event("Job", "iunctus-run-p-20-1", "FailedCreate", quota),
+        event("Job", "iunctus-run-p-21-1", "FailedCreate", refused),
+    ]);
+    std::fs::write(server.join("events.json"), events.to_string()).expect("writes");
+    let spec = spec("debian:stable-slim", "echo done > out.txt");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-P-20-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    // The Job waits for quota longer than the grace of a missing pod, until quota is free.
+    let free = async {
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        std::fs::remove_file(server.join("quota")).expect("frees the quota");
+    };
+    let cancel = CancellationToken::new();
+    let (finished, ()) = tokio::join!(backend.run(job, &cancel), free);
+    assert_eq!(finished.expect("the job ends").exit_code, Some(0));
+    // A pod that a policy refuses fails with the reason of the cluster.
+    std::fs::write(server.join("quota"), "").expect("takes the quota");
+    let job = Job {
+        name: "run-P-21-1",
+        ..job
+    };
+    let error = (backend.run(job, &CancellationToken::new()).await).unwrap_err();
+    assert!(
+        error.to_string().contains("violates PodSecurity"),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn fails_unschedulable_pods() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (mut backend, _) = backend(root.path()).await;
+    backend.unschedulable_time = Duration::from_secs(1);
+    let server = root.path().join("server");
+    std::fs::write(server.join("unschedulable"), "").expect("fills the nodes");
+    // One scale-up for the pod gives it the time once more.
+    let scaled = "pod triggered scale-up: [{pool 1->2 (max: 3)}]";
+    let events = json!([event(
+        "Pod",
+        "iunctus-run-p-22-1-pod",
+        "TriggeredScaleUp",
+        scaled
+    )]);
+    std::fs::write(server.join("events.json"), events.to_string()).expect("writes");
+    let spec = spec("debian:stable-slim", "echo done > out.txt");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-P-22-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let begun = std::time::Instant::now();
+    let error = (backend.run(job, &CancellationToken::new()).await).unwrap_err();
+    let expected = "the pod cannot be scheduled: 0/3 nodes are available: 3 Insufficient memory.";
+    assert!(error.to_string().contains(expected), "{error}");
+    assert!(
+        begun.elapsed() >= Duration::from_secs(2),
+        "{:?}",
+        begun.elapsed()
     );
 }
 

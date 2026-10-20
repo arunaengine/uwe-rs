@@ -5,7 +5,7 @@
 use std::fs::{File, TryLockError};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use executor::manifest::parse;
 use executor::poll::{CANCEL_GRACE, Poll, REQUEST_GRACE};
@@ -15,6 +15,7 @@ use executor::wrapper::{Folders, MANIFEST, STDERR};
 use executor::{
     Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, containers, place,
 };
+use k8s_openapi::api::core::v1::Event;
 use kube::api::{
     DeleteParams, ListParams, LogParams, PostParams, Preconditions, PropagationPolicy,
 };
@@ -40,6 +41,9 @@ const STAGING_TIME: Duration = Duration::from_secs(5 * 60);
 /// How long a Job may have no pod, or a pod that cannot start, before it counts as failed.
 const GRACE: Duration = Duration::from_secs(120);
 
+/// How long a pod may find no node, without a scale-up of the cluster, by default.
+const UNSCHEDULABLE_TIME: Duration = Duration::from_secs(3600);
+
 /// The Kubernetes executor's backend.
 #[derive(Debug)]
 pub struct KubernetesBackend {
@@ -59,6 +63,12 @@ pub struct KubernetesBackend {
     /// How much longer than its task a pod may run: for image pulls, staging and the start of
     /// its containers. The task itself keeps its time.
     pub staging_time: Duration,
+    /// How long a Job may have no pod, or a pod that cannot start, before it fails; a pod that
+    /// waits for quota of the namespace waits on.
+    pub start_grace: Duration,
+    /// How long a pod may find no node before it fails with the reason of the scheduler. Each
+    /// new scale-up of the cluster for it starts the time again.
+    pub unschedulable_time: Duration,
     /// The label value of the Jobs of this backend.
     label: String,
     pods: Pods,
@@ -87,6 +97,8 @@ impl KubernetesBackend {
             volumes: Volumes::Host,
             remote: None,
             staging_time: STAGING_TIME,
+            start_grace: GRACE,
+            unschedulable_time: UNSCHEDULABLE_TIME,
             label: format!("{}-{millis}", std::process::id()),
             pods: Pods::default(),
         }
@@ -604,6 +616,8 @@ impl KubernetesBackend {
     /// Waits for a container outcome or cancellation before confirming termination.
     async fn wait(&self, name: &str, cancel: &CancellationToken) -> Result<Ended, ExecutorError> {
         let mut poll = Poll::new(self.poll);
+        // Since when the pod finds no node, and how many scale-ups it caused so far.
+        let mut unscheduled: Option<(Instant, u64)> = None;
         loop {
             tracing::debug!(job = name, "polling Kubernetes job");
             let look = poll
@@ -617,8 +631,24 @@ impl KubernetesBackend {
                 })
                 .await
                 .map_err(|_| ExecutorError::Cancelled)?;
+            if !matches!(look, Look::Unschedulable(_)) {
+                unscheduled = None;
+            }
             let problem = match look {
                 Look::Active | Look::Unknown => None,
+                Look::Unschedulable(reason) => {
+                    let (since, scaled) = *unscheduled.get_or_insert((Instant::now(), 0));
+                    if since.elapsed() >= self.unschedulable_time {
+                        // A cluster that grows for the pod gets the time again.
+                        let now = self.scale_ups(name).await;
+                        if now <= scaled {
+                            let message = format!("the pod cannot be scheduled: {reason}");
+                            return Err(machine(message));
+                        }
+                        unscheduled = Some((Instant::now(), now));
+                    }
+                    None
+                }
                 Look::Ended { exit_code, reason } => return Ok(Ended::Exited(exit_code, reason)),
                 Look::Stopped(reason) => return Ok(Ended::Stopped(reason)),
                 Look::InitFailed {
@@ -640,16 +670,73 @@ impl KubernetesBackend {
                     }));
                 }
                 Look::Stuck(reason) => Some(format!("the pod cannot start: {reason}")),
-                Look::Missing => Some("the Job has no pod".to_owned()),
+                Look::Missing => Some(MISSING.to_owned()),
                 Look::Unavailable(error) => Some(format!("cannot list the pods: {error}")),
             };
             // A pod may appear late, and an image may be pulled at the next try.
-            if poll.troubled(problem.is_some(), GRACE)
+            if poll.troubled(problem.is_some(), self.start_grace)
                 && let Some(problem) = problem
             {
-                return Err(machine(problem));
+                if problem != MISSING {
+                    return Err(machine(problem));
+                }
+                match self.creation(name).await {
+                    // Pods wait for quota of the namespace as jobs wait in a queue.
+                    Creation::Quota => {
+                        tracing::debug!(job = name, "the Job waits for quota");
+                        poll.troubled(false, self.start_grace);
+                    }
+                    Creation::Failed(message) => {
+                        let message = format!("the cluster cannot make the pod: {message}");
+                        return Err(machine(message));
+                    }
+                    Creation::Unknown => return Err(machine(problem)),
+                }
             }
         }
+    }
+
+    /// Why the Job controller made no pod, from the last `FailedCreate` event of the Job.
+    async fn creation(&self, name: &str) -> Creation {
+        let fields = format!("involvedObject.kind=Job,involvedObject.name={name}");
+        let events = self.events(&fields).await;
+        let failed = events
+            .iter()
+            .rev()
+            .find(|event| event.reason.as_deref() == Some("FailedCreate"));
+        match failed.and_then(|event| event.message.clone()) {
+            Some(message) if message.contains("exceeded quota") => Creation::Quota,
+            Some(message) => Creation::Failed(message),
+            None => Creation::Unknown,
+        }
+    }
+
+    /// How many scale-ups the cluster autoscaler made for the pod of a Job so far.
+    async fn scale_ups(&self, name: &str) -> u64 {
+        let events = self
+            .events("involvedObject.kind=Pod,reason=TriggeredScaleUp")
+            .await;
+        (events.iter())
+            .filter(|event| {
+                let pod = event.involved_object.name.as_deref().unwrap_or_default();
+                pod.strip_prefix(name)
+                    .is_some_and(|rest| rest.starts_with('-'))
+            })
+            .map(|event| event.count.map_or(1, |count| count.max(1) as u64))
+            .sum()
+    }
+
+    /// The events of the namespace that match `fields`, oldest first; none when the cluster
+    /// cannot list them.
+    async fn events(&self, fields: &str) -> Vec<Event> {
+        let parameters = ListParams::default().fields(fields);
+        let api = self.cluster.events();
+        let mut events = match tokio::time::timeout(REQUEST_GRACE, api.list(&parameters)).await {
+            Ok(Ok(list)) => list.items,
+            _ => return Vec::new(),
+        };
+        events.sort_by_key(|event| event.last_timestamp.clone());
+        events
     }
 
     /// Releases ownership only after the accepted Job and all its pods disappear.
@@ -717,6 +804,19 @@ impl KubernetesBackend {
         std::fs::remove_file(root.join("remote.json"))?;
         Ok(())
     }
+}
+
+/// The problem of a Job without a pod.
+const MISSING: &str = "the Job has no pod";
+
+/// Why the Job controller made no pod.
+enum Creation {
+    /// The namespace has no quota left for it now.
+    Quota,
+    /// It failed for this reason, like a policy that refuses the pod.
+    Failed(String),
+    /// No event tells.
+    Unknown,
 }
 
 /// What became of a submission whose answer was lost.

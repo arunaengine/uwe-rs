@@ -480,6 +480,16 @@ fn exposes_workflow_metadata() {
     assert_eq!(printed, "iunctus standard demo /launch /\ndone true 2\n");
 }
 
+/// The `onComplete:` section of the entry workflow runs when the run ends, after its body, and
+/// the `onError:` section only when it fails, as in Nextflow 26.04.6.
+#[test]
+fn runs_handler_sections() {
+    let source = "workflow {\n    main:\n    def name = 'main'\n    println name\n\n    onComplete:\n    \
+                  println \"done ${workflow.success} ${name}\"\n\n    onError:\n    println 'error'\n}";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "main\ndone true main\n");
+}
+
 /// `workflow.container` is what the `process` scope sets, as Nextflow 26.04.6 prints it.
 #[test]
 fn shows_config_containers() {

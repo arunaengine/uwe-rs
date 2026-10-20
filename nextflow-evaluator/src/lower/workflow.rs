@@ -28,8 +28,18 @@ impl Lowering<'_> {
             }
         }
         self.implicit_declarations = true;
-        let main = self.statements(&workflow.main.statements);
+        let mut main = self.statements(&workflow.main.statements);
         self.implicit_declarations = false;
+        // The `onComplete:` and `onError:` sections run as the handlers that
+        // `workflow.onComplete { ... }` and `workflow.onError { ... }` at the end of the body add.
+        for (handler, block) in [
+            ("onComplete", &workflow.on_complete),
+            ("onError", &workflow.on_error),
+        ] {
+            if let Some(block) = block {
+                main.extend(self.statement(&handler_statement(handler, block)));
+            }
+        }
         let mut emits = Vec::new();
         let mut bare_emits = Vec::new();
         for emit in &workflow.emits {
@@ -96,15 +106,6 @@ impl Lowering<'_> {
                 }
             }
         }
-        for block in [&workflow.on_complete, &workflow.on_error]
-            .into_iter()
-            .flatten()
-        {
-            self.error(
-                "Workflow `onComplete:` and `onError:` sections are not supported yet",
-                block.span,
-            );
-        }
         self.in_workflow = false;
         let layout = self.scopes.pop_frame();
         Workflow {
@@ -132,6 +133,33 @@ impl Lowering<'_> {
             },
             span: statement.span,
         })
+    }
+}
+
+/// The statement `workflow.<handler> { <block> }`.
+fn handler_statement(handler: &str, block: &ast::Block) -> ast::Statement {
+    let span = block.span;
+    let expression = |kind| ast::Expression { kind, span };
+    let closure = ast::Closure {
+        parameters: None,
+        body: block.clone(),
+    };
+    let call = Syntax::MethodCall {
+        target: Some(Box::new(expression(Syntax::Variable("workflow".into())))),
+        name: ast::Name {
+            text: handler.into(),
+            span,
+        },
+        access: ast::Access::Normal,
+        arguments: vec![Argument {
+            name: None,
+            value: expression(Syntax::Closure(Box::new(closure))),
+        }],
+        parentheses: true,
+    };
+    ast::Statement {
+        kind: Kind::Expression(expression(call)),
+        span,
     }
 }
 

@@ -823,7 +823,7 @@ fn outcome(
         Ended::Exited(0, _) => recorded
             .map(|code| (code, None))
             .ok_or_else(|| "the container ended without the exit code of the task".to_owned()),
-        Ended::Exited(crate::manifest::TIMED_OUT, _) if time.is_some() => {
+        Ended::Exited(executor::wrapper::TIMED_OUT, _) if time.is_some() => {
             Ok((143, Some(too_long(time))))
         }
         Ended::Exited(status, reason) if reason == "OOMKilled" => Ok((

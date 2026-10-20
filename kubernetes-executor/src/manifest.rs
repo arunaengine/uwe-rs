@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 
 use executor::ContainerRun;
 use executor::binary::Binary;
+use executor::wrapper::timed;
 
 /// The label that marks the Jobs of one backend, so that one request lists all their pods.
 pub const LABEL: &str = "iunctus.dev/attempts";
@@ -75,9 +76,6 @@ pub struct Limits {
     pub margin: u64,
 }
 
-/// The exit code of a container whose task ran out of time, as `timeout` gives it.
-pub const TIMED_OUT: i32 = 124;
-
 /// Where the containers of a Job see the folders of their attempt.
 #[derive(Clone, Debug, Default)]
 pub enum Volumes {
@@ -124,21 +122,6 @@ const HELPER: &str = "/iunctus-helper";
 /// Runs the wrapper and then sends the outputs back, with the helper `$1` and the folder `$2`
 /// of the attempt. A failed upload is a failure of the machine.
 const SEND: &str = "\"$1\" __stage out \"$2\" || exit 125\nexit \"$status\"\n";
-
-/// The lines that run `command` and set `status`. The wrapper gets TERM at the time of its
-/// task, as the pod may run longer, and `status` is then [`TIMED_OUT`].
-fn timed(command: &str, seconds: Option<u64>) -> String {
-    let Some(seconds) = seconds else {
-        return format!("{command}\nstatus=$?\n");
-    };
-    format!(
-        "{command} &\npid=$!\ntrap 'kill -TERM \"$pid\" 2> /dev/null' TERM INT\n\
-         ( sleep {seconds} && kill -TERM \"$pid\" 2> /dev/null && exit {TIMED_OUT} ) &\n\
-         timer=$!\nwait \"$pid\"\nstatus=$?\nkill \"$timer\" 2> /dev/null\n\
-         wait \"$timer\" 2> /dev/null\n\
-         [ $? -ne {TIMED_OUT} ] || status={TIMED_OUT}\n"
-    )
-}
 
 /// Stages the files of a Job through the plan at `plan`: an init container fills the folder
 /// `root`, and the task container sends the outputs back after the wrapper, which keeps the time

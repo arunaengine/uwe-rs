@@ -180,17 +180,6 @@ impl Run {
             .enumerate()
         {
             artifact.path = input.path.clone();
-            if input
-                .archive
-                .as_ref()
-                .is_some_and(|node| node.get("none").is_none())
-                && !matches!(artifact.location, Some(Location::File(_)))
-            {
-                return Err(Failure::unsupported(format!(
-                    "artifact {}: archive extraction requires an output produced by this run; external archive inputs are not supported",
-                    input.name
-                )));
-            }
             if deferred_sub_paths[index] {
                 apply_sub_path(artifact, &input.sub_path)?;
             }
@@ -290,24 +279,16 @@ pub(crate) fn check_artifact(artifact: &Artifact) -> Result<()> {
             artifact.name
         )));
     }
-    if artifact.mode.is_some()
-        || artifact.recurse_mode.is_some()
-        || artifact.archive.as_ref().is_some_and(|node| {
-            node.get("none").is_none()
-                && (artifact.raw.is_some()
-                    || artifact.s3.is_some()
-                    || artifact.http.is_some()
-                    || artifact.gcs.is_some()
-                    || artifact.azure.is_some()
-                    || artifact.artifactory.is_some())
-        })
+    // Argo fails to unpack raw text as an archive, so iunctus refuses it up front.
+    if (artifact.archive.as_ref())
+        .is_some_and(|node| node.get("none").is_none() && artifact.raw.is_some())
         || artifact
             .archive_logs
             .as_ref()
             .is_some_and(|node| node.value != Yaml::Bool(false))
     {
         return Err(Failure::unsupported(format!(
-            "artifact {}: mode, recurseMode, archive compression and archiveLogs are not supported",
+            "artifact {}: archive compression of raw artifacts and archiveLogs are not supported",
             artifact.name
         )));
     }

@@ -135,6 +135,37 @@ fn checks_remote_times() {
     assert!(error.message.contains("Missing input"), "{error}");
 }
 
+/// Snakemake 9.27 protects only the local copy of a `protected()` output in storage, so the
+/// output goes to storage and its delivery protects no local path.
+#[test]
+fn delivers_protected_objects() {
+    let server = Server::start();
+    let folder = tempfile::tempdir().unwrap();
+    let workflow = format!(
+        "storage:\n    provider='http'\nrule make:\n    output: protected(storage.http('{}/new'))\n    shell: 'touch {{output}}'\n",
+        server.address
+    );
+    let launch = launch(folder.path(), &workflow);
+    let mut driver = snakemake_runtime::driver(&launch).unwrap();
+    let tasks = driver.start().unwrap();
+    let output = folder.path().join("result");
+    std::fs::write(&output, b"output bytes").unwrap();
+    let file = OutputFile {
+        path: tasks[0].outputs[0].clone(),
+        location: output.to_string_lossy().into_owned(),
+        ..OutputFile::default()
+    };
+    let outcome = Outcome {
+        id: tasks[0].id,
+        files: vec![file],
+        ..Outcome::default()
+    };
+    driver.complete(outcome).unwrap();
+    let delivery = driver.deliveries().remove(0);
+    assert_eq!(delivery.target, format!("{}/new", server.address));
+    driver.delivered(&delivery).unwrap();
+}
+
 #[test]
 fn transfers_s3_objects() {
     let server = Server::start();

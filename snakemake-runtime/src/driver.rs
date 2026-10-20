@@ -1809,8 +1809,15 @@ impl Session {
                     })
                 })
             };
+            // Snakemake protects the local copy of a file in storage, not the object.
+            let stored = storage_target.is_some();
+            if self.shared && stored && protected() && path.exists() {
+                crate::metadata::protect(&path).map_err(|error| {
+                    DriverError::new(format!("cannot protect output {}: {error}", path.display()))
+                })?;
+            }
             // A job of the shared directory left its outputs in place.
-            if self.shared && storage_target.is_none() {
+            if self.shared && !stored {
                 if protected() {
                     crate::metadata::protect(&path).map_err(|error| {
                         DriverError::new(format!(
@@ -1832,7 +1839,7 @@ impl Session {
                     target: storage_target.unwrap_or_else(|| path.to_string_lossy().into_owned()),
                     mode: DeliveryMode::Copy,
                 };
-                if !self.launch.simulated && protected() {
+                if !self.launch.simulated && !stored && protected() {
                     self.protections.push(delivery.clone());
                 }
                 deliveries.push(delivery);

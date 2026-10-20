@@ -440,3 +440,41 @@ fn starts_prioritized_jobs() {
     first.sort();
     assert_eq!(first, ["a2", "x"]);
 }
+
+/// Snakemake 9.27 with `batch: agg=1/2` makes the first three of five inputs of `agg` and
+/// omits `agg` and `all`; the final batch needs those three and then makes the rest.
+#[test]
+fn runs_input_batches() {
+    let snakefile = "rule all:\n    input: 'agg'\nrule agg:\n    input: expand('m{i}', i=range(5))\n    output: 'agg'\n    shell: 'cat {input} > {output}'\nrule make:\n    output: 'm{i}'\n    shell: 'touch {output}'\n";
+    let folder = tempfile::tempdir().expect("a folder");
+    let run = |settings: &str| {
+        let launch = Launch {
+            simulated: false,
+            ..profile_launch(folder.path(), settings, snakefile)
+        };
+        let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+        let started = driver.start()?;
+        let mut outputs: Vec<String> = (started.iter())
+            .flat_map(|task| task.outputs.clone())
+            .collect();
+        outputs.sort();
+        Ok::<_, workflow_graph::DriverError>(outputs)
+    };
+    assert_eq!(run("batch: agg=1/2\n").expect("starts"), ["m0", "m1", "m2"]);
+    let error = run("batch: agg=2/2\n").expect_err("the first batch is missing");
+    assert!(
+        error
+            .message
+            .contains("Unable to execute batch 2/2 (rule agg)"),
+        "{error}"
+    );
+    for name in ["m0", "m1", "m2"] {
+        std::fs::write(folder.path().join(name), "").expect("an input");
+    }
+    assert_eq!(run("batch: agg=2/2\n").expect("starts"), ["m3", "m4"]);
+    let error = run("batch: agg=3/2\n").expect_err("an invalid batch");
+    assert!(
+        error.message.contains("Invalid batch definition"),
+        "{error}"
+    );
+}

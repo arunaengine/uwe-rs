@@ -410,6 +410,7 @@ impl Session {
             ));
             if let Some(planner) = self.planner.as_mut() {
                 planner.allowed = state.profile.allowed_rules.clone();
+                planner.batch = state.profile.batch.clone();
             }
         }
         let mut targets: Vec<String> = if self.launch.targets.is_empty() {
@@ -423,7 +424,7 @@ impl Session {
             .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         planner.reset();
         let prioritize = self.state.borrow().profile.prioritize.clone();
-        let [until, omit_from, forcerun, prioritize] = [
+        let [until, mut omit_from, forcerun, prioritize] = [
             &self.launch.until,
             &self.launch.omit_from,
             &self.launch.forcerun,
@@ -445,6 +446,12 @@ impl Session {
         });
         planner.forcerun = forcerun;
         planner.forceall = self.launch.forceall;
+        // The jobs from the `batch` rule on wait for the final batch, as Snakemake omits them.
+        if let Some((rule, number, total)) = &planner.batch
+            && number < total
+        {
+            omit_from.push(rule.clone());
+        }
         // Prioritized files and rules without wildcards are targets too.
         for target in &prioritize {
             let rule = planner.rules.iter().find(|rule| rule.name == *target);

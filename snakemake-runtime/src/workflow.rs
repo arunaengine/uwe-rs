@@ -1131,7 +1131,21 @@ impl Hook {
                         RuleKeyword::Output => (&mut rule.output, "output", true),
                         _ => (&mut rule.log, "log", false),
                     };
-                    for value in &args.positional {
+                    // `consider-ancient` marks input items, by position or name, `ancient()`.
+                    let ancient: Vec<String> = (self.state.borrow().profile.consider_ancient)
+                        .iter()
+                        .filter(|(name, _)| *keyword == RuleKeyword::Input && *name == rule.name)
+                        .flat_map(|(_, items)| items.clone())
+                        .collect();
+                    let mark = |items: &mut Items, start: usize, item: &str| {
+                        if ancient.iter().any(|listed| listed == item) {
+                            for value in &mut items.values[start..] {
+                                *value = value.with_tag("ancient", Value::Bool(true));
+                            }
+                        }
+                    };
+                    for (position, value) in args.positional.iter().enumerate() {
+                        let start = items.values.len();
                         let multiext = self.multiext_names(interpreter, value)?;
                         match multiext {
                             Some(names) => {
@@ -1159,8 +1173,10 @@ impl Hook {
                                 &pathvars,
                             )?,
                         }
+                        mark(items, start, &position.to_string());
                     }
                     for (key, value) in &args.keywords {
+                        let start = items.values.len();
                         self.add_item(
                             interpreter,
                             items,
@@ -1171,6 +1187,7 @@ impl Hook {
                             &skips,
                             &pathvars,
                         )?;
+                        mark(items, start, key);
                     }
                     if output {
                         crate::rule::check_output_duplicates(&rule.name, &rule.output)?;

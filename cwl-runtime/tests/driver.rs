@@ -1124,3 +1124,26 @@ fn propagates_updated_inputs() {
         .collect();
     assert_eq!(sources, [updated]);
 }
+
+#[test]
+fn warns_unknown_hints() {
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let tool = "cwlVersion: v1.2\nclass: CommandLineTool\n$namespaces: {cwltool: 'http://commonwl.org/cwltool#'}\n\
+        hints:\n  DockerRequirment: {dockerPull: alpine}\n  cwltool:ShmSize: {shmSize: 1g}\n\
+        baseCommand: echo\ninputs: []\noutputs: []\n";
+    let main = folder.path().join("main.cwl");
+    std::fs::write(&main, tool).expect("writes the tool");
+    let launch = Launch {
+        target: main,
+        simulated: true,
+        ..Launch::default()
+    };
+    let driver = CwlDriver::new(&launch, Options::default()).expect("a driver");
+    let warnings = driver.warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0].contains(":5:3: Unknown hint")
+            && warnings[0].ends_with("DockerRequirment, which is ignored"),
+        "{warnings:?}"
+    );
+}

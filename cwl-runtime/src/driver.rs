@@ -10,7 +10,7 @@ use std::sync::Arc;
 use cwl_parser::iri;
 use cwl_parser::model::record::Context;
 use cwl_parser::model::{
-    Class, Process, Requirement, Type, Version, read_requirements, short_name,
+    Class, Process, Requirement, RequirementClass, Type, Version, read_requirements, short_name,
 };
 use cwl_parser::salad::context::Namespaces;
 use cwl_parser::source::Remote;
@@ -27,6 +27,9 @@ use crate::tool::{Options, UNSUPPORTED};
 use crate::types::Types;
 use crate::value::{Map, Value};
 
+/// The namespace of cwltool's extensions, whose hints it knows.
+const CWLTOOL: &str = "http://commonwl.org/cwltool#";
+
 /// Runs one CWL document with one input object.
 pub struct CwlDriver {
     launch: Launch,
@@ -42,6 +45,8 @@ pub struct CwlDriver {
     /// starts unless the run keeps going, and the run fails at its end, as cwltool does.
     failures: Vec<String>,
     acceptance: HashSet<(TaskId, u32)>,
+    /// What the run ignores, like hints of unknown classes; printed as they are found.
+    warnings: Vec<String>,
 }
 
 impl CwlDriver {
@@ -59,6 +64,11 @@ impl CwlDriver {
         let simulated = options.simulated;
         let mut run = Run::new(options, launch.keep_going);
         run.name_ontologies(document.schemas);
+        let mut warnings = Vec::new();
+        unknown_hints(&document.process, &mut warnings);
+        for warning in &warnings {
+            eprintln!("WARN: {warning}");
+        }
         Ok(CwlDriver {
             launch: launch.clone(),
             simulated,
@@ -68,7 +78,13 @@ impl CwlDriver {
             process: document.process,
             failures: Vec::new(),
             acceptance: HashSet::new(),
+            warnings,
         })
+    }
+
+    /// What the run ignores, like hints of unknown classes.
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
     }
 
     /// The output object of the run, once it finished.
@@ -161,6 +177,29 @@ pub fn driver_with_options(
     options.simulated = launch.simulated;
     options.remote = Remote::new(storage, downloads);
     Ok(Box::new(CwlDriver::new(launch, options)?))
+}
+
+/// Notes the hints of a process and of its steps whose class neither CWL nor cwltool knows,
+/// which the run ignores, as cwltool says with `Unknown hint`.
+fn unknown_hints(process: &Process, warnings: &mut Vec<String>) {
+    let note = |hints: &[Requirement], warnings: &mut Vec<String>| {
+        for hint in hints {
+            let RequirementClass::Other { class, .. } = &hint.class else {
+                continue;
+            };
+            let warning = format!("{}: Unknown hint {class}, which is ignored", hint.location);
+            if !class.starts_with(CWLTOOL) && !warnings.contains(&warning) {
+                warnings.push(warning);
+            }
+        }
+    };
+    note(&process.hints, warnings);
+    if let Class::Workflow(workflow) = &process.class {
+        for step in &workflow.steps {
+            note(&step.hints, warnings);
+            unknown_hints(&step.run.process, warnings);
+        }
+    }
 }
 
 /// Where the first abstract `Operation` of a process or of its steps is.

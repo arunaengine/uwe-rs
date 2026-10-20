@@ -285,6 +285,48 @@ fn tolerates_entry_failure() {
 }
 
 #[test]
+fn resumes_tagged_images() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let task = task(root.path(), "a");
+    let tagged = |runner: &Runner<Fake>| {
+        let prepared = block_on(runner.request(&task, Some("local/tool:dev".into()))).unwrap();
+        assert_eq!(prepared.request.scope, task_model::ReuseScope::Lineage);
+        execute(runner, &prepared)
+    };
+    assert!(
+        !tagged(&runner_of(
+            root.path(),
+            "first",
+            std::time::Duration::ZERO,
+            0
+        ))
+        .reused
+    );
+    // A run that resumes no other takes no result of an image without a digest.
+    assert!(
+        !tagged(&runner_of(
+            root.path(),
+            "other",
+            std::time::Duration::ZERO,
+            0
+        ))
+        .reused
+    );
+    let mut resumed = runner_of(root.path(), "resumed", std::time::Duration::ZERO, 0);
+    resumed.resume_from(["first".to_owned(), "resumed".to_owned()].into());
+    assert!(
+        tagged(&resumed).reused,
+        "a resumed run takes the result of its lineage"
+    );
+    let mut foreign = runner_of(root.path(), "foreign", std::time::Duration::ZERO, 0);
+    foreign.resume_from(["other".to_owned()].into());
+    assert!(
+        !tagged(&foreign).reused,
+        "the result belongs to another lineage"
+    );
+}
+
+#[test]
 fn reuses_shared_results() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);

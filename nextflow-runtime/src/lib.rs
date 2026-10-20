@@ -280,9 +280,9 @@ impl Run {
             if let Err(error) = interpreter.call_closure(&handler, arguments) {
                 let error = interpreter.locate(error);
                 if !failing
-                    && error
-                        .exception()
-                        .is_none_or(|exception| exception.class == "AbortOperationException")
+                    && error.exception().is_none_or(|exception| {
+                        exception.target().class == "AbortOperationException"
+                    })
                 {
                     return Err(error);
                 }

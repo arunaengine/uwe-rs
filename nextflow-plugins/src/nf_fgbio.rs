@@ -107,13 +107,10 @@ fn invalid(message: &str, characters: &[char], start: usize, end: usize) -> Erro
     ))
 }
 
-/// The exception of a failed call: Nextflow calls plugin functions by reflection, so the
-/// `IllegalArgumentException` of fgbio is the cause of an `InvocationTargetException`.
+/// The `IllegalArgumentException` of fgbio, which the call by reflection wraps.
 fn failure(message: &str) -> Error {
-    let mut exception = Exception::new("InvocationTargetException", "");
-    exception.cause = Some(Box::new(Exception::illegal_argument(message)));
     Error::Thrown {
-        exception: Rc::new(exception),
+        exception: Rc::new(Exception::illegal_argument(message)),
         span: Default::default(),
     }
 }

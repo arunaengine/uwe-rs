@@ -31,7 +31,7 @@ impl Interpreter<'_> {
                 Span::default(),
             ));
         }
-        self.call_definition(module, name, Vec::new(), Span::default())
+        self.call_definition(module, (name, false), Vec::new(), Span::default())
             .map(drop)
     }
 
@@ -65,16 +65,18 @@ impl Interpreter<'_> {
     pub(super) fn call_definition(
         &mut self,
         module: &Rc<Module>,
-        name: &str,
+        (name, reflective): (&str, bool),
         arguments: Vec<Value>,
         span: Span,
     ) -> Result<Value, Error> {
         let (target, target_name) = resolve(module, name);
         if let Some(plugin) = &target.plugin {
-            return self
-                .host
-                .plugin_function(plugin, &target_name, arguments)
-                .map_err(|error| error.or_at(span));
+            let result = self.host.plugin_function(plugin, &target_name, arguments);
+            let result = result.map_err(|error| error.or_at(span));
+            return match reflective {
+                true => result.map_err(super::call::invoked),
+                false => result,
+            };
         }
         let process = target
             .processes
@@ -113,7 +115,8 @@ impl Interpreter<'_> {
                 result?
             }
             (None, None) => {
-                return self.call_script_function(&target, &target_name, arguments, span);
+                let call = (&*target_name, reflective);
+                return self.call_script_function(&target, call, arguments, span);
             }
         };
         let key = (Rc::as_ptr(module) as usize, Rc::from(name));
@@ -266,7 +269,12 @@ impl Interpreter<'_> {
                     Value::ChannelOut(out) => out.values.clone(),
                     _ => vec![left],
                 };
-                self.call_definition(&definition.module, &definition.name, arguments, span)
+                self.call_definition(
+                    &definition.module,
+                    (&definition.name, true),
+                    arguments,
+                    span,
+                )
             }
             Value::Operator(operator) => {
                 self.operator(&left, &operator.0, operator.1.clone(), span)

@@ -271,3 +271,61 @@ fn renders_task_templates() {
         nextflow_runtime::Run::start(&module, &options, &mut Output::default()).expect("starts");
     assert_eq!(requests[0].script, "#!/bin/bash -ue\necho a P\n");
 }
+
+/// Nextflow 26.04.6 calls included functions, and functions called from a workflow or
+/// process, by reflection, which wraps what they throw in an `InvocationTargetException`.
+#[test]
+fn wraps_reflective_calls() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "mod.nf",
+        "def mboom() { throw new IllegalStateException('m') }\ndef mcall() { mboom() }\n",
+    );
+    write(
+        root.path(),
+        "main.nf",
+        r#"include { mboom; mcall } from './mod'
+include { readStructure } from 'plugin/nf-fgbio'
+def boom() { throw new RuntimeException('rt') }
+def check() { assert false }
+def direct() { try { boom() } catch (Exception e) { println "a ${e.getClass().name}" } }
+def callm() { mboom() }
+def clos() { def c = { boom() }; try { c.call() } catch (Exception e) { println "g ${e.getClass().name}" } }
+workflow {
+    direct()
+    try { boom() } catch (Exception e) { println "b ${e.getClass().name} ${e.message} ${e.cause.getClass().name}" }
+    try { callm() } catch (Exception e) { println "c ${e.cause.cause.getClass().name}" }
+    try { mcall() } catch (Exception e) { println "d ${e.cause.getClass().name}" }
+    def c = { boom() }
+    try { c.call() } catch (Exception e) { println "e ${e.getClass().name}" }
+    clos()
+    try { check() } catch (Exception e) { println "f ${e.getClass().name}" }
+    try { readStructure('10B20C+T') } catch (Exception e) { println "h ${e.cause.getClass().name}" }
+    try { channel.of(1).map { v -> boom() } } catch (Exception e) { println "never" }
+}
+"#,
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let mut output = Output::default();
+    let error = nextflow_runtime::run(&module, &mut output).unwrap_err();
+    let wrapper = "java.lang.reflect.InvocationTargetException";
+    let expected = [
+        "a java.lang.RuntimeException".to_owned(),
+        format!("b {wrapper} null java.lang.RuntimeException"),
+        "c java.lang.IllegalStateException".into(),
+        "d java.lang.IllegalStateException".into(),
+        format!("e {wrapper}"),
+        "g java.lang.RuntimeException".into(),
+        format!("f {wrapper}"),
+        "h java.lang.IllegalArgumentException".into(),
+    ];
+    assert_eq!(output.0.lines().collect::<Vec<_>>(), expected);
+    let error = error.to_string();
+    assert!(
+        error.ends_with("main.nf:3:14: RuntimeException: rt"),
+        "{error}"
+    );
+}

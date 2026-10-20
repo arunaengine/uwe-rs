@@ -210,6 +210,14 @@ impl Exception {
             .map_or(self.class, |(_, qualified, _)| qualified)
     }
 
+    /// The exception that `InvocationTargetException`s wrap, which Nextflow reports instead.
+    pub fn target(&self) -> &Exception {
+        match &self.cause {
+            Some(cause) if self.class == "InvocationTargetException" => cause.target(),
+            _ => self,
+        }
+    }
+
     /// Whether the exception is an instance of the class, as a `catch` clause tests it.
     pub fn is_instance(&self, class: &str) -> bool {
         let mut current = self.class;

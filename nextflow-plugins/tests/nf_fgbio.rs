@@ -13,7 +13,7 @@ impl Host for Silent {
     fn print(&mut self, _: &str) {}
 }
 
-/// The read structure as text, or the message of the exception that caused the failure.
+/// The read structure as text, or the exception of the failure.
 fn read_structure(text: &str) -> String {
     let config = Config::default();
     let mut host = Silent;
@@ -31,10 +31,7 @@ fn read_structure(text: &str) -> String {
         &mut context,
     ) {
         Ok(value) => value.to_string(),
-        Err(Error::Thrown { exception, .. }) => {
-            let cause = exception.cause.as_ref().expect("a cause");
-            format!("{} of {}: {}", exception.class, cause.class, cause.message)
-        }
+        Err(Error::Thrown { exception, .. }) => exception.to_string(),
         Err(other) => panic!("{other}"),
     }
 }
@@ -45,22 +42,22 @@ fn parses_read_structures() {
     assert_eq!(read_structure(" 8m 1t "), "8M1T");
     assert_eq!(
         read_structure("10B20C+T"),
-        "InvocationTargetException of IllegalArgumentException: Read structure segment had \
+        "IllegalArgumentException: Read structure segment had \
          unknown type: 10B[20C]+T"
     );
     assert_eq!(
         read_structure("8M+T+B"),
-        "InvocationTargetException of IllegalArgumentException: requirement failed: Variable \
+        "IllegalArgumentException: requirement failed: Variable \
          length (+) can only be used in the last segment: 8M+T+B"
     );
     assert_eq!(
         read_structure("0T"),
-        "InvocationTargetException of IllegalArgumentException: Read structure contained zero \
+        "IllegalArgumentException: Read structure contained zero \
          length segments: 0T"
     );
     assert_eq!(
         read_structure("X"),
-        "InvocationTargetException of IllegalArgumentException: Read structure missing length \
+        "IllegalArgumentException: Read structure missing length \
          information: [X]"
     );
 }

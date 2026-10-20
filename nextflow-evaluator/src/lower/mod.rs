@@ -343,6 +343,9 @@ pub(crate) struct Lowering<'a> {
     in_process: bool,
     /// Whether the code is the body of a function, which cannot set a constant of the script.
     in_function: bool,
+    /// Whether the code is the statements of a script without declarations, which legacy
+    /// syntax runs as the script itself.
+    top_level: bool,
     /// Whether assigning an undeclared name declares it, as in process and workflow sections.
     implicit_declarations: bool,
     /// Whether the code is a config value, which knows fewer names than a script.
@@ -384,6 +387,7 @@ impl<'a> Lowering<'a> {
             escape_paths: false,
             in_process: false,
             in_function: false,
+            top_level: false,
             implicit_declarations: false,
             config: false,
             dynamic_names: false,
@@ -576,10 +580,12 @@ impl<'a> Lowering<'a> {
     fn implicit_workflow(&mut self, statements: &[&ast::Statement]) -> Workflow {
         self.scopes.push_frame(false);
         self.in_workflow = true;
+        self.top_level = true;
         self.implicit_declarations = true;
         let statements: Vec<ast::Statement> = statements.iter().map(|&s| s.clone()).collect();
         let main = self.statements(&statements);
         self.implicit_declarations = false;
+        self.top_level = false;
         self.in_workflow = false;
         let layout = self.scopes.pop_frame();
         let span = match (statements.first(), statements.last()) {

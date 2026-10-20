@@ -141,12 +141,14 @@ impl Interpreter<'_> {
             Kind::CallFunction {
                 function,
                 arguments,
+                reflective,
             } => {
                 let arguments = self.arguments(frame, arguments)?;
                 match function {
                     Function::Script(name) => {
                         let module = frame.module.clone();
-                        self.call_script_function(&module, name, arguments, span)?
+                        let call = (&**name, *reflective);
+                        self.call_script_function(&module, call, arguments, span)?
                     }
                     Function::Builtin(name) if &**name == "template" => {
                         let module = frame.module.clone();
@@ -155,7 +157,8 @@ impl Interpreter<'_> {
                     Function::Builtin(name) => self.call_builtin(name, arguments, span)?,
                     Function::Definition(name) => {
                         let module = frame.module.clone();
-                        self.call_definition(&module, name, arguments, span)?
+                        let call = (&**name, *reflective);
+                        self.call_definition(&module, call, arguments, span)?
                     }
                     Function::Operator(name) => Value::Operator(Rc::new((name.clone(), arguments))),
                 }

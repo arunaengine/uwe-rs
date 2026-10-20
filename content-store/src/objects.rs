@@ -144,15 +144,10 @@ impl Store {
         run: &str,
     ) -> Result<(), StoreError> {
         let location = layout::used(namespace, key)?;
-        self.operator
-            .write(&location, run.as_bytes().to_vec())
-            .await?;
+        self.replace(&location, run.as_bytes()).await?;
         // The shared store keeps its own marks, for its own clean-up.
         if let Some(shared) = &self.shared {
-            shared
-                .operator
-                .write(&location, run.as_bytes().to_vec())
-                .await?;
+            shared.replace(&location, run.as_bytes()).await?;
         }
         Ok(())
     }

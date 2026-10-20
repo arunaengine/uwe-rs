@@ -684,6 +684,23 @@ impl Interpreter<'_> {
                 Ok(Value::Exception(Rc::new(exception)))
             }
             (None, []) if class == "Date" => Ok(Value::Date(crate::date::now())),
+            // `new String(bytes)` reads UTF-8; `new String(text)` copies the text.
+            (None, [Value::Object(bytes), ..]) if class == "String" => {
+                match &bytes.borrow().state {
+                    State::Bytes(bytes) => {
+                        Ok(Value::string(String::from_utf8_lossy(bytes).into_owned()))
+                    }
+                    _ => Err(unsupported("`new String(...)` of this object", span)),
+                }
+            }
+            (None, [text]) if class == "String" => Ok(Value::string(text.to_string())),
+            (None, seed) if class == "Random" && seed.len() <= 1 => {
+                let seed = match seed {
+                    [Value::Number(seed)] => seed.to_i64(),
+                    _ => uuid::Uuid::new_v4().as_u64_pair().0 as i64,
+                };
+                Ok(super::library::random(seed))
+            }
             (None, [pattern]) if class == "SimpleDateFormat" => Ok(super::library::text_object(
                 "java.text.SimpleDateFormat",
                 &pattern.to_string(),

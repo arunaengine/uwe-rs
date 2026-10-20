@@ -395,3 +395,48 @@ fn formats_java_times() {
         assert_eq!(value(&code), expected, "{code}");
     }
 }
+
+/// Rarer text, character, encoding and random helpers, as Nextflow 26.04.6 prints them.
+#[test]
+fn rare_text_helpers() {
+    let cases = [
+        ("'abc'.chars().count()", "3"),
+        ("'abc'.bytes.encodeBase64().toString()", "YWJj"),
+        (
+            "[new String('YWJj'.decodeBase64()), 'YWJj'.decodeBase64().size()]",
+            "[abc, 3]",
+        ),
+        ("'e\\u0301'.normalize().size()", "1"),
+        (
+            "def rows = []\n'a\\tb\\nc\\td'.splitEachLine('\\t') { rows << it }\nrows",
+            "[[a, b], [c, d]]",
+        ),
+        (
+            "[Character.isDigit('1' as char), Character.isLetter('a' as char), Character.toUpperCase('a' as char)]",
+            "[true, true, A]",
+        ),
+        (
+            "[URLEncoder.encode('a b&c', 'UTF-8'), URLDecoder.decode('a+b%26c', 'UTF-8')]",
+            "[a+b%26c, a b&c]",
+        ),
+        (
+            "[Base64.getEncoder().encodeToString('abc'.bytes), new String(Base64.getDecoder().decode('YWJj'))]",
+            "[YWJj, abc]",
+        ),
+        (
+            "[new Random(1).nextInt(100), Math.random() < 1]",
+            "[85, true]",
+        ),
+        (
+            "[java.nio.file.Paths.get('/tmp', 'a').toString(), java.nio.file.Files.exists(java.nio.file.Paths.get('/tmp'))]",
+            "[/tmp/a, true]",
+        ),
+        (
+            "[new File('/tmp/x').parentFile, new File('/tmp/x').path, new File('a/b').path]",
+            "[/tmp, /tmp/x, a/b]",
+        ),
+    ];
+    for (code, expected) in cases {
+        assert_eq!(value(code), expected, "{code}");
+    }
+}

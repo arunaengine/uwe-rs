@@ -133,6 +133,57 @@ impl Interpreter<'_> {
             }
             ("Optional", "of" | "ofNullable", [value]) => super::optional(value.clone()),
             ("Optional", "empty", []) => super::optional(Value::Null),
+            // `java.lang.Character` tests and case changes of one character.
+            ("Character", _, [Value::Character(unit)]) => {
+                let character = char::from_u32(u32::from(*unit)).unwrap_or('\u{fffd}');
+                let changed = |text: String| {
+                    let mut units = text.encode_utf16();
+                    match (units.next(), units.next()) {
+                        (Some(unit), None) => Value::Character(unit),
+                        _ => Value::Character(*unit),
+                    }
+                };
+                match name {
+                    "isDigit" => Value::Boolean(character.is_ascii_digit()),
+                    "isLetter" | "isAlphabetic" => Value::Boolean(character.is_alphabetic()),
+                    "isLetterOrDigit" => Value::Boolean(character.is_alphanumeric()),
+                    "isWhitespace" => Value::Boolean(character.is_whitespace()),
+                    "isUpperCase" => Value::Boolean(character.is_uppercase()),
+                    "isLowerCase" => Value::Boolean(character.is_lowercase()),
+                    "toUpperCase" => changed(character.to_uppercase().collect()),
+                    "toLowerCase" => changed(character.to_lowercase().collect()),
+                    _ => return Ok(None),
+                }
+            }
+            ("URLEncoder", "encode", [text, ..]) => Value::string(url_encode(&text.to_string())),
+            ("URLDecoder", "decode", [text, ..]) => Value::string(url_decode(&text.to_string())),
+            ("Base64", "getEncoder", []) => text_object("java.util.Base64$Encoder", ""),
+            ("Base64", "getDecoder", []) => text_object("java.util.Base64$Decoder", ""),
+            ("Math", "random", []) => {
+                let bits = uuid::Uuid::new_v4().as_u64_pair().0 >> 11;
+                Value::Number(Number::Double(bits as f64 / (1u64 << 53) as f64))
+            }
+            ("Paths", "get", [first, rest @ ..]) => {
+                let mut text = first.to_string();
+                for part in rest {
+                    text = format!("{}/{part}", text.trim_end_matches('/'));
+                }
+                Value::Path(std::rc::Rc::new(crate::value::PathValue::parse(
+                    &text,
+                    &self.host.launch_dir(),
+                )))
+            }
+            ("Files", "exists" | "isDirectory" | "isRegularFile", [Value::Path(path), ..]) => {
+                let metadata = self
+                    .host
+                    .metadata(path)
+                    .map_err(|error| error.or_at(span))?;
+                Value::Boolean(match name {
+                    "exists" => metadata.is_some(),
+                    "isDirectory" => metadata.is_some_and(|file| file.directory),
+                    _ => metadata.is_some_and(|file| !file.directory),
+                })
+            }
             ("ZoneId", "systemDefault", []) => text_object("java.time.ZoneId", "system"),
             ("MessageDigest", "getInstance", [algorithm]) => {
                 super::bytes::message_digest(&algorithm.to_string()).at(span)?
@@ -459,4 +510,46 @@ fn radix_text(value: i64, radix: u32) -> String {
         digits.push('-');
     }
     digits.iter().rev().collect()
+}
+
+/// Java's `URLEncoder.encode` for UTF-8: letters, digits and `.-*_` stay, a space becomes `+`
+/// and every other byte `%XX`.
+fn url_encode(text: &str) -> String {
+    let mut encoded = String::new();
+    for byte in text.bytes() {
+        match byte {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'.' | b'-' | b'*' | b'_' => {
+                encoded.push(byte as char)
+            }
+            b' ' => encoded.push('+'),
+            other => encoded.push_str(&format!("%{other:02X}")),
+        }
+    }
+    encoded
+}
+
+/// Java's `URLDecoder.decode` for UTF-8: `+` is a space and `%XX` a byte.
+fn url_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut decoded = Vec::new();
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = match bytes[index] {
+            b'+' => b' ',
+            b'%' if index + 2 < bytes.len() => {
+                let hex = std::str::from_utf8(&bytes[index + 1..index + 3]).unwrap_or("");
+                match u8::from_str_radix(hex, 16) {
+                    Ok(byte) => {
+                        index += 2;
+                        byte
+                    }
+                    Err(_) => b'%',
+                }
+            }
+            other => other,
+        };
+        decoded.push(byte);
+        index += 1;
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
 }

@@ -174,6 +174,44 @@ impl Interpreter<'_> {
                 _ => return Ok(None),
             }));
         }
+        if let State::Random(seed) = &mut object.borrow_mut().state {
+            // Java's linear congruential generator: the next `bits` bits.
+            let mut next = |bits: u32| {
+                *seed = (seed.wrapping_mul(0x5DEECE66D).wrapping_add(0xB)) & ((1 << 48) - 1);
+                (*seed >> (48 - bits)) as i32
+            };
+            return Ok(Some(match (name, arguments) {
+                ("nextInt", []) => Value::integer(next(32)),
+                ("nextInt", [Value::Number(bound)]) if bound.to_i64() > 0 => {
+                    let bound = bound.to_i64() as i32;
+                    if bound & (bound - 1) == 0 {
+                        Value::integer(((i64::from(bound) * i64::from(next(31))) >> 31) as i32)
+                    } else {
+                        loop {
+                            let bits = next(31);
+                            let value = bits % bound;
+                            if bits.wrapping_sub(value).wrapping_add(bound - 1) >= 0 {
+                                break Value::integer(value);
+                            }
+                        }
+                    }
+                }
+                ("nextLong", []) => {
+                    let high = i64::from(next(32)) << 32;
+                    Value::Number(crate::number::Number::Long(
+                        high.wrapping_add(i64::from(next(32))),
+                    ))
+                }
+                ("nextDouble", []) => {
+                    let bits = (i64::from(next(26)) << 27) + i64::from(next(27));
+                    Value::Number(crate::number::Number::Double(
+                        bits as f64 / (1i64 << 53) as f64,
+                    ))
+                }
+                ("nextBoolean", []) => Value::Boolean(next(1) != 0),
+                _ => return Ok(None),
+            }));
+        }
         if let State::Iterator(items, position) = &mut object.borrow_mut().state {
             return match (name, arguments) {
                 ("hasNext", []) => Ok(Some(Value::Boolean(*position < items.len()))),
@@ -248,6 +286,32 @@ impl Interpreter<'_> {
             ("java.time.format.DateTimeFormatter", "format", [time @ Value::Object(_)], _) => {
                 let formatter = Value::Object(object.clone());
                 return self.library_method(time, "format", &[formatter], span);
+            }
+            (
+                "java.util.Base64$Encoder",
+                "encodeToString" | "encode",
+                [Value::Object(bytes)],
+                _,
+            ) => {
+                let text = match &bytes.borrow().state {
+                    State::Bytes(bytes) => super::bytes::base64(bytes),
+                    _ => return Ok(None),
+                };
+                return Ok(Some(match name {
+                    "encodeToString" => Value::string(text),
+                    _ => super::bytes::bytes(text.into_bytes()),
+                }));
+            }
+            ("java.util.Base64$Decoder", "decode", [source], _) => {
+                let text = match source {
+                    Value::Object(bytes) => match &bytes.borrow().state {
+                        State::Bytes(bytes) => String::from_utf8_lossy(bytes).into_owned(),
+                        _ => return Ok(None),
+                    },
+                    other => other.to_string(),
+                };
+                let decoded = super::bytes::decode_base64(&text).at(span)?;
+                return Ok(Some(super::bytes::bytes(decoded)));
             }
             ("java.text.SimpleDateFormat", "format", [Value::Date(millis)], Some(text)) => {
                 return Ok(Some(Value::string(

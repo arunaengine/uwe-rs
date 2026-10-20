@@ -68,8 +68,33 @@ pub(super) fn digest_method(algorithm: &str, name: &str, arguments: &[Value]) ->
     Some(bytes(digest))
 }
 
+/// The bytes of Base64 text, with or without padding, as `decodeBase64()` reads it.
+pub(super) fn decode_base64(text: &str) -> Result<Vec<u8>, Exception> {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut bytes = Vec::new();
+    let (mut group, mut count) = (0u32, 0);
+    for character in text.trim_end_matches('=').bytes() {
+        let Some(sextet) = ALPHABET.iter().position(|c| *c == character) else {
+            let message = format!("Illegal base64 character {character:x}");
+            return Err(Exception::illegal_argument(message));
+        };
+        group = (group << 6) | sextet as u32;
+        count += 1;
+        if count == 4 {
+            bytes.extend([(group >> 16) as u8, (group >> 8) as u8, group as u8]);
+            (group, count) = (0, 0);
+        }
+    }
+    match count {
+        2 => bytes.push((group >> 4) as u8),
+        3 => bytes.extend([(group >> 10) as u8, (group >> 2) as u8]),
+        _ => {}
+    }
+    Ok(bytes)
+}
+
 /// Base64 with padding, as `encodeBase64()` writes it.
-fn base64(bytes: &[u8]) -> String {
+pub(super) fn base64(bytes: &[u8]) -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::new();
     for chunk in bytes.chunks(3) {

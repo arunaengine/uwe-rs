@@ -63,6 +63,11 @@ pub(crate) fn target_and_language(arguments: &Arguments) -> Result<(PathBuf, Lan
     Ok((target, language))
 }
 
+/// Where `iunctus resume` leaves its requests for the suspended Argo steps of a run.
+pub(crate) fn resume_folder(run: &str) -> PathBuf {
+    cache_directory().join("scratch").join("resume").join(run)
+}
+
 /// The driver of a language.
 pub(crate) fn driver(
     language: Language,
@@ -118,7 +123,7 @@ pub(crate) fn driver(
                     address,
                 })
                 .collect();
-            argo_runtime::driver_with(launch, endpoints)
+            argo_runtime::driver_with(launch, endpoints, Some(resume_folder(run)))
         }
     }
 }

@@ -269,6 +269,32 @@ fn rejects_simulated_resume() {
 }
 
 #[test]
+fn leaves_resume_requests() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path();
+    std::fs::write(path.join("main.nf"), SCRIPT).expect("writes the script");
+    std::fs::write(path.join("a.txt"), "one\n").expect("writes an input");
+    std::fs::write(path.join("b.txt"), "two\n").expect("writes an input");
+    let (code, output) = iunctus(path, &["resume", "1a0f1cc4c10-3a2487"]);
+    assert_eq!(code, 1, "{output}");
+    assert!(output.contains("there is no run"), "{output}");
+    let (code, output) = iunctus(path, &["run", "-executor", "simulator", "main.nf"]);
+    assert_eq!(code, 0, "{output}");
+    let (_, runs) = iunctus(path, &["runs"]);
+    let id = runs
+        .lines()
+        .nth(1)
+        .and_then(|line| line.split_whitespace().next());
+    let id = id.expect("a run");
+    let (code, output) = iunctus(path, &["resume", id, "approve", "message=yes"]);
+    assert_eq!(code, 0, "{output}");
+    let folder = path.join("cache/iunctus/scratch/resume").join(id);
+    let request = std::fs::read_dir(folder).expect("the requests").next();
+    let text = std::fs::read_to_string(request.expect("a request").unwrap().path()).unwrap();
+    assert_eq!(text, r#"{"step":"approve","outputs":{"message":"yes"}}"#);
+}
+
+#[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
 fn resumes_container_runs() {
     let directory = tempfile::tempdir().expect("a temporary directory");

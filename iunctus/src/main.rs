@@ -107,6 +107,7 @@ usage: iunctus run <workflow file, directory or repository> [<targets>] [options
        iunctus replay <run> <task> [-executor local|tes|slurm|kubernetes] [-store <place>]
        iunctus telemetry <run> [-output <file>]
        iunctus report <run> [-output <file>]
+       iunctus resume <run> [<step>] [<name>=<value>]...
        iunctus inputs <workflow file or directory> [-format json|text] [-check] [options]
        iunctus outputs <workflow file or directory> [-format json|text] [options]
        iunctus clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove]

@@ -440,6 +440,50 @@ fn main_file(run: &Run, database: &Database) -> Result<PathBuf, Failure> {
     )))
 }
 
+/// `iunctus resume <run> [step] [name=value ...]`: resumes the suspended Argo steps of a
+/// running run, one by its name or all, with values of their output parameters, as `argo
+/// resume` and `argo node set --output-parameter` do.
+pub fn resume(arguments: &Arguments) -> Result<(), Failure> {
+    let Some(run) = arguments
+        .target
+        .as_ref()
+        .map(|run| run.to_string_lossy().into_owned())
+    else {
+        return Err(Failure::usage(
+            "iunctus: name a running run, like `iunctus resume 1a0f1cc4c10-3a2487 approve`; \
+             `iunctus runs` lists the runs",
+        ));
+    };
+    let database = open(arguments)?;
+    let known = database
+        .run(&run)
+        .map_err(|error| failure(error.to_string()))?;
+    if known.is_none() {
+        return Err(failure(format!("iunctus: there is no run {run}")));
+    }
+    let mut request = argo_runtime::resume::Request::default();
+    for word in &arguments.targets {
+        match word.split_once('=') {
+            Some((name, value)) => {
+                request.outputs.insert(name.to_owned(), value.to_owned());
+            }
+            None if request.step.is_none() => request.step = Some(word.clone()),
+            None => {
+                return Err(Failure::usage(format!(
+                    "iunctus: `{word}` is a second step"
+                )));
+            }
+        }
+    }
+    let folder = crate::run::driver::resume_folder(&run);
+    request
+        .write(&folder)
+        .map_err(|error| failure(format!("iunctus: cannot leave the request: {error}")))?;
+    let step = request.step.as_deref().unwrap_or("every suspended step");
+    println!("asked run {run} to resume {step}");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;

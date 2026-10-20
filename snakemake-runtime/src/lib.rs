@@ -35,6 +35,7 @@ mod scheduling;
 mod schema;
 mod services;
 mod shadow;
+mod shared;
 mod shell;
 mod sources;
 mod storage;

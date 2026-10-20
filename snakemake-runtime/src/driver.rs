@@ -1391,6 +1391,16 @@ impl Session {
             let shadow = planner.rules[entry.rule].shadow.as_deref();
             crate::shared::prepare(&self.workdir, entry, shadow, task, &mut placed)
                 .map_err(|error| DriverError::new(format!("cannot prepare a job: {error}")))?;
+            // Outputs in place are incomplete until the job ended well, so that a run that
+            // stops meanwhile makes them again, as Snakemake's incomplete markers do.
+            let outputs = (entry.output.values.iter())
+                .filter(|value| value.tag("service").is_none())
+                .filter_map(Value::as_str);
+            for output in outputs {
+                crate::metadata::mark_incomplete(&self.workdir, output).map_err(|error| {
+                    DriverError::new(format!("cannot mark output {output} incomplete: {error}"))
+                })?;
+            }
         }
         let mut task = combine(&mut members)?;
         crate::shared::place(&self.workdir, &mut task, &mut placed)
@@ -1564,6 +1574,7 @@ impl Session {
                         ))
                     },
                 )?;
+                let _ = crate::metadata::clear_incomplete(&self.workdir, output);
             }
             return Ok(());
         }

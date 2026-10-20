@@ -54,6 +54,9 @@ pub fn executor(
     if let Some(minutes) = executors.kubernetes_unschedulable {
         backend.unschedulable_time = std::time::Duration::from_secs(minutes * 60);
     }
+    if let Some(seconds) = executors.kubernetes_start_grace {
+        backend.start_grace = std::time::Duration::from_secs(seconds);
+    }
     if let Some(stage) = executors.kubernetes_staging.stage(&setup.storage)? {
         let via = match (&executors.kubernetes_kubedal, &executors.kubernetes_helper) {
             (Some(kubedal), _) => Via::Kubedal(kubedal.clone()),

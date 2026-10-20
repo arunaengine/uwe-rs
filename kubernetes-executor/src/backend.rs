@@ -5,6 +5,7 @@
 use std::fs::{File, TryLockError};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use executor::manifest::parse;
@@ -72,6 +73,8 @@ pub struct KubernetesBackend {
     /// The label value of the Jobs of this backend.
     label: String,
     pods: Pods,
+    /// Whether the warning that events cannot be listed was logged.
+    warned: AtomicBool,
 }
 
 /// How the container of a Job ended.
@@ -101,6 +104,7 @@ impl KubernetesBackend {
             unschedulable_time: UNSCHEDULABLE_TIME,
             label: format!("{}-{millis}", std::process::id()),
             pods: Pods::default(),
+            warned: AtomicBool::new(false),
         }
     }
 }
@@ -618,6 +622,8 @@ impl KubernetesBackend {
         let mut poll = Poll::new(self.poll);
         // Since when the pod finds no node, and how many scale-ups it caused so far.
         let mut unscheduled: Option<(Instant, u64)> = None;
+        // Since when the Job has no pod.
+        let mut missing: Option<Instant> = None;
         loop {
             tracing::debug!(job = name, "polling Kubernetes job");
             let look = poll
@@ -633,6 +639,9 @@ impl KubernetesBackend {
                 .map_err(|_| ExecutorError::Cancelled)?;
             if !matches!(look, Look::Unschedulable(_)) {
                 unscheduled = None;
+            }
+            if !matches!(look, Look::Missing) {
+                missing = None;
             }
             let problem = match look {
                 Look::Active | Look::Unknown => None,
@@ -670,7 +679,10 @@ impl KubernetesBackend {
                     }));
                 }
                 Look::Stuck(reason) => Some(format!("the pod cannot start: {reason}")),
-                Look::Missing => Some(MISSING.to_owned()),
+                Look::Missing => {
+                    missing.get_or_insert_with(Instant::now);
+                    Some(MISSING.to_owned())
+                }
                 Look::Unavailable(error) => Some(format!("cannot list the pods: {error}")),
             };
             // A pod may appear late, and an image may be pulled at the next try.
@@ -691,6 +703,18 @@ impl KubernetesBackend {
                         return Err(machine(message));
                     }
                     Creation::Unknown => return Err(machine(problem)),
+                    // Without events a lack of quota looks like any other cause, so the Job
+                    // waits as long as a pod may wait for a node.
+                    Creation::Unreadable(error) => {
+                        self.warn_events(&error);
+                        if missing.is_some_and(|since| since.elapsed() >= self.unschedulable_time) {
+                            let message = format!(
+                                "{problem}; the events that tell why cannot be listed: {error}"
+                            );
+                            return Err(machine(message));
+                        }
+                        poll.troubled(false, self.start_grace);
+                    }
                 }
             }
         }
@@ -699,7 +723,10 @@ impl KubernetesBackend {
     /// Why the Job controller made no pod, from the last `FailedCreate` event of the Job.
     async fn creation(&self, name: &str) -> Creation {
         let fields = format!("involvedObject.kind=Job,involvedObject.name={name}");
-        let events = self.events(&fields).await;
+        let events = match self.events(&fields).await {
+            Ok(events) => events,
+            Err(error) => return Creation::Unreadable(error),
+        };
         let failed = events
             .iter()
             .rev()
@@ -715,7 +742,8 @@ impl KubernetesBackend {
     async fn scale_ups(&self, name: &str) -> u64 {
         let events = self
             .events("involvedObject.kind=Pod,reason=TriggeredScaleUp")
-            .await;
+            .await
+            .unwrap_or_default();
         (events.iter())
             .filter(|event| {
                 let pod = event.involved_object.name.as_deref().unwrap_or_default();
@@ -726,17 +754,31 @@ impl KubernetesBackend {
             .sum()
     }
 
-    /// The events of the namespace that match `fields`, oldest first; none when the cluster
+    /// The events of the namespace that match `fields`, oldest first, or why the cluster
     /// cannot list them.
-    async fn events(&self, fields: &str) -> Vec<Event> {
+    async fn events(&self, fields: &str) -> Result<Vec<Event>, String> {
         let parameters = ListParams::default().fields(fields);
         let api = self.cluster.events();
         let mut events = match tokio::time::timeout(REQUEST_GRACE, api.list(&parameters)).await {
             Ok(Ok(list)) => list.items,
-            _ => return Vec::new(),
+            Ok(Err(error)) => return Err(error.to_string()),
+            Err(_) => return Err("the request timed out".into()),
         };
         events.sort_by_key(|event| event.last_timestamp.clone());
-        events
+        Ok(events)
+    }
+
+    /// Warns once that events cannot be listed, which hides why a Job has no pod.
+    fn warn_events(&self, error: &str) {
+        if !self.warned.swap(true, Ordering::Relaxed) {
+            tracing::warn!(
+                namespace = self.cluster.namespace(),
+                error,
+                "cannot list the events of the namespace: the account of the kubeconfig needs \
+                 the right to `list` `events`; a Job without a pod now waits up to \
+                 unschedulable_minutes, as for quota, before it fails"
+            );
+        }
     }
 
     /// Releases ownership only after the accepted Job and all its pods disappear.
@@ -817,6 +859,8 @@ enum Creation {
     Failed(String),
     /// No event tells.
     Unknown,
+    /// The events cannot be listed, for this reason.
+    Unreadable(String),
 }
 
 /// What became of a submission whose answer was lost.

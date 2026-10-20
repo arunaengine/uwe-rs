@@ -81,6 +81,11 @@ impl<B: Backend> RunnerExecutor<B> {
     pub fn pin_images(&self, images: &HashMap<String, String>) {
         self.runner.pin_images(images);
     }
+
+    /// Takes results of these runs; see [`Runner::resume_from`].
+    pub fn resume_from(&mut self, runs: std::collections::BTreeSet<String>) {
+        self.runner.resume_from(runs);
+    }
 }
 
 impl<B: Backend> Executor for RunnerExecutor<B> {

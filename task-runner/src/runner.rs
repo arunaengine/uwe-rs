@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -209,6 +209,9 @@ pub struct Runner<B> {
     pub(crate) slots: usize,
     /// Whether a line says when a group of short tasks starts.
     pub(crate) verbose_groups: bool,
+    /// The runs of the lineage that a resumed run continues, whose results answer tasks of
+    /// images without a digest too.
+    lineage: Arc<BTreeSet<String>>,
 }
 
 /// Whose turn it is to run a task whose key another run may run at the same moment.
@@ -233,6 +236,7 @@ impl<B> Clone for Runner<B> {
             gathering: self.gathering.clone(),
             slots: self.slots,
             verbose_groups: self.verbose_groups,
+            lineage: self.lineage.clone(),
         }
     }
 }
@@ -252,7 +256,19 @@ impl<B: Backend> Runner<B> {
             gathering: Arc::default(),
             slots: std::thread::available_parallelism().map_or(1, usize::from),
             verbose_groups: false,
+            lineage: Arc::default(),
         }
+    }
+
+    /// The id of the run.
+    pub fn run_id(&self) -> &str {
+        &self.run
+    }
+
+    /// Lets the results of these runs answer tasks whose image has no digest, as a resumed run
+    /// takes the results of the runs that it continues.
+    pub fn resume_from(&mut self, runs: BTreeSet<String>) {
+        self.lineage = Arc::new(runs);
     }
 
     /// Runs a share of the tasks whose results come from the cache again, from 0 (none) to 1
@@ -396,6 +412,20 @@ impl<B: Backend> Runner<B> {
                 .is_none(),
             None => request.scope == ReuseScope::Shared,
         };
+        if request.scope == ReuseScope::Lineage && prepared.reuse && !self.lineage.is_empty() {
+            let lookup = self.reuse_lineage(namespace, &key);
+            let found = self
+                .phase(None, admission.as_ref(), Some(cancel), lookup)
+                .await?;
+            if let Some(found) = found {
+                let candidate = deferred.then(|| Candidate {
+                    namespace: namespace.to_owned(),
+                    key,
+                    source: CandidateSource::Hit(found.snapshot),
+                });
+                return Ok((found.entry.result(), candidate));
+            }
+        }
         let (earlier, _turn) = match shared && prepared.reuse {
             true => {
                 let found = match self
@@ -633,6 +663,21 @@ impl<B: Backend> Runner<B> {
         key: &Digest,
     ) -> Result<Option<entry::Observed>, RunnerError> {
         let Some(found) = entry::observed(&self.store, namespace, key, Stale::Remove).await? else {
+            return Ok(None);
+        };
+        self.authority(None, None).await?;
+        self.store.mark_used(namespace, key, &self.run).await?;
+        Ok(Some(found))
+    }
+
+    /// The stored result of a key when a run of the lineage made it, marked as used.
+    async fn reuse_lineage(
+        &self,
+        namespace: &str,
+        key: &Digest,
+    ) -> Result<Option<entry::Observed>, RunnerError> {
+        let found = entry::observed(&self.store, namespace, key, Stale::Remove).await?;
+        let Some(found) = found.filter(|found| self.lineage.contains(&found.entry.run)) else {
             return Ok(None);
         };
         self.authority(None, None).await?;

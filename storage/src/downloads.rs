@@ -262,9 +262,9 @@ impl Storage {
         self.inner.journal.pin(fetched);
     }
 
-    /// Whether a remote file exists, and its size. A file that an earlier run downloaded or
-    /// found is known from `downloads`, without a request; a file that a request finds is
-    /// noted there for later runs.
+    /// Whether a remote file exists, and its size. As [`Storage::fetch`] does, it asks the
+    /// provider once per process; a copy or a note in `downloads` of that version answers
+    /// later calls, and a file that a request finds is noted there.
     pub async fn metadata(
         &self,
         target: &str,
@@ -277,6 +277,17 @@ impl Storage {
                 size: pinned.size,
                 version: pinned.version,
             }));
+        }
+        if !self.version_known(target) {
+            let turn = self.turn(&format!("version of {target}"));
+            let _turn = turn.lock().await;
+            if !self.version_known(target) {
+                let found = self.current(target).await?;
+                if let Some(found) = &found {
+                    note(&downloads.join(self.download_name(target)?), found);
+                }
+                return Ok(found);
+            }
         }
         let bundle = downloads.join(self.download_name(target)?);
         if let Some(known) = known(&bundle) {

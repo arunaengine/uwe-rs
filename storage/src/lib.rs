@@ -290,20 +290,12 @@ impl Storage {
     /// Asks the provider for the version of a file once per process, unless a read of its
     /// folder did, so that a download of an earlier run answers only while the file is the same.
     pub(crate) async fn observe(&self, target: &str) {
-        let known = || {
-            let observed =
-                (self.inner.observed.lock()).unwrap_or_else(|poison| poison.into_inner());
-            observed.contains_key(target)
-                || (observed.iter()).any(|(query, entry)| {
-                    entry.metadata.directory && address::serves(query, target)
-                })
-        };
-        if known() {
+        if self.version_known(target) {
             return;
         }
         let turn = self.turn(&format!("version of {target}"));
         let _turn = turn.lock().await;
-        if known() {
+        if self.version_known(target) {
             return;
         }
         // A file that the provider cannot find or describe gets a download of its own.
@@ -318,6 +310,14 @@ impl Storage {
         let mut observed =
             (self.inner.observed.lock()).unwrap_or_else(|poison| poison.into_inner());
         observed.insert(target.to_owned(), Observed { metadata, stamp });
+    }
+
+    /// Whether this process asked for the version of a file, or of a folder that has it.
+    pub(crate) fn version_known(&self, target: &str) -> bool {
+        let observed = (self.inner.observed.lock()).unwrap_or_else(|poison| poison.into_inner());
+        observed.contains_key(target)
+            || (observed.iter())
+                .any(|(query, entry)| entry.metadata.directory && address::serves(query, target))
     }
 
     /// The entries of a directory.

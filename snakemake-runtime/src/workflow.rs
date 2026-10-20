@@ -487,10 +487,9 @@ impl StatementHook for Hook {
                     "retrieve",
                 ];
                 args.keywords.retain(|(name, _)| !pacing.contains(&&**name));
-                if !args.keywords.is_empty() {
-                    return Err(Error::unsupported(
-                        "Snakemake storage plugin options; configure provider credentials in iunctus storage settings",
-                    ));
+                if let Some((name, _)) = args.keywords.first() {
+                    let message = crate::storage::plugin_setting(&provider, name);
+                    return Err(Error::unsupported(message));
                 }
                 self.state
                     .borrow_mut()

@@ -5761,6 +5761,7 @@ dependencies = [
  "jsonschema",
  "md-5",
  "python-evaluator",
+ "rustix 1.1.5",
  "serde_json",
  "sha1",
  "sha2 0.11.0",

@@ -913,21 +913,28 @@ impl Planner {
         })
     }
 
-    /// Snakemake's `mtime` trigger: a job runs again when an input that is not `ancient` is
-    /// newer than its oldest output, unless Snakemake's records of the outputs name the
-    /// checksum that the input has. Only files on this machine have times to compare.
+    /// Snakemake's `mtime` trigger: a job reruns when a local input that is not `ancient` is
+    /// newer than its oldest output and its checksum is not recorded. A linked output counts
+    /// by the time of the link, a linked input by the later of that and its target's time.
     fn has_newer_inputs(&self, interpreter: &Interpreter, job: usize, outputs: &[String]) -> bool {
-        let modified = |file: &str| {
+        let modified = |file: &str, input: bool| {
             let path = interpreter.host.resolve(file);
-            interpreter
-                .host
-                .stat(&path)
-                .map(|stat| stat.modified)
-                .filter(|modified| *modified > 0.0)
+            let followed = interpreter.host.stat(&path).map(|stat| stat.modified);
+            let link = (interpreter.host.is_symlink(&path))
+                .then(|| std::fs::symlink_metadata(&path).ok()?.modified().ok())
+                .flatten()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|time| time.as_secs_f64());
+            let time = match (link, followed) {
+                (Some(link), Some(followed)) if input => Some(link.max(followed)),
+                (Some(link), _) => Some(link),
+                (None, followed) => followed,
+            };
+            time.filter(|modified| *modified > 0.0)
         };
         let Some(oldest) = outputs
             .iter()
-            .filter_map(|file| modified(file))
+            .filter_map(|file| modified(file, false))
             .reduce(f64::min)
         else {
             return false;
@@ -935,7 +942,7 @@ impl Planner {
         (self.jobs[job].input.values.iter())
             .filter(|value| value.tag("ancient").is_none())
             .filter_map(|value| value.as_str())
-            .filter(|file| modified(file).is_some_and(|time| time > oldest))
+            .filter(|file| modified(file, true).is_some_and(|time| time > oldest))
             .any(|file| !crate::metadata::same_checksum(interpreter, outputs, file))
     }
 }

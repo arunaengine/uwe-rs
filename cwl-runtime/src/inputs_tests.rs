@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use cwl_parser::Loader;
-use cwl_parser::source::Memory;
+use cwl_parser::source::{Memory, Remote};
 
 use super::*;
 use crate::expression::Evaluator;
@@ -23,7 +23,11 @@ fn process(text: &str) -> Arc<Process> {
 /// The setting of the process a run on placeholder inputs starts with.
 fn setting<'a>(types: &'a Types, evaluator: &'a Evaluator, assumed: &'a [String]) -> Setting<'a> {
     static NONE: std::sync::LazyLock<HashSet<String>> = std::sync::LazyLock::new(HashSet::new);
-    static ONTOLOGY: std::sync::LazyLock<Ontology> = std::sync::LazyLock::new(Ontology::default);
+    // Without schemas the folder of downloads stays unused; a default one would outlive the tests.
+    static ONTOLOGY: std::sync::LazyLock<Ontology> = std::sync::LazyLock::new(|| {
+        let remote = Remote::new(&storage::Storage::default(), std::env::temp_dir());
+        Ontology::new(Vec::new(), remote)
+    });
     Setting {
         types,
         evaluator,

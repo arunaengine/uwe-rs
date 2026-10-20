@@ -98,9 +98,22 @@ fn rejects_lifecycle_controls() {
 
 #[test]
 fn refuses_service_lifetimes() {
-    for (field, reason) in [("daemon: true", "service readiness")] {
+    for (field, reason) in [
+        (
+            "daemon: true\n    sidecars: [{name: web, image: alpine}]",
+            "daemon with sidecars",
+        ),
+        (
+            "daemon: true\n    container: {image: alpine, readinessProbe: {httpGet: {port: http}}}",
+            "named ports",
+        ),
+    ] {
+        let container = match field.contains("container:") {
+            true => String::new(),
+            false => "    container: {image: debian:stable-slim}\n".to_owned(),
+        };
         let error = start_error(&format!(
-            "  templates:\n  - name: main\n    {field}\n    container: {{image: debian:stable-slim}}\n"
+            "  templates:\n  - name: main\n    {field}\n{container}"
         ));
         assert!(error.unsupported, "{error}");
         assert!(error.message.contains(reason), "{error}");

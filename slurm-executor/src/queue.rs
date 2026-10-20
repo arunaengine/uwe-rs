@@ -200,6 +200,32 @@ const ENDED: [&str; 10] = [
     "TIMEOUT",
 ];
 
+/// The states of a held job that SLURM will not run unless someone releases it.
+const HELD: [&str; 3] = ["REQUEUE_HOLD", "RESV_DEL_HOLD", "SPECIAL_EXIT"];
+
+/// What `squeue` says about one job: its state, and why it waits, when it does.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Seen {
+    state: String,
+    reason: String,
+}
+
+impl Seen {
+    /// Why the job is held for good: by its state, or as a pending job whose launch failed,
+    /// which SLURM requeues held.
+    fn held(&self) -> Option<String> {
+        let failed = self.state == "PENDING" && self.reason.contains("requeued held");
+        match (
+            HELD.contains(&self.state.as_str()) || failed,
+            self.reason.is_empty(),
+        ) {
+            (false, _) => None,
+            (true, true) => Some(self.state.clone()),
+            (true, false) => Some(format!("{}, {}", self.state, self.reason)),
+        }
+    }
+}
+
 /// What the queue says about a job.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Look {
@@ -209,6 +235,8 @@ pub enum Look {
     Ended(String),
     /// The queue no longer lists the job: it ended a while ago.
     Gone,
+    /// SLURM holds the job and will not run it on its own, for this reason.
+    Held(String),
     /// Nothing is known yet: the job is new, or `squeue` failed.
     Unknown,
 }
@@ -247,7 +275,7 @@ struct Snapshot {
     taken: Option<Instant>,
     asked: BTreeSet<String>,
     /// The state of each job that `squeue` listed; `None` when it failed.
-    states: Option<HashMap<String, String>>,
+    states: Option<HashMap<String, Seen>>,
 }
 
 impl Queue {
@@ -282,8 +310,10 @@ impl Queue {
             None => Look::Unknown,
             Some(states) => match states.get(id) {
                 None => Look::Gone,
-                Some(state) if ENDED.contains(&state.as_str()) => Look::Ended(state.clone()),
-                Some(_) => Look::Active,
+                Some(seen) if ENDED.contains(&seen.state.as_str()) => {
+                    Look::Ended(seen.state.clone())
+                }
+                Some(seen) => seen.held().map_or(Look::Active, Look::Held),
             },
         }
     }
@@ -291,11 +321,7 @@ impl Queue {
 
 /// The states of jobs, also of those that ended lately, by `squeue`. A job that SLURM has
 /// forgotten makes `squeue` fail when it is the only one asked for; it is then left out.
-async fn ask(
-    squeue: &Path,
-    jobs: &BTreeSet<String>,
-    json: &Json,
-) -> Option<HashMap<String, String>> {
+async fn ask(squeue: &Path, jobs: &BTreeSet<String>, json: &Json) -> Option<HashMap<String, Seen>> {
     if jobs.is_empty() {
         return Some(HashMap::new());
     }
@@ -325,7 +351,7 @@ async fn ask(
     }
     let output = output(
         Command::new(squeue)
-            .args(["--noheader", "--states=all", "--format=%i %T"])
+            .args(["--noheader", "--states=all", "--format=%i %T %r"])
             .arg(format!("--jobs={}", list.join(","))),
         REQUEST_GRACE,
     )
@@ -341,8 +367,8 @@ async fn ask(
 }
 
 /// The state of each job in the JSON of `squeue --json`, where the state is a word or, since
-/// SLURM 23.02, a list of words.
-fn json_states(answer: &Value) -> Option<HashMap<String, String>> {
+/// SLURM 23.02, a list of words. The description of a state says more than its reason.
+fn json_states(answer: &Value) -> Option<HashMap<String, Seen>> {
     let jobs = answer.get("jobs")?.as_array()?;
     let states = (jobs.iter())
         .filter_map(|job| {
@@ -351,7 +377,13 @@ fn json_states(answer: &Value) -> Option<HashMap<String, String>> {
                 Value::String(text) => text.clone(),
                 _ => return None,
             };
-            Some((id, first_word(&job["job_state"])?))
+            let reason = [&job["state_description"], &job["state_reason"]]
+                .into_iter()
+                .filter_map(Value::as_str)
+                .find(|reason| !reason.is_empty() && *reason != "None");
+            let state = first_word(&job["job_state"])?;
+            let reason = reason.unwrap_or_default().to_owned();
+            Some((id, Seen { state, reason }))
         })
         .collect();
     Some(states)
@@ -366,12 +398,19 @@ fn first_word(value: &Value) -> Option<String> {
     }
 }
 
-/// The state of each job in the output of `squeue --format='%i %T'`.
-fn states(text: &str) -> HashMap<String, String> {
+/// The state of each job in the output of `squeue --format='%i %T %r'`.
+fn states(text: &str) -> HashMap<String, Seen> {
     (text.lines())
         .filter_map(|line| {
             let mut words = line.split_whitespace();
-            Some((words.next()?.to_owned(), words.next()?.to_owned()))
+            let (id, state) = (words.next()?.to_owned(), words.next()?.to_owned());
+            let reason = words.collect::<Vec<_>>().join(" ");
+            let reason = if reason == "None" {
+                String::new()
+            } else {
+                reason
+            };
+            Some((id, Seen { state, reason }))
         })
         .collect()
 }
@@ -564,10 +603,36 @@ mod tests {
 
     #[test]
     fn parses_squeue_states() {
-        let states = states("12 RUNNING\n13 OUT_OF_MEMORY\n\n");
-        assert_eq!(states.get("12").map(String::as_str), Some("RUNNING"));
-        assert_eq!(states.get("13").map(String::as_str), Some("OUT_OF_MEMORY"));
+        let states = states("12 RUNNING None\n13 OUT_OF_MEMORY\n\n");
+        let state = |id: &str| states.get(id).map(|seen| seen.state.as_str());
+        assert_eq!(state("12"), Some("RUNNING"));
+        assert_eq!(state("13"), Some("OUT_OF_MEMORY"));
         assert_eq!(states.len(), 2);
+        assert!(states.values().all(|seen| seen.reason.is_empty()));
+    }
+
+    #[test]
+    fn detects_held_jobs() {
+        let states = states(
+            "12 PENDING launch failed requeued held\n13 SPECIAL_EXIT None\n\
+             14 PENDING Priority\n15 PENDING JobHeldAdmin\n",
+        );
+        let held = |id: &str| states.get(id).and_then(Seen::held);
+        assert_eq!(
+            held("12").as_deref(),
+            Some("PENDING, launch failed requeued held")
+        );
+        assert_eq!(held("13").as_deref(), Some("SPECIAL_EXIT"));
+        // A job that waits for its turn, or that an administrator holds, may still run.
+        assert_eq!(held("14"), None);
+        assert_eq!(held("15"), None);
+        let answer = serde_json::json!({"jobs": [{"job_id": 16, "job_state": ["REQUEUE_HOLD"],
+            "state_reason": "JobHeldUser", "state_description": ""}]});
+        let states = json_states(&answer).expect("states");
+        assert_eq!(
+            states.get("16").and_then(Seen::held).as_deref(),
+            Some("REQUEUE_HOLD, JobHeldUser")
+        );
     }
 
     #[test]
@@ -578,8 +643,9 @@ mod tests {
             {"job_id": 13, "job_state": ["OUT_OF_MEMORY"]},
         ]});
         let states = json_states(&answer).expect("states");
-        assert_eq!(states.get("12").map(String::as_str), Some("RUNNING"));
-        assert_eq!(states.get("13").map(String::as_str), Some("OUT_OF_MEMORY"));
+        let state = |id: &str| states.get(id).map(|seen| seen.state.as_str());
+        assert_eq!(state("12"), Some("RUNNING"));
+        assert_eq!(state("13"), Some("OUT_OF_MEMORY"));
         assert_eq!(json_states(&serde_json::json!({"errors": []})), None);
     }
 }

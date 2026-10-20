@@ -93,3 +93,17 @@ fn providers_serve_documents() {
     let web = Web::new(Remote::new(&storage, downloads.path().to_owned()));
     assert_eq!(web.read(&url).as_deref(), Ok(TOOL));
 }
+
+#[test]
+fn default_downloads_removed() {
+    let shared = std::env::temp_dir().join("iunctus-downloads");
+    let remote = Remote::default();
+    let folder = remote.downloads.clone();
+    assert_ne!(folder, shared, "the default folder must be private");
+    assert!(folder.is_dir(), "{folder:?}");
+    let copy = remote.clone();
+    drop(remote);
+    assert!(folder.is_dir(), "a clone keeps the folder: {folder:?}");
+    drop(copy);
+    assert!(!folder.exists(), "{folder:?}");
+}

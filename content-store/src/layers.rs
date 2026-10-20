@@ -291,6 +291,12 @@ async fn download_file(
             });
         }
     }
+    // A copy in the folder is read-only and on disk before it is in place, like other objects.
+    let file = part.as_file();
+    let mode = file.metadata().map_err(at(target))?.permissions().mode();
+    (file.set_permissions(std::fs::Permissions::from_mode(mode & !0o222)))
+        .and_then(|()| file.sync_all())
+        .map_err(at(target))?;
     part.persist(target)
         .map(|_| ())
         .map_err(|error| at(target)(error.error))

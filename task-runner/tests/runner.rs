@@ -338,7 +338,7 @@ fn rejects_damaged_cache() {
         } else {
             b"evil\n".as_slice()
         };
-        std::fs::write(&path, corrupted).unwrap();
+        overwrite(&path, corrupted);
         let lookup = task_runner::Lookup::new(
             store.clone(),
             Settings {
@@ -367,10 +367,10 @@ fn rejects_damaged_cache() {
             "{damaged}"
         );
         if damaged != "entry" {
-            std::fs::write(&path, original).unwrap();
+            overwrite(&path, &original);
         }
-        std::fs::write(content_path, content).unwrap();
-        std::fs::write(log_path, log).unwrap();
+        overwrite(&content_path, &content);
+        overwrite(&log_path, &log);
         assert!(execute(&runner, &prepared).reused, "{damaged}");
     }
 }
@@ -484,7 +484,7 @@ async fn rejects_corrupt_literals() {
         let cached = runner.backend().staged.lock().unwrap()[0].inputs[0]
             .source
             .clone();
-        std::fs::write(&cached, b"damaged\n").unwrap();
+        overwrite(&cached, b"damaged\n");
         let error = runner
             .execute(&prepared, &CancellationToken::new())
             .await
@@ -1883,4 +1883,11 @@ fn pins_given_digests() {
         block_on(runner.pin("alpine")).expect("pins"),
         "alpine@sha256:00"
     );
+}
+
+/// Changes a file of the store the way a user can: unlock it, then write other bytes.
+fn overwrite(path: &std::path::Path, bytes: &[u8]) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644));
+    std::fs::write(path, bytes).unwrap();
 }

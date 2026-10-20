@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::io;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -96,7 +97,10 @@ fn copy(source: &Path, target: &Path) -> io::Result<()> {
         return std::os::unix::fs::symlink(std::fs::read_link(source)?, target);
     }
     if !metadata.is_dir() {
-        return std::fs::copy(source, target).map(|_| ());
+        std::fs::copy(source, target)?;
+        // Store files are read-only; a copy is the user's own file to change.
+        let mode = metadata.permissions().mode() | 0o200;
+        return std::fs::set_permissions(target, std::fs::Permissions::from_mode(mode));
     }
     std::fs::create_dir_all(target)?;
     for entry in std::fs::read_dir(source)? {
@@ -156,6 +160,7 @@ mod tests {
         let stored = folder.path().join("store/out.txt");
         std::fs::create_dir_all(stored.parent().unwrap()).unwrap();
         std::fs::write(&stored, "made\n").unwrap();
+        std::fs::set_permissions(&stored, std::fs::Permissions::from_mode(0o444)).unwrap();
         let tree = folder.path().join("store/db");
         std::fs::create_dir_all(tree.join("sub")).unwrap();
         std::fs::write(tree.join("sub/a.txt"), "a\n").unwrap();
@@ -170,6 +175,12 @@ mod tests {
         };
         let copied = deliver(&stored, "results/out.txt", DeliveryMode::Copy);
         assert_eq!(std::fs::read_to_string(&copied).unwrap(), "made\n");
+        let mode = std::fs::metadata(&copied).unwrap().permissions().mode();
+        assert_eq!(
+            mode & 0o777,
+            0o644,
+            "a copy of a read-only store file is writable"
+        );
         // A second delivery to the same target replaces the first.
         let linked = deliver(&stored, "results/out.txt", DeliveryMode::Link);
         assert_eq!(std::fs::read_link(&linked).unwrap(), stored);

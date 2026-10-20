@@ -217,7 +217,7 @@ impl Store {
             Some(target) => local::write_absent(&target, &bytes)
                 .await
                 .map_err(at(&target))?,
-            None if !self.operator.exists(location).await? => {
+            None if !self.holds(location, bytes.len() as u64).await? => {
                 self.operator.write(location, bytes.clone()).await?;
             }
             None => {}
@@ -226,6 +226,16 @@ impl Store {
             Box::pin(shared.put_absent(location, bytes)).await?;
         }
         Ok(())
+    }
+
+    /// Whether an object store has an object of `size` bytes at `location`. One of another
+    /// size is damaged, and the write that asks replaces it.
+    async fn holds(&self, location: &str, size: u64) -> Result<bool, StoreError> {
+        match self.operator.stat(location).await {
+            Ok(metadata) => Ok(metadata.content_length() == size),
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error.into()),
+        }
     }
 
     /// Writes an object, replacing what is there; tasks may write the same one at once.
@@ -280,10 +290,12 @@ impl Store {
             Some(target) => local::copy_absent(file, &target)
                 .await
                 .map_err(at(&target))?,
-            None if !self.operator.exists(&location).await? => {
-                self.upload(&location, file).await?;
+            None => {
+                let size = tokio::fs::metadata(file).await.map_err(at(file))?.len();
+                if !self.holds(&location, size).await? {
+                    self.upload(&location, file).await?;
+                }
             }
-            None => {}
         }
         if let Some(shared) = &self.shared {
             Box::pin(shared.publish_file_as(file, digest)).await?;
@@ -318,7 +330,7 @@ impl Store {
             }
             _ => {
                 self.upload(&location, file).await?;
-                if !self.operator.exists(&content).await? {
+                if !self.holds(&content, size).await? {
                     self.upload(&content, file).await?;
                 }
             }

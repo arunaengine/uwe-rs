@@ -531,7 +531,7 @@ tests/test_containerized ok 1
 tests/test_convert_to_cwl 1 Snakefile:39: SyntaxError: Keyword version is deprecated. Use conda or container directive instead.
 tests/test_converting_path_for_r_script ok 2
 tests/test_core_dependent_threads ok 1
-tests/test_cwl ok 1
+tests/test_cwl 33 Not supported yet: the cwl directive of rule a: iunctus does not run CWL tools from Snakemake rules; run the CWL document with iunctus on its own
 tests/test_cyclic_dependency_single ok 0
 tests/test_cyclic_dependency_split ok 3
 tests/test_default_flags ok 3
@@ -861,7 +861,7 @@ tests/test_temp ok 3
 tests/test_temp_and_all_input ok 2
 tests/test_temp_checkpoint ok 13
 tests/test_temp_expand ok 2
-tests/test_template_engine ok 3
+tests/test_template_engine 33 Not supported yet: the jinja2 template engine of rule render_jinja2_template: iunctus renders yte templates natively, but not jinja2 ones
 tests/test_tes ok 1
 tests/test_threads ok 1
 tests/test_threads0 ok 1

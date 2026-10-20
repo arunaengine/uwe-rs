@@ -709,19 +709,32 @@ pub fn build(
         }
         Action::TemplateEngine(value) => {
             let engine = interpreter.to_str(value)?;
-            command = vec!["python".into(), "-m".into(), engine];
-        }
-        Action::Cwl(value) => {
-            let path = format(interpreter, value)?;
-            let (relative, source) = source_file(rule, &path, setting);
-            command = vec!["cwltool".into(), relative.clone()];
+            let variables = [
+                ("params", params.clone()),
+                ("wildcards", wildcards.clone()),
+                ("config", setting.state.config.clone()),
+                ("input", input.clone()),
+            ];
+            let template = Template {
+                engine: &engine,
+                rule: &rule.name,
+                simulated: setting.embedded.simulated,
+            };
+            let (rendered, output) = template.render(interpreter, job, &variables)?;
+            // Snakemake renders on its main process; the task only writes the rendered text.
+            let staged = format!("{}/template-{}", embedded::SCRIPTS_FOLDER, id.0);
+            command = vec!["cp".into(), staged.clone(), output];
             inputs.push(Input {
-                path: relative,
-                source,
-                directory: false,
-                content: None,
+                path: staged,
+                content: Some(rendered),
                 ..Default::default()
             });
+        }
+        Action::Cwl(_) => {
+            return Err(Error::unsupported(format!(
+                "the cwl directive of rule {}: iunctus does not run CWL tools from Snakemake rules; run the CWL document with iunctus on its own",
+                rule.name
+            )));
         }
     }
     let container = match &rule.container {
@@ -768,6 +781,11 @@ pub fn build(
             .python_image
             .clone()
             .or_else(|| setting.state.default_image.clone()),
+        // The task of a template only copies the rendered text, which any shell image can.
+        (None, None) if matches!(rule.action, Action::TemplateEngine(_)) => Some(
+            (setting.state.default_image.clone())
+                .unwrap_or_else(|| crate::commands::DEFAULT_IMAGE.to_owned()),
+        ),
         (None, Some(conda)) => {
             let conda = pattern::apply(&conda, &job.wildcards).unwrap_or(conda);
             let is_file = conda.ends_with(".yaml") || conda.ends_with(".yml");
@@ -876,6 +894,90 @@ pub fn build(
         signature,
         usage,
     })
+}
+
+/// A `template_engine:` rule, whose template Snakemake renders on its main process.
+struct Template<'a> {
+    engine: &'a str,
+    rule: &'a str,
+    /// A simulated run renders an absent template as empty text.
+    simulated: bool,
+}
+
+impl Template<'_> {
+    /// The rendered text and the output file of a job, as Snakemake's `render_template`.
+    fn render(
+        &self,
+        interpreter: &mut Interpreter,
+        job: &Job,
+        variables: &[(&str, Value)],
+    ) -> Result<(String, String), Error> {
+        let failed = |message: String| {
+            workflow_error(format!(
+                "Error rendering template in rule {}: {message}",
+                self.rule
+            ))
+        };
+        match self.engine {
+            "yte" => {}
+            "jinja2" => {
+                return Err(Error::unsupported(format!(
+                    "the jinja2 template engine of rule {}: iunctus renders yte templates natively, but not jinja2 ones",
+                    self.rule
+                )));
+            }
+            engine => {
+                return Err(workflow_error(format!(
+                    "Unsupported template engine {engine} in rule {}. So far, only yte and jinja2 are supported.",
+                    self.rule
+                )));
+            }
+        }
+        let files = |items: &Items| -> Vec<String> {
+            (items.values.iter())
+                .filter_map(|value| value.as_str().map(str::to_owned))
+                .collect()
+        };
+        let outputs = files(&job.output);
+        let [output] = outputs.as_slice() else {
+            return Err(failed(
+                "ValueError: More than one output file specified for template_engine rule.".into(),
+            ));
+        };
+        let inputs = files(&job.input);
+        let named = (job.input.names.iter()).find(|(name, _, _)| name == "template");
+        let template = match (inputs.as_slice(), named) {
+            ([single], _) => single.clone(),
+            (_, Some((_, start, _))) => inputs.get(*start).cloned().unwrap_or_default(),
+            _ => {
+                return Err(failed(
+                    "ValueError: More than one input file specified for template engine rule, but no input file named as 'template'.".into(),
+                ));
+            }
+        };
+        let path = interpreter.host.resolve(&template);
+        let text = match interpreter.host.read(&path) {
+            Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+            Err(_) if self.simulated => return Ok((String::new(), output.clone())),
+            Err(error) => return Err(failed(format!("{template}: {error}"))),
+        };
+        let mut scope = python_evaluator::Dict::default();
+        for (name, value) in variables {
+            scope.insert(name, value.clone());
+        }
+        let wrap = |error: Error| match error.is_unsupported() {
+            true => error,
+            false => failed(format!("{}: {}", error.class_name(), error.message())),
+        };
+        let document = python_evaluator::modules::data::load_yaml(&text).map_err(wrap)?;
+        let scope = Value::dict(scope);
+        let result =
+            python_evaluator::modules::render_yte(interpreter, document, Some(&scope), false)
+                .map_err(wrap)?;
+        let rendered = python_evaluator::modules::data::dump_yaml(interpreter, &result, false)
+            .map_err(wrap)?;
+        Ok((rendered, output.clone()))
+    }
 }
 
 fn code_identity(rule: &Rule, job: &Job, setting: &TaskSetting<'_>) -> serde_json::Value {

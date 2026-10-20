@@ -197,9 +197,9 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
-/// The copies of remote files that no rule keeps by time, which runs download again when they
-/// need them, with the lock that keeps runs from reading downloads meanwhile. While a run may
-/// read them, none go.
+/// Old copies of remote files and of contents of a store elsewhere, which runs download again,
+/// and parts of crashed downloads; with the lock that keeps runs from reading downloads
+/// meanwhile. While a run may read them, none go.
 fn old_downloads(
     folder: &Path,
     used_since: Option<SystemTime>,
@@ -208,15 +208,24 @@ fn old_downloads(
     let Some(reading) = storage::hold_downloads(folder).map_err(broken)? else {
         return Ok((None, Vec::new()));
     };
+    let contents = folder.join(task_runner::CONTENTS);
+    let entries = std::fs::read_dir(folder).map_err(broken)?.flatten();
+    let copies = std::fs::read_dir(&contents).into_iter().flatten().flatten();
     let mut old = Vec::new();
-    for entry in std::fs::read_dir(folder).map_err(broken)?.flatten() {
+    for entry in entries.chain(copies) {
         let name = entry.file_name().to_string_lossy().into_owned();
         let Ok(found) = entry.metadata() else {
             continue;
         };
         let modified = found.modified().ok();
         let recent = used_since.is_some_and(|since| modified.is_none_or(|time| time >= since));
-        if (name.starts_with("v2-") || name.ends_with(".metadata")) && !recent {
+        // Older versions kept copies of contents by their digest next to the others.
+        let digest = name.len() == 64 && name.bytes().all(|byte| byte.is_ascii_hexdigit());
+        let copy = name.starts_with("v2-") || name.ends_with(".metadata") || digest;
+        let copy = copy || entry.path().parent() == Some(contents.as_path());
+        // No process writes downloads while clean-up holds the folder alone.
+        let leftover = name.starts_with(".tmp");
+        if leftover || (copy && !recent) {
             let path = entry.path();
             let size = match found.is_dir() {
                 true => folder_size(&path),
@@ -586,11 +595,13 @@ mod tests {
     #[test]
     fn removes_old_downloads() {
         let folder = tempfile::tempdir().expect("downloads");
-        for name in ["v2-ab", "input-snapshots"] {
+        for name in ["v2-ab", "input-snapshots", task_runner::CONTENTS] {
             std::fs::create_dir(folder.path().join(name)).expect("a folder");
         }
         std::fs::write(folder.path().join("v2-ab/content"), "data").expect("a copy");
-        for name in ["v2-cd.metadata", "0123abcd"] {
+        let digest = "ab".repeat(32);
+        let copy = format!("{}/{}", task_runner::CONTENTS, "cd".repeat(32));
+        for name in ["v2-cd.metadata", "0123abcd", ".tmpPart", &digest, &copy] {
             std::fs::write(folder.path().join(name), "file 4\n").expect("a file");
         }
         let names = |used_since| {
@@ -608,9 +619,17 @@ mod tests {
             names.sort();
             names
         };
-        assert_eq!(names(None), ["v2-ab", "v2-cd.metadata"]);
+        let mut all = [
+            ".tmpPart",
+            "v2-ab",
+            "v2-cd.metadata",
+            &digest,
+            &"cd".repeat(32),
+        ];
+        all.sort();
+        assert_eq!(names(None), all);
         let day = SystemTime::now() - Duration::from_secs(86_400);
-        assert!(names(Some(day)).is_empty(), "recent downloads stay");
+        assert_eq!(names(Some(day)), [".tmpPart"], "recent downloads stay");
         let reading = std::fs::File::open(folder.path().join("in-use.lock")).expect("the lock");
         reading.lock_shared().expect("locks");
         assert!(names(None).is_empty(), "a process reads downloads");

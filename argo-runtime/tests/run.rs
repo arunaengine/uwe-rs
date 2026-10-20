@@ -1392,6 +1392,31 @@ fn real() -> Setup {
 }
 
 #[test]
+fn unresolved_when_fails() {
+    // `a` is skipped, so it has no outputs; Argo cannot parse the `when` of `b` and fails it.
+    let dag = r#"
+  - name: main
+    dag:
+      tasks:
+      - {name: a, template: gen, when: "false"}
+      - name: b
+        template: print
+        depends: a
+        when: "{{tasks.a.outputs.parameters.p}} == x"
+        arguments: {parameters: [{name: message, value: b}]}
+  - name: gen
+    container: {image: busybox, command: [sh, -c, "echo x > /p"]}
+    outputs: {parameters: [{name: p, valueFrom: {path: /p}}]}
+"#;
+    let ran = run_with(&workflow(dag), real());
+    let error = ran.error();
+    assert!(
+        error.contains("failed to resolve {{tasks.a.outputs.parameters.p}}"),
+        "{error}"
+    );
+}
+
+#[test]
 fn reads_parameter_maps() {
     let templates = r#"
   - name: main

@@ -249,7 +249,7 @@ impl Access {
         let failed = |error: storage::StorageError| format!("cannot read {location}: {error}");
         let storage = self.remote.storage.blocking();
         if let Some(limit) = limit {
-            let found = storage.metadata(location, &self.remote.downloads);
+            let found = storage.metadata(location, &self.remote.downloads());
             match found.map_err(failed)? {
                 Some(found) if found.size > limit => return Err(too_large(location, limit)),
                 Some(_) => {}
@@ -257,7 +257,7 @@ impl Access {
             }
         }
         let copy = storage
-            .fetch(location, &self.remote.downloads)
+            .fetch(location, &self.remote.downloads())
             .map_err(failed)?;
         let read = |error: std::io::Error| format!("cannot read {}: {error}", copy.display());
         let file = std::fs::File::open(&copy).map_err(read)?;
@@ -318,7 +318,9 @@ impl Access {
     fn remote_size(&self, location: &str) -> Option<i64> {
         address::scheme(location)?;
         let storage = self.remote.storage.blocking();
-        let found = storage.metadata(location, &self.remote.downloads).ok()??;
+        let found = storage
+            .metadata(location, &self.remote.downloads())
+            .ok()??;
         (!found.directory).then(|| i64::try_from(found.size).unwrap_or(i64::MAX))
     }
 
@@ -339,7 +341,7 @@ impl Access {
         } else if address::scheme(location).is_some() {
             let storage = self.remote.storage.blocking();
             let copy = storage
-                .fetch(location, &self.remote.downloads)
+                .fetch(location, &self.remote.downloads())
                 .map_err(|error| format!("cannot read {location}: {error}"))?;
             Box::new(std::fs::File::open(copy).map_err(failed)?)
         } else {

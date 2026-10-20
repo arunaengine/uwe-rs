@@ -85,7 +85,7 @@ fn prepare(docker: &Docker, source: ImageSource, options: &Options) -> Result<St
                     .remote
                     .storage
                     .blocking()
-                    .fetch(url, &options.remote.downloads)
+                    .fetch(url, &options.remote.downloads())
                     .map_err(|error| error.to_string())?,
             }
         }

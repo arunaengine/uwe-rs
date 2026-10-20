@@ -62,7 +62,7 @@ impl Ontology {
                     None => {
                         let storage = self.remote.storage.blocking();
                         let metadata = storage
-                            .metadata(schema, &self.remote.downloads)
+                            .metadata(schema, &self.remote.downloads())
                             .map_err(|error| error.to_string())?
                             .ok_or("the ontology does not exist")?;
                         if metadata.directory || metadata.size == 0 || metadata.size > LIMIT {
@@ -71,7 +71,7 @@ impl Ontology {
                             );
                         }
                         storage
-                            .fetch(schema, &self.remote.downloads)
+                            .fetch(schema, &self.remote.downloads())
                             .map_err(|error| error.to_string())?
                     }
                 };

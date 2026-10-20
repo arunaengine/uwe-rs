@@ -23,3 +23,4 @@ print(aware, aware.year, aware - start > timedelta(days=500), aware.astimezone(t
 print(datetime.fromisoformat("2020-02-03").weekday(), datetime(2020, 1, 1, tzinfo=timezone.utc).isoformat())
 import time
 print(time.strftime("%Y-%m-%d %H:%M", time.gmtime(86400 * 365 + 3600)), time.strftime("%Y", time.localtime(86400 * 400)))
+print(time.asctime(time.gmtime(86400 * 3 + 5)), time.asctime(time.gmtime(86400 * 40)))

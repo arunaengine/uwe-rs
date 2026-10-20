@@ -697,8 +697,29 @@ pub fn time() -> Vec<(&'static str, Value)> {
                 ))
             }),
         ),
+        (
+            "asctime",
+            function("asctime", |_, args| {
+                let given = args.positional.first();
+                let time = match given.and_then(|time| time.as_native::<DateTime>()) {
+                    Some(time) => time.time.clone(),
+                    None => jiff::Zoned::now(),
+                };
+                Ok(Value::str(time.strftime(ASCTIME).to_string()))
+            }),
+        ),
+        (
+            "ctime",
+            function("ctime", |_, args| {
+                let time = zoned_at(&args, jiff::tz::TimeZone::system())?;
+                Ok(Value::str(time.strftime(ASCTIME).to_string()))
+            }),
+        ),
     ]
 }
+
+/// The form of `time.asctime`, like `Sun Jan  4 00:00:05 1970`.
+const ASCTIME: &str = "%a %b %e %H:%M:%S %Y";
 
 /// The time of seconds since the epoch in a zone, as `time.localtime(secs)` takes them; now
 /// without seconds.

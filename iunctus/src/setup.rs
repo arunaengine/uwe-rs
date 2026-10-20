@@ -91,6 +91,8 @@ pub struct Executors {
     pub kubernetes_namespace: Option<String>,
     /// `[executor.kubernetes] staging` and the settings of its staging root.
     pub kubernetes_staging: crate::staging::Settings,
+    /// `[executor.kubernetes] unschedulable_minutes`: how long a pod may find no node.
+    pub kubernetes_unschedulable: Option<u64>,
     /// `[executor.kubernetes] helper_image` and `helper_mount`: the image that holds only the
     /// static iunctus binary, for object-store staging; or else `helper_download_image`, which
     /// downloads the binary.
@@ -200,11 +202,22 @@ impl Executors {
             let mut keys = vec!["kubeconfig", "namespace", "helper_image", "helper_mount"];
             keys.extend(["staging_secret", "helper_file", "helper_download_image"]);
             keys.extend(["shared_volume", "kubedal_driver", "kubedal_data_node"]);
-            keys.extend(["kubedal_namespace", "kubedal_upload_minutes"]);
+            keys.extend([
+                "kubedal_namespace",
+                "kubedal_upload_minutes",
+                "unschedulable_minutes",
+            ]);
             keys.extend(crate::staging::Settings::KEYS);
             kubernetes.only(&keys)?;
             settings.kubeconfig = kubernetes.text("kubeconfig")?.map(PathBuf::from);
             settings.kubernetes_namespace = kubernetes.text("namespace")?;
+            if let Some(minutes) = kubernetes.integer("unschedulable_minutes")? {
+                if !(1..=10_080).contains(&minutes) {
+                    let message = "must be between 1 and 10080";
+                    return Err(kubernetes.invalid("unschedulable_minutes", message));
+                }
+                settings.kubernetes_unschedulable = Some(minutes as u64);
+            }
             let modes = ["object-store", "kubedal"];
             settings.kubernetes_staging = crate::staging::Settings::read(&kubernetes, &modes)?;
             let image_volume = match kubernetes.text("helper_mount")?.as_deref() {
@@ -825,6 +838,10 @@ mod tests {
         assert!(error.contains("use a number above 0"), "{error}");
         let error = read("[executor.slurm.pull]\nmemory = 8\n").expect_err("an error");
         assert!(error.contains("memory"), "{error}");
+        let text = "[executor.kubernetes]\nunschedulable_minutes = 90\n";
+        let settings = read(text).expect("settings");
+        assert_eq!(settings.kubernetes_unschedulable, Some(90));
+        assert!(read("[executor.kubernetes]\nunschedulable_minutes = 0\n").is_err());
         let settings = read("[executor.slurm]\nquery_seconds = 120\n").expect("settings");
         assert_eq!(settings.slurm_query, Some(120));
         assert!(read("[executor.slurm]\nquery_seconds = 0\n").is_err());

@@ -6,7 +6,7 @@ use std::fmt;
 use std::path::Path;
 
 use k8s_openapi::api::batch::v1::Job;
-use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::api::core::v1::{Event, Pod};
 use kube::config::{KubeConfigOptions, Kubeconfig};
 use kube::{Api, Client, Config};
 
@@ -60,6 +60,10 @@ impl Cluster {
     }
 
     pub fn pods(&self) -> Api<Pod> {
+        Api::namespaced(self.client.clone(), &self.namespace)
+    }
+
+    pub fn events(&self) -> Api<Event> {
         Api::namespaced(self.client.clone(), &self.namespace)
     }
 }

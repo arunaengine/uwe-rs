@@ -97,7 +97,10 @@ pub(crate) fn driver(
                     .default_image
                     .clone()
                     .unwrap_or_else(|| cwl_runtime::tool::DEFAULT_IMAGE.into()),
-                javascript: cwl_runtime::JavaScriptSettings::new(setup.engine(), cancel.clone()),
+                javascript: cwl_runtime::JavaScriptSettings::from_binary(
+                    setup.engine(),
+                    cancel.clone(),
+                ),
                 local_engine: (arguments.executor.as_deref().unwrap_or("local") == "local")
                     .then(|| setup.engine()),
                 registry: setup.cwl_registry.clone(),

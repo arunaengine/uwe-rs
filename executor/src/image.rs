@@ -117,6 +117,67 @@ impl ContainerEngine {
         }
     }
 
+    /// Builds a context archive into an image under `tag`, without network, unless the engine
+    /// has it. Then it removes the other tags of the repository that `replaced` accepts, like
+    /// those of older builds, unless a container uses them.
+    pub async fn build_replacing(
+        &self,
+        context: &std::path::Path,
+        tag: &str,
+        replaced: impl Fn(&str) -> bool,
+        cancel: &crate::CancellationToken,
+    ) -> Result<(), ExecutorError> {
+        if inspect(self, tag).await.is_ok() {
+            return Ok(());
+        }
+        let build = async {
+            let file = tokio::fs::File::open(context).await?;
+            let body = bollard::body_try_stream(tokio_util::io::ReaderStream::new(file));
+            let options = bollard::query_parameters::BuildImageOptions {
+                t: Some(tag.to_owned()),
+                rm: true,
+                forcerm: true,
+                pull: Some("false".into()),
+                networkmode: Some("none".into()),
+                ..Default::default()
+            };
+            let mut stream = self.client().build_image(options, None, Some(body));
+            while let Some(step) = stream.next().await {
+                let step = step.map_err(|error| failed(self, error))?;
+                if let Some(error) = step.error_detail.and_then(|detail| detail.message) {
+                    return Err(self.image_error(&error));
+                }
+            }
+            Ok(())
+        };
+        tokio::select! {
+            () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
+            result = tokio::time::timeout(std::time::Duration::from_secs(600), build) => {
+                result.unwrap_or_else(|_| Err(self.image_error("the build exceeded 600 seconds")))?
+            }
+        }
+        let Some((repository, _)) = tag.rsplit_once(':') else {
+            return Ok(());
+        };
+        let options = bollard::query_parameters::ListImagesOptions {
+            filters: Some(std::collections::HashMap::from([(
+                "reference".into(),
+                vec![repository.to_owned()],
+            )])),
+            ..Default::default()
+        };
+        let images = self.client().list_images(Some(options)).await;
+        let older = (images.unwrap_or_default().into_iter())
+            .flat_map(|image| image.repo_tags)
+            .filter(|reference| reference != tag && replaced(reference));
+        for reference in older {
+            // An image in use stays; the engine refuses to remove it.
+            let none: Option<bollard::query_parameters::RemoveImageOptions> = None;
+            let _ = self.client().remove_image(&reference, none, None).await;
+        }
+        Ok(())
+    }
+
     /// Pushes a local image to a repository like `host/team/image` under a tag of its ID, and
     /// gives the pushed reference by manifest digest, which remote executors pull.
     pub async fn push_image(

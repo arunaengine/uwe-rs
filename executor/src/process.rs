@@ -231,10 +231,10 @@ impl ContainerProcess {
             ..create(spec, &engine, true)
         };
         if limits.is_some() {
-            body.host_config
-                .as_mut()
-                .expect("a host config")
-                .memory_swap = spec.memory.map(|bytes| bytes as i64);
+            let host = body.host_config.as_mut().expect("a host config");
+            host.memory_swap = spec.memory.map(|bytes| bytes as i64);
+            // Bounded helpers, like the one of CWL JavaScript, get no network.
+            host.network_mode = Some("none".to_owned());
         }
         let options = CreateContainerOptions {
             name: Some(spec.name.clone()),

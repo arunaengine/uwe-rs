@@ -5,6 +5,7 @@
 
 mod budget;
 pub(crate) mod helper;
+mod image;
 mod thread;
 
 use std::future::Future;

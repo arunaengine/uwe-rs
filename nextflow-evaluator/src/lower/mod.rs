@@ -317,6 +317,7 @@ pub fn lower_script(
         .map(|_| Rc::new(std::cell::RefCell::new(Value::Null)))
         .collect();
     module.legacy = std::mem::take(&mut lowering.legacy);
+    module.types = lowering.types;
     if lowering.errors.is_empty() {
         Ok(module)
     } else {

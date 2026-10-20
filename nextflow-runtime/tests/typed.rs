@@ -181,3 +181,50 @@ workflow {
         ]
     );
 }
+
+/// A call of a typed process gives its one output channel, or a record of the output channels
+/// by name, and `set` fails when it runs, as in Nextflow 26.04.6.
+#[test]
+fn shapes_typed_results() {
+    let source = r#"nextflow.enable.types = true
+
+process A {
+    input:
+    x: Integer
+    output:
+    y = x * 2
+    script:
+    'true'
+}
+
+process B {
+    input:
+    x: Integer
+    output:
+    y = x * 2
+    z = x * 3
+    script:
+    'true'
+}
+
+workflow {
+    A(channel.of(1)).subscribe { v -> println "a $v" }
+    def b = B(channel.of(4))
+    println "b ${b.keySet().sort()}"
+    b.y.subscribe { v -> println "by $v" }
+}
+"#;
+    let (_, printed) = run(source).expect("runs");
+    let mut lines: Vec<&str> = printed.lines().collect();
+    lines.sort_unstable();
+    assert_eq!(lines, ["a 2", "b [y, z]", "by 8"]);
+    let source =
+        "nextflow.enable.types = true\nworkflow {\n    channel.of(1).set { x }\n    x.view()\n}\n";
+    let error = run(source).unwrap_err();
+    assert!(
+        error.ends_with(
+            "Operator `set` is not supported in typed workflows -- use an assignment instead"
+        ),
+        "{error}"
+    );
+}

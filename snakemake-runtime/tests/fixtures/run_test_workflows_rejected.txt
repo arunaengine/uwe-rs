@@ -214,7 +214,6 @@ tests/test_generate_unit_tests	missing	Needs the config file config/config.json,
 tests/test_github_issue1062	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_github_issue1469	invalid	Two rules make foo.txt, which Snakemake rejects as ambiguous.
 tests/test_github_issue2154	invalid	Gives the runtime 00:30:00, which Snakemake cannot read as minutes.
-tests/test_github_issue261	unsupported (decision 17)	Uses generator suspension in an expression or statement shape that the native interpreter does not support.
 tests/test_github_issue2848	invalid	Snakemake's own tests expect it to fail.
 tests/test_google_lifesciences	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_group_jobs_resources	unsupported (decision 2)	Requests nonempty resource scopes, which the native Snakemake scheduling subset refuses.

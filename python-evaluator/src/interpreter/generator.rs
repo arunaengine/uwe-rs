@@ -21,6 +21,8 @@ enum Task {
     Delegate(Value),
     Assign(Vec<Expr>),
     Comprehension(Rc<ast::ExprGenerator>, usize, Value),
+    /// The `__exit__` methods of a `with` statement whose body yields, innermost last.
+    Exit(Vec<Value>),
 }
 
 pub struct Generator {
@@ -82,7 +84,40 @@ impl Generator {
         })
     }
 
+    /// Runs the body up to its next value; an error leaves the `with` statements it is in,
+    /// whose `__exit__` may suppress it.
     fn resume(&mut self, interpreter: &mut Interpreter) -> Result<Option<Value>, Error> {
+        loop {
+            let error = match self.advance(interpreter) {
+                Err(error) => error,
+                done => return done,
+            };
+            let Some(position) =
+                (self.tasks.iter()).rposition(|task| matches!(task, Task::Exit(_)))
+            else {
+                return Err(error);
+            };
+            let Task::Exit(exits) = self.tasks.remove(position) else {
+                unreachable!("an exit task")
+            };
+            self.tasks.truncate(position);
+            let crate::error::ErrorKind::Exception(exception) = &error.kind else {
+                return Err(error);
+            };
+            let class = Value::Class(crate::types::class_of(exception));
+            let mut suppressed = false;
+            for exit in exits.iter().rev() {
+                let args = vec![class.clone(), exception.clone(), Value::None];
+                let answer = interpreter.call(exit, crate::value::Args::new(args))?;
+                suppressed = suppressed || interpreter.truthy(&answer)?;
+            }
+            if !suppressed {
+                return Err(error);
+            }
+        }
+    }
+
+    fn advance(&mut self, interpreter: &mut Interpreter) -> Result<Option<Value>, Error> {
         while let Some(task) = self.tasks.pop() {
             match task {
                 Task::Suite(body, index) => {
@@ -161,6 +196,12 @@ impl Generator {
                         interpreter.assign(&self.frame, &target, Value::None)?;
                     }
                 }
+                Task::Exit(exits) => {
+                    for exit in exits.iter().rev() {
+                        let args = vec![Value::None, Value::None, Value::None];
+                        interpreter.call(exit, crate::value::Args::new(args))?;
+                    }
+                }
             }
         }
         Ok(None)
@@ -226,6 +267,27 @@ impl Generator {
                 self.tasks.push(Task::For(Rc::new(each.clone()), iterator));
             }
             Stmt::While(each) => self.tasks.push(Task::While(Rc::new(each.clone()))),
+            Stmt::With(with) if !with.is_async && contains_yield(&with.body) => {
+                let mut exits = Vec::new();
+                for item in &with.items {
+                    let manager = interpreter.eval(&self.frame, &item.context_expr)?;
+                    let enter = interpreter.find_attribute(&manager, "__enter__")?;
+                    let exit = interpreter.find_attribute(&manager, "__exit__")?;
+                    let (Some(enter), Some(exit)) = (enter, exit) else {
+                        return Err(Error::type_error(format!(
+                            "'{}' object does not support the context manager protocol",
+                            crate::types::type_name(&manager)
+                        )));
+                    };
+                    let entered = interpreter.call(&enter, crate::value::Args::default())?;
+                    if let Some(target) = &item.optional_vars {
+                        interpreter.assign(&self.frame, target, entered)?;
+                    }
+                    exits.push(exit);
+                }
+                self.tasks.push(Task::Exit(exits));
+                self.suite(&with.body);
+            }
             _ => self.ordinary(interpreter, statement)?,
         }
         Ok(None)
@@ -234,7 +296,7 @@ impl Generator {
     fn ordinary(&mut self, interpreter: &mut Interpreter, statement: &Stmt) -> Result<(), Error> {
         if contains_yield(std::slice::from_ref(statement)) {
             return Err(Error::unsupported(
-                "generator suspension in nested expressions, try, with or match",
+                "generator suspension in nested expressions, try or match",
             ));
         }
         match interpreter.exec(&self.frame, statement)? {

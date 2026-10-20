@@ -36,6 +36,7 @@ const HANDLED_DIRECTIVES: &[&str] = &[
     "echo",
     "errorStrategy",
     "ext",
+    "fair",
     "label",
     "maxForks",
     "maxRetries",
@@ -45,20 +46,14 @@ const HANDLED_DIRECTIVES: &[&str] = &[
     "secret",
     "shell",
     "stageInMode",
+    // The store takes the output files whatever the mode, so every mode gives the same files.
+    "stageOutMode",
     "storeDir",
     "tag",
     "time",
 ];
 
-const REFUSED_DIRECTIVES: &[&str] = &[
-    "fair",
-    "hints",
-    "maxErrors",
-    "maxSubmitAwait",
-    "module",
-    "spack",
-    "stageOutMode",
-];
+const REFUSED_DIRECTIVES: &[&str] = &["hints", "maxErrors", "module", "spack"];
 
 const HINT_DIRECTIVES: &[&str] = &[
     "arch",
@@ -66,6 +61,7 @@ const HINT_DIRECTIVES: &[&str] = &[
     "clusterOptions",
     "executor",
     "machineType",
+    "maxSubmitAwait",
     "penv",
     "pod",
     "queue",
@@ -137,6 +133,13 @@ pub(crate) struct ProcessNode {
     /// The number of tasks started, which gives each task its index.
     pub tasks: u32,
     pub max_forks: Option<usize>,
+    /// The `fair` directive: the outputs of each task wait for those of the tasks before it,
+    /// by task index. A task that binds nothing holds back the later ones, as in Nextflow.
+    pub fair: bool,
+    /// The outputs of the tasks that wait for earlier ones, by task index.
+    pub held: std::collections::BTreeMap<u32, Vec<Option<Value>>>,
+    /// The index of the task whose outputs come next.
+    pub next_emission: u32,
     /// Whether an input closed, so no more rounds start.
     pub poisoned: bool,
     /// The tasks in flight.
@@ -276,10 +279,14 @@ impl Behaviour for ProcessNode {
         context.deliver(deliveries);
         context.accept(outcome.id, true);
         *context.succeeded += 1;
-        for (channel, value) in self.outputs.clone().into_iter().zip(values) {
-            if let Some(value) = value {
-                context.emit(channel, value);
-            }
+        if !self.fair {
+            self.emit(context, values);
+            return self.finish_if_done(context);
+        }
+        self.held.insert(flight.index, values);
+        while let Some(values) = self.held.remove(&self.next_emission) {
+            self.emit(context, values);
+            self.next_emission += 1;
         }
         self.finish_if_done(context)
     }
@@ -378,7 +385,6 @@ impl ProcessNode {
                 ("maxErrors", _) => true,
                 ("conda", _) if !self.conda_enabled => false,
                 ("spack", _) if !self.spack_enabled => false,
-                ("stageOutMode", [Value::String(mode)]) if &**mode == "copy" => false,
                 (name, _) if HINT_DIRECTIVES.contains(&name) => !scheduling_hint(directive),
                 (name, _) if REFUSED_DIRECTIVES.contains(&name) => {
                     directive.arguments.iter().any(Value::truth)
@@ -461,6 +467,10 @@ impl ProcessNode {
                 .and_then(|directive| directive.arguments.last())
                 .and_then(|value| value.to_string().parse().ok())
                 .filter(|limit| *limit > 0);
+            self.fair = (directives.iter())
+                .find(|directive| &*directive.name == "fair")
+                .and_then(|directive| directive.arguments.last())
+                .is_some_and(Value::truth);
         }
         let task = task_object(&self.name, index, attempt, None, &directives, &ext);
         if let (Some(work_dir), Value::Map(map)) = (&work_dir, &task) {
@@ -767,6 +777,15 @@ impl ProcessNode {
     }
 
     /// Closes the outputs once no round can start and no task is in flight.
+    /// Binds the values of the outputs of one task.
+    fn emit(&self, context: &mut Context, values: Vec<Option<Value>>) {
+        for (channel, value) in self.outputs.clone().into_iter().zip(values) {
+            if let Some(value) = value {
+                context.emit(channel, value);
+            }
+        }
+    }
+
     fn finish_if_done(&mut self, context: &mut Context) -> Result<State, Error> {
         let done = self.poisoned || (self.one_round && self.rounds == 1);
         if done && self.pending.is_empty() && self.each_round.is_none() {

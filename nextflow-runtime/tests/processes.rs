@@ -123,6 +123,33 @@ fn limits_process_tasks() {
     }
 }
 
+/// With `fair`, the outputs come in the order of the tasks, whatever order they finish in,
+/// and `stageOutMode 'move'` gives the same files.
+#[test]
+fn binds_fair_outputs() {
+    for fair in [true, false] {
+        let source = format!(
+            "process P {{\n fair {fair}\n stageOutMode 'move'\n input:\n val x\n output:\n val x\n script:\n 'true'\n}}\n\
+             workflow {{ P(channel.of(1, 2, 3)).view() }}"
+        );
+        let parsed = parse_script(&source);
+        let module = Rc::new(lower_module(&parsed.tree, &source).unwrap());
+        let mut output = Output::default();
+        let (mut run, mut queue) = Run::start(&module, &Options::default(), &mut output).unwrap();
+        // The last task finishes first.
+        while let Some(request) = queue.pop() {
+            let outcome = TaskOutcome {
+                id: request.id,
+                ..TaskOutcome::default()
+            };
+            queue.extend(run.complete(outcome, &mut output).unwrap());
+        }
+        run.finish(&mut output).unwrap();
+        let expected = if fair { "1\n2\n3\n" } else { "3\n2\n1\n" };
+        assert_eq!(output.0, expected, "fair {fair}");
+    }
+}
+
 #[test]
 fn limits_each_retries() {
     let source = "process P {\n maxForks 1\n errorStrategy 'retry'\n maxRetries 1\n input:\n each x\n output:\n val x\n script:\n 'true'\n}\nworkflow { P([1, 2, 3]).view() }";
@@ -169,7 +196,6 @@ fn limits_each_retries() {
 #[test]
 fn rejects_active_directives() {
     for (name, value) in [
-        ("fair", "true"),
         ("maxErrors", "2"),
         ("containerOptions", "'--privileged'"),
         ("clusterOptions", "'--export=TOKEN=value'"),
@@ -183,7 +209,6 @@ fn rejects_active_directives() {
             "[[nodeSelector: 'disk=ssd'], [secret: 'token/key', env: 'TOKEN']]",
         ),
         ("pod", "[volumeClaim: 'data', mountPath: '/data']"),
-        ("stageOutMode", "'move'"),
     ] {
         let source =
             format!("process P {{\n {name}({value})\n script:\n 'true'\n}}\nworkflow {{ P() }}");

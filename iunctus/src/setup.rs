@@ -26,6 +26,7 @@ const SECTIONS: &[&str] = &[
     "cache",
     "report",
     "conda",
+    "cwl",
     "page",
     "retry",
     "secrets",
@@ -47,6 +48,8 @@ pub struct Setup {
     pub network: NetworkRule,
     pub conda: Option<crate::conda::Config>,
     pub secrets: std::collections::BTreeMap<String, Secret>,
+    /// `[cwl] registry`: where images that CWL tools build go for remote executors.
+    pub cwl_registry: Option<String>,
 }
 
 /// The settings of executors from the `[executor.<name>]` sections. Options on the command line
@@ -432,6 +435,29 @@ fn network(config: &ConfigFile) -> Result<NetworkRule, ConfigError> {
     })
 }
 
+/// `[cwl] registry`: an image repository like `host/team/cwl`, without tag or digest.
+fn cwl_registry(config: &ConfigFile) -> Result<Option<String>, ConfigError> {
+    let Some(section) = config.section("cwl")? else {
+        return Ok(None);
+    };
+    section.only(&["registry"])?;
+    let Some(registry) = section.text("registry")? else {
+        return Ok(None);
+    };
+    let parsed = executor::registry::Reference::parse(&registry);
+    let allowed =
+        |byte: u8| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"/:._-".contains(&byte);
+    if parsed.name != registry
+        || parsed.digest.is_some()
+        || !registry.bytes().all(allowed)
+        || parsed.repository.split('/').any(str::is_empty)
+    {
+        let message = "must be an image repository without a scheme, tag, digest or credentials";
+        return Err(section.invalid("registry", message));
+    }
+    Ok(Some(registry))
+}
+
 /// Config defaults applied before command options, cache and network setup.
 #[derive(Debug, Default, PartialEq)]
 pub struct Defaults {
@@ -545,6 +571,7 @@ impl Setup {
         let telemetry = Telemetry::read(&config).map_err(failed)?;
         let network = network(&config).map_err(failed)?;
         let conda = crate::conda::Config::read(&config).map_err(failed)?;
+        let cwl_registry = cwl_registry(&config).map_err(failed)?;
         let mut secrets = std::collections::BTreeMap::new();
         if let Some(section) = config.section("secrets").map_err(failed)? {
             for name in section.keys() {
@@ -566,6 +593,7 @@ impl Setup {
             network,
             conda,
             secrets,
+            cwl_registry,
         })
     }
 
@@ -877,6 +905,20 @@ mod tests {
         assert_eq!(parse("").expect("no rule"), NetworkRule::default());
         let error = parse("[network]\ndefault = \"off\"\n").expect_err("an error");
         assert!(error.contains(":2:") && error.contains("off"), "{error}");
+    }
+
+    #[test]
+    fn loads_cwl_registry() {
+        let parse = |text: &str| -> Result<Option<String>, String> {
+            let config = ConfigFile::parse(text, Path::new("config.toml"))
+                .map_err(|error| error.to_string())?;
+            super::cwl_registry(&config).map_err(|error| error.to_string())
+        };
+        let registry = parse("[cwl]\nregistry = \"registry.example.org/team/cwl\"\n");
+        assert_eq!(registry, Ok(Some("registry.example.org/team/cwl".into())));
+        assert_eq!(parse(""), Ok(None));
+        let error = parse("[cwl]\nregistry = \"registry.example.org/cwl:1\"\n").expect_err("a tag");
+        assert!(error.contains("registry"), "{error}");
     }
 
     #[test]

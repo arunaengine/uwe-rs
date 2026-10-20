@@ -2,10 +2,14 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use bollard::auth::DockerCredentials;
 use bollard::errors::Error as ApiError;
 use bollard::models::ImageInspect;
-use bollard::query_parameters::CreateImageOptions;
+use bollard::query_parameters::{CreateImageOptions, PushImageOptions};
 use futures_util::StreamExt;
+use tracing::instrument::WithSubscriber;
+
+use crate::credentials::Credential;
 
 use crate::engine::ContainerEngine;
 use crate::job::ExecutorError;
@@ -111,6 +115,70 @@ impl ContainerEngine {
                 Ok(id)
             }) => result.unwrap_or_else(|_| Err(self.image_error("image preparation exceeded 600 seconds"))),
         }
+    }
+
+    /// Pushes a local image to a repository like `host/team/image` under a tag of its ID, and
+    /// gives the pushed reference by manifest digest, which remote executors pull.
+    pub async fn push_image(
+        &self,
+        id: &str,
+        repository: &str,
+        cancel: &crate::CancellationToken,
+    ) -> Result<String, ExecutorError> {
+        let tag = id.trim_start_matches("sha256:").to_owned();
+        self.tag_image(id, &format!("{repository}:{tag}")).await?;
+        let parsed = crate::registry::Reference::parse(repository);
+        let found = crate::credentials::lookup(&parsed.registry)
+            .map_err(|error| self.image_error(&error))?;
+        let hint = found.hint();
+        let mut credentials = DockerCredentials {
+            serveraddress: Some(parsed.registry.clone()),
+            ..Default::default()
+        };
+        match found.credential {
+            Some(Credential::Basic(username, password)) => {
+                credentials.username = Some(username);
+                credentials.password = Some(password);
+            }
+            Some(Credential::Bearer(token)) => credentials.registrytoken = Some(token),
+            Some(Credential::Identity(token)) => credentials.identitytoken = Some(token),
+            None if found.helper => return Err(self.image_error(hint)),
+            None => {}
+        }
+        // Answers of the registry may hold secrets, so errors name none of their details.
+        let rejected = || self.image_error(&format!("pushing to {repository} failed{hint}"));
+        let push = async {
+            let options = PushImageOptions {
+                tag: Some(tag.clone()),
+                ..Default::default()
+            };
+            let mut stream = self
+                .client()
+                .push_image(repository, Some(options), Some(credentials));
+            while let Some(step) = stream.next().await {
+                if step.map_or(true, |step| step.error_detail.is_some()) {
+                    return Err(rejected());
+                }
+            }
+            Ok(())
+        };
+        tokio::select! {
+            () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
+            result = tokio::time::timeout(
+                std::time::Duration::from_secs(600),
+                push.with_subscriber(tracing::subscriber::NoSubscriber::default()),
+            ) => result.unwrap_or_else(|_| Err(self.image_error("the push exceeded 600 seconds")))?,
+        }
+        let digests = inspect(self, id).await?.repo_digests.unwrap_or_default();
+        let pushed = digests.iter().find_map(|reference| {
+            let candidate = crate::registry::Reference::parse(reference);
+            let same =
+                candidate.registry == parsed.registry && candidate.repository == parsed.repository;
+            same.then_some(candidate.digest).flatten()
+        });
+        pushed
+            .map(|digest| format!("{repository}@{digest}"))
+            .ok_or_else(|| self.image_error("the push gave no manifest digest"))
     }
 
     async fn tag_image(&self, id: &str, reference: &str) -> Result<(), ExecutorError> {

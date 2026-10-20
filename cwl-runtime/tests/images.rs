@@ -6,11 +6,21 @@ use cwl_runtime::{CwlDriver, Options};
 use workflow_graph::{Driver, Launch};
 
 fn image(root: &std::path::Path, fields: &str, options: Options) -> Result<String, String> {
+    image_in(root, "requirements", fields, options)
+}
+
+/// The image of a tool whose DockerRequirement is in `section`, `requirements` or `hints`.
+fn image_in(
+    root: &std::path::Path,
+    section: &str,
+    fields: &str,
+    options: Options,
+) -> Result<String, String> {
     std::fs::write(
         root.join("main.cwl"),
         format!(
             "cwlVersion: v1.2\nclass: CommandLineTool\n\
-        baseCommand: echo\nrequirements:\n  DockerRequirement:\n{fields}\ninputs: []\noutputs: []\n"
+        baseCommand: echo\n{section}:\n  DockerRequirement:\n{fields}\ninputs: []\noutputs: []\n"
         ),
     )
     .unwrap();
@@ -69,21 +79,39 @@ fn hashes_image_archives() {
 #[test]
 fn refuses_remote_preparation() {
     let root = tempfile::tempdir().unwrap();
-    for fields in [
+    let fields = [
         "    dockerFile: 'FROM scratch'",
         "    dockerLoad: missing.tar",
         "    dockerImport: missing.tar",
-    ] {
-        let error = image(
-            root.path(),
-            fields,
-            Options {
-                simulated: false,
-                ..Options::default()
-            },
-        )
-        .unwrap_err();
-        assert!(error.contains("local task executor"), "{error}");
-        assert!(error.contains("registry push"), "{error}");
+    ];
+    // A hint is refused too, rather than run in the default image.
+    for (section, fields) in ["requirements", "hints"]
+        .into_iter()
+        .flat_map(|section| fields.map(|fields| (section, fields)))
+    {
+        let remote = Options {
+            simulated: false,
+            ..Options::default()
+        };
+        let error = image_in(root.path(), section, fields, remote).unwrap_err();
+        assert!(error.contains("`[cwl]` section"), "{error}");
     }
+}
+
+#[test]
+#[ignore = "needs Docker and a registry at IUNCTUS_TEST_REGISTRY, like localhost:5000/cwl"]
+fn pushes_remote_images() {
+    let registry = std::env::var("IUNCTUS_TEST_REGISTRY").expect("IUNCTUS_TEST_REGISTRY");
+    let root = tempfile::tempdir().unwrap();
+    let remote = Options {
+        simulated: false,
+        registry: Some(registry.clone()),
+        ..Options::default()
+    };
+    let fields = "    dockerFile: \"FROM scratch\\nLABEL org.iunctus.test=push\"";
+    let pushed = image_in(root.path(), "hints", fields, remote).unwrap();
+    assert!(
+        pushed.starts_with(&format!("{registry}@sha256:")),
+        "{pushed}"
+    );
 }

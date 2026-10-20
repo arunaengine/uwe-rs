@@ -100,6 +100,7 @@ pub(crate) fn driver(
                 javascript: cwl_runtime::JavaScriptSettings::new(setup.engine(), cancel.clone()),
                 local_engine: (arguments.executor.as_deref().unwrap_or("local") == "local")
                     .then(|| setup.engine()),
+                registry: setup.cwl_registry.clone(),
                 ..cwl_runtime::Options::default()
             };
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)

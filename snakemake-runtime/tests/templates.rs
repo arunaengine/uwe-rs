@@ -110,3 +110,37 @@ fn runs_cwl_tools() {
     });
     assert_eq!(job, expected);
 }
+
+/// A `cwl:` rule in a group runs its tool as tasks of its own, and the other jobs of the
+/// group, here `copy`, run after it as a group job, as Snakemake runs them in one.
+#[test]
+fn runs_grouped_cwl() {
+    let folder = tempfile::tempdir().expect("a folder");
+    std::fs::write(folder.path().join("sort.cwl"), TOOL).expect("a tool");
+    std::fs::write(folder.path().join("test.txt"), "b 2\na 1\n").expect("an input");
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        "rule all:\n    input: 'copy.txt'\nrule a:\n    input: input=['test.txt']\n    output: output='sorted.txt'\n    params: key=['2']\n    group: 'g'\n    cwl: 'sort.cwl'\nrule copy:\n    input: 'sorted.txt'\n    output: 'copy.txt'\n    group: 'g'\n    shell: 'cp {input} {output}'\n",
+    )
+    .expect("a Snakefile");
+    let launch = Launch {
+        target: folder.path().to_path_buf(),
+        scratch: folder.path().join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    let mut executor = workflow_graph::Simulator::new(folder.path().join("made"));
+    let run = workflow_graph::execute("cwl", driver.as_mut(), &mut executor);
+    assert!(run.error.is_none(), "{:?}", run.error);
+    let commands: Vec<String> = (run.graph.nodes.iter())
+        .map(|node| node.task.command.join(" "))
+        .filter(|command| !command.is_empty())
+        .collect();
+    assert_eq!(commands.len(), 2, "{commands:?}");
+    assert!(commands[0].contains("sort"), "{commands:?}");
+    assert!(
+        commands[1].contains("cp sorted.txt copy.txt"),
+        "{commands:?}"
+    );
+}

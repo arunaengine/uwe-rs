@@ -90,14 +90,20 @@ pub fn job_script(
     // The folder of the job is new and private: it keeps the helper, the plan and the log, which
     // run or count after the task. Only its `data` folder is the folder of the task.
     let keep = format!("mv -f \"$node/{LOG}\" \"$node.log\"");
-    let send = match links.log {
-        Some(request) => format!("{} || {keep}", send_log(request)),
-        None => keep,
+    let (send, early) = match links.log {
+        Some(request) => (
+            format!("{} || {keep}", send_log(request, false)),
+            format!("    {}\n", send_log(request, true)),
+        ),
+        None => (keep, String::new()),
     };
-    // A signal ends the script through its exit trap, once the running command ended.
+    // Without its folder the job has no log yet, as SLURM writes its output nowhere, so it
+    // sends the reason alone. A signal ends the script through its exit trap.
     let mut script = format!(
         "#!/bin/bash\n# The iunctus job of one attempt of a task, on a node without the shared \
-         folders.\numask 077\nmkdir -p {base} && node=$(mktemp -d {base}/{}) || exit 1\n\
+         folders.\numask 077\nif ! node=$(mkdir -p {base} 2>&1 && mktemp -d {base}/{} 2>&1); \
+         then\n    early=\"iunctus: cannot make a private folder in \"{base}\" on $(hostname): \
+         $node\"\n{early}    exit 1\nfi\n\
          exec >> \"$node/{LOG}\" 2>&1\nsent=\nfinish() {{\n    [ -n \"$sent\" ] || {send}\n    \
          rm -rf \"$node\"\n}}\ntrap finish EXIT\ntrap 'exit 143' TERM INT HUP\n",
         quote(&format!("iunctus-{name}.XXXXXXXX"))
@@ -151,8 +157,8 @@ pub fn job_script(
 }
 
 /// The command that uploads the log of the job with `request`, with `curl` or `wget`, or copies
-/// it for a staging root in a folder.
-fn send_log(request: &Request) -> String {
+/// it for a staging root in a folder. An `early` log is the text of `$early` instead.
+fn send_log(request: &Request, early: bool) -> String {
     let log = format!("\"$node/{LOG}\"");
     if let Some(path) = executor::helper::local_file(&request.url) {
         let folder = path
@@ -160,21 +166,25 @@ fn send_log(request: &Request) -> String {
             .unwrap_or(&path)
             .to_string_lossy()
             .into_owned();
-        let path = path.to_string_lossy();
-        return format!(
-            "{{ mkdir -p {} && cp {log} {}; }}",
-            quote(&folder),
-            quote(&path)
-        );
+        let (folder, path) = (quote(&folder), quote(&path.to_string_lossy()));
+        return match early {
+            true => format!("{{ mkdir -p {folder} && echo \"$early\" > {path}; }}"),
+            false => format!("{{ mkdir -p {folder} && cp {log} {path}; }}"),
+        };
     }
     let headers = |option: &str| -> String {
         (request.headers.iter())
             .map(|(name, value)| format!(" {option}{}", quote(&format!("{name}: {value}"))))
             .collect()
     };
+    let (file, body) = match early {
+        true => ("-".to_owned(), "--body-data=\"$early\"".to_owned()),
+        false => (log.clone(), format!("--body-file={log}")),
+    };
+    let pipe = if early { "echo \"$early\" | " } else { "" };
     format!(
-        "{{ curl -fsS --max-time 300 -X PUT -T {log}{} {url} || wget -q -O /dev/null \
-         --timeout=60 --method=PUT --body-file={log}{} {url}; }}",
+        "{{ {pipe}curl -fsS --max-time 300 -X PUT -T {file}{} {url} || wget -q -O /dev/null \
+         --timeout=60 --method=PUT {body}{} {url}; }}",
         headers("-H "),
         headers("--header="),
         url = quote(&request.url),
@@ -252,8 +262,10 @@ mod tests {
             log: None,
         };
         let script = job_script(&apptainer, &run, &staging, false, Some(60), links);
-        let expected = "umask 077\nmkdir -p \"${TMPDIR:-/tmp}\" && \
-            node=$(mktemp -d \"${TMPDIR:-/tmp}\"/'iunctus-run-P-1-1.XXXXXXXX') || exit 1\n\
+        let expected = "umask 077\nif ! node=$(mkdir -p \"${TMPDIR:-/tmp}\" 2>&1 && \
+            mktemp -d \"${TMPDIR:-/tmp}\"/'iunctus-run-P-1-1.XXXXXXXX' 2>&1); then\n    \
+            early=\"iunctus: cannot make a private folder in \"\"${TMPDIR:-/tmp}\"\" on \
+            $(hostname): $node\"\n    exit 1\nfi\n\
             exec >> \"$node/slurm.log\" 2>&1\nsent=\nfinish() {\n    \
             [ -n \"$sent\" ] || mv -f \"$node/slurm.log\" \"$node.log\"\n    rm -rf \"$node\"\n}\n\
             trap finish EXIT\ntrap 'exit 143' TERM INT HUP\nhelper='/opt/iunctus'\nstatus=125\n\
@@ -289,8 +301,14 @@ mod tests {
             --header='x-ms-blob-type: BlockBlob' 'https://staging/log?signature'; } || \
             mv -f \"$node/slurm.log\" \"$node.log\"\n";
         assert!(script.contains(expected), "{script}");
+        // A job without its folder sends the reason alone.
+        let expected = "    { echo \"$early\" | curl -fsS --max-time 300 -X PUT -T - \
+            -H 'x-ms-blob-type: BlockBlob' 'https://staging/log?signature' || wget -q -O /dev/null \
+            --timeout=60 --method=PUT --body-data=\"$early\" --header='x-ms-blob-type: BlockBlob' \
+            'https://staging/log?signature'; }\n    exit 1\n";
+        assert!(script.contains(expected), "{script}");
         assert!(
-            script.contains("node=$(mktemp -d '/local'/'iunctus-run-P-1-1.XXXXXXXX')"),
+            script.contains("mktemp -d '/local'/'iunctus-run-P-1-1.XXXXXXXX' 2>&1); then"),
             "{script}"
         );
         assert!(

@@ -1617,6 +1617,44 @@ async fn reports_helper_failures() {
     assert_eq!(contents.len(), 2, "{contents:?}");
 }
 
+#[tokio::test]
+async fn reports_folder_failures() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), NODE_APPTAINER);
+    let mut backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    // The node folder is below a file, so the job cannot make its folder.
+    std::fs::write(root.path().join("file"), "").expect("writes a file");
+    let objects = content_store::Store::local(&root.path().join("staging")).expect("a store");
+    backend.remote = Some(NodeStaging {
+        stage: RemoteStage {
+            objects,
+            expiry: Duration::from_secs(600),
+            max_outputs: 4,
+            credentials: false,
+            cleanup: true,
+        },
+        helper: Helper::Path("/bin/false".into()),
+        folder: Some(text(&root.path().join("file/node"))),
+        secret_file: None,
+    });
+    let spec = spec("true");
+    let (staging, placement) = (staging(root.path(), "hello\n"), placement());
+    let job = Job {
+        name: "run-P-15-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = (backend.run(job, &CancellationToken::new()).await).unwrap_err();
+    let expected = "cannot make a private folder in ";
+    assert!(error.to_string().contains(expected), "{error}");
+    assert!(error.to_string().contains("Not a directory"), "{error}");
+}
+
 /// Runs the staging helper when a job of `stage_objects` starts this program as it.
 #[test]
 fn stage_helper() {

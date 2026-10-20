@@ -70,7 +70,13 @@ pub struct Limits {
     pub gpus: u32,
     /// How long the task may run.
     pub seconds: Option<u64>,
+    /// How much longer than its task the pod may run: for image pulls, staging and the start of
+    /// its containers.
+    pub margin: u64,
 }
+
+/// The exit code of a container whose task ran out of time, as `timeout` gives it.
+pub const TIMED_OUT: i32 = 124;
 
 /// Where the containers of a Job see the folders of their attempt.
 #[derive(Clone, Debug, Default)]
@@ -116,13 +122,34 @@ const HELPER: &str = "/iunctus-helper";
 
 /// Runs the wrapper and then sends the outputs back, with the helper `$1` and the folder `$2`
 /// of the attempt. A failed upload is a failure of the machine.
-const SEND: &str = "sh \"$2/control/wrapper.sh\"\nstatus=$?\n\"$1\" __stage out \"$2\" || exit 125\n\
-                    exit \"$status\"\n";
+const SEND: &str = "\"$1\" __stage out \"$2\" || exit 125\nexit \"$status\"\n";
 
-/// Stages the files of a Job through the plan at `plan`: an init container downloads the inputs
-/// into the folder `root`, and the task container sends the outputs back after the wrapper, with
-/// its image unchanged. `binary` is where the pod downloads the binary of [`Helper::binary`].
-pub fn stage(job: &mut Value, helper: &Helper, root: &str, plan: &str, binary: Option<&str>) {
+/// The lines that run `command` and set `status`. The wrapper gets TERM at the time of its
+/// task, as the pod may run longer, and `status` is then [`TIMED_OUT`].
+fn timed(command: &str, seconds: Option<u64>) -> String {
+    let Some(seconds) = seconds else {
+        return format!("{command}\nstatus=$?\n");
+    };
+    format!(
+        "{command} &\npid=$!\ntrap 'kill -TERM \"$pid\" 2> /dev/null' TERM INT\n\
+         ( sleep {seconds} && kill -TERM \"$pid\" 2> /dev/null && exit {TIMED_OUT} ) &\n\
+         timer=$!\nwait \"$pid\"\nstatus=$?\nkill \"$timer\" 2> /dev/null\n\
+         wait \"$timer\" 2> /dev/null\n\
+         [ $? -ne {TIMED_OUT} ] || status={TIMED_OUT}\n"
+    )
+}
+
+/// Stages the files of a Job through the plan at `plan`: an init container fills the folder
+/// `root`, and the task container sends the outputs back after the wrapper, which keeps the time
+/// `seconds` of its task. `binary` is where the pod downloads the binary of [`Helper::binary`].
+pub fn stage(
+    job: &mut Value,
+    helper: &Helper,
+    root: &str,
+    plan: &str,
+    binary: Option<&str>,
+    seconds: Option<u64>,
+) {
     let pod = &mut job["spec"]["template"]["spec"];
     let task = pod["containers"][0].clone();
     // The init containers need no GPU of the task.
@@ -187,7 +214,8 @@ pub fn stage(job: &mut Value, helper: &Helper, root: &str, plan: &str, binary: O
         .expect("volumes")
         .push(volume);
     let container = &mut pod["containers"][0];
-    container["command"] = json!(["sh", "-c", SEND, "iunctus", binary, root]);
+    let send = format!("{}{SEND}", timed("sh \"$2/control/wrapper.sh\"", seconds));
+    container["command"] = json!(["sh", "-c", send, "iunctus", binary, root]);
     // The task container sends the outputs back, so it gets the Secret too.
     if let Some(secret) = secret {
         container["envFrom"] = secret;
@@ -261,10 +289,17 @@ pub fn job(
                 (_, 0) => ("task-0".to_owned(), requests.clone()),
                 (_, index) => (format!("task-{index}"), json!({"cpu": "0", "memory": "0"})),
             };
+            let command = match limits.seconds {
+                None => json!(["sh", run.script()]),
+                Some(_) => {
+                    let text = format!("{}exit \"$status\"\n", timed("sh \"$1\"", limits.seconds));
+                    json!(["sh", "-c", text, "iunctus", run.script()])
+                }
+            };
             let mut container = json!({
                 "name": name,
                 "image": run.image.reference,
-                "command": ["sh", run.script()],
+                "command": command,
                 "resources": {"requests": requests, "limits": limits_of_container},
                 "volumeMounts": mounts,
                 "securityContext": security(run),
@@ -289,8 +324,10 @@ pub fn job(
         },
     });
     // The time counts on the pod, from its start, so that waiting for a node does not count.
+    // Image pulls and staging count too, so the pod gets a margin and the wrapper the time.
     if let Some(seconds) = limits.seconds {
-        spec["template"]["spec"]["activeDeadlineSeconds"] = json!(seconds);
+        let deadline = seconds.saturating_add(limits.margin);
+        spec["template"]["spec"]["activeDeadlineSeconds"] = json!(deadline);
     }
     Ok(json!({
         "apiVersion": "batch/v1",
@@ -355,12 +392,14 @@ mod tests {
         let limits = Limits {
             gpus: 1,
             seconds: Some(60),
+            margin: 300,
         };
         let job = job("iunctus-run-p-1-1", "7-9", &[run], &limits, &Volumes::Host).unwrap();
         let spec = &job["spec"];
         assert_eq!(spec["backoffLimit"], 0);
         let pod = &spec["template"]["spec"];
-        assert_eq!(pod["activeDeadlineSeconds"], 60);
+        // The pod gets a margin for staging, and the wrapper stops at the time of the task.
+        assert_eq!(pod["activeDeadlineSeconds"], 360);
         assert_eq!(pod["automountServiceAccountToken"], false);
         let container = &pod["containers"][0];
         let security = &container["securityContext"];
@@ -368,9 +407,12 @@ mod tests {
         assert_eq!(security["allowPrivilegeEscalation"], false);
         assert_eq!(security["capabilities"]["drop"][0], "ALL");
         assert_eq!(
-            container["command"][1],
+            container["command"][4],
             "/cache/scratch/run-P-1-1/control/wrapper.sh"
         );
+        let text = container["command"][2].as_str().expect("a script");
+        assert!(text.starts_with("sh \"$1\" &\n"), "{text}");
+        assert!(text.contains("( sleep 60 && kill -TERM \"$pid\""), "{text}");
         assert_eq!(container["workingDir"], "/data");
         assert_eq!(container["resources"]["limits"]["memory"], "1073741824");
         assert_eq!(container["resources"]["limits"]["nvidia.com/gpu"], "1");
@@ -435,6 +477,7 @@ mod tests {
         let limits = Limits {
             gpus: 1,
             seconds: None,
+            margin: 0,
         };
         let mut manifest = job("iunctus-run-p-1-1", "7-9", &[run], &limits, &place).unwrap();
         let digest = task_model::Digest::sha256(b"iunctus");
@@ -450,7 +493,7 @@ mod tests {
             }),
         };
         let (root, url) = ("/cache/scratch/run-P-1-1", Some("https://staging/cas/x"));
-        stage(&mut manifest, &helper, root, "https://plan", url);
+        stage(&mut manifest, &helper, root, "https://plan", url, Some(30));
         let pod = &manifest["spec"]["template"]["spec"];
         assert_eq!(pod["nodeSelector"]["kubernetes.io/arch"], "amd64");
         let download = &pod["initContainers"][0];
@@ -488,6 +531,9 @@ mod tests {
         let task = &pod["containers"][0];
         assert_eq!(task["image"], "debian@sha256:ab");
         assert_eq!(task["command"][4], "/iunctus-helper/iunctus");
+        let send = task["command"][2].as_str().expect("a script");
+        assert!(send.contains("( sleep 30 && kill"), "{send}");
+        assert!(send.ends_with("__stage out \"$2\" || exit 125\nexit \"$status\"\n"));
     }
 
     #[test]

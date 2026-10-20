@@ -106,6 +106,28 @@ fn parses_provider_settings() {
 }
 
 #[test]
+fn lists_s3_providers() {
+    let storage = Storage::from_config(&config(
+        "[storage.lab]\ntype = \"s3\"\nprefixes = [\"s3://lab-data/\"]\n\
+         endpoint = \"https://minio.lab.example.org/\"\n\
+         [storage.aws]\ntype = \"s3\"\nprefixes = [\"s3://open/\"]\n\
+         [storage.web]\ntype = \"https\"\nprefixes = [\"https://data.example.org/\"]\n",
+    ))
+    .expect("valid settings");
+    assert_eq!(
+        storage.s3_providers(),
+        [
+            ("aws".to_owned(), vec!["s3://open/".to_owned()], None),
+            (
+                "lab".to_owned(),
+                vec!["s3://lab-data/".to_owned()],
+                Some("https://minio.lab.example.org".to_owned())
+            ),
+        ]
+    );
+}
+
+#[test]
 fn locates_settings_errors() {
     let file = "/home/me/.config/iunctus/config.toml";
     assert_eq!(

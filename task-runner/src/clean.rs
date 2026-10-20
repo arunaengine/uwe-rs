@@ -56,16 +56,19 @@ pub struct Plan {
 }
 
 /// Excludes new input preparation and cache acquisition while cleanup takes fresh snapshots.
+/// Clean-up holds the gate alone; runs hold it shared, so that their tasks do not wait for
+/// each other.
 #[derive(Debug)]
 pub struct Maintenance {
-    _lease: Lease,
+    _lease: Option<Lease>,
     store: String,
+    alone: bool,
 }
 
 impl Maintenance {
     /// Expiring leases cannot fence a deletion that is delayed past their expiry.
     pub fn ensure_cleanup(&self) -> Result<(), RunnerError> {
-        if self._lease.is_local() {
+        if self.alone && self._lease.as_ref().is_some_and(Lease::is_local) {
             return Ok(());
         }
         Err(std::io::Error::new(
@@ -76,7 +79,10 @@ impl Maintenance {
     }
 
     pub async fn check(&self) -> Result<(), RunnerError> {
-        Ok(self._lease.check().await?)
+        match &self._lease {
+            Some(lease) => Ok(lease.check().await?),
+            None => Ok(()),
+        }
     }
 }
 
@@ -95,22 +101,32 @@ pub async fn maintenance(store: &Store) -> Result<Maintenance, RunnerError> {
         .ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::WouldBlock,
-                "cache maintenance is in progress",
+                "the store is busy: tasks prepare their inputs, or another clean-up goes on",
             )
         })?;
     Ok(Maintenance {
-        _lease: lease,
+        _lease: Some(lease),
         store: store_name(store),
+        alone: true,
     })
 }
 
+/// Holds the gate shared with the other tasks and runs; waits while clean-up holds it.
 pub(crate) async fn admission(store: &Store) -> Result<Maintenance, RunnerError> {
+    let gate = |lease| Maintenance {
+        _lease: lease,
+        store: store_name(store),
+        alone: false,
+    };
+    // Clean-up removes nothing with leases that expire (see `ensure_cleanup`), so there is
+    // nothing to wait for, and object stores cannot share a lease.
+    if !store.local_leases() {
+        return Ok(gate(None));
+    }
     loop {
-        match maintenance(store).await {
-            Err(RunnerError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                tokio::time::sleep(Duration::from_millis(50)).await;
-            }
-            result => return result,
+        match store.try_shared_lease("maintenance").await? {
+            Some(lease) => return Ok(gate(Some(lease))),
+            None => tokio::time::sleep(Duration::from_millis(50)).await,
         }
     }
 }

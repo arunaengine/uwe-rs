@@ -96,14 +96,39 @@ impl<B: Backend> Runner<B> {
         accepted: bool,
         cancel: &CancellationToken,
     ) -> Result<(), RunnerError> {
-        if matches!(
-            (&candidate.source, accepted),
-            (Source::Publish(_), false) | (Source::Hit(_), true)
-        ) {
-            return Ok(());
+        let entry = match (&candidate.source, accepted) {
+            (Source::Publish(entry), true) => Some(entry),
+            (Source::Hit(_), false) => None,
+            _ => return Ok(()),
+        };
+        let settled = self.settle_guarded(candidate, accepted, cancel).await;
+        match (settled, entry) {
+            // Missing a cache write is harmless: a later run only runs the task again.
+            (Err(error), Some(entry)) if !cancel.is_cancelled() => {
+                eprintln!(
+                    "iunctus: warning: the result of task {} is not cached: {error}",
+                    entry.task
+                );
+                Ok(())
+            }
+            (settled, _) => settled,
         }
+    }
+
+    /// Settles under the gate; the time limit starts once the gate is held, as clean-up may
+    /// hold it for long.
+    async fn settle_guarded(
+        &self,
+        candidate: &Candidate,
+        accepted: bool,
+        cancel: &CancellationToken,
+    ) -> Result<(), RunnerError> {
+        let guard = tokio::select! {
+            biased;
+            () = cancel.cancelled() => return Err(ExecutorError::Cancelled.into()),
+            guard = self.admit() => guard?,
+        };
         let work = async {
-            let guard = self.admit().await?;
             match (&candidate.source, accepted) {
                 (Source::Publish(entry), true) => {
                     let name = format!(

@@ -250,7 +250,13 @@ impl Parser<'_> {
             });
             self.check_declarations(outputs, "Invalid process output");
         }
-        if previous.is_some() && process.body.is_none() {
+        let message =
+            "Invalid process definition -- check for missing or out-of-order section labels";
+        // Legacy syntax: the legacy parser runs a process with only a `stub:` section.
+        let stub_only = process.body.is_none() && process.stub.is_some();
+        if stub_only && valid {
+            self.legacy_at(message, process.span);
+        } else if previous.is_some() && process.body.is_none() {
             // The official parser takes the last statement as the body and then rejects it,
             // unless that would leave the last section empty. Legacy syntax: the legacy parser
             // takes a last string for the script.
@@ -267,8 +273,6 @@ impl Parser<'_> {
                 valid = false;
             }
         }
-        let message =
-            "Invalid process definition -- check for missing or out-of-order section labels";
         if !valid {
             self.error_at(message, process.span);
         } else if out_of_order {

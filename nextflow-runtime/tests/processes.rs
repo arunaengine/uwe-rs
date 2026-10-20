@@ -519,6 +519,19 @@ fn runs_lone_processes() {
     );
 }
 
+/// Legacy syntax: a process with only a `stub:` section runs it as its script, as Nextflow
+/// 26.04.6 does with `NXF_SYNTAX_PARSER=v1`.
+#[test]
+fn runs_stub_only() {
+    let source = "process P {\n    stub:\n    'echo stub'\n}\nworkflow {\n    P()\n}";
+    let (tasks, _) = run(source, &Options::default()).expect("runs");
+    assert!(
+        tasks[0].script.trim_end().ends_with("\necho stub"),
+        "{}",
+        tasks[0].script
+    );
+}
+
 /// `workflow.container` is what the `process` scope sets, as Nextflow 26.04.6 prints it.
 #[test]
 fn shows_config_containers() {

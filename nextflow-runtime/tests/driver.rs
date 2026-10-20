@@ -331,6 +331,48 @@ fn types_legacy_params() {
     assert!(script.contains("echo hi 4 Boolean 6 world"), "{script}");
 }
 
+/// `NXF_SYNTAX_PARSER=v1` reads the params of the command line as numbers and booleans also
+/// for a script in strict syntax, unless `NXF_DISABLE_PARAMS_TYPE_DETECTION` is set.
+#[test]
+fn reads_parser_variable() {
+    struct Variables(&'static [(&'static str, &'static str)]);
+    impl nextflow_evaluator::interpreter::Host for Variables {
+        fn print(&mut self, _: &str) {}
+        fn environment(&self, name: &str) -> Option<String> {
+            let found = self.0.iter().find(|(variable, _)| *variable == name);
+            found.map(|(_, value)| (*value).to_owned())
+        }
+    }
+    let script = |variables: &'static [(&'static str, &'static str)]| {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let pipeline = PIPELINE.replace("${params.count}", "${params.count + 1}");
+        std::fs::write(directory.path().join("main.nf"), pipeline).expect("writes the script");
+        std::fs::write(directory.path().join("nextflow.config"), CONFIG).expect("writes");
+        let launch = Launch {
+            target: directory.path().to_owned(),
+            params: vec![("count".into(), "3".into())],
+            ..Launch::default()
+        };
+        let settings = nextflow_runtime::driver::Settings {
+            host: Box::new(Variables(variables)),
+            ..Default::default()
+        };
+        let mut driver = nextflow_runtime::driver::Nextflow::new(&launch, settings).unwrap();
+        let mut executor = Simulator::new(directory.path().join("simulator"));
+        let graph = execute("main.nf", &mut driver, &mut executor)
+            .into_result()
+            .expect("the run succeeds");
+        graph.nodes[0].task.script.clone().unwrap_or_default()
+    };
+    assert!(script(&[("NXF_SYNTAX_PARSER", "v1")]).contains("echo hi 4 world"));
+    assert!(script(&[("NXF_SYNTAX_PARSER", "v2")]).contains("echo hi 31 world"));
+    const DISABLED: &[(&str, &str)] = &[
+        ("NXF_SYNTAX_PARSER", "v1"),
+        ("NXF_DISABLE_PARAMS_TYPE_DETECTION", "true"),
+    ];
+    assert!(script(DISABLED).contains("echo hi 31 world"));
+}
+
 #[test]
 fn selects_named_entry() {
     let directory = tempfile::tempdir().unwrap();

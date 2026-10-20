@@ -107,8 +107,8 @@ struct Loaded {
     /// The config files that were read, in order.
     files: Vec<PathBuf>,
     module: Rc<Module>,
-    /// Whether a script has legacy syntax, which Nextflow 26.04.6 runs only with
-    /// `NXF_SYNTAX_PARSER=v1`, which reads command-line params as numbers and booleans.
+    /// Whether the run reads command-line params as numbers and booleans, as Nextflow 26.04.6
+    /// does with `NXF_SYNTAX_PARSER=v1`, which scripts with legacy syntax need.
     legacy: bool,
 }
 
@@ -173,7 +173,12 @@ impl Nextflow {
         }
         let mut loader = Loader::default();
         let module = loader.load(&script).map_err(load_error)?;
-        let legacy = loader.legacy();
+        // Nextflow reads the params of the command line as numbers and booleans with the legacy
+        // parser, which `NXF_SYNTAX_PARSER=v1` selects and legacy syntax needs.
+        let parser = host.environment("NXF_SYNTAX_PARSER");
+        let disabled = host.environment("NXF_DISABLE_PARAMS_TYPE_DETECTION");
+        let legacy = (loader.legacy() || parser.as_deref() == Some("v1"))
+            && disabled.is_none_or(|value| value.is_empty());
         // The config sees the params of the command line as the script does.
         if legacy && !self.launch.params.is_empty() {
             (config, files) = load_config(&project, &self.launch, host, true)?;

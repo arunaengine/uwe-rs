@@ -176,12 +176,19 @@ impl PodStaging {
         })
     }
 
-    /// Adds to the Job what its pod needs for staging: the helper, or the group of kubedal.
-    pub fn complete(&self, job: &mut Value, prepared: &Prepared, root: &Path) {
+    /// Adds to the Job what its pod needs for staging: the helper, or the group of kubedal. The
+    /// task keeps its time, `seconds`.
+    pub fn complete(
+        &self,
+        job: &mut Value,
+        prepared: &Prepared,
+        root: &Path,
+        seconds: Option<u64>,
+    ) {
         match &self.via {
             Via::Helper(helper) => {
                 let (root, binary) = (root.to_string_lossy(), prepared.binary.as_deref());
-                stage(job, helper, &root, &prepared.location, binary)
+                stage(job, helper, &root, &prepared.location, binary, seconds)
             }
             Via::Kubedal(_) => {
                 if let Some(group) = prepared.group {

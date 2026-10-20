@@ -34,6 +34,9 @@ const POLL: Duration = Duration::from_secs(5);
 /// whose answer is lost is found again by its name.
 const SUBMIT_GRACE: Duration = Duration::from_secs(60);
 
+/// How much longer than its task a pod may run, by default.
+const STAGING_TIME: Duration = Duration::from_secs(5 * 60);
+
 /// How long a Job may have no pod, or a pod that cannot start, before it counts as failed.
 const GRACE: Duration = Duration::from_secs(120);
 
@@ -53,6 +56,9 @@ pub struct KubernetesBackend {
     /// How the pods get their files when the nodes share no folders with this machine; `None`
     /// when they see the scratch folder.
     pub remote: Option<PodStaging>,
+    /// How much longer than its task a pod may run: for image pulls, staging and the start of
+    /// its containers. The task itself keeps its time.
+    pub staging_time: Duration,
     /// The label value of the Jobs of this backend.
     label: String,
     pods: Pods,
@@ -80,6 +86,7 @@ impl KubernetesBackend {
             configs: ImageConfigs::default(),
             volumes: Volumes::Host,
             remote: None,
+            staging_time: STAGING_TIME,
             label: format!("{}-{millis}", std::process::id()),
             pods: Pods::default(),
         }
@@ -294,6 +301,7 @@ impl KubernetesBackend {
         let limits = Limits {
             gpus: job.placement.accelerators.iter().map(|gpu| gpu.count).sum(),
             seconds: job.placement.time_seconds,
+            margin: self.staging_time.as_secs(),
         };
         if limits.gpus > 0 && runs.len() > 1 {
             return Err(ExecutorError::Unsupported(
@@ -304,7 +312,7 @@ impl KubernetesBackend {
         let mut manifest = crate::manifest::job(&name, &self.label, &runs, &limits, volumes)
             .map_err(ExecutorError::Unsupported)?;
         if let (Some(remote), Some(prepared)) = (&self.remote, &prepared) {
-            remote.complete(&mut manifest, prepared, root);
+            remote.complete(&mut manifest, prepared, root, limits.seconds);
         }
         let platforms: Vec<&str> = runs
             .iter()
@@ -789,6 +797,9 @@ fn outcome(
         Ended::Exited(0, _) => recorded
             .map(|code| (code, None))
             .ok_or_else(|| "the container ended without the exit code of the task".to_owned()),
+        Ended::Exited(crate::manifest::TIMED_OUT, _) if time.is_some() => {
+            Ok((143, Some(too_long(time))))
+        }
         Ended::Exited(status, reason) if reason == "OOMKilled" => Ok((
             *status,
             Some("iunctus: Kubernetes stopped the task for lack of memory\n".to_owned()),
@@ -802,16 +813,16 @@ fn outcome(
         Ended::Exited(status, reason) => Err(format!(
             "the container could not run the task (exit code {status}, {reason})"
         )),
-        Ended::Stopped(reason) if reason == "DeadlineExceeded" => Ok((
-            143,
-            Some(match time {
-                Some(time) => {
-                    format!("iunctus: the task ran longer than its time of {time} seconds\n")
-                }
-                None => "iunctus: the task ran longer than Kubernetes allows\n".to_owned(),
-            }),
-        )),
+        Ended::Stopped(reason) if reason == "DeadlineExceeded" => Ok((143, Some(too_long(time)))),
         Ended::Stopped(reason) => Err(format!("the pod was stopped: {reason}")),
+    }
+}
+
+/// The note of a task that ran longer than its time, or than Kubernetes allows.
+fn too_long(time: Option<u64>) -> String {
+    match time {
+        Some(time) => format!("iunctus: the task ran longer than its time of {time} seconds\n"),
+        None => "iunctus: the task ran longer than Kubernetes allows\n".to_owned(),
     }
 }
 
@@ -862,6 +873,11 @@ mod tests {
         assert!(outcome(None, &exited(127, "Error"), None).is_err());
         let late = Ended::Stopped("DeadlineExceeded".into());
         assert_eq!(outcome(None, &late, Some(9)).map(|(code, _)| code), Ok(143));
+        // The wrapper of a task that ran out of its time ends with the code of `timeout`.
+        let timed = outcome(Some(143), &exited(124, "Error"), Some(9)).expect("an end");
+        assert_eq!(timed.0, 143);
+        assert!(timed.1.expect("a note").contains("time of 9 seconds"));
+        assert!(outcome(None, &exited(124, "Error"), None).is_err());
         assert!(outcome(None, &Ended::Stopped("Evicted".into()), None).is_err());
     }
 }

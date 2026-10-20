@@ -50,6 +50,7 @@ pub fn executor(
         ));
     }
     backend.volumes = executors.kubernetes_volumes.clone();
+    backend.staging_time = executors.kubernetes_staging.margin();
     if let Some(stage) = executors.kubernetes_staging.stage(&setup.storage)? {
         let via = match (&executors.kubernetes_kubedal, &executors.kubernetes_helper) {
             (Some(kubedal), _) => Via::Kubedal(kubedal.clone()),

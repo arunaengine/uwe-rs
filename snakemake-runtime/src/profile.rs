@@ -362,7 +362,7 @@ impl Profile {
             if value.is_none() {
                 continue;
             }
-            let pending = ["groups", "group-components", "prioritize", "P", "batch"];
+            let pending = ["prioritize", "P", "batch"];
             if pending.contains(&interpreter.to_str(&key)?.as_str()) {
                 return Err(Error::unsupported(format!(
                     "Snakemake profile setting '{}'",

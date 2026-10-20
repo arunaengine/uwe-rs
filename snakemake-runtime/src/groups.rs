@@ -13,12 +13,15 @@ use crate::objects::NamedList;
 use crate::plan::Planner;
 use crate::shell::quote;
 
+/// The group jobs of the needed jobs, by the `group:` of their rules or the `groups` of the
+/// profile, as connected parts that `group-components` may join.
 pub fn components(
     interpreter: &mut Interpreter,
     planner: &Planner,
     order: &[usize],
     needed: &HashMap<usize, bool>,
     fixed: &HashMap<usize, TaskId>,
+    profile: &crate::profile::Profile,
 ) -> Result<HashMap<usize, Rc<Vec<usize>>>, python_evaluator::Error> {
     let mut labels = HashMap::new();
     for job in order {
@@ -32,7 +35,11 @@ pub fn components(
         {
             continue;
         }
-        if let Some(group) = &rule.group {
+        // The `groups` of a profile replace those of the rules, as Snakemake's `Rule.group`.
+        let assigned = (profile.groups.iter().rev())
+            .find(|(name, _)| *name == rule.name)
+            .map(|(_, group)| Value::str(group.as_str()));
+        if let Some(group) = &assigned.or_else(|| rule.group.clone()) {
             let callable = is_callable(interpreter, group);
             let value = if callable {
                 call_input_function(
@@ -122,7 +129,41 @@ pub fn components(
             result.insert(*member, ordered.clone());
         }
     }
+    join(order, &labels, &mut result, profile)?;
     Ok(result)
+}
+
+/// Joins the connected parts of each group of `group-components`, that many parts at a time
+/// in the order of the jobs, as Snakemake's `_update_group_components`.
+fn join(
+    order: &[usize],
+    labels: &HashMap<usize, Key>,
+    result: &mut HashMap<usize, Rc<Vec<usize>>>,
+    profile: &crate::profile::Profile,
+) -> Result<(), python_evaluator::Error> {
+    for (group, count) in &profile.group_components {
+        let label = Key::new(Value::str(group.as_str()))?;
+        let parts: Vec<Rc<Vec<usize>>> = (order.iter())
+            .filter(|job| labels.get(job) == Some(&label))
+            .filter_map(|job| result.get(job).filter(|part| part.first() == Some(job)))
+            .cloned()
+            .collect();
+        for chunk in parts.chunks((*count).max(1)) {
+            let members: HashSet<usize> =
+                chunk.iter().flat_map(|part| part.iter()).copied().collect();
+            let joined: Rc<Vec<usize>> = Rc::new(
+                order
+                    .iter()
+                    .copied()
+                    .filter(|job| members.contains(job))
+                    .collect(),
+            );
+            for member in joined.iter() {
+                result.insert(*member, joined.clone());
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The layer of each job of a group: one more than the latest job of the group it waits for.

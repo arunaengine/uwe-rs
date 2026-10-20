@@ -366,6 +366,34 @@ async fn downloads_files_once() {
     assert_eq!(other.served(), 1);
 }
 
+#[tokio::test]
+async fn rechecks_old_notes() {
+    let server = WebServer::start(&[("/a.txt", "now")], None);
+    let address = format!("{}/a.txt", server.address);
+    let downloads = tempfile::tempdir().expect("a folder");
+    // An earlier process noted another version of the file, without asking for its version.
+    let name = Storage::default().download_name(&address).unwrap();
+    std::fs::write(
+        downloads.path().join(format!("{name}.metadata")),
+        "file 99\n",
+    )
+    .unwrap();
+    let storage = Storage::default();
+    let found = storage.metadata(&address, downloads.path()).await.unwrap();
+    assert_eq!(
+        found.map(|found| found.size),
+        Some(3),
+        "the size of this version"
+    );
+    let copy = storage.fetch(&address, downloads.path()).await.unwrap();
+    assert_eq!(std::fs::read_to_string(copy).unwrap(), "now");
+    assert_eq!(
+        server.served(),
+        2,
+        "one request for the version, one download"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn shares_concurrent_downloads() {
     let body = "ACGT".repeat(1 << 18);

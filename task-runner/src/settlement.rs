@@ -186,6 +186,6 @@ impl<B: Backend> Runner<B> {
     }
 }
 
-fn timeout() -> RunnerError {
+pub(crate) fn timeout() -> RunnerError {
     std::io::Error::new(std::io::ErrorKind::TimedOut, "cache settlement timed out").into()
 }

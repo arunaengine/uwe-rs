@@ -269,6 +269,22 @@ fn execute(runner: &Runner<Fake>, prepared: &Prepared) -> TaskResult {
 }
 
 #[test]
+fn tolerates_entry_failure() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let runner = runner(root.path(), 0);
+    let entries = root.path().join("store/ac/v1/default");
+    std::fs::create_dir_all(&entries).unwrap();
+    std::fs::set_permissions(&entries, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let prepared = request(&runner, &task(root.path(), "a"));
+    let result = block_on(runner.execute(&prepared, &CancellationToken::new()));
+    std::fs::set_permissions(&entries, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let result = result.expect("a failed cache write is only a warning");
+    assert!(!result.reused);
+    assert_eq!(std::fs::read_dir(&entries).unwrap().count(), 0);
+}
+
+#[test]
 fn reuses_shared_results() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);

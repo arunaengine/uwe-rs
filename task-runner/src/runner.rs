@@ -24,7 +24,7 @@ use crate::digests::DigestCache;
 use crate::entry::{self, CacheEntry, Stale};
 use crate::inputs::{Inputs, Mode, Snapshots};
 use crate::outputs;
-use crate::settlement::{Candidate, Source as CandidateSource};
+use crate::settlement::{Candidate, Source as CandidateSource, timeout};
 
 /// How long a task first waits for another run that runs the same task, before it looks for
 /// the result again; each wait is twice as long as the one before, up to [`LONGEST_PAUSE`].
@@ -542,13 +542,26 @@ impl<B: Backend> Runner<B> {
                 });
             } else {
                 let bytes = entry.to_bytes(&key)?;
-                self.phase(
-                    _turn.as_ref(),
-                    None,
-                    Some(cancel),
-                    self.store.put_entry(namespace, &key, bytes.into()),
-                )
-                .await?;
+                let put = self.store.put_entry(namespace, &key, bytes.into());
+                let limited = async {
+                    let limit = Duration::from_secs(10);
+                    match tokio::time::timeout(limit, put).await {
+                        Ok(written) => written.map_err(RunnerError::from),
+                        Err(_) => Err(timeout()),
+                    }
+                };
+                // As settlement does: missing a cache write only lets a later run run it again.
+                match self
+                    .phase(_turn.as_ref(), None, Some(cancel), limited)
+                    .await
+                {
+                    Ok(_) => {}
+                    Err(error) if !cancel.is_cancelled() => eprintln!(
+                        "iunctus: warning: the result of task {} is not cached: {error}",
+                        entry.task
+                    ),
+                    Err(error) => return Err(error),
+                }
             }
         }
         self.authority(_turn.as_ref(), None).await?;

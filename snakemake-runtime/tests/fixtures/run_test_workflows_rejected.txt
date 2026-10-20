@@ -205,7 +205,6 @@ tests/test_ambiguousruleexception	invalid	Two rules make C/one.txt, which Snakem
 tests/test_censored_path	unsupported (decision 20)	XRootD has no mapped native storage provider; S3, GCS, Azure, HTTP, FTP and fs are supported.
 tests/test_cloud_checkpoints_issue574	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_convert_to_cwl	invalid	Has Snakefile code that Snakemake cannot parse.
-tests/test_cwl	unsupported (decision 2)	Runs a CWL tool through the cwl directive, which the native Snakemake subset refuses; iunctus runs CWL documents on their own.
 tests/test_dup_out_patterns	invalid	Snakemake's own tests expect it to fail.
 tests/test_envvars	missing	Needs environment variables that are not set, which the workflow asks for with envvars.
 tests/test_expand_flag	invalid	Snakemake's own tests expect it to fail.
@@ -216,10 +215,8 @@ tests/test_github_issue1469	invalid	Two rules make foo.txt, which Snakemake reje
 tests/test_github_issue2154	invalid	Gives the runtime 00:30:00, which Snakemake cannot read as minutes.
 tests/test_github_issue2848	invalid	Snakemake's own tests expect it to fail.
 tests/test_google_lifesciences	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
-tests/test_group_jobs_resources	unsupported (decision 2)	Requests nonempty resource scopes, which the native Snakemake scheduling subset refuses.
 tests/test_groups_out_of_jobs	invalid	Its group depends on jobs outside the group that depend on the group again, which Snakemake 9.27.0 rejects too.
 tests/test_gs_requester_pays	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
-tests/test_handover	unsupported (decision 2)	Enables rule handover, which the native Snakemake execution subset refuses.
 tests/test_issue1085	invalid	Snakemake's own tests expect it to fail.
 tests/test_issue1256	invalid	Has Snakefile code that Snakemake cannot parse.
 tests/test_issue2574	invalid	Reads the config key 'unexisting_key', which its config does not have.
@@ -247,14 +244,12 @@ tests/test_remote_ncbi	invalid	Uses a remote provider of Snakemake 7, which Snak
 tests/test_remote_ncbi_simple	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_remote_sftp	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_remote_zenodo	missing	Needs a Zenodo access token in the environment variable ZENODO_SANDBOX_PAT.
-tests/test_shadow_copy	unsupported (decision 7)	Requests copy-minimal shadow, while isolated task staging supports minimal, shallow and full symlink modes.
-tests/test_storage	unsupported (decision 20)	The storage directive overrides plugin retries, which cannot be applied to the native provider policy.
+tests/test_storage	missing	Needs the config value s3_prefix, which Snakemake's test suite gives on the command line.
 tests/test_storage_call	missing	Needs an S3 server and the config value s3_prefix, which Snakemake's own tests set up.
-tests/test_storage_dependency_edge_flags	unsupported (decision 20)	The storage directive overrides plugin retries, which cannot be applied to the native provider policy.
+tests/test_storage_dependency_edge_flags	missing	Needs the config value s3_prefix, which Snakemake's test suite gives on the command line.
 tests/test_string_resources	missing	Needs the default resource gpu_model, which Snakemake's own test gives on its command line.
 tests/test_subworkflow_config	invalid	Has Snakefile code that Snakemake cannot parse.
 tests/test_subworkflows	invalid	Has Snakefile code that Snakemake cannot parse.
-tests/test_template_engine	unsupported (decision 2)	Renders a jinja2 template, which the native Snakemake subset refuses; it renders yte templates natively.
 tests/test_tibanna	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_wildcard_annotatedstrings	invalid	Uses unpack() in params, which Snakemake forbids; Snakemake's own test expects this error.
 tests/test_xrootd	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.

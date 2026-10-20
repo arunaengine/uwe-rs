@@ -531,7 +531,7 @@ tests/test_containerized ok 1
 tests/test_convert_to_cwl 1 Snakefile:39: SyntaxError: Keyword version is deprecated. Use conda or container directive instead.
 tests/test_converting_path_for_r_script ok 2
 tests/test_core_dependent_threads ok 1
-tests/test_cwl 33 Not supported yet: the cwl directive of rule a: iunctus does not run CWL tools from Snakemake rules; run the CWL document with iunctus on its own
+tests/test_cwl ok 1
 tests/test_cyclic_dependency_single ok 0
 tests/test_cyclic_dependency_split ok 3
 tests/test_default_flags ok 3
@@ -625,7 +625,7 @@ tests/test_google_lifesciences 1 Snakefile:5: NotImplementedError: Remote provid
 tests/test_group_job_fail ok 7
 tests/test_group_jobs ok 7
 tests/test_group_jobs_attempts ok 1
-tests/test_group_jobs_resources 1 Snakefile:3: WorkflowError: resource_scopes are not supported by iunctus
+tests/test_group_jobs_resources ok 2
 tests/test_group_parallel ok 1
 tests/test_group_temp ok 2
 tests/test_group_with_pipe ok 2
@@ -634,7 +634,7 @@ tests/test_groupid_expand_cluster ok 2
 tests/test_groups_out_of_jobs 1 WorkflowError: Error in group: dependencies leave and re-enter the component through jobs outside the group
 tests/test_gs_requester_pays 1 Snakefile:2: the workflow imports the Python package google, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 tests/test_handle_storage_multi_consumers ok 3
-tests/test_handover 1 Snakefile:1: WorkflowError: handover is not supported by iunctus for rule a
+tests/test_handover ok 1
 tests/test_immediate_submit ok 4
 tests/test_immediate_submit_without_shared_fs ok 12
 tests/test_incomplete_params ok 2
@@ -827,7 +827,7 @@ tests/test_set_resources ok 1
 tests/test_set_resources_complex ok 1
 tests/test_set_threads ok 1
 tests/test_shadow ok 17
-tests/test_shadow_copy 33 Snakefile:18: Not supported yet: shadow mode 'copy-minimal' for rule minimal_rel_curdir; only 'minimal', 'shallow' and 'full' are supported
+tests/test_shadow_copy ok 7
 tests/test_shadow_prefix ok 1
 tests/test_shadowed_log ok 1
 tests/test_shell ok 1
@@ -844,10 +844,10 @@ tests/test_source_path ok 1
 tests/test_source_path_rerun ok 3
 tests/test_spaces_in_fnames ok 3
 tests/test_speed ok 301
-tests/test_storage 33 Snakefile:1: Not supported yet: Snakemake storage plugin options; configure provider credentials in iunctus storage settings
+tests/test_storage 1 Snakefile:12: KeyError: 's3_prefix'
 tests/test_storage_call 1 Snakefile:7: KeyError: 's3_prefix'
 tests/test_storage_cleanup_local ok 2
-tests/test_storage_dependency_edge_flags 33 Snakefile:1: Not supported yet: Snakemake storage plugin options; configure provider credentials in iunctus storage settings
+tests/test_storage_dependency_edge_flags 1 Snakefile:6: KeyError: 's3_prefix'
 tests/test_storage_localrule ok 2
 tests/test_storage_noretrieve_dryrun ok 3
 tests/test_strict_mode ok 1
@@ -861,7 +861,7 @@ tests/test_temp ok 3
 tests/test_temp_and_all_input ok 2
 tests/test_temp_checkpoint ok 13
 tests/test_temp_expand ok 2
-tests/test_template_engine 33 Not supported yet: the jinja2 template engine of rule render_jinja2_template: iunctus renders yte templates natively, but not jinja2 ones
+tests/test_template_engine ok 3
 tests/test_tes ok 1
 tests/test_threads ok 1
 tests/test_threads0 ok 1

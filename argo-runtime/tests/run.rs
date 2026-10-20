@@ -1539,6 +1539,52 @@ spec:
 }
 
 #[test]
+fn applies_pod_patches() {
+    // Argo's examples pod-spec-patch-wf-tmpl.yaml: the patch of the workflow, then the
+    // template's own, with the tags of the template.
+    let text = r#"apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata: {generateName: pod-spec-patch-}
+spec:
+  entrypoint: hello-world
+  arguments:
+    parameters:
+    - {name: cpu-limit, value: 100m}
+    - {name: mem-limit, value: 100Mi}
+  podSpecPatch: |
+    nodeSelector: {disk: ssd}
+    containers:
+      - name: main
+        resources:
+          limits:
+            memory: "{{workflow.parameters.mem-limit}}"
+  templates:
+  - name: hello-world
+    podSpecPatch: '{"containers":[{"name":"main", "env": [{"name": "GREETING", "value": "hi"}], "resources":{"limits":{"cpu": "{{workflow.parameters.cpu-limit}}" }}}]}'
+    container:
+      image: busybox
+      command: [echo]
+      args: ["hello world"]
+"#;
+    let ran = run(text);
+    ran.succeeded();
+    let task = ran.tasks()[0];
+    assert_eq!(task.resources.cpus, Some(0.1));
+    assert_eq!(task.resources.memory_bytes, Some(100 << 20));
+    assert_eq!(
+        task.environment.get("GREETING").map(String::as_str),
+        Some("hi")
+    );
+    assert!(
+        ran.warnings
+            .iter()
+            .any(|warning| warning.starts_with("podSpecPatch.nodeSelector is left out")),
+        "{:?}",
+        ran.warnings
+    );
+}
+
+#[test]
 fn unresolved_when_fails() {
     // `a` is skipped, so it has no outputs; Argo cannot parse the `when` of `b` and fails it.
     let dag = r#"

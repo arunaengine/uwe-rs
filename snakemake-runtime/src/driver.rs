@@ -1429,6 +1429,40 @@ impl Session {
         usage
     }
 
+    /// Snakemake's `cleanup_workdir`: removes the empty folders of the files of the jobs that
+    /// are not there, like those of temporary files, and their empty parents.
+    fn clean_folders(&self) {
+        let Some(planner) = &self.planner else {
+            return;
+        };
+        let mut folders = std::collections::BTreeSet::new();
+        for job in &self.order {
+            let entry = &planner.jobs[*job];
+            let files = (entry.output.values.iter()).chain(&entry.input.values);
+            for file in files.filter_map(Value::as_str) {
+                let path = self.workdir.join(file);
+                if !path.exists()
+                    && let Some(parent) = path.parent()
+                {
+                    folders.insert(parent.to_path_buf());
+                }
+            }
+        }
+        for folder in folders {
+            let mut current = folder.as_path();
+            // `remove_dir` removes only empty folders; the working directory stays.
+            while current.starts_with(&self.workdir)
+                && current != self.workdir
+                && std::fs::remove_dir(current).is_ok()
+            {
+                let Some(parent) = current.parent() else {
+                    break;
+                };
+                current = parent;
+            }
+        }
+    }
+
     /// Removes the outputs of failed jobs in the shared directory, as Snakemake does since
     /// they might be corrupted.
     fn remove_failed(&self, jobs: &[usize]) -> Result<(), DriverError> {
@@ -2415,6 +2449,9 @@ impl Session {
             )));
         }
         self.release_temporary(&[])?;
+        if self.shared {
+            self.clean_folders();
+        }
         if self.hooks_started && !self.hooks_finished {
             self.hooks_finished = true;
             self.run_hook(GlobalKeyword::OnSuccess)?;

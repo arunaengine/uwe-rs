@@ -60,6 +60,9 @@ pub struct Options {
     pub javascript: JavaScriptSettings,
     /// The local task engine; remote callers leave this unset.
     pub local_engine: Option<String>,
+    /// For remote executors: the repository, like `host/team/cwl`, that images which
+    /// DockerRequirement builds, loads or imports go to, made with the JavaScript engine.
+    pub registry: Option<String>,
 }
 
 impl Default for Options {
@@ -71,6 +74,7 @@ impl Default for Options {
             remote: Remote::default(),
             javascript: JavaScriptSettings::default(),
             local_engine: None,
+            registry: None,
         }
     }
 }

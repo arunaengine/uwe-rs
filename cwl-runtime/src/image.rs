@@ -1,4 +1,4 @@
-//! Prepares CWL Docker recipes and archives for a selected local task engine.
+//! Prepares CWL Docker recipes and archives with a local engine, and pushes them for remote executors.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 use crate::tool::Options;
 
 pub(crate) fn select(docker: Option<(&Docker, bool)>, options: &Options) -> Result<String, String> {
-    let Some((docker, required)) = docker else {
+    let Some((docker, _)) = docker else {
         return Ok(options.image.clone());
     };
     let source = if docker.docker_file.is_some() {
@@ -30,15 +30,13 @@ pub(crate) fn select(docker: Option<(&Docker, bool)>, options: &Options) -> Resu
             .clone()
             .unwrap_or_else(|| options.image.clone()));
     };
-    if !options.simulated && options.local_engine.is_none() {
-        return match required {
-            true => Err(crate::tool::unsupported(
-                "DockerRequirement build/load/import needs a local task executor; \
-                remote executors need a configured registry push and a published manifest digest, \
-                or a prepublished dockerPull image",
-            )),
-            false => Ok(options.image.clone()),
-        };
+    // A hint too, since the tool would hardly run in the default image instead.
+    if !options.simulated && options.local_engine.is_none() && options.registry.is_none() {
+        return Err(crate::tool::unsupported(
+            "a DockerRequirement with dockerFile, dockerLoad or dockerImport needs an image that \
+             remote executors can pull: set `registry` in the `[cwl]` section of the config file, \
+             so that iunctus makes the image here and pushes it there, or name a dockerPull image",
+        ));
     }
     let docker = docker.clone();
     let options = options.clone();
@@ -114,24 +112,23 @@ fn prepare(docker: &Docker, source: ImageSource, options: &Options) -> Result<St
         .build()
         .map_err(|error| error.to_string())?;
     runtime.block_on(async {
-        let engine = ContainerEngine::named(
-            options
-                .local_engine
-                .as_deref()
-                .filter(|name| !name.is_empty()),
-        )
-        .await
-        .map_err(|error| error.to_string())?;
-        engine
-            .prepare_image(
-                source,
-                &path,
-                &tag,
-                docker.docker_image_id.as_deref(),
-                &options.javascript.cancel,
-            )
+        // Remote executors get the image from the registry; it is made with the engine here.
+        let name = (options.local_engine.as_deref()).unwrap_or(&options.javascript.engine);
+        let engine = ContainerEngine::named(Some(name).filter(|name| !name.is_empty()))
             .await
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+        let cancel = &options.javascript.cancel;
+        let expected = docker.docker_image_id.as_deref();
+        let id = (engine
+            .prepare_image(source, &path, &tag, expected, cancel)
+            .await)
+            .map_err(|error| error.to_string())?;
+        match (&options.local_engine, &options.registry) {
+            (None, Some(registry)) => {
+                (engine.push_image(&id, registry, cancel).await).map_err(|error| error.to_string())
+            }
+            _ => Ok(id),
+        }
     })
 }
 

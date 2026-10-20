@@ -84,6 +84,8 @@ for argument in "$@"; do
     esac
 done
 mkdir -p "$state"
+# A busy controller answers late.
+[ ! -e "$(dirname "$0")/slow" ] || sleep 6
 echo "${json:-text}" >> "$state/squeue"
 if [ -n "$name" ]; then
     for file in "$state"/*.name; do
@@ -776,6 +778,32 @@ async fn cancelled_jobs_stop() {
     );
     let exit = std::fs::read_to_string(bin.join("state/101.exit")).expect("the job ended");
     assert_ne!(exit.trim(), "0");
+}
+
+#[tokio::test]
+async fn waits_slow_controller() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    std::fs::write(bin.join("slow"), "").expect("slows the controller");
+    let mut backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    // Each query takes longer than the five seconds that it once had.
+    backend.query_grace = Duration::from_secs(10);
+    let mut spec = spec("echo slow > out.txt");
+    spec.image.as_mut().unwrap().reference = "/images/tool.sif".into();
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-P-14-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    assert!(!finished.root.join("remote.json").exists());
 }
 
 #[tokio::test]

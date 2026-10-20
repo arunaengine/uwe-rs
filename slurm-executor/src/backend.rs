@@ -80,6 +80,8 @@ pub struct SlurmBackend {
     pub poll: Duration,
     /// How long `sbatch` may take before its submission counts as unclear.
     pub submit_grace: Duration,
+    /// How long one call of `squeue`, `sacct` or `scancel` may take, for a busy controller.
+    pub query_grace: Duration,
     /// Where Apptainer and Singularity keep the SIF file of each image of a registry or address,
     /// which the nodes must see at the same path.
     pub images: PathBuf,
@@ -151,6 +153,7 @@ impl SlurmBackend {
             commands: None,
             poll: POLL,
             submit_grace: SUBMIT_GRACE,
+            query_grace: crate::queue::QUERY_GRACE,
             queue: Queue::default(),
             made: Images::default(),
             recovery: Mutex::default(),
@@ -528,7 +531,7 @@ impl SlurmBackend {
         let ended = self.wait(&id, &control, prefix, cancel).await;
         let held = matches!(ended, Ok(Ended::Held(_)));
         let stopped = self
-            .stop(&id, root, CANCEL_GRACE, ended.is_err() || held)
+            .stop(&id, root, self.settle(), ended.is_err() || held)
             .await;
         self.queue.remove(&id).await;
         stopped?;
@@ -570,7 +573,12 @@ impl SlurmBackend {
     async fn leave_out(&self, id: &str) -> Option<String> {
         let node = self
             .queue
-            .node(&self.command("squeue"), &self.command("sacct"), id)
+            .node(
+                &self.command("squeue"),
+                &self.command("sacct"),
+                id,
+                self.query_grace,
+            )
             .await?;
         self.excluded.lock().await.insert(node.clone());
         Some(node)
@@ -702,7 +710,7 @@ impl SlurmBackend {
         let ended = self.wait(&id, &control, None, cancel).await;
         let held = matches!(ended, Ok(Ended::Held(_)));
         let stopped = self
-            .stop(&id, &root, CANCEL_GRACE, ended.is_err() || held)
+            .stop(&id, &root, self.settle(), ended.is_err() || held)
             .await;
         self.queue.remove(&id).await;
         stopped?;
@@ -800,7 +808,7 @@ impl SlurmBackend {
         journal_at(root, &journal).map_err(|error| unresolved(root, error))?;
         let squeue = self.command("squeue");
         let (_, identity) = tokio::select! {
-            value = crate::queue::identified(&squeue, id, journal["cluster"].as_str()) => value,
+            value = crate::queue::identified(&squeue, id, journal["cluster"].as_str(), self.query_grace) => value,
             () = cancel.cancelled() => return Err(unresolved(root, "cancelled before scheduler identity was recorded")),
         };
         if let Some(identity) = identity {
@@ -816,6 +824,12 @@ impl SlurmBackend {
         Ok(id.to_owned())
     }
 
+    /// How long the end of a job may take to confirm: a few queries, which a slow controller
+    /// each answers late, and the time that SLURM takes to stop a job.
+    fn settle(&self) -> Duration {
+        CANCEL_GRACE.max(self.query_grace * 4)
+    }
+
     fn configuration(&self) -> serde_json::Value {
         let conf = std::env::var("SLURM_CONF").ok();
         let digest = std::fs::read(conf.as_deref().unwrap_or("/etc/slurm/slurm.conf"))
@@ -829,7 +843,15 @@ impl SlurmBackend {
 
     /// Recovers matching orphaned tasks and skips proven active local owners.
     pub async fn reconcile(&self) -> Result<(), ExecutorError> {
-        tokio::time::timeout(CANCEL_GRACE, async {
+        // Each journal may need a whole stop on a slow controller.
+        let journals = std::fs::read_dir(&self.scratch).map_or(0, |entries| {
+            (entries.flatten())
+                .filter(|entry| entry.path().join("remote.json").exists())
+                .count()
+        });
+        let count = u32::try_from(journals + 1).unwrap_or(u32::MAX);
+        let limit = self.settle().checked_mul(count).unwrap_or(Duration::MAX);
+        tokio::time::timeout(limit, async {
             let _gate = self.recovery.lock().await;
             self.reconcile_records().await
         })
@@ -956,6 +978,7 @@ impl SlurmBackend {
                     &self.command("squeue"),
                     &id,
                     journal["cluster"].as_str(),
+                    self.query_grace,
                 )
                 .await;
                 if identity
@@ -974,7 +997,7 @@ impl SlurmBackend {
                         || unresolved(&root, "cannot identify the recovery coordinator")
                     )?);
                 journal_at(&root, &journal)?;
-                self.stop(&id, &root, CANCEL_GRACE, true).await?;
+                self.stop(&id, &root, self.settle(), true).await?;
                 self.clean_staging(&journal).await;
             }
         }
@@ -1007,7 +1030,8 @@ impl SlurmBackend {
                 let Ok(folder) = std::fs::metadata(root) else {
                     return Submitted::Unclear("the folder of the attempt is gone");
                 };
-                match crate::queue::named(&squeue, name, script, folder.uid()).await {
+                let grace = self.query_grace;
+                match crate::queue::named(&squeue, name, script, folder.uid(), grace).await {
                     None => return Submitted::Unclear("squeue cannot list the jobs of the name"),
                     Some(ids) if ids.is_empty() => return Submitted::Absent,
                     Some(ids) if ids.len() == 1 => ids[0].clone(),
@@ -1016,7 +1040,7 @@ impl SlurmBackend {
             }
         };
         let cluster = journal["cluster"].as_str();
-        match crate::queue::identified(&squeue, &id, cluster).await {
+        match crate::queue::identified(&squeue, &id, cluster, self.query_grace).await {
             (_, Some(identity)) if identity["name"] == name && identity["script"] == script => {
                 Submitted::Found(id, identity)
             }
@@ -1061,7 +1085,7 @@ impl SlurmBackend {
                 continue;
             }
             let look = tokio::select! {
-                look = self.queue.look(id, self.poll, &squeue) => look,
+                look = self.queue.look(id, self.poll, &squeue, self.query_grace) => look,
                 () = cancel.cancelled() => {
                     return Err(ExecutorError::Cancelled);
                 }
@@ -1071,7 +1095,7 @@ impl SlurmBackend {
                 Look::Held(reason) => return Ok(Ended::Held(reason)),
                 Look::Ended(state) => Some(state),
                 Look::Gone => tokio::select! {
-                    state = self.queue.accounted(&sacct, id) => state,
+                    state = self.queue.accounted(&sacct, id, self.query_grace) => state,
                     () = cancel.cancelled() => {
                         return Err(ExecutorError::Cancelled);
                     }
@@ -1113,7 +1137,8 @@ impl SlurmBackend {
         }
         executor::poll::until_stopped(grace, self.poll.min(Duration::from_secs(1)), || async {
             let (look, identity) =
-                crate::queue::identified(&self.command("squeue"), id, cluster).await;
+                crate::queue::identified(&self.command("squeue"), id, cluster, self.query_grace)
+                    .await;
             let identified = identity.is_some();
             if let Some(identity) = identity {
                 if identity != journal["identity"] || identity["script"] != journal["script"] {
@@ -1127,7 +1152,8 @@ impl SlurmBackend {
             }
             if matches!(look, Look::Ended(_) | Look::Gone)
                 && matches!(
-                    crate::queue::look_one(&self.command("squeue"), id, cluster).await,
+                    crate::queue::look_one(&self.command("squeue"), id, cluster, self.query_grace)
+                        .await,
                     Look::Ended(_) | Look::Gone
                 )
             {
@@ -1143,7 +1169,7 @@ impl SlurmBackend {
                 if let Some(cluster) = cluster {
                     command.arg(format!("--clusters={cluster}"));
                 }
-                let _ = crate::queue::output(&mut command, crate::queue::REQUEST_GRACE).await;
+                let _ = crate::queue::output(&mut command, self.query_grace).await;
             }
             None
         })

@@ -154,6 +154,8 @@ struct Flags {
     shm: Option<i64>,
     swap: Option<i64>,
     gpus: Option<i64>,
+    /// The container whose network this one shares, as the containers of a pod share it.
+    network: Option<String>,
 }
 
 impl Flags {
@@ -176,6 +178,7 @@ impl Flags {
             shm: values.get("shm").copied(),
             swap: values.get("swap").copied(),
             gpus: values.get("gpus").copied(),
+            network: None,
         };
         if flags.cpus.is_some_and(|value| value <= 0)
             || flags.shm.is_some_and(|value| value < 0)
@@ -190,6 +193,9 @@ impl Flags {
     }
 
     fn apply(&self, config: &mut HostConfig) {
+        if let Some(owner) = &self.network {
+            config.network_mode = Some(format!("container:{owner}"));
+        }
         if let Some(cpus) = self.cpus {
             config.nano_cpus = Some(config.nano_cpus.map_or(cpus, |granted| granted.min(cpus)));
         }
@@ -589,9 +595,29 @@ impl LocalContainer {
             .collect();
         let time = job.placement.time_seconds.map(Duration::from_secs);
         let stop = cancel.child_token();
-        let flags = Flags::default();
+        // With services, every container shares the network of the first group that holds
+        // one, which lives until the other containers ended, so that they reach each other
+        // at `localhost` as in a pod.
+        let sharing = (groups.iter())
+            .position(|(group, _)| group.members.iter().any(|&at| spec.containers[at].service));
+        let flags: Vec<Flags> = (0..runs.len())
+            .map(|index| Flags {
+                network: sharing
+                    .filter(|&at| at != index)
+                    .map(|at| names[at].clone()),
+                ..Flags::default()
+            })
+            .collect();
         let mut running: futures_util::stream::FuturesUnordered<_> = (runs.iter().enumerate())
-            .map(|(index, run)| self.run_to_end(run, resources[index].0, time, &stop, &flags))
+            .map(|(index, run)| {
+                let (flags, stop, cpus) = (&flags[index], &stop, resources[index].0);
+                async move {
+                    if let Some(owner) = &flags.network {
+                        self.wait_running(owner, stop).await?;
+                    }
+                    self.run_to_end(run, cpus, time, stop, flags).await
+                }
+            })
             .collect();
         let mut first: Option<Result<Ending, ExecutorError>> = None;
         let mut normal = None;
@@ -617,6 +643,34 @@ impl LocalContainer {
             (None, None) => return Err(ExecutorError::NoImage),
         };
         self.finish(ending, root.to_owned(), &spec).await
+    }
+
+    /// Waits until the container of this name runs, for a container that joins its network.
+    async fn wait_running(
+        &self,
+        name: &str,
+        cancel: &CancellationToken,
+    ) -> Result<(), ExecutorError> {
+        let client = self.engine.client();
+        for _ in 0..1200 {
+            let running = client
+                .inspect_container(name, None)
+                .await
+                .ok()
+                .and_then(|found| found.state)
+                .and_then(|state| state.running);
+            if running == Some(true) {
+                return Ok(());
+            }
+            tokio::select! {
+                () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
+                () = tokio::time::sleep(Duration::from_millis(100)) => {}
+            }
+        }
+        Err(ExecutorError::Engine {
+            engine: self.engine.name.clone(),
+            message: format!("container {name}, whose network the others share, did not start"),
+        })
     }
 
     /// How the containers of a task run, and its scratch directory `root` open to every user

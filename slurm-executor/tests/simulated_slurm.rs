@@ -1299,6 +1299,7 @@ async fn inspects_pinned_once() {
 /// A task of two containers in two images: `first` writes a file that `main` reads.
 fn several(first: &str) -> TaskSpec {
     let container = |name: &str, image: &str, script: &str, after: &[&str]| ContainerSpec {
+        service: false,
         replaces_entrypoint: false,
         name: name.into(),
         image: Some(Image {

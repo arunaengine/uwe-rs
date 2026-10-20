@@ -121,6 +121,10 @@ pub struct Container {
     /// Whether `command` replaces the entrypoint of the image, as for the task.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub replaces_entrypoint: bool,
+    /// Whether the container serves the others beside them and stops once they ended, like
+    /// an Argo sidecar; its exit code does not count.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub service: bool,
 }
 
 /// Whether a workflow lets a task use the network.

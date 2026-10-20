@@ -81,6 +81,10 @@ pub struct ContainerSpec {
     /// left out of the encoding.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub replaces_entrypoint: bool,
+    /// Whether the container serves the others beside them and stops once they ended, like
+    /// an Argo sidecar; its exit code does not count. False is left out of the encoding.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub service: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

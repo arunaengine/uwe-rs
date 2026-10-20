@@ -248,6 +248,7 @@ fn refuses_multiple_executors() {
         })
     };
     let container = |name: &str, reference: &str, after: &[&str]| ContainerSpec {
+        service: false,
         replaces_entrypoint: false,
         name: name.into(),
         image: image(reference),

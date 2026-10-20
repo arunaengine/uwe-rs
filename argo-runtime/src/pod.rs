@@ -132,7 +132,9 @@ impl Run {
             task.run_as = Some(self.run_as(template, Some(container)));
             task.environment = self.environment(container, &fields)?;
             task.outputs = outputs.clone();
-            self.mount_volumes(index, first, template, &container.volume_mounts, &mut task)?;
+            let mut mounts = container.volume_mounts.clone();
+            self.add_sidecars(&mut task, template, &fields, &mut mounts)?;
+            self.mount_volumes(index, first, template, &mounts, &mut task)?;
             tasks.push(task);
         } else if let Some(script) = &template.script {
             let mut task = base(&script.image, Some(script))?;
@@ -154,7 +156,9 @@ impl Run {
             });
             task.script = Some(source);
             task.outputs = outputs.clone();
-            self.mount_volumes(index, first, template, &script.volume_mounts, &mut task)?;
+            let mut mounts = script.volume_mounts.clone();
+            self.add_sidecars(&mut task, template, &fields, &mut mounts)?;
+            self.mount_volumes(index, first, template, &mounts, &mut task)?;
             tasks.push(task);
         } else if let Some(set) = &template.container_set {
             // One task runs every container of the set, as one pod does: the main container
@@ -195,6 +199,7 @@ impl Run {
                     after: container.dependencies.clone(),
                     attempts,
                     replaces_entrypoint: !container.command.is_empty(),
+                    service: false,
                 });
             }
             task.outputs = outputs.clone();
@@ -650,6 +655,62 @@ fn main_mounts(template: &Template) -> Vec<Node> {
 
 /// Fills a task from a container: one command line of `command` and `args` (decision 18), and
 /// the working directory.
+impl Run {
+    /// Runs the sidecars of a template beside its main container, as services that stop
+    /// when it ended; they share its network and the volumes that any of them mounts.
+    fn add_sidecars(
+        &mut self,
+        task: &mut Task,
+        template: &Template,
+        fields: &BTreeMap<&'static str, String>,
+        mounts: &mut Vec<Node>,
+    ) -> Result<()> {
+        if template.sidecars.is_empty() {
+            return Ok(());
+        }
+        task.containers.push(TaskContainer {
+            name: "main".into(),
+            image: task.image.clone(),
+            command: task.command.clone(),
+            workdir: task.workdir.clone(),
+            environment: task.environment.clone(),
+            after: Vec::new(),
+            attempts: 1,
+            replaces_entrypoint: task.replaces_entrypoint,
+            service: false,
+        });
+        for node in &template.sidecars {
+            let (sidecar, _) = decode::<Container>(node).map_err(|error| {
+                Failure::error(format!("template {}: sidecar: {error}", template.name))
+            })?;
+            task.resources = sum(&task.resources, &sidecar)?;
+            let path = |mount: &Node| mount.get("mountPath").map(scalar_text);
+            for mount in &sidecar.volume_mounts {
+                if !mounts.iter().any(|known| path(known) == path(mount)) {
+                    mounts.push(mount.clone());
+                }
+            }
+            task.containers.push(TaskContainer {
+                name: sidecar.name.clone(),
+                image: (!sidecar.image.is_empty()).then(|| sidecar.image.clone()),
+                command: sidecar
+                    .command
+                    .iter()
+                    .chain(&sidecar.args)
+                    .cloned()
+                    .collect(),
+                workdir: (!sidecar.working_dir.is_empty()).then(|| sidecar.working_dir.clone()),
+                environment: self.environment(&sidecar, fields)?,
+                after: Vec::new(),
+                attempts: 1,
+                replaces_entrypoint: !sidecar.command.is_empty(),
+                service: true,
+            });
+        }
+        Ok(())
+    }
+}
+
 pub(crate) fn fill_container(task: &mut Task, container: &Container) {
     task.command = container
         .command

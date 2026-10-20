@@ -439,6 +439,7 @@ fn uses_image_entrypoint() {
 fn container(name: &str, image: &str, script: &str, after: &[&str]) -> ContainerSpec {
     ContainerSpec {
         replaces_entrypoint: false,
+        service: false,
         name: name.to_owned(),
         image: Some(Image {
             reference: image.to_owned(),

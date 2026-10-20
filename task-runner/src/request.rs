@@ -107,6 +107,7 @@ pub fn request(
             after: container.after.clone(),
             attempts: container.attempts.max(1),
             replaces_entrypoint: container.replaces_entrypoint,
+            service: container.service,
         })
         .collect();
     let spec = TaskSpec {

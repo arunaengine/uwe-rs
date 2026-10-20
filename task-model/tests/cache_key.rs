@@ -245,6 +245,7 @@ fn rejects_environment_names() {
 fn with_containers() -> TaskSpec {
     let mut spec = fastqc();
     let container = |name: &str, image: &Option<Image>, after: &[&str]| ContainerSpec {
+        service: false,
         replaces_entrypoint: false,
         name: name.to_owned(),
         image: image.clone(),

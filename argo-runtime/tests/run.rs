@@ -591,6 +591,35 @@ fn removes_host_files() {
 }
 
 #[test]
+fn runs_sidecars_beside() {
+    let text = r#"
+  - name: main
+    container: {image: alpine, command: [wget], args: ["http://127.0.0.1:8080/"]}
+    sidecars:
+    - {name: web, image: python, command: [python3, -m, http.server, "8080"], volumeMounts: [{name: data, mountPath: /data}]}
+    volumes: [{name: data, emptyDir: {}}]
+"#;
+    let ran = run(&workflow(text));
+    ran.succeeded();
+    let task = ran.tasks()[0];
+    let names: Vec<(&str, bool)> = (task.containers.iter())
+        .map(|container| (container.name.as_str(), container.service))
+        .collect();
+    assert_eq!(names, [("main", false), ("web", true)]);
+    assert_eq!(
+        task.containers[0].command,
+        ["wget", "http://127.0.0.1:8080/"]
+    );
+    assert_eq!(task.containers[1].image.as_deref(), Some("python"));
+    // The volumes of the sidecar are the task's too.
+    assert!(
+        task.inputs.iter().any(|input| input.path == "/data"),
+        "{:?}",
+        task.inputs
+    );
+}
+
+#[test]
 fn resumes_suspended_steps() {
     let text = r#"
   - name: main

@@ -508,6 +508,20 @@ fn combines_channel_values() {
         ),
         ["[[a, 1], [a, x]]", "[[a, 1], [a, y]]", "[[b, 2], [b, z]]"]
     );
+    // Right values pair with the first left value of their key, as most Nextflow 26.04.6
+    // runs give it; keys on one side only give nothing.
+    assert_eq!(
+        sorted(
+            "channel.of([1, 'a'], [2, 'b'], [1, 'c']).cross(channel.of([1, 'x'], [2, 'y'], [1, 'z'], [3, 'q'])).view()"
+        ),
+        ["[[1, a], [1, x]]", "[[1, a], [1, z]]", "[[2, b], [2, y]]"]
+    );
+    assert_eq!(
+        sorted(
+            "channel.of([k: 1, v: 'a']).cross(channel.of([1, 'x'])) { it instanceof Map ? it.k : it[0] }.view()"
+        ),
+        ["[[k:1, v:a], [1, x]]"]
+    );
 }
 
 #[test]

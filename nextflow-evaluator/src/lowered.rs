@@ -28,6 +28,9 @@ pub enum Place {
 /// The functions and processes of one script file.
 #[derive(Debug, Default)]
 pub struct Module {
+    /// Whether the script sets `nextflow.enable.types = true`: its processes are typed, and
+    /// calls of them give a channel, or a record of channels by output name.
+    pub types: bool,
     pub functions: Vec<Rc<Code>>,
     /// Function indexes by name; Groovy allows several functions with one name.
     pub function_names: HashMap<Rc<str>, Vec<usize>>,

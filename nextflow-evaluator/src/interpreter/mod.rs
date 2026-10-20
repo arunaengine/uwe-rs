@@ -392,6 +392,8 @@ pub struct Interpreter<'h> {
     invocations: HashSet<String>,
     /// While a typed output is computed: the values of its parts.
     task_outputs: Vec<Value>,
+    /// Whether the main script enables types, which changes some operators.
+    types: bool,
     /// The variables of the task being evaluated, by name, which config closures can read.
     task_variables: Vec<(Rc<str>, Rc<RefCell<Value>>)>,
     /// The script of the statement where the error that is being raised happened.
@@ -412,6 +414,7 @@ impl<'h> Interpreter<'h> {
             workflow_path: Vec::new(),
             invocations: HashSet::new(),
             task_outputs: Vec::new(),
+            types: false,
             task_variables: Vec::new(),
             error_module: None,
             publishing: None,

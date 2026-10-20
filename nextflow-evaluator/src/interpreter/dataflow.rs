@@ -17,6 +17,7 @@ use crate::value::{ChannelOut, DefinitionRef, Key, Value};
 impl Interpreter<'_> {
     /// Runs the named workflow selected by `-entry`, including an imported workflow alias.
     pub fn run_named_entry(&mut self, module: &Rc<Module>, name: &str) -> Result<(), Error> {
+        self.types = module.types;
         let (target, target_name) = resolve(module, name);
         if !target
             .workflows
@@ -39,6 +40,7 @@ impl Interpreter<'_> {
     /// a script with named workflows only fails, and one without workflows and processes, like
     /// an empty script, does nothing.
     pub fn run_entry(&mut self, module: &Rc<Module>) -> Result<(), Error> {
+        self.types = module.types;
         let entry = module
             .workflows
             .iter()
@@ -81,8 +83,24 @@ impl Interpreter<'_> {
         }
         let call = (&*process.name, false);
         let outputs = self.call_definition(module, call, arguments, process.span)?;
-        let Value::ChannelOut(out) = outputs else {
-            return Ok(());
+        let out = match outputs {
+            Value::ChannelOut(out) => out,
+            // A typed process gives its one output channel, or a record of them.
+            Value::Channel(_) => Rc::new(ChannelOut {
+                values: vec![outputs],
+                names: Vec::new(),
+            }),
+            Value::Map(map) => {
+                let entries = map.borrow().entries.clone();
+                Rc::new(ChannelOut {
+                    names: entries
+                        .keys()
+                        .map(|key| Some(key.0.to_string().into()))
+                        .collect(),
+                    values: entries.into_values().collect(),
+                })
+            }
+            _ => return Ok(()),
         };
         let mut names: Vec<Rc<str>> = process
             .outputs
@@ -248,9 +266,14 @@ impl Interpreter<'_> {
                         other => other,
                     });
                 }
-                self.host
-                    .call_process(&target, &process, &qualified, values)
-                    .map_err(|error| error.or_at(span))?
+                let outputs = self
+                    .host
+                    .call_process(&target, &process, &qualified, values);
+                let outputs = outputs.map_err(|error| error.or_at(span))?;
+                match target.types {
+                    true => typed_result(outputs),
+                    false => outputs,
+                }
             }
             (None, Some(workflow)) => {
                 self.workflow_path.push(name.into());
@@ -438,6 +461,15 @@ impl Interpreter<'_> {
         arguments: Vec<Value>,
         span: Span,
     ) -> Result<Value, Error> {
+        if self.types && matches!(name, "set" | "tap") {
+            let message = format!(
+                "Operator `{name}` is not supported in typed workflows -- use an assignment instead"
+            );
+            return Err(thrown(
+                Exception::new("ScriptRuntimeException", message),
+                span,
+            ));
+        }
         // GPars' `length()`: how many values a channel holds now. Channels are empty while
         // the workflow is built, and closures at run time cannot see them, so it is 0, which
         // Nextflow also gives when the value is not there yet.
@@ -491,4 +523,22 @@ fn resolve(module: &Rc<Module>, name: &str) -> (Rc<Module>, Rc<str>) {
         Some(link) => resolve(&link.module, &link.name),
         None => (module.clone(), name.into()),
     }
+}
+
+/// What a call of a typed process gives, as Nextflow's `normalizeV2`: its one output channel,
+/// else a record of the output channels by name.
+fn typed_result(outputs: Value) -> Value {
+    let Value::ChannelOut(out) = &outputs else {
+        return outputs;
+    };
+    if let [single] = out.values.as_slice() {
+        return single.clone();
+    }
+    let entries = (out.names.iter().zip(&out.values))
+        .map(|(name, value)| (Value::string(name.as_deref().unwrap_or("")), value.clone()));
+    let record = Value::map(entries);
+    if let Value::Map(map) = &record {
+        map.borrow_mut().kind = crate::value::MapKind::Record;
+    }
+    record
 }

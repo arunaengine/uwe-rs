@@ -126,6 +126,30 @@ impl Lowering<'_> {
         let (target, variable, span) = set_parts(statement)?;
         let value = self.expression(target);
         let place = self.assigned_variable(variable, span)?;
+        // Typed workflows refuse `set` and `tap` when they run, as Nextflow does.
+        if self.types {
+            let name = match &statement.kind {
+                Kind::Expression(ast::Expression {
+                    kind: Syntax::MethodCall { name, .. },
+                    ..
+                }) => name.text.as_str().into(),
+                _ => "set".into(),
+            };
+            let call = ExpressionKind::CallMethod {
+                target: Box::new(value),
+                name,
+                access: ast::Access::Normal,
+                arguments: Default::default(),
+            };
+            let expression = Expression {
+                kind: call,
+                span: statement.span,
+            };
+            return Some(Statement {
+                kind: StatementKind::Expression(expression),
+                span: statement.span,
+            });
+        }
         Some(Statement {
             kind: StatementKind::Assign {
                 target: self.variable_target(variable, place),

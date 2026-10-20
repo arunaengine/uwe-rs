@@ -60,6 +60,7 @@ mod tests {
             exit_code: Some(0),
             files: Vec::new(),
             usage: None,
+            address: None,
         };
         let files = super::parse("file //tmp/result\ndirectory .\n").unwrap();
         assert_eq!(

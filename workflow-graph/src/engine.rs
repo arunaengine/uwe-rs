@@ -178,6 +178,13 @@ impl<'a> Engine<'a> {
             }
             result
         });
+        // The daemons that still run stop with the run, which waits until they did.
+        for cancel in self.task_cancel.values() {
+            cancel.cancel();
+        }
+        if let Ok(runtime) = crate::runtime() {
+            runtime.block_on(self.executor.release());
+        }
         let error = result.err();
         let failure_hook_error = error.as_ref().and_then(|error| driver.failed(error).err());
         self.report(Event::Ended {
@@ -360,6 +367,8 @@ impl<'a> Engine<'a> {
                 retried: false,
             });
             let id = outcome.id;
+            // A daemon runs on after its outcome, until the driver or the end of the run stops it.
+            let daemon = outcome.address.is_some();
             let next = driver.complete(outcome);
             let accepted = driver.take_acceptance(id, attempt);
             recorder.validated(id, accepted);
@@ -382,7 +391,9 @@ impl<'a> Engine<'a> {
             self.asked(next, notes, recorder, &mut queue, Some(id))?;
             if !again {
                 queue.finished(id);
-                self.task_cancel.remove(&id);
+                if !daemon {
+                    self.task_cancel.remove(&id);
+                }
             }
             self.deliver(driver, files.as_deref())?;
         }

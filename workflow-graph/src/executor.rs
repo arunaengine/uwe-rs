@@ -100,6 +100,11 @@ pub trait Executor {
     /// like for their share of the machine, end at once as cancelled. The engine holds the
     /// executor when its driver drains. The default holds nothing.
     fn hold(&mut self) {}
+
+    /// Waits until the daemon tasks that the run stopped ended, before the run ends.
+    fn release(&mut self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        Box::pin(async {})
+    }
 }
 
 /// The Tokio runtime that drives the attempts of all runs in this process. Executors make

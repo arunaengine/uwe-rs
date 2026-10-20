@@ -252,6 +252,9 @@ pub struct Outcome {
     /// What the attempt used, when the executor could measure it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
+    /// Where other tasks reach a daemon task that is ready, like the IP of its pod.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
     /// The digest of each input, like `sha256:<hex>`, by the path the task sees it at, as the
     /// executor hashed it: a file, or the manifest of a directory. Empty when the executor
     /// does not hash inputs, as the simulator does not.

@@ -69,6 +69,8 @@ pub struct TaskResult {
     /// How the containers of a task that runs several ended, in the order of the task, the
     /// main one first.
     pub containers: Vec<ContainerResult>,
+    /// Where other tasks reach a daemon task, which runs on after its result.
+    pub address: Option<String>,
 }
 
 /// How a container of a task that runs several ended.
@@ -527,12 +529,15 @@ impl<B: Backend> Runner<B> {
             Err(error) => Err(error),
         };
         let result = stored?;
-        self.phase(_turn.as_ref(), None, Some(cancel), async {
-            tokio::fs::remove_dir_all(&finished.root)
-                .await
-                .map_err(at(&finished.root))
-        })
-        .await?;
+        // A daemon still runs in its scratch directory; its backend removes it when it stops.
+        if finished.address.is_none() {
+            self.phase(_turn.as_ref(), None, Some(cancel), async {
+                tokio::fs::remove_dir_all(&finished.root)
+                    .await
+                    .map_err(at(&finished.root))
+            })
+            .await?;
+        }
         if let Some(earlier) = earlier {
             let result = self
                 .phase(

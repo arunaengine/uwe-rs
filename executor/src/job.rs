@@ -71,6 +71,8 @@ pub struct Finished {
     pub root: PathBuf,
     /// What the task used, when its container had a cgroup of its own.
     pub usage: Option<Usage>,
+    /// Where other tasks reach a daemon task that is ready; it runs on until it is stopped.
+    pub address: Option<String>,
 }
 
 /// What a task used, as the cgroup of its container counted it.
@@ -152,6 +154,7 @@ impl Finished {
             _ => Vec::new(),
         };
         Ok(Finished {
+            address: None,
             exit_code,
             files,
             usage: Usage::of(&root),
@@ -232,6 +235,7 @@ mod usage_tests {
         let control = root.path().join(CONTROL);
         std::fs::create_dir_all(&control).expect("makes the folder");
         let finished = Finished {
+            address: None,
             exit_code: Some(0),
             files: Vec::new(),
             root: root.path().to_owned(),

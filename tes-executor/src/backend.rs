@@ -58,6 +58,15 @@ impl Backend for TesBackend {
         if cancel.is_cancelled() {
             return Err(ExecutorError::Cancelled);
         }
+        if job
+            .spec
+            .environment
+            .contains_key(executor::daemon::DAEMON_ENV)
+        {
+            return Err(ExecutorError::Unsupported(
+                "TES tasks cannot run as daemons: a TES server gives no address of a running task and keeps no task running for later ones".into(),
+            ));
+        }
         if job.spec.containers.len() > 1
             || job
                 .spec
@@ -243,6 +252,7 @@ impl TesBackend {
             )
             .await?;
             return Ok(Finished {
+                address: None,
                 exit_code: Some(143),
                 files: Vec::new(),
                 usage: executor::Usage::of(root),

@@ -149,6 +149,7 @@ impl ObjectStage {
                 .filter(|code| *code != 0)
                 .unwrap_or(1);
             return Ok(Finished {
+                address: None,
                 exit_code: Some(exit_code),
                 files: Vec::new(),
                 root: root.into(),
@@ -178,6 +179,7 @@ impl ObjectStage {
             }
         }
         let mut finished = Finished {
+            address: None,
             exit_code: log.and_then(|log| log.exit_code).or(Some(0)),
             files: Vec::new(),
             root: root.into(),

@@ -11,6 +11,7 @@ pub mod conda;
 pub mod conda_cache;
 pub mod containers;
 pub mod credentials;
+pub mod daemon;
 pub mod engine;
 pub mod helper;
 pub mod http;
@@ -57,4 +58,9 @@ pub trait Backend: Send + Sync + 'static {
     /// Starts no attempt that waits for its turn on this machine, as a run that ends after a
     /// failure starts no more tasks; an attempt that waits ends as cancelled.
     fn hold(&self) {}
+
+    /// Waits until the daemons of the run stopped, after their run asked them to stop.
+    fn release(&self) -> impl Future<Output = ()> + Send {
+        async {}
+    }
 }

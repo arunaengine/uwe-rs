@@ -104,6 +104,13 @@ impl<B: Backend> Backend for Sites<B> {
             backend.hold();
         }
     }
+
+    async fn release(&self) {
+        self.default.release().await;
+        for backend in self.sites.values() {
+            backend.release().await;
+        }
+    }
 }
 
 #[cfg(test)]

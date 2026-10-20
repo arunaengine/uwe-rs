@@ -273,3 +273,22 @@ fn hands_over_resources() {
     let text = format!("{:?} {:?}", started[0].command, started[0].script);
     assert!(text.contains("echo 20 4 4"), "{text}");
 }
+
+/// Snakemake's test05 asks for `gpu=1`, which a local run of Snakemake only counts against
+/// the global resources; the task asks for no accelerator.
+#[test]
+fn counts_local_gpus() {
+    let snakefile = "rule a:\n    output: 'a'\n    resources: gpu=1\n    shell: 'touch {output}'\n";
+    for (local, gpus) in [(true, None), (false, Some(1))] {
+        let folder = tempfile::tempdir().expect("a folder");
+        let launch = profile_launch(folder.path(), "{}\n", snakefile);
+        let options = snakemake_runtime::RunSettings {
+            local,
+            ..Default::default()
+        };
+        let mut driver =
+            snakemake_runtime::driver_with_options(&launch, Default::default(), options).unwrap();
+        let task = driver.start().expect("starts").remove(0);
+        assert_eq!(task.resources.gpus, gpus, "local {local}");
+    }
+}

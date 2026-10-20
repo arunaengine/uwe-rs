@@ -64,6 +64,8 @@ pub struct Setting {
     pub simulated: bool,
     /// Whether jobs run in the shared working directory, where their files are in place.
     pub shared: bool,
+    /// Whether jobs run on this machine, where Snakemake only counts `gpu` resources.
+    pub local: bool,
     /// The image of the Python container that the user gave (`-python-image`), which
     /// `run:` blocks without a container of their own run in.
     pub python_image: Option<String>,
@@ -77,6 +79,7 @@ impl Setting {
             package: OnceCell::new(),
             simulated,
             shared: false,
+            local: false,
             python_image: None,
         }
     }

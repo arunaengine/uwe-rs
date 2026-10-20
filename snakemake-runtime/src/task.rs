@@ -905,7 +905,14 @@ pub fn build(
             inputs,
             outputs,
             stdin: None,
-            resources: crate::resources::task_resources(threads, &resources),
+            resources: {
+                let mut asked = crate::resources::task_resources(threads, &resources);
+                // A local run of Snakemake only counts `gpu` against the global resources.
+                if setting.embedded.local {
+                    asked.gpus = None;
+                }
+                asked
+            },
             network: workflow_graph::Network::Unstated,
             after: Vec::new(),
             containers: Vec::new(),

@@ -142,7 +142,13 @@ impl Objects {
                 if let Some(token) = sas_token {
                     builder = builder.sas_token(token);
                 }
-                Operator::new(builder)
+                let signer = crate::azure::Signer {
+                    account: account.clone().zip(key.clone()),
+                    endpoint: endpoint.clone(),
+                    container: bucket.to_owned(),
+                    root: root.trim_matches('/').to_owned(),
+                };
+                Operator::new(builder).map(|operator| crate::azure::sign_blobs(operator, signer))
             }
         };
         let operator = operator.map_err(problem)?;

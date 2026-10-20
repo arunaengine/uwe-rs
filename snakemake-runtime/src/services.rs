@@ -119,7 +119,7 @@ fn script(service: &Task, users: &[Task], services: &[String]) -> String {
     script
 }
 
-fn depends_on(task: &Task, producer: &Task) -> bool {
+pub(crate) fn depends_on(task: &Task, producer: &Task) -> bool {
     task.inputs.iter().any(|input| {
         producer
             .outputs

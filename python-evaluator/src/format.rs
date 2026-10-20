@@ -90,15 +90,16 @@ pub fn plain_repr(value: &Value) -> String {
             format!("{{{}}}", parts.join(", "))
         }
         Value::Set(items) => {
-            let items = items.borrow();
-            if items.is_empty() {
+            if items.borrow().is_empty() {
                 return "set()".into();
             }
-            let parts: Vec<String> = items.iter().map(|key| plain_repr(&key.0)).collect();
+            let members = crate::hashing::set_order(items);
+            let parts: Vec<String> = members.iter().map(plain_repr).collect();
             format!("{{{}}}", parts.join(", "))
         }
         Value::FrozenSet(items) => {
-            let parts: Vec<String> = items.iter().map(|key| plain_repr(&key.0)).collect();
+            let members = crate::hashing::frozen_order(items);
+            let parts: Vec<String> = members.iter().map(plain_repr).collect();
             format!("frozenset({{{}}})", parts.join(", "))
         }
         Value::Range(range) => {

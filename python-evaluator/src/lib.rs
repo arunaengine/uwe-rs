@@ -7,6 +7,7 @@ pub mod builtins;
 pub mod complex;
 pub mod error;
 pub mod format;
+pub mod hashing;
 pub mod host;
 pub mod interpreter;
 pub mod methods;

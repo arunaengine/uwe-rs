@@ -738,8 +738,8 @@ impl Interpreter {
                 .keys()
                 .map(|key| key.0.clone())
                 .collect()),
-            Value::Set(set) => Ok(set.borrow().iter().map(|key| key.0.clone()).collect()),
-            Value::FrozenSet(set) => Ok(set.iter().map(|key| key.0.clone()).collect()),
+            Value::Set(set) => Ok(crate::hashing::set_order(set)),
+            Value::FrozenSet(set) => Ok(crate::hashing::frozen_order(set)),
             Value::Range(range) => {
                 if range.len() > 100_000_000 {
                     return Err(Error::unsupported(

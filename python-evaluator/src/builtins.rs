@@ -649,6 +649,9 @@ fn hash(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
     use std::hash::{Hash, Hasher};
     let value = one(&args, "hash")?;
     let key = interpreter.key(&value)?;
+    if let Some(hash) = crate::hashing::stable_hash(&value) {
+        return Ok(Value::Int(hash));
+    }
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     key.hash(&mut hasher);
     Ok(Value::Int((hasher.finish() >> 2) as i64))

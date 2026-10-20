@@ -14,7 +14,7 @@ use nextflow_evaluator::interpreter::{
 };
 use nextflow_evaluator::lowered::{Input, Module, Process};
 use nextflow_evaluator::units::{parse_duration, parse_memory};
-use nextflow_evaluator::value::{ChannelId, Key, MapKind, PathValue, Value};
+use nextflow_evaluator::value::{ChannelId, Key, ListKind, MapKind, PathValue, Value};
 use nextflow_parser::ast::BodyKind;
 
 use crate::channel::Message;
@@ -284,8 +284,14 @@ impl Behaviour for ProcessNode {
                 let parts = parts.borrow().items.clone();
                 let computed = context
                     .interpreter
-                    .typed_output(&mut flight.frame, typed, parts);
-                *value = Some(computed?);
+                    .typed_output(&mut flight.frame, typed, parts)?;
+                // Nextflow gives a tuple that a typed output makes as a plain list.
+                *value = Some(match &computed {
+                    Value::List(list) if list.borrow().kind == ListKind::Tuple => {
+                        Value::list(list.borrow().items.clone())
+                    }
+                    _ => computed,
+                });
             }
         }
         context.accept(outcome.id, true);

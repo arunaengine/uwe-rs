@@ -49,6 +49,8 @@ impl Source for FileSystem {
 pub struct Remote {
     pub storage: Storage,
     pub downloads: PathBuf,
+    /// The private folder of `default`, removed when the last clone is dropped.
+    private: Option<Arc<tempfile::TempDir>>,
 }
 
 impl Remote {
@@ -56,18 +58,28 @@ impl Remote {
         Remote {
             storage: storage.clone(),
             downloads,
+            private: None,
         }
     }
 }
 
-/// Without storage providers of a config file, and with a folder of downloads in the
-/// temporary folder of the system, for callers that give none.
+/// Without storage providers of a config file, and with a private temporary folder of
+/// downloads, for callers that give none.
 impl Default for Remote {
     fn default() -> Self {
-        Remote::new(
-            &Storage::default(),
-            std::env::temp_dir().join("iunctus-downloads"),
-        )
+        let folder = tempfile::Builder::new()
+            .prefix("iunctus-downloads-")
+            .tempdir();
+        // Without a temporary folder, `fetch` reports the error once it needs the folder.
+        let Ok(folder) = folder else {
+            return Remote::new(
+                &Storage::default(),
+                std::env::temp_dir().join("iunctus-downloads"),
+            );
+        };
+        let mut remote = Remote::new(&Storage::default(), folder.path().to_owned());
+        remote.private = Some(Arc::new(folder));
+        remote
     }
 }
 

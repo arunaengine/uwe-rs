@@ -132,8 +132,11 @@ impl CwlDriver {
 /// The driver of a CWL launch without the providers of a config file: it takes absent files
 /// as present and empty when the launch is simulated.
 pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
-    let downloads = Remote::default().downloads;
-    driver_with(launch, &Storage::default(), downloads)
+    let options = Options {
+        simulated: launch.simulated,
+        ..Options::default()
+    };
+    Ok(Box::new(CwlDriver::new(launch, options)?))
 }
 
 /// The driver of a CWL launch that reads documents and files at addresses through `storage`,

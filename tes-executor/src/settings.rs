@@ -12,6 +12,9 @@ pub struct Settings {
     pub password: Option<Secret>,
     pub max_inputs: usize,
     pub max_outputs: usize,
+    /// How many minutes longer than its task a TES task may run (`staging_minutes`), for its
+    /// image pull and staging; `None` for the default of [`Settings::margin`].
+    pub staging_minutes: Option<u64>,
 }
 
 impl Default for Settings {
@@ -23,6 +26,7 @@ impl Default for Settings {
             password: None,
             max_inputs: 512,
             max_outputs: 1024,
+            staging_minutes: None,
         }
     }
 }
@@ -48,7 +52,19 @@ impl Settings {
         "password",
         "max_inputs",
         "max_outputs",
+        "staging_minutes",
     ];
+
+    /// How much longer than its task a TES task may run, as its state stays RUNNING while the
+    /// server uploads its outputs: 30 minutes with a staging root, else 5, unless set.
+    pub fn margin(&self) -> std::time::Duration {
+        let minutes = match (self.staging_minutes, &self.staging_root) {
+            (Some(minutes), _) => minutes,
+            (None, None) => 5,
+            (None, Some(_)) => 30,
+        };
+        std::time::Duration::from_secs(minutes * 60)
+    }
 
     pub fn read(table: &Table<'_>) -> Result<Self, ConfigError> {
         let staging = table
@@ -107,7 +123,13 @@ impl Settings {
                 "must be nonempty and differ from iunctus-attempt",
             ));
         }
+        let staging_minutes = match table.integer("staging_minutes")? {
+            Some(minutes @ 0..=10_080) => Some(minutes as u64),
+            None => None,
+            Some(_) => return Err(table.invalid("staging_minutes", "must be between 0 and 10080")),
+        };
         Ok(Self {
+            staging_minutes,
             staging_root,
             idempotency_tag,
             user,
@@ -136,6 +158,17 @@ mod tests {
                 .unwrap();
         assert_eq!(settings.staging_root.as_deref(), Some("s3://bucket/tes"));
         assert!(settings.idempotency_tag.is_none());
+    }
+
+    #[test]
+    fn reads_staging_margin() {
+        let shared = read("[executor.tes]").unwrap();
+        assert_eq!(shared.margin().as_secs(), 300);
+        let text = "[executor.tes]\nstaging = 'object-store'\nstaging_root = 's3://bucket/tes'";
+        assert_eq!(read(text).unwrap().margin().as_secs(), 1800);
+        let set = read(&format!("{text}\nstaging_minutes = 2")).unwrap();
+        assert_eq!(set.margin().as_secs(), 120);
+        assert!(read("[executor.tes]\nstaging_minutes = -1").is_err());
     }
 
     #[test]

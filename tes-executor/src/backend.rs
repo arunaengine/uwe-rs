@@ -166,6 +166,17 @@ impl TesBackend {
         if let Some(tag) = &self.settings.idempotency_tag {
             task.tags.insert(tag.clone(), attempt_key);
         }
+        // The server may take longer than the task, as it stages the files in its time; a
+        // task with a shell keeps its own time inside.
+        let time = job.placement.time_seconds;
+        let timer = time.is_some() && wrapped(&task.executors[0].command);
+        if timer {
+            let text = format!("{}exit \"$status\"\n", wrapper::timed("sh \"$1\"", time));
+            task.executors[0].command = ["sh", "-c", &text, "iunctus", WRAPPER]
+                .map(str::to_owned)
+                .to_vec();
+        }
+        let deadline = time.map(|seconds| seconds.saturating_add(self.settings.margin().as_secs()));
         let submission = submission_value(root);
         task.tags.insert(SUBMISSION.into(), submission.clone());
         let folders = wrapper::Folders {
@@ -204,9 +215,7 @@ impl TesBackend {
             .map_err(|error| unresolved(root, error))?;
         journal["id"] = serde_json::json!(id);
         journal_at(root, &journal)?;
-        let (status, timed_out) = self
-            .wait(&id, root, job.placement.time_seconds, cancel)
-            .await?;
+        let (status, timed_out) = self.wait(&id, root, deadline, cancel).await?;
         if timed_out {
             tokio::fs::create_dir_all(root.join("control")).await?;
             tokio::fs::write(
@@ -224,13 +233,47 @@ impl TesBackend {
                 root: root.to_owned(),
             });
         }
+        let log = status.logs.last().and_then(|log| log.logs.last());
+        let ran_out = timer && log.and_then(|log| log.exit_code) == Some(wrapper::TIMED_OUT);
+        let finished = self.finish(job, &task, &status, root).await;
+        match finished {
+            Ok(mut finished) if ran_out => {
+                use tokio::io::AsyncWriteExt;
+                let note = format!(
+                    "iunctus: the task ran longer than its time of {} seconds\n",
+                    time.unwrap_or_default()
+                );
+                tokio::fs::create_dir_all(root.join("control")).await?;
+                let mut file = tokio::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(root.join("control/stderr"))
+                    .await?;
+                file.write_all(note.as_bytes()).await?;
+                file.flush().await?;
+                finished.exit_code = Some(143);
+                finished.files.clear();
+                Ok(finished)
+            }
+            finished => finished,
+        }
+    }
+
+    /// What a task that the server ended left behind, by its state.
+    async fn finish(
+        &self,
+        job: Job<'_>,
+        task: &Task,
+        status: &crate::client::Status,
+        root: &Path,
+    ) -> Result<Finished, ExecutorError> {
         if let Some(staging) = &self.staging {
             return match status.state {
                 State::Complete | State::ExecutorError => {
-                    staging.collect(job, &task, &status, root).await
+                    staging.collect(job, task, status, root).await
                 }
                 State::Canceled => Err(ExecutorError::Cancelled),
-                _ => Err(failure(&status, "the TES server could not run the task")),
+                _ => Err(failure(status, "the TES server could not run the task")),
             };
         }
         match status.state {
@@ -255,11 +298,11 @@ impl TesBackend {
             State::Complete => Finished::from_control(root.to_owned()).and_then(|finished| {
                 match finished.exit_code {
                     Some(_) => Ok(finished),
-                    None => Err(failure(&status, "the task ended without an exit code")),
+                    None => Err(failure(status, "the task ended without an exit code")),
                 }
             }),
             State::Canceled => Err(ExecutorError::Cancelled),
-            _ => Err(failure(&status, "the TES server could not run the task")),
+            _ => Err(failure(status, "the TES server could not run the task")),
         }
     }
 
@@ -680,6 +723,12 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
         ],
         tags: BTreeMap::from([("iunctus-attempt".to_owned(), job.name.to_owned())]),
     })
+}
+
+/// Whether a command runs the wrapper of the task with a shell, plainly or under a timer.
+pub(crate) fn wrapped(command: &[String]) -> bool {
+    command.first().is_some_and(|program| program == "sh")
+        && command.last().is_some_and(|path| path == WRAPPER)
 }
 
 /// A `file://` URL of a local path, with the characters that have a meaning in URLs encoded.

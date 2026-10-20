@@ -335,11 +335,16 @@ fn bounds_accepted_tasks() {
                 stream.write_all(reply.as_bytes()).unwrap();
             }
         });
+        // No margin for staging, so that the deadline comes at once.
+        let settings = tes_executor::Settings {
+            staging_minutes: Some(0),
+            ..Default::default()
+        };
         let backend = TesBackend {
             client: Client::new(&address, None).unwrap(),
             scratch: folder.path().join("scratch"),
             staging: None,
-            settings: Default::default(),
+            settings,
             configs: ImageConfigs::known([("test".into(), ImageConfig::default())]),
         };
         let spec = TaskSpec {
@@ -397,6 +402,77 @@ fn bounds_accepted_tasks() {
         );
         assert_eq!(calls.iter().any(|line| line.contains(":cancel")), timed_out);
     }
+}
+
+#[test]
+fn stops_task_time() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let address = format!("http://{}", listener.local_addr().unwrap());
+    let sent = Arc::new(Mutex::new(None));
+    let kept = sent.clone();
+    // The wrapper of the task ran out of its time, and its timer ended it with 124.
+    let ended = r#"{"id":"task-1","state":"EXECUTOR_ERROR","logs":[{"logs":[{"exit_code":124}]}]}"#;
+    let server = std::thread::spawn(move || {
+        for answer in [r#"{"id":"task-1"}"#, ended] {
+            let (mut stream, _) = listener.accept().unwrap();
+            let (first, body) = request(&mut stream);
+            if first.starts_with("POST /ga4gh/tes/v1/tasks ") {
+                let document: serde_json::Value = serde_json::from_str(&body).unwrap();
+                for output in document["outputs"].as_array().unwrap() {
+                    leave(output);
+                }
+                *kept.lock().unwrap() = Some(document);
+            }
+            let reply = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
+                answer.len()
+            );
+            stream.write_all(reply.as_bytes()).unwrap();
+        }
+    });
+    let backend = TesBackend {
+        client: Client::new(&address, None).unwrap(),
+        scratch: folder.path().join("scratch"),
+        staging: None,
+        settings: Default::default(),
+        configs: ImageConfigs::known([("test".into(), ImageConfig::default())]),
+    };
+    let spec = simple_spec();
+    let placement = Placement {
+        time_seconds: Some(60),
+        ..Placement::default()
+    };
+    let staging = Staging::default();
+    let job = Job {
+        name: "run-P-2-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let finished = runtime
+        .block_on(backend.run(job, &CancellationToken::new()))
+        .expect("an end");
+    server.join().unwrap();
+    assert_eq!(finished.exit_code, Some(143));
+    let stderr = std::fs::read_to_string(finished.stderr()).expect("the standard error");
+    assert!(
+        stderr.ends_with("ran longer than its time of 60 seconds\n"),
+        "{stderr}"
+    );
+    // The wrapper runs under a timer of the time of the task.
+    let sent = sent.lock().unwrap().clone().expect("a task");
+    let command = &sent["executors"][0]["command"];
+    assert_eq!(command[1], "-c");
+    assert!(
+        command[2].as_str().unwrap().contains("( sleep 60 && kill"),
+        "{command}"
+    );
+    assert_eq!(command[4], "/iunctus/wrapper.sh");
 }
 
 /// What the server of `keep` knows: the tasks it got and which it cancelled, whether it takes

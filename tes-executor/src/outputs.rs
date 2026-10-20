@@ -134,7 +134,7 @@ impl ObjectStage {
         let control = root.join(executor::CONTROL);
         tokio::fs::create_dir_all(&control).await?;
         let log = status.logs.last().and_then(|log| log.logs.last());
-        let shell = matches!(task.executors[0].command.as_slice(), [program, path] if program == "sh" && path == super::backend::WRAPPER);
+        let shell = super::backend::wrapped(&task.executors[0].command);
         if status.state == State::ExecutorError || !shell {
             for (name, text) in [
                 ("stdout", log.and_then(|log| log.stdout.as_deref())),

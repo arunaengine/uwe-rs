@@ -538,6 +538,16 @@ fn shows_config_containers() {
         shown(selectors),
         "[FOO:x, withLabel:big:y, default:ubuntu]\n"
     );
+    // Closures run without params, `task` or `workflow`, as Nextflow runs them at the start.
+    let closures = "params.c = 'pc'\nprocess {\n    withName: 'A' { container = { 'plain' } }\n    \
+                    withName: 'B' { container = { params.c } }\n    \
+                    withName: 'C' { container = { task.cpus > 1 ? 'x' : 'y' } }\n    \
+                    withName: 'D' { container = { workflow.containerEngine == 'docker' ? 's' : 'd' } }\n    \
+                    withName: 'E' { container = { \"img:${params.c}\" } }\n}\n";
+    assert_eq!(
+        shown(closures),
+        "[A:plain, B:null, C:(dynamic resolved), D:(dynamic resolved), E:img:null]\n"
+    );
 }
 
 #[test]

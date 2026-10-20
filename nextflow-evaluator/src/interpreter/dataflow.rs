@@ -11,8 +11,8 @@ use nextflow_parser::Span;
 use super::statement::Completion;
 use super::{Error, Frame, Interpreter, thrown, unsupported};
 use crate::exception::Exception;
-use crate::lowered::{Module, Place, Workflow};
-use crate::value::{ChannelOut, DefinitionRef, Value};
+use crate::lowered::{Input, Module, Place, Process, Workflow};
+use crate::value::{ChannelOut, DefinitionRef, Key, Value};
 
 impl Interpreter<'_> {
     /// Runs the named workflow selected by `-entry`, including an imported workflow alias.
@@ -54,10 +54,137 @@ impl Interpreter<'_> {
                 Err(thrown(exception, Span::default()))
             }
             None if module.processes.is_empty() => Ok(()),
-            None => Err(unsupported(
-                "scripts without an entry workflow",
-                Span::default(),
-            )),
+            None => self.run_process_entry(module),
+        }
+    }
+
+    /// Nextflow's `ProcessEntryHandler`: a script with processes but no workflow runs its
+    /// first process with inputs from the params, and publishes its outputs.
+    fn run_process_entry(&mut self, module: &Rc<Module>) -> Result<(), Error> {
+        let process = module.processes[0].clone();
+        let params = self.params_of(module).unwrap_or(Value::Null);
+        let mut arguments = Vec::new();
+        for input in &process.inputs {
+            match self.entry_argument(&process, input, &params) {
+                Ok(argument) => arguments.push(argument),
+                Err(error) => {
+                    let message = error
+                        .exception()
+                        .map_or(String::new(), |e| e.message.clone());
+                    let name = &process.name;
+                    let text =
+                        format!("Failed to get input arguments for process {name}: {message}");
+                    self.namespace_call("log", "error", vec![Value::string(text)], process.span)?;
+                    return Err(error);
+                }
+            }
+        }
+        let call = (&*process.name, false);
+        let outputs = self.call_definition(module, call, arguments, process.span)?;
+        let Value::ChannelOut(out) = outputs else {
+            return Ok(());
+        };
+        let mut names: Vec<Rc<str>> = process
+            .outputs
+            .iter()
+            .filter_map(|output| output.emit.clone())
+            .collect();
+        if process.outputs.len() == 1 && names.is_empty() {
+            names.push("$out".into());
+        }
+        for name in names {
+            let value = match out.values.as_slice() {
+                [single] if process.outputs.len() == 1 => single.clone(),
+                values => {
+                    let index = out
+                        .names
+                        .iter()
+                        .position(|other| other.as_deref() == Some(&*name));
+                    match index.and_then(|index| values.get(index)) {
+                        Some(value) => value.clone(),
+                        None => continue,
+                    }
+                }
+            };
+            let options = self.output_options(module, &name)?;
+            self.host
+                .publish(&name, value, options)
+                .map_err(|error| error.or_at(process.span))?;
+        }
+        Ok(())
+    }
+
+    /// The argument of the implicit process entry for one input, from the param of its name:
+    /// a value as it is, a path as a file or a list of files by commas.
+    fn entry_argument(
+        &mut self,
+        process: &Process,
+        input: &Input,
+        params: &Value,
+    ) -> Result<Value, Error> {
+        let span = process.span;
+        let name_of = |slot: Option<usize>| {
+            let found = process
+                .variables
+                .iter()
+                .find(|(_, other)| Some(*other) == slot);
+            found.map_or(String::new(), |(name, _)| name.to_string())
+        };
+        let param = |name: &str| match params {
+            Value::Map(map) => (map.borrow().entries)
+                .get(&Key(Value::string(name)))
+                .cloned()
+                .filter(|value| !matches!(value, Value::Null)),
+            _ => None,
+        };
+        let refused = |message: String| Err(thrown(Exception::illegal_argument(message), span));
+        match input {
+            Input::Value { slot } => {
+                let name = name_of(Some(*slot));
+                match param(&name) {
+                    Some(value) => Ok(value),
+                    None => refused(format!("Missing required parameter: --{name}")),
+                }
+            }
+            Input::Path { slot, .. } => {
+                let name = name_of(*slot);
+                let Some(value) = param(&name) else {
+                    let message =
+                        format!("Path input '--{name}' not provided, defaulting to empty list");
+                    self.namespace_call("log", "warn", vec![Value::string(message)], span)?;
+                    return Ok(Value::list(Vec::new()));
+                };
+                let text = value.to_string();
+                if !text.contains(',') {
+                    return self.call_builtin("file", vec![Value::string(text)], span);
+                }
+                let mut files = Vec::new();
+                for part in text
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|part| !part.is_empty())
+                {
+                    files.push(self.call_builtin("file", vec![Value::string(part)], span)?);
+                }
+                Ok(Value::list(files))
+            }
+            Input::Env(name) if param(name).is_none() => {
+                refused(format!("Missing required parameter: --{name}"))
+            }
+            Input::Env(_) => refused(
+                "Process `env` input qualifier is not supported by implicit process entry".into(),
+            ),
+            Input::Stdin => refused(
+                "Process `stdin` input qualifier is not supported by implicit process entry".into(),
+            ),
+            Input::Tuple(inputs) => {
+                let mut items = Vec::new();
+                for inner in inputs {
+                    items.push(self.entry_argument(process, inner, params)?);
+                }
+                Ok(Value::list(items))
+            }
+            Input::Each(inner) => self.entry_argument(process, inner, params),
         }
     }
 

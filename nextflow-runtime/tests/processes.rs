@@ -490,6 +490,35 @@ fn runs_handler_sections() {
     assert_eq!(printed, "main\ndone true main\n");
 }
 
+/// A script with processes and no workflow runs its first process with the params as inputs,
+/// as Nextflow 26.04.6 does, and fails for a missing param.
+#[test]
+fn runs_lone_processes() {
+    let source = "process P {\n    input: val name\n    tuple val(id), path(reads)\n    output: path 'out.txt'\n    \
+                  script:\n    \"echo ${name} ${id} ${reads} > out.txt\"\n}\n\
+                  process Q {\n    script:\n    'true'\n}\n";
+    let options = Options {
+        config: config(
+            "params.name = 'hi'\nparams.id = 7\nparams.reads = '/data/a.fq,/data/b.fq'\n",
+        ),
+        ..Options::default()
+    };
+    let (tasks, _) = run(source, &options).expect("runs");
+    let [task] = tasks.as_slice() else {
+        panic!("one task")
+    };
+    assert!(
+        task.script.contains("echo hi 7 a.fq b.fq > out.txt"),
+        "{}",
+        task.script
+    );
+    let error = run(source, &Options::default()).unwrap_err();
+    assert!(
+        error.ends_with("IllegalArgumentException: Missing required parameter: --name"),
+        "{error}"
+    );
+}
+
 /// `workflow.container` is what the `process` scope sets, as Nextflow 26.04.6 prints it.
 #[test]
 fn shows_config_containers() {

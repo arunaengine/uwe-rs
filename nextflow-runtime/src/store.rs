@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::glob::{FileType, GlobOptions};
 use nextflow_evaluator::interpreter::{
     Error, Host, RenderedOutput, RenderedPart, TaskDirective, glob,
@@ -90,7 +91,45 @@ pub(crate) fn save(
     Ok(())
 }
 
+/// Copies a file or directory output into the store. A local directory is copied whole into
+/// a hidden temporary sibling first and renamed into place, so that a crash never leaves a
+/// partial entry that a later run takes as stored.
 fn copy(source: &PathValue, target: &PathValue, host: &mut dyn Host) -> Result<(), Error> {
+    let directory = host
+        .metadata(source)?
+        .is_some_and(|metadata| metadata.directory);
+    if !directory || target.prefix.is_some() {
+        return copy_tree(source, target, host);
+    }
+    let failed = |error: std::io::Error| {
+        let message = format!("{}: {error}", target.path);
+        Error::Thrown {
+            exception: std::rc::Rc::new(Exception::new("IOException", message)),
+            span: Default::default(),
+        }
+    };
+    let path = std::path::Path::new(&target.path);
+    let parent = path.parent().unwrap_or(std::path::Path::new("/"));
+    std::fs::create_dir_all(parent).map_err(failed)?;
+    let ready = tempfile::Builder::new()
+        .prefix(".storing-")
+        .tempdir_in(parent)
+        .map_err(failed)?;
+    let staged = ready.path().join("content");
+    copy_tree(
+        source,
+        &PathValue::parse(&staged.to_string_lossy(), "/"),
+        host,
+    )?;
+    // An older or partial entry moves aside, and goes with the temporary folder.
+    match std::fs::rename(path, ready.path().join("old")) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(failed(error)),
+        _ => {}
+    }
+    std::fs::rename(&staged, path).map_err(failed)
+}
+
+fn copy_tree(source: &PathValue, target: &PathValue, host: &mut dyn Host) -> Result<(), Error> {
     if host
         .metadata(source)?
         .is_some_and(|metadata| metadata.directory)
@@ -104,7 +143,7 @@ fn copy(source: &PathValue, target: &PathValue, host: &mut dyn Host) -> Result<(
         }
         host.create_directories(target)?;
         for (name, _) in entries {
-            copy(&source.resolve(&name), &target.resolve(&name), host)?;
+            copy_tree(&source.resolve(&name), &target.resolve(&name), host)?;
         }
     } else {
         if let Some(parent) = target.parent() {
@@ -200,5 +239,50 @@ mod tests {
                 .uri(),
             "s3://bucket/stored/result.txt"
         );
+    }
+
+    /// Reads local files, but fails for one name, as a crash partway through a copy would.
+    struct Failing(&'static str);
+    impl Host for Failing {
+        fn print(&mut self, _: &str) {}
+        fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {
+            if path.name() == self.0 {
+                return Err(Error::Unsupported {
+                    message: "stopped".into(),
+                    span: Default::default(),
+                });
+            }
+            std::fs::read(&path.path).map_err(|error| Error::Unsupported {
+                message: error.to_string(),
+                span: Default::default(),
+            })
+        }
+    }
+
+    /// A directory output appears in the store only whole: a copy that fails partway leaves
+    /// no entry, and a later copy replaces a partial one.
+    #[test]
+    fn stores_whole_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let output = root.path().join("task/out");
+        std::fs::create_dir_all(&output).unwrap();
+        std::fs::write(output.join("a.txt"), "a").unwrap();
+        std::fs::write(output.join("b.txt"), "b").unwrap();
+        let text = |path: &std::path::Path| PathValue::parse(&path.to_string_lossy(), "/");
+        let store = text(&root.path().join("store"));
+        let mut produced = vec![("out".to_owned(), text(&output))];
+        assert!(save(&mut produced, &store, &mut Failing("b.txt")).is_err());
+        assert!(!root.path().join("store/out").exists());
+        std::fs::create_dir_all(root.path().join("store/out")).unwrap();
+        std::fs::write(root.path().join("store/out/a.txt"), "partial").unwrap();
+        let mut produced = vec![("out".to_owned(), text(&output))];
+        save(&mut produced, &store, &mut Failing("none")).unwrap();
+        let stored = root.path().join("store/out");
+        assert_eq!(std::fs::read_to_string(stored.join("a.txt")).unwrap(), "a");
+        assert_eq!(std::fs::read_to_string(stored.join("b.txt")).unwrap(), "b");
+        let names: Vec<_> = std::fs::read_dir(root.path().join("store"))
+            .unwrap()
+            .collect();
+        assert_eq!(names.len(), 1, "no temporary folder is left");
     }
 }

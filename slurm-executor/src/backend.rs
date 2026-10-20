@@ -124,6 +124,8 @@ enum Ended {
     Done(i32),
     /// The job ended without that record, in this state when SLURM tells it.
     Stopped(Option<String>),
+    /// SLURM held the job for this reason and would not run it on its own; iunctus cancels it.
+    Held(String),
 }
 
 impl SlurmBackend {
@@ -481,7 +483,10 @@ impl SlurmBackend {
         self.queue.add(&id).await;
         let prefix = staged.as_ref().map(|(prefix, _)| prefix.as_str());
         let ended = self.wait(&id, &control, prefix, cancel).await;
-        let stopped = self.stop(&id, root, CANCEL_GRACE, ended.is_err()).await;
+        let held = matches!(ended, Ok(Ended::Held(_)));
+        let stopped = self
+            .stop(&id, root, CANCEL_GRACE, ended.is_err() || held)
+            .await;
         self.queue.remove(&id).await;
         stopped?;
         let ended = ended?;
@@ -653,7 +658,10 @@ impl SlurmBackend {
             .await?;
         self.queue.add(&id).await;
         let ended = self.wait(&id, &control, None, cancel).await;
-        let stopped = self.stop(&id, &root, CANCEL_GRACE, ended.is_err()).await;
+        let held = matches!(ended, Ok(Ended::Held(_)));
+        let stopped = self
+            .stop(&id, &root, CANCEL_GRACE, ended.is_err() || held)
+            .await;
         self.queue.remove(&id).await;
         stopped?;
         let pulled = match ended? {
@@ -666,6 +674,10 @@ impl SlurmBackend {
             Ended::Stopped(state) => Err(format!(
                 "the job that pulls the image {reference} ended as {}",
                 state.as_deref().unwrap_or("unknown")
+            )),
+            Ended::Held(reason) => Err(format!(
+                "SLURM held the job that pulls the image {reference} ({reason}), so iunctus \
+                 cancelled it"
             )),
         };
         let pulled = match pulled {
@@ -998,6 +1010,7 @@ impl SlurmBackend {
             };
             let state = match look {
                 Look::Active | Look::Unknown => continue,
+                Look::Held(reason) => return Ok(Ended::Held(reason)),
                 Look::Ended(state) => Some(state),
                 Look::Gone => tokio::select! {
                     state = self.queue.accounted(&sacct, id) => state,
@@ -1246,6 +1259,9 @@ fn outcome(
             Some("iunctus: SLURM stopped the task for lack of memory\n".to_owned()),
         )),
         Ended::Stopped(Some(state)) => Err(format!("the job ended as {state}")),
+        Ended::Held(reason) => Err(format!(
+            "SLURM held the job ({reason}), so iunctus cancelled it"
+        )),
         Ended::Stopped(None) => Err("the job ended without a record of its container".into()),
     }
 }

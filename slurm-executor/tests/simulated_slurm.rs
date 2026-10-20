@@ -77,6 +77,7 @@ for argument in "$@"; do
         --format=%N) echo node-3; exit 0 ;;
         '--format=%i|%o') commands=yes ;;
         '--format=%i|%T|%j|%V|%o') identified=yes ;;
+        '--format=%i %T %r') reasons=yes ;;
         --json)
             [ -e "$(dirname "$0")/json" ] || { echo "squeue: unrecognized option '--json'" >&2; exit 1; }
             json=yes ;;
@@ -98,13 +99,20 @@ for id in ${jobs//,/ }; do
     elif [ "$(cat "$state/$id.exit")" = 0 ]; then job_state=COMPLETED
     else job_state=FAILED; fi
     [ ! -e "$(dirname "$0")/completing" ] || job_state=COMPLETING
+    # A file `held` holds the reason of a job that SLURM keeps pending and held.
+    reason=None
+    if [ -e "$(dirname "$0")/held" ] && [ ! -e "$state/$id.cancelled" ]; then
+        job_state=PENDING reason=$(cat "$(dirname "$0")/held")
+    fi
     if [ -n "$commands" ]; then
         printf '%s|%s\n' "$id" "$(cat "$state/$id.command")"
     elif [ -n "$identified" ]; then
         printf '%s|%s|%s|%s|%s\n' "$id" "$job_state" "$(cat "$state/$id.name")" "$(cat "$state/$id.submitted")" "$(cat "$state/$id.command")"
     elif [ -n "$json" ]; then
-        printf '%s{"job_id": %s, "job_state": ["%s"]}' "$separator" "$id" "$job_state"
+        printf '%s{"job_id": %s, "job_state": ["%s"], "state_description": "%s"}' "$separator" "$id" "$job_state" "$reason"
         separator=,
+    elif [ -n "$reasons" ]; then
+        echo "$id $job_state $reason"
     else
         echo "$id $job_state"
     fi
@@ -765,6 +773,36 @@ async fn cancelled_jobs_stop() {
     );
     let exit = std::fs::read_to_string(bin.join("state/101.exit")).expect("the job ended");
     assert_ne!(exit.trim(), "0");
+}
+
+#[tokio::test]
+async fn cancels_held_jobs() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    std::fs::write(bin.join("held"), "launch failed requeued held").expect("holds the jobs");
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    let mut spec = spec("sleep 30");
+    spec.image.as_mut().unwrap().reference = "/images/tool.sif".into();
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-P-12-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let begun = std::time::Instant::now();
+    let error = (backend.run(job, &CancellationToken::new()).await).unwrap_err();
+    assert!(
+        error.to_string().contains("launch failed requeued held"),
+        "{error}"
+    );
+    assert!(begun.elapsed() < Duration::from_secs(20));
+    let calls = std::fs::read_to_string(bin.join("state/scancel.calls")).expect("a cancel");
+    assert!(calls.starts_with("101 "), "{calls}");
 }
 
 #[tokio::test]

@@ -625,3 +625,31 @@ async fn waits_for_cancellation() {
     assert!(matches!(result, Err(ExecutorError::Cancelled)));
     assert!(!backend.scratch.join(job.name).join("remote.json").exists());
 }
+
+#[tokio::test]
+async fn cleans_attempt_objects() {
+    for outcome in ["COMPLETE", "EXECUTOR_ERROR"] {
+        let folder = tempfile::tempdir().unwrap();
+        let (operator, objects, source) = stores();
+        let server = server(operator, objects.clone(), outcome).await;
+        let mut backend = backend(&server, folder.path(), &source, &objects);
+        backend.settings.staging_cleanup = true;
+        let stage = backend.staging.as_mut().unwrap();
+        stage.settings.staging_cleanup = true;
+        let spec = spec(false);
+        let job = Job {
+            name: "clean-1",
+            spec: &spec,
+            staging: &Staging::default(),
+            placement: &Placement::default(),
+        };
+        let finished = backend.run(job, &CancellationToken::new()).await.unwrap();
+        // The results are collected, and the staging root keeps none of them.
+        if outcome == "COMPLETE" {
+            assert_eq!(finished.files[0].path, "out/a.txt");
+            assert!(finished.local_path("out/a.txt").is_file());
+        }
+        let left = objects.objects("attempts/").await.unwrap();
+        assert!(left.is_empty(), "{outcome}: {left:?}");
+    }
+}

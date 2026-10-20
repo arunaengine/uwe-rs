@@ -15,6 +15,9 @@ pub struct Settings {
     /// How many minutes longer than its task a TES task may run (`staging_minutes`), for its
     /// image pull and staging; `None` for the default of [`Settings::margin`].
     pub staging_minutes: Option<u64>,
+    /// Whether the objects of every finished attempt go away from the staging root
+    /// (`staging_cleanup = true`), once their results are collected or abandoned.
+    pub staging_cleanup: bool,
 }
 
 impl Default for Settings {
@@ -27,6 +30,7 @@ impl Default for Settings {
             max_inputs: 512,
             max_outputs: 1024,
             staging_minutes: None,
+            staging_cleanup: false,
         }
     }
 }
@@ -53,6 +57,7 @@ impl Settings {
         "max_inputs",
         "max_outputs",
         "staging_minutes",
+        "staging_cleanup",
     ];
 
     /// How much longer than its task a TES task may run, as its state stays RUNNING while the
@@ -128,7 +133,12 @@ impl Settings {
             None => None,
             Some(_) => return Err(table.invalid("staging_minutes", "must be between 0 and 10080")),
         };
+        let staging_cleanup = table.flag("staging_cleanup")?.unwrap_or(false);
+        if staging_cleanup && staging_root.is_none() {
+            return Err(table.invalid("staging_cleanup", "requires staging = \"object-store\""));
+        }
         Ok(Self {
+            staging_cleanup,
             staging_minutes,
             staging_root,
             idempotency_tag,
@@ -169,6 +179,12 @@ mod tests {
         let set = read(&format!("{text}\nstaging_minutes = 2")).unwrap();
         assert_eq!(set.margin().as_secs(), 120);
         assert!(read("[executor.tes]\nstaging_minutes = -1").is_err());
+        assert!(
+            read(&format!("{text}\nstaging_cleanup = true"))
+                .unwrap()
+                .staging_cleanup
+        );
+        assert!(read("[executor.tes]\nstaging_cleanup = true").is_err());
     }
 
     #[test]

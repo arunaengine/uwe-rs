@@ -435,6 +435,40 @@ rule gather:
     assert!(folder.path().join("work/files/f0.faa").is_file());
 }
 
+/// As in Snakemake's test_service_jobs, the file of a service goes once the jobs that use it
+/// ended.
+#[test]
+fn removes_service_files() {
+    let snakefile = r#"
+rule all:
+    input: "test.txt"
+rule a:
+    output: service("foo.socket")
+    shell: "unused"
+rule b:
+    input: "foo.socket"
+    output: "test.txt"
+    shell: "unused"
+"#;
+    let steps: [(&str, Step); 1] = [("a", |folder| {
+        std::fs::write(folder.join("foo.socket"), "").unwrap();
+        std::fs::write(folder.join("test.txt"), "").unwrap();
+        0
+    })];
+    let (folder, host, error) = run(folder(), snakefile, &steps);
+    assert_eq!(
+        error,
+        None,
+        "{:?}",
+        host.tasks.iter().map(|task| &task.step).collect::<Vec<_>>()
+    );
+    assert!(folder.path().join("work/test.txt").is_file());
+    assert!(
+        !folder.path().join("work/foo.socket").exists(),
+        "the service file is gone"
+    );
+}
+
 /// Runs a Snakefile in the working directory of `folder` with jobs in the shared directory;
 /// the folder, the tasks and the error.
 fn run(

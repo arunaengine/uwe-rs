@@ -23,6 +23,28 @@ pub fn usage(threads: i64, resources: &[(String, Value)]) -> Usage {
     usage
 }
 
+/// The usage of a task of several jobs: the jobs of one layer run at once and add up, the
+/// layers run one after the other, so the task takes what its largest layer does; one node.
+pub fn combined(usages: &[Usage], layers: &[usize]) -> Usage {
+    let mut sums: BTreeMap<usize, BTreeMap<&str, i64>> = BTreeMap::new();
+    for (usage, layer) in usages.iter().zip(layers) {
+        for (name, amount) in usage {
+            *sums.entry(*layer).or_default().entry(name).or_default() += amount;
+        }
+    }
+    let mut most: BTreeMap<&str, i64> = BTreeMap::new();
+    for sum in sums.values() {
+        for (name, amount) in sum {
+            let entry = most.entry(name).or_default();
+            *entry = (*entry).max(*amount);
+        }
+    }
+    most.insert("_nodes", 1);
+    most.into_iter()
+        .map(|(name, amount)| (name.to_owned(), amount))
+        .collect()
+}
+
 /// The limits of the global integer resources. As in Snakemake, `_cores` limits the threads of
 /// all jobs only when `_nodes` does not limit their number.
 pub fn limits(globals: &IndexMap<String, Value>) -> BTreeMap<String, i64> {
@@ -93,6 +115,11 @@ mod tests {
         assert!(gate.fits(&other, &limits), "four of eight cores are free");
         gate.release(TaskId(1));
         assert!(gate.fits(&job, &limits));
+        // Jobs of one layer of a group add up, layers take turns, and a group is one node.
+        let usages = [usage(2, &[]), usage(3, &[]), usage(4, &[])];
+        let group = combined(&usages, &[0, 0, 1]);
+        assert!(group.contains(&("_cores".to_owned(), 5)), "{group:?}");
+        assert!(group.contains(&("_nodes".to_owned(), 1)), "{group:?}");
         // With `_nodes`, the cores of all jobs are not limited.
         globals.insert("_nodes".to_owned(), Value::Int(2));
         assert!(!super::limits(&globals).contains_key("_cores"));

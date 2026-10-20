@@ -186,3 +186,24 @@ fn check_limits(launch: &Launch) {
         current = next[0].id;
     }
 }
+
+/// Snakemake's scheduler holds a group job back while the global resources it needs are taken,
+/// as for a single job; the jobs of one layer of the group add up.
+#[test]
+fn limits_group_resources() {
+    let snakefile = "rule all:\n    input: expand('b{i}', i=range(2))\nrule a:\n    output: 'a{i}'\n    group: lambda wildcards: 'g' + wildcards.i\n    resources: ncbi=1\n    shell: 'touch {output}'\nrule b:\n    input: 'a{i}'\n    output: 'b{i}'\n    group: lambda wildcards: 'g' + wildcards.i\n    shell: 'cp {input} {output}'\n";
+    let folder = tempfile::tempdir().expect("a folder");
+    let launch = profile_launch(folder.path(), "resources: [ncbi=1]\n", snakefile);
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    let started = driver.start().expect("starts");
+    assert_eq!(started.len(), 1, "one group at a time: {started:?}");
+    let next = driver
+        .complete(Outcome {
+            id: started[0].id,
+            attempt: 1,
+            ..Outcome::default()
+        })
+        .expect("the group ends");
+    assert_eq!(next.len(), 1, "the other group starts: {next:?}");
+    assert_ne!(next[0].id, started[0].id);
+}

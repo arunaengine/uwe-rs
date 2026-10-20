@@ -469,6 +469,70 @@ rule b:
     );
 }
 
+/// As in Snakemake's test_update_flag, a job that reads a file as it was before an update
+/// runs before the job that updates the file.
+#[test]
+fn reads_before_updates() {
+    let snakefile = r#"
+rule all:
+    input: "out.txt", "test.txt"
+rule b:
+    input: before_update("test.txt")
+    output: "out.txt"
+    shell: "unused"
+rule a:
+    input: "in.txt"
+    output: update("test.txt")
+    shell: "unused"
+"#;
+    let steps: [(&str, Step); 2] = [
+        ("b", |folder| {
+            std::fs::copy(folder.join("test.txt"), folder.join("out.txt")).unwrap();
+            0
+        }),
+        ("a", |folder| {
+            let old = std::fs::read_to_string(folder.join("test.txt")).unwrap();
+            std::fs::write(folder.join("test.txt"), old + "bar\n").unwrap();
+            0
+        }),
+    ];
+    let folder = folder();
+    let test = folder.path().join("work/test.txt");
+    std::fs::write(&test, "foo\n").unwrap();
+    let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    std::fs::File::open(&test)
+        .unwrap()
+        .set_modified(hour_ago)
+        .unwrap();
+    std::fs::write(folder.path().join("work/in.txt"), "new").unwrap();
+    std::fs::write(folder.path().join("work/Snakefile"), snakefile).unwrap();
+    let launch = Launch {
+        target: folder.path().join("work"),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let options = snakemake_runtime::RunSettings {
+        shared_workdir: true,
+        ..Default::default()
+    };
+    let mut driver = snakemake_runtime::driver_with_options(&launch, Default::default(), options)
+        .expect("a driver");
+    let first: Vec<String> = driver
+        .start()
+        .unwrap()
+        .into_iter()
+        .map(|task| task.step)
+        .collect();
+    assert_eq!(first, ["b"], "the update waits for the reader");
+    drop(driver);
+    let (folder, host, error) = run(folder, snakefile, &steps);
+    assert_eq!(error, None);
+    let order: Vec<&str> = host.tasks.iter().map(|task| task.step.as_str()).collect();
+    assert_eq!(&order[..2], ["b", "a"]);
+    let out = std::fs::read_to_string(folder.path().join("work/out.txt")).unwrap();
+    assert_eq!(out, "foo\n");
+}
+
 /// Runs a Snakefile in the working directory of `folder` with jobs in the shared directory;
 /// the folder, the tasks and the error.
 fn run(

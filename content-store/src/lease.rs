@@ -146,7 +146,7 @@ impl Store {
             Some(path) => {
                 let holder = holder.clone();
                 let named = path.clone();
-                let file = blocking(move || lock_file(&path, &holder)).await?;
+                let file = blocking(move || lock_file(&path, Some(&holder))).await?;
                 Ok(file.map(|file| Lease {
                     _hold: Hold::File {
                         locked: file,
@@ -155,6 +155,35 @@ impl Store {
                 }))
             }
             None => take_object(&self.operator, &location, holder).await,
+        }
+    }
+
+    /// Takes the lease `name` together with its other shared holders, unless someone holds it
+    /// alone. Only leases in a folder can be shared (see [`Store::local_leases`]).
+    pub async fn try_shared_lease(&self, name: &str) -> Result<Option<Lease>, StoreError> {
+        if let Some(shared) = &self.shared {
+            return Box::pin(shared.try_shared_lease(name)).await;
+        }
+        let location = layout::lease(name)?;
+        let Some(path) = self.local_path(&location) else {
+            let message = "leases in an object store cannot be shared";
+            return Err(opendal::Error::new(ErrorKind::Unsupported, message).into());
+        };
+        let named = path.clone();
+        let file = blocking(move || lock_file(&path, None)).await?;
+        Ok(file.map(|file| Lease {
+            _hold: Hold::File {
+                locked: file,
+                path: named,
+            },
+        }))
+    }
+
+    /// Whether the leases of the store are locked files of this machine, which never expire.
+    pub fn local_leases(&self) -> bool {
+        match &self.shared {
+            Some(shared) => shared.local_leases(),
+            None => self.root.is_some(),
         }
     }
 
@@ -211,8 +240,8 @@ impl Store {
 }
 
 /// Locks the file at `path` for `holder` and writes who holds it into it; `None` when another
-/// holds the lock.
-fn lock_file(path: &Path, holder: &Holder) -> std::io::Result<Option<File>> {
+/// holds the lock. Without a holder the lock is shared with other shared holders.
+fn lock_file(path: &Path, holder: Option<&Holder>) -> std::io::Result<Option<File>> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -226,7 +255,11 @@ fn lock_file(path: &Path, holder: &Holder) -> std::io::Result<Option<File>> {
             .create(true)
             .truncate(false)
             .open(path)?;
-        match file.try_lock() {
+        let locked = match holder {
+            Some(_) => file.try_lock(),
+            None => file.try_lock_shared(),
+        };
+        match locked {
             Ok(()) => {}
             Err(TryLockError::WouldBlock) => return Ok(None),
             Err(TryLockError::Error(error)) => return Err(error),
@@ -234,9 +267,12 @@ fn lock_file(path: &Path, holder: &Holder) -> std::io::Result<Option<File>> {
         if !same_file(&file, path)? {
             continue;
         }
-        file.set_len(0)?;
-        file.rewind()?;
-        file.write_all(&serde_json::to_vec(holder)?)?;
+        // Shared holders leave the file as it is; only a sole holder names itself in it.
+        if let Some(holder) = holder {
+            file.set_len(0)?;
+            file.rewind()?;
+            file.write_all(&serde_json::to_vec(holder)?)?;
+        }
         return Ok(Some(file));
     }
     Err(std::io::Error::other(format!(
@@ -765,6 +801,47 @@ mod tests {
         assert_eq!(store.remove_free_leases().await.expect("removes"), 1);
         assert!(!lease_path(&store, "tasks/default/ab").exists());
         assert_eq!(store.remove_free_leases().await.expect("removes again"), 0);
+    }
+
+    #[tokio::test]
+    async fn shares_local_leases() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let store = Store::local(root.path()).expect("a store");
+        assert!(store.local_leases());
+        let first = store.try_shared_lease("gate").await.expect("takes it");
+        let second = store.try_shared_lease("gate").await.expect("takes it");
+        let (first, second) = (first.expect("a lease"), second.expect("a lease"));
+        let sole = Holder::new("cleanup", "gate");
+        assert!(
+            store
+                .try_lease("gate", &sole)
+                .await
+                .expect("asks")
+                .is_none()
+        );
+        assert_eq!(store.remove_free_leases().await.expect("removes"), 0);
+        drop(first);
+        second.check().await.expect("still held");
+        assert!(
+            store
+                .try_lease("gate", &sole)
+                .await
+                .expect("asks")
+                .is_none()
+        );
+        drop(second);
+        let alone = store.try_lease("gate", &sole).await.expect("takes it");
+        assert!(alone.is_some());
+        assert!(
+            store
+                .try_shared_lease("gate")
+                .await
+                .expect("asks")
+                .is_none()
+        );
+        let memory = Store::memory().expect("a store");
+        assert!(!memory.local_leases());
+        assert!(memory.try_shared_lease("gate").await.is_err());
     }
 
     #[tokio::test]

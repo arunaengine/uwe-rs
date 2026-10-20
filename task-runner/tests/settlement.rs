@@ -306,6 +306,69 @@ async fn skips_contended_settlement() {
     assert!(cached(&store).await.is_none());
 }
 
+#[tokio::test(start_paused = true)]
+async fn waits_out_cleanup() {
+    let root = tempfile::tempdir().unwrap();
+    let store = Store::local(&root.path().join("store")).unwrap();
+    let mut executor = executor(root.path(), store.clone(), "run");
+    executor
+        .run(attempt(1, 1, &CancellationToken::new()))
+        .await
+        .unwrap();
+    let guard = task_runner::clean::maintenance(&store).await.unwrap();
+    let mut settling = tokio::spawn(executor.settle(TaskId(1), 1, true));
+    // Clean-up holds the gate for longer than settlement may take once it has the gate.
+    tokio::time::sleep(Duration::from_secs(30)).await;
+    assert!(!settling.is_finished());
+    drop(guard);
+    (&mut settling).await.unwrap().unwrap();
+    assert_eq!(cached(&store).await.unwrap().task, "1");
+}
+
+#[tokio::test]
+async fn sibling_shares_gate() {
+    let root = tempfile::tempdir().unwrap();
+    let store = Store::local(&root.path().join("store")).unwrap();
+    let mut executor = executor(root.path(), store.clone(), "run");
+    let cancel = CancellationToken::new();
+    executor.run(attempt(1, 1, &cancel)).await.unwrap();
+    // Another task holds the gate while it stages a large input.
+    let staging = store.try_shared_lease("maintenance").await.unwrap();
+    assert!(staging.is_some());
+    let mut other = task(2);
+    other.command = vec!["other".into()];
+    let other = Attempt {
+        task: Arc::new(other),
+        number: 1,
+        cancel: cancel.clone(),
+    };
+    let ran = tokio::time::timeout(Duration::from_secs(5), executor.run(other)).await;
+    assert!(!ran.unwrap().unwrap().cached);
+    let settled = tokio::time::timeout(Duration::from_secs(5), executor.settle(TaskId(1), 1, true));
+    settled.await.unwrap().unwrap();
+    assert_eq!(cached(&store).await.unwrap().task, "1");
+    assert!(task_runner::clean::maintenance(&store).await.is_err());
+    drop(staging);
+}
+
+#[tokio::test]
+async fn skips_failed_write() {
+    let root = tempfile::tempdir().unwrap();
+    let store = Store::local(&root.path().join("store")).unwrap();
+    let mut executor = executor(root.path(), store.clone(), "run");
+    executor
+        .run(attempt(1, 1, &CancellationToken::new()))
+        .await
+        .unwrap();
+    // A file where the leases of tasks go makes the write fail.
+    let leases = root.path().join("store/locks/tasks");
+    std::fs::remove_dir_all(&leases).unwrap();
+    std::fs::write(&leases, "blocked").unwrap();
+    executor.settle(TaskId(1), 1, true).await.unwrap();
+    std::fs::remove_file(&leases).unwrap();
+    assert!(cached(&store).await.is_none());
+}
+
 #[tokio::test]
 async fn rejects_superseded_publication() {
     let root = tempfile::tempdir().unwrap();

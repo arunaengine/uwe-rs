@@ -119,3 +119,65 @@ fn needs_types_flag() {
         "{error}"
     );
 }
+
+/// Typed outputs compute their values after the task from `file()`, `files()`, `stdout()`,
+/// `env()` and `eval()`, also inside tuples and records, and the `topic:` section feeds its
+/// topic without being an output.
+#[test]
+fn computes_typed_outputs() {
+    let source = r#"nextflow.enable.types = true
+
+process GREET {
+    input:
+    name: String
+    count: Integer
+
+    output:
+    text: Path = file('out.txt')
+    n: Integer = count + 1
+    msg = stdout()
+    other = env('FOO')
+    ev = eval('echo x')
+    all = files('*.out')
+    pair = tuple(name, file('out.txt'))
+    rec = record(id: name, size: count)
+
+    topic:
+    tuple('GREET', eval('tool --version')) >> 'versions'
+
+    script:
+    "touch out.txt"
+}
+
+workflow {
+    def r = GREET('hi', 2)
+    r.text.subscribe { v -> println "text ${v.name}" }
+    r.n.subscribe { v -> println "n ${v}" }
+    r.msg.subscribe { v -> println "msg ${v}" }
+    r.other.subscribe { v -> println "other ${v}" }
+    r.ev.subscribe { v -> println "ev ${v}" }
+    r.all.subscribe { v -> println "all ${v*.name} ${v.getClass().simpleName}" }
+    r.pair.subscribe { v -> println "pair ${v[0]} ${v[1].name}" }
+    r.rec.subscribe { v -> println "rec ${v}" }
+    channel.topic('versions').subscribe { v -> println "topic ${v}" }
+}
+"#;
+    let (tasks, printed) = run(source).expect("runs");
+    assert_eq!(tasks.len(), 1);
+    let mut lines: Vec<&str> = printed.lines().collect();
+    lines.sort_unstable();
+    assert_eq!(
+        lines,
+        [
+            "all [*.out] LinkedHashSet",
+            "ev 1.13",
+            "msg out",
+            "n 3",
+            "other env",
+            "pair hi out.txt",
+            "rec [id:hi, size:2]",
+            "text out.txt",
+            "topic [GREET, 1.13]",
+        ]
+    );
+}

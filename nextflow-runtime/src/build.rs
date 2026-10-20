@@ -404,12 +404,18 @@ impl Host for Builder<'_> {
                 self.network.add_topic_source(topic, *channel);
             }
         }
-        let values = outputs.into_iter().map(Value::Channel).collect();
-        let names = process
-            .outputs
-            .iter()
-            .map(|output| output.emit.clone())
+        // The entries of a `topic:` section only feed their topics.
+        let shown = || {
+            process
+                .outputs
+                .iter()
+                .zip(&outputs)
+                .filter(|(output, _)| !output.hidden)
+        };
+        let values = shown()
+            .map(|(_, channel)| Value::Channel(*channel))
             .collect();
+        let names = shown().map(|(output, _)| output.emit.clone()).collect();
         Ok(Value::ChannelOut(Rc::new(ChannelOut { values, names })))
     }
 

@@ -232,6 +232,8 @@ mod tests {
             emit: None,
             topic: None,
             optional: false,
+            typed: None,
+            hidden: false,
         }];
         assert_eq!(
             files(&outputs, &directory, &mut host).unwrap().unwrap()[0]

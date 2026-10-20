@@ -9,7 +9,7 @@ use nextflow_parser::ast::{self, ExpressionKind as Syntax, Item, ProcessInput};
 
 use super::Lowering;
 use super::process::call;
-use crate::lowered::{Arguments, Expression, ExpressionKind, Input};
+use crate::lowered::{Arguments, Expression, ExpressionKind, Input, Output, OutputPart};
 use crate::value::Value;
 
 /// Nextflow's error for typed declarations without the feature flag.
@@ -169,4 +169,121 @@ fn path_input(inputs: &mut [Input], place: crate::lowered::Place) -> Option<&mut
         }
     }
     None
+}
+
+impl Lowering<'_> {
+    /// A typed output: `name = value`, `name: Type = value`, a bare `name` that the script
+    /// sets, or an expression without a name.
+    pub(super) fn typed_output(&mut self, output: &ast::NamedOutput) -> Option<Output> {
+        let (emit, value, span) = match output {
+            ast::NamedOutput::Named { target, value } => {
+                let name = Some(target.name.text.as_str().into());
+                match value {
+                    Some(value) => (name, value.clone(), target.name.span),
+                    None => {
+                        let variable = Syntax::Variable(target.name.text.clone());
+                        let value = ast::Expression {
+                            kind: variable,
+                            span: target.name.span,
+                        };
+                        (name, value, target.name.span)
+                    }
+                }
+            }
+            ast::NamedOutput::Statement(ast::Statement {
+                kind: ast::StatementKind::Expression(value),
+                span,
+            }) => (None, value.clone(), *span),
+            ast::NamedOutput::Statement(statement) => {
+                self.error("Invalid process output", statement.span);
+                return None;
+            }
+        };
+        Some(self.computed_output(emit, None, &value, span))
+    }
+
+    /// An entry of the `topic:` section, `value >> 'name'`, which only feeds the topic.
+    pub(super) fn topic_entry(&mut self, statement: &ast::Statement) -> Option<Output> {
+        if let ast::StatementKind::Expression(ast::Expression {
+            kind:
+                Syntax::Binary {
+                    left,
+                    operator: ast::BinaryOperator::RightShift,
+                    right,
+                },
+            ..
+        }) = &statement.kind
+            && let Syntax::Literal(ast::Literal::String(topic)) = &right.kind
+        {
+            let mut output =
+                self.computed_output(None, Some(topic.as_str().into()), left, statement.span);
+            output.hidden = true;
+            return Some(output);
+        }
+        self.error("Invalid topic emission", statement.span);
+        None
+    }
+
+    /// An output whose value comes from code that runs after the task.
+    fn computed_output(
+        &mut self,
+        emit: Option<Rc<str>>,
+        topic: Option<Rc<str>>,
+        value: &ast::Expression,
+        span: nextflow_parser::Span,
+    ) -> Output {
+        self.task_outputs = Some(Vec::new());
+        let value = self.expression(value);
+        let parts = self.task_outputs.take().unwrap_or_default();
+        Output {
+            parts,
+            tuple: true,
+            emit,
+            topic,
+            optional: None,
+            typed: Some(Rc::new(value)),
+            hidden: false,
+            span,
+        }
+    }
+
+    /// In a typed output, `file()`, `files()`, `stdout()`, `env()` and `eval()` read what the
+    /// task made; any other call stays as it is.
+    pub(super) fn task_output(
+        &mut self,
+        name: &str,
+        span: nextflow_parser::Span,
+        arguments: Arguments,
+    ) -> Result<ExpressionKind, Arguments> {
+        if self.task_outputs.is_none() {
+            return Err(arguments);
+        }
+        let Arguments {
+            named,
+            mut positional,
+        } = arguments;
+        let part = match (name, positional.len()) {
+            ("file" | "files", 1) => OutputPart::Files {
+                pattern: positional.remove(0),
+                options: Arguments {
+                    named,
+                    positional: Vec::new(),
+                },
+                single: name == "file",
+            },
+            ("stdout", 0) => OutputPart::Stdout,
+            ("eval", 1) => OutputPart::Eval(positional.remove(0)),
+            ("env", 1) => match &positional[0].kind {
+                ExpressionKind::Literal(Value::String(text)) => OutputPart::Env(text.clone()),
+                _ => {
+                    self.error("The name of an `env` output must be a string", span);
+                    OutputPart::Stdout
+                }
+            },
+            _ => return Err(Arguments { named, positional }),
+        };
+        let parts = self.task_outputs.as_mut().expect("lowering a typed output");
+        parts.push(part);
+        Ok(ExpressionKind::TaskOutput(parts.len() - 1))
+    }
 }

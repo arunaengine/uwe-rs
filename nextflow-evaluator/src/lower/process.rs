@@ -32,9 +32,6 @@ impl Lowering<'_> {
                 .collect(),
         };
         let (stage_env, stage_stdin) = self.stage(&process.stage, &mut inputs);
-        if let Some(first) = process.topics.first() {
-            self.error("Typed process sections are not supported yet", first.span);
-        }
         let when = process.when.as_ref().map(|when| match &when.kind {
             // Legacy syntax: a directive after `when:` belongs to the guard, where Nextflow
             // 26.04.6 gives null for it, so the process runs no task.
@@ -139,8 +136,12 @@ impl Lowering<'_> {
                     self.legacy("Invalid process output", statement.span);
                     directives.extend(self.directive(statement));
                 }
+                _ if self.types => outputs.extend(self.typed_output(output)),
                 _ => outputs.extend(self.output(output)),
             }
+        }
+        for statement in &process.topics {
+            outputs.extend(self.topic_entry(statement));
         }
         self.in_process = false;
         let layout = self.scopes.pop_frame();
@@ -392,6 +393,8 @@ impl Lowering<'_> {
             emit: None,
             topic: None,
             optional: None,
+            typed: None,
+            hidden: false,
             span,
         };
         let mut part_options = Vec::new();
@@ -512,6 +515,8 @@ fn single(part: OutputPart, span: Span) -> Output {
         emit: None,
         topic: None,
         optional: None,
+        typed: None,
+        hidden: false,
         span,
     }
 }

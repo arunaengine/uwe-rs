@@ -20,6 +20,7 @@ input-schema.workspace = true
 jsonschema.workspace = true
 md-5.workspace = true
 python-evaluator.workspace = true
+rustix.workspace = true
 serde_json.workspace = true
 sha1.workspace = true
 sha2.workspace = true

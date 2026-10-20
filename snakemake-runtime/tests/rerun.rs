@@ -494,3 +494,49 @@ checkpoint pick:
     assert!(complete(third.as_mut(), &tasks[0], b"second\n").is_empty());
     third.finish().expect("finishes the third run");
 }
+
+/// Sets the time of a file, or of a link itself, to `hours` before now.
+fn age(path: &std::path::Path, hours: u64) {
+    use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
+    let time = SystemTime::now() - Duration::from_secs(hours * 3600);
+    let seconds = time
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let stamp = Timespec {
+        tv_sec: seconds,
+        tv_nsec: 0,
+    };
+    let times = Timestamps {
+        last_access: stamp,
+        last_modification: stamp,
+    };
+    utimensat(CWD, path, &times, AtFlags::SYMLINK_NOFOLLOW).unwrap();
+}
+
+/// As in Snakemake's test_symlink_time_handling, an output link counts by its own time and an
+/// input link by the later of its own and its target's, so the job runs again.
+#[test]
+fn compares_link_times() {
+    let folder = tempfile::tempdir().unwrap();
+    let path = |name: &str| folder.path().join(name);
+    std::fs::write(
+        path("Snakefile"),
+        "rule make:\n    input: 'input_link'\n    output: 'output_link'\n    shell: 'ln -s {input} {output}'\n",
+    )
+    .unwrap();
+    std::fs::write(path("input_file"), "").unwrap();
+    std::os::unix::fs::symlink("input_file", path("input_link")).unwrap();
+    std::os::unix::fs::symlink("input_link", path("output_link")).unwrap();
+    age(&path("input_file"), 1);
+    age(&path("input_link"), 4);
+    age(&path("output_link"), 2);
+    let launch = Launch {
+        target: folder.path().into(),
+        scratch: folder.path().join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    };
+    let tasks = snakemake_runtime::driver(&launch).unwrap().start().unwrap();
+    assert_eq!(tasks.len(), 1, "the output is older than the input");
+}

@@ -230,3 +230,30 @@ fn rejects_cluster_templates() {
             .unsupported
     );
 }
+
+#[test]
+fn unresolved_tags() {
+    let leaf = workflow(
+        "  - name: main\n    inputs: {parameters: [{name: message, value: hi}]}\n    container: {image: busybox, args: [\"echo {{inputs.parameters.mesage}}\"]}\n",
+    );
+    assert_eq!(
+        check(&leaf, &[]),
+        Err("templates.main: failed to resolve {{inputs.parameters.mesage}}".into())
+    );
+    let flip = "  - name: flip\n    script: {image: busybox, command: [sh], source: echo heads}\n";
+    let steps = workflow(&format!(
+        "  - name: main\n    steps:\n    - - {{name: flip, template: flip}}\n    - - {{name: heads, template: flip, when: \"{{{{steps.flip.outputs.reslt}}}} == heads\"}}\n{flip}"
+    ));
+    assert_eq!(
+        check(&steps, &[]),
+        Err("templates.main.steps failed to resolve {{steps.flip.outputs.reslt}}".into())
+    );
+    assert_eq!(check(&steps.replace("reslt", "result"), &[]), Ok(()));
+    let dag = workflow(&format!(
+        "  - name: main\n    dag:\n      tasks:\n      - {{name: a, template: flip}}\n      - {{name: b, template: flip, depends: a, when: \"{{{{tasks.a.status}}}} == x\"}}\n      - {{name: c, template: flip, when: \"{{{{tasks.a.status}}}} == x\"}}\n{flip}"
+    ));
+    assert_eq!(
+        check(&dag, &[]),
+        Err("templates.main.tasks.c failed to resolve {{tasks.a.status}}".into())
+    );
+}

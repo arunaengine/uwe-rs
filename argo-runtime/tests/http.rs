@@ -165,6 +165,7 @@ fn records_scope_times() {
 
 #[test]
 fn hooks_read_results() {
+    // Argo rejects a simple tag of the step's own outputs in a hook other than `exit`.
     let folder = tempfile::tempdir().unwrap();
     let spec = r#"  entrypoint: main
   hooks:
@@ -181,7 +182,7 @@ fn hooks_read_results() {
           success:
             expression: steps.first.status == "Succeeded"
             template: hook
-            arguments: {parameters: [{name: status, value: '{{steps.first.status}}'}, {name: result, value: '{{steps.first.outputs.result}}'}]}
+            arguments: {parameters: [{name: status, value: '{{steps.first.status}}'}, {name: result, value: '{{=steps.first.outputs.result}}'}]}
   - name: first
     script: {image: alpine, command: [sh], source: 'echo result'}
   - name: hook

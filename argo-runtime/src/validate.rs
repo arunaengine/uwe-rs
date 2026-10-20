@@ -15,6 +15,7 @@ use crate::checks::{
 };
 use crate::dag::ancestry;
 use crate::library::{Document, Kind, Library};
+use crate::references::{Call, Globals, Scope};
 
 /// What a call supplies to the inputs of the template it calls.
 #[derive(Clone, Copy, Debug)]
@@ -66,6 +67,8 @@ struct Holder<'a> {
     template: &'a str,
     template_ref: Option<&'a TemplateRef>,
     inline: Option<&'a Template>,
+    /// The source of the inline template, whose tags are checked.
+    inline_node: Option<&'a Node>,
 }
 
 impl<'a> Holder<'a> {
@@ -74,22 +77,25 @@ impl<'a> Holder<'a> {
             template,
             template_ref: None,
             inline: None,
+            inline_node: None,
         }
     }
 
-    fn of_step(step: &'a WorkflowStep) -> Self {
+    fn of_step(step: &'a WorkflowStep, node: Option<&'a Node>) -> Self {
         Holder {
             template: &step.template,
             template_ref: step.template_ref.as_ref(),
             inline: step.inline.as_deref(),
+            inline_node: node.and_then(|node| node.get("inline")),
         }
     }
 
-    fn of_task(task: &'a DagTask) -> Self {
+    fn of_task(task: &'a DagTask, node: Option<&'a Node>) -> Self {
         Holder {
             template: &task.template,
             template_ref: task.template_ref.as_ref(),
             inline: task.inline.as_deref(),
+            inline_node: node.and_then(|node| node.get("inline")),
         }
     }
 }
@@ -109,6 +115,7 @@ pub struct Rejection {
 /// with every template on its own. Executor plugins only need their container and a port.
 pub fn validate(document: &Document, library: &Library) -> Result<(), Rejection> {
     let mut check = Check::new(library);
+    check.metadata(document.node.get("metadata"));
     check_document(&mut check, document).map_err(|message| Rejection {
         message,
         unsupported: check.unsupported,
@@ -144,6 +151,7 @@ fn check_document(check: &mut Check, document: &Document) -> Result<(), String> 
             return Err("cron workflow must have at least one schedule".to_owned());
         }
     }
+    check.template_check = template_kind;
     let result = if spec.workflow_template_ref.is_some() {
         // A Workflow that runs a WorkflowTemplate is checked when it starts, once its spec is
         // joined with the template's.
@@ -182,6 +190,11 @@ pub(crate) struct Check<'a> {
     unsupported: bool,
     checked: HashSet<(String, String)>,
     bases: Vec<((PathBuf, usize), Rc<Base>)>,
+    /// `metadata` of the document, whose labels and annotations are variables.
+    metadata: Option<Node>,
+    /// A WorkflowTemplate checked on its own, whose parameters may come from a Workflow.
+    template_check: bool,
+    globals: Globals,
 }
 
 impl<'a> Check<'a> {
@@ -191,7 +204,15 @@ impl<'a> Check<'a> {
             unsupported: false,
             checked: HashSet::new(),
             bases: Vec::new(),
+            metadata: None,
+            template_check: false,
+            globals: Globals::default(),
         }
+    }
+
+    /// Sets the `metadata` of the checked document.
+    pub fn metadata(&mut self, metadata: Option<&Node>) {
+        self.metadata = metadata.cloned();
     }
 
     /// Whether the error of a check is about a feature that iunctus does not support.
@@ -207,6 +228,7 @@ impl<'a> Check<'a> {
         entry: Option<(&str, Supplied)>,
         allow_empty: bool,
     ) -> Result<(), String> {
+        self.globals = Globals::of_spec(spec, self.metadata.as_ref(), self.template_check);
         if let Some(strategy) = &spec.retry_strategy {
             crate::retry::check_strategy(strategy).map_err(|failure| {
                 self.unsupported = failure.unsupported;
@@ -267,6 +289,7 @@ impl<'a> Check<'a> {
             self.holder(&Holder::named(entrypoint), base, supplied)?;
         }
         if !spec.on_exit.is_empty() {
+            self.globals.exit_handler(&spec.templates);
             let supplied = Supplied::Arguments(&spec.arguments);
             self.holder(&Holder::named(&spec.on_exit), base, supplied)?;
         }
@@ -295,13 +318,14 @@ impl<'a> Check<'a> {
         base
     }
 
-    /// Finds the template of a call and checks it, as Argo's `validateTemplateHolder`.
+    /// Finds the template of a call and checks it, as Argo's `validateTemplateHolder`. Gives
+    /// the template, unless a tag chooses it.
     fn holder(
         &mut self,
         holder: &Holder,
         base: &Rc<Base>,
         supplied: Supplied,
-    ) -> Result<(), String> {
+    ) -> Result<Option<Template>, String> {
         let (base, node, template) = if let Some(reference) = holder.template_ref {
             if !holder.template.is_empty() {
                 return Err("template name cannot be specified with templateRef".to_owned());
@@ -314,7 +338,7 @@ impl<'a> Check<'a> {
             }
             // A reference that a tag chooses is resolved when the workflow runs.
             if reference.name.contains("{{") || reference.template.contains("{{") {
-                return Ok(());
+                return Ok(None);
             }
             let kind = if reference.cluster_scope {
                 Kind::ClusterWorkflowTemplate
@@ -358,7 +382,9 @@ impl<'a> Check<'a> {
                 failure.message
             })?;
         }
-        self.template(&template, node.as_ref(), &base, supplied)
+        let source = node.as_ref().or(holder.inline_node);
+        self.template(&template, node.as_ref(), source, &base, supplied)?;
+        Ok(Some(template))
     }
 
     /// Checks a template: its type, its inputs against what the call supplies, and once per
@@ -367,6 +393,7 @@ impl<'a> Check<'a> {
         &mut self,
         template: &Template,
         node: Option<&Node>,
+        source: Option<&Node>,
         base: &Rc<Base>,
         supplied: Supplied,
     ) -> Result<(), String> {
@@ -436,20 +463,40 @@ impl<'a> Check<'a> {
         {
             crate::timers::seconds(&value.0, false).map_err(|failure| failure.message)?;
         }
+        let mut scope = Scope::of_template(template);
         if !template.steps.is_empty() {
-            self.steps(template, base)
-        } else if let Some(dag) = &template.dag {
-            self.dag(template, &dag.tasks, &dag.target, base)
+            self.steps(template, source, &mut scope, base)?;
+        } else if template.dag.is_some() {
+            self.dag(template, source, &mut scope, base)?;
         } else {
-            leaf_checks(template, base)
+            if let Some(source) = source {
+                (scope.resolve_node(source, &self.globals))
+                    .map_err(|error| format!("templates.{name}: {error}"))?;
+            }
+            return leaf_checks(template, base);
+        }
+        match source.and_then(|source| source.get("outputs")) {
+            Some(outputs) => (scope.resolve_node(outputs, &self.globals))
+                .map_err(|error| format!("templates.{name}.outputs {error}")),
+            None => Ok(()),
         }
     }
 
-    fn steps(&mut self, template: &Template, base: &Rc<Base>) -> Result<(), String> {
+    fn steps(
+        &mut self,
+        template: &Template,
+        source: Option<&Node>,
+        scope: &mut Scope,
+        base: &Rc<Base>,
+    ) -> Result<(), String> {
         let name = &template.name;
         let mut seen: HashSet<&str> = HashSet::new();
         for (position, group) in template.steps.iter().enumerate() {
-            for step in group {
+            let group_node = source
+                .and_then(|source| source.get("steps"))
+                .and_then(|groups| item_at(groups, position));
+            for (index, step) in group.iter().enumerate() {
+                let step_node = group_node.and_then(|group| item_at(group, index));
                 let prefix = format!("templates.{name}.steps[{position}]");
                 if step.name.is_empty() {
                     return Err(format!("{prefix}.name is required"));
@@ -461,17 +508,41 @@ impl<'a> Check<'a> {
                     return Err(format!("{prefix}.name '{}' is invalid: {error}", step.name));
                 }
                 let prefix = format!("{prefix}.{}", step.name);
+                let outputs = format!("steps.{}", step.name);
+                scope.insert(format!("{outputs}.status"));
                 one_loop(
                     &step.with_items,
                     &step.with_param,
                     step.with_sequence.is_some(),
                 )
                 .map_err(|error| format!("{prefix} {error}"))?;
+                let sequence = step.with_sequence.is_some();
+                scope.add_items(&step.with_items, &step.with_param, sequence);
                 arguments(&format!("{prefix}.arguments."), &step.arguments, false)?;
-                let holder = Holder::of_step(step);
-                self.holder(&holder, base, Supplied::Anything)
+                let holder = Holder::of_step(step, step_node);
+                let called = (self.holder(&holder, base, Supplied::Anything))
                     .map_err(|error| format!("{prefix} {error}"))?;
+                let exit_hook = !step.on_exit.is_empty() || step.hooks.contains_key("exit");
+                if exit_hook {
+                    scope.add_outputs(
+                        called.as_ref(),
+                        &outputs,
+                        Call::default(),
+                        &mut self.globals,
+                    );
+                }
                 hooks(&step.hooks, &prefix)?;
+                if let Some(step_node) = step_node {
+                    let mut step_scope = scope.clone();
+                    inline_inputs(step.inline.as_deref(), &mut step_scope);
+                    (step_scope.resolve_node(step_node, &self.globals))
+                        .map_err(|error| format!("templates.{name}.steps {error}"))?;
+                }
+                let call = Call {
+                    aggregate: !step.with_items.is_empty() || !step.with_param.is_empty(),
+                    ancestor: false,
+                };
+                scope.add_outputs(called.as_ref(), &outputs, call, &mut self.globals);
                 self.holder(&holder, base, Supplied::Arguments(&step.arguments))
                     .map_err(|error| format!("{prefix} {error}"))?;
             }
@@ -482,11 +553,18 @@ impl<'a> Check<'a> {
     fn dag(
         &mut self,
         template: &Template,
-        tasks: &[DagTask],
-        target: &str,
+        source: Option<&Node>,
+        scope: &mut Scope,
         base: &Rc<Base>,
     ) -> Result<(), String> {
         let name = &template.name;
+        let Some(dag) = &template.dag else {
+            return Ok(());
+        };
+        let (tasks, target) = (&dag.tasks, &dag.target);
+        let task_nodes = source
+            .and_then(|source| source.get("dag"))
+            .and_then(|dag| dag.get("tasks"));
         if tasks.is_empty() {
             return Err(format!("templates.{name} must have at least one task"));
         }
@@ -495,7 +573,8 @@ impl<'a> Check<'a> {
         field_names(&names, Names::Field)
             .map_err(|error| format!("templates.{name}.tasks{error}"))?;
         let depends = tasks.iter().any(|task| !task.depends.is_empty());
-        for task in tasks {
+        let mut called = Vec::new();
+        for (index, task) in tasks.iter().enumerate() {
             let prefix = format!("templates.{name}.tasks.{}", task.name);
             let ordered = depends || !task.dependencies.is_empty();
             if ordered && task.name.starts_with(|c: char| c.is_ascii_digit()) {
@@ -513,9 +592,19 @@ impl<'a> Check<'a> {
                     "templates.{name} cannot use 'continueOn' when using 'depends'. Instead use 'dep-task.Failed'/'dep-task.Errored'"
                 ));
             }
-            self.holder(&Holder::of_task(task), base, Supplied::Anything)
+            let node = task_nodes.and_then(|tasks| item_at(tasks, index));
+            let resolved = (self.holder(&Holder::of_task(task, node), base, Supplied::Anything))
                 .map_err(|error| format!("{prefix} {error}"))?;
+            let outputs = format!("tasks.{}", task.name);
+            let call = Call {
+                aggregate: loops_over(task),
+                ancestor: false,
+            };
+            scope.add_outputs(resolved.as_ref(), &outputs, call, &mut self.globals);
+            called.push(resolved);
         }
+        (scope.resolve(target, &self.globals))
+            .map_err(|error| format!("templates.{name}.targets {error}"))?;
         for target in target.split(' ').filter(|target| !target.is_empty()) {
             if !target.contains("{{") && !names.contains(&target) {
                 return Err(format!(
@@ -523,27 +612,77 @@ impl<'a> Check<'a> {
                 ));
             }
         }
-        for task in tasks {
+        for (index, task) in tasks.iter().enumerate() {
             let prefix = format!("templates.{name}.tasks.{}", task.name);
+            let outputs = format!("tasks.{}", task.name);
+            if !task.hooks.is_empty() {
+                scope.insert(format!("{outputs}.status"));
+            }
+            scope.add_outputs(
+                called[index].as_ref(),
+                &outputs,
+                Call::default(),
+                &mut self.globals,
+            );
+            let mut ancestors = Vec::new();
+            ancestry(&task.name, tasks, &mut ancestors);
+            let mut task_scope = scope.clone();
+            for ancestor in ancestors.iter().filter(|ancestor| **ancestor != task.name) {
+                let Some(position) = tasks.iter().position(|task| &task.name == ancestor) else {
+                    continue;
+                };
+                let call = Call {
+                    aggregate: loops_over(&tasks[position]),
+                    ancestor: true,
+                };
+                let prefix = format!("tasks.{ancestor}");
+                task_scope.add_outputs(called[position].as_ref(), &prefix, call, &mut self.globals);
+            }
+            inline_inputs(task.inline.as_deref(), &mut task_scope);
             one_loop(
                 &task.with_items,
                 &task.with_param,
                 task.with_sequence.is_some(),
             )
             .map_err(|error| format!("{prefix} {error}"))?;
+            let sequence = task.with_sequence.is_some();
+            task_scope.add_items(&task.with_items, &task.with_param, sequence);
+            let node = task_nodes.and_then(|tasks| item_at(tasks, index));
+            if let Some(node) = node {
+                (task_scope.resolve_node(node, &self.globals))
+                    .map_err(|error| format!("{prefix} {error}"))?;
+            }
             arguments(&format!("{prefix}.arguments."), &task.arguments, false)?;
-            let mut ancestors = Vec::new();
-            ancestry(&task.name, tasks, &mut ancestors);
             argument_dependencies(&task.arguments, &ancestors)
                 .map_err(|error| format!("{prefix} {error}"))?;
             self.holder(
-                &Holder::of_task(task),
+                &Holder::of_task(task, node),
                 base,
                 Supplied::Arguments(&task.arguments),
             )
             .map_err(|error| format!("{prefix} {error}"))?;
         }
         Ok(())
+    }
+}
+
+/// The item at a position of a sequence node.
+fn item_at(node: &Node, index: usize) -> Option<&Node> {
+    match &node.value {
+        Yaml::Sequence(items) => items.get(index),
+        _ => None,
+    }
+}
+
+/// Whether a task loops, so that its outputs are lists.
+fn loops_over(task: &DagTask) -> bool {
+    !task.with_items.is_empty() || !task.with_param.is_empty()
+}
+
+/// Adds the input parameters of an inline template, which its call may name.
+fn inline_inputs(inline: Option<&Template>, scope: &mut Scope) {
+    for parameter in inline.iter().flat_map(|inline| &inline.inputs.parameters) {
+        scope.insert(format!("inputs.parameters.{}", parameter.name));
     }
 }
 

@@ -312,6 +312,7 @@ impl Run {
             document.kind,
         ));
         let mut check = Check::new(&library);
+        check.metadata(document.node.get("metadata"));
         let entry = Some((entrypoint.as_str(), Supplied::Arguments(&supplied)));
         if let Err(message) = check.spec(&spec, &base, entry, false) {
             return Err(if check.unsupported() {

@@ -508,6 +508,9 @@ impl Driver for Nextflow {
         let values = parse_json(&text).map_err(|error| DriverError::new(error.to_string()))?;
         let loaded = self.loaded.as_mut().ok_or_else(not_started)?;
         tree::deep_merge(&loaded.config.params(), &values);
+        // The check reads command-line texts as the types of the schema, but Nextflow 26.04.6
+        // gives scripts the params of the launch as they are, like `--n 5` as the text '5'.
+        tree::deep_merge(&loaded.config.params(), &params(&self.launch)?);
         Ok(())
     }
 

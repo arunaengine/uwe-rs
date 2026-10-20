@@ -8,11 +8,15 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use run_database::Database;
-use task_runner::clean::{Keep, Plan, maintenance, plan, remove_guarded};
+use task_runner::clean::{Keep, Plan, maintenance_within, plan, remove_guarded};
 
 use crate::arguments::Arguments;
 use crate::setup::Setup;
 use crate::{Failure, cache_directory, failure, runs};
+
+/// How long `clean -remove` waits for tasks that prepare their inputs, which hold the store
+/// for a short time each.
+const WAIT: Duration = Duration::from_secs(300);
 
 /// What the rules of the command line keep, in words, for the first lines; `None` without any
 /// rule. `-keep-days 0` keeps nothing by time.
@@ -69,10 +73,17 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         }
     }
     let runtime = workflow_graph::runtime().map_err(|error| broken(&error))?;
+    let waiting = || {
+        eprintln!(
+            "iunctus: waiting up to {} for tasks that prepare their inputs; new tasks wait \
+             meanwhile",
+            duration(WAIT)
+        );
+    };
     let maintenance = match arguments.remove {
         true => Some(
             runtime
-                .block_on(maintenance(&store))
+                .block_on(maintenance_within(&store, WAIT, waiting))
                 .map_err(|error| broken(&error))?,
         ),
         false => None,

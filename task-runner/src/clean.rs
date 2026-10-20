@@ -92,26 +92,54 @@ fn store_name(store: &Store) -> String {
         .map_or_else(|| store.url(""), |path| path.to_string_lossy().into_owned())
 }
 
+/// The lease that clean-up holds while it waits for the gate: tasks start no new phase
+/// meanwhile, so that the ones that go on end and clean-up gets its turn.
+const QUEUE: &str = "maintenance-queue";
+
 /// Holds the store's maintenance gate until dropped; a concurrent operation reports busy.
 pub async fn maintenance(store: &Store) -> Result<Maintenance, RunnerError> {
+    maintenance_within(store, Duration::ZERO, || {}).await
+}
+
+/// Holds the gate like [`maintenance`], but waits up to `wait` for tasks that prepare their
+/// inputs; `waiting` is called once when the wait begins.
+pub async fn maintenance_within(
+    store: &Store,
+    wait: Duration,
+    waiting: impl FnOnce(),
+) -> Result<Maintenance, RunnerError> {
     let holder = Holder::new("maintenance", "cleanup");
-    let lease = store
-        .try_lease("maintenance", &holder)
-        .await?
-        .ok_or_else(|| {
-            std::io::Error::new(
+    let deadline = tokio::time::Instant::now() + wait;
+    let mut waiting = Some(waiting);
+    let mut queue = None;
+    loop {
+        // Only leases in a folder are shared, so only there tasks wait in the queue.
+        if queue.is_none() && store.local_leases() {
+            queue = store.try_lease(QUEUE, &holder).await?;
+        }
+        if let Some(lease) = store.try_lease("maintenance", &holder).await? {
+            return Ok(Maintenance {
+                _lease: Some(lease),
+                store: store_name(store),
+                alone: true,
+            });
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(std::io::Error::new(
                 std::io::ErrorKind::WouldBlock,
                 "the store is busy: tasks prepare their inputs, or another clean-up goes on",
             )
-        })?;
-    Ok(Maintenance {
-        _lease: Some(lease),
-        store: store_name(store),
-        alone: true,
-    })
+            .into());
+        }
+        if let Some(waiting) = waiting.take() {
+            waiting();
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }
 
-/// Holds the gate shared with the other tasks and runs; waits while clean-up holds it.
+/// Holds the gate shared with the other tasks and runs; waits while clean-up holds it or
+/// waits for it.
 pub(crate) async fn admission(store: &Store) -> Result<Maintenance, RunnerError> {
     let gate = |lease| Maintenance {
         _lease: lease,
@@ -124,10 +152,12 @@ pub(crate) async fn admission(store: &Store) -> Result<Maintenance, RunnerError>
         return Ok(gate(None));
     }
     loop {
-        match store.try_shared_lease("maintenance").await? {
-            Some(lease) => return Ok(gate(Some(lease))),
-            None => tokio::time::sleep(Duration::from_millis(50)).await,
+        if store.try_shared_lease(QUEUE).await?.is_some()
+            && let Some(lease) = store.try_shared_lease("maintenance").await?
+        {
+            return Ok(gate(Some(lease)));
         }
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
 

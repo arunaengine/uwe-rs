@@ -247,16 +247,6 @@ pub fn build(
             }
         }
     }
-    if job
-        .output
-        .values
-        .iter()
-        .any(|value| value.tag("protected").is_some() && value.tag(crate::storage::TAG).is_some())
-    {
-        return Err(Error::unsupported(
-            "protected storage outputs require provider permission support",
-        ));
-    }
     let wildcards = NamedList::wildcards(&job.wildcards);
     let input = plain(&job.input, "InputFiles");
     let output = plain(&job.output, "OutputFiles");

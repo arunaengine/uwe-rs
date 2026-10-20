@@ -4,7 +4,7 @@
 
 use std::os::unix::fs::PermissionsExt;
 
-use content_store::{EntrySnapshot, Store, StoreError};
+use content_store::{EntrySnapshot, Store, StoreError, layout};
 use serde::{Deserialize, Serialize};
 use task_model::{Digest, TreeEntry};
 
@@ -71,9 +71,8 @@ impl CacheEntry {
     }
 
     /// Whether the store still has every file of the entry: each output, the manifest of each
-    /// directory, and the captured streams.
+    /// directory, and the captured streams. Each output is read once.
     pub async fn complete(&self, store: &Store) -> Result<bool, RunnerError> {
-        let verified = tempfile::tempdir()?;
         for file in &self.files {
             // In an object store, the location of a directory is only the prefix of its files,
             // no object itself; its manifest stands for it there.
@@ -86,38 +85,43 @@ impl CacheEntry {
             if file.directory && !directory_complete(store, file).await? {
                 return Ok(false);
             }
-            if !file.directory {
-                let target = verified.path().join("output");
-                match store
-                    .materialize_object(&file.location, &file.digest, &target)
-                    .await
-                {
-                    Ok(()) => {}
-                    Err(error) if damaged(&error) => return Ok(false),
-                    Err(error) => return Err(error.into()),
-                }
-                if tokio::fs::metadata(&target).await?.len() != file.size {
-                    return Ok(false);
-                }
-                match store.materialize_content(&file.digest, &target).await {
-                    Ok(()) => {}
-                    Err(error) if damaged(&error) => return Ok(false),
-                    Err(error) => return Err(error.into()),
-                }
+            if !file.directory
+                && !stored_file(store, &file.location, &file.digest, file.size).await?
+            {
+                return Ok(false);
             }
         }
         for digest in self.logs() {
-            match store
-                .materialize_content(digest, &verified.path().join("stream"))
-                .await
-            {
-                Ok(()) => {}
+            match store.verify_object(&layout::content(digest), digest).await {
+                Ok(_) => {}
                 Err(error) if damaged(&error) => return Ok(false),
                 Err(error) => return Err(error.into()),
             }
         }
         Ok(true)
     }
+}
+
+/// Whether an output and its content are whole. The output is read and checked against its
+/// digest; its content, which a folder keeps as the same file, only by its size.
+async fn stored_file(
+    store: &Store,
+    location: &str,
+    digest: &Digest,
+    size: u64,
+) -> Result<bool, RunnerError> {
+    match store.verify_object(location, digest).await {
+        Ok(found) if found == size => {}
+        Ok(_) => return Ok(false),
+        Err(error) if damaged(&error) => {
+            if matches!(error, StoreError::Corrupt { .. }) {
+                let _ = store.repair(&layout::content(digest), digest).await;
+            }
+            return Ok(false);
+        }
+        Err(error) => return Err(error.into()),
+    }
+    Ok(store.content_size(digest).await? == Some(size))
 }
 
 fn damaged(error: &StoreError) -> bool {
@@ -187,7 +191,6 @@ async fn directory_complete(store: &Store, file: &StoredFile) -> Result<bool, Ru
             }
         }
     }
-    let verified = tempfile::tempdir()?;
     for entry in tree.entries {
         let relative = entry.path();
         if relative.is_empty()
@@ -219,21 +222,8 @@ async fn directory_complete(store: &Store, file: &StoredFile) -> Result<bool, Ru
                         return Ok(false);
                     }
                 }
-                let target = verified.path().join("member");
                 let location = format!("{}/{path}", file.location.trim_end_matches('/'));
-                for content in [false, true] {
-                    let result = if content {
-                        store.materialize_content(&digest, &target).await
-                    } else {
-                        store.materialize_object(&location, &digest, &target).await
-                    };
-                    match result {
-                        Ok(()) => {}
-                        Err(error) if damaged(&error) => return Ok(false),
-                        Err(error) => return Err(error.into()),
-                    }
-                }
-                if tokio::fs::metadata(target).await?.len() != size {
+                if !stored_file(store, &location, &digest, size).await? {
                     return Ok(false);
                 }
             }

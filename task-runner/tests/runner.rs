@@ -485,10 +485,16 @@ async fn rejects_corrupt_literals() {
             .source
             .clone();
         overwrite(&cached, b"damaged\n");
-        let error = runner
-            .execute(&prepared, &CancellationToken::new())
-            .await
-            .unwrap_err();
+        let again = runner.execute(&prepared, &CancellationToken::new()).await;
+        if remote {
+            // A damaged copy of a download is downloaded again, in its own folder.
+            assert!(cached.starts_with(root.path().join("downloads").join(task_runner::CONTENTS)));
+            again.unwrap();
+            assert_eq!(std::fs::read(&cached).unwrap(), b"literal\n");
+            assert_eq!(runner.backend().runs.lock().unwrap().len(), 2);
+            continue;
+        }
+        let error = again.unwrap_err();
         assert!(
             matches!(
                 &error,
@@ -497,6 +503,7 @@ async fn rejects_corrupt_literals() {
             "{remote}: {error}"
         );
         assert_eq!(runner.backend().runs.lock().unwrap().len(), 1);
+        assert!(!cached.exists(), "the damaged content goes");
     }
 }
 
@@ -1067,7 +1074,8 @@ async fn isolates_concurrent_staging() {
     })
     .await
     .unwrap();
-    let downloaded = root.path().join("downloads").join(digest.hex());
+    let contents = root.path().join("downloads").join(task_runner::CONTENTS);
+    let downloaded = contents.join(digest.hex());
     assert_eq!(std::fs::read_to_string(&downloaded).unwrap(), content);
     let reference = root.path().join("ordinary-mode");
     std::fs::write(&reference, "mode").unwrap();
@@ -1075,12 +1083,7 @@ async fn isolates_concurrent_staging() {
         std::fs::metadata(downloaded).unwrap().permissions().mode() & 0o777,
         std::fs::metadata(reference).unwrap().permissions().mode() & 0o777
     );
-    assert_eq!(
-        std::fs::read_dir(root.path().join("downloads"))
-            .unwrap()
-            .count(),
-        1
-    );
+    assert_eq!(std::fs::read_dir(contents).unwrap().count(), 1);
 }
 
 #[test]

@@ -2,6 +2,8 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::os::unix::fs::PermissionsExt;
+
 use bytes::Bytes;
 use opendal::layers::RetryLayer;
 use opendal::services::{Fs, Memory, S3};
@@ -558,7 +560,11 @@ impl Store {
         tokio::fs::create_dir_all(parent)
             .await
             .map_err(at(parent))?;
-        let temporary = tempfile::NamedTempFile::new_in(parent).map_err(at(target))?;
+        // The file gets the ordinary mode of new files, so that tasks of other users read it.
+        let temporary = tempfile::Builder::new()
+            .permissions(std::fs::Permissions::from_mode(0o666))
+            .tempfile_in(parent)
+            .map_err(at(target))?;
         let mut file = tokio::fs::File::from_std(temporary.reopen().map_err(at(target))?);
         let reader = source.operator.reader(location).await?;
         let mut hasher = Sha256::new();
@@ -603,6 +609,40 @@ impl Store {
             .persist(target)
             .map_err(|error| at(target)(error.error))?;
         Ok(())
+    }
+
+    /// Reads an object in parts and checks it against its digest without keeping its bytes,
+    /// and gives its size. A store in layers reads its folder, else the shared store.
+    pub async fn verify_object(&self, location: &str, digest: &Digest) -> Result<u64, StoreError> {
+        let source = match self.operator.stat(location).await {
+            Ok(_) => self,
+            Err(error) if error.kind() == ErrorKind::NotFound => match &self.shared {
+                Some(shared) => shared.as_ref(),
+                None => return Err(error.into()),
+            },
+            Err(error) => return Err(error.into()),
+        };
+        let (actual, size) = hash_object(&source.operator, location).await?;
+        if &actual != digest {
+            if addressed(location) {
+                let _ = source.repair(location, digest).await;
+            }
+            let expected = digest.clone();
+            return Err(StoreError::Corrupt { expected, actual });
+        }
+        Ok(size)
+    }
+
+    /// The size of the stored content of a digest, here or in the shared store behind.
+    pub async fn content_size(&self, digest: &Digest) -> Result<Option<u64>, StoreError> {
+        match self.operator.stat(&layout::content(digest)).await {
+            Ok(metadata) => Ok(Some(metadata.content_length())),
+            Err(error) if error.kind() == ErrorKind::NotFound => match &self.shared {
+                Some(shared) => Box::pin(shared.content_size(digest)).await,
+                None => Ok(None),
+            },
+            Err(error) => Err(error.into()),
+        }
     }
 
     pub async fn has_content(&self, digest: &Digest) -> Result<bool, StoreError> {

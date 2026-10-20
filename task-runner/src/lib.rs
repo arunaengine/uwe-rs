@@ -35,3 +35,4 @@ pub use runner::{
     ContainerResult, Prepared, Runner, RunnerError, Settings, StoredFile, TaskResult,
 };
 pub use sites::{Site, SiteRule, Sites};
+pub use staging::CONTENTS;

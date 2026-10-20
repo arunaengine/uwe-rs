@@ -833,7 +833,7 @@ impl Session {
             };
             let usage = self.tallied(self.usages.get(&job).cloned().unwrap_or_default());
             let limits = crate::scheduling::limits(&self.state.borrow().global_resources);
-            if !self.gate.fits(&usage, &limits) {
+            if !self.gate.fits(&usage, &limits) || self.updates_read(job) {
                 self.prepared.insert(job, task);
                 if !self.held.contains(&job) {
                     self.held.push(job);
@@ -1412,6 +1412,28 @@ impl Session {
             .map_err(|error| DriverError::new(format!("cannot place a job: {error}")))?;
         self.placed.insert(task.id, placed);
         Ok(Some(task))
+    }
+
+    /// Whether a job updates a file in the shared directory that another job still has to
+    /// read as it was before, which Snakemake runs first (`handle_update_flags`).
+    fn updates_read(&self, job: usize) -> bool {
+        let Some(planner) = self.planner.as_ref().filter(|_| self.shared) else {
+            return false;
+        };
+        let updated: Vec<&str> = (planner.jobs[job].output.values.iter())
+            .filter(|value| value.tag("update").is_some())
+            .filter_map(Value::as_str)
+            .collect();
+        !updated.is_empty()
+            && self.order.iter().any(|reader| {
+                *reader != job
+                    && self.needrun.get(reader).copied().unwrap_or(false)
+                    && !self.done.contains(reader)
+                    && (planner.jobs[*reader].input.values.iter()).any(|value| {
+                        value.tag("before_update").is_some()
+                            && value.as_str().is_some_and(|file| updated.contains(&file))
+                    })
+            })
     }
 
     /// Whether a task of several jobs fits beside the running ones; a job of it waits for the

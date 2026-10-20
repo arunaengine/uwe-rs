@@ -294,3 +294,24 @@ fn retains_storage_times() {
         assert_eq!(session.start().unwrap().len(), count);
     }
 }
+
+/// Snakemake's test_storage registers S3 with `retries=5`, a setting that changes no file;
+/// settings with credentials or addresses stay with the storage settings of iunctus.
+#[test]
+fn accepts_pacing_settings() {
+    let folder = tempfile::tempdir().unwrap();
+    for (setting, accepted) in [
+        ("retries=5, keep_local=True", true),
+        ("endpoint_url='x'", false),
+    ] {
+        let workflow = format!(
+            "storage:\n    provider='s3', {setting}\nrule make:\n    output: 'out'\n    shell: 'touch {{output}}'\n"
+        );
+        let launch = launch(folder.path(), &workflow);
+        let mut session = Session::new(&launch, &Storage::default()).unwrap();
+        match session.start() {
+            Ok(tasks) => assert!(accepted && tasks.len() == 1, "{setting}"),
+            Err(error) => assert!(!accepted && error.unsupported, "{setting}: {error}"),
+        }
+    }
+}

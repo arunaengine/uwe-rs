@@ -21,7 +21,7 @@ So far, the answer is a confident yes. A Snakemake rule and a Nextflow process t
 - **Nextflow** DSL2: processes, workflows, channels and operators, configs and profiles, `publishDir`, `storeDir` and `-entry`. Groovy is evaluated natively in Rust, no JVM needed.
 - **Snakemake**: rules, wildcards, checkpoints, shadow rules, embedded Python, lifecycle hooks, yte and jinja2 templates, and `cwl:` rules, which run on the CWL runtime of iunctus. Python is evaluated natively in Rust.
 - **CWL**: CommandLineTools and workflows with scatter, `when`, `valueFrom`, secondary files and JavaScript expressions (through the Boa engine, no Node.js).
-- **Argo Workflows**: steps, DAGs, loops, conditions, artifacts, retries, timeouts, exit hooks, mutexes and semaphores. A suspended step waits until `iunctus resume <run> [<step>] [<name>=<value>]...`, which works like `argo resume` with `argo node set --output-parameter`.
+- **Argo Workflows**: steps, DAGs, loops, conditions, artifacts, retries, timeouts, exit hooks, mutexes and semaphores. A suspended step waits until `iunctus resume <run> [<step>] [<name>=<value>]...`, which works like `argo resume` with `argo node set --output-parameter`. Sidecars share the network of their step and stop after it; daemon steps run until their readiness probe passes, give later steps their `ip`, and stop when their template ends. Both run on the local executor and Kubernetes; SLURM and TES refuse them.
 - Run workflows straight from GitHub, GitLab, Bitbucket or Gitea, pinned to a tag, branch or commit with `-r`.
 
 **Execution**

@@ -252,3 +252,44 @@ rule last:
     assert!(run.error.is_none(), "{:?}", run.error);
     assert_eq!(run.graph.nodes.len(), 4);
 }
+
+/// As in Snakemake's test_group_parallel, the jobs of a group that do not wait for each other
+/// run at once, so that one sees the file that the other writes meanwhile.
+#[test]
+fn runs_members_together() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        r#"
+rule all:
+    input: 'foo.txt', 'bar.txt'
+    group: 'g1'
+rule a:
+    output: 'bar.txt'
+    group: 'g1'
+    threads: 2
+    shell: 'sleep 5; test -e b.txt; touch {output}'
+rule b:
+    output: 'foo.txt'
+    group: 'g1'
+    shell: 'touch b.txt; sleep 10; rm b.txt; touch {output}'
+"#,
+    )
+    .unwrap();
+    let launch = Launch {
+        target: folder.path().into(),
+        scratch: folder.path().join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    };
+    let tasks = snakemake_runtime::driver(&launch).unwrap().start().unwrap();
+    assert_eq!(tasks.len(), 1);
+    let task = &tasks[0];
+    assert_eq!(task.command[0], "bash");
+    let script = task.script.as_deref().unwrap();
+    assert_eq!(script.matches(") &\n").count(), 3, "{script}");
+    for line in script.lines().filter(|line| line.contains("b.txt")) {
+        assert!(!line.contains("while"), "{line}");
+    }
+    assert_eq!(task.resources.cpus, Some(3.0));
+}

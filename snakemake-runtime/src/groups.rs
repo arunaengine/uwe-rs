@@ -215,15 +215,46 @@ pub fn combine(
         }
     }
     group.resources.time_seconds = duration;
+    // Snakemake runs the jobs of a group at once as far as their files allow, and jobs of a
+    // group may share files they do not declare (test_group_parallel).
+    let parallel = members.len() > 1;
     if !pipes.is_empty() {
-        script = crate::pipes::script(&members, pipes, services);
         group.resources = crate::services::resources(&members);
+    } else if parallel {
+        layered(&members, &mut group.resources);
+    }
+    if parallel {
+        script = crate::pipes::script(&members, pipes, services);
     }
     group.command = vec![
-        if pipes.is_empty() { "sh" } else { "bash" }.into(),
+        if parallel { "bash" } else { "sh" }.into(),
         "-c".into(),
         script.clone(),
     ];
     group.script = Some(script);
     Ok(group)
+}
+
+/// The cores and memory of a group whose jobs run at once when their inputs are ready: the
+/// most that the jobs of one layer of the group need together.
+fn layered(members: &[Task], resources: &mut workflow_graph::Resources) {
+    let mut layers: Vec<usize> = Vec::with_capacity(members.len());
+    for task in members {
+        let layer = (members.iter().zip(&layers))
+            .filter(|(producer, _)| crate::services::depends_on(task, producer))
+            .map(|(_, layer)| layer + 1)
+            .max()
+            .unwrap_or(0);
+        layers.push(layer);
+    }
+    let mut cpus: HashMap<usize, f64> = HashMap::new();
+    let mut memory: HashMap<usize, u64> = HashMap::new();
+    for (task, layer) in members.iter().zip(&layers) {
+        *cpus.entry(*layer).or_default() += task.resources.cpus.unwrap_or(1.0);
+        if let Some(bytes) = task.resources.memory_bytes {
+            *memory.entry(*layer).or_default() += bytes;
+        }
+    }
+    resources.cpus = cpus.into_values().reduce(f64::max);
+    resources.memory_bytes = memory.into_values().max();
 }

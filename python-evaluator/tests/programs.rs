@@ -245,6 +245,29 @@ fn bounds_infinite_loops() {
 }
 
 #[test]
+fn budgets_each_evaluation() {
+    let host = Rc::new(LocalHost::new(std::env::temp_dir()));
+    let mut interpreter = Interpreter::new(host);
+    interpreter.step_limit = 10_000;
+    let globals = interpreter
+        .run_text(
+            "<test>",
+            "def f():\n    for i in range(4000):\n        pass\n",
+        )
+        .expect("defines");
+    let function = globals.get("f").expect("a function");
+    for _ in 0..5 {
+        let result = interpreter.call(&function, python_evaluator::Args::default());
+        assert!(result.is_ok(), "{:?}", result.err());
+    }
+    let error = interpreter
+        .exec_text("<test>", "for n in range(5):\n    f()\n", &globals)
+        .err()
+        .expect("one evaluation shares the budget");
+    assert!(error.is_unsupported());
+}
+
+#[test]
 fn recursion_is_limited() {
     let error = evaluate("def f(n):\n    return f(n + 1)\nf(0)\n").expect_err("too deep");
     assert!(error.to_string().contains("RecursionError"), "{error}");

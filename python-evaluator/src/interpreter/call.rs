@@ -15,6 +15,10 @@ use crate::value::{Args, Code, Dict, Function, Instance, Iter, Key, MethodFuncti
 impl Interpreter {
     /// Calls a callable value.
     pub fn call(&mut self, callee: &Value, args: Args) -> Result<Value, Error> {
+        self.evaluation(|this| this.call_value(callee, args))
+    }
+
+    fn call_value(&mut self, callee: &Value, args: Args) -> Result<Value, Error> {
         match callee.plain() {
             Value::Function(function) => self.call_function(function, args, None),
             Value::Builtin(builtin) => {
@@ -823,7 +827,7 @@ impl Interpreter {
         let mut state = iterator
             .try_borrow_mut()
             .map_err(|_| Error::value_error("generator already executing"))?;
-        state.next_value(self)
+        self.evaluation(|this| state.next_value(this))
     }
 
     fn protocol_iterator(&mut self, value: &Value) -> Result<Value, Error> {

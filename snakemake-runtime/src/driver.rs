@@ -403,6 +403,9 @@ impl Session {
                 state.ruleorder.clone(),
                 self.launch.simulated,
             ));
+            if let Some(planner) = self.planner.as_mut() {
+                planner.allowed = state.profile.allowed_rules.clone();
+            }
         }
         let targets: Vec<String> = if self.launch.targets.is_empty() {
             self.state.borrow().default_target.iter().cloned().collect()

@@ -323,3 +323,30 @@ fn prefixes_wrapper_names() {
     let task = driver.start().expect("starts").remove(0);
     assert!(format!("{task:?}").contains("from prefix"), "{task:?}");
 }
+
+/// Snakemake 9.27 with `allowed-rules: [b]` makes no file with rule `a`: `b` misses `a`
+/// until it is there, and then runs alone.
+#[test]
+fn limits_allowed_rules() {
+    let snakefile = "rule all:\n    input: 'b'\nrule a:\n    output: 'a'\n    shell: 'touch {output}'\nrule b:\n    input: 'a'\n    output: 'b'\n    shell: 'cp {input} {output}'\n";
+    let folder = tempfile::tempdir().expect("a folder");
+    let launch = Launch {
+        simulated: false,
+        ..profile_launch(folder.path(), "allowed-rules: [b]\n", snakefile)
+    };
+    let error = snakemake_runtime::driver(&launch)
+        .expect("a driver")
+        .start()
+        .expect_err("rule a may not run");
+    assert!(
+        error.message.contains("Missing input files for rule b"),
+        "{error}"
+    );
+    std::fs::write(folder.path().join("a"), "").expect("the input");
+    let started = snakemake_runtime::driver(&launch)
+        .expect("a driver")
+        .start()
+        .expect("starts");
+    let names: Vec<&str> = started.iter().map(|task| task.step.as_str()).collect();
+    assert_eq!(names, ["b"]);
+}

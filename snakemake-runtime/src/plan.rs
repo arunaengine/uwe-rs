@@ -133,6 +133,8 @@ pub struct Planner {
     pub code: bool,
     /// The directory outputs that jobs of this run made, by their absolute paths.
     pub made_folders: Vec<PathBuf>,
+    /// The rules of `allowed-rules`, the only ones that make files when given.
+    pub allowed: Option<Vec<String>>,
 }
 
 impl Planner {
@@ -164,6 +166,7 @@ impl Planner {
             mtime: true,
             code: true,
             made_folders: Vec::new(),
+            allowed: None,
         }
     }
 
@@ -381,7 +384,7 @@ impl Planner {
     fn candidates(&self, file: &str) -> Result<Vec<usize>, Failure> {
         let mut found = Vec::new();
         for (rule, matchers) in self.matchers.iter().enumerate() {
-            if !matchers.iter().any(|matcher| matcher.may_match(file)) {
+            if !matchers.iter().any(|matcher| matcher.may_match(file)) || !self.listed(rule) {
                 continue;
             }
             for matcher in matchers {
@@ -399,6 +402,23 @@ impl Planner {
             }
         }
         Ok(found)
+    }
+
+    /// Whether `allowed-rules` lets a rule make the files of other jobs. With checkpoints,
+    /// Snakemake plans with every rule but runs only the allowed ones, as `runs` tells.
+    fn listed(&self, rule: usize) -> bool {
+        self.allows(rule, false)
+    }
+
+    fn runs(&self, rule: usize) -> bool {
+        self.allows(rule, true)
+    }
+
+    fn allows(&self, rule: usize, running: bool) -> bool {
+        let checkpoints = self.rules.iter().any(|rule| rule.checkpoint);
+        let name = &self.rules[rule].name;
+        (self.allowed.as_ref())
+            .is_none_or(|allowed| checkpoints != running || allowed.contains(name))
     }
 
     /// Whether a job would repeat a rule of the jobs that ask for it with growing wildcard
@@ -827,7 +847,8 @@ impl Planner {
             .collect();
         while let Some(job) = pending.pop() {
             for (file, dependency) in &self.jobs[job].dependencies {
-                if !self.exists(interpreter, file) && !result[dependency] {
+                let allowed = self.runs(self.jobs[*dependency].rule);
+                if !self.exists(interpreter, file) && !result[dependency] && allowed {
                     result.insert(*dependency, true);
                     pending.push(*dependency);
                 }
@@ -837,7 +858,8 @@ impl Planner {
                     self.jobs[*consumer].input.values.iter().any(|value| {
                         value.as_str() == Some(*file) && value.tag("ancient").is_some()
                     });
-                if !result[consumer] && !(ancient && self.exists(interpreter, file)) {
+                let allowed = self.runs(self.jobs[*consumer].rule);
+                if !result[consumer] && !(ancient && self.exists(interpreter, file)) && allowed {
                     result.insert(*consumer, true);
                     pending.push(*consumer);
                 }
@@ -898,6 +920,7 @@ impl Planner {
                     .any(|file| !self.exists(interpreter, file));
         needed = needed || (self.mtime && self.has_newer_inputs(interpreter, job, &own_outputs));
         needed = needed || (self.code && self.has_newer_code(interpreter, job, &own_outputs));
+        needed &= self.runs(self.jobs[job].rule);
         result.insert(job, needed);
         needed
     }

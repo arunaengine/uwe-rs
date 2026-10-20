@@ -238,3 +238,58 @@ fn reads_scalar_values() {
     );
     assert!(eval("1.5.value").is_err());
 }
+
+/// Static helpers of Java and Nextflow classes and `BigDecimal` scales, as Nextflow 26.04.6
+/// prints them.
+#[test]
+fn converts_with_statics() {
+    let cases = [
+        (
+            "[Boolean.parseBoolean('TRUE'), Boolean.parseBoolean('yes')]",
+            "[true, false]",
+        ),
+        ("Boolean.valueOf('true')", "true"),
+        (
+            "[Integer.toString(5), Integer.toString(255, 16), Long.toString(-5)]",
+            "[5, ff, -5]",
+        ),
+        (
+            "[Integer.toHexString(255), Integer.toBinaryString(5)]",
+            "[ff, 101]",
+        ),
+        ("Integer.toHexString(-1)", "ffffffff"),
+        (
+            "[String.join('-', ['a', 'b']), String.join('-', 'a', 'b')]",
+            "[a-b, a-b]",
+        ),
+        ("new BigDecimal('1.50')", "1.50"),
+        (
+            "new BigDecimal('1.50').getClass().name",
+            "java.math.BigDecimal",
+        ),
+        ("new BigDecimal(3)", "3"),
+        (
+            "new BigInteger('123456789012345678901234567890')",
+            "123456789012345678901234567890",
+        ),
+        ("3.toBigDecimal().setScale(2)", "3.00"),
+        ("1.555.setScale(2, java.math.RoundingMode.HALF_UP)", "1.56"),
+        ("1.555.setScale(1, java.math.RoundingMode.DOWN)", "1.5"),
+        ("2.5.setScale(0, java.math.RoundingMode.HALF_EVEN)", "2"),
+        ("Duration.of('1h').toMinutes()", "60"),
+        ("MemoryUnit.of('1 GB').toMega()", "1024"),
+        (
+            "[nextflow.util.Duration.of('90s'), nextflow.util.MemoryUnit.of('2 GB')]",
+            "[1m 30s, 2 GB]",
+        ),
+        ("[MemoryUnit.of(1024), Duration.of(1000)]", "[1 KB, 1s]"),
+    ];
+    for (code, expected) in cases {
+        assert_eq!(value(code), expected, "{code}");
+    }
+    let error = eval("1.555.setScale(2)").unwrap_err();
+    assert!(
+        error.ends_with("ArithmeticException: Rounding necessary"),
+        "{error}"
+    );
+}

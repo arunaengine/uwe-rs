@@ -23,6 +23,23 @@ impl Interpreter<'_> {
         let object = Value::Number(number.clone());
         Ok(Some(match (name, arguments) {
             ("intValue" | "toInteger", []) => Value::integer(number.to_i32()),
+            // `BigDecimal.setScale`, by default without rounding, which fails if it must round.
+            ("setScale", [Value::Number(scale), rest @ ..]) if rest.len() <= 1 => {
+                let Number::BigDecimal(decimal) = number else {
+                    return Ok(None);
+                };
+                let mode = match rest {
+                    [mode] => mode.to_string(),
+                    _ => "UNNECESSARY".into(),
+                };
+                match decimal.set_scale(scale.to_i32(), &mode) {
+                    Some(scaled) => Value::Number(Number::BigDecimal(scaled)),
+                    None => {
+                        let exception = Exception::new("ArithmeticException", "Rounding necessary");
+                        return Err(thrown(exception, span));
+                    }
+                }
+            }
             ("longValue" | "toLong", []) => Value::Number(Number::Long(number.to_i64())),
             ("doubleValue" | "toDouble", []) => Value::Number(Number::Double(number.to_f64())),
             ("floatValue" | "toFloat", []) => Value::Number(Number::Float(number.to_f64() as f32)),

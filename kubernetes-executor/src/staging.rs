@@ -55,7 +55,7 @@ pub struct Prepared {
     /// Where the node reads the plan of the helper, or the file list of kubedal.
     location: String,
     /// The plan or the file list in the staging root, in `cas/`.
-    plan: String,
+    pub plan: String,
     /// The group that kubedal gives the files of the volume, so that the task may change them.
     group: Option<u32>,
     /// Where the pod downloads the binary of [`crate::Helper::binary`].
@@ -206,12 +206,9 @@ impl PodStaging {
         }
     }
 
-    /// Downloads what the attempt sent back into its folder `root`, and then removes it from
-    /// the staging root if the stage cleans up.
+    /// Downloads what the attempt sent back into its folder `root`.
     pub async fn collect(&self, prepared: &Prepared, root: &Path) -> Result<(), ExecutorError> {
-        self.stage.collect(&prepared.prefix, root, RECORDS).await?;
-        self.stage.clean(&prepared.prefix, &prepared.plan).await;
-        Ok(())
+        self.stage.collect(&prepared.prefix, root, RECORDS).await
     }
 }
 

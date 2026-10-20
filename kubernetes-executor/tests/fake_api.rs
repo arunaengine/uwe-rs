@@ -1392,7 +1392,8 @@ async fn stages_through_objects() {
     }
 }
 
-/// A stage-in that fails ends the attempt with the end of its log, instead of a bare failure.
+/// A stage-in that fails ends the attempt with the end of its log, instead of a bare failure,
+/// and the cleanup removes its plan.
 #[tokio::test]
 async fn reports_stage_failures() {
     let root = tempfile::tempdir().expect("a folder");
@@ -1409,7 +1410,7 @@ async fn reports_stage_failures() {
             expiry: Duration::from_secs(600),
             max_outputs: 1,
             credentials: false,
-            cleanup: false,
+            cleanup: true,
         },
         via: Via::Helper(Helper {
             image: "iunctus-helper:test".into(),
@@ -1433,6 +1434,10 @@ async fn reports_stage_failures() {
         "{text}"
     );
     assert!(text.contains("cannot download the plan: refused"), "{text}");
+    // The failed attempt leaves its wrapper, but no plan.
+    let stage = &backend.remote.as_ref().expect("the staging").stage;
+    let contents = (stage.objects.objects("cas/").await).expect("the contents");
+    assert_eq!(contents.len(), 1, "{contents:?}");
 }
 
 /// Runs the staging helper when a pod of `stages_through_objects` starts this program as it.

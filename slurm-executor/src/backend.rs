@@ -929,6 +929,7 @@ impl SlurmBackend {
                             tracing::warn!(attempt = %root.display(),
                                 "the job of an unclear submission is not in the queue; the attempt is lost");
                             std::fs::remove_file(&path)?;
+                            self.clean_staging(&journal).await;
                             continue;
                         }
                         Submitted::Unclear(reason) => {
@@ -974,17 +975,19 @@ impl SlurmBackend {
                     )?);
                 journal_at(&root, &journal)?;
                 self.stop(&id, &root, CANCEL_GRACE, true).await?;
-                let staging = &journal["staging"];
-                if let (Some(remote), Some(prefix), Some(plan)) = (
-                    &self.remote,
-                    staging["prefix"].as_str(),
-                    staging["plan"].as_str(),
-                ) {
-                    remote.stage.clean(prefix, plan).await;
-                }
+                self.clean_staging(&journal).await;
             }
         }
         Ok(())
+    }
+
+    /// Removes the objects in the staging root that the journal of an attempt names.
+    async fn clean_staging(&self, journal: &serde_json::Value) {
+        let staging = &journal["staging"];
+        let (prefix, plan) = (staging["prefix"].as_str(), staging["plan"].as_str());
+        if let (Some(remote), Some(prefix), Some(plan)) = (&self.remote, prefix, plan) {
+            remote.stage.clean(prefix, plan).await;
+        }
     }
 
     /// Finds the job of a journal whose submission left no scheduler identity: by its recorded

@@ -666,3 +666,21 @@ fn checks_ungrouped_parameters() {
     )]);
     assert!(params_call("validateParameters", params(&[]), vec![options]).is_ok());
 }
+
+/// The missing names of one `required` keyword come in the order of a Java hash set, as
+/// Nextflow 26.04.6 prints them with nf-schema 2.8.0.
+#[test]
+fn orders_missing_names() {
+    let options = Value::map([(
+        Value::string("parameters_schema"),
+        Value::string("schema_required.json"),
+    )]);
+    let config = pinned("2.8.0");
+    let error = params_call_in(&config, "validateParameters", Value::map([]), vec![options])
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.ends_with("* Missing required parameter(s): zeta, a1, q, beta\n\n"),
+        "{error}"
+    );
+}

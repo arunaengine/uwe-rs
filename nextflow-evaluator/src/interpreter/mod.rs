@@ -392,7 +392,7 @@ pub struct Interpreter<'h> {
     invocations: HashSet<String>,
     /// While a typed output is computed: the values of its parts.
     task_outputs: Vec<Value>,
-    /// Whether the main script enables types, which changes some operators.
+    /// Whether the script of the running code enables types, which changes some operators.
     types: bool,
     /// The variables of the task being evaluated, by name, which config closures can read.
     task_variables: Vec<(Rc<str>, Rc<RefCell<Value>>)>,

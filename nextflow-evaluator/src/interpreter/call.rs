@@ -134,9 +134,12 @@ impl Interpreter<'_> {
             return Err(thrown(error, code.span));
         }
         self.depth += 1;
+        // Operators are typed by the script where the code is written.
+        let outer = std::mem::replace(&mut self.types, module.types);
         let result = stacker::maybe_grow(STACK_RESERVE, STACK_SEGMENT, || {
             self.run_frame(code, module, captured, arguments)
         });
+        self.types = outer;
         self.depth -= 1;
         result
     }

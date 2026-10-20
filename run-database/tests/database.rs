@@ -197,6 +197,9 @@ fn reads_result_locations() {
         ]
     );
     assert!(database.deliveries("run-9").expect("reads").is_empty());
+    let all = database.all_deliveries().expect("reads");
+    let targets: Vec<&str> = all.iter().map(|found| found.target.as_str()).collect();
+    assert_eq!(targets, [target.to_str().unwrap(), "s3://bucket/made.txt"]);
 }
 
 #[test]

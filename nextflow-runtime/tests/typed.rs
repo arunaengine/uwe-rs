@@ -228,3 +228,38 @@ workflow {
         "{error}"
     );
 }
+
+/// The operators that typed workflows change: `collect` keeps lists whole, `groupBy` groups
+/// by key, `join` pairs records by a field and `combine` spreads only tuples or adds fields.
+#[test]
+fn runs_typed_operators() {
+    let source = r#"nextflow.enable.types = true
+
+workflow {
+    channel.of([1], [2]).collect().subscribe { v -> println "collect ${v.sort()}" }
+    channel.of(record(id: 1, a: 'x'), record(id: 2, a: 'y')).join(channel.of(record(id: 1, b: 'p')), by: 'id').subscribe { v -> println "join $v" }
+    channel.of(record(id: 1)).combine(n: 5).subscribe { v -> println "combine named $v" }
+    channel.of(1, [2]).combine(channel.of(tuple('a', 'b'))).subscribe { v -> println "combine $v" }
+    channel.of(tuple('k', 1), tuple('k', 2), tuple('j', 3)).groupBy().subscribe { v -> println "groupBy ${v[0]} ${v[1].sort()}" }
+    channel.of(tuple('s', 2, 1), tuple('s', 2, 2)).groupBy().subscribe { v -> println "sized ${v[0]} ${v[1].sort()}" }
+    channel.value(5).map { v -> v + 1 }.subscribe { v -> println "vmap $v" }
+}
+"#;
+    let (_, printed) = run(source).expect("runs");
+    let mut lines: Vec<&str> = printed.lines().collect();
+    lines.sort_unstable();
+    assert_eq!(
+        lines,
+        [
+            "collect [[1], [2]]",
+            "combine [1, a, b]",
+            "combine [[2], a, b]",
+            "combine named [id:1, n:5]",
+            "groupBy j [3]",
+            "groupBy k [1, 2]",
+            "join [id:1, a:x, b:p]",
+            "sized s [1, 2]",
+            "vmap 6",
+        ]
+    );
+}

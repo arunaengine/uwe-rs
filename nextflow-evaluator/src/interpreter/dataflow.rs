@@ -461,6 +461,12 @@ impl Interpreter<'_> {
         arguments: Vec<Value>,
         span: Span,
     ) -> Result<Value, Error> {
+        // Typed workflows collect without flattening and combine without spreading lists.
+        let name = match (self.types, name, arguments.as_slice()) {
+            (true, "collect", []) => "toList",
+            (true, "combine", _) => "typedCombine",
+            _ => name,
+        };
         if self.types && matches!(name, "set" | "tap") {
             let message = format!(
                 "Operator `{name}` is not supported in typed workflows -- use an assignment instead"

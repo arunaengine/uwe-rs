@@ -21,6 +21,8 @@ pub(crate) struct Written {
     pub key: String,
     pub path: String,
     pub sub_path: String,
+    /// The paths in the volume of the files the task got below the mount.
+    pub given: Vec<String>,
 }
 
 /// Where the files of a mounted volume come from.
@@ -254,7 +256,29 @@ impl Run {
                         false => workflow_graph::Writable::Copy,
                     };
                     let files = self.volumes.get(&key).cloned().unwrap_or_default();
-                    for (relative, location) in files {
+                    let mut given = Vec::new();
+                    // A real task gets a writable volume as one folder, so it can remove files.
+                    let whole = !self.options.assume_inputs && !read_only && !file && !host_input;
+                    if whole {
+                        let below: Vec<(String, PathBuf)> = (files.iter())
+                            .filter_map(|(relative, location)| {
+                                let inside = relative.strip_prefix(&prefix)?;
+                                Some((inside.to_owned(), location.clone()))
+                            })
+                            .collect();
+                        let folder = self.volume_copy(&below).map_err(Failure::error)?;
+                        given = (below.into_iter())
+                            .map(|(inside, _)| format!("{prefix}{inside}"))
+                            .collect();
+                        task.inputs.push(Input {
+                            path: path.clone(),
+                            source: folder.to_string_lossy().into_owned(),
+                            directory: true,
+                            writable,
+                            ..Default::default()
+                        });
+                    }
+                    for (relative, location) in files.into_iter().filter(|_| !whole) {
                         if file && relative == sub_path {
                             task.inputs.push(Input {
                                 path: path.clone(),
@@ -265,6 +289,7 @@ impl Run {
                             continue;
                         }
                         if let Some(inside) = relative.strip_prefix(&prefix) {
+                            given.push(relative.clone());
                             task.inputs.push(Input {
                                 executable: false,
                                 path: below(&path, inside),
@@ -286,6 +311,7 @@ impl Run {
                             key,
                             path,
                             sub_path: prefix,
+                            given,
                         });
                     }
                 }
@@ -375,6 +401,31 @@ impl Run {
         Ok(())
     }
 
+    /// A new folder that holds the files of a volume, linked from the store where it can.
+    fn volume_copy(&mut self, files: &[(String, PathBuf)]) -> std::result::Result<PathBuf, String> {
+        let failed = |error: std::io::Error| format!("cannot copy a volume for a task: {error}");
+        if self.volume_copies.is_none() {
+            self.volume_copies = Some(tempfile::tempdir().map_err(failed)?);
+        }
+        let root = self.volume_copies.as_ref().map(|copies| copies.path());
+        let root = root.expect("the folder of volume copies");
+        let folder = tempfile::Builder::new()
+            .tempdir_in(root)
+            .map_err(failed)?
+            .keep();
+        for (inside, location) in files {
+            let target = folder.join(inside);
+            confined(&folder, &target)?;
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(failed)?;
+            }
+            if std::fs::hard_link(location, &target).is_err() {
+                std::fs::copy(location, &target).map_err(failed)?;
+            }
+        }
+        Ok(folder)
+    }
+
     /// Takes the files that the tasks of a node wrote into their volumes. In a real run, the
     /// files written into a host path go back to that path on this machine; a simulated run never
     /// writes there.
@@ -404,6 +455,16 @@ impl Run {
                 confined(host, selected.as_ref().unwrap())?;
             }
             let volume = self.volumes.entry(mount.key.clone()).or_default();
+            // The mount shows the task's view at its end: files it got and no longer has were
+            // removed or renamed. Simulated tasks show only what they make.
+            if !self.options.assume_inputs {
+                let kept: std::collections::HashSet<String> = (files.iter())
+                    .map(|(relative, _)| format!("{}{relative}", mount.sub_path))
+                    .collect();
+                for relative in mount.given.iter().filter(|path| !kept.contains(*path)) {
+                    volume.remove(relative);
+                }
+            }
             for (relative, file) in files {
                 let relative = format!("{}{relative}", mount.sub_path);
                 if let (Some(host), Some(selected)) = (&host, &selected) {

@@ -201,9 +201,10 @@ fn avoids_init_replay() {
     let input = reader[0]
         .inputs
         .iter()
-        .find(|input| input.path == "/data/x")
+        .find(|input| input.path == "/data")
         .unwrap();
-    assert_eq!(std::fs::read_to_string(&input.source).unwrap(), "new");
+    let file = std::path::Path::new(&input.source).join("x");
+    assert_eq!(std::fs::read_to_string(file).unwrap(), "new");
 }
 
 #[test]

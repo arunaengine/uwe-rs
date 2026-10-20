@@ -213,6 +213,8 @@ pub(crate) struct Run {
     pub cancel_tasks: Vec<TaskId>,
     pub locks: Rc<std::cell::RefCell<crate::sync::Locks>>,
     pub archives: Option<tempfile::TempDir>,
+    /// Writable copies of shared volumes, one folder per mount of a task.
+    pub volume_copies: Option<tempfile::TempDir>,
     pub packed: HashMap<(usize, String), PathBuf>,
     pub deliveries: Vec<workflow_graph::Delivery>,
 }
@@ -358,6 +360,7 @@ impl Run {
             cancel_tasks: Vec::new(),
             locks: Rc::new(std::cell::RefCell::new(crate::sync::Locks::default())),
             archives: None,
+            volume_copies: None,
             packed: HashMap::new(),
             deliveries: Vec::new(),
             store: HashMap::new(),

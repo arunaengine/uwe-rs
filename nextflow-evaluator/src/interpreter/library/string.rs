@@ -170,6 +170,78 @@ impl Interpreter<'_> {
                 Value::string(format!("{text}{}", string(other).unwrap_or_default()))
             }
             ("getBytes", []) => super::bytes::bytes(text.as_bytes().to_vec()),
+            ("getBytes", [charset])
+                if string(charset).is_some_and(|c| c.eq_ignore_ascii_case("UTF-8")) =>
+            {
+                super::bytes::bytes(text.as_bytes().to_vec())
+            }
+            ("uncapitalize", []) => {
+                let mut characters = text.chars();
+                let first = characters
+                    .next()
+                    .map(|c| c.to_lowercase().collect::<String>());
+                Value::string(format!(
+                    "{}{}",
+                    first.unwrap_or_default(),
+                    characters.as_str()
+                ))
+            }
+            ("tr", [source, replacement]) => {
+                let (Some(source), Some(replacement)) = (string(source), string(replacement))
+                else {
+                    return Err(wrong_arguments(name, span));
+                };
+                Value::string(translate(text, &source, &replacement))
+            }
+            ("toCharArray", []) => Value::List(Rc::new(RefCell::new(List::new(
+                ListKind::Array,
+                text.encode_utf16().map(Value::Character).collect(),
+            )))),
+            ("toSet", []) => {
+                let characters: Vec<Value> =
+                    text.chars().map(|c| Value::string(c.to_string())).collect();
+                let list = Value::list(characters.clone());
+                return self.iterable_method(&list, &characters, "toSet", &[], span);
+            }
+            // The whole matches of a pattern, or what a closure gives for each.
+            ("findAll", [regex, rest @ ..])
+                if rest.len() <= 1 && !matches!(regex, Value::Closure(_)) =>
+            {
+                let mut found = Vec::new();
+                for groups in pattern(regex, span)?.all_groups(text) {
+                    let value = match rest {
+                        [Value::Closure(f)] if groups.len() > 1 => {
+                            let groups = groups.iter().map(text_value).collect();
+                            self.call_closure_value(f, vec![Value::list(groups)], span)?
+                        }
+                        [Value::Closure(f)] => {
+                            self.call_closure_value(f, vec![text_value(&groups[0])], span)?
+                        }
+                        _ => text_value(&groups[0]),
+                    };
+                    found.push(value);
+                }
+                Value::list(found)
+            }
+            ("codePointAt", [index]) if integer(index).is_some() => {
+                let index = integer(index).unwrap_or(0);
+                let units: Vec<u16> = text.encode_utf16().collect();
+                let Some(unit) = usize::try_from(index).ok().and_then(|i| units.get(i)) else {
+                    let message = format!("Index {index} out of bounds for length {}", units.len());
+                    let exception = Exception::new("StringIndexOutOfBoundsException", message);
+                    return Err(thrown(exception, span));
+                };
+                let rest = &units[usize::try_from(index).unwrap_or(0)..];
+                let point = char::decode_utf16(rest.iter().copied())
+                    .next()
+                    .and_then(Result::ok)
+                    .map_or(u32::from(*unit), u32::from);
+                Value::integer(point as i32)
+            }
+            ("getAt", [index]) => {
+                self.index(&Value::string(text), std::slice::from_ref(index), span)?
+            }
+            ("contentEquals", [other]) => Value::Boolean(other.to_string() == text),
             ("stripMargin", rest) if rest.len() <= 1 => {
                 let marker = match rest {
                     [marker] => string(marker)
@@ -412,4 +484,38 @@ fn strip_margin(text: &str, marker: char) -> String {
 /// Bytes in lowercase hex.
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// Groovy's `tr`: each character of `source` becomes the one at the same place in
+/// `replacement`, or its last; ranges like `a-z` stand for their characters.
+fn translate(text: &str, source: &str, replacement: &str) -> String {
+    let expand = |set: &str| {
+        let characters: Vec<char> = set.chars().collect();
+        let mut expanded = Vec::new();
+        let mut index = 0;
+        while index < characters.len() {
+            match characters.get(index + 1..index + 3) {
+                Some(['-', end]) if characters[index] <= *end => {
+                    expanded.extend(characters[index]..=*end);
+                    index += 3;
+                }
+                _ => {
+                    expanded.push(characters[index]);
+                    index += 1;
+                }
+            }
+        }
+        expanded
+    };
+    let (source, replacement) = (expand(source), expand(replacement));
+    let mut mapping = std::collections::HashMap::new();
+    for (index, character) in source.iter().enumerate() {
+        let target = replacement.get(index).or(replacement.last());
+        if let Some(target) = target {
+            mapping.insert(*character, *target);
+        }
+    }
+    text.chars()
+        .map(|c| *mapping.get(&c).unwrap_or(&c))
+        .collect()
 }

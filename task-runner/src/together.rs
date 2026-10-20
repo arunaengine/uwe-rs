@@ -22,6 +22,10 @@ const WINDOW: Duration = Duration::from_millis(250);
 /// The script in the work directory of a group that runs its tasks.
 const SCRIPT: &str = "together.sh";
 
+/// The variable with the container options of a task, like its shared memory or GPUs, which
+/// the backend reads.
+const FLAGS: &str = "IUNCTUS_CONTAINER_FLAGS";
+
 /// The line that ends the wrapper of a task in the script of its group.
 const END_OF_WRAPPER: &str = "IUNCTUS_END_OF_WRAPPER";
 
@@ -244,8 +248,8 @@ impl<B: Backend> Runner<B> {
 }
 
 /// What tasks must share to run in one container: the image, whether their commands replace
-/// its entrypoint (the script of the group then runs without it, as each command would), and
-/// the resources they ask for.
+/// its entrypoint (the script of the group then runs without it, as each command would), the
+/// resources they ask for, and the options of the container.
 fn key(job: &Job<'_>) -> String {
     let placement = Placement {
         time_seconds: None,
@@ -255,7 +259,8 @@ fn key(job: &Job<'_>) -> String {
     let image = job.spec.image.as_ref().map(|image| &image.reference);
     let placement = serde_json::to_string(&placement).unwrap_or_default();
     let entrypoint = job.spec.replaces_entrypoint;
-    format!("{image:?}\n{entrypoint}\n{placement}")
+    let flags = job.spec.environment.get(FLAGS);
+    format!("{image:?}\n{entrypoint}\n{placement}\n{flags:?}")
 }
 
 /// The script of a group: it writes the wrapper of each task into the folder of the task and
@@ -331,10 +336,15 @@ fn combined(members: &[Member], script: PathBuf) -> (TaskSpec, Staging, Placemen
             .map(|(sum, own)| sum + own);
     }
     placement.time_seconds = time;
+    // Each wrapper sets the environment of its task; the group keeps the container options.
+    let flags = first.spec.environment.get_key_value(FLAGS);
     let spec = TaskSpec {
         arguments: vec!["sh".into(), SCRIPT.into()],
         workdir: None,
-        environment: Default::default(),
+        environment: flags
+            .map(|(name, value)| (name.clone(), value.clone()))
+            .into_iter()
+            .collect(),
         inputs: Vec::new(),
         outputs,
         stdin: None,
@@ -518,5 +528,32 @@ mod tests {
         assert_eq!(key(&first.job()), key(&second.job()));
         second.spec.replaces_entrypoint = true;
         assert_ne!(key(&first.job()), key(&second.job()));
+    }
+
+    #[test]
+    fn keeps_container_flags() {
+        let flags = |text: &str| task_model::EnvironmentValue::Literal(text.into());
+        let (mut first, _) = member("r-A-1-1", "out.txt");
+        let (mut second, _) = member("r-A-2-1", "out.txt");
+        first
+            .spec
+            .environment
+            .insert(FLAGS.into(), flags(r#"{"shm":2147483648}"#));
+        assert_ne!(
+            key(&first.job()),
+            key(&second.job()),
+            "other flags, other group"
+        );
+        second.spec.environment = first.spec.environment.clone();
+        second.spec.environment.insert("OWN".into(), flags("value"));
+        assert_eq!(key(&first.job()), key(&second.job()));
+        let (spec, _, _) = combined(&[first, second], "/store/script".into());
+        let names: Vec<&String> = spec.environment.keys().collect();
+        assert_eq!(
+            names,
+            [FLAGS],
+            "the group keeps the flags, the wrappers the rest"
+        );
+        assert_eq!(spec.environment[FLAGS], flags(r#"{"shm":2147483648}"#));
     }
 }

@@ -12,7 +12,7 @@ use task_model::{
 };
 use workflow_graph::{Network, Reuse, Task};
 
-use crate::inputs::{Inputs, Mode};
+use crate::inputs::Inputs;
 use crate::runner::{Prepared, segment};
 use crate::{Runner, RunnerError};
 
@@ -31,11 +31,7 @@ impl<B: Backend> Runner<B> {
         image: Option<String>,
     ) -> Result<Prepared, RunnerError> {
         let admission = self.admit().await?;
-        let inputs = Inputs {
-            store: &self.store,
-            settings: &self.settings,
-            mode: Mode::Run,
-        };
+        let inputs = self.inputs();
         self.phase(None, Some(&admission), None, prepare(&inputs, task, image))
             .await
     }
@@ -73,6 +69,7 @@ pub(crate) async fn prepare(
         step: task.step.clone(),
         per_container: 1,
         reuse: task.reuse == Reuse::Allowed,
+        snapshots: inputs.snapshots.clone(),
     })
 }
 

@@ -10,6 +10,7 @@ use executor::{Backend, Staged, Staging};
 use task_model::{Digest, FileKind, TreeEntry};
 use tokio::io::AsyncWriteExt;
 
+use crate::inputs::Snapshots;
 use crate::runner::{Prepared, Source, at};
 use crate::{Runner, RunnerError};
 
@@ -44,8 +45,15 @@ impl<B: Backend> Runner<B> {
                     staging.inputs.push(staged(content, true));
                 }
                 Source::Content | Source::Stored => {
-                    self.stage_tree(&input.path, &input.digest, input.writable, &mut staging)
-                        .await?;
+                    let snapshots = &prepared.snapshots;
+                    self.stage_tree(
+                        &input.path,
+                        &input.digest,
+                        input.writable,
+                        snapshots,
+                        &mut staging,
+                    )
+                    .await?;
                 }
             }
         }
@@ -62,6 +70,7 @@ impl<B: Backend> Runner<B> {
         path: &str,
         digest: &Digest,
         writable: bool,
+        snapshots: &Snapshots,
         staging: &mut Staging,
     ) -> Result<(), RunnerError> {
         let base = path.trim_end_matches('/');
@@ -71,11 +80,7 @@ impl<B: Backend> Runner<B> {
             .iter()
             .any(|entry| matches!(entry, TreeEntry::Symlink { .. }));
         let snapshot = if linked {
-            let root = self.settings.downloads.join("input-snapshots");
-            tokio::fs::create_dir_all(&root).await?;
-            tokio::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).await?;
-            let snapshot = tempfile::tempdir_in(&root)?;
-            Some(snapshot)
+            Some(snapshots.folder().await?)
         } else {
             staging.directories.push(base.to_owned());
             None
@@ -88,7 +93,7 @@ impl<B: Backend> Runner<B> {
             }
             let inside = format!("{base}/{relative}");
             if let Some(snapshot) = &snapshot {
-                let target = snapshot.path().join(&relative);
+                let target = snapshot.join(&relative);
                 tokio::fs::create_dir_all(target.parent().expect("a parent")).await?;
                 match entry {
                     TreeEntry::File {
@@ -143,15 +148,14 @@ impl<B: Backend> Runner<B> {
             }
         }
         if let Some(snapshot) = snapshot {
-            crate::inputs::readable_snapshot(snapshot.path()).await?;
+            crate::inputs::readable_snapshot(&snapshot).await?;
             staging.inputs.push(Staged {
                 path: base.to_owned(),
-                source: std::fs::canonicalize(snapshot.path())?,
+                source: std::fs::canonicalize(&snapshot)?,
                 directory: true,
                 copy: writable,
                 ..Staged::default()
             });
-            let _ = snapshot.keep();
         }
         Ok(())
     }

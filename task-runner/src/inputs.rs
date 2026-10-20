@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use content_store::Store;
@@ -31,6 +32,42 @@ pub(crate) struct Inputs<'a> {
     pub(crate) store: &'a Store,
     pub(crate) settings: &'a Settings,
     pub(crate) mode: Mode,
+    pub(crate) snapshots: Snapshots,
+}
+
+/// The private copies of the inputs of a request, in `input-snapshots/<run>/` of the
+/// downloads. They go with the last clone of the request; `iunctus clean` removes the copies
+/// of runs that ended without removing them.
+#[derive(Clone, Debug)]
+pub(crate) struct Snapshots {
+    folder: PathBuf,
+    made: Arc<Mutex<Vec<tempfile::TempDir>>>,
+}
+
+impl Snapshots {
+    pub(crate) fn new(settings: &Settings, run: &str) -> Snapshots {
+        let run = crate::runner::segment(run);
+        Snapshots {
+            folder: settings.downloads.join("input-snapshots").join(run),
+            made: Arc::default(),
+        }
+    }
+
+    /// A new private folder that lives as long as these snapshots.
+    pub(crate) async fn folder(&self) -> Result<PathBuf, RunnerError> {
+        for folder in [self.folder.parent().expect("a parent"), &self.folder] {
+            tokio::fs::create_dir_all(folder).await?;
+            tokio::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o700)).await?;
+        }
+        let made = tempfile::tempdir_in(&self.folder)?;
+        let path = made.path().to_owned();
+        let mut all = self
+            .made
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        all.push(made);
+        Ok(path)
+    }
 }
 
 impl Inputs<'_> {
@@ -68,8 +105,44 @@ impl Inputs<'_> {
         }
     }
 
-    /// A persistent private copy: remote jobs may still use it after preparation is dropped.
-    /// Downloads must belong to the caller; only its dedicated snapshot outer folder is private.
+    /// What a task reads of a local input: content that nothing changes any more where it is,
+    /// else a private copy, so that the task reads the bytes that were hashed. A store that
+    /// takes the input in copies those bytes itself.
+    async fn private(
+        &self,
+        source: &Path,
+        directory: bool,
+        siblings: &BTreeMap<PathBuf, PathBuf>,
+    ) -> Result<PathBuf, RunnerError> {
+        let source = std::fs::canonicalize(source)?;
+        if let Some(copy) = siblings.get(&source) {
+            return Ok(copy.clone());
+        }
+        if self.imported() || self.immutable(&source) {
+            return Ok(source);
+        }
+        self.snapshot(&source, directory, None).await
+    }
+
+    /// Whether nothing changes a file or directory any more: an output or content of the local
+    /// store, or a download, which is complete when it gets its name and never written again.
+    fn immutable(&self, path: &Path) -> bool {
+        let inside = |root: &Path| {
+            let root = std::fs::canonicalize(root).ok()?;
+            path.strip_prefix(root).ok().map(Path::to_owned)
+        };
+        if let Some(location) = self.store.local_path("").and_then(|root| inside(&root)) {
+            let kinds = ["runs", "cas", "directory-snapshots"];
+            return kinds.iter().any(|kind| location.starts_with(kind));
+        }
+        inside(&self.settings.downloads).is_some_and(|location| {
+            let parts: Vec<_> = location.iter().map(|part| part.to_string_lossy()).collect();
+            matches!(parts.as_slice(), [bundle, file] if bundle.starts_with("v2-") && file == "content")
+        })
+    }
+
+    /// A private copy that lives as long as the request; `destination` puts it in a folder
+    /// that the caller made with [`Snapshots::folder`].
     async fn snapshot(
         &self,
         source: &Path,
@@ -79,17 +152,10 @@ impl Inputs<'_> {
         if self.mode == Mode::Look {
             return Ok(std::fs::canonicalize(source)?);
         }
-        let root = self.settings.downloads.join("input-snapshots");
-        tokio::fs::create_dir_all(&root).await?;
-        tokio::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).await?;
-        let snapshot = match destination {
-            None => Some(tempfile::tempdir_in(&root)?),
-            Some(_) => None,
+        let path = match destination {
+            Some(path) => path.to_owned(),
+            None => self.snapshots.folder().await?.join("input"),
         };
-        let path = destination.map_or_else(
-            || snapshot.as_ref().expect("a snapshot").path().join("input"),
-            Path::to_owned,
-        );
         if directory {
             tokio::fs::create_dir(&path).await?;
             for found in outputs::walk(source).await? {
@@ -116,16 +182,8 @@ impl Inputs<'_> {
         } else {
             tokio::fs::copy(source, &path).await?;
         }
-        readable_snapshot(match &snapshot {
-            Some(snapshot) => snapshot.path(),
-            None => path.parent().expect("a snapshot parent"),
-        })
-        .await?;
-        let path = tokio::fs::canonicalize(path).await?;
-        if let Some(snapshot) = snapshot {
-            let _ = snapshot.keep();
-        }
-        Ok(path)
+        readable_snapshot(path.parent().expect("a snapshot parent")).await?;
+        Ok(tokio::fs::canonicalize(path).await?)
     }
 
     /// Preserves source siblings using only declared inputs, with a key for their layout.
@@ -168,14 +226,12 @@ impl Inputs<'_> {
                     })
                     .collect::<Vec<_>>(),
             );
-            if self.mode == Mode::Look {
+            // Files that never change, or that go into the store, are read where they are.
+            let fixed = members.iter().all(|(_, source)| self.immutable(source));
+            if self.mode == Mode::Look || self.imported() || fixed {
                 continue;
             }
-            let outer = self.settings.downloads.join("input-snapshots");
-            tokio::fs::create_dir_all(&outer).await?;
-            tokio::fs::set_permissions(&outer, std::fs::Permissions::from_mode(0o700)).await?;
-            let snapshot = tempfile::tempdir_in(&outer)?;
-            let parent = snapshot.path().join("input");
+            let parent = self.snapshots.folder().await?.join("input");
             tokio::fs::create_dir(&parent).await?;
             for (_, source) in members {
                 if copies.contains_key(source) {
@@ -187,7 +243,6 @@ impl Inputs<'_> {
                     .await?;
                 copies.insert(source.clone(), copy);
             }
-            let _ = snapshot.keep();
         }
         layout.sort();
         let digest = (!layout.is_empty()).then(|| Digest::sha256(format!("{layout:?}").as_bytes()));
@@ -343,7 +398,7 @@ impl Inputs<'_> {
                     return Err(RunnerError::Remote(input.source.clone()));
                 }
                 let copy = self.remote(&input.source).await?;
-                let snapshot = self.snapshot(&copy, false, None).await?;
+                let snapshot = self.private(&copy, false, siblings).await?;
                 executable |= input.writable != Writable::Copy
                     && tokio::fs::metadata(&snapshot).await?.permissions().mode() & 0o111 != 0;
                 (
@@ -360,10 +415,7 @@ impl Inputs<'_> {
             ),
             None if !source.exists() => return Err(RunnerError::Missing(source.to_owned())),
             None if input.directory || source.is_dir() => {
-                let snapshot = match siblings.get(&std::fs::canonicalize(source)?) {
-                    Some(snapshot) => snapshot.clone(),
-                    None => self.snapshot(source, true, None).await?,
-                };
+                let snapshot = self.private(source, true, siblings).await?;
                 (
                     FileKind::Directory,
                     self.directory(&snapshot).await?.0,
@@ -371,10 +423,7 @@ impl Inputs<'_> {
                 )
             }
             None => {
-                let snapshot = match siblings.get(&std::fs::canonicalize(source)?) {
-                    Some(snapshot) => snapshot.clone(),
-                    None => self.snapshot(source, false, None).await?,
-                };
+                let snapshot = self.private(source, false, siblings).await?;
                 executable |= input.writable != Writable::Copy
                     && tokio::fs::metadata(&snapshot).await?.permissions().mode() & 0o111 != 0;
                 (

@@ -22,7 +22,7 @@ use workflow_graph::{ReproducibilityCheck, Verdict};
 use crate::check;
 use crate::digests::DigestCache;
 use crate::entry::{self, CacheEntry, Stale};
-use crate::inputs::{Inputs, Mode};
+use crate::inputs::{Inputs, Mode, Snapshots};
 use crate::outputs;
 use crate::settlement::{Candidate, Source as CandidateSource};
 
@@ -183,6 +183,8 @@ pub struct Prepared {
     /// Whether a stored result may answer the request. When not, the task runs, and its
     /// result is stored all the same.
     pub(crate) reuse: bool,
+    /// The private copies of its inputs, which go with the last clone of the request.
+    pub(crate) snapshots: Snapshots,
 }
 
 /// An image pinned to its digest once per run, or `None` without one.
@@ -324,11 +326,12 @@ impl<B: Backend> Runner<B> {
     }
 
     /// How a run makes the digests of inputs.
-    fn inputs(&self) -> Inputs<'_> {
+    pub(crate) fn inputs(&self) -> Inputs<'_> {
         Inputs {
             store: &self.store,
             settings: &self.settings,
             mode: Mode::Run,
+            snapshots: Snapshots::new(&self.settings, &self.run),
         }
     }
 

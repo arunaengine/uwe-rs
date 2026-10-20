@@ -1721,6 +1721,39 @@ fn retries_run_lease() {
 }
 
 #[tokio::test]
+async fn maintenance_waits_bounded() {
+    use task_runner::clean::maintenance_within;
+    let root = tempfile::tempdir().unwrap();
+    let store = Store::local(&root.path().join("store")).unwrap();
+    // A task that prepares its inputs holds the gate shared.
+    let preparing = store
+        .try_shared_lease("maintenance")
+        .await
+        .unwrap()
+        .unwrap();
+    let short = std::time::Duration::from_millis(150);
+    assert!(maintenance_within(&store, short, || {}).await.is_err());
+    let waits = std::sync::atomic::AtomicUsize::new(0);
+    let long = std::time::Duration::from_secs(10);
+    let cleanup = maintenance_within(&store, long, || {
+        waits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    });
+    tokio::pin!(cleanup);
+    assert!(tokio::time::timeout(short, &mut cleanup).await.is_err());
+    // New tasks wait behind the clean-up that waits.
+    let runner = runner_of(root.path(), "late", std::time::Duration::ZERO, 0);
+    let late = runner.import_bytes(b"late");
+    tokio::pin!(late);
+    assert!(tokio::time::timeout(short, &mut late).await.is_err());
+    drop(preparing);
+    let guard = cleanup.await.expect("clean-up gets its turn");
+    assert_eq!(waits.load(std::sync::atomic::Ordering::Relaxed), 1);
+    assert!(tokio::time::timeout(short, &mut late).await.is_err());
+    drop(guard);
+    late.await.expect("the task goes on after clean-up");
+}
+
+#[tokio::test]
 async fn cancels_maintenance_wait() {
     let root = tempfile::tempdir().unwrap();
     let task = task(root.path(), "a");

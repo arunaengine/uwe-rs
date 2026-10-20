@@ -237,7 +237,7 @@ fn running_ids(
 }
 
 /// The scratch folders of runs that ended: the made-up files of simulated runs that no rule
-/// keeps, and the folders of attempts that a stopped run left behind, of every executor. A folder of a run that
+/// keeps, and the folders of attempts and input copies that a stopped run left behind, of every executor. A folder of a run that
 /// the run database does not know stays, as it may belong to another database.
 fn scratch_folders(
     database: &Database,
@@ -273,6 +273,8 @@ fn scratch_folders(
             }
         }
     }
+    let snapshots = cache_directory().join("downloads/input-snapshots");
+    folders.extend(ended_snapshots(&snapshots, running, &known));
     Ok(folders
         .into_iter()
         .map(|path| Scratch {
@@ -280,6 +282,24 @@ fn scratch_folders(
             path,
         })
         .collect())
+}
+
+/// The private copies of inputs that runs which ended left behind, one folder per run, and
+/// the nameless ones of older versions of iunctus while no run goes on.
+fn ended_snapshots(
+    folder: &Path,
+    running: &BTreeSet<String>,
+    known: &dyn Fn(&str) -> bool,
+) -> Vec<PathBuf> {
+    let entries = std::fs::read_dir(folder).into_iter().flatten().flatten();
+    let ended = |run: &str| match run.starts_with(".tmp") {
+        true => running.is_empty(),
+        false => !running.contains(run) && known(run),
+    };
+    entries
+        .filter(|entry| ended(&entry.file_name().to_string_lossy()))
+        .map(|entry| entry.path())
+        .collect()
 }
 
 /// The size of the files below a folder.
@@ -484,6 +504,25 @@ mod tests {
                 "completed attempt"
             );
         }
+    }
+
+    #[test]
+    fn removes_ended_snapshots() {
+        let folder = tempfile::tempdir().expect("snapshots");
+        for name in ["ended", "running", "foreign", ".tmpOld"] {
+            std::fs::create_dir(folder.path().join(name)).expect("a folder");
+        }
+        let known = |run: &str| run != "foreign";
+        let found = |running: &BTreeSet<String>| {
+            let ended = ended_snapshots(folder.path(), running, &known);
+            let mut names: Vec<String> = (ended.iter())
+                .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(found(&BTreeSet::from(["running".to_owned()])), ["ended"]);
+        assert_eq!(found(&BTreeSet::new()), [".tmpOld", "ended", "running"]);
     }
 
     #[test]

@@ -8,7 +8,7 @@ use workflow_graph::{Outcome, Reuse, Task};
 
 use crate::entry::{self, Stale};
 use crate::executor::outcome_of;
-use crate::inputs::{Inputs, Mode};
+use crate::inputs::{Inputs, Mode, Snapshots};
 use crate::request::prepare;
 use crate::{RunnerError, Settings};
 
@@ -39,6 +39,7 @@ impl Lookup {
             store: &store,
             settings: &self.settings,
             mode: Mode::Look,
+            snapshots: Snapshots::new(&self.settings, "lookup"),
         };
         let Ok(prepared) = prepare(&inputs, task, image.clone()).await else {
             return Ok(None);

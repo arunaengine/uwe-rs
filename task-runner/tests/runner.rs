@@ -290,11 +290,11 @@ fn reuses_shared_results() {
     let third = execute(&runner, &request(&runner, &task(root.path(), "b")));
     assert!(!third.reused);
     assert_eq!(runner.backend().runs.lock().unwrap().len(), 2);
-    // The input was linked from its persistent snapshot.
+    // The input was linked from its private snapshot, which went with its request.
     let staged = runner.backend().staged.lock().unwrap();
     let source = &staged[0].inputs[0].source;
-    assert!(source.starts_with(root.path().join("downloads/input-snapshots")));
-    assert_eq!(std::fs::read(source).unwrap(), b"data\n");
+    assert!(source.starts_with(root.path().join("downloads/input-snapshots/run1")));
+    assert!(!source.exists());
     assert!(!staged[0].inputs[0].copy);
     drop(staged);
     // Images are pinned once per run.
@@ -376,7 +376,7 @@ fn rejects_damaged_cache() {
 }
 
 #[test]
-fn retains_executed_bytes() {
+fn executes_copied_bytes() {
     let root = tempfile::tempdir().unwrap();
     let runner = runner(root.path(), 0);
     let task = task(root.path(), "a");
@@ -389,14 +389,68 @@ fn retains_executed_bytes() {
     let snapshot = runner.backend().staged.lock().unwrap()[0].inputs[0]
         .source
         .clone();
+    let again = prepared.clone();
     drop(prepared);
     assert_eq!(std::fs::read(&snapshot).unwrap(), b"data\n");
+    drop(again);
+    assert!(
+        !snapshot.exists(),
+        "the copy goes with the last clone of its request"
+    );
     std::fs::write(root.path().join("input.txt"), "data\n").unwrap();
     let restored = request(&runner, &task);
     assert_eq!(restored.request.spec.cache_key().unwrap(), key);
     assert!(execute(&runner, &restored).reused);
-    drop(runner);
-    assert_eq!(std::fs::read(snapshot).unwrap(), b"data\n");
+    drop(restored);
+    let snapshots = root.path().join("downloads/input-snapshots/run1");
+    assert_eq!(std::fs::read_dir(snapshots).unwrap().count(), 0);
+}
+
+#[test]
+fn reads_stored_inputs() {
+    let root = tempfile::tempdir().unwrap();
+    let runner = runner(root.path(), 0);
+    let first = execute(&runner, &request(&runner, &task(root.path(), "a")));
+    let stored = runner.local_path(&first.files[0].location).unwrap();
+    // A later task reads the output of the first where the store keeps it, with its index.
+    let mut next = task(root.path(), "b");
+    std::fs::write(stored.with_extension("idx"), "index\n").unwrap();
+    next.inputs[0].source = stored.to_string_lossy().into_owned();
+    next.inputs.push(Input {
+        path: "out.idx".into(),
+        source: stored.with_extension("idx").to_string_lossy().into_owned(),
+        ..Default::default()
+    });
+    let prepared = request(&runner, &next);
+    let snapshots = root.path().join("downloads/input-snapshots/run1");
+    assert_eq!(std::fs::read_dir(&snapshots).unwrap().count(), 0);
+    execute(&runner, &prepared);
+    let staged = runner.backend().staged.lock().unwrap();
+    let source = &staged.last().unwrap().inputs[0].source;
+    assert_eq!(source, &stored.canonicalize().unwrap());
+    drop(staged);
+    // A store that takes inputs in copies the bytes that it hashes, without a snapshot.
+    let root = tempfile::tempdir().unwrap();
+    let store = Store::local(&root.path().join("store")).unwrap();
+    let fake = Fake {
+        scratch: root.path().join("scratch"),
+        runs: Mutex::default(),
+        staged: Mutex::default(),
+        policies: Mutex::default(),
+        exit_code: 0,
+        delay: std::time::Duration::ZERO,
+        varies: false,
+    };
+    let settings = Settings {
+        downloads: root.path().join("downloads"),
+        import_inputs: true,
+        storage: storage::Storage::default(),
+        digests: None,
+    };
+    let imported = Runner::new(store, fake, "run2", settings);
+    let prepared = request(&imported, &task(root.path(), "a"));
+    assert!(!execute(&imported, &prepared).reused);
+    assert!(!root.path().join("downloads/input-snapshots/run2").exists());
 }
 
 #[tokio::test]

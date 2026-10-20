@@ -209,6 +209,58 @@ pub fn missing_inputs(workdir: &Path, job: &Job, later: &[String]) -> Vec<String
         .collect()
 }
 
+/// Checks the outputs of a finished job as Snakemake's `check_and_touch_output`: gives those
+/// that are a directory without `directory()` or the other way round. Otherwise each output
+/// gets the current time, a real directory through its `.snakemake_timestamp`.
+pub fn settle(workdir: &Path, job: &Job) -> std::io::Result<Vec<String>> {
+    let outputs: Vec<(PathBuf, String, bool)> = (job.output.values.iter())
+        .filter(|value| value.tag("service").is_none() && value.tag("pipe").is_none())
+        .filter_map(|value| {
+            let file = value.as_str()?;
+            let path = workdir.join(file.trim_end_matches('/'));
+            Some((path, file.to_owned(), value.tag("directory").is_some()))
+        })
+        .collect();
+    let improper: Vec<String> = (outputs.iter())
+        .filter(|(path, _, directory)| {
+            std::fs::metadata(path).is_ok_and(|metadata| metadata.is_dir() != *directory)
+        })
+        .map(|(_, file, _)| file.clone())
+        .collect();
+    if !improper.is_empty() {
+        return Ok(improper);
+    }
+    for (path, _, directory) in outputs {
+        match std::fs::symlink_metadata(&path) {
+            Ok(metadata) if directory && !metadata.is_symlink() => {
+                let stamp = path.join(".snakemake_timestamp");
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&stamp)?;
+                touch_link(&stamp)?;
+            }
+            Ok(_) => touch_link(&path)?,
+            Err(_) => {}
+        }
+    }
+    Ok(Vec::new())
+}
+
+/// Gives a file, or a link itself, the current time, as Snakemake's `lutime`.
+fn touch_link(path: &Path) -> std::io::Result<()> {
+    use rustix::fs::{AtFlags, CWD, Timestamps, UTIME_NOW, utimensat};
+    let now = rustix::fs::Timespec {
+        tv_sec: 0,
+        tv_nsec: UTIME_NOW,
+    };
+    let times = Timestamps {
+        last_access: now,
+        last_modification: now,
+    };
+    utimensat(CWD, path, &times, AtFlags::SYMLINK_NOFOLLOW).map_err(std::io::Error::from)
+}
+
 /// Removes a file, a link or a directory, if it is there.
 pub fn remove(path: &Path) -> std::io::Result<()> {
     let result = match std::fs::symlink_metadata(path) {

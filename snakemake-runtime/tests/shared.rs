@@ -249,6 +249,41 @@ rule keep:
     assert_eq!(records.count(), 2, "both outputs are recorded");
 }
 
+/// As in Snakemake's test_directory, a directory output gets `.snakemake_timestamp`, and an
+/// output that is a directory without `directory()` fails its job.
+#[test]
+fn checks_output_kinds() {
+    let snakefile = r#"
+rule all:
+    input: "made", "plain"
+rule made:
+    output: directory("made")
+    shell: "unused"
+rule plain:
+    output: "plain"
+    shell: "unused"
+"#;
+    let steps: [(&str, Step); 2] = [
+        ("made", |folder| {
+            std::fs::create_dir(folder.join("made")).unwrap();
+            0
+        }),
+        ("plain", |folder| {
+            std::fs::create_dir(folder.join("plain")).unwrap();
+            0
+        }),
+    ];
+    let (folder, _host, error) = run(folder(), snakefile, &steps);
+    let error = error.expect("the run fails");
+    assert!(error.contains("ImproperOutputException"), "{error}");
+    assert!(
+        folder
+            .path()
+            .join("work/made/.snakemake_timestamp")
+            .is_file()
+    );
+}
+
 /// Runs a Snakefile in the working directory of `folder` with jobs in the shared directory;
 /// the folder, the tasks and the error.
 fn run(

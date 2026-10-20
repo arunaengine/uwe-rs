@@ -48,6 +48,8 @@ pub struct Loader {
     library_names: Vec<Rc<str>>,
     /// The directory of the main script, `projectDir`.
     project: PathBuf,
+    /// Whether a script has legacy syntax, which only `NXF_SYNTAX_PARSER=v1` runs.
+    legacy: bool,
 }
 
 impl Loader {
@@ -148,7 +150,15 @@ impl Loader {
                 return None;
             }
         };
-        self.lower(&source, path)
+        let module = self.lower(&source, path)?;
+        self.legacy |= !module.legacy.is_empty();
+        Some(module)
+    }
+
+    /// Whether a loaded script has legacy syntax, so that Nextflow 26.04.6 runs it only with
+    /// `NXF_SYNTAX_PARSER=v1`, which also reads command-line params as numbers and booleans.
+    pub fn legacy(&self) -> bool {
+        self.legacy
     }
 
     /// Loads the Groovy classes of a `lib/` directory, as Nextflow adds the directory to its
@@ -234,7 +244,8 @@ impl Loader {
             directory: path.parent().unwrap_or(Path::new("/")).to_owned(),
         };
         match lower_script(&parsed.tree, source, &mut imports) {
-            Ok(module) => {
+            Ok(mut module) => {
+                module.legacy.extend(parsed.legacy);
                 *module.source.borrow_mut() = Some(source.into());
                 *module.path.borrow_mut() = Some(path.to_string_lossy().into());
                 *module.library.borrow_mut() = Some(self.library.clone());

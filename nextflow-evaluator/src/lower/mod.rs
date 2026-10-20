@@ -200,6 +200,11 @@ pub fn lower_script(
     // variables they declare or assign belong to the whole script.
     let legacy = declares && !statements.is_empty();
     if legacy {
+        lowering.legacy(
+            "Statements cannot be mixed with script declarations -- move statements into a \
+             process, workflow, or function",
+            statements[0].span,
+        );
         let mut names = Vec::new();
         for statement in &statements {
             script_variables(statement, true, &mut names);

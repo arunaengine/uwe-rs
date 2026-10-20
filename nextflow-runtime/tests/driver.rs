@@ -304,6 +304,33 @@ fn keeps_parameter_texts() {
     assert!(script.contains("echo hi 31 world"), "{script}");
 }
 
+/// Nextflow 26.04.6 runs legacy syntax, like a `for` loop, only with `NXF_SYNTAX_PARSER=v1`,
+/// which gives the config and the script `--count 3 --flag TRUE` as 3 and true.
+#[test]
+fn types_legacy_params() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let pipeline = PIPELINE
+        .replace(
+            "${params.count}",
+            "${params.count + 1} ${params.flag.getClass().simpleName} ${params.twice}",
+        )
+        .replace(
+            "SHOUT(GREET('world'))",
+            "for (name in ['world']) {\n        SHOUT(GREET(name))\n    }",
+        );
+    std::fs::write(directory.path().join("main.nf"), pipeline).expect("writes the script");
+    let config = format!("{CONFIG}params.flag = 'no'\nparams.twice = params.count * 2\n");
+    std::fs::write(directory.path().join("nextflow.config"), config).expect("writes the config");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        params: vec![("count".into(), "3".into()), ("flag".into(), "TRUE".into())],
+        ..Launch::default()
+    };
+    let graph = run(directory.path(), launch);
+    let script = graph.nodes[0].task.script.as_deref().unwrap_or_default();
+    assert!(script.contains("echo hi 4 Boolean 6 world"), "{script}");
+}
+
 #[test]
 fn selects_named_entry() {
     let directory = tempfile::tempdir().unwrap();

@@ -11,6 +11,7 @@ use nextflow_config::{Config, tree};
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, Host, parse_json, parse_yaml};
 use nextflow_evaluator::lowered::Module;
+use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{PathValue, Value};
 use workflow_graph::{
     Delivery, Driver, DriverError, Files, Input, Inputs, Language, Launch, Note, Outcome, Task,
@@ -106,6 +107,9 @@ struct Loaded {
     /// The config files that were read, in order.
     files: Vec<PathBuf>,
     module: Rc<Module>,
+    /// Whether a script has legacy syntax, which Nextflow 26.04.6 runs only with
+    /// `NXF_SYNTAX_PARSER=v1`, which reads command-line params as numbers and booleans.
+    legacy: bool,
 }
 
 impl Nextflow {
@@ -151,7 +155,7 @@ impl Nextflow {
                 .filter(|parent| !parent.as_os_str().is_empty());
             parent.unwrap_or(Path::new(".")).to_owned()
         };
-        let (config, files) = load_config(&project, &self.launch, host)?;
+        let (mut config, mut files) = load_config(&project, &self.launch, host, false)?;
         let script = if target.is_dir() {
             let main = config
                 .get(&["manifest", "mainScript"])
@@ -167,13 +171,20 @@ impl Nextflow {
                 script.display()
             )));
         }
-        let module = Loader::default().load(&script).map_err(load_error)?;
+        let mut loader = Loader::default();
+        let module = loader.load(&script).map_err(load_error)?;
+        let legacy = loader.legacy();
+        // The config sees the params of the command line as the script does.
+        if legacy && !self.launch.params.is_empty() {
+            (config, files) = load_config(&project, &self.launch, host, true)?;
+        }
         self.loaded = Some(Loaded {
             project,
             script,
             config,
             files,
             module,
+            legacy,
         });
         Ok(())
     }
@@ -187,7 +198,7 @@ impl Nextflow {
                 .into_owned()
         };
         let profiles = &self.launch.profiles;
-        let cli_params = match params(&self.launch) {
+        let cli_params = match params(&self.launch, false) {
             Ok(Value::Map(map)) => (map.borrow().entries.keys())
                 .map(|name| name.0.to_string())
                 .collect(),
@@ -267,7 +278,8 @@ impl Nextflow {
         let mut bare = self.launch.clone();
         bare.params.clear();
         bare.inputs = None;
-        let (config, _) = load_config(&loaded.project, &bare, self.settings.host.as_mut())?;
+        let host = self.settings.host.as_mut();
+        let (config, _) = load_config(&loaded.project, &bare, host, loaded.legacy)?;
         let options = self.options(loaded, config.clone());
         let host = self.settings.host.as_mut();
         let (params, defaults) = crate::declared_params(&loaded.module, &options, host)
@@ -517,7 +529,8 @@ impl Driver for Nextflow {
         tree::deep_merge(&loaded.config.params(), &values);
         // The check reads command-line texts as the types of the schema, but Nextflow 26.04.6
         // gives scripts the params of the launch as they are, like `--n 5` as the text '5'.
-        tree::deep_merge(&loaded.config.params(), &params(&self.launch)?);
+        let launched = params(&self.launch, loaded.legacy)?;
+        tree::deep_merge(&loaded.config.params(), &launched);
         Ok(())
     }
 
@@ -638,7 +651,7 @@ fn load_error(error: LoadError) -> DriverError {
 
 /// The config of a project directory, as `nextflow run` and `nextflow config` read it.
 pub fn config(project: &Path, launch: &Launch, host: &mut dyn Host) -> Result<Config, DriverError> {
-    load_config(project, launch, host).map(|(config, _)| config)
+    load_config(project, launch, host, false).map(|(config, _)| config)
 }
 
 /// The config of a project directory and the files it came from, in the order read.
@@ -646,6 +659,7 @@ fn load_config(
     project: &Path,
     launch: &Launch,
     host: &mut dyn Host,
+    typed: bool,
 ) -> Result<(Config, Vec<PathBuf>), DriverError> {
     let launch_dir =
         std::env::current_dir().map_err(|error| DriverError::new(error.to_string()))?;
@@ -653,7 +667,7 @@ fn load_config(
     let files = nextflow_config::files(&project, &launch_dir, &launch.configs);
     let options = nextflow_config::Options {
         profiles: (!launch.profiles.is_empty()).then(|| launch.profiles.clone()),
-        params: params(launch)?,
+        params: params(launch, typed)?,
         project_dir: project.to_string_lossy().into_owned(),
         launch_dir: launch_dir.to_string_lossy().into_owned(),
     };
@@ -665,16 +679,47 @@ fn load_config(
 }
 
 /// The params of a launch as nested maps: those of the params file (`-params-file`, JSON or
-/// YAML), with the command-line params over them.
-pub fn params(launch: &Launch) -> Result<Value, DriverError> {
+/// YAML), with the command-line params over them, as text or, if `typed`, as the legacy
+/// parser reads them.
+pub fn params(launch: &Launch, typed: bool) -> Result<Value, DriverError> {
     let params = match &launch.inputs {
         Some(file) => params_file(file)?,
         None => tree::map(),
     };
     for (name, text) in &launch.params {
-        set_param(&params, name, text).map_err(DriverError::new)?;
+        let value = match typed {
+            true => typed_param(text),
+            false => Value::string(text.as_str()),
+        };
+        set_param(&params, name, value).map_err(DriverError::new)?;
     }
     Ok(params)
+}
+
+/// Nextflow's `parseParamValue` with `NXF_SYNTAX_PARSER=v1`: `true` and `false` in any case,
+/// then whole and decimal numbers as Integer, Long or Double, else the text.
+fn typed_param(text: &str) -> Value {
+    match text.to_lowercase().as_str() {
+        "true" => return Value::Boolean(true),
+        "false" => return Value::Boolean(false),
+        _ => {}
+    }
+    let digits = |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
+    let unsigned = text.strip_prefix('-').unwrap_or(text);
+    let (whole, fraction) = unsigned.split_once('.').unwrap_or((unsigned, "0"));
+    if !digits(whole) || !digits(fraction) {
+        return Value::string(text);
+    }
+    if let Ok(value) = text.parse::<i32>() {
+        Value::integer(value)
+    } else if let Ok(value) = text.parse::<i64>() {
+        Value::Number(Number::Long(value))
+    } else {
+        text.parse::<f64>().map_or_else(
+            |_| Value::string(text),
+            |value| Value::Number(Number::Double(value)),
+        )
+    }
 }
 
 fn params_file(file: &Path) -> Result<Value, DriverError> {
@@ -706,7 +751,7 @@ fn params_file(file: &Path) -> Result<Value, DriverError> {
 
 /// `--a.b-c value` sets `params.a.bC`: dots nest, `\.` is a literal dot, and the last part
 /// changes from kebab case to camel case.
-fn set_param(params: &Value, name: &str, text: &str) -> Result<(), String> {
+fn set_param(params: &Value, name: &str, value: Value) -> Result<(), String> {
     let mut parts: Vec<String> = vec![String::new()];
     let mut characters = name.chars().peekable();
     while let Some(character) = characters.next() {
@@ -722,7 +767,7 @@ fn set_param(params: &Value, name: &str, text: &str) -> Result<(), String> {
     let last = parts.pop().expect("a part");
     parts.push(camel_case(&last));
     let path: Vec<Rc<str>> = parts.iter().map(|part| part.as_str().into()).collect();
-    tree::assign(params, &path, Value::string(text))
+    tree::assign(params, &path, value)
 }
 
 /// `kebab-case` becomes `kebabCase`.

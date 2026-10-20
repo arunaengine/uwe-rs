@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use storage::{Storage, StorageError};
 
@@ -48,38 +48,53 @@ impl Source for FileSystem {
 #[derive(Clone, Debug)]
 pub struct Remote {
     pub storage: Storage,
-    pub downloads: PathBuf,
-    /// The private folder of `default`, removed when the last clone is dropped.
-    private: Option<Arc<tempfile::TempDir>>,
+    downloads: Downloads,
+}
+
+/// The folder of downloads: given by the caller, or private and made on first use.
+#[derive(Clone, Debug)]
+enum Downloads {
+    Given(PathBuf),
+    /// Removed when the last clone is dropped.
+    Private(Arc<OnceLock<(PathBuf, Option<tempfile::TempDir>)>>),
 }
 
 impl Remote {
     pub fn new(storage: &Storage, downloads: PathBuf) -> Remote {
         Remote {
             storage: storage.clone(),
-            downloads,
-            private: None,
+            downloads: Downloads::Given(downloads),
         }
+    }
+
+    /// The folder of downloads; a private one is made here the first time.
+    pub fn downloads(&self) -> PathBuf {
+        let private = match &self.downloads {
+            Downloads::Given(folder) => return folder.clone(),
+            Downloads::Private(private) => private,
+        };
+        let (folder, _) = private.get_or_init(|| {
+            let made = tempfile::Builder::new()
+                .prefix("iunctus-downloads-")
+                .tempdir();
+            // Without a temporary folder, `fetch` reports the error once it needs the folder.
+            match made {
+                Ok(folder) => (folder.path().to_owned(), Some(folder)),
+                Err(_) => (std::env::temp_dir().join("iunctus-downloads"), None),
+            }
+        });
+        folder.clone()
     }
 }
 
 /// Without storage providers of a config file, and with a private temporary folder of
-/// downloads, for callers that give none.
+/// downloads, made only when something is downloaded, for callers that give none.
 impl Default for Remote {
     fn default() -> Self {
-        let folder = tempfile::Builder::new()
-            .prefix("iunctus-downloads-")
-            .tempdir();
-        // Without a temporary folder, `fetch` reports the error once it needs the folder.
-        let Ok(folder) = folder else {
-            return Remote::new(
-                &Storage::default(),
-                std::env::temp_dir().join("iunctus-downloads"),
-            );
-        };
-        let mut remote = Remote::new(&Storage::default(), folder.path().to_owned());
-        remote.private = Some(Arc::new(folder));
-        remote
+        Remote {
+            storage: Storage::default(),
+            downloads: Downloads::Private(Arc::default()),
+        }
     }
 }
 
@@ -100,9 +115,9 @@ impl Source for Web {
     fn read(&self, url: &str) -> Result<String, String> {
         match iri::Parts::parse(url).scheme {
             Some("http" | "https") => {
-                let downloads = &self.remote.downloads;
+                let downloads = self.remote.downloads();
                 let copy =
-                    (self.remote.storage.blocking().fetch(url, downloads)).map_err(reason)?;
+                    (self.remote.storage.blocking().fetch(url, &downloads)).map_err(reason)?;
                 std::fs::read_to_string(&copy).map_err(|error| error.to_string())
             }
             _ => FileSystem.read(url),
@@ -193,5 +208,22 @@ impl Documents {
         let tree = yaml::read(&text, &Arc::from(url));
         self.trees.insert(url.to_owned(), tree.clone());
         tree
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Downloads, Remote};
+
+    #[test]
+    fn default_makes_nothing() {
+        let remote = Remote::default();
+        let Downloads::Private(private) = &remote.downloads else {
+            panic!("the default folder must be private");
+        };
+        assert!(private.get().is_none(), "made before first use");
+        let folder = remote.clone().downloads();
+        assert!(folder.is_dir(), "{folder:?}");
+        assert_eq!(remote.downloads(), folder, "clones share the folder");
     }
 }

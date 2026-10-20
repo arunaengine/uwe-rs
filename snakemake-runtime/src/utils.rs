@@ -202,11 +202,7 @@ fn utils_module(interpreter: &mut Interpreter, state: Rc<RefCell<State>>) -> Res
             ),
             (
                 "listfiles",
-                Value::builtin("listfiles", |interpreter, args| {
-                    let found = functions::glob_wildcards(interpreter, args.clone())?;
-                    let _ = found;
-                    Err(Error::unsupported("snakemake.utils.listfiles"))
-                }),
+                Value::builtin("listfiles", functions::listfiles),
             ),
             (
                 "Paramspace",

@@ -560,6 +560,84 @@ fn walk(interpreter: &mut Interpreter, top: &str) -> Vec<String> {
     found
 }
 
+/// `snakemake.utils.listfiles(pattern, restriction=None, omit_value=None)`: each existing
+/// file or folder that matches the pattern, with its wildcard values, in the order of a
+/// walk that gives the files of a folder before its folders.
+pub fn listfiles(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let pattern = args
+        .take(0, "pattern")
+        .ok_or_else(|| Error::type_error("listfiles() missing pattern"))?;
+    let restriction = args.take(1, "restriction").filter(|value| !value.is_none());
+    let omit = args.take(2, "omit_value").filter(|value| !value.is_none());
+    let pattern = normpath(&python_evaluator::modules::path_text(
+        interpreter,
+        &pattern,
+    )?);
+    let first = (pattern.match_indices('{'))
+        .find(|(index, _)| !pattern[index + 1..].starts_with('{'))
+        .map(|(index, _)| index);
+    let before = first.map_or(&pattern[..], |index| &pattern[..index]);
+    let top = match before.rfind('/') {
+        Some(0) => "/".to_owned(),
+        Some(index) => before[..index].to_owned(),
+        None => ".".to_owned(),
+    };
+    let matcher = pattern::Matcher::of(&pattern);
+    if let Some(error) = matcher.error() {
+        return Err(Error::new("re.error", error.to_owned()));
+    }
+    let restriction = match &restriction {
+        Some(mapping) => interpreter.mapping_items(mapping)?,
+        None => Vec::new(),
+    };
+    let mut found = Vec::new();
+    let mut pending = vec![top];
+    while let Some(folder) = pending.pop() {
+        let resolved = interpreter.host.resolve(&folder);
+        let Ok(names) = interpreter.host.list(&resolved) else {
+            continue;
+        };
+        let (mut files, mut folders) = (Vec::new(), Vec::new());
+        for name in names {
+            let directory = (interpreter.host.stat(&resolved.join(&name)))
+                .is_some_and(|stat| stat.kind == python_evaluator::FileKind::Directory);
+            let path = match folder.as_str() {
+                "." => name,
+                _ => normpath(&format!("{}/{name}", folder.trim_end_matches('/'))),
+            };
+            match directory {
+                true => folders.push(path),
+                false => files.push(path),
+            }
+        }
+        for path in files.iter().chain(&folders) {
+            let Some(values) = matcher.matches(path) else {
+                continue;
+            };
+            let mut valid = true;
+            for (name, wanted) in &restriction {
+                let Some(omit) = &omit else {
+                    return Err(Error::type_error(
+                        "'in <string>' requires string as left operand, not NoneType",
+                    ));
+                };
+                let (name, wanted) = (interpreter.to_str(name)?, interpreter.to_str(wanted)?);
+                let omitted = wanted.contains(&interpreter.to_str(omit)?);
+                if !omitted && values.get(&name) != Some(&wanted) {
+                    valid = false;
+                }
+            }
+            if valid {
+                let wildcards = NamedList::wildcards(&values);
+                found.push(Value::tuple(vec![Value::str(path.as_str()), wildcards]));
+            }
+        }
+        // `os.walk` goes into the folders in order after the folder itself.
+        pending.extend(folders.into_iter().rev());
+    }
+    Ok(Value::iterator(found))
+}
+
 /// `branch(condition, then=None, otherwise=None, cases=None)`.
 fn branch(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
     let condition = args.take(0, "condition").unwrap_or(Value::None);

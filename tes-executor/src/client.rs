@@ -155,6 +155,25 @@ struct Created {
     id: String,
 }
 
+/// A task in a list of the server, with its tags.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Listed {
+    pub id: String,
+    #[serde(default)]
+    pub tags: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct Page {
+    #[serde(default)]
+    tasks: Vec<Listed>,
+    #[serde(default)]
+    next_page_token: Option<String>,
+}
+
+/// The most pages of tasks that [`Client::list`] reads.
+const MOST_PAGES: usize = 100;
+
 /// A client of one TES server.
 #[derive(Clone)]
 pub struct Client {
@@ -278,6 +297,35 @@ impl Client {
             }
         }
         Ok(status)
+    }
+
+    /// The tasks whose name starts with `name` and that have the tag `key` with `value`, with
+    /// their tags. A server may ignore these filters, so the caller checks the tags.
+    pub async fn list(&self, name: &str, key: &str, value: &str) -> Result<Vec<Listed>, TesError> {
+        let mut tasks = Vec::new();
+        let mut token: Option<String> = None;
+        for _ in 0..MOST_PAGES {
+            let mut query = vec![
+                ("name_prefix", name),
+                ("tag_key", key),
+                ("tag_value", value),
+                ("view", "BASIC"),
+            ];
+            if let Some(token) = &token {
+                query.push(("page_token", token));
+            }
+            let url = reqwest::Url::parse_with_params(&format!("{}/tasks", self.base), &query)
+                .map_err(|error| TesError::Answer(error.to_string()))?;
+            let page: Page = self.send(self.http.get(url.as_str()), url.as_str()).await?;
+            tasks.extend(page.tasks);
+            token = page.next_page_token.filter(|token| !token.is_empty());
+            if token.is_none() {
+                return Ok(tasks);
+            }
+        }
+        Err(TesError::Answer(format!(
+            "the list of tasks has more than {MOST_PAGES} pages"
+        )))
     }
 
     /// Asks the server about itself (`GET /service-info`), which tells whether it answers.

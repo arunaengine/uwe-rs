@@ -27,6 +27,9 @@ pub(crate) const WRAPPER: &str = "/iunctus/wrapper.sh";
 /// How long the backend waits between two looks at a task, at most.
 const POLL: Duration = Duration::from_secs(5);
 
+/// The tag whose value only one submission has, by which a lost submission is found again.
+const SUBMISSION: &str = "iunctus-submission";
+
 /// How long failed status reads may persist before the backend stops the task.
 const READ_GRACE: Duration = Duration::from_secs(120);
 
@@ -163,6 +166,8 @@ impl TesBackend {
         if let Some(tag) = &self.settings.idempotency_tag {
             task.tags.insert(tag.clone(), attempt_key);
         }
+        let submission = submission_value(root);
+        task.tags.insert(SUBMISSION.into(), submission.clone());
         let folders = wrapper::Folders {
             work: &workdir(job),
             control: CONTROL,
@@ -184,7 +189,8 @@ impl TesBackend {
             .ok_or_else(|| std::io::Error::other("cannot identify the TES coordinator process"))?;
         let mut journal = serde_json::json!({"backend": "TES", "server": self.client.server(),
             "name": job.name, "id": null, "owner": std::process::id(), "host": host,
-            "started": started, "locked": true, "auth": self.client.identity()});
+            "started": started, "locked": true, "auth": self.client.identity(),
+            "submission": submission});
         if self.settings.idempotency_tag.is_some() {
             journal["request"] =
                 serde_json::to_value(&task).map_err(|error| unresolved(root, error))?;
@@ -375,11 +381,55 @@ impl TesBackend {
                     journal_at(&root, &journal)?;
                 }
             }
-            let id = journal["id"].as_str().filter(|id| !id.is_empty())
-                .ok_or_else(|| unresolved(&root, "the submission response was not recorded; resolve it on the TES server before removing its journal"))?;
+            // A submission without an answer must not block every later run.
+            if journal["id"].as_str().is_none_or(str::is_empty) {
+                match backend.identify(&journal).await {
+                    Submitted::Found(id) => {
+                        journal["id"] = serde_json::json!(id);
+                        journal_at(&root, &journal)?;
+                    }
+                    Submitted::Absent => {
+                        tracing::warn!(attempt = %root.display(),
+                            "the task of an unclear submission is not on the TES server; the attempt is lost");
+                        std::fs::remove_file(&path)?;
+                        continue;
+                    }
+                    Submitted::Unclear(reason) => {
+                        tracing::warn!(attempt = %root.display(), reason,
+                            "cannot resolve an unclear submission yet");
+                        continue;
+                    }
+                }
+            }
+            let id = journal["id"].as_str().unwrap_or_default();
             backend.stop(id, &root, CANCEL_GRACE).await?;
         }
         Ok(())
+    }
+
+    /// Finds the task of a journal whose submission left no id, by the tag value that only
+    /// that submission has, with the credentials that made it.
+    async fn identify(&self, journal: &serde_json::Value) -> Submitted {
+        let (Some(name), Some(value)) = (journal["name"].as_str(), journal["submission"].as_str())
+        else {
+            return Submitted::Unclear("the journal names no submission tag");
+        };
+        if journal["auth"].as_str() != Some(self.client.identity().as_str()) {
+            return Submitted::Unclear("the credentials of the TES server changed");
+        }
+        let listed = self.client.list(name, SUBMISSION, value);
+        let tasks = match tokio::time::timeout(REQUEST_GRACE, listed).await {
+            Ok(Ok(tasks)) => tasks,
+            _ => return Submitted::Unclear("the TES server cannot list the tasks"),
+        };
+        // Only a task with the tag value of this submission is ours.
+        let mut ours = (tasks.into_iter())
+            .filter(|task| task.tags.get(SUBMISSION).map(String::as_str) == Some(value));
+        match (ours.next(), ours.next()) {
+            (None, _) => Submitted::Absent,
+            (Some(task), None) => Submitted::Found(task.id),
+            (Some(_), Some(_)) => Submitted::Unclear("several tasks have the submission tag"),
+        }
     }
 
     /// Waits through transient reads, stopping accepted work on cancellation or timeout.
@@ -450,6 +500,30 @@ impl TesBackend {
         std::fs::remove_file(root.join("remote.json"))?;
         Ok(status)
     }
+}
+
+/// What became of a submission whose answer was lost.
+enum Submitted {
+    /// The task with this id.
+    Found(String),
+    /// The server has no such task: it never took it.
+    Absent,
+    /// The server cannot tell yet, for this reason.
+    Unclear(&'static str),
+}
+
+/// A value that only the submission of the attempt at `root` has.
+fn submission_value(root: &Path) -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos());
+    let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap_or_default();
+    let text = format!(
+        "{host}\0{}\0{nanos}\0{}",
+        std::process::id(),
+        root.display()
+    );
+    task_model::Digest::sha256(text.as_bytes()).hex().to_owned()
 }
 
 fn ownership(root: &Path) -> Result<File, ExecutorError> {

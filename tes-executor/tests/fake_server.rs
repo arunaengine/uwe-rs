@@ -399,65 +399,141 @@ fn bounds_accepted_tasks() {
     }
 }
 
+/// What the server of `keep` knows: the tasks it got and which it cancelled, whether it takes
+/// the next task without an answer, and whether its list fails.
+#[derive(Default)]
+struct Kept {
+    tasks: Vec<serde_json::Value>,
+    canceled: Vec<bool>,
+    lose: bool,
+    broken: bool,
+}
+
+/// A server that keeps its tasks running until they are cancelled, and lists all of them
+/// whatever the filters of the list ask for, as a server may ignore them.
+fn keep(kept: Arc<Mutex<Kept>>) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let address = format!("http://{}", listener.local_addr().expect("an address"));
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { break };
+            let (first, body) = request(&mut stream);
+            let mut kept = kept.lock().expect("the state");
+            let (status, answer) = if first.starts_with("POST /ga4gh/tes/v1/tasks ") {
+                kept.tasks.push(serde_json::from_str(&body).expect("JSON"));
+                kept.canceled.push(false);
+                if kept.lose {
+                    continue;
+                }
+                let id = format!("task-{}", kept.tasks.len() - 1);
+                ("200 OK", serde_json::json!({ "id": id }))
+            } else if first.starts_with("GET /ga4gh/tes/v1/tasks?") && kept.broken {
+                ("500 Internal Server Error", serde_json::json!({}))
+            } else if first.starts_with("GET /ga4gh/tes/v1/tasks?") {
+                let tasks: Vec<serde_json::Value> = (kept.tasks.iter().enumerate())
+                    .map(|(index, task)| {
+                        serde_json::json!({"id": format!("task-{index}"), "tags": task["tags"]})
+                    })
+                    .collect();
+                ("200 OK", serde_json::json!({ "tasks": tasks }))
+            } else {
+                let index: usize = (first.split("tasks/task-").nth(1))
+                    .and_then(|rest| rest.split([':', '?', ' ']).next())
+                    .and_then(|number| number.parse().ok())
+                    .expect("a task");
+                if first.contains(":cancel") {
+                    kept.canceled[index] = true;
+                }
+                let state = if kept.canceled[index] {
+                    "CANCELED"
+                } else {
+                    "RUNNING"
+                };
+                let id = format!("task-{index}");
+                ("200 OK", serde_json::json!({ "id": id, "state": state }))
+            };
+            let answer = answer.to_string();
+            let reply = format!(
+                "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\
+                 Connection: close\r\n\r\n{answer}",
+                answer.len()
+            );
+            let _ = stream.write_all(reply.as_bytes());
+        }
+    });
+    address
+}
+
 #[test]
-fn retains_ambiguous_submissions() {
+fn recovers_lost_submissions() {
     let folder = tempfile::tempdir().unwrap();
-    let root = folder.path().join("scratch/attempt");
-    std::fs::create_dir_all(&root).unwrap();
+    // A task of someone else with the same name, which must stay.
+    let foreign = serde_json::json!({"name": "lost", "tags": {"iunctus-submission": "other"}});
+    let kept = Arc::new(Mutex::new(Kept {
+        tasks: vec![foreign],
+        canceled: vec![false],
+        lose: true,
+        ..Kept::default()
+    }));
     let backend = TesBackend {
-        client: Client::new("http://localhost:1", None).unwrap(),
+        client: Client::new(&keep(kept.clone()), None).unwrap(),
         scratch: folder.path().join("scratch"),
         staging: None,
         settings: Default::default(),
-        configs: ImageConfigs::default(),
+        configs: ImageConfigs::known([("test".into(), ImageConfig::default())]),
     };
-    std::fs::write(root.join("remote.json"), serde_json::json!({
-        "backend": "TES", "server": backend.client.server(), "id": null, "owner": u32::MAX, "started": "",
-        "host": std::fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap() }).to_string()).unwrap();
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap();
-    let error = runtime
-        .block_on(backend.reconcile(&[&backend]))
-        .expect_err("unknown remote ID blocks recovery");
-    assert!(!error.retryable());
-    assert!(
-        error
-            .to_string()
-            .contains("submission response was not recorded")
-    );
-    assert!(root.join("remote.json").exists());
     let spec = simple_spec();
     let (staging, placement) = (Staging::default(), Placement::default());
-    let blocked = Job {
-        name: "blocked",
+    let lost = Job {
+        name: "lost",
         spec: &spec,
         staging: &staging,
         placement: &placement,
     };
     let error = runtime
-        .block_on(backend.run(blocked, &CancellationToken::new()))
-        .expect_err("ambiguous ownership blocks admission");
-    assert!(
-        error
-            .to_string()
-            .contains("submission response was not recorded")
-    );
-    assert!(!backend.scratch.join("blocked").exists());
+        .block_on(backend.run(lost, &CancellationToken::new()))
+        .expect_err("the answer of the submission is lost");
+    assert!(!error.retryable());
+    let journal = backend.scratch.join("lost/remote.json");
+    let mut record: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&journal).unwrap()).unwrap();
+    assert!(record["id"].is_null());
+    // A server that cannot list its tasks leaves the journal, but blocks nothing.
+    kept.lock().unwrap().lose = false;
+    kept.lock().unwrap().broken = true;
+    runtime.block_on(backend.reconcile(&[&backend])).unwrap();
+    assert!(journal.exists());
+    // Recovery finds the task by its submission tag, and cancels only that one.
+    kept.lock().unwrap().broken = false;
+    runtime.block_on(backend.reconcile(&[&backend])).unwrap();
+    assert!(!journal.exists());
+    assert_eq!(kept.lock().unwrap().canceled, [false, true]);
+    // A submission that the server never took is lost.
+    let unsent = backend.scratch.join("unsent");
+    std::fs::create_dir_all(&unsent).unwrap();
+    std::fs::File::create(unsent.join("remote.lock")).unwrap();
+    record["submission"] = serde_json::json!("unsent");
+    std::fs::write(unsent.join("remote.json"), record.to_string()).unwrap();
+    runtime.block_on(backend.reconcile(&[&backend])).unwrap();
+    assert!(!unsent.join("remote.json").exists());
+    // An accepted task that already ended reconciles too.
     let address = serve(Arc::new(Mutex::new(None)));
     let backend = TesBackend {
         client: Client::new(&address, None).unwrap(),
         ..backend
     };
-    std::fs::write(root.join("remote.json"), serde_json::json!({
+    std::fs::write(unsent.join("remote.json"), serde_json::json!({
         "backend": "TES", "server": backend.client.server(), "id": "accepted", "owner": u32::MAX, "started": "",
         "host": std::fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap() }).to_string()).unwrap();
     runtime
         .block_on(backend.reconcile(&[&backend]))
         .expect("a terminal accepted task reconciles");
-    assert!(!root.join("remote.json").exists());
-    assert!(root.exists());
+    assert!(!unsent.join("remote.json").exists());
+    assert!(unsent.exists());
 }
 
 #[test]

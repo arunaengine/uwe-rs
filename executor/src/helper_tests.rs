@@ -240,10 +240,52 @@ fn stalled_download_fails() {
     let path = folder.path().join("in.txt");
     let (sender, receiver) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let client = client().unwrap();
+        let client = client(Some(IDLE)).unwrap();
         let _ = sender.send(download(&client, &input, &path, false));
     });
     let result = receiver.recv_timeout(Duration::from_secs(30));
     let error = result.expect("a stalled download ends").unwrap_err();
     assert!(!error.is_empty());
+}
+
+#[test]
+fn slow_download_succeeds() {
+    use std::io::{BufRead, BufReader};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let body = b"0123456789".repeat(10);
+    let digest = task_model::Digest::sha256(&body);
+    // The server sends steadily but takes more than twice the idle limit for the whole body.
+    std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut line = String::new();
+        while reader.read_line(&mut line).is_ok_and(|count| count > 2) {
+            line.clear();
+        }
+        let mut stream = stream;
+        let head = "HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n";
+        stream.write_all(head.as_bytes()).unwrap();
+        for part in body.chunks(10) {
+            std::thread::sleep(IDLE / 4);
+            stream.write_all(part).unwrap();
+            stream.flush().unwrap();
+        }
+    });
+    let folder = tempfile::tempdir().unwrap();
+    let input = Input {
+        path: "work/in.txt".into(),
+        sha256: digest.hex().into(),
+        size: 100,
+        executable: false,
+        request: Request {
+            method: "GET".into(),
+            url: format!("http://{address}/in.txt"),
+            headers: Vec::new(),
+        },
+    };
+    let path = folder.path().join("in.txt");
+    let client = client(Some(IDLE)).unwrap();
+    download(&client, &input, &path, false).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap().len(), 100);
 }

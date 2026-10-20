@@ -114,7 +114,7 @@ pub fn main(arguments: &[String]) -> Result<(), String> {
 /// Paths must stay in the folder, and no symbolic link on the way is followed.
 pub fn stage_in(folder: &Path, plan: &Plan) -> Result<(), String> {
     std::fs::create_dir_all(folder).map_err(|error| error.to_string())?;
-    let client = client()?;
+    let client = client(Some(IDLE))?;
     for directory in &plan.directories {
         let path = inside(folder, directory)?;
         make_folders(folder, &path, plan.open)?;
@@ -131,7 +131,7 @@ pub fn stage_in(folder: &Path, plan: &Plan) -> Result<(), String> {
 /// Uploads the numbered output files and then the control records that exist. A record in
 /// `control`, like the log of the job, comes before one that the task wrote.
 pub fn stage_out(folder: &Path, control: Option<&Path>, plan: &Plan) -> Result<(), String> {
-    let client = client()?;
+    let client = client(None)?;
     let mut number = 1;
     while let Ok(metadata) =
         std::fs::symlink_metadata(folder.join(TRANSFER).join(number.to_string()))
@@ -192,7 +192,7 @@ fn read_plan(folder: &Path, location: &str) -> Result<String, String> {
     let mut text = String::new();
     retried(|| {
         text.clear();
-        send(&client()?, &request, None)?
+        send(&client(Some(IDLE))?, &request, None)?
             .read_to_string(&mut text)
             .map(|_| ())
             .map_err(|error| error.to_string())
@@ -357,11 +357,9 @@ fn send(
     for (name, value) in &request.headers {
         built = built.header(name, value);
     }
-    // A request without a body waits at most `IDLE` for its answer and for each read after.
-    built = match body {
-        Some((file, size)) => built.body(reqwest::blocking::Body::sized(file, size)),
-        None => built.timeout(IDLE),
-    };
+    if let Some((file, size)) = body {
+        built = built.body(reqwest::blocking::Body::sized(file, size));
+    }
     let response = built.send().map_err(|error| without_url(&error))?;
     let status = response.status();
     if !status.is_success() {
@@ -376,16 +374,16 @@ pub fn local_file(url: &str) -> Option<PathBuf> {
     Some(PathBuf::from(storage::address::decode(path)))
 }
 
-/// The HTTP client of the helper. It trusts the certificates of the system and the roots of
-/// Mozilla, as the image of a task may have no certificates of its own. An upload has no read
-/// to time, so the kernel drops a connection whose data stays unacknowledged for `IDLE`.
-fn client() -> Result<reqwest::blocking::Client, String> {
+/// The HTTP client of the helper, which trusts the system and Mozilla roots. With `idle`, the
+/// answer and each read wait at most that long (a request timeout would limit the whole body).
+/// An upload has no read to time, so the kernel drops a connection unacknowledged for `IDLE`.
+fn client(idle: Option<Duration>) -> Result<reqwest::blocking::Client, String> {
     let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
         .iter()
         .filter_map(|root| reqwest::Certificate::from_der(root.as_ref()).ok());
     reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(30))
-        .timeout(None)
+        .timeout(idle)
         .tcp_keepalive(Duration::from_secs(30))
         .tcp_user_timeout(IDLE)
         .tls_certs_merge(roots)

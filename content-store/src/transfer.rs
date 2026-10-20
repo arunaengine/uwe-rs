@@ -52,8 +52,10 @@ impl Store {
         let capability = self.operator.info().capability();
         if !(capability.presign_read && capability.presign_write) {
             return Err(StoreError::Location(format!(
-                "the store at {} cannot sign requests; use S3, Google Cloud Storage with a \
-                 service account, or Azure Blob Storage with a sas_token",
+                "the store at {} cannot sign requests for single files; use S3, Google Cloud \
+                 Storage with a service account, or Azure Blob Storage with an account key (a \
+                 sas_token would give every task all of its rights), or let the nodes use \
+                 credentials of their own with staging_access = \"credentials\"",
                 self.url("")
             )));
         }

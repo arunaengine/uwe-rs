@@ -507,10 +507,11 @@ emulator-test:
 		'http://127.0.0.1:4443/storage/v1/b?project=test' > /dev/null; do sleep 1; done
 	until curl -s http://127.0.0.1:10000/ > /dev/null; do sleep 1; done
 	# A made-up service account signs the requests to Google Cloud Storage, which the emulator
-	# does not check; Azurite checks the shared access signature of its well-known account.
+	# does not check; Azurite checks the service SAS made with the key of its well-known account.
 	openssl genrsa -out "$work/key.pem" 2048 2> /dev/null
 	python3 -I -c 'import json, sys; json.dump({"type": "service_account", "project_id": "test", "private_key_id": "1", "private_key": open(sys.argv[1] + "/key.pem").read(), "client_email": "test@test.iam.gserviceaccount.com", "client_id": "1", "token_uri": "http://127.0.0.1:4443/token"}, open(sys.argv[1] + "/account.json", "w"))' "$work"
-	sas="$(uv run -q --with azure-storage-blob python -I -c 'import datetime; from azure.storage.blob import BlobServiceClient, ContainerSasPermissions, generate_container_sas; key = "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="; BlobServiceClient("http://127.0.0.1:10000/devstoreaccount1", {"account_name": "devstoreaccount1", "account_key": key}).create_container("iunctus-test"); print(generate_container_sas("devstoreaccount1", "iunctus-test", account_key=key, permission=ContainerSasPermissions(read=True, add=True, create=True, write=True, delete=True, list=True), expiry=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)))')"
+	key="Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
+	uv run -q --with azure-storage-blob python -I -c 'import sys; from azure.storage.blob import BlobServiceClient; BlobServiceClient("http://127.0.0.1:10000/devstoreaccount1", {"account_name": "devstoreaccount1", "account_key": sys.argv[1]}).create_container("iunctus-test")' "$key"
 	export IUNCTUS_GCS_ROOT=gs://iunctus-test/staging IUNCTUS_AZURE_ROOT=az://iunctus-test/staging
 	export IUNCTUS_TEST_STORAGE="[storage.gcs]
 	type = \"google-cloud-storage\"
@@ -522,7 +523,7 @@ emulator-test:
 	prefixes = [\"az://iunctus-test/\"]
 	account = \"devstoreaccount1\"
 	endpoint = \"http://127.0.0.1:10000/devstoreaccount1\"
-	sas_token = \"$sas\""
+	key = \"$key\""
 	cargo test --locked -p executor --lib -- --ignored gcs_presigned_requests azure_round_trip
 
 # Runs the tests of two S3 storage providers against two local RustFS servers, one for inputs

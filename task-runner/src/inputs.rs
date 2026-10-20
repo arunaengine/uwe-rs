@@ -158,7 +158,7 @@ impl Inputs<'_> {
         };
         if directory {
             tokio::fs::create_dir(&path).await?;
-            for found in outputs::walk(source).await? {
+            for found in outputs::walk(source, outputs::Reach::Inside).await? {
                 match found {
                     Found::File {
                         relative,
@@ -260,7 +260,7 @@ impl Inputs<'_> {
     /// The digest of the manifest of a local directory, and the size of its files.
     pub(crate) async fn directory(&self, directory: &Path) -> Result<(Digest, u64), RunnerError> {
         let mut entries = Vec::new();
-        for found in outputs::walk(directory).await? {
+        for found in outputs::walk(directory, outputs::Reach::Inside).await? {
             entries.push(match found {
                 Found::File {
                     relative,

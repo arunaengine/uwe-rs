@@ -39,7 +39,7 @@ pub(crate) async fn store_outputs(
         let local = finished.local_path(&collected.path);
         scratch.checked(&local).await?;
         if collected.directory {
-            let found = walk(&local).await?;
+            let found = walk(&local, Reach::Anywhere).await?;
             for item in &found {
                 if let Found::File { path, .. } = item {
                     scratch.prepare(path).await?;
@@ -423,16 +423,24 @@ impl Found {
     }
 }
 
+/// Which links to files a walk reads through: any for outputs, whose files [`Scratch`] checks
+/// later, or only those that stay inside the directory, for inputs.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Reach {
+    Anywhere,
+    Inside,
+}
+
 /// The files and empty directories below a directory, by their paths relative to it, found on
-/// a thread that may block. Internal relative links are kept without following them.
-pub(crate) async fn walk(root: &Path) -> Result<Vec<Found>, RunnerError> {
+/// a thread that may block. Links that stay inside it are kept without following them.
+pub(crate) async fn walk(root: &Path, reach: Reach) -> Result<Vec<Found>, RunnerError> {
     let root = root.to_owned();
-    tokio::task::spawn_blocking(move || walk_now(&root))
+    tokio::task::spawn_blocking(move || walk_now(&root, reach))
         .await
         .map_err(|error| std::io::Error::other(error.to_string()))?
 }
 
-fn walk_now(root: &Path) -> Result<Vec<Found>, RunnerError> {
+fn walk_now(root: &Path, reach: Reach) -> Result<Vec<Found>, RunnerError> {
     let mut found = Vec::new();
     let mut pending = vec![(root.to_owned(), String::new())];
     while let Some((directory, prefix)) = pending.pop() {
@@ -449,42 +457,23 @@ fn walk_now(root: &Path) -> Result<Vec<Found>, RunnerError> {
             } else {
                 format!("{prefix}/{name}")
             };
-            if entry.file_type()?.is_symlink()
-                && !std::fs::metadata(entry.path()).is_ok_and(|metadata| metadata.is_file())
-            {
-                let target = std::fs::read_link(entry.path())?;
-                let mut depth = Path::new(&relative)
-                    .parent()
-                    .map_or(0, |parent| parent.components().count());
-                let internal = target.components().all(|part| match part {
-                    std::path::Component::Normal(_) => {
-                        depth += 1;
-                        true
-                    }
-                    std::path::Component::ParentDir if depth > 0 => {
-                        depth -= 1;
-                        true
-                    }
-                    std::path::Component::CurDir => true,
-                    _ => false,
-                });
-                if internal {
-                    let target = target
+            if entry.file_type()?.is_symlink() {
+                let file = std::fs::metadata(entry.path()).is_ok_and(|metadata| metadata.is_file());
+                let inside = resolved(root, Path::new(&relative)).is_some();
+                if inside && !file {
+                    let target = std::fs::read_link(entry.path())?
                         .into_os_string()
                         .into_string()
                         .map_err(|_| RunnerError::Name(entry.path()))?;
                     found.push(Found::Symlink { relative, target });
                     continue;
                 }
-                if !std::fs::metadata(entry.path())
-                    .map_err(at(&entry.path()))?
-                    .is_file()
-                {
+                if !inside && !(file && reach == Reach::Anywhere) {
                     return Err(RunnerError::File {
                         path: entry.path(),
                         error: std::io::Error::new(
                             std::io::ErrorKind::Unsupported,
-                            "directory link target is absolute or outside the selected directory",
+                            "link target is absolute or outside the selected directory",
                         ),
                     });
                 }
@@ -505,6 +494,43 @@ fn walk_now(root: &Path) -> Result<Vec<Found>, RunnerError> {
         }
     }
     Ok(found)
+}
+
+/// Where a path below `root` leads with its links followed, relative to `root`: `None` when
+/// it leaves `root`, is absolute or loops. Missing parts count by name.
+fn resolved(root: &Path, relative: &Path) -> Option<PathBuf> {
+    let parts = |path: &Path| -> Vec<PathBuf> {
+        (path.components().rev())
+            .map(|part| PathBuf::from(part.as_os_str()))
+            .collect()
+    };
+    let mut pending = parts(relative);
+    let (mut current, mut hops) = (PathBuf::new(), 0);
+    while let Some(part) = pending.pop() {
+        match part.components().next()? {
+            std::path::Component::Normal(name) => {
+                let next = current.join(name);
+                let place = root.join(&next);
+                if !std::fs::symlink_metadata(&place).is_ok_and(|meta| meta.is_symlink()) {
+                    current = next;
+                    continue;
+                }
+                hops += 1;
+                if hops > 40 {
+                    return None;
+                }
+                pending.extend(parts(&std::fs::read_link(&place).ok()?));
+            }
+            std::path::Component::ParentDir => {
+                if !current.pop() {
+                    return None;
+                }
+            }
+            std::path::Component::CurDir => {}
+            _ => return None,
+        }
+    }
+    Some(current)
 }
 
 #[cfg(test)]
@@ -667,5 +693,28 @@ mod tests {
         );
         assert!(finished.root.join("work/out").exists());
         assert!(!root.path().join("store/runs/run").exists());
+    }
+
+    #[test]
+    fn inputs_keep_inside() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        std::fs::write(root.path().join("secret"), "host\n").expect("writes");
+        let tree = root.path().join("tree");
+        std::fs::create_dir(&tree).expect("makes the tree");
+        std::fs::write(tree.join("data"), "data\n").expect("writes");
+        std::os::unix::fs::symlink(".", tree.join("a")).expect("links");
+        std::os::unix::fs::symlink("a/a/data", tree.join("near")).expect("links");
+        let found = walk_now(&tree, Reach::Inside).expect("walks inside links");
+        let near = found
+            .iter()
+            .any(|item| matches!(item, Found::File { relative, .. } if relative == "near"));
+        assert!(near);
+        // `a/a/x` is `x`, which leads one folder up to a file of the host.
+        std::os::unix::fs::symlink("../secret", tree.join("a/a/x")).expect("links");
+        let error = walk_now(&tree, Reach::Inside)
+            .err()
+            .expect("refuses the host file");
+        assert!(error.to_string().contains("outside"), "{error}");
+        assert!(walk_now(&tree, Reach::Anywhere).is_ok());
     }
 }

@@ -116,14 +116,15 @@ async fn corruption_preserves_target() {
     let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
     let store = Store::remote(operator.clone(), "s3://shared/cache").unwrap();
     let digest = Digest::sha256(b"good");
-    operator
-        .write(&layout::content(&digest), Bytes::from_static(b"bad"))
-        .await
-        .unwrap();
     let existing = folder.path().join("existing");
     std::fs::write(&existing, b"old").unwrap();
     let missing = folder.path().join("missing");
     for target in [&existing, &missing] {
+        // Each failed read removes the damaged object.
+        operator
+            .write(&layout::content(&digest), Bytes::from_static(b"bad"))
+            .await
+            .unwrap();
         assert!(matches!(
             store.materialize_content(&digest, target).await,
             Err(StoreError::Corrupt { .. })
@@ -238,6 +239,37 @@ async fn isolates_concurrent_temporaries() {
         assert_eq!(std::fs::read(&target).unwrap(), b"same");
     }
     assert_eq!(std::fs::read_dir(folder.path()).unwrap().count(), 16);
+}
+
+#[tokio::test]
+async fn repairs_corrupt_content() {
+    let folder = tempfile::tempdir().unwrap();
+    let store = Store::local(folder.path()).unwrap();
+    let good = Bytes::from_static(b"good");
+    let digest = store.put_content(good.clone()).await.unwrap();
+    let stored = folder.path().join(layout::content(&digest));
+    // Bits that rot keep the size and the mode, so only a read finds them.
+    let rot = || {
+        damage(&stored, b"gone");
+        std::fs::set_permissions(&stored, std::fs::Permissions::from_mode(0o444)).unwrap();
+    };
+    rot();
+    assert!(matches!(
+        store.get_content(&digest).await,
+        Err(StoreError::Corrupt { .. })
+    ));
+    assert!(!stored.exists(), "a damaged object goes");
+    store.put_content(good.clone()).await.unwrap();
+    assert_eq!(store.get_content(&digest).await.unwrap(), good);
+    rot();
+    let target = folder.path().join("target");
+    assert!(matches!(
+        store.materialize_content(&digest, &target).await,
+        Err(StoreError::Corrupt { .. })
+    ));
+    store.put_content(good.clone()).await.unwrap();
+    store.materialize_content(&digest, &target).await.unwrap();
+    assert_eq!(std::fs::read(&target).unwrap(), b"good");
 }
 
 /// Changes a stored file the way a user can: unlock it, then write other bytes.

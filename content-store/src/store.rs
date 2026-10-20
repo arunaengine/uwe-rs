@@ -441,9 +441,12 @@ impl Store {
 
     /// Reads a directory manifest by digest and checks that it still matches the digest.
     pub async fn get_tree(&self, digest: &Digest) -> Result<Tree, StoreError> {
-        let bytes = self.read_found(&layout::tree(digest)).await?;
+        let location = layout::tree(digest);
+        let bytes = self.read_found(&location).await?;
         let actual = Digest::sha256(&bytes);
         if &actual != digest {
+            // The error of the read matters more than one of the repair.
+            let _ = self.repair(&location, digest).await;
             let expected = digest.clone();
             return Err(StoreError::Corrupt { expected, actual });
         }
@@ -455,13 +458,34 @@ impl Store {
 
     /// Reads content by digest and checks that the bytes still match it.
     pub async fn get_content(&self, digest: &Digest) -> Result<Bytes, StoreError> {
-        let bytes = self.read_found(&layout::content(digest)).await?;
+        let location = layout::content(digest);
+        let bytes = self.read_found(&location).await?;
         let actual = Digest::sha256(&bytes);
         if &actual != digest {
+            let _ = self.repair(&location, digest).await;
             let expected = digest.clone();
             return Err(StoreError::Corrupt { expected, actual });
         }
         Ok(bytes)
+    }
+
+    /// Removes the copies of a content or a manifest that no longer match its digest, here
+    /// and in the shared store behind, so that the next write of the digest stores it again.
+    pub async fn repair(&self, location: &str, digest: &Digest) -> Result<(), StoreError> {
+        let found = match self.local_path(location) {
+            Some(path) => hash_file(&path).await,
+            None => hash_object(&self.operator, location).await,
+        };
+        match found {
+            Ok((actual, _)) if &actual != digest => self.remove(location).await?,
+            Ok(_) => {}
+            Err(error) if error.missing() => {}
+            Err(error) => return Err(error),
+        }
+        if let Some(shared) = &self.shared {
+            Box::pin(shared.repair(location, digest)).await?;
+        }
+        Ok(())
     }
 
     /// Streams verified content to a file, replacing its target only after a complete read.
@@ -556,6 +580,9 @@ impl Store {
         }
         let actual = Digest::from_sha256(&hasher.finalize());
         if &actual != digest {
+            if addressed(location) {
+                let _ = source.repair(location, digest).await;
+            }
             return Err(StoreError::Corrupt {
                 expected: digest.clone(),
                 actual,
@@ -891,6 +918,29 @@ fn plain(error: &opendal::Error) -> String {
         source = cause.source();
     }
     message
+}
+
+/// Whether a location names its object by the digest of its bytes: a content or a manifest.
+fn addressed(location: &str) -> bool {
+    location.starts_with("cas/") || location.starts_with("trees/")
+}
+
+/// The digest and size of an object, read in parts.
+async fn hash_object(operator: &Operator, location: &str) -> Result<(Digest, u64), StoreError> {
+    let size = operator.stat(location).await?.content_length();
+    let reader = operator.reader(location).await?;
+    let mut hasher = Sha256::new();
+    let mut offset = 0;
+    while offset < size {
+        let end = (offset + PART_SIZE as u64).min(size);
+        let bytes = reader.read(offset..end).await?.to_bytes();
+        if bytes.is_empty() {
+            break;
+        }
+        hasher.update(&bytes);
+        offset += bytes.len() as u64;
+    }
+    Ok((Digest::from_sha256(&hasher.finalize()), offset))
 }
 
 /// The digest and size of a local file, read in parts.

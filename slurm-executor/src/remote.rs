@@ -6,10 +6,10 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
+use executor::ContainerRun;
 use executor::binary::Binary;
 use executor::remote::RemoteStage;
 use executor::wrapper::quote;
-use executor::{CONTROL, ContainerRun};
 
 use crate::script::{CONTAINER_EXIT, Container, LOG, NOT_SEEN, command, timed_out, timeout};
 
@@ -76,16 +76,13 @@ pub fn job_script(
         None => "\"${TMPDIR:-/tmp}\"".to_owned(),
     };
     let name = run.root.file_name().unwrap_or_default().to_string_lossy();
-    // Other users may not read the files of the task, unless its container runs as one.
-    let umask = match run.access.hand_back {
-        Some(_) => "000",
-        None => "077",
-    };
+    // The folder of the job is new and private: it keeps the helper, the plan and the log, which
+    // run or count after the task. Only its `data` folder is the folder of the task.
     let mut script = format!(
         "#!/bin/bash\n# The iunctus job of one attempt of a task, on a node without the shared \
-         folders.\numask {umask}\nnode={base}/{}\nmkdir -p \"$node/{CONTROL}\" || exit 1\n\
-         exec >> \"$node/{CONTROL}/{LOG}\" 2>&1\n",
-        quote(&format!("iunctus-{name}"))
+         folders.\numask 077\nmkdir -p {base} && node=$(mktemp -d {base}/{}) || exit 1\n\
+         exec >> \"$node/{LOG}\" 2>&1\n",
+        quote(&format!("iunctus-{name}.XXXXXXXX"))
     );
     let download = match &staging.helper {
         Helper::Path(path) => {
@@ -117,11 +114,15 @@ pub fn job_script(
             address = address.replace(['"', '$', '`', '\\'], ""),
         ));
     }
+    // Other users may not change the files of the task, unless its container runs as one.
+    if run.access.hand_back.is_some() {
+        script.push_str("umask 000\n");
+    }
     let words = node_words(&command(container, run, gpus), &run.root.to_string_lossy());
     script.push_str(&format!(
-        "status={NOT_SEEN}\nif \"$helper\" __stage in \"$node\" {}; then\n    {}{}\n    \
-         status=$?\n    {}fi\necho \"$status\" > \"$node/{CONTROL}/{CONTAINER_EXIT}\"\n\
-         \"$helper\" __stage out \"$node\" || exit 1\nrm -rf \"$node\"\n",
+        "status={NOT_SEEN}\nif \"$helper\" __stage in \"$node/data\" {} \"$node\"; then\n    \
+         {}{}\n    status=$?\n    {}fi\necho \"$status\" > \"$node/{CONTAINER_EXIT}\"\n\
+         \"$helper\" __stage out \"$node/data\" \"$node\" || exit 1\nrm -rf \"$node\"\n",
         quote(plan),
         timeout(time),
         words.join(" "),
@@ -138,7 +139,7 @@ fn node_words(command: &[String], root: &str) -> Vec<String> {
         let bind = index > 0 && matches!(command[index - 1].as_str(), "--bind" | "--volume");
         match word.strip_prefix(root) {
             Some(rest) if bind && (rest.starts_with('/') || rest.starts_with(':')) => {
-                words.push(format!("\"$node\"{}", quote(rest)))
+                words.push(format!("\"$node/data\"{}", quote(rest)))
             }
             _ => words.push(quote(word)),
         }
@@ -204,18 +205,18 @@ mod tests {
             "https://plan",
             None,
         );
-        let expected = "node=\"${TMPDIR:-/tmp}\"/'iunctus-run-P-1-1'\n\
-            mkdir -p \"$node/control\" || exit 1\n\
-            exec >> \"$node/control/slurm.log\" 2>&1\nhelper='/opt/iunctus'\nstatus=125\n\
-            if \"$helper\" __stage in \"$node\" 'https://plan'; then\n    \
+        let expected = "umask 077\nmkdir -p \"${TMPDIR:-/tmp}\" && \
+            node=$(mktemp -d \"${TMPDIR:-/tmp}\"/'iunctus-run-P-1-1.XXXXXXXX') || exit 1\n\
+            exec >> \"$node/slurm.log\" 2>&1\nhelper='/opt/iunctus'\nstatus=125\n\
+            if \"$helper\" __stage in \"$node/data\" 'https://plan' \"$node\"; then\n    \
             timeout --kill-after=10 60 'apptainer' 'exec' '--containall' '--pwd' '/data' \
-            '--bind' \"$node\"':/shared/scratch/run-P-1-1' \
-            '--bind' \"$node\"'/work:/data' \
-            '--bind' \"$node\"'/mounts/opt/data:/opt/data' 'docker://debian@sha256:ab' 'sh' \
-            '/shared/scratch/run-P-1-1/control/wrapper.sh'\n    status=$?\n    \
+            '--bind' \"$node/data\"':/shared/scratch/run-P-1-1' \
+            '--bind' \"$node/data\"'/work:/data' \
+            '--bind' \"$node/data\"'/mounts/opt/data:/opt/data' 'docker://debian@sha256:ab' \
+            'sh' '/shared/scratch/run-P-1-1/control/wrapper.sh'\n    status=$?\n    \
             [ $status -eq 137 ] && [ $SECONDS -ge 60 ] && status=124\nfi\n\
-            echo \"$status\" > \"$node/control/container-exit\"\n\
-            \"$helper\" __stage out \"$node\" || exit 1\nrm -rf \"$node\"\n";
+            echo \"$status\" > \"$node/container-exit\"\n\
+            \"$helper\" __stage out \"$node/data\" \"$node\" || exit 1\nrm -rf \"$node\"\n";
         assert!(script.ends_with(expected), "{script}");
         staging.helper = Helper::Download {
             url: "https://example.org/iunctus".into(),
@@ -225,7 +226,7 @@ mod tests {
         let docker = Container::Engine(EngineCommand::docker("docker"));
         let script = job_script(&docker, &run, &staging, false, None, "https://plan", None);
         assert!(
-            script.contains("umask 077\nnode='/local'/'iunctus-run-P-1-1'\n"),
+            script.contains("node=$(mktemp -d '/local'/'iunctus-run-P-1-1.XXXXXXXX')"),
             "{script}"
         );
         assert!(
@@ -234,7 +235,7 @@ mod tests {
         );
         assert!(script.contains("sha256sum -c --status -"), "{script}");
         assert!(
-            script.contains("'--volume' \"$node\"'/work:/data'"),
+            script.contains("'--volume' \"$node/data\"'/work:/data'"),
             "{script}"
         );
         staging.helper = Helper::Upload(Binary {
@@ -256,5 +257,20 @@ mod tests {
             "{script}"
         );
         assert!(script.contains("from the staging root on"), "{script}");
+        // A task of another user may change its data, but never the helper.
+        let access = Access {
+            hand_back: Some((0, 0)),
+            ..Access::default()
+        };
+        let run = ContainerRun {
+            access: &access,
+            ..run
+        };
+        let script = job_script(&docker, &run, &staging, false, None, "https://plan", url);
+        let open = script.find("umask 000\n").expect("an open umask");
+        assert!(
+            open > script.find("chmod +x").expect("the helper"),
+            "{script}"
+        );
     }
 }

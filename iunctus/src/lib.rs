@@ -14,6 +14,7 @@ mod conda_backend;
 mod detect;
 mod failure;
 mod fetched;
+mod git;
 mod inputs;
 mod insight;
 mod kubernetes;

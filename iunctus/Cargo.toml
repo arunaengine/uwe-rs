@@ -19,6 +19,7 @@ content-store.workspace = true
 cwl-runtime.workspace = true
 executor.workspace = true
 flate2.workspace = true
+gix.workspace = true
 input-schema.workspace = true
 jiff.workspace = true
 nextflow-evaluator.workspace = true

@@ -492,7 +492,9 @@ pub fn build(
         let before = (job.input.values.iter()).any(|value| {
             value.as_str() == Some(file.as_str()) && value.tag("before_update").is_some()
         });
-        let source = match before && !directory && !setting.embedded.simulated {
+        // In the shared directory the job reads what is there, as in Snakemake.
+        let copied = !setting.embedded.simulated && !setting.embedded.shared;
+        let source = match before && !directory && copied {
             true => {
                 let copy = (setting.embedded.scratch())
                     .join("before_update")
@@ -523,11 +525,8 @@ pub fn build(
     }
     // An `update()` output that exists is a copy that the job changes, as Snakemake leaves the
     // file in place for the job instead of removing it.
-    for value in job
-        .output
-        .values
-        .iter()
-        .filter(|value| value.tag("update").is_some())
+    for value in (job.output.values.iter())
+        .filter(|value| value.tag("update").is_some() && !setting.embedded.shared)
     {
         let Some(file) = value.as_str() else {
             continue;
@@ -818,8 +817,13 @@ pub fn build(
     if let Some(benchmark) = job.benchmark.as_ref().and_then(Value::as_str) {
         outputs.push(benchmark.to_owned());
     }
-    // Snakemake makes the folders of a job's outputs before the job runs.
-    for folder in output_folders(&outputs) {
+    // Snakemake makes the folders of a job's outputs before the job runs; the shared
+    // directory gets them when the job starts.
+    let folders = match setting.embedded.shared {
+        true => Vec::new(),
+        false => output_folders(&outputs),
+    };
+    for folder in folders {
         inputs.push(Input {
             path: folder,
             source: String::new(),
@@ -832,11 +836,13 @@ pub fn build(
     let taken: Vec<&str> = (inputs.iter().map(|input| input.path.as_str()))
         .chain(outputs.iter().map(String::as_str))
         .collect();
-    if rule.shadow.is_none() {
+    if rule.shadow.is_none() && !setting.embedded.shared {
         let sources = setting.sources.inputs(&taken);
         inputs.extend(sources);
     }
-    if let Some(mode @ ("shallow" | "full")) = rule.shadow.as_deref() {
+    if let Some(mode @ ("shallow" | "full")) = rule.shadow.as_deref()
+        && !setting.embedded.shared
+    {
         crate::shadow::stage(setting, mode, &mut inputs, &outputs, &mut command)?;
     }
     let mut environment = BTreeMap::new();

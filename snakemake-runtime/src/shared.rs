@@ -152,6 +152,25 @@ pub fn remove(path: &Path) -> std::io::Result<()> {
     }
 }
 
+/// Makes an empty file for a `touch()` output that is not there, or a directory for one
+/// flagged `directory()`, and gives one that is there the current time.
+pub fn touch(path: &Path, directory: bool) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if directory {
+        std::fs::create_dir_all(path)?;
+    }
+    if path.is_dir() {
+        return std::fs::File::open(path)?.set_modified(std::time::SystemTime::now());
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?
+        .set_modified(std::time::SystemTime::now())
+}
+
 fn texts(values: &[Value]) -> Vec<String> {
     values
         .iter()

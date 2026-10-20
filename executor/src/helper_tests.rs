@@ -176,3 +176,45 @@ fn keeps_plan_apart() {
         assert!(error.contains("leaves the folder"), "{name:?}: {error}");
     }
 }
+
+#[test]
+fn stalled_download_fails() {
+    use std::io::{BufRead, BufReader};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    // The server sends a part of the body and then nothing more, but keeps the connection.
+    std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut line = String::new();
+        while reader.read_line(&mut line).is_ok_and(|count| count > 2) {
+            line.clear();
+        }
+        let mut stream = stream;
+        let head = "HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n0123456789";
+        stream.write_all(head.as_bytes()).unwrap();
+        stream.flush().unwrap();
+        std::thread::sleep(Duration::from_secs(60));
+    });
+    let folder = tempfile::tempdir().unwrap();
+    let input = Input {
+        path: "work/in.txt".into(),
+        sha256: "00".repeat(32),
+        size: 100,
+        executable: false,
+        request: Request {
+            method: "GET".into(),
+            url: format!("http://{address}/in.txt"),
+            headers: Vec::new(),
+        },
+    };
+    let path = folder.path().join("in.txt");
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let client = client().unwrap();
+        let _ = sender.send(download(&client, &input, &path, false));
+    });
+    let result = receiver.recv_timeout(Duration::from_secs(30));
+    let error = result.expect("a stalled download ends").unwrap_err();
+    assert!(!error.is_empty());
+}

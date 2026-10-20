@@ -1218,12 +1218,14 @@ impl Hook {
                     default_target = matches!(first.plain(), Value::Bool(true));
                 }
                 RuleKeyword::Shadow => {
-                    if matches!(first.as_str(), Some("minimal" | "shallow" | "full")) {
-                        rule.shadow = first.as_str().map(str::to_owned);
+                    let modes = ["minimal", "copy-minimal", "shallow", "full"];
+                    if let Some(mode) = first.as_str().filter(|mode| modes.contains(mode)) {
+                        rule.shadow = Some(mode.to_owned());
+                    } else if matches!(first.plain(), Value::Bool(true)) {
+                        rule.shadow = Some("full".to_owned());
                     } else if interpreter.truthy(&first)? {
-                        return Err(Error::unsupported(format!(
-                            "shadow mode {} for rule {}; only 'minimal', 'shallow' and 'full' are supported",
-                            interpreter.repr(&first)?,
+                        return Err(workflow_error(format!(
+                            "RuleException in rule {}: Shadow must either be 'minimal', 'copy-minimal', 'shallow', 'full', or True (equivalent to 'full')",
                             rule.name
                         )));
                     }

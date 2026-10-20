@@ -507,11 +507,17 @@ pub fn build(
             }
             false => source,
         };
+        // A `copy-minimal` shadow gives the job copies of its inputs.
+        let writable = match rule.shadow.as_deref() {
+            Some("copy-minimal") => workflow_graph::Writable::Copy,
+            _ => workflow_graph::Writable::No,
+        };
         inputs.push(Input {
             path: file,
             source: source.to_string_lossy().into_owned(),
             directory,
             content: None,
+            writable,
             ..Default::default()
         });
     }

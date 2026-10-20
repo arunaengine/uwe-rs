@@ -25,6 +25,10 @@ struct Scripted {
     /// Exit codes of containers of tasks that run several, by template and container; the
     /// others end with 0.
     containers: HashMap<&'static str, Vec<(&'static str, i32)>>,
+    /// Directory outputs hold the files their task got below them, as container mounts do.
+    mounts: bool,
+    /// The names in the input folders of each task when it ran, by task.
+    listings: HashMap<String, Vec<String>>,
 }
 
 impl Executor for Scripted {
@@ -70,6 +74,18 @@ impl Scripted {
                 _ => codes.into_iter().find(|code| *code != 0).unwrap_or(0),
             };
         }
+        if self.mounts {
+            let mut names = Vec::new();
+            for input in task.inputs.iter().filter(|input| input.directory) {
+                for entry in std::fs::read_dir(&input.source).into_iter().flatten() {
+                    let name = entry.expect("an entry").file_name();
+                    names.push(format!("{}/{}", input.path, name.to_string_lossy()));
+                }
+            }
+            names.sort();
+            self.listings.insert(short(&task.name), names);
+            keep_given(task, &outcome);
+        }
         for file in &outcome.files {
             let path = format!("/{}", file.path.trim_start_matches('/'));
             let write = self.writes.entry(path.clone()).or_default();
@@ -79,6 +95,27 @@ impl Scripted {
             }
         }
         Ok(outcome)
+    }
+}
+
+/// Copies the input folder of each directory output into it, as a container mount, except
+/// the files that `rm` names.
+fn keep_given(task: &Task, outcome: &Outcome) {
+    let words = task.command.join(" ");
+    for directory in outcome.files.iter().filter(|file| file.directory) {
+        let mount = format!("/{}", directory.path.trim_matches('/'));
+        let given = task.inputs.iter().find(|input| input.path == mount);
+        let Some(source) = given.map(|input| std::path::Path::new(&input.source)) else {
+            continue;
+        };
+        for entry in std::fs::read_dir(source).expect("the input folder") {
+            let name = entry.expect("an entry").file_name();
+            let name = name.to_string_lossy();
+            if !words.contains(&format!("rm {mount}/{name}")) {
+                let target = std::path::Path::new(&directory.location).join(&*name);
+                std::fs::copy(source.join(&*name), target).expect("the input is copied");
+            }
+        }
     }
 }
 
@@ -94,11 +131,13 @@ struct Setup {
     /// Go on after a failure, as `-keep-going` asks.
     keep_going: bool,
     containers: Vec<(&'static str, Vec<(&'static str, i32)>)>,
+    mounts: bool,
 }
 
 struct Ran {
     execution: Execution,
     warnings: Vec<String>,
+    listings: HashMap<String, Vec<String>>,
 }
 
 impl Ran {
@@ -217,12 +256,15 @@ fn run_with(workflow: &str, setup: Setup) -> Ran {
         calls: HashMap::new(),
         writes: HashMap::new(),
         containers: setup.containers.into_iter().collect(),
+        mounts: setup.mounts,
+        listings: HashMap::new(),
     };
     let execution = execute("workflow.yaml", &mut driver, &mut executor);
     let warnings = driver.warnings().to_vec();
     Ran {
         execution,
         warnings,
+        listings: executor.listings,
     }
 }
 
@@ -1389,6 +1431,39 @@ fn real() -> Setup {
         real_inputs: true,
         ..Setup::default()
     }
+}
+
+#[test]
+fn mirrors_volume_removals() {
+    let text = r#"apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata: {generateName: test-}
+spec:
+  entrypoint: main
+  volumeClaimTemplates:
+  - metadata: {name: work}
+    spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 1Mi}}}
+  templates:
+  - name: main
+    steps:
+    - - {name: make, template: make}
+    - - {name: remove, template: remove}
+    - - {name: list, template: list}
+  - name: make
+    container: {image: alpine, command: [sh, -c, "touch /work/a /work/b"], volumeMounts: [{name: work, mountPath: /work}]}
+  - name: remove
+    container: {image: alpine, command: [sh, -c, "rm /work/a"], volumeMounts: [{name: work, mountPath: /work}]}
+  - name: list
+    container: {image: alpine, command: [ls, /work], volumeMounts: [{name: work, mountPath: /work}]}
+"#;
+    let mounts = Setup {
+        mounts: true,
+        ..real()
+    };
+    let ran = run_with(text, mounts);
+    ran.succeeded();
+    let listed = &ran.listings["[2].list"];
+    assert_eq!(listed, &["/work/b"], "Argo lists only b after rm /work/a");
 }
 
 #[test]

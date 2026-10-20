@@ -299,8 +299,9 @@ fn propagates_volume_updates() {
             })
             .unwrap();
         assert_eq!(next.len(), 1);
-        assert_eq!(next[0].inputs[0].path, "/data/counter");
-        assert_eq!(std::fs::read(&next[0].inputs[0].source).unwrap(), b"1");
+        assert_eq!(next[0].inputs[0].path, "/data");
+        let counter = std::path::Path::new(&next[0].inputs[0].source).join("counter");
+        assert_eq!(std::fs::read(counter).unwrap(), b"1");
         std::fs::write(directory.join("counter"), "2").unwrap();
         let next = run
             .complete(Outcome {
@@ -315,8 +316,9 @@ fn propagates_volume_updates() {
             })
             .unwrap();
         assert_eq!(next.len(), 1);
-        assert_eq!(next[0].inputs[0].path, "/data/counter");
-        assert_eq!(std::fs::read(&next[0].inputs[0].source).unwrap(), b"2");
+        assert_eq!(next[0].inputs[0].path, "/data");
+        let counter = std::path::Path::new(&next[0].inputs[0].source).join("counter");
+        assert_eq!(std::fs::read(counter).unwrap(), b"2");
         assert!(complete(run.as_mut(), next.into_iter().next().unwrap()).is_empty());
         assert!(run.finish().is_ok());
     });

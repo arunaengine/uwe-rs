@@ -1,0 +1,8 @@
+enter a
+enter b
+exit b None
+exit a None
+['a0', 'a1', 'after']
+enter c
+exit c ValueError
+[1, 2]

@@ -16,7 +16,8 @@ pub struct Placed {
     /// Each output as the task collects it, an absolute path, and as the job declared it.
     pub outputs: Vec<(String, String)>,
     pub shadows: Vec<Shadow>,
-    /// Files written into the working directory for the task, like its scripts.
+    /// Files written into the working directory for the task, like its scripts, which go
+    /// once no task that runs needs them.
     pub written: Vec<PathBuf>,
 }
 
@@ -115,13 +116,15 @@ pub fn place(workdir: &Path, task: &mut Task, placed: &mut Placed) -> std::io::R
         }
         if let Some(content) = &input.content {
             // An absolute path, since a job of a shadow directory starts there.
-            let target = workdir.join(own_path(&input.path, task.id.0));
+            let target = workdir.join(own_path(&input.path, content));
             rename(task, &input.path, &target.to_string_lossy());
             if let Some(parent) = target.parent() {
                 std::fs::create_dir_all(parent)?;
             }
             std::fs::write(&target, content)?;
+            let path = target.to_string_lossy().into_owned();
             placed.written.push(target);
+            kept.push(present(path, false));
             continue;
         }
         let source = Path::new(&input.source);
@@ -135,6 +138,13 @@ pub fn place(workdir: &Path, task: &mut Task, placed: &mut Placed) -> std::io::R
         if !same {
             copy_into(source, &target)?;
         }
+        // The runner hashes a declared input where it is, for the cache key of the job. A job
+        // that reads files it does not declare may get a stale stored result, as Snakemake's
+        // own mtime checks may miss such a file; the README says so.
+        kept.push(present(
+            target.to_string_lossy().into_owned(),
+            input.directory,
+        ));
     }
     kept.extend(local_time());
     let folder = workdir.to_string_lossy().into_owned();
@@ -142,7 +152,7 @@ pub fn place(workdir: &Path, task: &mut Task, placed: &mut Placed) -> std::io::R
         path: folder.clone(),
         source: folder.clone(),
         directory: true,
-        writable: Writable::InPlace,
+        writable: Writable::Shared,
         ..Input::default()
     });
     task.inputs = kept;
@@ -188,9 +198,6 @@ pub fn finish(placed: Placed, outcome: &mut Outcome, succeeded: bool) -> std::io
         if let Some((_, declared)) = declared {
             file.path = declared.trim_end_matches('/').to_owned();
         }
-    }
-    for file in &placed.written {
-        let _ = std::fs::remove_file(file);
     }
     Ok(())
 }
@@ -418,6 +425,23 @@ fn unshadow(folder: &Path, file: &str) -> std::io::Result<()> {
     std::fs::rename(&shadowed, &real)
 }
 
+/// Lets the owner write a file, or the files and folders below a folder.
+pub fn make_writable(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = std::fs::symlink_metadata(path)?;
+    if metadata.is_symlink() {
+        return Ok(());
+    }
+    let mode = metadata.permissions().mode() | 0o200;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
+    if metadata.is_dir() {
+        for entry in std::fs::read_dir(path)? {
+            make_writable(&entry?.path())?;
+        }
+    }
+    Ok(())
+}
+
 /// Copies a file or a directory to `target`, leaving files that already have that content.
 pub fn copy_into(source: &Path, target: &Path) -> std::io::Result<()> {
     if source.is_dir() {
@@ -439,12 +463,29 @@ pub fn copy_into(source: &Path, target: &Path) -> std::io::Result<()> {
 
 /// A path of its own for a file that the task writes below `.snakemake`, where tasks that run
 /// at once would otherwise write the same file.
-fn own_path(path: &str, task: u64) -> String {
+fn own_path(path: &str, content: &str) -> String {
     if !path.starts_with(".snakemake/") {
         return path.to_owned();
     }
+    use sha2::Digest;
+    let digest = sha2::Sha256::digest(content.as_bytes());
+    let short: String = digest[..6]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
     let (folder, name) = path.rsplit_once('/').unwrap_or(("", path));
-    format!("{folder}/iunctus-{task}-{name}")
+    // Named by the content, so that a job gets the same command in every run.
+    format!("{folder}/iunctus-{short}-{name}")
+}
+
+/// An input that lies in the working directory already.
+fn present(path: String, directory: bool) -> Input {
+    Input {
+        source: path.clone(),
+        path,
+        directory,
+        ..Input::default()
+    }
 }
 
 /// Uses `new` for `old` in the command and the script of a task.
@@ -502,9 +543,9 @@ mod tests {
             PathBuf::from("../../a/b.txt")
         );
         assert_eq!(
-            own_path(".snakemake/scripts/x.py", 7),
-            ".snakemake/scripts/iunctus-7-x.py"
+            own_path(".snakemake/scripts/x.py", "a"),
+            ".snakemake/scripts/iunctus-ca978112ca1b-x.py"
         );
-        assert_eq!(own_path("x.py", 7), "x.py");
+        assert_eq!(own_path("x.py", "a"), "x.py");
     }
 }

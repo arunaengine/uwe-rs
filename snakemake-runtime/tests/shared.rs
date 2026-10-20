@@ -16,6 +16,8 @@ struct Host {
     steps: HashMap<&'static str, Step>,
     store: PathBuf,
     tasks: Vec<workflow_graph::Task>,
+    /// Answers every task from a stored result that holds `cached`, as a cache hit does.
+    cached: bool,
 }
 
 impl Executor for Host {
@@ -31,6 +33,28 @@ impl Executor for Host {
                 .is_some_and(|word| word.contains("cd \"$1\""))
         {
             folder = PathBuf::from(&task.command[4]);
+        }
+        if self.cached {
+            let mut files = Vec::new();
+            for (number, output) in task.outputs.iter().enumerate() {
+                let location = self.store.join(format!("cached-{}-{number}", task.id));
+                std::fs::write(&location, "cached").expect("a stored output");
+                // The store keeps its files read-only.
+                let mut permissions = std::fs::metadata(&location).unwrap().permissions();
+                permissions.set_readonly(true);
+                std::fs::set_permissions(&location, permissions).unwrap();
+                files.push(OutputFile {
+                    path: output.clone(),
+                    location: location.to_string_lossy().into_owned(),
+                    ..OutputFile::default()
+                });
+            }
+            return Running::ended(Ok(Outcome {
+                id: task.id,
+                files,
+                cached: true,
+                ..Outcome::default()
+            }));
         }
         let exit_code = match self.steps.get(task.step.as_str()) {
             Some(step) => step(&folder),
@@ -112,7 +136,7 @@ rule b:
     let place = task
         .inputs
         .iter()
-        .find(|input| input.writable == Writable::InPlace);
+        .find(|input| input.writable == Writable::Shared);
     assert_eq!(
         place.map(|input| Path::new(&input.source)),
         Some(work.as_path())
@@ -533,6 +557,54 @@ rule a:
     assert_eq!(out, "foo\n");
 }
 
+/// A job that a stored result answers gets its outputs back in the working directory, with
+/// the time, protection and record of a job that ran, so that Snakemake's checks agree.
+#[test]
+fn restores_cached_outputs() {
+    let folder = folder();
+    let work = folder.path().join("work");
+    let snakefile = "rule all:\n    input: 'kept.txt', 'plain.txt'\nrule keep:\n    output: protected('kept.txt')\n    shell: 'unused'\nrule plain:\n    output: 'plain.txt'\n    shell: 'unused'\n";
+    std::fs::write(work.join("Snakefile"), snakefile).unwrap();
+    let launch = Launch {
+        target: work.clone(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let options = snakemake_runtime::RunSettings {
+        shared_workdir: true,
+        ..Default::default()
+    };
+    let mut driver = snakemake_runtime::driver_with_options(&launch, Default::default(), options)
+        .expect("a driver");
+    let store = folder.path().join("store");
+    std::fs::create_dir_all(&store).unwrap();
+    let mut host = Host {
+        steps: HashMap::new(),
+        store,
+        tasks: Vec::new(),
+        cached: true,
+    };
+    let execution = Engine::new(&mut host).run("Snakefile", driver.as_mut());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    assert_eq!(
+        std::fs::read_to_string(work.join("kept.txt")).unwrap(),
+        "cached"
+    );
+    assert!(
+        std::fs::metadata(work.join("kept.txt"))
+            .unwrap()
+            .permissions()
+            .readonly()
+    );
+    let plain = std::fs::metadata(work.join("plain.txt")).unwrap();
+    assert!(
+        !plain.permissions().readonly(),
+        "a restored output may change"
+    );
+    let records = std::fs::read_dir(work.join(".snakemake/iunctus-signatures")).unwrap();
+    assert_eq!(records.count(), 2, "the outputs are recorded");
+}
+
 /// Runs a Snakefile in the working directory of `folder` with jobs in the shared directory;
 /// the folder, the tasks and the error.
 fn run(
@@ -559,6 +631,7 @@ fn run(
         steps: steps.iter().copied().collect(),
         store,
         tasks: Vec::new(),
+        cached: false,
     };
     let execution = Engine::new(&mut host).run("Snakefile", driver.as_mut());
     let error = execution.error.map(|error| error.to_string());

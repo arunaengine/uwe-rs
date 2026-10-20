@@ -151,9 +151,11 @@ pub struct Interpreter {
     /// The local names of the code that calls a native object, for natives that read them,
     /// like Snakemake's `shell()`, which formats its command with them.
     pub caller_locals: Option<Rc<Scope>>,
-    /// Statements executed so far, and the most allowed, so that a loop that never ends stops.
+    /// Statements executed in the current evaluation, and the most allowed, so that a loop
+    /// that never ends stops. Each evaluation the host starts gets the whole budget.
     pub steps: u64,
     pub step_limit: u64,
+    evaluating: bool,
     depth: usize,
     pub depth_limit: usize,
     /// Where the stack was when the interpreter was made, and how many bytes below it calls
@@ -184,6 +186,7 @@ impl Interpreter {
             caller_locals: None,
             steps: 0,
             step_limit: 500_000_000,
+            evaluating: false,
             depth: 0,
             depth_limit: 1000,
             stack_start: stack_address(),
@@ -223,10 +226,26 @@ impl Interpreter {
 
     /// Runs a module's statements with the given globals.
     pub fn run(&mut self, suite: &[ruff_python_ast::Stmt], frame: &Frame) -> Result<(), Error> {
-        match self.exec_suite(frame, suite)? {
+        match self.evaluation(|this| this.exec_suite(frame, suite))? {
             statement::Flow::Next => Ok(()),
             _ => Err(Error::new("SyntaxError", "'return' outside function")),
         }
+    }
+
+    /// Runs work that the host starts with a fresh step budget; work it starts in turn,
+    /// like calls from a module body, shares that budget.
+    pub(crate) fn evaluation<T>(
+        &mut self,
+        body: impl FnOnce(&mut Self) -> Result<T, Error>,
+    ) -> Result<T, Error> {
+        if self.evaluating {
+            return body(self);
+        }
+        self.evaluating = true;
+        self.steps = 0;
+        let result = body(self);
+        self.evaluating = false;
+        result
     }
 
     /// Runs Python code given as text in new globals, and returns the globals.
@@ -250,7 +269,7 @@ impl Interpreter {
         let parsed = ruff_python_parser::parse_expression(text)
             .map_err(|error| Error::new("SyntaxError", error.error.to_string()))?;
         let frame = Frame::module(globals.clone(), Source::new("<string>", text));
-        self.eval(&frame, parsed.expr())
+        self.evaluation(|this| this.eval(&frame, parsed.expr()))
     }
 
     fn count_step(&mut self) -> Result<(), Error> {

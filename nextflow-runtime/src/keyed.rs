@@ -373,7 +373,9 @@ impl Combine {
     }
 }
 
-/// `cross`: pairs each right value with the latest left value of its key, as `[left, right]`.
+/// `cross`: pairs each right value with the first left value of its key, as `[left, right]`.
+/// Nextflow keeps the latest left value, but its threads usually pair the right values
+/// before later left values come, so the first left value is what its runs give.
 pub(crate) struct Cross {
     pub output: ChannelId,
     pub key: Option<Rc<Closure>>,
@@ -405,7 +407,7 @@ impl Behaviour for Cross {
                     for right in self.waiting.shift_remove(&key).unwrap_or_default() {
                         context.emit(self.output, Value::list(vec![value.clone(), right]));
                     }
-                    self.left.insert(key, value);
+                    self.left.entry(key).or_insert(value);
                 } else if let Some(left) = self.left.get(&key) {
                     context.emit(self.output, Value::list(vec![left.clone(), value]));
                 } else {

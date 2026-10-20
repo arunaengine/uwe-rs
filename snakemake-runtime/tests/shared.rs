@@ -122,7 +122,7 @@ rule b:
 }
 
 #[test]
-fn touches_outputs_in_place() {
+fn touches_shared_outputs() {
     let snakefile = r#"
 rule all:
     input: "flag", "kept.txt"

@@ -124,6 +124,13 @@ pub struct Session {
     /// in a folder of its own; the tasks that run there, with what the session must undo.
     shared: bool,
     placed: HashMap<TaskId, crate::shared::Placed>,
+    /// The CWL runs of `cwl:` jobs by job, the job of each of their tasks, the CWL documents
+    /// of jobs whose run has not started, and what the runs need from the session.
+    cwl: HashMap<usize, crate::cwl::Run>,
+    cwl_tasks: HashMap<TaskId, usize>,
+    cwl_jobs: HashMap<usize, crate::cwl::Job>,
+    cwl_engine: Option<(String, executor::CancellationToken)>,
+    storage: Storage,
 }
 
 struct SignaturePublication {
@@ -228,6 +235,11 @@ impl Session {
             rerun_triggers: None,
             shared: false,
             placed: HashMap::new(),
+            cwl: HashMap::new(),
+            cwl_tasks: HashMap::new(),
+            cwl_jobs: HashMap::new(),
+            cwl_engine: None,
+            storage: storage.clone(),
         })
     }
 
@@ -505,6 +517,7 @@ impl Session {
                     task,
                     signature,
                     usage,
+                    ..
                 } = crate::task::build(
                     &mut self.interpreter,
                     &setting,
@@ -782,6 +795,7 @@ impl Session {
                     task,
                     signature,
                     usage,
+                    cwl,
                 } = {
                     let state = self.state.borrow();
                     let setting = crate::task::TaskSetting {
@@ -796,6 +810,9 @@ impl Session {
                 .map_err(|error| self.error(&error))?;
                 self.signatures.insert(job, signature);
                 self.usages.insert(job, usage);
+                if let Some(cwl) = cwl {
+                    self.cwl_jobs.insert(job, cwl);
+                }
                 task
             };
             let usage = self.usages.get(&job).cloned().unwrap_or_default();
@@ -849,9 +866,167 @@ impl Session {
             self.attempts.insert(job, 1);
             self.jobs_of_tasks.insert(id, job);
             self.outstanding += 1;
-            tasks.push(task);
+            match self.cwl_jobs.remove(&job) {
+                Some(cwl) => tasks.extend(self.start_cwl(job, id, cwl)?),
+                None => tasks.push(task),
+            }
         }
         Ok(tasks)
+    }
+
+    /// Starts the CWL run of a `cwl:` job, whose task `id` ends once the run did. Snakemake
+    /// writes the input object to a file and runs cwltool, which leaves the outputs in the
+    /// working directory.
+    fn start_cwl(
+        &mut self,
+        job: usize,
+        id: TaskId,
+        cwl: crate::cwl::Job,
+    ) -> Result<Vec<Task>, DriverError> {
+        let folder = (self.launch.scratch.join("snakemake"))
+            .join("cwl")
+            .join(id.0.to_string());
+        let inputs = folder.join("job.json");
+        std::fs::create_dir_all(&folder)
+            .and_then(|()| std::fs::write(&inputs, cwl.inputs.to_string()))
+            .map_err(|error| DriverError::new(format!("cannot write the CWL job: {error}")))?;
+        let launch = Launch {
+            target: PathBuf::from(&cwl.document),
+            inputs: Some(inputs),
+            output_dir: Some(self.workdir.clone()),
+            scratch: folder.clone(),
+            simulated: self.launch.simulated,
+            ..Launch::default()
+        };
+        let mut options = cwl_runtime::Options::default();
+        if let Some(image) = self.state.borrow().default_image.clone() {
+            options.image = image;
+        }
+        if let Some((engine, cancel)) = &self.cwl_engine {
+            options.javascript =
+                cwl_runtime::JavaScriptSettings::new(engine.clone(), cancel.clone());
+        }
+        let downloads = folder.join("downloads");
+        let mut driver =
+            cwl_runtime::driver_with_options(&launch, &self.storage, downloads, options)?;
+        if let Some(files) = self.files.task_files() {
+            driver.use_files(files);
+        }
+        let tasks = driver.start()?;
+        let mut run = crate::cwl::Run::new(driver, id);
+        let counter = self.next_task.clone();
+        let next = || {
+            let id = TaskId(counter.get());
+            counter.set(id.0 + 1);
+            id
+        };
+        let tasks = run.number(tasks, &next);
+        for task in &tasks {
+            self.cwl_tasks.insert(task.id, job);
+        }
+        self.outstanding += tasks.len();
+        let idle = run.idle();
+        self.cwl.insert(job, run);
+        if idle {
+            return self.end_cwl(job, None);
+        }
+        Ok(tasks)
+    }
+
+    /// Takes the outcome of a task of the CWL run of a job.
+    fn complete_cwl(&mut self, job: usize, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+        self.outstanding = self.outstanding.saturating_sub(1);
+        let Some(run) = self.cwl.get_mut(&job) else {
+            return Err(DriverError::new(format!("unknown task {}", outcome.id)));
+        };
+        let identity = (outcome.id, outcome.attempt);
+        let more = match run.complete(outcome) {
+            Ok((more, accepted)) => {
+                if accepted {
+                    let acceptance = self.acceptance.lock();
+                    acceptance
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .insert(identity);
+                }
+                more
+            }
+            Err(error) => return self.end_cwl(job, Some(error.message)),
+        };
+        let counter = self.next_task.clone();
+        let next = || {
+            let id = TaskId(counter.get());
+            counter.set(id.0 + 1);
+            id
+        };
+        let more = run.number(more, &next);
+        let idle = run.idle();
+        for task in &more {
+            self.cwl_tasks.insert(task.id, job);
+        }
+        self.outstanding += more.len();
+        if !idle {
+            return Ok(more);
+        }
+        self.end_cwl(job, None)
+    }
+
+    /// Ends the CWL run of a job: its output files go to the working directory, and the
+    /// task of the job ends with those that the job declared.
+    fn end_cwl(&mut self, job: usize, error: Option<String>) -> Result<Vec<Task>, DriverError> {
+        let Some(mut run) = self.cwl.remove(&job) else {
+            return Ok(Vec::new());
+        };
+        let finished = match error {
+            Some(message) => Err(message),
+            None => run.finish().map_err(|error| error.message),
+        };
+        let declared = (self.planner.as_ref())
+            .map(|planner| planner.jobs[job].output_files())
+            .unwrap_or_default();
+        let mut outcome = Outcome {
+            id: run.task,
+            attempt: self.attempts.get(&job).copied().unwrap_or(1),
+            ..Outcome::default()
+        };
+        match finished {
+            Err(message) => {
+                eprintln!("{message}");
+                outcome.exit_code = 1;
+            }
+            Ok(deliveries) => {
+                for delivery in deliveries {
+                    let target = PathBuf::from(&delivery.target);
+                    let own = (declared.iter())
+                        .find(|output| self.interpreter.host.resolve(output) == target);
+                    if let Some(path) = own {
+                        let local = self.files.local_location(Path::new(&delivery.location));
+                        outcome.files.push(workflow_graph::OutputFile {
+                            path: path.clone(),
+                            location: delivery.location.clone(),
+                            directory: local.as_ref().is_ok_and(|local| local.is_dir()),
+                            ..workflow_graph::OutputFile::default()
+                        });
+                    }
+                    // Jobs of the shared directory read the outputs in place at once.
+                    if self.shared {
+                        let local = self.files.local_location(Path::new(&delivery.location));
+                        local
+                            .and_then(|local| crate::shared::copy_into(&local, &target))
+                            .map_err(|error| {
+                                DriverError::new(format!(
+                                    "cannot place {}: {error}",
+                                    delivery.target
+                                ))
+                            })?;
+                    } else if own.is_none() {
+                        (self.deliveries.lock())
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .push(delivery);
+                    }
+                }
+            }
+        }
+        self.complete(outcome)
     }
 
     /// Runs the Python packages without a stand-in in a container of the local engine
@@ -866,6 +1041,7 @@ impl Session {
         cancel: executor::CancellationToken,
     ) {
         self.embedded.python_image = settings.image.clone();
+        self.cwl_engine = Some((settings.engine.clone(), cancel.clone()));
         let mut folders = vec![self.workdir.clone()];
         if let Some(folder) = self.snakefile.parent() {
             folders.push(folder.to_path_buf());
@@ -1028,6 +1204,9 @@ impl Session {
     }
 
     pub fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+        if let Some(job) = self.cwl_tasks.remove(&outcome.id) {
+            return self.complete_cwl(job, outcome);
+        }
         let mut outcome = outcome;
         if let Some(placed) = self.placed.remove(&outcome.id) {
             let succeeded = outcome.exit_code == 0;
@@ -1606,7 +1785,10 @@ impl Session {
             let rule = planner.rules[planner.jobs[member].rule].clone();
             let entry = planner.jobs[member].clone();
             let crate::task::Built {
-                task, signature, ..
+                task,
+                signature,
+                cwl,
+                ..
             } = {
                 let state = self.state.borrow();
                 let setting = crate::task::TaskSetting {
@@ -1619,6 +1801,9 @@ impl Session {
                 crate::task::build(&mut self.interpreter, &setting, &rule, &entry, id, attempt)
             }
             .map_err(|error| self.error(&error))?;
+            if cwl.is_some() {
+                return Err(cwl_grouped());
+            }
             self.signatures.insert(member, signature);
             declared.push((member, task.outputs.clone()));
             members.push(task);
@@ -1740,7 +1925,10 @@ impl Session {
                 sources: &self.sources,
             };
             let crate::task::Built {
-                task, signature, ..
+                task,
+                signature,
+                cwl,
+                ..
             } = crate::task::build(
                 &mut self.interpreter,
                 &setting,
@@ -1750,6 +1938,9 @@ impl Session {
                 attempt,
             )
             .map_err(|error| driver_error(&error, &self.workdir))?;
+            if cwl.is_some() {
+                return Err(cwl_grouped());
+            }
             self.signatures.insert(*job, signature);
             declared.push((*job, task.outputs.clone()));
             members.push(task);
@@ -2093,7 +2284,8 @@ impl Session {
         let retries = (rule.retries.as_ref())
             .and_then(Value::as_int)
             .map_or(0, |retries| retries.max(0) as u32);
-        if attempt > retries {
+        // The CWL run of a `cwl:` job does not start again.
+        if attempt > retries || matches!(rule.action, crate::rule::Action::Cwl(_)) {
             return Ok(None);
         }
         eprintln!(
@@ -2164,6 +2356,13 @@ impl Session {
         self.interpreter.packages.stop();
         Ok(())
     }
+}
+
+/// Why a `cwl:` job cannot run in a group: its CWL run has tasks of its own.
+fn cwl_grouped() -> DriverError {
+    DriverError::unsupported(
+        "a cwl rule in a group, pipe or service: iunctus runs the CWL document of a cwl rule as tasks of their own",
+    )
 }
 
 fn output_checksums(path: &Path) -> std::io::Result<[(&'static str, String); 3]> {

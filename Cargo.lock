@@ -5754,6 +5754,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "config-file",
+ "cwl-runtime",
  "executor",
  "fancy-regex 0.19.2",
  "indexmap 2.14.2",

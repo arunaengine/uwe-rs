@@ -419,7 +419,7 @@ fn unshadow(folder: &Path, file: &str) -> std::io::Result<()> {
 }
 
 /// Copies a file or a directory to `target`, leaving files that already have that content.
-fn copy_into(source: &Path, target: &Path) -> std::io::Result<()> {
+pub fn copy_into(source: &Path, target: &Path) -> std::io::Result<()> {
     if source.is_dir() {
         std::fs::create_dir_all(target)?;
         for entry in std::fs::read_dir(source)? {

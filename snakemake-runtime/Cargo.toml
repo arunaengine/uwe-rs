@@ -13,6 +13,7 @@ publish.workspace = true
 
 [dependencies]
 base64.workspace = true
+cwl-runtime.workspace = true
 executor.workspace = true
 fancy-regex.workspace = true
 indexmap.workspace = true

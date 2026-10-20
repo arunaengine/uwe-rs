@@ -83,6 +83,11 @@ impl WorkflowFiles {
         self.produced.borrow_mut().insert(path.to_owned(), produced);
     }
 
+    /// The files of the tasks, once the engine gave them.
+    pub fn task_files(&self) -> Option<Arc<dyn Files>> {
+        self.task_files.borrow().get().cloned()
+    }
+
     pub fn local_location(&self, location: &Path) -> std::io::Result<PathBuf> {
         match self.task_files.borrow().get() {
             Some(files) => files.local(&location.to_string_lossy()),

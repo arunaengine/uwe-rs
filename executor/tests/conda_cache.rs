@@ -528,11 +528,14 @@ async fn rejects_corrupt_publication() {
     let p = preparation();
     let store = Store::local(&folder.path().join("cache")).unwrap();
     let digest = store.put_content(ARCHIVE.as_bytes().into()).await.unwrap();
-    std::fs::write(
-        store.local_path(&layout::content(&digest)).unwrap(),
-        "corrupt",
-    )
-    .unwrap();
+    // Rotten bits keep the size and the read-only mode, so only a read of the object finds
+    // them; a write of the same content would repair a damage it can see.
+    let stored = store.local_path(&layout::content(&digest)).unwrap();
+    let unlocked = std::os::unix::fs::PermissionsExt::from_mode(0o644);
+    std::fs::set_permissions(&stored, unlocked).unwrap();
+    std::fs::write(&stored, "x".repeat(ARCHIVE.len())).unwrap();
+    let locked = std::os::unix::fs::PermissionsExt::from_mode(0o444);
+    std::fs::set_permissions(&stored, locked).unwrap();
     let (engine, server) = engine(
         folder.path(),
         vec![images(&['b']), inspect(&p), inspect(&p), export()],

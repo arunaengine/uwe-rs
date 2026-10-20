@@ -224,11 +224,11 @@ async fn rejects_invalid_archives() {
         let digest = store.put_content(ARCHIVE.as_bytes().into()).await.unwrap();
         let mut bounded = limits();
         if corrupt {
-            std::fs::write(
-                store.local_path(&layout::content(&digest)).unwrap(),
-                "corrupted archive data",
-            )
-            .unwrap();
+            // Store files are read-only; the test unlocks one to damage it.
+            let stored = store.local_path(&layout::content(&digest)).unwrap();
+            let unlocked = std::os::unix::fs::PermissionsExt::from_mode(0o644);
+            std::fs::set_permissions(&stored, unlocked).unwrap();
+            std::fs::write(stored, "corrupted archive data").unwrap();
         } else {
             bounded.archive_bytes = 1;
         }

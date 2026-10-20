@@ -4,6 +4,7 @@
 
 mod backend;
 mod cluster;
+mod daemons;
 mod manifest;
 mod pods;
 mod staging;

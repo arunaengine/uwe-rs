@@ -154,3 +154,33 @@ fn safe_index() {
         "[yes, no, [b:1]]"
     );
 }
+
+/// Sorting, extremes, searches and conditional puts of maps, as Nextflow 26.04.6 prints them.
+#[test]
+fn searches_and_sorts() {
+    let map = "def m = [b: 2, a: 1, c: 3]\n";
+    let cases = [
+        (
+            "[m.sort { it.value }, m]",
+            "[[a:1, b:2, c:3], [b:2, a:1, c:3]]",
+        ),
+        ("m.sort { x, y -> y.key <=> x.key }", "[c:3, b:2, a:1]"),
+        ("[m.max { it.value }, m.min { it.value }]", "[c=3, a=1]"),
+        ("m.max { x, y -> x.key <=> y.key }", "c=3"),
+        ("m.findResult { k, v -> v > 1 ? k : null }", "b"),
+        ("m.findResult('none') { k, v -> null }", "none"),
+        ("m.takeWhile { k, v -> v > 1 }", "[b:2]"),
+        ("m.dropWhile { k, v -> v > 1 }", "[a:1, c:3]"),
+        ("m.takeWhile { e -> e.key != 'c' }", "[b:2, a:1]"),
+    ];
+    for (code, expected) in cases {
+        assert_eq!(value(&format!("{map}{code}")), expected, "{code}");
+    }
+    assert_eq!(
+        value(
+            "def n = [a: 1]\n[n.computeIfAbsent('b') { k -> k + 'x' }, n.computeIfAbsent('a') \
+             { k -> 9 }, n.putIfAbsent('a', 5), n.putIfAbsent('c', 5), n]"
+        ),
+        "[bx, 1, 1, null, [a:1, b:bx, c:5]]"
+    );
+}

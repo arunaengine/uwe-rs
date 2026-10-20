@@ -141,6 +141,26 @@ impl Interpreter<'_> {
                 self.fold(initial.clone(), items, f, span)?
             }
             ("max" | "min", []) => extreme(items, name == "max", span)?,
+            // A closure of two parameters compares, as a `Comparator`.
+            ("max" | "min", [Value::Closure(f)]) if f.code.parameters.len() == 2 => {
+                let mut best: Option<&Value> = None;
+                for item in items {
+                    let Some(current) = best else {
+                        best = Some(item);
+                        continue;
+                    };
+                    let arguments = vec![item.clone(), current.clone()];
+                    let order = self.call_closure_value(f, arguments, span)?;
+                    let order = match order {
+                        Value::Number(number) => number.to_i64(),
+                        _ => 0,
+                    };
+                    if (name == "max" && order > 0) || (name == "min" && order < 0) {
+                        best = Some(item);
+                    }
+                }
+                best.cloned().unwrap_or(Value::Null)
+            }
             ("max" | "min", [Value::Closure(f)]) => {
                 let keys = self.map_items(items, f, span)?;
                 let mut best: Option<usize> = None;

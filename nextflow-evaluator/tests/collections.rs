@@ -381,3 +381,12 @@ fn find_result() {
         "[20, null, d]"
     );
 }
+
+/// A closure of two parameters compares for `min` and `max`, as Nextflow 26.04.6 gives it.
+#[test]
+fn compares_extremes() {
+    assert_eq!(
+        value("def l = [3, 1, 2]\n[l.min { a, b -> a <=> b }, l.max { a, b -> a <=> b }]"),
+        "[1, 3]"
+    );
+}

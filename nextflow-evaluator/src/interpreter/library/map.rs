@@ -30,8 +30,10 @@ impl Interpreter<'_> {
             .map(|(key, value)| (key.0.clone(), value.clone()))
             .collect();
         let kind = map.borrow().kind;
-        let changing = matches!(name, "put" | "putAll" | "remove" | "clear" | "replace")
-            || (name == "get" && arguments.len() == 2);
+        let changing = matches!(
+            name,
+            "put" | "putAll" | "remove" | "clear" | "replace" | "putIfAbsent" | "computeIfAbsent"
+        ) || (name == "get" && arguments.len() == 2);
         if changing && kind == MapKind::Record {
             return Err(thrown(
                 Exception::new("UnsupportedOperationException", ""),
@@ -230,6 +232,68 @@ impl Interpreter<'_> {
                     _ => None,
                 }))
             }
+            // Groovy's `sort(Closure)` gives a new sorted map, like `toSorted`.
+            ("sort", [Value::Closure(_)]) => {
+                return self.map_method(map, "toSorted", arguments, span);
+            }
+            // The entry with the largest or smallest key of a closure over entries, or that
+            // a closure of two entries finds by comparing.
+            ("max" | "min", [Value::Closure(f)]) => {
+                let items: Vec<Value> = entries.into_iter().map(entry).collect();
+                let list = Value::list(items);
+                let arguments = [Value::Closure(f.clone())];
+                return self.library_method(&list, name, &arguments, span);
+            }
+            ("findResult", [Value::Closure(f)] | [_, Value::Closure(f)]) => {
+                let mut found = match arguments {
+                    [default, _] => default.clone(),
+                    _ => Value::Null,
+                };
+                for (key, value) in &entries {
+                    let result = self.call_closure_value(f, pair(f, key, value), span)?;
+                    if !matches!(result, Value::Null) {
+                        found = result;
+                        break;
+                    }
+                }
+                found
+            }
+            ("takeWhile" | "dropWhile", [Value::Closure(f)]) => {
+                let mut count = 0;
+                for (key, value) in &entries {
+                    if !self
+                        .call_closure_value(f, pair(f, key, value), span)?
+                        .truth()
+                    {
+                        break;
+                    }
+                    count += 1;
+                }
+                let part = match name {
+                    "takeWhile" => &entries[..count],
+                    _ => &entries[count..],
+                };
+                Value::map(part.to_vec())
+            }
+            ("computeIfAbsent", [key, Value::Closure(f)]) => match get(key) {
+                Some(value) if !matches!(value, Value::Null) => value,
+                _ => {
+                    let value = self.call_closure_value(f, vec![key.clone()], span)?;
+                    if !matches!(value, Value::Null) {
+                        let mut map = map.borrow_mut();
+                        map.entries.insert(Key(key.clone()), value.clone());
+                    }
+                    value
+                }
+            },
+            ("putIfAbsent", [key, value]) => match get(key) {
+                Some(old) if !matches!(old, Value::Null) => old,
+                _ => {
+                    let mut map = map.borrow_mut();
+                    map.entries.insert(Key(key.clone()), value.clone());
+                    Value::Null
+                }
+            },
             ("sort", []) => {
                 let mut sorted = entries;
                 sorted.sort_by(|a, b| a.0.number_aware_compare(&b.0));

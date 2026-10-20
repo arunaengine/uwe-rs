@@ -128,6 +128,7 @@ pub fn make_members(class: &Rc<Class>) -> Result<(), Error> {
         let member = Value::Instance(Rc::new(Instance {
             class: class.clone(),
             dict: RefCell::new(dict),
+            hashed: Default::default(),
         }));
         members
             .entries

@@ -11,7 +11,7 @@ use super::Interpreter;
 use crate::error::Error;
 use crate::number::{Arithmetic, arithmetic, compare_numbers, is_number};
 use crate::types;
-use crate::value::{Args, Dict, Key, Value};
+use crate::value::{Args, Dict, Instance, Key, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Operator {
@@ -478,15 +478,15 @@ impl Interpreter {
                 }
             }
             Value::Dict(dict) => {
-                let key = Key::new(item.clone())?;
+                let key = self.key(item)?;
                 Ok(dict.borrow().entries.contains_key(&key))
             }
             Value::Set(set) => {
-                let key = Key::new(item.clone())?;
+                let key = self.key(item)?;
                 Ok(set.borrow().contains(&key))
             }
             Value::FrozenSet(set) => {
-                let key = Key::new(item.clone())?;
+                let key = self.key(item)?;
                 Ok(set.contains(&key))
             }
             Value::Range(range) => Ok(match item.as_int() {
@@ -635,8 +635,84 @@ impl Interpreter {
 
     /// A dict key or set member for a value.
     pub fn key(&mut self, value: &Value) -> Result<Key, Error> {
+        self.prepare_key(value.plain())?;
         Key::new(value.plain().clone())
     }
+
+    /// Gives the objects in a key whose classes define `__hash__` their hash and equality.
+    fn prepare_key(&mut self, value: &Value) -> Result<(), Error> {
+        match value {
+            Value::Tuple(items) => items
+                .iter()
+                .try_for_each(|item| self.prepare_key(item.plain())),
+            Value::Instance(instance) if instance.hashed.get().is_none() => {
+                self.hash_instance(instance)
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Calls `__hash__` once and finds an equal object among earlier keys with that hash, so
+    /// that keys compare without running Python code. The objects of a class that defines
+    /// `__eq__` without `__hash__` are unhashable, as in Python.
+    fn hash_instance(&mut self, instance: &Rc<Instance>) -> Result<(), Error> {
+        let mut method = None;
+        let mut equality = false;
+        for class in instance.class.mro.borrow().iter() {
+            let dict = class.dict.borrow();
+            let defines_eq = dict.contains_key("__eq__");
+            if method.is_none() {
+                match dict.get("__hash__") {
+                    Some(Value::None) => return Err(unhashable(&instance.class.name)),
+                    Some(found) => method = Some(found.clone()),
+                    None if defines_eq => return Err(unhashable(&instance.class.name)),
+                    None => {}
+                }
+            }
+            equality |= defines_eq;
+        }
+        let Some(method) = method else {
+            return Ok(());
+        };
+        let object = Value::Instance(instance.clone());
+        let result = self.call(&super::bind_method(&object, method), Args::default())?;
+        let hash = match result.plain() {
+            Value::Bool(_) | Value::Int(_) | Value::BigInt(_) => {
+                crate::hashing::stable_hash(&result).unwrap_or_default()
+            }
+            _ => {
+                return Err(Error::type_error(
+                    "__hash__ method should return an integer",
+                ));
+            }
+        };
+        let mut class = None;
+        if equality {
+            let earlier: Vec<(Rc<Instance>, u64)> = (self.hashed.get(&hash).into_iter())
+                .flatten()
+                .filter_map(|(weak, class)| Some((weak.upgrade()?, *class)))
+                .collect();
+            for (other, other_class) in earlier {
+                if self.equals(&object, &Value::Instance(other))? {
+                    class = Some(other_class);
+                    break;
+                }
+            }
+        }
+        let class = class.unwrap_or_else(|| {
+            self.equality_classes += 1;
+            let entries = self.hashed.entry(hash).or_default();
+            entries.retain(|(weak, _)| weak.strong_count() > 0);
+            entries.push((Rc::downgrade(instance), self.equality_classes));
+            self.equality_classes
+        });
+        instance.hashed.set(Some((hash, class)));
+        Ok(())
+    }
+}
+
+fn unhashable(name: &str) -> Error {
+    Error::type_error(format!("unhashable type: '{name}'"))
 }
 
 /// The members of a set or frozenset.

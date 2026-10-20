@@ -246,6 +246,7 @@ impl Interpreter {
         let object = Value::Instance(Rc::new(Instance {
             class: class.clone(),
             dict: RefCell::new(dict),
+            hashed: Default::default(),
         }));
         if let Some(init) = class.lookup("__init__") {
             let init = bind_method(&object, init);
@@ -565,7 +566,7 @@ impl Interpreter {
                 }
             },
             Value::Dict(dict) => {
-                let lookup = Key::new(key.clone())?;
+                let lookup = self.key(key)?;
                 if let Some(found) = dict.borrow().entries.get(&lookup) {
                     return Ok(found.clone());
                 }
@@ -645,7 +646,7 @@ impl Interpreter {
                 Ok(())
             }
             Value::Dict(dict) => {
-                let key = Key::new(key.clone())?;
+                let key = self.key(key)?;
                 dict.borrow_mut().entries.insert(key, value);
                 Ok(())
             }
@@ -697,7 +698,7 @@ impl Interpreter {
                 Ok(())
             }
             Value::Dict(dict) => {
-                let lookup = Key::new(key.clone())?;
+                let lookup = self.key(key)?;
                 if dict.borrow_mut().entries.shift_remove(&lookup).is_none() {
                     return Err(Error::key_error(key.clone()));
                 }

@@ -1429,6 +1429,7 @@ pub fn copy_value(
             Value::Instance(Rc::new(Instance {
                 class: instance.class.clone(),
                 dict: RefCell::new(dict),
+                hashed: Default::default(),
             }))
         }
         _ => value.clone(),

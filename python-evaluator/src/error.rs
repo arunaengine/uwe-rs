@@ -219,6 +219,7 @@ pub fn exception(class: &Rc<crate::value::Class>, args: Vec<Value>) -> Value {
     Value::Instance(Rc::new(Instance {
         class: class.clone(),
         dict: RefCell::new(dict),
+        hashed: Default::default(),
     }))
 }
 

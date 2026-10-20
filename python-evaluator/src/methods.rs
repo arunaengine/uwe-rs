@@ -1211,7 +1211,7 @@ fn set_members(interpreter: &mut Interpreter, value: &Value) -> Result<IndexSet<
         other => {
             let mut members = IndexSet::new();
             for item in interpreter.iterate(other)? {
-                members.insert(Key::new(item.plain().clone())?);
+                members.insert(interpreter.key(&item)?);
             }
             Ok(members)
         }

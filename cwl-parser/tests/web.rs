@@ -50,14 +50,15 @@ fn serve(text: &'static str, requests: usize, token: Option<&'static str>) -> St
 
 #[test]
 fn reads_web_addresses() {
-    let address = serve(TOOL, 1, None);
+    // A request for the version of the file, then the download.
+    let address = serve(TOOL, 2, None);
     let text = Web::default().read(&format!("{address}/tool.cwl"));
     assert_eq!(text.as_deref(), Ok(TOOL));
 }
 
 #[test]
 fn loads_web_targets() {
-    let address = serve(TOOL, 1, None);
+    let address = serve(TOOL, 2, None);
     let folder = tempfile::tempdir().expect("a temporary folder");
     let workflow = folder.path().join("workflow.cwl");
     let text = format!(
@@ -77,7 +78,7 @@ fn loads_web_targets() {
 
 #[test]
 fn providers_serve_documents() {
-    let address = serve(TOOL, 2, Some("t0k3n"));
+    let address = serve(TOOL, 4, Some("t0k3n"));
     let text = format!(
         "[storage.docs]\ntype = \"https\"\nprefixes = [\"{address}/\"]\ntoken = \"t0k3n\"\n"
     );

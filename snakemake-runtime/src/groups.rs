@@ -27,9 +27,12 @@ pub fn components(
     for job in order {
         let entry = &planner.jobs[*job];
         let rule = &planner.rules[entry.rule];
+        // A `cwl:` job runs its CWL run as tasks of their own, outside the group job; the
+        // jobs of the group around it form group jobs of their own.
         if !needed.get(job).copied().unwrap_or(false)
             || rule.localrule
             || rule.checkpoint
+            || matches!(rule.action, crate::rule::Action::Cwl(_))
             || entry.incomplete
             || fixed.contains_key(job)
         {

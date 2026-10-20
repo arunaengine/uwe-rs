@@ -2601,10 +2601,10 @@ impl Session {
     }
 }
 
-/// Why a `cwl:` job cannot run in a group: its CWL run has tasks of its own.
+/// Why a `cwl:` job cannot run in a pipe or service group: its CWL run has tasks of its own.
 fn cwl_grouped() -> DriverError {
     DriverError::unsupported(
-        "a cwl rule in a group, pipe or service: iunctus runs the CWL document of a cwl rule as tasks of their own",
+        "a cwl rule in a pipe or service: iunctus runs the CWL document of a cwl rule as tasks of their own",
     )
 }
 

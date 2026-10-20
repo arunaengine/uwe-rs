@@ -507,6 +507,10 @@ pub enum ExpressionKind {
     CallFunction {
         function: Function,
         arguments: Arguments,
+        /// Whether Nextflow calls the function by reflection, which wraps what it throws in an
+        /// `InvocationTargetException`: an included function, or one called from a workflow or
+        /// process.
+        reflective: bool,
     },
     /// Calling a value, like `f()(x)`.
     CallValue {

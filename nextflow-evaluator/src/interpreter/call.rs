@@ -86,11 +86,12 @@ impl Interpreter<'_> {
     }
 
     /// Calls a function of the script: the first one that takes the arguments as given, else
-    /// the first one that takes the elements of a single list argument.
+    /// the first one that takes the elements of a single list argument. A reflective call
+    /// wraps what the function throws, as Nextflow's calls by reflection do.
     pub(super) fn call_script_function(
         &mut self,
         module: &Rc<Module>,
-        name: &str,
+        (name, reflective): (&str, bool),
         arguments: Vec<Value>,
         span: Span,
     ) -> Result<Value, Error> {
@@ -99,15 +100,22 @@ impl Interpreter<'_> {
             .iter()
             .map(|index| module.functions[*index].clone())
             .collect();
-        if let Some(code) = choose_function(&functions, &arguments, name, span)? {
-            return self.run(code, module, Vec::new(), arguments);
+        let (code, arguments) = match choose_function(&functions, &arguments, name, span)? {
+            Some(code) => (code, arguments),
+            None => match spread(&arguments) {
+                Some(items) => match choose_function(&functions, &items, name, span)? {
+                    Some(code) => (code, items),
+                    None => return Err(no_signature("Script", name, &arguments, span)),
+                },
+                None => return Err(no_signature("Script", name, &arguments, span)),
+            },
+        };
+        let code = code.clone();
+        let result = self.run(&code, module, Vec::new(), arguments);
+        match reflective {
+            true => result.map_err(invoked),
+            false => result,
         }
-        if let Some(items) = spread(&arguments)
-            && let Some(code) = choose_function(&functions, &items, name, span)?
-        {
-            return self.run(code, module, Vec::new(), items);
-        }
-        Err(no_signature("Script", name, &arguments, span))
     }
 
     /// Runs code in a new frame, on a stack that grows as needed, up to a call depth where
@@ -348,6 +356,21 @@ impl Interpreter<'_> {
         }
         let path = Value::Path(Rc::new(path));
         Ok(if list { Value::list(vec![path]) } else { path })
+    }
+}
+
+/// What a function throws as the cause of an `InvocationTargetException`, at the same place.
+pub(super) fn invoked(error: Error) -> Error {
+    match error {
+        Error::Thrown { exception, span } => {
+            let mut wrapper = Exception::new("InvocationTargetException", "");
+            wrapper.cause = Some(Box::new((*exception).clone()));
+            Error::Thrown {
+                exception: Rc::new(wrapper),
+                span,
+            }
+        }
+        other => other,
     }
 }
 

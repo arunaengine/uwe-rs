@@ -462,6 +462,7 @@ impl Lowering<'_> {
                     return Kind::CallFunction {
                         function: Function::Definition(name.into()),
                         arguments,
+                        reflective: !self.config,
                     };
                 }
                 DefinitionKind::Process => "Processes",
@@ -547,9 +548,17 @@ impl Lowering<'_> {
             self.error(format!("`{name}` is not defined"), span);
             return Kind::Literal(Value::Null);
         };
+        // Code outside functions and the top level of a script runs in closures that call
+        // the functions of their script through Nextflow.
+        let reflective = matches!(function, Function::Script(_))
+            && !self.config
+            && !self.in_function
+            && !self.top_level
+            && (self.in_workflow || self.in_process);
         Kind::CallFunction {
             function,
             arguments,
+            reflective,
         }
     }
 

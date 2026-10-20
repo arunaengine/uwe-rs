@@ -353,7 +353,7 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Thrown { exception, .. } => write!(f, "{exception}"),
+            Error::Thrown { exception, .. } => write!(f, "{}", exception.target()),
             Error::Unsupported { message, .. } => write!(f, "Not supported yet: {message}"),
             Error::Located { error, location } => write!(f, "{location}: {error}"),
         }
@@ -422,7 +422,7 @@ impl<'h> Interpreter<'h> {
         name: &str,
         arguments: Vec<Value>,
     ) -> Result<Value, Error> {
-        self.call_script_function(module, name, arguments, Span::default())
+        self.call_script_function(module, (name, false), arguments, Span::default())
     }
 
     /// Evaluates code without parameters, like a config value or a `params.x = value` of a

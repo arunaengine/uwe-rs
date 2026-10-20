@@ -1,4 +1,4 @@
-//! Checks errors for reserved names in Snakemake named lists.
+//! Checks errors for reserved names in Snakemake named lists and for invalid wildcard regexes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -42,4 +42,17 @@ fn rejects_reserved_names() {
     let output =
         "rule a:\n    output: size=\"a.txt\", index=\"b.txt\"\n    shell: \"touch {output}\"\n";
     assert_eq!(error(output), None);
+}
+
+/// Snakemake 9.27.0 stops with `IOFileException in file ".../Snakefile", line 3:
+/// unterminated character set at position 6 in wildcard statement`.
+#[test]
+fn rejects_invalid_constraints() {
+    let snakefile = "rule all:\n    input: \"a.txt\"\nrule a:\n    output: \"{x,[}.txt\"\n    \
+                     shell: \"touch {output}\"\n";
+    let message = error(snakefile).expect("an error");
+    assert!(message.contains("in wildcard statement"), "{message}");
+    assert!(message.contains("line 3"), "{message}");
+    let globbed = "x = glob_wildcards(\"{x,[}.txt\")\n";
+    assert!(error(globbed).expect("an error").contains("re.error"));
 }

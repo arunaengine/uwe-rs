@@ -474,6 +474,9 @@ pub fn glob_wildcards(interpreter: &mut Interpreter, args: Args) -> Result<Value
     };
     let names = pattern::wildcard_names(&pattern);
     let matcher = pattern::Matcher::of(&pattern);
+    if let Some(error) = matcher.error() {
+        return Err(Error::new("re.error", error.to_owned()));
+    }
     let candidates: Vec<String> = match files {
         Some(files) => interpreter
             .iterate(&files)?

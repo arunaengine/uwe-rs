@@ -58,10 +58,14 @@ impl Job {
     }
 
     /// The outputs marked `temp()`, which Snakemake removes once no job needs them, so that a
-    /// run does not deliver them; `pipe()` outputs are temporary too.
+    /// run does not deliver them; `pipe()` and `service()` outputs are temporary too.
     pub fn temporary_files(&self) -> Vec<String> {
         (self.output.values.iter())
-            .filter(|value| value.tag("temp").is_some() || value.tag("pipe").is_some())
+            .filter(|value| {
+                ["temp", "pipe", "service"]
+                    .iter()
+                    .any(|flag| value.tag(flag).is_some())
+            })
             .filter_map(|value| value.as_str().map(str::to_owned))
             .collect()
     }

@@ -350,3 +350,32 @@ fn limits_allowed_rules() {
     let names: Vec<&str> = started.iter().map(|task| task.step.as_str()).collect();
     assert_eq!(names, ["b"]);
 }
+
+/// Snakemake 9.27 with `consider-ancient: {b: '0'}` does not run `b` for its newer first
+/// input, and it refuses an item that is no name or position.
+#[test]
+fn considers_ancient_inputs() {
+    let snakefile = "rule all:\n    input: 'b'\nrule b:\n    input: 'a'\n    output: 'b'\n    shell: 'cp {input} {output}'\n";
+    let folder = tempfile::tempdir().expect("a folder");
+    let settings = "consider-ancient: {b: '0'}\n";
+    let launch = Launch {
+        simulated: false,
+        ..profile_launch(folder.path(), settings, snakefile)
+    };
+    let older = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+    let output = std::fs::File::create(folder.path().join("b")).expect("the output");
+    output.set_modified(older).expect("an older output");
+    std::fs::write(folder.path().join("a"), "").expect("a newer input");
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    assert!(driver.start().expect("starts").is_empty());
+    std::fs::write(
+        folder.path().join("profiles/default/config.yaml"),
+        "consider-ancient: {b: 'x-y'}\n",
+    )
+    .expect("a profile");
+    let error = snakemake_runtime::driver(&launch)
+        .expect("a driver")
+        .start()
+        .expect_err("an invalid item");
+    assert!(error.message.contains("Unparsable value: 'x-y'"), "{error}");
+}

@@ -182,6 +182,29 @@ fn words(interpreter: &mut Interpreter, value: &Value) -> Result<Vec<String>, Er
     items.iter().map(|item| interpreter.to_str(item)).collect()
 }
 
+/// An input item of `consider-ancient`, a name or a position, checked as Snakemake's
+/// `parse_consider_ancient` does.
+fn ancient_item(rule: &str, item: &str) -> Result<String, Error> {
+    let message = "Invalid --consider-ancient definition: entries have to be defined as RULE=INPUTITEMS pairs, with INPUTITEMS being a list of input items of the rule (given as name or index (0-based)), separated by commas.";
+    let name = |text: &str| {
+        let mut chars = text.chars();
+        (chars.next()).is_some_and(|first| first.is_alphabetic() || first == '_')
+            && chars.all(|next| next.is_alphanumeric() || next == '_')
+    };
+    if !name(rule) {
+        return Err(workflow_error(format!(
+            "{message} (Invalid rule name: '{rule}')"
+        )));
+    }
+    match item.parse::<i64>() {
+        Ok(position) => Ok(position.to_string()),
+        Err(_) if name(item) => Ok(item.to_owned()),
+        Err(_) => Err(workflow_error(format!(
+            "{message} (Unparsable value: '{item}')"
+        ))),
+    }
+}
+
 /// `RULE=BATCH/BATCHES` of `batch`, as Snakemake's `parse_batch` takes it.
 fn batch(text: &str) -> Result<(String, usize, usize), Error> {
     let message = "Invalid batch definition: batch entry has to be defined as RULE=BATCH/BATCHES (with integers BATCH <= BATCHES, BATCH >= 1).";
@@ -345,7 +368,6 @@ impl Profile {
                 "prioritize",
                 "P",
                 "set-scatter",
-                "consider-ancient",
                 "batch",
             ];
             if pending.contains(&interpreter.to_str(&key)?.as_str()) {
@@ -429,10 +451,9 @@ impl Profile {
                 "consider-ancient" => {
                     for (rule, items) in pairs(interpreter, &value)? {
                         let items = items.trim_matches(['\'', '"']);
-                        let items = items
-                            .split(',')
-                            .map(|item| item.trim().to_owned())
-                            .collect();
+                        let items = (items.split(',').map(str::trim))
+                            .map(|item| ancient_item(&rule, item))
+                            .collect::<Result<_, _>>()?;
                         profile.consider_ancient.push((rule, items));
                     }
                 }

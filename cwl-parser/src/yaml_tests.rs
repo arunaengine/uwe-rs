@@ -126,7 +126,7 @@ fn limits_alias_expansion() {
     let mut text = String::from("a0: &a0 [x, x, x, x, x, x, x, x, x, x]\n");
     for level in 1..10 {
         let previous = format!("*a{}", level - 1);
-        let items = vec![previous.as_str(); 10].join(", ");
+        let items = [previous.as_str(); 10].join(", ");
         text.push_str(&format!("a{level}: &a{level} [{items}]\n"));
     }
     let error = failure(&text);

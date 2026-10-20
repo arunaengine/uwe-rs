@@ -130,7 +130,14 @@ impl Interpreter {
                 for item in self.eval_elements(frame, &set.elts)? {
                     items.insert(Key::new(item)?);
                 }
-                Value::set(items)
+                let value = Value::set(items);
+                if set.elts.len() >= 3
+                    && set.elts.iter().all(is_constant)
+                    && let Value::Set(members) = &value
+                {
+                    crate::hashing::note_literal(members);
+                }
+                value
             }
             Expr::Dict(dict) => {
                 let mut result = Dict::default();
@@ -652,4 +659,21 @@ fn scope_dict(scope: &Rc<Scope>) -> Value {
 /// `globals()`: a dict that writes through to the module's variables.
 fn globals_dict(globals: &Rc<Scope>) -> Value {
     Value::native(crate::builtins::GlobalsDict(globals.clone()))
+}
+
+/// Whether CPython folds an expression into a constant when it compiles it.
+fn is_constant(expr: &Expr) -> bool {
+    match expr {
+        Expr::NumberLiteral(_)
+        | Expr::StringLiteral(_)
+        | Expr::BytesLiteral(_)
+        | Expr::BooleanLiteral(_)
+        | Expr::NoneLiteral(_)
+        | Expr::EllipsisLiteral(_) => true,
+        Expr::UnaryOp(unary) => {
+            matches!(unary.op, UnaryOp::USub | UnaryOp::UAdd) && is_constant(&unary.operand)
+        }
+        Expr::Tuple(tuple) => tuple.elts.iter().all(is_constant),
+        _ => false,
+    }
 }

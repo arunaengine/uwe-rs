@@ -223,6 +223,24 @@ impl Storage {
         Ok(Storage::new(Settings::from_config(config)?))
     }
 
+    /// The S3 providers of the config file: name, the prefixes they serve, and the address of
+    /// their service, `None` for AWS itself. No secrets.
+    pub fn s3_providers(&self) -> Vec<(String, Vec<String>, Option<String>)> {
+        (self.inner.configured.iter())
+            .filter_map(|provider| match &provider.source {
+                backend::Source::Configured(settings) => match &settings.kind {
+                    settings::Kind::S3(s3) => Some((
+                        settings.name.clone(),
+                        provider.prefixes.clone(),
+                        s3.endpoint.clone(),
+                    )),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Where the config file puts the cache store: a folder or an address.
     pub fn store_location(&self) -> Option<&str> {
         self.inner.store.as_deref()

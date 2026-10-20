@@ -228,6 +228,17 @@ impl Store {
         Ok(())
     }
 
+    /// Writes an object, replacing what is there; tasks may write the same one at once.
+    pub(crate) async fn replace(&self, location: &str, bytes: &[u8]) -> Result<(), StoreError> {
+        match self.local_path(location) {
+            Some(target) => local::replace(&target, bytes).await.map_err(at(&target))?,
+            None => {
+                self.operator.write(location, bytes.to_vec()).await?;
+            }
+        }
+        Ok(())
+    }
+
     /// Copies a local file, then hashes and stores those same bytes.
     pub async fn put_file(&self, file: &std::path::Path) -> Result<(Digest, u64), StoreError> {
         let snapshot = tempfile::NamedTempFile::new()?;
@@ -378,7 +389,7 @@ impl Store {
             )));
         }
         if self.cache_reads && self.shared.is_some() {
-            self.operator.write(&key, bytes).await?;
+            self.replace(&key, &bytes).await?;
         }
         Ok(Some(directory.digest))
     }

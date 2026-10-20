@@ -60,6 +60,23 @@ pub(crate) async fn write_absent(target: &Path, bytes: &[u8]) -> std::io::Result
     .map_err(|error| std::io::Error::other(error.to_string()))?
 }
 
+/// Writes bytes to `target` through a temporary name, replacing what is there, so that tasks
+/// that write the same file at once never mix their bytes.
+pub(crate) async fn replace(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let target = target.to_owned();
+    let bytes = bytes.to_owned();
+    tokio::task::spawn_blocking(move || {
+        create_parent(&target)?;
+        let part = temporary(&target)?;
+        std::fs::write(part.path(), bytes)?;
+        part.persist(target)
+            .map(|_| ())
+            .map_err(|error| error.error)
+    })
+    .await
+    .map_err(|error| std::io::Error::other(error.to_string()))?
+}
+
 /// Moves a file to `target`, replacing what is there. A symbolic link is replaced by a copy of
 /// what it points to, and a move to another file system becomes a copy.
 pub(crate) async fn move_file(source: &Path, target: &Path) -> std::io::Result<()> {

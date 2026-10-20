@@ -154,6 +154,38 @@ pub(crate) async fn identified(
     )
 }
 
+/// The ids of the jobs of `user` that have the name `name` and the script `script`, by
+/// `squeue`; `None` when it fails.
+pub(crate) async fn named(
+    squeue: &Path,
+    name: &str,
+    script: &str,
+    user: u32,
+) -> Option<Vec<String>> {
+    let mut command = Command::new(squeue);
+    command
+        .args(["--noheader", "--states=all", "--format=%i|%o"])
+        .arg(format!("--name={name}"))
+        .arg(format!("--user={user}"));
+    let output = output(&mut command, REQUEST_GRACE).await.ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let mut ids = Vec::new();
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let Some((id, command)) = line.trim().split_once('|') else {
+            continue;
+        };
+        if id.is_empty() || !id.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        if command == script && !ids.iter().any(|known| known == id) {
+            ids.push(id.to_owned());
+        }
+    }
+    Some(ids)
+}
+
 /// The states in which a job has ended.
 const ENDED: [&str; 10] = [
     "BOOT_FAIL",

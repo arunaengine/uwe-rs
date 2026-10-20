@@ -62,6 +62,9 @@ echo "$id"
 [ ! -e "$(dirname "$0")/missing-response" ] || exec sleep 30
 "#;
 
+/// An `sbatch` that hangs before it submits anything, like one that cannot reach the controller.
+const HANGING_SBATCH: &str = "#!/bin/bash\nexec sleep 30\n";
+
 /// Writes JSON with `--json` when the folder has a file `json`, as SLURM 23.02 does; else it
 /// refuses the option, as SLURM before 21.08 does.
 const SQUEUE: &str = r#"#!/bin/bash
@@ -70,7 +73,9 @@ json=
 for argument in "$@"; do
     case $argument in
         --jobs=*) jobs=${argument#--jobs=} ;;
+        --name=*) name=${argument#--name=} ;;
         --format=%N) echo node-3; exit 0 ;;
+        '--format=%i|%o') commands=yes ;;
         '--format=%i|%T|%j|%V|%o') identified=yes ;;
         --json)
             [ -e "$(dirname "$0")/json" ] || { echo "squeue: unrecognized option '--json'" >&2; exit 1; }
@@ -79,6 +84,11 @@ for argument in "$@"; do
 done
 mkdir -p "$state"
 echo "${json:-text}" >> "$state/squeue"
+if [ -n "$name" ]; then
+    for file in "$state"/*.name; do
+        [ "$(cat "$file" 2>/dev/null)" = "$name" ] && jobs="$jobs,$(basename "$file" .name)"
+    done
+fi
 [ -z "$json" ] || printf '{"jobs": ['
 separator=
 for id in ${jobs//,/ }; do
@@ -88,7 +98,9 @@ for id in ${jobs//,/ }; do
     elif [ "$(cat "$state/$id.exit")" = 0 ]; then job_state=COMPLETED
     else job_state=FAILED; fi
     [ ! -e "$(dirname "$0")/completing" ] || job_state=COMPLETING
-    if [ -n "$identified" ]; then
+    if [ -n "$commands" ]; then
+        printf '%s|%s\n' "$id" "$(cat "$state/$id.command")"
+    elif [ -n "$identified" ]; then
         printf '%s|%s|%s|%s|%s\n' "$id" "$job_state" "$(cat "$state/$id.name")" "$(cat "$state/$id.submitted")" "$(cat "$state/$id.command")"
     elif [ -n "$json" ]; then
         printf '%s{"job_id": %s, "job_state": ["%s"]}' "$separator" "$id" "$job_state"
@@ -760,11 +772,12 @@ async fn retains_ambiguous_submissions() {
     let root = tempfile::tempdir().unwrap();
     let bin = cluster(root.path(), APPTAINER);
     std::fs::write(bin.join("missing-response"), "").unwrap();
-    let backend = backend(
+    let mut backend = backend(
         root.path(),
         &bin,
         Container::Apptainer(text(&bin.join("apptainer"))),
     );
+    backend.submit_grace = Duration::from_secs(2);
     let mut spec = spec("sleep 30");
     spec.image.as_mut().unwrap().reference = "/images/tool.sif".into();
     let (staging, placement) = (Staging::default(), placement());
@@ -790,13 +803,24 @@ async fn retains_ambiguous_submissions() {
             .trim(),
         "101"
     );
-    assert!(backend.reconcile().await.is_err());
-    assert!(path.is_file());
-    tokio::process::Command::new(bin.join("scancel"))
-        .arg("101")
-        .status()
-        .await
-        .unwrap();
+    // Recovery finds the job by its name and script, and cancels it.
+    backend.reconcile().await.unwrap();
+    assert!(!path.exists());
+    assert!(bin.join("state/101.cancelled").exists());
+    // A submission that never reached SLURM is lost, and blocks nothing.
+    let status = std::process::Command::new("sh")
+        .args(["-c", "printf '%s' \"$1\" > \"$2\"", "sh", HANGING_SBATCH])
+        .arg(bin.join("sbatch"))
+        .status();
+    assert!(status.unwrap().success());
+    let job = Job {
+        name: "unsent",
+        ..job()
+    };
+    assert!(backend.run(job, &CancellationToken::new()).await.is_err());
+    assert!(backend.scratch.join("unsent/remote.json").is_file());
+    backend.reconcile().await.unwrap();
+    assert!(!backend.scratch.join("unsent/remote.json").exists());
 }
 
 #[tokio::test]
@@ -999,11 +1023,12 @@ async fn retains_unresolved_pulls() {
     let root = tempfile::tempdir().unwrap();
     let bin = cluster(root.path(), APPTAINER);
     std::fs::write(bin.join("missing-response"), "").unwrap();
-    let backend = backend(
+    let mut backend = backend(
         root.path(),
         &bin,
         Container::Apptainer(text(&bin.join("apptainer"))),
     );
+    backend.submit_grace = Duration::from_secs(2);
     let spec = spec("true");
     let (staging, placement) = (Staging::default(), placement());
     let job = |name| Job {
@@ -1040,7 +1065,8 @@ async fn retains_unresolved_pulls() {
             .starts_with("image-")
     );
     assert!(attempts[0].join("control/job.sh").is_file());
-    assert!(backend.reconcile().await.is_err());
+    backend.reconcile().await.unwrap();
+    assert!(!attempts[0].join("remote.json").exists());
 }
 
 #[tokio::test]

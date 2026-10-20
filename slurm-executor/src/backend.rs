@@ -35,6 +35,10 @@ const POLL: Duration = Duration::from_secs(10);
 /// that ended well the record of its task, which a shared file system may show late.
 const EXIT_GRACE: Duration = Duration::from_secs(30);
 
+/// How long `sbatch` may take, as a busy controller answers slowly. A submission whose answer is
+/// lost is found again by its name and script.
+const SUBMIT_GRACE: Duration = Duration::from_secs(60);
+
 /// How long to wait after the first failed pull of an image.
 const PULL_PAUSE: Duration = Duration::from_secs(20);
 
@@ -71,6 +75,8 @@ pub struct SlurmBackend {
     pub commands: Option<PathBuf>,
     /// How often the queue is asked about the jobs.
     pub poll: Duration,
+    /// How long `sbatch` may take before its submission counts as unclear.
+    pub submit_grace: Duration,
     /// Where Apptainer and Singularity keep the SIF file of each image of a registry or address,
     /// which the nodes must see at the same path.
     pub images: PathBuf,
@@ -135,6 +141,7 @@ impl SlurmBackend {
             options: Vec::new(),
             commands: None,
             poll: POLL,
+            submit_grace: SUBMIT_GRACE,
             queue: Queue::default(),
             made: Images::default(),
             recovery: Mutex::default(),
@@ -706,7 +713,7 @@ impl SlurmBackend {
         }
         sbatch.args(options).arg(&script);
         let output = tokio::select! {
-            output = crate::queue::output(&mut sbatch, crate::queue::REQUEST_GRACE) => output.map_err(|error| unresolved(root, error))?,
+            output = crate::queue::output(&mut sbatch, self.submit_grace) => output.map_err(|error| unresolved(root, error))?,
             () = cancel.cancelled() => return Err(unresolved(root, "cancelled during submission; the response was not recorded")),
         };
         let text = String::from_utf8_lossy(&output.stdout);
@@ -843,7 +850,34 @@ impl SlurmBackend {
                     || journal["host"].as_str() != Some(host.as_str())
                     || journal["locked"] != true
                     || journal["configuration"] != self.configuration()
-                    || !journal["identity"].is_object()
+                {
+                    return Err(unresolved(
+                        &root,
+                        "the original ownership or configuration is insufficient",
+                    ));
+                }
+                // A submission without an answer must not block every later run.
+                if !journal["identity"].is_object() {
+                    match self.identify(&root, &journal).await {
+                        Submitted::Found(id, identity) => {
+                            journal["id"] = serde_json::json!(id);
+                            journal["identity"] = identity;
+                            journal_at(&root, &journal)?;
+                        }
+                        Submitted::Absent => {
+                            tracing::warn!(attempt = %root.display(),
+                                "the job of an unclear submission is not in the queue; the attempt is lost");
+                            std::fs::remove_file(&path)?;
+                            continue;
+                        }
+                        Submitted::Unclear(reason) => {
+                            tracing::warn!(attempt = %root.display(), reason,
+                                "cannot resolve an unclear submission yet");
+                            continue;
+                        }
+                    }
+                }
+                if !journal["identity"].is_object()
                     || journal["identity"]["script"] != journal["script"]
                 {
                     return Err(unresolved(
@@ -882,6 +916,42 @@ impl SlurmBackend {
             }
         }
         Ok(())
+    }
+
+    /// Finds the job of a journal whose submission left no scheduler identity: by its recorded
+    /// id, or else by its name and script, which only this attempt has, among the jobs of the
+    /// owner of its folder. The job must have the name and script of the journal.
+    async fn identify(&self, root: &Path, journal: &serde_json::Value) -> Submitted {
+        let squeue = self.command("squeue");
+        let options = journal["options"].as_array().into_iter().flatten();
+        let name = (options.filter_map(|option| option.as_str()))
+            .find_map(|option| option.strip_prefix("--job-name="));
+        let (Some(name), Some(script)) = (name, journal["script"].as_str()) else {
+            return Submitted::Unclear("the journal names no job name or script");
+        };
+        let id = match journal["id"].as_str() {
+            Some(id) => id.to_owned(),
+            None => {
+                let Ok(folder) = std::fs::metadata(root) else {
+                    return Submitted::Unclear("the folder of the attempt is gone");
+                };
+                match crate::queue::named(&squeue, name, script, folder.uid()).await {
+                    None => return Submitted::Unclear("squeue cannot list the jobs of the name"),
+                    Some(ids) if ids.is_empty() => return Submitted::Absent,
+                    Some(ids) if ids.len() == 1 => ids[0].clone(),
+                    Some(_) => return Submitted::Unclear("several jobs have the name and script"),
+                }
+            }
+        };
+        let cluster = journal["cluster"].as_str();
+        match crate::queue::identified(&squeue, &id, cluster).await {
+            (_, Some(identity)) if identity["name"] == name && identity["script"] == script => {
+                Submitted::Found(id, identity)
+            }
+            (_, Some(_)) => Submitted::Unclear("the job has another name or script"),
+            (Look::Gone, None) => Submitted::Absent,
+            (_, None) => Submitted::Unclear("squeue cannot identify the job"),
+        }
     }
 
     /// Waits for a job outcome or cancellation before confirming termination. A job that sends
@@ -1009,6 +1079,16 @@ impl SlurmBackend {
         std::fs::remove_file(root.join("remote.json"))?;
         Ok(())
     }
+}
+
+/// What became of a submission whose answer was lost.
+enum Submitted {
+    /// The job with this id and identity.
+    Found(String, serde_json::Value),
+    /// SLURM has no such job: it never took it, or it ended long ago.
+    Absent,
+    /// The queue cannot tell yet, for this reason.
+    Unclear(&'static str),
 }
 
 /// The lock of an attempt. It lets go of the lock before it closes the file, as a process that

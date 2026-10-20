@@ -263,3 +263,56 @@ workflow {
         ]
     );
 }
+
+/// A typed workflow with several emits gives a record of channels, and channels are
+/// `ChannelImpl` and `ValueImpl`, as in Nextflow 26.04.6.
+#[test]
+fn shapes_workflow_results() {
+    let source = r#"nextflow.enable.types = true
+
+process P {
+    input:
+    x: Integer
+    output:
+    y = x + 1
+    script:
+    'true'
+}
+
+workflow SUB {
+    take:
+    xs: Channel<Integer>
+
+    main:
+    ys = P(xs)
+
+    emit:
+    ys: Channel<Integer> = ys
+    total = ys.reduce { a, b -> a + b }
+}
+
+workflow {
+    def r = SUB(channel.of(1, 2))
+    r.ys.subscribe { v -> println "ys $v" }
+    r.total.subscribe { v -> println "total $v" }
+    println "r ${r.getClass().simpleName}"
+    println "classes ${channel.of(1).getClass().name} ${channel.value(1).getClass().name}"
+    channel.value([1, 2]).flatMap().subscribe { v -> println "flat $v" }
+}
+"#;
+    let (_, printed) = run(source).expect("runs");
+    let mut lines: Vec<&str> = printed.lines().collect();
+    lines.sort_unstable();
+    assert_eq!(
+        lines,
+        [
+            "classes nextflow.dataflow.ChannelImpl nextflow.dataflow.ValueImpl",
+            "flat 1",
+            "flat 2",
+            "r RecordMap",
+            "total 5",
+            "ys 2",
+            "ys 3",
+        ]
+    );
+}

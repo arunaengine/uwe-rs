@@ -446,6 +446,14 @@ impl Host for Builder<'_> {
             _ => return Ok(None),
         };
         let same_kind = self.network.is_value(source);
+        // The GPars class of a channel; typed workflows name their wrappers instead.
+        if name == "getClass" && arguments.is_empty() {
+            let class = match same_kind {
+                true => "groovyx.gpars.dataflow.DataflowVariable",
+                false => "groovyx.gpars.dataflow.DataflowBroadcast",
+            };
+            return Ok(Some(Value::Class(class.into())));
+        }
         // The text of a GPars channel, as Nextflow 26.04.6 prints it.
         if name == "toString" && arguments.is_empty() {
             let text = match same_kind {

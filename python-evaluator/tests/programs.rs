@@ -468,7 +468,8 @@ fn preserves_delegation_timing() {
 #[test]
 fn rejects_suspension_shapes() {
     for code in [
-        "def source():\n    yield 1\n    x = 1 + (yield 2)\ng = source()\nnext(g)\nnext(g)\n",
+        "def source():\n    yield 1\n    x = 1 < 2 < (yield 2)\ng = source()\nnext(g)\nnext(g)\n",
+        "def source():\n    while (yield 1):\n        pass\nnext(source())\n",
         "def source():\n    yield 1\nsource().send(None)\n",
     ] {
         let error = evaluate(code).expect_err("unsupported suspension");

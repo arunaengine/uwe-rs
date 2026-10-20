@@ -1262,13 +1262,8 @@ impl Hook {
                     }
                 }
                 RuleKeyword::Handover => {
-                    if interpreter.truthy(&first)? {
-                        return Err(workflow_error(format!(
-                            "{} is not supported by iunctus for rule {}",
-                            keyword.text(),
-                            rule.name
-                        )));
-                    }
+                    rule.handover = interpreter.truthy(&first)?;
+                    rule.localrule = rule.localrule || rule.handover;
                 }
                 RuleKeyword::PathVariables => {}
                 RuleKeyword::Shell => {

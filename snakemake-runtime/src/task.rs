@@ -315,6 +315,11 @@ pub fn build(
         .chain(cores)
         .min();
     let threads = cap.map_or(threads, |cap| threads.min(cap));
+    // A handover job takes the cores of the run as its threads, as its `_cores` resource.
+    let threads = match (rule.handover && rule.threads.is_none(), cores) {
+        (true, Some(cores)) => cores,
+        _ => threads,
+    };
     // Snakemake's `expand_priority`: a priority function must give a number. iunctus leaves
     // the order of tasks to the executor.
     if let Some(priority) = &rule.priority

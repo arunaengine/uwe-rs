@@ -253,3 +253,23 @@ fn spares_local_scopes() {
         .expect("starts");
     assert_eq!(started.len(), 2, "both fetches run at once: {started:?}");
 }
+
+/// Snakemake 9.27 gives a handover job without resources the global ones and the cores as
+/// threads, so it runs `echo 20 4 4` here; no other job runs beside it.
+#[test]
+fn hands_over_resources() {
+    let snakefile = "rule all:\n    input: 'a', 'b'\nrule a:\n    output: 'a'\n    handover: True\n    shell: 'echo {resources.mem_mb} {resources._cores} {threads} > {output}'\nrule b:\n    output: 'b'\n    shell: 'touch {output}'\n";
+    let folder = tempfile::tempdir().expect("a folder");
+    let launch = profile_launch(
+        folder.path(),
+        "resources: [mem_mb=20]\ncores: 4\n",
+        snakefile,
+    );
+    let started = snakemake_runtime::driver(&launch)
+        .expect("a driver")
+        .start()
+        .expect("starts");
+    assert_eq!(started.len(), 1, "the handover job runs alone: {started:?}");
+    let text = format!("{:?} {:?}", started[0].command, started[0].script);
+    assert!(text.contains("echo 20 4 4"), "{text}");
+}

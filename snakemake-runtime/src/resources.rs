@@ -122,6 +122,12 @@ pub fn evaluate(
         })?;
         set(&mut resources, name, evaluated);
     }
+    // A handover rule without resources of its own gets all global ones.
+    if rule.handover && rule.resources.is_empty() {
+        for (name, value) in &state.global_resources {
+            set(&mut resources, name, value.clone());
+        }
+    }
     for (target, name, text) in &profile.set_resources {
         if *target == rule.name {
             let value = expression(interpreter, text, job)?;

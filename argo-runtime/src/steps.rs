@@ -212,10 +212,18 @@ impl Run {
         }
     }
 
-    /// Decides a `when` condition. A condition that still holds a tag, as a run with empty
-    /// outputs or placeholder parameters leaves some, cannot be decided: the step is skipped,
-    /// with a warning.
+    /// Decides a `when` condition. A condition that still holds a tag cannot be decided: a
+    /// real run fails, as Argo cannot parse it; a simulated run, whose outputs are made up,
+    /// skips the step with a warning.
     pub fn decide_when(&mut self, when: &str, name: &str) -> std::result::Result<bool, String> {
+        if let Some(tag) = crate::tags::first_tag(when)
+            && !self.options.assume_inputs
+        {
+            return Err(format!(
+                "when '{when}' of {}: failed to resolve {{{{{tag}}}}}",
+                crate::run::display_name(name)
+            ));
+        }
         if crate::tags::has_tag(when) {
             self.warn(format!(
                 "cannot decide when '{when}' of {}: a tag is unresolved; it is skipped",

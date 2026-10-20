@@ -219,6 +219,12 @@ pub fn has_tag(text: &str) -> bool {
         .is_some_and(|start| text[start + 2..].contains("}}"))
 }
 
+/// The text of the first tag in a text, without its braces.
+pub fn first_tag(text: &str) -> Option<&str> {
+    let after = &text[text.find("{{")? + 2..];
+    Some(&after[..after.find("}}")?])
+}
+
 #[cfg(test)]
 #[path = "tags_tests.rs"]
 mod tests;

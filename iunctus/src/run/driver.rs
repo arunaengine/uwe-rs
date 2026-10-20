@@ -88,6 +88,7 @@ pub(crate) fn driver(
                 ),
                 rerun_triggers: arguments.rerun_triggers.clone(),
                 conda: setup.conda.is_some(),
+                shared_workdir: shared_workdir(arguments, setup),
             },
         ),
         Language::Cwl => {
@@ -109,6 +110,16 @@ pub(crate) fn driver(
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)
         }
         Language::Argo => argo_runtime::driver(launch),
+    }
+}
+
+/// Whether the executor sees the folders of this machine at their paths, so that Snakemake
+/// jobs run in the working directory itself: the local one, and SLURM without object stores.
+fn shared_workdir(arguments: &Arguments, setup: &Setup) -> bool {
+    match arguments.executor.as_deref().unwrap_or("local") {
+        "local" => true,
+        "slurm" => setup.executors.slurm_staging.mode == crate::staging::Mode::SharedPath,
+        _ => false,
     }
 }
 

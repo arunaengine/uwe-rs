@@ -1202,7 +1202,7 @@ impl Session {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)[delivery_start..]
             .to_vec();
-        if deliveries.is_empty() {
+        if deliveries.is_empty() && !self.shared {
             return Ok(());
         }
         let planner = self
@@ -1220,6 +1220,19 @@ impl Session {
                     }
                 }
             }
+        }
+        // In the shared directory the outputs are in place already.
+        if self.shared {
+            for (output, signature) in &records {
+                crate::metadata::publish_signature(&self.workdir, output, signature).map_err(
+                    |error| {
+                        DriverError::new(format!(
+                            "cannot record successful output {output}: {error}"
+                        ))
+                    },
+                )?;
+            }
+            return Ok(());
         }
         for (output, _) in &records {
             crate::metadata::mark_incomplete(&self.workdir, output).map_err(|error| {
@@ -1320,12 +1333,29 @@ impl Session {
                         .flatten()
                 })
             });
+            let protected = || {
+                self.planner.as_ref().is_some_and(|planner| {
+                    planner.jobs[job].output.values.iter().any(|value| {
+                        value.tag("protected").is_some()
+                            && value.as_str().is_some_and(|output| {
+                                self.interpreter.host.resolve(output.trim_end_matches('/')) == path
+                            })
+                    })
+                })
+            };
             // A job of the shared directory left its outputs in place.
-            let in_place = self.shared && storage_target.is_none();
-            if !in_place
-                && !temporary
-                    .iter()
-                    .any(|output| self.interpreter.host.resolve(output) == path)
+            if self.shared && storage_target.is_none() {
+                if protected() {
+                    crate::metadata::protect(&path).map_err(|error| {
+                        DriverError::new(format!(
+                            "cannot protect output {}: {error}",
+                            path.display()
+                        ))
+                    })?;
+                }
+            } else if !temporary
+                .iter()
+                .any(|output| self.interpreter.host.resolve(output) == path)
             {
                 let mut deliveries = self
                     .deliveries
@@ -1336,17 +1366,7 @@ impl Session {
                     target: storage_target.unwrap_or_else(|| path.to_string_lossy().into_owned()),
                     mode: DeliveryMode::Copy,
                 };
-                if !self.launch.simulated
-                    && self.planner.as_ref().is_some_and(|planner| {
-                        planner.jobs[job].output.values.iter().any(|value| {
-                            value.tag("protected").is_some()
-                                && value.as_str().is_some_and(|output| {
-                                    self.interpreter.host.resolve(output.trim_end_matches('/'))
-                                        == path
-                                })
-                        })
-                    })
-                {
+                if !self.launch.simulated && protected() {
                     self.protections.push(delivery.clone());
                 }
                 deliveries.push(delivery);
@@ -1760,6 +1780,10 @@ impl Session {
         let entry = &planner.jobs[job];
         let rule = planner.rules[entry.rule].name.clone();
         let touched = entry.touched_files();
+        let directories: Vec<String> = (entry.output.values.iter())
+            .filter(|value| value.tag("directory").is_some())
+            .filter_map(|value| value.as_str().map(str::to_owned))
+            .collect();
         let ensured: Vec<(String, Value)> = entry
             .output
             .values
@@ -1783,7 +1807,8 @@ impl Session {
                 continue;
             }
             if touched.iter().any(|file| file == output) {
-                let location = self.touch(output).map_err(|error| {
+                let directory = directories.contains(output);
+                let location = self.touch(output, directory).map_err(|error| {
                     DriverError::new(format!("cannot touch {output} of rule {rule}: {error}"))
                 })?;
                 outcome.files.push(workflow_graph::OutputFile {
@@ -1870,8 +1895,14 @@ impl Session {
         )))
     }
 
-    /// An empty file for a `touch()` output in the scratch folder of the run.
-    fn touch(&mut self, output: &str) -> std::io::Result<PathBuf> {
+    /// An empty file for a `touch()` output in the scratch folder of the run, or in place in
+    /// the shared directory.
+    fn touch(&mut self, output: &str, directory: bool) -> std::io::Result<PathBuf> {
+        if self.shared {
+            let path = self.workdir.join(output);
+            crate::shared::touch(&path, directory)?;
+            return Ok(path);
+        }
         let folder = self.touched.get_or_insert_with(|| {
             let nanos = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -2255,6 +2286,7 @@ pub fn driver_with_options(
                 let mut session = Session::new(&launch, &settings.storage)?;
                 session.rerun_triggers = options.rerun_triggers.clone();
                 session.shared = options.shared_workdir && !launch.simulated;
+                session.embedded.shared = session.shared;
                 session.state.borrow_mut().conda_enabled = options.conda;
                 session.state.borrow_mut().default_image = options.image.clone();
                 session.acceptance = session_acceptance.clone();

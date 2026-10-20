@@ -121,6 +121,32 @@ rule b:
     assert_eq!(task.outputs, [work.join("b.txt").to_string_lossy()]);
 }
 
+#[test]
+fn touches_outputs_in_place() {
+    let snakefile = r#"
+rule all:
+    input: "flag", "kept.txt"
+rule mark:
+    output: touch("flag")
+    shell: "unused"
+rule keep:
+    output: protected("kept.txt")
+    shell: "unused"
+"#;
+    let steps: [(&str, Step); 1] = [("keep", |folder| {
+        std::fs::write(folder.join("kept.txt"), "kept").unwrap();
+        0
+    })];
+    let (folder, _host, error) = run(folder(), snakefile, &steps);
+    assert_eq!(error, None);
+    let work = folder.path().join("work");
+    assert!(work.join("flag").is_file());
+    let kept = std::fs::metadata(work.join("kept.txt")).unwrap();
+    assert!(kept.permissions().readonly(), "protected");
+    let records = std::fs::read_dir(work.join(".snakemake/iunctus-signatures")).unwrap();
+    assert_eq!(records.count(), 2, "both outputs are recorded");
+}
+
 /// Runs a Snakefile in the working directory of `folder` with jobs in the shared directory;
 /// the folder, the tasks and the error.
 fn run(

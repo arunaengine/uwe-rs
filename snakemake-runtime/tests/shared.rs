@@ -168,6 +168,43 @@ rule three:
 }
 
 #[test]
+fn moves_shadow_outputs() {
+    let snakefile = r#"
+rule all:
+    input: "out/result.txt"
+rule shadowed:
+    input: "in.txt"
+    output: "out/result.txt"
+    log: "logs/shadowed.log"
+    shadow: "copy-minimal"
+    shell: "unused"
+"#;
+    let steps: [(&str, Step); 1] = [("shadowed", |folder| {
+        let input = folder.join("in.txt");
+        let copied = !std::fs::symlink_metadata(&input).unwrap().is_symlink();
+        std::fs::write(folder.join("junk.txt"), "").unwrap();
+        std::fs::write(folder.join("out/result.txt"), format!("{copied}")).unwrap();
+        std::fs::write(folder.join("logs/shadowed.log"), "log").unwrap();
+        0
+    })];
+    let folder = folder();
+    std::fs::write(folder.path().join("work/in.txt"), "x").unwrap();
+    let (other, _host, error) = run(folder, snakefile, &steps);
+    assert_eq!(error, None);
+    let work = other.path().join("work");
+    assert_eq!(
+        std::fs::read_to_string(work.join("out/result.txt")).unwrap(),
+        "true"
+    );
+    assert!(work.join("logs/shadowed.log").is_file());
+    assert!(!work.join("junk.txt").exists());
+    let shadows = std::fs::read_dir(work.join(".snakemake/shadow"))
+        .unwrap()
+        .count();
+    assert_eq!(shadows, 0, "the shadow directory is gone");
+}
+
+#[test]
 fn removes_failed_outputs() {
     let snakefile =
         "rule broken:\n    output: 'half.txt'\n    log: 'broken.log'\n    shell: 'unused'\n";

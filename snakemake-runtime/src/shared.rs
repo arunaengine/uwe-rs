@@ -15,13 +15,29 @@ use crate::plan::Job;
 pub struct Placed {
     /// Each output as the task collects it, an absolute path, and as the job declared it.
     pub outputs: Vec<(String, String)>,
+    pub shadows: Vec<Shadow>,
     /// Files written into the working directory for the task, like its scripts.
     pub written: Vec<PathBuf>,
 }
 
+/// The shadow directory of a job, with the outputs and logs that go back from it.
+#[derive(Debug)]
+pub struct Shadow {
+    pub folder: PathBuf,
+    pub outputs: Vec<String>,
+    pub logs: Vec<String>,
+}
+
 /// Gets the working directory ready for a job, as Snakemake's `Job.prepare`: removes its old
-/// outputs and logs, makes their folders, and notes where the task collects each output.
-pub fn prepare(workdir: &Path, job: &Job, task: &Task, placed: &mut Placed) -> std::io::Result<()> {
+/// outputs and logs, makes their folders and the shadow directory, and notes where the task
+/// collects each output.
+pub fn prepare(
+    workdir: &Path,
+    job: &Job,
+    shadow: Option<&str>,
+    task: &mut Task,
+    placed: &mut Placed,
+) -> std::io::Result<()> {
     remove_outputs(workdir, job, true)?;
     let logs = texts(&job.log.values);
     let benchmark = job.benchmark.as_ref().and_then(Value::as_str);
@@ -32,9 +48,36 @@ pub fn prepare(workdir: &Path, job: &Job, task: &Task, placed: &mut Placed) -> s
             std::fs::create_dir_all(parent)?;
         }
     }
+    let folder = match shadow {
+        Some(mode) if !task.command.is_empty() => {
+            let folder = shadow_folder(workdir, task)?;
+            populate(workdir, &folder, mode, job)?;
+            let mut command = vec![
+                "sh".to_owned(),
+                "-c".to_owned(),
+                "cd \"$1\" || exit 1; shift; exec \"$@\"".to_owned(),
+                "sh".to_owned(),
+                folder.to_string_lossy().into_owned(),
+            ];
+            command.append(&mut task.command);
+            task.command = command;
+            let outputs = texts(&job.output.values);
+            placed.shadows.push(Shadow {
+                folder: folder.clone(),
+                outputs,
+                logs: logs.clone(),
+            });
+            Some(folder)
+        }
+        _ => None,
+    };
     for declared in &task.outputs {
         let plain = declared.trim_end_matches('/');
-        let mut collected = workdir.join(plain).to_string_lossy().into_owned();
+        let base = match &folder {
+            Some(folder) if Some(plain) != benchmark => folder,
+            _ => workdir,
+        };
+        let mut collected = base.join(plain).to_string_lossy().into_owned();
         if declared.ends_with('/') {
             collected.push('/');
         }
@@ -106,9 +149,24 @@ pub fn place(workdir: &Path, task: &mut Task, placed: &mut Placed) -> std::io::R
     Ok(())
 }
 
-/// Takes back what a task left in the working directory once it ended: gives the outputs of
-/// the outcome the paths the jobs declared, and removes the files written for it.
-pub fn finish(placed: Placed, outcome: &mut Outcome) -> std::io::Result<()> {
+/// Takes back what a task left in the working directory once it ended: moves the outputs of
+/// a shadow directory to their place, only the logs after a failure, as Snakemake's
+/// `unshadow_output`, and gives the outputs of the outcome the paths the jobs declared.
+pub fn finish(placed: Placed, outcome: &mut Outcome, succeeded: bool) -> std::io::Result<()> {
+    for shadow in &placed.shadows {
+        let files = match succeeded {
+            true => shadow
+                .outputs
+                .iter()
+                .chain(&shadow.logs)
+                .collect::<Vec<_>>(),
+            false => shadow.logs.iter().collect(),
+        };
+        for file in files {
+            unshadow(&shadow.folder, file)?;
+        }
+        let _ = std::fs::remove_dir_all(&shadow.folder);
+    }
     for file in &mut outcome.files {
         let path = file.path.trim_start_matches('/').trim_end_matches('/');
         let declared = placed
@@ -190,6 +248,112 @@ fn texts(values: &[Value]) -> Vec<String> {
         .collect()
 }
 
+/// A shadow directory of its own below `.snakemake/shadow`, as Snakemake makes one.
+fn shadow_folder(workdir: &Path, task: &Task) -> std::io::Result<PathBuf> {
+    let parent = workdir.join(".snakemake").join("shadow");
+    std::fs::create_dir_all(&parent)?;
+    for number in 0.. {
+        let folder = parent.join(format!("iunctus-{}-{number}", task.id.0));
+        match std::fs::create_dir(&folder) {
+            Ok(()) => return Ok(folder),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    unreachable!("a free shadow directory")
+}
+
+/// Fills a shadow directory as Snakemake's `Job.prepare` does for each depth.
+fn populate(workdir: &Path, folder: &Path, mode: &str, job: &Job) -> std::io::Result<()> {
+    match mode {
+        "minimal" | "copy-minimal" => {
+            let all = [&job.input.values, &job.output.values, &job.log.values];
+            for file in all.into_iter().flat_map(|values| texts(values)) {
+                if let Some(parent) = Path::new(&file).parent()
+                    && !Path::new(&file).is_absolute()
+                {
+                    std::fs::create_dir_all(folder.join(parent))?;
+                }
+            }
+            for input in texts(&job.input.values) {
+                if Path::new(&input).is_absolute() {
+                    continue;
+                }
+                let link = folder.join(&input);
+                if mode == "copy-minimal" {
+                    copy_into(&workdir.join(&input), &link)?;
+                } else {
+                    let base = link.parent().unwrap_or(folder);
+                    let _ =
+                        std::os::unix::fs::symlink(relative(&workdir.join(&input), base), &link);
+                }
+            }
+        }
+        "shallow" => {
+            for entry in std::fs::read_dir(workdir)? {
+                let entry = entry?;
+                std::os::unix::fs::symlink(entry.path(), folder.join(entry.file_name()))?;
+            }
+        }
+        _ => link_tree(workdir, workdir, folder)?,
+    }
+    Ok(())
+}
+
+/// The full shadow: the folders of the working directory, with links to each file.
+fn link_tree(workdir: &Path, folder: &Path, shadow: &Path) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(folder)? {
+        let entry = entry?;
+        let source = entry.path();
+        if source == workdir.join(".snakemake") {
+            continue;
+        }
+        let target = shadow.join(source.strip_prefix(workdir).unwrap_or(&source));
+        if std::fs::metadata(&source).is_ok_and(|metadata| metadata.is_dir()) {
+            std::fs::create_dir_all(&target)?;
+            link_tree(workdir, &source, shadow)?;
+        } else {
+            std::os::unix::fs::symlink(&source, &target)?;
+        }
+    }
+    Ok(())
+}
+
+/// Moves an output of a shadow directory to its place; an absolute link becomes relative to
+/// the shadow directory first, as in Snakemake.
+fn unshadow(folder: &Path, file: &str) -> std::io::Result<()> {
+    let shadowed = folder.join(file);
+    let Some(real) = folder
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+    else {
+        return Ok(());
+    };
+    let real = real.join(file);
+    if let Ok(target) = std::fs::read_link(&shadowed)
+        && target.is_absolute()
+    {
+        std::fs::remove_file(&shadowed)?;
+        std::os::unix::fs::symlink(relative(&target, folder), &shadowed)?;
+    }
+    if std::fs::symlink_metadata(&shadowed).is_err() {
+        return Ok(());
+    }
+    if let (Ok(a), Ok(b)) = (
+        std::fs::canonicalize(&shadowed),
+        std::fs::canonicalize(&real),
+    ) && a == b
+    {
+        return Ok(());
+    }
+    remove(&real)?;
+    if let Some(parent) = real.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::rename(&shadowed, &real)
+}
+
 /// Copies a file or a directory to `target`, leaving files that already have that content.
 fn copy_into(source: &Path, target: &Path) -> std::io::Result<()> {
     if source.is_dir() {
@@ -244,12 +408,35 @@ fn normal(path: &Path) -> PathBuf {
     result
 }
 
+/// `os.path.relpath(target, base)` for absolute paths.
+fn relative(target: &Path, base: &Path) -> PathBuf {
+    let (target, base) = (normal(target), normal(base));
+    let common = (target.components().zip(base.components()))
+        .take_while(|(a, b)| a == b)
+        .count();
+    let mut result = PathBuf::new();
+    for _ in base.components().skip(common) {
+        result.push("..");
+    }
+    for part in target.components().skip(common) {
+        result.push(part);
+    }
+    if result.as_os_str().is_empty() {
+        result.push(".");
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn own_paths() {
+    fn relative_paths() {
+        assert_eq!(
+            relative(Path::new("/w/a/b.txt"), Path::new("/w/s/a")),
+            PathBuf::from("../../a/b.txt")
+        );
         assert_eq!(
             own_path(".snakemake/scripts/x.py", 7),
             ".snakemake/scripts/iunctus-7-x.py"

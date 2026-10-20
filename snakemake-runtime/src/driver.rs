@@ -1030,7 +1030,8 @@ impl Session {
     pub fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
         let mut outcome = outcome;
         if let Some(placed) = self.placed.remove(&outcome.id) {
-            crate::shared::finish(placed, &mut outcome).map_err(|error| {
+            let succeeded = outcome.exit_code == 0;
+            crate::shared::finish(placed, &mut outcome, succeeded).map_err(|error| {
                 DriverError::new(format!("cannot finish task {}: {error}", outcome.id))
             })?;
         }
@@ -1196,7 +1197,8 @@ impl Session {
         let mut placed = crate::shared::Placed::default();
         for (job, task) in jobs.iter().zip(&mut members) {
             let entry = &planner.jobs[*job];
-            crate::shared::prepare(&self.workdir, entry, task, &mut placed)
+            let shadow = planner.rules[entry.rule].shadow.as_deref();
+            crate::shared::prepare(&self.workdir, entry, shadow, task, &mut placed)
                 .map_err(|error| DriverError::new(format!("cannot prepare a job: {error}")))?;
         }
         let mut task = combine(&mut members)?;

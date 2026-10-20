@@ -608,6 +608,11 @@ impl Session {
         }
         outputs.sort();
         outputs.dedup();
+        // Snakemake checks this when it first builds the DAG, not when a checkpoint changed
+        // it, so jobs may write into the directory output of a finished checkpoint.
+        if !planner.checkpoints_done.is_empty() {
+            outputs.clear();
+        }
         for pair in outputs.windows(2) {
             let ((parent, parent_job), (child, child_job)) = (&pair[0], &pair[1]);
             if parent != child && child.starts_with(parent) && parent_job != child_job {

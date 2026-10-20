@@ -89,6 +89,7 @@ pub(crate) fn driver(
                 rerun_triggers: arguments.rerun_triggers.clone(),
                 conda: setup.conda.is_some(),
                 shared_workdir: shared_workdir(arguments, setup),
+                local: arguments.executor.as_deref().unwrap_or("local") == "local",
             },
         ),
         Language::Cwl => {

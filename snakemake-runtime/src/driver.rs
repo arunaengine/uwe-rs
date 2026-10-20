@@ -133,6 +133,8 @@ pub struct Session {
     storage: Storage,
     /// Temporary files whose removal waits until no checkpoint is pending, with their jobs.
     deferred: Vec<(String, usize)>,
+    /// Whether jobs run on this machine, where Snakemake forms no group jobs.
+    local: bool,
 }
 
 struct SignaturePublication {
@@ -243,6 +245,7 @@ impl Session {
             cwl_engine: None,
             storage: storage.clone(),
             deferred: Vec::new(),
+            local: false,
         })
     }
 
@@ -651,14 +654,19 @@ impl Session {
                 self.needrun.insert(*job, true);
             }
         }
-        self.components = crate::groups::components(
-            &mut self.interpreter,
-            planner,
-            &self.order,
-            &self.needrun,
-            &self.tasks,
-        )
-        .map_err(|error| driver_error(&error, &self.workdir))?;
+        // A local run of Snakemake forms no group jobs; jobs of pipes and services still
+        // run together.
+        self.components = match self.local {
+            true => HashMap::new(),
+            false => crate::groups::components(
+                &mut self.interpreter,
+                planner,
+                &self.order,
+                &self.needrun,
+                &self.tasks,
+            )
+            .map_err(|error| driver_error(&error, &self.workdir))?,
+        };
         crate::pipes::components(
             planner,
             &self.order,
@@ -2576,6 +2584,8 @@ pub struct RunSettings {
     /// Whether the executor sees the working directory at its path, so that jobs run in it
     /// as in Snakemake; a simulated run never does.
     pub shared_workdir: bool,
+    /// Whether jobs run on this machine, as Snakemake's local runs, which form no group jobs.
+    pub local: bool,
 }
 
 /// The driver of a Snakemake workflow: `launch.target` is a Snakefile, or a folder with a
@@ -2618,6 +2628,7 @@ pub fn driver_with_options(
                 let mut session = Session::new(&launch, &settings.storage)?;
                 session.rerun_triggers = options.rerun_triggers.clone();
                 session.shared = options.shared_workdir && !launch.simulated;
+                session.local = options.local;
                 session.embedded.shared = session.shared;
                 session.state.borrow_mut().conda_enabled = options.conda;
                 session.state.borrow_mut().default_image = options.image.clone();

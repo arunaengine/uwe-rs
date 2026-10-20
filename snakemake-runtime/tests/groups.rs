@@ -293,3 +293,27 @@ rule b:
     }
     assert_eq!(task.resources.cpus, Some(3.0));
 }
+
+/// A local run of Snakemake 9.27 runs the jobs of a group one by one and removes a temporary
+/// file once the next job of the group read it (test_group_temp).
+#[test]
+fn separates_local_groups() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(folder.path().join("Snakefile"), WORKFLOW).unwrap();
+    let launch = Launch {
+        target: folder.path().into(),
+        scratch: folder.path().join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    };
+    let options = snakemake_runtime::RunSettings {
+        local: true,
+        ..Default::default()
+    };
+    let mut driver =
+        snakemake_runtime::driver_with_options(&launch, Default::default(), options).unwrap();
+    let mut executor = Simulator::new(folder.path().join("made"));
+    let run = execute("group", driver.as_mut(), &mut executor);
+    assert!(run.error.is_none(), "{:?}", run.error);
+    assert_eq!(run.graph.nodes.len(), 5, "a task of each job");
+}

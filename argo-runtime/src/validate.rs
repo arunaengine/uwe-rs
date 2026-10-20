@@ -236,10 +236,6 @@ impl<'a> Check<'a> {
             })?;
         }
         for (field, present) in [
-            (
-                "artifactRepositoryRef",
-                spec.artifact_repository_ref.is_some(),
-            ),
             ("podSpecPatch", spec.pod_spec_patch.is_some()),
             ("podResources", spec.pod_resources.is_some()),
             ("resourceClaims", spec.resource_claims.is_some()),

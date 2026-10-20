@@ -413,12 +413,11 @@ impl Run {
             {
                 self.raw_outputs.insert(found.location.clone().into());
             }
-            if let Ok(declared) = self.artifact_value(&plain)
-                && let Some(Location::Url(url)) = declared.location
-            {
+            // The address alone, so that a later write of the same key wins, as in Argo.
+            if let Ok(Some(url)) = crate::inputs::artifact_url(&plain) {
                 self.store
                     .insert(url.clone(), found.location.clone().into());
-                if artifact.s3.is_some() {
+                if artifact.s3.is_some() && !url.starts_with(crate::inputs::REPOSITORY) {
                     self.artifact_delivery(url, archived);
                 }
             }

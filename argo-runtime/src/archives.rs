@@ -99,15 +99,15 @@ pub(crate) fn check(artifact: &Artifact) -> Result<()> {
         ..artifact.clone()
     };
     crate::inputs::check_artifact(&plain)?;
+    // A key without a bucket names the artifact repository; a bucket needs a key.
     if let Some(s3) = &artifact.s3
-        && ["bucket", "key"].into_iter().any(|key| {
-            s3.get(key)
-                .map(scalar_text)
-                .is_none_or(|value| value.is_empty())
-        })
+        && s3
+            .get("key")
+            .map(scalar_text)
+            .is_none_or(|key| key.is_empty())
     {
         return Err(Failure::unsupported(format!(
-            "artifact {}: the default artifact repository is not supported; supply an S3 bucket and key",
+            "artifact {}: an S3 bucket without a key needs the key format of an artifact repository, which iunctus does not have; supply a key",
             artifact.name
         )));
     }
@@ -184,6 +184,18 @@ impl Run {
         value: &ArtifactValue,
         declared: Option<&Artifact>,
     ) -> Result<Option<Input>> {
+        if let Some(Location::Url(url)) = &value.location
+            && let Some(key) = url.strip_prefix(crate::inputs::REPOSITORY)
+            && !self.options.assume_inputs
+        {
+            if value.optional {
+                return Ok(None);
+            }
+            return Err(Failure::error(format!(
+                "artifact {}: no step of this run wrote key {key} of the artifact repository, which iunctus keeps inside the run",
+                value.name
+            )));
+        }
         let Some(mut input) = crate::pod::input_of(value) else {
             return Ok(None);
         };

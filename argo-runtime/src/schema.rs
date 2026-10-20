@@ -222,14 +222,10 @@ fn location(artifact: &Artifact) -> Result<Option<String>> {
         if key.is_empty() && bucket.is_empty() {
             return Ok(None);
         }
-        let bucket = if bucket.is_empty() {
-            return Err(Failure::unsupported(format!(
-                "artifact {}: the default artifact repository is not supported; supply an S3 bucket",
-                artifact.name
-            )));
-        } else {
-            &bucket
-        };
+        // A key of the artifact repository is no input that a user gives.
+        if bucket.is_empty() {
+            return Ok(None);
+        }
         format!("s3://{bucket}/{}", key.trim_start_matches('/'))
     } else if let Some(http) = &artifact.http {
         text(http, "url")

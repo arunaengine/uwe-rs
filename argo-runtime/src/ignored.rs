@@ -9,7 +9,7 @@ use crate::run::Run;
 
 /// Fields of workflows, templates and containers that only tell Kubernetes where and how to run
 /// a pod; they do not change what a task computes.
-const LEFT_OUT: [&str; 24] = [
+const LEFT_OUT: [&str; 23] = [
     "podSpecPatch",
     "nodeSelector",
     "tolerations",
@@ -30,7 +30,6 @@ const LEFT_OUT: [&str; 24] = [
     "podDisruptionBudget",
     "ttlStrategy",
     "metrics",
-    "archiveLocation",
     "artifactGC",
     "volumeClaimGC",
     "executor",
@@ -61,6 +60,18 @@ impl Run {
                          permissions, only runAsUser and runAsGroup count (decision 28)"
                     ));
                 }
+            }
+        }
+        // Outputs stay in the store, and keys of the repository pass between the steps.
+        for field in ["artifactRepositoryRef", "archiveLocation"] {
+            if node
+                .get(field)
+                .is_some_and(|value| value.value != Yaml::Null)
+            {
+                self.warn(format!(
+                    "{field} is left out: outputs stay in the store of iunctus, and keys of the \
+                     artifact repository pass between the steps of the run"
+                ));
             }
         }
         if node

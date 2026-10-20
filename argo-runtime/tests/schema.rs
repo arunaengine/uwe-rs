@@ -155,7 +155,6 @@ fn omits_unsupported_providers() {
             "Git",
             "git: {repo: 'https://example.org/repository.git', revision: abc123}",
         ),
-        ("repository", "s3: {key: in.txt}"),
     ] {
         let folder = tempfile::tempdir().expect("a folder");
         let file = folder.path().join("unsupported.yaml");

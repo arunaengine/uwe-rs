@@ -1490,6 +1490,55 @@ spec:
 }
 
 #[test]
+fn passes_repository_keys() {
+    let text = r#"apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata: {generateName: key-only-}
+spec:
+  entrypoint: main
+  artifactRepositoryRef: {key: my-key}
+  templates:
+  - name: main
+    dag:
+      tasks:
+      - {name: generate, template: generate}
+      - {name: consume, template: consume, depends: generate}
+  - name: generate
+    container: {image: alpine, command: [sh, -c, "echo hello > /mnt/file"]}
+    outputs: {artifacts: [{name: file, path: /mnt/file, s3: {key: my-file}}]}
+  - name: consume
+    container: {image: alpine, command: [cat, /tmp/file]}
+    inputs: {artifacts: [{name: file, path: /tmp/file, s3: {key: my-file}}]}
+"#;
+    let ran = run_with(text, real());
+    ran.succeeded();
+    let input = (ran.task("consume").inputs.iter())
+        .find(|input| input.path == "/tmp/file")
+        .expect("the input of the key")
+        .clone();
+    assert!(
+        !input.source.contains("://"),
+        "a file of the run: {input:?}"
+    );
+    assert!(
+        ran.warnings
+            .iter()
+            .any(|warning| warning.starts_with("artifactRepositoryRef is left out")),
+        "{:?}",
+        ran.warnings
+    );
+    // A key that no step wrote has no value in a real run.
+    let alone = text
+        .replace("depends: generate", "depends: ''")
+        .replace("      - {name: generate, template: generate}\n", "");
+    let error = run_with(&alone, real()).error();
+    assert!(
+        error.contains("no step of this run wrote key my-file"),
+        "{error}"
+    );
+}
+
+#[test]
 fn unresolved_when_fails() {
     // `a` is skipped, so it has no outputs; Argo cannot parse the `when` of `b` and fails it.
     let dag = r#"

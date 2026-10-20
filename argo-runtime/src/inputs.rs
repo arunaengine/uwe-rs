@@ -210,54 +210,11 @@ impl Run {
 
     fn location(&mut self, artifact: &Artifact) -> Result<Option<Location>> {
         check_artifact(artifact)?;
-        let text = |node: &Node, key: &str| node.get(key).map(scalar_text).unwrap_or_default();
         if let Some(raw) = &artifact.raw {
-            return Ok(Some(Location::Raw(text(raw, "data"))));
+            let data = raw.get("data").map(scalar_text).unwrap_or_default();
+            return Ok(Some(Location::Raw(data)));
         }
-        let url = if let Some(s3) = &artifact.s3 {
-            let key = text(s3, "key");
-            let bucket = text(s3, "bucket");
-            if key.is_empty() && bucket.is_empty() {
-                return Ok(None);
-            }
-            let bucket = if bucket.is_empty() {
-                return Err(Failure::unsupported(format!(
-                    "artifact {}: the default artifact repository is not supported; supply an S3 bucket",
-                    artifact.name
-                )));
-            } else {
-                bucket
-            };
-            format!("s3://{bucket}/{}", key.trim_start_matches('/'))
-        } else if let Some(http) = &artifact.http {
-            text(http, "url")
-        } else if let Some(git) = &artifact.git {
-            let repository = text(git, "repo");
-            match text(git, "revision") {
-                revision if revision.is_empty() => repository,
-                revision => format!("{repository}#{revision}"),
-            }
-        } else if let Some(gcs) = &artifact.gcs {
-            format!("gs://{}/{}", text(gcs, "bucket"), text(gcs, "key"))
-        } else if let Some(azure) = &artifact.azure {
-            format!(
-                "{}/{}/{}",
-                text(azure, "endpoint").trim_end_matches('/'),
-                text(azure, "container"),
-                text(azure, "blob")
-            )
-        } else if let Some(artifactory) = &artifact.artifactory {
-            text(artifactory, "url")
-        } else if let Some(hdfs) = &artifact.hdfs {
-            format!("hdfs://{}", text(hdfs, "path").trim_start_matches('/'))
-        } else if let Some(oss) = &artifact.oss {
-            format!("oss://{}/{}", text(oss, "bucket"), text(oss, "key"))
-        } else if artifact.plugin.is_some() {
-            return Err(Failure::unsupported(format!(
-                "artifact {}: artifact plugins are not supported",
-                artifact.name
-            )));
-        } else {
+        let Some(url) = artifact_url(artifact)? else {
             return Ok(None);
         };
         // An artifact that a task of this run wrote is read from the task's output.
@@ -266,6 +223,55 @@ impl Run {
         }
         Ok(Some(Location::Url(url)))
     }
+}
+
+/// The address of an artifact without raw data. A key without a bucket names the artifact
+/// repository, which iunctus keeps inside the run, as [`REPOSITORY`] addresses.
+/// The address of keys of the artifact repository, which the steps of a run share.
+pub(crate) const REPOSITORY: &str = "argo-repository:///";
+
+pub(crate) fn artifact_url(artifact: &Artifact) -> Result<Option<String>> {
+    let text = |node: &Node, key: &str| node.get(key).map(scalar_text).unwrap_or_default();
+    let url = if let Some(s3) = &artifact.s3 {
+        let key = text(s3, "key");
+        let bucket = text(s3, "bucket");
+        match (bucket.is_empty(), key.is_empty()) {
+            (true, true) => return Ok(None),
+            (true, false) => format!("{REPOSITORY}{}", key.trim_start_matches('/')),
+            _ => format!("s3://{bucket}/{}", key.trim_start_matches('/')),
+        }
+    } else if let Some(http) = &artifact.http {
+        text(http, "url")
+    } else if let Some(git) = &artifact.git {
+        let repository = text(git, "repo");
+        match text(git, "revision") {
+            revision if revision.is_empty() => repository,
+            revision => format!("{repository}#{revision}"),
+        }
+    } else if let Some(gcs) = &artifact.gcs {
+        format!("gs://{}/{}", text(gcs, "bucket"), text(gcs, "key"))
+    } else if let Some(azure) = &artifact.azure {
+        format!(
+            "{}/{}/{}",
+            text(azure, "endpoint").trim_end_matches('/'),
+            text(azure, "container"),
+            text(azure, "blob")
+        )
+    } else if let Some(artifactory) = &artifact.artifactory {
+        text(artifactory, "url")
+    } else if let Some(hdfs) = &artifact.hdfs {
+        format!("hdfs://{}", text(hdfs, "path").trim_start_matches('/'))
+    } else if let Some(oss) = &artifact.oss {
+        format!("oss://{}/{}", text(oss, "bucket"), text(oss, "key"))
+    } else if artifact.plugin.is_some() {
+        return Err(Failure::unsupported(format!(
+            "artifact {}: artifact plugins are not supported",
+            artifact.name
+        )));
+    } else {
+        return Ok(None);
+    };
+    Ok(Some(url))
 }
 
 pub(crate) fn check_artifact(artifact: &Artifact) -> Result<()> {

@@ -164,14 +164,14 @@ fn downstream_keeps_files() {
 
 #[test]
 fn requires_repository_location() {
-    for source in ["{key: data}", "{bucket: data}"] {
-        let artifact = argo_parser::model::Artifact {
-            name: "output".into(),
-            s3: argo_parser::parse_yaml(source).unwrap(),
-            ..Default::default()
-        };
-        let error = super::check(&artifact).unwrap_err();
-        assert!(error.unsupported);
-        assert!(error.message.contains("bucket and key"));
-    }
+    let artifact = |source: &str| argo_parser::model::Artifact {
+        name: "output".into(),
+        s3: argo_parser::parse_yaml(source).unwrap(),
+        ..Default::default()
+    };
+    // A key alone names the artifact repository of the run.
+    assert!(super::check(&artifact("{key: data}")).is_ok());
+    let error = super::check(&artifact("{bucket: data}")).unwrap_err();
+    assert!(error.unsupported);
+    assert!(error.message.contains("supply a key"), "{}", error.message);
 }

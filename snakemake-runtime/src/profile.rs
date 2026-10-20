@@ -362,14 +362,7 @@ impl Profile {
             if value.is_none() {
                 continue;
             }
-            let pending = [
-                "groups",
-                "group-components",
-                "prioritize",
-                "P",
-                "set-scatter",
-                "batch",
-            ];
+            let pending = ["groups", "group-components", "prioritize", "P", "batch"];
             if pending.contains(&interpreter.to_str(&key)?.as_str()) {
                 return Err(Error::unsupported(format!(
                     "Snakemake profile setting '{}'",
@@ -432,7 +425,6 @@ impl Profile {
                     let message = "Invalid group components definition: entries have to be defined as GROUP=COMPONENTS pairs (with COMPONENTS being a positive integer)";
                     for (group, number) in pairs(interpreter, &value)? {
                         let number = (number.trim_matches(['\'', '"']).parse::<usize>().ok())
-                            .filter(|number| *number > 0)
                             .ok_or_else(|| workflow_error(message))?;
                         profile.group_components.push((group, number));
                     }

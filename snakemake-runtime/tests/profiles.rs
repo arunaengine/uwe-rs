@@ -379,3 +379,21 @@ fn considers_ancient_inputs() {
         .expect_err("an invalid item");
     assert!(error.message.contains("Unparsable value: 'x-y'"), "{error}");
 }
+
+/// Snakemake 9.27 with `set-scatter: {split: 3}` makes three scatter items, `1-of-3` to
+/// `3-of-3`, where `scattergather:` asks for two.
+#[test]
+fn overrides_scatter_items() {
+    let snakefile = "scattergather:\n    split=2\nrule all:\n    input: gather.split('o/{scatteritem}.txt')\nrule make:\n    output: 'o/{scatteritem}.txt'\n    shell: 'touch {output}'\n";
+    let folder = tempfile::tempdir().expect("a folder");
+    let launch = profile_launch(folder.path(), "set-scatter: {split: 3}\n", snakefile);
+    let started = snakemake_runtime::driver(&launch)
+        .expect("a driver")
+        .start()
+        .expect("starts");
+    let mut outputs: Vec<String> = (started.iter())
+        .flat_map(|task| task.outputs.clone())
+        .collect();
+    outputs.sort();
+    assert_eq!(outputs, ["o/1-of-3.txt", "o/2-of-3.txt", "o/3-of-3.txt"]);
+}

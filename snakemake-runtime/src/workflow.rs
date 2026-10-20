@@ -760,6 +760,9 @@ impl Hook {
                         .scatter
                         .insert(name.to_string(), value.as_int().unwrap_or(1));
                 }
+                // `set-scatter` of a profile wins, as Snakemake's `overwrite_scatter`.
+                let overwrite = state.profile.set_scatter.clone();
+                state.scatter.extend(overwrite);
                 state
                     .global_constraints
                     .insert("scatteritem".into(), "\\d+-of-\\d+".into());

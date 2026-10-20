@@ -346,6 +346,7 @@ impl Session {
                 }
                 state.global_resources.insert(name, value);
             }
+            state.scatter.extend(profile.set_scatter.clone());
             state.profile = profile;
         }
         let overwrite = Value::dict(python_evaluator::Dict::default());

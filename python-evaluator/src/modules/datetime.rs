@@ -667,14 +667,49 @@ pub fn time() -> Vec<(&'static str, Value)> {
                     .first()
                     .and_then(|format| format.as_str().map(str::to_owned))
                     .unwrap_or_default();
-                Ok(Value::str(jiff::Zoned::now().strftime(&format).to_string()))
+                // The time to format, as `localtime()` gives it; else now.
+                let time = match args
+                    .positional
+                    .get(1)
+                    .and_then(|time| time.as_native::<DateTime>())
+                {
+                    Some(time) => time.time.clone(),
+                    None => jiff::Zoned::now(),
+                };
+                Ok(Value::str(time.strftime(&format).to_string()))
             }),
         ),
         (
             "localtime",
-            function("localtime", |_, _| {
-                Ok(DateTime::naive(jiff::Zoned::now(), false))
+            function("localtime", |_, args| {
+                Ok(DateTime::naive(
+                    zoned_at(&args, jiff::tz::TimeZone::system())?,
+                    false,
+                ))
+            }),
+        ),
+        (
+            "gmtime",
+            function("gmtime", |_, args| {
+                Ok(DateTime::naive(
+                    zoned_at(&args, jiff::tz::TimeZone::UTC)?,
+                    false,
+                ))
             }),
         ),
     ]
+}
+
+/// The time of seconds since the epoch in a zone, as `time.localtime(secs)` takes them; now
+/// without seconds.
+fn zoned_at(args: &Args, zone: jiff::tz::TimeZone) -> Result<jiff::Zoned, Error> {
+    let seconds = match args.positional.first().map(Value::plain) {
+        None | Some(Value::None) => return Ok(jiff::Timestamp::now().to_zoned(zone)),
+        Some(Value::Int(seconds)) => *seconds as f64,
+        Some(Value::Float(seconds)) => *seconds,
+        Some(_) => return Err(Error::type_error("an integer or a float is required")),
+    };
+    let stamp = jiff::Timestamp::from_second(seconds.floor() as i64)
+        .map_err(|error| Error::value_error(error.to_string()))?;
+    Ok(stamp.to_zoned(zone))
 }

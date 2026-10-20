@@ -27,6 +27,8 @@ impl StorageFiles {
     fn copy_here(&self, location: &str) -> io::Result<PathBuf> {
         match self.storage.stat(location).map_err(other)? {
             Some(found) if found.directory => {
+                // As fetch does, so that `iunctus clean` leaves the copy alone while it grows.
+                self.storage.hold(&self.downloads).map_err(other)?;
                 let folder = self
                     .downloads
                     .join(self.storage.download_name(location).map_err(other)?)
@@ -233,6 +235,35 @@ mod tests {
         );
         let config = config_file::ConfigFile::parse(&text, Path::new("config.toml")).expect("TOML");
         Storage::from_config(&config).expect("valid settings")
+    }
+
+    #[test]
+    fn directory_copies_hold() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let downloads = root.path().join("downloads");
+        std::fs::create_dir_all(&downloads).unwrap();
+        let stored = root.path().join("store/runs/1/tree");
+        std::fs::create_dir_all(&stored).unwrap();
+        std::fs::write(stored.join("y.txt"), "y\n").unwrap();
+        let files = StorageFiles::new(&folders(root.path()), downloads.clone());
+        // Clean-up holds the downloads alone, so the copy waits.
+        let alone = storage::hold_downloads(&downloads).unwrap();
+        assert!(alone.is_some());
+        let (sender, copied) = std::sync::mpsc::channel();
+        let copying = std::thread::spawn(move || {
+            let copy = files.local("s3://store/runs/1/tree").expect("a copy");
+            sender.send(copy).unwrap();
+            files
+        });
+        let waiting = copied.recv_timeout(std::time::Duration::from_millis(300));
+        assert!(waiting.is_err(), "the copy waits for clean-up");
+        drop(alone);
+        let copy = copied.recv().unwrap();
+        assert_eq!(std::fs::read_to_string(copy.join("y.txt")).unwrap(), "y\n");
+        // While the run lives, clean-up leaves its downloads alone.
+        let files = copying.join().unwrap();
+        assert!(storage::hold_downloads(&downloads).unwrap().is_none());
+        drop(files);
     }
 
     #[test]

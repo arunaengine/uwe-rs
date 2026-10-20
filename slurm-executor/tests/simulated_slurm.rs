@@ -1382,7 +1382,8 @@ async fn stage_objects(credentials: bool, upload: bool) {
         options.contains("--chdir=/tmp\n--output=/dev/null\n"),
         "{options}"
     );
-    assert!(!root.path().join("node/iunctus-run-P-1-1").exists());
+    let node = std::fs::read_dir(root.path().join("node")).expect("the node folder");
+    assert_eq!(node.count(), 0, "the job removes its folder");
     assert!(finished.root.join("control/slurm.log").is_file());
     let stage = &backend.remote.as_ref().expect("the staging").stage;
     let left = stage

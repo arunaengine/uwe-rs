@@ -146,7 +146,7 @@ staging_root = "s3://bucket/iunctus-staging"
 node_folder = "/local/scratch"               # the default is $TMPDIR, else /tmp
 ```
 
-A SLURM job gets the binary with `curl` or `wget` and checks it, stages the inputs into the node folder, runs the container with binds to that folder, and sends the outputs back. Apptainer pulls the image on each node. iunctus cannot see the machine of the nodes, so it must match the binary: the job checks `uname -m` and fails with a clear message when it differs. Instead of the uploaded binary, a job may get it from a path on the nodes, or from an address of your own:
+A SLURM job makes a new private folder in the node folder. It gets the binary there with `curl` or `wget` and checks it, stages the inputs into the `data` folder in it, runs the container with binds to the `data` folder only, and sends the outputs back. The task cannot change the binary, the plan or the log of the job, which run or count after the task. Apptainer pulls the image on each node. iunctus cannot see the machine of the nodes, so it must match the binary: the job checks `uname -m` and fails with a clear message when it differs. Instead of the uploaded binary, a job may get it from a path on the nodes, or from an address of your own:
 
 ```toml
 [executor.slurm]

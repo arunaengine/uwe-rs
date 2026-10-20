@@ -34,6 +34,12 @@ pub use task::{
     RenderedOutput, RenderedPart, RenderedTask, TaskDirective, TaskFrame, normalise_script,
 };
 
+thread_local! {
+    /// The operator scratch folders that the default host made on this thread. They are
+    /// removed when the thread ends, like the thread of a test or the main thread of a run.
+    static SCRATCH: RefCell<Vec<tempfile::TempDir>> = const { RefCell::new(Vec::new()) };
+}
+
 /// What the interpreter needs from its surroundings.
 pub trait Host {
     /// Writes text to standard output, as `print` and `println` do.
@@ -53,8 +59,8 @@ pub trait Host {
             .unwrap_or_else(|_| "/".into())
     }
 
-    /// Reserves persistent operator scratch. Custom storage hosts may override the local
-    /// system temporary-directory default; the caller retains outputs until it removes them.
+    /// Reserves operator scratch. The default is a folder in the system temporary folder, which
+    /// is removed when the thread ends; custom storage hosts may override it.
     fn operator_directory(&mut self) -> Result<PathValue, Error> {
         let directory = tempfile::Builder::new()
             .prefix("iunctus-nextflow-")
@@ -65,9 +71,10 @@ pub trait Host {
                     format!("cannot reserve operator scratch: {error}"),
                 )),
                 span: Span::default(),
-            })?
-            .keep();
-        Ok(PathValue::parse(&directory.to_string_lossy(), "/"))
+            })?;
+        let path = PathValue::parse(&directory.path().to_string_lossy(), "/");
+        SCRATCH.with_borrow_mut(|folders| folders.push(directory));
+        Ok(path)
     }
 
     /// A local copy of a remote file, like one on `https://`. The default has none.

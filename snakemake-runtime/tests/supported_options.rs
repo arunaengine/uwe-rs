@@ -37,27 +37,34 @@ fn rejects_active_options() {
     }
 }
 
+/// Snakemake takes `resource_scopes:` and refuses scopes other than local, global and
+/// excluded; a local run tallies every resource whatever its scope.
 #[test]
-fn rejects_resource_scopes() {
-    let directive = "resource_scopes: mem_mb='global'";
-    let folder = tempfile::tempdir().expect("folder");
-    std::fs::write(
-        folder.path().join("Snakefile"),
-        format!(
-            "{directive}\nrule make:\n    output: 'out.txt'\n    shell: 'echo made > {{output}}'\n"
-        ),
-    )
-    .expect("Snakefile");
-    let launch = Launch {
-        target: folder.path().to_path_buf(),
-        scratch: folder.path().join("scratch"),
-        ..Launch::default()
-    };
-    let error = snakemake_runtime::driver(&launch)
-        .and_then(|mut driver| driver.start())
-        .expect_err("unsupported directive")
-        .to_string();
-    assert!(error.contains("not supported"), "{error}");
+fn checks_resource_scopes() {
+    for (scopes, valid) in [
+        ("mem_mb='global', fake_res='local'", true),
+        ("mem_mb='node'", false),
+    ] {
+        let folder = tempfile::tempdir().expect("folder");
+        std::fs::write(
+            folder.path().join("Snakefile"),
+            format!("resource_scopes:\n    {scopes}\nrule make:\n    output: 'out.txt'\n    shell: 'echo made > {{output}}'\n"),
+        )
+        .expect("Snakefile");
+        let launch = Launch {
+            target: folder.path().to_path_buf(),
+            scratch: folder.path().join("scratch"),
+            ..Launch::default()
+        };
+        let result = snakemake_runtime::driver(&launch).and_then(|mut driver| driver.start());
+        match valid {
+            true => assert_eq!(result.expect("valid scopes").len(), 1),
+            false => {
+                let error = result.expect_err("an invalid scope").to_string();
+                assert!(error.contains("Invalid scope"), "{error}");
+            }
+        }
+    }
 }
 
 #[test]

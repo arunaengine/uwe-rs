@@ -239,3 +239,17 @@ impl workflow_graph::Observer for Delivered {
         }
     }
 }
+
+/// A run that submits jobs elsewhere leaves resources of the scope `local` out of the global
+/// tally, as Snakemake does: each job gets a pool of them.
+#[test]
+fn spares_local_scopes() {
+    let snakefile = "resource_scopes:\n    ncbi='local'\nrule all:\n    input: expand('o{i}', i=range(2))\nrule fetch:\n    output: 'o{i}'\n    resources: ncbi=1\n    shell: 'touch {output}'\n";
+    let folder = tempfile::tempdir().expect("a folder");
+    let launch = profile_launch(folder.path(), "resources: [ncbi=1]\n", snakefile);
+    let started = snakemake_runtime::driver(&launch)
+        .expect("a driver")
+        .start()
+        .expect("starts");
+    assert_eq!(started.len(), 2, "both fetches run at once: {started:?}");
+}

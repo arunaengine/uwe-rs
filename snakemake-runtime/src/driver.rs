@@ -826,7 +826,7 @@ impl Session {
                 }
                 task
             };
-            let usage = self.usages.get(&job).cloned().unwrap_or_default();
+            let usage = self.tallied(self.usages.get(&job).cloned().unwrap_or_default());
             let limits = crate::scheduling::limits(&self.state.borrow().global_resources);
             if !self.gate.fits(&usage, &limits) {
                 self.prepared.insert(job, task);
@@ -1404,7 +1404,7 @@ impl Session {
     /// keeps what its task took.
     fn admit(&mut self, anchor: usize, retry: bool, usage: &crate::scheduling::Usage) -> bool {
         let limits = crate::scheduling::limits(&self.state.borrow().global_resources);
-        if !retry && !self.gate.fits(usage, &limits) {
+        if !retry && !self.gate.fits(&self.tallied(usage.clone()), &limits) {
             if !self.held.contains(&anchor) {
                 self.held.push(anchor);
             }
@@ -1412,6 +1412,21 @@ impl Session {
         }
         self.held.retain(|held| *held != anchor);
         true
+    }
+
+    /// What of a job's usage the run tallies: a run that submits jobs elsewhere leaves out the
+    /// resources whose scope is `local`, which each job has a pool of, as in Snakemake.
+    fn tallied(&self, mut usage: crate::scheduling::Usage) -> crate::scheduling::Usage {
+        if !self.local {
+            let state = self.state.borrow();
+            usage.retain(|(name, _)| {
+                state
+                    .resource_scopes
+                    .get(name)
+                    .is_none_or(|scope| scope != "local")
+            });
+        }
+        usage
     }
 
     /// Removes the outputs of failed jobs in the shared directory, as Snakemake does since
@@ -1863,6 +1878,7 @@ impl Session {
         let Some(mut task) = self.share(&jobs, members, combine)? else {
             return Ok(None);
         };
+        let usage = self.tallied(usage);
         self.gate.take(id, usage);
         if retry.is_some()
             || declared
@@ -2042,6 +2058,7 @@ impl Session {
         let Some(mut task) = self.share(jobs, members, combine)? else {
             return Ok(None);
         };
+        let usage = self.tallied(usage);
         self.gate.take(id, usage);
         if retry.is_some() || jobs.iter().any(|job| self.forced.contains(job)) {
             task.reuse = workflow_graph::Reuse::Denied;

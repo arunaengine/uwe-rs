@@ -165,6 +165,12 @@ and threads per rule. `cores`, `max-threads`, `jobs` and `resources` set the glo
 of the run, as Snakemake's command line does: threads are capped at `max-threads` and at the
 cores, and a local run without `cores` takes `jobs` as its cores.
 
+The settings that change what runs work as on Snakemake's command line: `notemp` keeps
+`temp()` outputs, `wrapper-prefix` says where wrappers are, `groups` and `group-components`
+form group jobs, `prioritize` adds targets whose jobs start first, `set-scatter` overrides
+`scattergather:`, `consider-ancient` marks inputs `ancient()`, `allowed-rules` limits the
+rules that make files, and `batch` runs one part of the inputs of a rule.
+
 ## src/python.rs
 
 The Python container of a run (decision 19): the Python packages without a stand-in that

@@ -136,6 +136,60 @@ impl Interpreter<'_> {
         if let Some(value) = self.org_json_method(object, name, arguments, span)? {
             return Ok(Some(value));
         }
+        let optional = match &object.borrow().state {
+            State::Optional(value) => Some(value.clone()),
+            _ => None,
+        };
+        if let Some(value) = optional {
+            let present = !matches!(value, Value::Null);
+            return Ok(Some(match (name, arguments) {
+                ("isPresent", []) => Value::Boolean(present),
+                ("isEmpty", []) => Value::Boolean(!present),
+                ("get" | "orElseThrow", []) if present => value,
+                ("get" | "orElseThrow", []) => {
+                    let exception = Exception::new("NoSuchElementException", "No value present");
+                    return Err(super::super::thrown(exception, span));
+                }
+                ("orElse", [other]) => {
+                    if present {
+                        value
+                    } else {
+                        other.clone()
+                    }
+                }
+                ("orElseGet", [Value::Closure(f)]) if !present => {
+                    self.call_closure_value(f, Vec::new(), span)?
+                }
+                ("orElseGet", [_]) => value,
+                ("map", [Value::Closure(f)]) if present => {
+                    super::optional(self.call_closure_value(f, vec![value], span)?)
+                }
+                ("map", [_]) => Value::Object(object.clone()),
+                ("ifPresent", [Value::Closure(f)]) => {
+                    if present {
+                        self.call_closure_value(f, vec![value], span)?;
+                    }
+                    Value::Null
+                }
+                _ => return Ok(None),
+            }));
+        }
+        if let State::Iterator(items, position) = &mut object.borrow_mut().state {
+            return match (name, arguments) {
+                ("hasNext", []) => Ok(Some(Value::Boolean(*position < items.len()))),
+                ("next", []) => match items.get(*position) {
+                    Some(item) => {
+                        *position += 1;
+                        Ok(Some(item.clone()))
+                    }
+                    None => {
+                        let exception = Exception::new("NoSuchElementException", "");
+                        Err(super::super::thrown(exception, span))
+                    }
+                },
+                _ => Ok(None),
+            };
+        }
         let builder = match &object.borrow().state {
             State::Builder(text) => Some(text.clone()),
             _ => None,

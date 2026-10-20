@@ -349,6 +349,16 @@ pub(super) fn entry_method(
     }
 }
 
+/// The keys and values of a map.
+pub(super) fn entries_of(map: &Value) -> Vec<(Value, Value)> {
+    match map {
+        Value::Map(map) => (map.borrow().entries.iter())
+            .map(|(key, value)| (key.0.clone(), value.clone()))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 fn entry(pair: (Value, Value)) -> Value {
     Value::MapEntry(Rc::new(pair))
 }

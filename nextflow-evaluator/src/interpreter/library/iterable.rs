@@ -225,6 +225,26 @@ impl Interpreter<'_> {
                         .map(|(key, group)| (key.0, Value::list(group))),
                 )
             }
+            // Groovy's `groupBy` with several closures: maps of groups inside maps of groups.
+            ("groupBy", closures)
+                if closures.len() > 1
+                    && closures.iter().all(|c| matches!(c, Value::Closure(_))) =>
+            {
+                let groups =
+                    self.iterable_method(object, items, "groupBy", &closures[..1], span)?;
+                let Some(groups) = groups else {
+                    return Ok(None);
+                };
+                let mut nested = Vec::new();
+                for (key, group) in super::map::entries_of(&groups) {
+                    let members = elements(&group);
+                    let inner =
+                        self.iterable_method(&group, &members, "groupBy", &closures[1..], span)?;
+                    nested.push((key, inner.unwrap_or(Value::Null)));
+                }
+                Value::map(nested)
+            }
+            ("iterator" | "listIterator", []) => super::iterator(items.to_vec()),
             ("countBy", [Value::Closure(f)]) => {
                 let keys = self.map_items(items, f, span)?;
                 let mut counts: indexmap::IndexMap<Key, i32> = indexmap::IndexMap::new();

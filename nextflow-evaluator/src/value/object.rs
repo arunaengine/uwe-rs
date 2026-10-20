@@ -50,6 +50,10 @@ pub enum State {
     Writer(String),
     /// `java.lang.StringBuilder` or `StringBuffer`, with its text.
     Builder(String),
+    /// A `java.util.Iterator` over a copy of the items, with the position of the next one.
+    Iterator(Vec<super::Value>, usize),
+    /// `java.util.Optional`, empty when it holds null.
+    Optional(super::Value),
     /// `java.security.MessageDigest`, by its algorithm.
     Digest(&'static str),
     /// An object of a plugin class that is known by its text, like fgbio's `ReadStructure`.

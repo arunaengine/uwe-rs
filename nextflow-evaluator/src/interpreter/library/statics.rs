@@ -64,6 +64,75 @@ impl Interpreter<'_> {
                     None => return Ok(None),
                 }
             }
+            // `java.util.Collections`: sorting in place, extremes, views and empty collections.
+            ("Collections", "sort", [list @ Value::List(_), rest @ ..]) if rest.len() <= 1 => {
+                self.call_method(list, "sort", rest.to_vec(), span)?;
+                Value::Null
+            }
+            ("Collections", "reverse", [Value::List(list)]) => {
+                list.borrow_mut().items.reverse();
+                Value::Null
+            }
+            ("Collections", "max" | "min", [items, rest @ ..]) if rest.len() <= 1 => {
+                self.call_method(items, name, rest.to_vec(), span)?
+            }
+            (
+                "Collections",
+                "unmodifiableList"
+                | "unmodifiableSet"
+                | "unmodifiableMap"
+                | "unmodifiableCollection"
+                | "synchronizedList"
+                | "synchronizedMap",
+                [value],
+            ) => value.clone(),
+            ("Collections", "emptyList", []) => Value::list(Vec::new()),
+            ("Collections", "emptySet", []) => Value::set([]),
+            ("Collections", "emptyMap", []) => Value::map([]),
+            ("Collections", "singletonList" | "singleton", [value]) => {
+                Value::list(vec![value.clone()])
+            }
+            // `java.util.Objects`.
+            ("Objects", "equals", [left, right]) => Value::Boolean(match (left, right) {
+                (Value::Null, Value::Null) => true,
+                (Value::Null, _) | (_, Value::Null) => false,
+                (left, right) => left.java_equals(right),
+            }),
+            ("Objects", "hash", values) => {
+                let hash = values.iter().fold(1i32, |hash, value| {
+                    let item = if matches!(value, Value::Null) {
+                        0
+                    } else {
+                        value.java_hash()
+                    };
+                    hash.wrapping_mul(31).wrapping_add(item)
+                });
+                Value::integer(hash)
+            }
+            ("Objects", "hashCode", [value]) => Value::integer(if matches!(value, Value::Null) {
+                0
+            } else {
+                value.java_hash()
+            }),
+            ("Objects", "isNull" | "nonNull", [value]) => {
+                Value::Boolean(matches!(value, Value::Null) == (name == "isNull"))
+            }
+            ("Objects", "requireNonNull", [Value::Null, rest @ ..]) if rest.len() <= 1 => {
+                let message = rest.first().map_or(String::new(), Value::to_string);
+                let exception = crate::exception::Exception::new("NullPointerException", message);
+                return Err(super::super::thrown(exception, span));
+            }
+            ("Objects", "requireNonNull", [value, rest @ ..]) if rest.len() <= 1 => value.clone(),
+            ("Objects", "toString", [value]) => Value::string(value.to_string()),
+            ("Objects", "toString", [Value::Null, default]) => default.clone(),
+            ("Objects", "toString", [value, _]) => Value::string(value.to_string()),
+            // `java.util.Optional`.
+            ("Optional", "of", [Value::Null]) => {
+                let exception = crate::exception::Exception::new("NullPointerException", "");
+                return Err(super::super::thrown(exception, span));
+            }
+            ("Optional", "of" | "ofNullable", [value]) => super::optional(value.clone()),
+            ("Optional", "empty", []) => super::optional(Value::Null),
             ("ZoneId", "systemDefault", []) => text_object("java.time.ZoneId", "system"),
             ("MessageDigest", "getInstance", [algorithm]) => {
                 super::bytes::message_digest(&algorithm.to_string()).at(span)?

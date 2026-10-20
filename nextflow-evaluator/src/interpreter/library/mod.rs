@@ -228,6 +228,24 @@ fn inspect(value: &Value) -> String {
     }
 }
 
+/// A `java.util.Optional` of the value, empty for null.
+pub(super) fn optional(value: Value) -> Value {
+    let state = crate::value::State::Optional(value);
+    let class = "java.util.Optional";
+    Value::Object(std::rc::Rc::new(std::cell::RefCell::new(
+        crate::value::Object { class, state },
+    )))
+}
+
+/// A `java.util.Iterator` over the items.
+pub(super) fn iterator(items: Vec<Value>) -> Value {
+    let state = crate::value::State::Iterator(items, 0);
+    let class = "java.util.Iterator";
+    Value::Object(std::rc::Rc::new(std::cell::RefCell::new(
+        crate::value::Object { class, state },
+    )))
+}
+
 /// A new map with the entries of a map, as `toMap()` gives it.
 pub(in crate::interpreter) fn copy_map(map: &Value) -> Value {
     match map {

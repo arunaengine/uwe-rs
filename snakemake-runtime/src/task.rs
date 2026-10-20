@@ -212,6 +212,8 @@ pub struct Built {
     pub task: Task,
     pub signature: serde_json::Value,
     pub usage: crate::scheduling::Usage,
+    /// The CWL document of a `cwl:` rule with its input object, which runs instead of the task.
+    pub cwl: Option<crate::cwl::Job>,
 }
 
 /// Builds the task of a job.
@@ -563,6 +565,7 @@ pub fn build(
     };
     let mut command: Vec<String> = Vec::new();
     let mut script: Option<String> = None;
+    let mut cwl = None;
     let format = |interpreter: &mut Interpreter, value: &Value| -> Result<String, Error> {
         let text = interpreter.to_str(value)?;
         if text.contains('{') {
@@ -735,11 +738,12 @@ pub fn build(
                 ..Default::default()
             });
         }
-        Action::Cwl(_) => {
-            return Err(Error::unsupported(format!(
-                "the cwl directive of rule {}: iunctus does not run CWL tools from Snakemake rules; run the CWL document with iunctus on its own",
-                rule.name
-            )));
+        Action::Cwl(value) => {
+            let path = format(interpreter, value)?;
+            let document = crate::cwl::document(&path, &rule.basedir);
+            let lists = [&input, &params, &output, &log];
+            let inputs = crate::cwl::inputs(interpreter, setting.workdir, lists)?;
+            cwl = Some(crate::cwl::Job { document, inputs });
         }
     }
     let container = match &rule.container {
@@ -905,6 +909,7 @@ pub fn build(
         },
         signature,
         usage,
+        cwl,
     })
 }
 

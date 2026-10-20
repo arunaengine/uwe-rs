@@ -6,6 +6,7 @@
 mod benchmark;
 mod commands;
 mod config;
+mod cwl;
 mod driver;
 mod embedded;
 mod files;

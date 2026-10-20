@@ -290,6 +290,51 @@ rule plain:
     );
 }
 
+/// As in Snakemake's test_github_issue2732, a temporary input of a checkpoint goes once the
+/// run planned again after the checkpoint.
+#[test]
+fn releases_checkpoint_inputs() {
+    let snakefile = r#"
+rule b1:
+    output: temp("A.b1.out")
+    shell: "unused"
+checkpoint b2:
+    input: "A.b1.out"
+    output: "A.b2.out"
+    shell: "unused"
+def names(wildcards):
+    return open(checkpoints.b2.get().output[0]).read().strip()
+rule a1:
+    output: "{name}.a1.out"
+    shell: "unused"
+rule all:
+    input: lambda w: expand(rules.a1.output, name=names(w))
+    default_target: True
+"#;
+    let steps: [(&str, Step); 3] = [
+        ("b1", |folder| {
+            std::fs::write(folder.join("A.b1.out"), "").unwrap();
+            0
+        }),
+        ("b2", |folder| {
+            std::fs::write(folder.join("A.b2.out"), "A\n").unwrap();
+            0
+        }),
+        ("a1", |folder| {
+            std::fs::write(folder.join("A.a1.out"), "").unwrap();
+            0
+        }),
+    ];
+    let (folder, _host, error) = run(folder(), snakefile, &steps);
+    assert_eq!(error, None);
+    let work = folder.path().join("work");
+    assert!(work.join("A.a1.out").is_file());
+    assert!(
+        !work.join("A.b1.out").exists(),
+        "the temporary input is gone"
+    );
+}
+
 /// Runs a Snakefile in the working directory of `folder` with jobs in the shared directory;
 /// the folder, the tasks and the error.
 fn run(

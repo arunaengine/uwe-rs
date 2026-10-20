@@ -250,6 +250,7 @@ mod tests {
             config: &config,
             params: Value::map([]),
             project_dir: &launch,
+            cli_params: &[],
         };
         let path = json!({"type": "string", "format": "file-path", "exists": true});
         let reference = json!({"$defs": {"file": path}, "$ref": "#/$defs/file"});

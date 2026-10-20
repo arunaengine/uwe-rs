@@ -187,7 +187,14 @@ impl Nextflow {
                 .into_owned()
         };
         let profiles = &self.launch.profiles;
+        let cli_params = match params(&self.launch) {
+            Ok(Value::Map(map)) => (map.borrow().entries.keys())
+                .map(|name| name.0.to_string())
+                .collect(),
+            _ => Vec::new(),
+        };
         Options {
+            cli_params,
             entry: self.launch.targets.first().cloned(),
             stub: self.launch.stub,
             simulated: self.launch.simulated,

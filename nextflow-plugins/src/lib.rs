@@ -100,6 +100,9 @@ pub struct Context<'a> {
     pub params: Value,
     /// The directory of the main script.
     pub project_dir: &'a str,
+    /// The names of the params of the command line and the params file, which Nextflow keeps
+    /// as `session.cliParams`.
+    pub cli_params: &'a [String],
 }
 
 /// Calls a function of a plugin.

@@ -45,6 +45,7 @@ fn to_list_in(directory: &Path, sheet: &str, schema: &str) -> Result<String, Err
         config: &config,
         params: Value::map([]),
         project_dir: &directory,
+        cli_params: &[],
     };
     let arguments = vec![Value::string(sheet), Value::string(schema)];
     call("nf-schema", "samplesheetToList", arguments, &mut context).map(|rows| rows.to_string())
@@ -232,6 +233,7 @@ fn validates_schema_values() {
         config: &config,
         params: Value::map([]),
         project_dir: &directory,
+        cli_params: &[],
     };
     let mut validate = |arguments: Vec<Value>| {
         call("nf-schema", "validate", arguments, &mut context).map(|errors| errors.to_string())
@@ -301,6 +303,7 @@ fn params_call_in(
         config,
         params,
         project_dir: &directory,
+        cli_params: &[],
     };
     call("nf-schema", name, arguments, &mut context).map(|value| value.to_string())
 }
@@ -387,6 +390,49 @@ fn coerces_lenient_strings() {
     assert!(params_call_in(&config, "validateParameters", params(), vec![]).is_ok());
 }
 
+/// Nextflow 26.04.6 keeps command-line params as text. nf-schema 2.7.2 and later read them as
+/// numbers and booleans for the check; 2.5.1 and `cast_cli_params: false` do not.
+#[test]
+fn casts_command_line() {
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/params")
+        .to_string_lossy()
+        .into_owned();
+    let names = ["outdir".to_owned(), "n".to_owned(), "flag".to_owned()];
+    let check = |plugin: &str, arguments: Vec<Value>| {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let file = folder.path().join("nextflow.config");
+        std::fs::write(&file, format!("plugins {{ id '{plugin}' }}\n")).expect("writes");
+        let options = nextflow_config::Options {
+            profiles: None,
+            params: Value::map([]),
+            project_dir: "/project".into(),
+            launch_dir: "/launch".into(),
+        };
+        let mut host = Fixtures(directory.clone());
+        let config = nextflow_config::load(&[file], &options, &mut host).expect("loads");
+        let text = |name: &str, value: &str| (Value::string(name), Value::string(value));
+        let mut context = Context {
+            host: &mut host,
+            config: &config,
+            params: Value::map([text("outdir", "res"), text("n", "5"), text("flag", "false")]),
+            project_dir: &directory,
+            cli_params: &names,
+        };
+        call("nf-schema", "validateParameters", arguments, &mut context)
+            .map_err(|error| error.to_string())
+    };
+    assert!(check("nf-schema@2.8.0", vec![]).is_ok());
+    assert!(check("nf-schema@2.7.2", vec![]).is_ok());
+    let expected = "* --flag (false): Value is [string] but should be [boolean]\n\
+                    * --n (5): Value is [string] but should be [integer]\n\n";
+    let error = check("nf-schema@2.5.1", vec![]).unwrap_err();
+    assert!(error.ends_with(expected), "{error}");
+    let options = Value::map([(Value::string("cast_cli_params"), Value::Boolean(false))]);
+    let error = check("nf-schema@2.8.0", vec![options]).unwrap_err();
+    assert!(error.ends_with(expected), "{error}");
+}
+
 #[test]
 fn summarizes_changed_defaults() {
     let text = |name: &str, value: &str| (Value::string(name), Value::string(value));
@@ -458,6 +504,7 @@ fn validates_known_parameters() {
             config: &config,
             params,
             project_dir: &directory,
+            cli_params: &[],
         };
         call("nf-schema", "validateParameters", vec![], &mut context).map(|_| ())
     };

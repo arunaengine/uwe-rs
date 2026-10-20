@@ -237,7 +237,10 @@ fn rejects_transfer_options() {
             "  templates:\n  - name: main\n{call}  - name: work\n    inputs: {{artifacts: [{{name: input, path: /in}}]}}\n    container: {{image: alpine}}\n",
         ));
         assert!(
-            error.unsupported && error.message.contains("S3.endpoint"),
+            error.unsupported
+                && error
+                    .message
+                    .contains("add one with endpoint other.example.org"),
             "{error}"
         );
     }

@@ -415,6 +415,7 @@ impl Run {
             }
             // The address alone, so that a later write of the same key wins, as in Argo.
             if let Ok(Some(url)) = crate::inputs::artifact_url(&plain) {
+                self.check_endpoint(&plain, &url)?;
                 self.store
                     .insert(url.clone(), found.location.clone().into());
                 if artifact.s3.is_some() && !url.starts_with(crate::inputs::REPOSITORY) {

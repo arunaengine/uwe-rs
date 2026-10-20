@@ -110,7 +110,16 @@ pub(crate) fn driver(
             };
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)
         }
-        Language::Argo => argo_runtime::driver(launch),
+        Language::Argo => {
+            let endpoints = (setup.storage.s3_providers().into_iter())
+                .map(|(provider, prefixes, address)| argo_runtime::Endpoint {
+                    provider,
+                    prefixes,
+                    address,
+                })
+                .collect();
+            argo_runtime::driver_with(launch, endpoints)
+        }
     }
 }
 

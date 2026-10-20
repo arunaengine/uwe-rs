@@ -35,6 +35,23 @@ impl Run {
         if let Some(reason) = crate::checks::cluster_only(&typed) {
             return Err(Failure::unsupported(reason));
         }
+        // Artifacts that name an S3 endpoint need the provider of that service, before any
+        // step of the template starts.
+        let steps = typed
+            .steps
+            .iter()
+            .flatten()
+            .map(|step| &step.arguments.artifacts);
+        let tasks = typed.dag.iter().flat_map(|dag| &dag.tasks);
+        let declared = (steps.chain(tasks.map(|task| &task.arguments.artifacts)))
+            .flatten()
+            .chain(&typed.inputs.artifacts)
+            .chain(&typed.outputs.artifacts);
+        for artifact in declared {
+            if let Ok(Some(url)) = artifact_url(artifact) {
+                self.check_endpoint(artifact, &url)?;
+            }
+        }
         let mut node = template.clone();
         let mut values: Vec<(String, String)> = Vec::new();
         for (position, input) in typed.inputs.parameters.iter().enumerate() {
@@ -234,6 +251,7 @@ impl Run {
         let Some(url) = artifact_url(artifact)? else {
             return Ok(None);
         };
+        self.check_endpoint(artifact, &url)?;
         // An artifact that a task of this run wrote is read from the task's output.
         if let Some(file) = self.store.get(&url) {
             return Ok(Some(Location::File(file.clone())));
@@ -244,6 +262,77 @@ impl Run {
 
 /// The address of an artifact without raw data. A key without a bucket names the artifact
 /// repository, which iunctus keeps inside the run, as [`REPOSITORY`] addresses.
+/// Fields of an S3 artifact that the configured storage provider stands for.
+const S3_PROVIDED: [&str; 7] = [
+    "endpoint",
+    "insecure",
+    "region",
+    "accessKeySecret",
+    "secretKeySecret",
+    "sessionTokenSecret",
+    "useSDKCreds",
+];
+
+impl Run {
+    /// Checks that the S3 provider of the config file that serves an artifact with an
+    /// `endpoint` talks to that service, so that the artifact reads what Argo would.
+    pub(crate) fn check_endpoint(&self, artifact: &Artifact, url: &str) -> Result<()> {
+        let Some(endpoint) = (artifact.s3.as_ref())
+            .and_then(|s3| s3.get("endpoint"))
+            .map(scalar_text)
+            .filter(|endpoint| !endpoint.is_empty())
+        else {
+            return Ok(());
+        };
+        let serving = (self.options.endpoints.iter())
+            .flat_map(|provider| {
+                provider
+                    .prefixes
+                    .iter()
+                    .map(move |prefix| (provider, prefix))
+            })
+            .filter(|(_, prefix)| serves(prefix, url))
+            .max_by_key(|(_, prefix)| prefix.len());
+        let bucket = url.split('/').take(3).collect::<Vec<_>>().join("/");
+        let Some((provider, _)) = serving else {
+            return Err(Failure::unsupported(format!(
+                "artifact {}: no S3 storage provider of the config file serves {bucket}/; add one with endpoint {endpoint}",
+                artifact.name
+            )));
+        };
+        let wanted = host(&endpoint);
+        let same = match &provider.address {
+            Some(address) => host(address) == wanted,
+            None => wanted.ends_with(".amazonaws.com") && wanted.starts_with("s3"),
+        };
+        if !same {
+            let address = provider.address.as_deref().unwrap_or("AWS S3");
+            return Err(Failure::unsupported(format!(
+                "artifact {}: endpoint {endpoint} differs from {address}, the service of storage provider `{}` that serves {bucket}/",
+                artifact.name, provider.provider
+            )));
+        }
+        Ok(())
+    }
+}
+
+/// The host and port of a service address, without scheme or trailing `/`.
+fn host(address: &str) -> String {
+    let address = address.trim();
+    let address = (address.strip_prefix("https://"))
+        .or_else(|| address.strip_prefix("http://"))
+        .unwrap_or(address);
+    address.trim_end_matches('/').to_ascii_lowercase()
+}
+
+/// Whether a provider prefix serves an address, as the storage providers decide.
+fn serves(prefix: &str, address: &str) -> bool {
+    let Some(rest) = address.strip_prefix(prefix) else {
+        return false;
+    };
+    prefix.ends_with('/') || rest.is_empty() || rest.starts_with('/')
+}
+
 /// The address of keys of the artifact repository, which the steps of a run share.
 pub(crate) const REPOSITORY: &str = "argo-repository:///";
 
@@ -335,11 +424,9 @@ pub(crate) fn check_artifact(artifact: &Artifact) -> Result<()> {
         {
             for field in fields {
                 if !supported.contains(&field.key.as_str()) && field.value.value != Yaml::Null {
-                    if kind == "S3" && field.key == "endpoint" {
-                        return Err(Failure::unsupported(format!(
-                            "artifact {}: S3.endpoint cannot be verified against the configured store because its endpoint identity is not available to the Argo driver",
-                            artifact.name
-                        )));
+                    // The provider that serves the bucket brings the service and credentials.
+                    if kind == "S3" && S3_PROVIDED.contains(&field.key.as_str()) {
+                        continue;
                     }
                     return Err(Failure::unsupported(format!(
                         "artifact {}: {kind}.{} is not supported; use the configured storage provider",

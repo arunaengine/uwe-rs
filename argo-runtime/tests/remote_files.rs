@@ -418,3 +418,41 @@ fn unpacks_input_archives() {
     assert_eq!(tool.source, "s3://store/tool");
     assert!(tool.executable, "mode 0755 makes the tool executable");
 }
+
+#[test]
+fn matches_s3_endpoints() {
+    let folder = tempfile::tempdir().unwrap();
+    let target = folder.path().join("workflow.yaml");
+    let artifact = "{name: data, path: /in, s3: {endpoint: 'minio.lab.example.org:9000', insecure: true, bucket: lab-data, key: in.txt, accessKeySecret: {name: s3, key: id}, secretKeySecret: {name: s3, key: secret}}}";
+    std::fs::write(&target, format!("apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {{name: s3}}\nspec:\n  entrypoint: main\n  templates:\n  - name: main\n    inputs: {{artifacts: [{artifact}]}}\n    container: {{image: alpine}}\n")).unwrap();
+    let launch = Launch {
+        target,
+        simulated: true,
+        ..Launch::default()
+    };
+    let provider = |address: &str| argo_runtime::Endpoint {
+        provider: "lab".into(),
+        prefixes: vec!["s3://lab-data/".into()],
+        address: Some(address.into()),
+    };
+    let start = |endpoints| {
+        argo_runtime::driver_with(&launch, endpoints)
+            .unwrap()
+            .start()
+    };
+    // The provider that serves the bucket at that service reads the artifact.
+    let tasks = start(vec![provider("http://minio.lab.example.org:9000/")]).unwrap();
+    assert_eq!(tasks[0].inputs[0].source, "s3://lab-data/in.txt");
+    let error = start(vec![provider("https://s3.other.example.org")]).unwrap_err();
+    assert!(
+        error.unsupported && error.message.contains("provider `lab`"),
+        "{error}"
+    );
+    let error = start(Vec::new()).unwrap_err();
+    assert!(
+        error
+            .message
+            .contains("add one with endpoint minio.lab.example.org:9000"),
+        "{error}"
+    );
+}

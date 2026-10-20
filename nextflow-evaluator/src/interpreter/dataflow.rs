@@ -93,6 +93,15 @@ impl Interpreter<'_> {
         path.push(name.into());
         let qualified = path.join(":");
         let outputs = match (process, workflow) {
+            (Some(_), _) if !self.invocations.insert(qualified.clone()) => {
+                let message = format!(
+                    "Process '{name}' has been already used -- If you need to reuse the same \
+                     component, include it with a different name or include it in a different \
+                     workflow context"
+                );
+                let error = Exception::new("DuplicateProcessInvocation", message);
+                return Err(thrown(error, span));
+            }
             (Some(process), _) => {
                 // A closure argument gives its result, as Nextflow's process inputs take it.
                 let mut values = Vec::new();

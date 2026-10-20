@@ -329,3 +329,54 @@ workflow {
         "{error}"
     );
 }
+
+/// A run calls each process once per workflow context, by the name it is included as, as
+/// Nextflow 26.04.6 checks it; the error is at the second call.
+#[test]
+fn rejects_repeated_processes() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "mod.nf",
+        "process P {\n    input: val x\n    output: val x\n    script:\n    \"true\"\n}\n\
+         workflow W {\n    take: x\n    main: P(x)\n    emit: P.out\n}\n",
+    );
+    let failure = |main: &str| {
+        write(root.path(), "main.nf", main);
+        let module = Loader::default()
+            .load(&root.path().join("main.nf"))
+            .expect("loads");
+        let error = nextflow_runtime::run(&module, &mut Output::default()).unwrap_err();
+        error.to_string()
+    };
+    let repeated = "DuplicateProcessInvocation: Process 'P' has been already used -- If you \
+                    need to reuse the same component, include it with a different name or \
+                    include it in a different workflow context";
+    let error = failure("include { P } from './mod'\nworkflow {\n    P(1)\n    P(2)\n}\n");
+    assert!(
+        error.ends_with(&format!("main.nf:4:5: {repeated}")),
+        "{error}"
+    );
+    let error = failure("include { W } from './mod'\nworkflow {\n    W(1)\n    W(2)\n}\n");
+    assert!(
+        error.ends_with(&format!("mod.nf:9:11: {repeated}")),
+        "{error}"
+    );
+    let error = failure(
+        "include { P } from './mod'\nworkflow {\n    channel.of(1) | P\n    channel.of(2) | P\n}\n",
+    );
+    assert!(
+        error.ends_with(&format!("main.nf:4:5: {repeated}")),
+        "{error}"
+    );
+    let error = failure("include { P as Q } from './mod'\nworkflow {\n    Q(1)\n    Q(2)\n}\n");
+    assert!(error.ends_with(&repeated.replace("'P'", "'Q'")), "{error}");
+    // Other names and other workflow contexts may call the process again.
+    for main in [
+        "include { P; P as Q } from './mod'\nworkflow {\n    P(1)\n    Q(2)\n}\n",
+        "include { W; P } from './mod'\nworkflow {\n    W(1)\n    P(2)\n}\n",
+    ] {
+        let error = failure(main);
+        assert!(error.contains("without an executor"), "{error}");
+    }
+}

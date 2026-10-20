@@ -18,7 +18,7 @@ pub(crate) use access::instance_of;
 pub use output::OutputOptions;
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -370,6 +370,9 @@ pub struct Interpreter<'h> {
     outputs: HashMap<(usize, Rc<str>), Value>,
     /// The names of the named workflows being called, outermost first.
     workflow_path: Vec<Rc<str>>,
+    /// The processes called so far, by name with the workflows that call them, which a run
+    /// may call once each.
+    invocations: HashSet<String>,
     /// The variables of the task being evaluated, by name, which config closures can read.
     task_variables: Vec<(Rc<str>, Rc<RefCell<Value>>)>,
     /// The script of the statement where the error that is being raised happened.
@@ -388,6 +391,7 @@ impl<'h> Interpreter<'h> {
             globals: HashMap::new(),
             outputs: HashMap::new(),
             workflow_path: Vec::new(),
+            invocations: HashSet::new(),
             task_variables: Vec::new(),
             error_module: None,
             publishing: None,

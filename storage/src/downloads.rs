@@ -81,8 +81,22 @@ impl Storage {
         Ok(downloads.join(self.download_name(target)?).join("content"))
     }
 
-    /// A local copy of a file, downloaded into `downloads` unless an earlier call did. A local
-    /// path, or a `file://` address, is its own copy.
+    /// Where the copy of the current version of a file is, as [`Storage::fetch`] names it. It
+    /// asks the provider for the version once per process, but downloads nothing.
+    pub async fn current_path(
+        &self,
+        target: &str,
+        downloads: &Path,
+    ) -> Result<PathBuf, StorageError> {
+        let remote = address::scheme(target).is_some() && !target.starts_with("file://");
+        if remote && self.inner.journal.pinned(target).is_none() {
+            self.observe(target).await;
+        }
+        self.download_path(target, downloads)
+    }
+
+    /// A local copy of a file, downloaded into `downloads` unless an earlier call downloaded
+    /// the same version. A local path, or a `file://` address, is its own copy.
     pub async fn fetch(&self, target: &str, downloads: &Path) -> Result<PathBuf, StorageError> {
         if address::scheme(target).is_none() {
             return Ok(PathBuf::from(target));
@@ -95,10 +109,11 @@ impl Storage {
             self.inner.journal.note(pinned);
             return Ok(copy);
         }
+        self.observe(target).await;
         let bundle = downloads.join(self.download_name(target)?);
         let copy = bundle.join("content");
         // Tasks of a run that read the same file at once would write the same part.
-        let turn = self.turn(&copy);
+        let turn = self.turn(&copy.to_string_lossy());
         let _turn = turn.lock().await;
         if !tokio::fs::try_exists(&copy).await.map_err(local(&copy))? {
             tokio::fs::create_dir_all(downloads)
@@ -131,15 +146,12 @@ impl Storage {
         Ok(copy)
     }
 
-    /// The lock of the download of a copy, which all fetches of its file in this process
-    /// share.
-    fn turn(&self, copy: &Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    /// The lock of the download of a copy, or of a request for a version, which all fetches
+    /// of its file in this process share.
+    pub(crate) fn turn(&self, name: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
         let mut locks =
             (self.inner.downloading.lock()).unwrap_or_else(|poison| poison.into_inner());
-        locks
-            .entry(copy.to_string_lossy().into_owned())
-            .or_default()
-            .clone()
+        locks.entry(name.to_owned()).or_default().clone()
     }
 
     /// Downloads a file into `file`, whole, as a transfer: the process does not note it as a

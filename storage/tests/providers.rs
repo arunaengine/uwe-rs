@@ -349,10 +349,13 @@ async fn downloads_files_once() {
     let second = storage.fetch(&address, downloads.path()).await.unwrap();
     assert_eq!(first, second);
     assert_eq!(std::fs::read_to_string(&first).unwrap(), "ACGT");
-    // The size of the copy answers without a request.
+    // The size of the copy answers without a request; the version was asked once.
     let found = storage.metadata(&address, downloads.path()).await.unwrap();
     assert_eq!(found.map(|found| found.size), Some(4));
-    assert_eq!(server.served(), 1);
+    assert_eq!(
+        *server.requests.lock().unwrap(),
+        ["HEAD /data/reads.fq", "GET /data/reads.fq"]
+    );
     // A file that is noted as found needs no second request either.
     let other = WebServer::start(&[("/b", "bb")], None);
     let address = format!("{}/b", other.address);
@@ -376,7 +379,11 @@ async fn shares_concurrent_downloads() {
         let copy = copy.expect("a copy");
         assert_eq!(std::fs::read_to_string(&copy).expect("reads"), body);
     }
-    assert_eq!(server.served(), 1);
+    assert_eq!(
+        server.served(),
+        2,
+        "one request for the version, one download"
+    );
 }
 
 #[tokio::test]
@@ -397,7 +404,7 @@ async fn restarts_unversioned_downloads() {
         .unwrap();
     assert_eq!(std::fs::read_to_string(copy).unwrap(), "BBBBCCCC");
     let requests = server.requests.lock().unwrap().clone();
-    assert_eq!(requests, ["GET /big"]);
+    assert_eq!(requests, ["HEAD /big", "GET /big"]);
 }
 
 #[test]
@@ -536,12 +543,13 @@ async fn records_remote_reads() {
     assert_eq!(noted.size, 5);
     let version = noted.version.clone().expect("the ETag of the download");
     assert!(version.starts_with('"'), "{version}");
-    // A later process that reads the copy knows the same, without a request.
+    // A later process that reads the copy knows the same, with a request for the version only.
     let served = server.served();
     let later = Storage::default();
     later.fetch(&address, downloads.path()).await.unwrap();
     assert_eq!(later.fetched(), fetched);
-    assert_eq!(server.served(), served);
+    assert_eq!(server.served(), served + 1);
+    let served = server.served();
     // A pinned copy answers for its address in every kind of read.
     let kept = downloads.path().join("kept.csv");
     std::fs::write(&kept, "id\n2\n").unwrap();
@@ -960,6 +968,40 @@ async fn isolates_provider_cache() {
 }
 
 #[tokio::test]
+async fn refetches_changed_files() {
+    let root = tempfile::tempdir().unwrap();
+    let downloads = tempfile::tempdir().unwrap();
+    let file = root.path().join("samplesheet.csv");
+    std::fs::write(&file, "id\n1\n").unwrap();
+    let text = format!(
+        "[storage.mirror]\ntype='folder'\nprefixes='s3://bucket/'\npath='{}'",
+        root.path().display()
+    );
+    let address = "s3://bucket/samplesheet.csv";
+    let first = storage(&text).fetch(address, downloads.path()).await;
+    assert_eq!(std::fs::read_to_string(first.unwrap()).unwrap(), "id\n1\n");
+    // The user changes the file between two runs, keeping its size.
+    std::fs::write(&file, "id\n2\n").unwrap();
+    let changed = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+    let opened = std::fs::File::options().write(true).open(&file).unwrap();
+    opened.set_modified(changed).unwrap();
+    let run = storage(&text);
+    let second = run.fetch(address, downloads.path()).await.unwrap();
+    assert_eq!(std::fs::read_to_string(&second).unwrap(), "id\n2\n");
+    // Within a run the version is asked once, so every read gets the same copy.
+    std::fs::write(&file, "id\n3\n").unwrap();
+    assert_eq!(run.fetch(address, downloads.path()).await.unwrap(), second);
+    let path = run.current_path(address, downloads.path()).await.unwrap();
+    assert_eq!(path, second);
+    assert_eq!(std::fs::read_to_string(&second).unwrap(), "id\n2\n");
+    let third = storage(&text)
+        .fetch(address, downloads.path())
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(third).unwrap(), "id\n3\n");
+}
+
+#[tokio::test]
 async fn rejects_unverifiable_cache() {
     let server = WebServer::start(&[("/data", "fresh")], None);
     let address = format!("{}/data", server.address);
@@ -1025,8 +1067,28 @@ async fn publishes_immutable_versions() {
     std::thread::spawn(move || {
         let mut ready = Some(ready);
         let mut second_response = Some(second_response);
-        for version in ["A", "B"] {
-            let (mut stream, _) = listener.accept().unwrap();
+        let mut versions = ["A", "B"].into_iter();
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut request = String::new();
+            reader.read_line(&mut request).unwrap();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line.trim().is_empty() {
+                    break;
+                }
+            }
+            // Both callers ask for the version first, and find the same one.
+            if request.starts_with("HEAD") {
+                let head = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\nETag: \"A\"\r\nConnection: close\r\n\r\n";
+                stream.write_all(head.as_bytes()).unwrap();
+                continue;
+            }
+            let Some(version) = versions.next() else {
+                continue;
+            };
             if version == "A" {
                 ready.take().unwrap().send(()).unwrap();
             }
@@ -1037,14 +1099,6 @@ async fn publishes_immutable_versions() {
             };
             let barrier = barrier.clone();
             std::thread::spawn(move || {
-                let mut reader = BufReader::new(stream.try_clone().unwrap());
-                loop {
-                    let mut line = String::new();
-                    reader.read_line(&mut line).unwrap();
-                    if line.trim().is_empty() {
-                        break;
-                    }
-                }
                 // Both callers already observed no completed cache before either can publish.
                 barrier.wait();
                 if let Some(delayed) = delayed {

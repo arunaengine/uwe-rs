@@ -773,7 +773,8 @@ fn downloads_remote_once() {
         let digest = &prepared.request.spec.inputs[0].digest;
         assert_eq!(digest, &task_model::Digest::sha256(b"data\n"));
     }
-    assert_eq!(served.load(std::sync::atomic::Ordering::SeqCst), 1);
+    // One request for the version, and one download.
+    assert_eq!(served.load(std::sync::atomic::Ordering::SeqCst), 2);
     // An address that no storage provider serves is not supported.
     remote.inputs[0].source = "az://container/input.txt".into();
     let error = block_on(runner.request(&remote, None)).unwrap_err();

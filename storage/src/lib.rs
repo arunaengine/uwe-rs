@@ -271,24 +271,50 @@ impl Storage {
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         if let Some(metadata) = &found {
-            let stamp = if metadata.directory
-                || (metadata.version.is_none() && metadata.modified.is_none())
-            {
-                format!("fresh {:?}", std::time::SystemTime::now())
-            } else {
-                format!("{metadata:?}")
-            };
             observed.insert(
                 target.to_owned(),
                 Observed {
                     metadata: metadata.clone(),
-                    stamp,
+                    stamp: stamp(metadata),
                 },
             );
         } else {
             observed.remove(target);
         }
         Ok(found)
+    }
+
+    /// Asks the provider for the version of a file once per process, unless a read of its
+    /// folder did, so that a download of an earlier run answers only while the file is the same.
+    pub(crate) async fn observe(&self, target: &str) {
+        let known = || {
+            let observed =
+                (self.inner.observed.lock()).unwrap_or_else(|poison| poison.into_inner());
+            observed.contains_key(target)
+                || (observed.iter()).any(|(query, entry)| {
+                    entry.metadata.directory && address::serves(query, target)
+                })
+        };
+        if known() {
+            return;
+        }
+        let turn = self.turn(&format!("version of {target}"));
+        let _turn = turn.lock().await;
+        if known() {
+            return;
+        }
+        // A file that the provider cannot find or describe gets a download of its own.
+        let metadata = self.stat(target).await.ok().flatten();
+        let metadata = metadata.unwrap_or(Metadata {
+            directory: false,
+            modified: None,
+            size: 0,
+            version: None,
+        });
+        let stamp = stamp(&metadata);
+        let mut observed =
+            (self.inner.observed.lock()).unwrap_or_else(|poison| poison.into_inner());
+        observed.insert(target.to_owned(), Observed { metadata, stamp });
     }
 
     /// The entries of a directory.
@@ -392,6 +418,15 @@ impl Storage {
     pub fn blocking(&self) -> Blocking {
         Blocking::new(self.clone())
     }
+}
+
+/// What names the downloads of one version of a file. Without a version or a time of change
+/// nothing tells an unchanged file from a changed one, so each process downloads it anew.
+fn stamp(metadata: &Metadata) -> String {
+    if metadata.directory || (metadata.version.is_none() && metadata.modified.is_none()) {
+        return format!("fresh {:?}", std::time::SystemTime::now());
+    }
+    format!("{metadata:?}")
 }
 
 /// The provider whose prefix serves an address and is the longest, with that prefix.

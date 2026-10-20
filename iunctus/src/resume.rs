@@ -137,9 +137,10 @@ fn verified(
     files: Option<&dyn Files>,
     network: &NetworkRule,
 ) -> bool {
+    // A result of a task that may use the network holds when the task gets it now; whether
+    // it had the network then does not matter, as for Nextflow and Snakemake.
     let network_matches = match task.network {
-        Network::Unstated => false,
-        Network::Allowed => !network.offline(task),
+        Network::Unstated | Network::Allowed => !network.offline(task),
         Network::Denied => network.offline(task),
     };
     if outcome.accepted != Some(true) || !network_matches || !task.containers.is_empty() {
@@ -559,6 +560,35 @@ mod tests {
             .unwrap();
         assert!(!found.cached);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn resumes_unstated_network() {
+        let runtime = workflow_graph::runtime().unwrap();
+        let mut task = real_task();
+        task.network = Network::Unstated;
+        let prior = Outcome {
+            image: task.image.clone(),
+            accepted: Some(true),
+            ..Outcome::default()
+        };
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut resumed = Resumed::new(
+            fresh(calls.clone(), Arc::new(FakeFiles::default())),
+            history(&task, prior),
+            Taken::default(),
+            Mode::Real,
+            NetworkRule::default(),
+            false,
+        );
+        let found = runtime
+            .block_on(resumed.run(attempt(Arc::new(task))))
+            .unwrap();
+        assert!(
+            found.cached,
+            "a Nextflow or Snakemake task states no network"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]

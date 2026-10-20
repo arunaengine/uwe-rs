@@ -171,6 +171,10 @@ impl Interpreter<'_> {
             }));
         }
         match &object.borrow().state {
+            State::Time(time) => {
+                let result = super::time::time_method(*time, name, arguments);
+                return result.transpose().at(span);
+            }
             State::Bytes(bytes) => return Ok(super::bytes::bytes_method(bytes, name, arguments)),
             State::Digest(algorithm) => {
                 return Ok(super::bytes::digest_method(algorithm, name, arguments));
@@ -185,6 +189,16 @@ impl Interpreter<'_> {
         match (class, name, arguments, text) {
             ("java.time.format.DateTimeFormatter", "withZone", [_], _) => {
                 return Ok(Some(Value::Object(object.clone())));
+            }
+            // A formatter formats a `java.time` value as the value formats itself.
+            ("java.time.format.DateTimeFormatter", "format", [time @ Value::Object(_)], _) => {
+                let formatter = Value::Object(object.clone());
+                return self.library_method(time, "format", &[formatter], span);
+            }
+            ("java.text.SimpleDateFormat", "format", [Value::Date(millis)], Some(text)) => {
+                return Ok(Some(Value::string(
+                    crate::date::format(*millis, &text).at(span)?,
+                )));
             }
             ("java.time.format.DateTimeFormatter", "format", [Value::Date(millis)], Some(text)) => {
                 return Ok(Some(Value::string(

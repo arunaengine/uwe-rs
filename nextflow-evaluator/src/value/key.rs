@@ -106,6 +106,7 @@ impl Value {
             (Value::Object(left), Value::Object(right)) => {
                 match (&left.borrow().state, &right.borrow().state) {
                     (super::State::Uuid(a), super::State::Uuid(b)) => a == b,
+                    (super::State::Time(a), super::State::Time(b)) => a == b,
                     _ => Rc::ptr_eq(left, right),
                 }
             }
@@ -179,6 +180,7 @@ impl Value {
                     let (high, low) = value.as_u64_pair();
                     long_hash((high ^ low) as i64)
                 }
+                super::State::Time(time) => string_hash(&time.text()),
                 _ => Rc::as_ptr(object) as usize as i32,
             },
             Value::Exception(exception) => Rc::as_ptr(exception) as usize as i32,

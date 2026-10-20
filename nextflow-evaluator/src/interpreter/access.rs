@@ -667,6 +667,10 @@ impl Interpreter<'_> {
                 Ok(Value::Exception(Rc::new(exception)))
             }
             (None, []) if class == "Date" => Ok(Value::Date(crate::date::now())),
+            (None, [pattern]) if class == "SimpleDateFormat" => Ok(super::library::text_object(
+                "java.text.SimpleDateFormat",
+                &pattern.to_string(),
+            )),
             (None, [] | [Value::Number(_)])
                 if matches!(class, "StringBuilder" | "StringBuffer") =>
             {

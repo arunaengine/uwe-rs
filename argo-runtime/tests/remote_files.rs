@@ -51,6 +51,8 @@ fn outcome(task: &Task, location: &str, directory: bool) -> Outcome {
 
 #[test]
 fn reads_child_parameters() {
+    // Argo checks simple tags of the manifest against the outer template, so the child uses
+    // expression tags.
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(folder.path().join("items"), "[\"a\",\"b\"]").unwrap();
     let spec = r#"  entrypoint: submit
@@ -71,14 +73,14 @@ fn reads_child_parameters() {
             - - {name: list, template: list}
             - - name: use
                 template: use
-                withParam: "{{steps.list.outputs.parameters.items}}"
+                withParam: "{{=steps.list.outputs.parameters.items}}"
                 arguments: {parameters: [{name: item, value: "{{item}}"}]}
           - name: list
             container: {image: alpine, command: [list]}
             outputs: {parameters: [{name: items, valueFrom: {path: /items}}]}
           - name: use
             inputs: {parameters: [{name: item}]}
-            container: {image: alpine, command: [echo, "{{inputs.parameters.item}}"]}
+            container: {image: alpine, command: [echo, "{{=inputs.parameters.item}}"]}
 "#;
     let mut run = driver(folder.path(), spec);
     let tasks = run.start().unwrap();

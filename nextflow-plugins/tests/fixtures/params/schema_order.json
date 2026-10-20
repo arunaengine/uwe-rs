@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "$defs": {
+    "generic": {"title": "Generic options", "type": "object",
+      "properties": {
+        "n": {"type": "integer", "default": 5},
+        "off": {"type": "boolean"},
+        "d": {"type": "integer"},
+        "flag": {"type": "boolean"},
+        "e": {"type": "string", "minLength": 3},
+        "z": {"type": "integer", "minimum": 1}
+      }}
+  },
+  "allOf": [{"$ref": "#/$defs/generic"}]
+}

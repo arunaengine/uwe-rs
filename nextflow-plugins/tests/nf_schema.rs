@@ -24,6 +24,26 @@ impl Host for Fixtures {
     }
 }
 
+/// A config that loads this text.
+fn loaded(text: &str) -> Config {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let file = folder.path().join("nextflow.config");
+    std::fs::write(&file, text).expect("writes");
+    let options = nextflow_config::Options {
+        profiles: None,
+        params: Value::map([]),
+        project_dir: "/project".into(),
+        launch_dir: "/launch".into(),
+    };
+    let mut host = Fixtures(String::new());
+    nextflow_config::load(&[file], &options, &mut host).expect("loads")
+}
+
+/// A config that asks for this version of nf-schema.
+fn pinned(version: &str) -> Config {
+    loaded(&format!("plugins {{ id 'nf-schema@{version}' }}\n"))
+}
+
 fn directory() -> String {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/samplesheet")
@@ -39,7 +59,7 @@ fn to_list(sheet: &str, schema: &str) -> Result<String, Error> {
 fn to_list_in(directory: &Path, sheet: &str, schema: &str) -> Result<String, Error> {
     let directory = directory.to_string_lossy().into_owned();
     let mut host = Fixtures(directory.clone());
-    let config = Config::default();
+    let config = pinned("2.5.1");
     let mut context = Context {
         host: &mut host,
         config: &config,
@@ -227,7 +247,7 @@ fn invalid_samplesheets_fail() {
 fn validates_schema_values() {
     let directory = directory();
     let mut host = Fixtures(directory.clone());
-    let config = Config::default();
+    let config = pinned("2.5.1");
     let mut context = Context {
         host: &mut host,
         config: &config,
@@ -283,7 +303,7 @@ fn params(extra: &[(&str, &str)]) -> Value {
 }
 
 fn params_call(name: &str, params: Value, arguments: Vec<Value>) -> Result<String, Error> {
-    params_call_in(&Config::default(), name, params, arguments)
+    params_call_in(&pinned("2.5.1"), name, params, arguments)
 }
 
 /// Calls a function with the params of the probe and a config.
@@ -433,11 +453,15 @@ fn casts_command_line() {
     assert!(error.ends_with(expected), "{error}");
 }
 
-#[test]
-fn summarizes_changed_defaults() {
+/// The `workflow` object of the probe, with its container.
+fn probe_workflow(container: Value) -> Value {
     let text = |name: &str, value: &str| (Value::string(name), Value::string(value));
     let properties = Value::map([
         text("runName", "magical_mahavira"),
+        // iunctus gives its own engine, which the summary leaves out unless the config
+        // enables one.
+        text("containerEngine", "docker"),
+        (Value::string("container"), container),
         text("launchDir", "/tmp/nfschema2"),
         text("workDir", "/tmp/nfschema2/work"),
         text("projectDir", "/tmp/nfschema2"),
@@ -448,14 +472,19 @@ fn summarizes_changed_defaults() {
             Value::list(vec![Value::string("/tmp/nfschema2/nextflow.config")]),
         ),
     ]);
-    let workflow = Value::Object(Rc::new(RefCell::new(Object {
+    Value::Object(Rc::new(RefCell::new(Object {
         class: "nextflow.script.WorkflowMetadata",
         state: State::Workflow(Workflow {
             properties,
             on_complete: Vec::new(),
             on_error: Vec::new(),
         }),
-    })));
+    })))
+}
+
+#[test]
+fn summarizes_changed_defaults() {
+    let workflow = probe_workflow(Value::map([]));
     let values = params(&[("outdir", "res"), ("n", "7")]);
     let map = params_call("paramsSummaryMap", values.clone(), vec![workflow.clone()]).unwrap();
     assert_eq!(
@@ -470,8 +499,10 @@ fn summarizes_changed_defaults() {
         "Input/output options",
         "  input      : x.csv",
         "  outdir     : res",
+        "",
         "Generic options",
         "  n          : 7",
+        "",
         "Core Nextflow options",
         "  runName    : magical_mahavira",
         "  launchDir  : /tmp/nfschema2",
@@ -480,10 +511,116 @@ fn summarizes_changed_defaults() {
         "  userName   : beavis",
         "  profile    : standard",
         "  configFiles: /tmp/nfschema2/nextflow.config",
+        "",
         "!! Only displaying parameters that differ from the pipeline defaults !!",
         "------------------------------------------------------",
     ];
     assert_eq!(log, expected.join("\n"));
+}
+
+/// The core options show the engine that the config enables and the containers; the log
+/// shows the containers as `container.<name>` up to 2.6.1 and leaves them out from 2.7.0 on,
+/// where a single container text fails the log, as nf-schema 2.8.0 does.
+#[test]
+fn summarizes_containers() {
+    let text = |name: &str, value: &str| (Value::string(name), Value::string(value));
+    let map = Value::map([text("FOO", "x"), text("default", "ubuntu")]);
+    let values = params(&[("outdir", "res")]);
+    let summarize = |version: &str, function: &str, container: Value| {
+        let config = loaded(&format!(
+            "plugins {{ id 'nf-schema@{version}' }}\ndocker.enabled = true\n"
+        ));
+        let workflow = probe_workflow(container);
+        params_call_in(&config, function, values.clone(), vec![workflow])
+    };
+    let summary = summarize("2.8.0", "paramsSummaryMap", map.clone()).unwrap();
+    assert!(
+        summary.contains(
+            "Core Nextflow options:[runName:magical_mahavira, containerEngine:docker, \
+             container:[FOO:x, default:ubuntu], launchDir:"
+        ),
+        "{summary}"
+    );
+    let log = summarize("2.5.1", "paramsSummaryLog", map.clone()).unwrap();
+    assert!(
+        log.contains(
+            "  containerEngine  : docker\n  container.FOO    : x\n  container.default: ubuntu\n"
+        ),
+        "{log}"
+    );
+    let log = summarize("2.8.0", "paramsSummaryLog", map).unwrap();
+    assert!(
+        log.contains("  containerEngine: docker\n  launchDir      : /tmp/nfschema2\n"),
+        "{log}"
+    );
+    let error = summarize("2.8.0", "paramsSummaryLog", Value::string("ubuntu")).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "ClassCastException: Cannot cast object 'ubuntu' with class 'java.lang.String' to \
+         class 'java.util.Map'"
+    );
+}
+
+/// From 2.7.0 on, nf-schema checks params that Groovy counts as false, and words patterns and
+/// enums without extra brackets from 2.7.3 on.
+#[test]
+fn checks_falsy_parameters() {
+    let falsy = |outdir: &str| {
+        Value::map([
+            (Value::string("input"), Value::string("")),
+            (Value::string("outdir"), Value::string(outdir)),
+            (Value::string("n"), Value::integer(0)),
+            (Value::string("flag"), Value::Boolean(false)),
+            (Value::string("mode"), Value::list(Vec::new())),
+        ])
+    };
+    let config = pinned("2.8.0");
+    let expected = ":\n\n* --input (): \"\" does not match regular expression ^\\S+\\.csv$\n\
+                    * --mode ([]): Value is [array] but should be [string]\n\
+                    * --mode ([]): Expected any of [a, b]\n\n";
+    for outdir in ["", "res"] {
+        let error = params_call_in(&config, "validateParameters", falsy(outdir), vec![])
+            .unwrap_err()
+            .to_string();
+        assert!(error.ends_with(expected), "{error}");
+    }
+}
+
+/// Errors come in the order of nf-schema's validator, which reads the schema into Java hash
+/// maps; zero shows as nothing, as Nextflow 26.04.6 prints them for these params.
+#[test]
+fn orders_like_validator() {
+    let text = |name: &str, value: &str| (Value::string(name), Value::string(value));
+    let values = Value::map([
+        text("n", "z"),
+        text("off", "w"),
+        text("d", "y"),
+        text("flag", "x"),
+        text("e", ""),
+        (Value::string("z"), Value::integer(0)),
+    ]);
+    let options = Value::map([text("parameters_schema", "schema_order.json")]);
+    let check = |version: &str| {
+        let config = pinned(version);
+        let arguments = vec![options.clone()];
+        params_call_in(&config, "validateParameters", values.clone(), arguments)
+            .unwrap_err()
+            .to_string()
+    };
+    let lines = |shorter: &str| {
+        format!(
+            ":\n\n* --flag (x): Value is [string] but should be [boolean]\n\
+             * --d (y): Value is [string] but should be [integer]\n{shorter}\
+             * --z (): 0 is less than 1\n\
+             * --n (z): Value is [string] but should be [integer]\n\
+             * --off (w): Value is [string] but should be [boolean]\n\n"
+        )
+    };
+    let error = check("2.5.1");
+    assert!(error.ends_with(&lines("")), "{error}");
+    let error = check("2.8.0");
+    let shorter = "* --e (): \"\" is shorter than 3 characters\n";
+    assert!(error.ends_with(&lines(shorter)), "{error}");
 }
 
 #[test]

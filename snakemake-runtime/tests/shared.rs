@@ -367,6 +367,31 @@ rule b:
     assert!(!work.join("results/a").exists(), "the empty folder is gone");
 }
 
+/// A job that failed leaves its outputs marked incomplete, so that the next run makes them
+/// again even when a later job left one there; one that ended well leaves no mark.
+#[test]
+fn marks_running_outputs() {
+    let snakefile = "rule all:\n    input: 'ok.txt', 'half.txt'\nrule good:\n    output: 'ok.txt'\n    shell: 'unused'\nrule broken:\n    output: 'half.txt'\n    shell: 'unused'\n";
+    let steps: [(&str, Step); 2] = [
+        ("good", |folder| {
+            std::fs::write(folder.join("ok.txt"), "ok").unwrap();
+            0
+        }),
+        ("broken", |folder| {
+            std::fs::write(folder.join("half.txt"), "half").unwrap();
+            1
+        }),
+    ];
+    let (folder, _host, error) = run(folder(), snakefile, &steps);
+    assert!(error.is_some());
+    let marks = folder.path().join("work/.snakemake/iunctus-incomplete");
+    let names: Vec<String> = std::fs::read_dir(&marks)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names.len(), 1, "only the failed output: {names:?}");
+}
+
 /// Runs a Snakefile in the working directory of `folder` with jobs in the shared directory;
 /// the folder, the tasks and the error.
 fn run(

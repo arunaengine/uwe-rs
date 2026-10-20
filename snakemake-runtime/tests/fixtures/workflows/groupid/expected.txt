@@ -2,10 +2,28 @@
 1 grouplocal (groupid=local), consumer (i=0), consumer (i=1), consumer (i=2) <- []
 2 all <- [1]
 task 1: -
-  command: sh -c ( export GOTO_NUM_THREADS=1; export MKL_NUM_THREADS=1; export NUMEXPR_NUM_THREADS=1; export OMP_NUM_THREADS=1; export OPENBLAS_NUM_THREADS=1; export TEMP=/tmp; export TEMPDIR=/tmp; export TMP=/tmp; export TMPDIR=/tmp; export VECLIB_MAXIMUM_THREADS=1; exec bash -c 'set -euo pipefail;  echo local > foo.local.txt' ) || exit $?
-( export GOTO_NUM_THREADS=1; export MKL_NUM_THREADS=1; export NUMEXPR_NUM_THREADS=1; export OMP_NUM_THREADS=1; export OPENBLAS_NUM_THREADS=1; export TEMP=/tmp; export TEMPDIR=/tmp; export TMP=/tmp; export TMPDIR=/tmp; export VECLIB_MAXIMUM_THREADS=1; exec bash -c 'set -euo pipefail;  cp foo.local.txt bar0.txt' ) || exit $?
-( export GOTO_NUM_THREADS=1; export MKL_NUM_THREADS=1; export NUMEXPR_NUM_THREADS=1; export OMP_NUM_THREADS=1; export OPENBLAS_NUM_THREADS=1; export TEMP=/tmp; export TEMPDIR=/tmp; export TMP=/tmp; export TMPDIR=/tmp; export VECLIB_MAXIMUM_THREADS=1; exec bash -c 'set -euo pipefail;  cp foo.local.txt bar1.txt' ) || exit $?
-( export GOTO_NUM_THREADS=1; export MKL_NUM_THREADS=1; export NUMEXPR_NUM_THREADS=1; export OMP_NUM_THREADS=1; export OPENBLAS_NUM_THREADS=1; export TEMP=/tmp; export TEMPDIR=/tmp; export TMP=/tmp; export TMPDIR=/tmp; export VECLIB_MAXIMUM_THREADS=1; exec bash -c 'set -euo pipefail;  cp foo.local.txt bar2.txt' ) || exit $?
+  command: bash -c set -m
+status_dir=$(mktemp -d) || exit 1
+pids=''
+trap 'for pid in $pids; do kill -TERM -- -"$pid" 2>/dev/null || :; done; wait; rm -rf "$status_dir"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+( ( export GOTO_NUM_THREADS=1; export MKL_NUM_THREADS=1; export NUMEXPR_NUM_THREADS=1; export OMP_NUM_THREADS=1; export OPENBLAS_NUM_THREADS=1; export TEMP=/tmp; export TEMPDIR=/tmp; export TMP=/tmp; export TMPDIR=/tmp; export VECLIB_MAXIMUM_THREADS=1; exec bash -c 'set -euo pipefail;  echo local > foo.local.txt' ); code=$?; printf '%s\n' "$code" > "$status_dir/0.part"; mv "$status_dir/0.part" "$status_dir/0"; exit "$code" ) &
+pids="$pids $!"
+( ( while [ ! -f "$status_dir/0" ]; do sleep 0.1; done; [ "$(cat "$status_dir/0")" -eq 0 ] || exit 1; export GOTO_NUM_THREADS=1; export MKL_NUM_THREADS=1; export NUMEXPR_NUM_THREADS=1; export OMP_NUM_THREADS=1; export OPENBLAS_NUM_THREADS=1; export TEMP=/tmp; export TEMPDIR=/tmp; export TMP=/tmp; export TMPDIR=/tmp; export VECLIB_MAXIMUM_THREADS=1; exec bash -c 'set -euo pipefail;  cp foo.local.txt bar0.txt' ); code=$?; printf '%s\n' "$code" > "$status_dir/1.part"; mv "$status_dir/1.part" "$status_dir/1"; exit "$code" ) &
+pids="$pids $!"
+( ( while [ ! -f "$status_dir/0" ]; do sleep 0.1; done; [ "$(cat "$status_dir/0")" -eq 0 ] || exit 1; export GOTO_NUM_THREADS=1; export MKL_NUM_THREADS=1; export NUMEXPR_NUM_THREADS=1; export OMP_NUM_THREADS=1; export OPENBLAS_NUM_THREADS=1; export TEMP=/tmp; export TEMPDIR=/tmp; export TMP=/tmp; export TMPDIR=/tmp; export VECLIB_MAXIMUM_THREADS=1; exec bash -c 'set -euo pipefail;  cp foo.local.txt bar1.txt' ); code=$?; printf '%s\n' "$code" > "$status_dir/2.part"; mv "$status_dir/2.part" "$status_dir/2"; exit "$code" ) &
+pids="$pids $!"
+( ( while [ ! -f "$status_dir/0" ]; do sleep 0.1; done; [ "$(cat "$status_dir/0")" -eq 0 ] || exit 1; export GOTO_NUM_THREADS=1; export MKL_NUM_THREADS=1; export NUMEXPR_NUM_THREADS=1; export OMP_NUM_THREADS=1; export OPENBLAS_NUM_THREADS=1; export TEMP=/tmp; export TEMPDIR=/tmp; export TMP=/tmp; export TMPDIR=/tmp; export VECLIB_MAXIMUM_THREADS=1; exec bash -c 'set -euo pipefail;  cp foo.local.txt bar2.txt' ); code=$?; printf '%s\n' "$code" > "$status_dir/3.part"; mv "$status_dir/3.part" "$status_dir/3"; exit "$code" ) &
+pids="$pids $!"
+while :; do
+if [ -f "$status_dir/0" ]; then code=$(cat "$status_dir/0"); [ "$code" -eq 0 ] || exit "$code"; fi
+if [ -f "$status_dir/1" ]; then code=$(cat "$status_dir/1"); [ "$code" -eq 0 ] || exit "$code"; fi
+if [ -f "$status_dir/2" ]; then code=$(cat "$status_dir/2"); [ "$code" -eq 0 ] || exit "$code"; fi
+if [ -f "$status_dir/3" ]; then code=$(cat "$status_dir/3"); [ "$code" -eq 0 ] || exit "$code"; fi
+[ -f "$status_dir/0" ] && [ -f "$status_dir/1" ] && [ -f "$status_dir/2" ] && [ -f "$status_dir/3" ] && exit 0
+sleep 0.1
+done
 
   inputs: 
   outputs: foo.local.txt bar0.txt bar1.txt bar2.txt

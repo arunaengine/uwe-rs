@@ -335,6 +335,38 @@ rule all:
     );
 }
 
+/// As in Snakemake's test_modules_all, the empty folder of a removed temporary file goes once
+/// the run succeeded.
+#[test]
+fn removes_empty_folders() {
+    let snakefile = r#"
+rule all:
+    input: "results/b.txt"
+rule a:
+    output: temp("results/a/a.txt")
+    shell: "unused"
+rule b:
+    input: "results/a/a.txt"
+    output: "results/b.txt"
+    shell: "unused"
+"#;
+    let steps: [(&str, Step); 2] = [
+        ("a", |folder| {
+            std::fs::write(folder.join("results/a/a.txt"), "a").unwrap();
+            0
+        }),
+        ("b", |folder| {
+            std::fs::write(folder.join("results/b.txt"), "b").unwrap();
+            0
+        }),
+    ];
+    let (folder, _host, error) = run(folder(), snakefile, &steps);
+    assert_eq!(error, None);
+    let work = folder.path().join("work");
+    assert!(work.join("results/b.txt").is_file());
+    assert!(!work.join("results/a").exists(), "the empty folder is gone");
+}
+
 /// Runs a Snakefile in the working directory of `folder` with jobs in the shared directory;
 /// the folder, the tasks and the error.
 fn run(

@@ -23,7 +23,7 @@ fn start_error(spec: &str) -> DriverError {
 fn rejects_workflow_controls() {
     for field in [
         "synchronization: {semaphores: [{database: {key: lock}}]}",
-        "podSpecPatch: '{}'",
+        "podSpecPatch: '{hostNetwork: true}'",
         "podResources: {}",
         "resourceClaims: []",
         "shutdown: Stop",
@@ -44,7 +44,7 @@ fn rejects_workflow_controls() {
 fn rejects_template_controls() {
     for field in [
         "synchronization: {semaphores: [{database: {key: lock}}]}",
-        "podSpecPatch: '{}'",
+        "podSpecPatch: '{hostNetwork: true}'",
         "podResources: {}",
         "resourceClaims: []",
         "pendingTimeout: 5s",

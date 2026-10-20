@@ -9,8 +9,7 @@ use crate::run::Run;
 
 /// Fields of workflows, templates and containers that only tell Kubernetes where and how to run
 /// a pod; they do not change what a task computes.
-const LEFT_OUT: [&str; 23] = [
-    "podSpecPatch",
+const LEFT_OUT: [&str; 22] = [
     "nodeSelector",
     "tolerations",
     "affinity",

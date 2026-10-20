@@ -12,6 +12,7 @@ use argo_parser::{Entry, Node, Value as Yaml, decode};
 
 use crate::node::{ArtifactValue, Location};
 use crate::objects::{KeyRef, config_map_value};
+use crate::patch::PATCHES;
 use crate::run::{
     Args, Context, Failure, Processed, Result, Run, entry_mut, is_pod, parameters_json, scalar_text,
 };
@@ -126,6 +127,21 @@ impl Run {
                 .or_insert_with(|| self.pod_name(name, &typed.name));
         }
         locals.insert("node.name".to_owned(), name.to_owned());
+        // The patch of the workflow comes before the template's own; both get its tags.
+        if is_pod(&typed)
+            && let Some(patch) = self.spec.pod_spec_patch.clone()
+        {
+            let own = node.get(PATCHES).cloned();
+            crate::run::remove_key(&mut node, PATCHES);
+            let patches = std::iter::once(patch).chain(own).collect();
+            if let Yaml::Mapping(entries) = &mut node.value {
+                entries.push(Entry {
+                    key: PATCHES.to_owned(),
+                    position: Default::default(),
+                    value: Node::new(Yaml::Sequence(patches), Default::default()),
+                });
+            }
+        }
         let mut first = self.globals.clone();
         first.extend(locals.clone());
         let variables = Variables::new(first.clone());
@@ -171,6 +187,7 @@ impl Run {
             }
         }
         replace_node(&mut node, &Variables::new(second), true).map_err(Failure::error)?;
+        self.apply_patches(&mut node)?;
         let (template, _) = decode::<Template>(&node)
             .map_err(|error| Failure::error(format!("template {}: {error}", typed.name)))?;
         // Paths of input artifacts may hold tags that the passes resolved.

@@ -21,6 +21,7 @@ mod marks;
 mod merge;
 mod node;
 mod objects;
+mod patch;
 mod plugin;
 mod pod;
 mod references;

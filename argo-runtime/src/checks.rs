@@ -179,7 +179,6 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
         }
     }
     for (field, present) in [
-        ("podSpecPatch", template.pod_spec_patch.is_some()),
         ("podResources", template.pod_resources.is_some()),
         ("resourceClaims", template.resource_claims.is_some()),
         ("pendingTimeout", template.pending_timeout.is_some()),

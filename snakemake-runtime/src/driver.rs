@@ -2721,6 +2721,7 @@ pub fn driver_with_options(
                 session.rerun_triggers = options.rerun_triggers.clone();
                 session.shared = options.shared_workdir && !launch.simulated;
                 session.local = options.local;
+                session.embedded.local = options.local;
                 session.embedded.shared = session.shared;
                 session.state.borrow_mut().conda_enabled = options.conda;
                 session.state.borrow_mut().default_image = options.image.clone();

@@ -30,6 +30,10 @@ use crate::staging::PodStaging;
 /// How often the cluster is asked about the pods, by default.
 const POLL: Duration = Duration::from_secs(5);
 
+/// How long the cluster may take to take a Job, as a busy API server answers slowly. A Job
+/// whose answer is lost is found again by its name.
+const SUBMIT_GRACE: Duration = Duration::from_secs(60);
+
 /// How long a Job may have no pod, or a pod that cannot start, before it counts as failed.
 const GRACE: Duration = Duration::from_secs(120);
 
@@ -370,7 +374,7 @@ impl KubernetesBackend {
             .map_err(|error| machine(format!("the Job is not valid: {error}")))?;
         let jobs = self.cluster.jobs();
         let accepted =
-            tokio::time::timeout(REQUEST_GRACE, jobs.create(&PostParams::default(), &job))
+            tokio::time::timeout(SUBMIT_GRACE, jobs.create(&PostParams::default(), &job))
                 .await
                 .map_err(|_| machine("the Job submission response timed out".into()))?
                 .map_err(|error| machine(format!("the cluster did not take the Job: {error}")))?;
@@ -490,9 +494,60 @@ impl KubernetesBackend {
                     "the original coordinator host or cluster settings changed",
                 ));
             }
+            // A submission without an answer must not block every later run.
+            if journal["uid"].as_str().is_none_or(str::is_empty) {
+                match self.identify(&journal).await {
+                    Submitted::Found(uid) => {
+                        journal["uid"] = serde_json::json!(uid);
+                        journal_at(&root, &journal)?;
+                    }
+                    Submitted::Absent => {
+                        tracing::warn!(attempt = %root.display(),
+                            "the Job of an unclear submission is not in the cluster; the attempt is lost");
+                        std::fs::remove_file(&path)?;
+                        continue;
+                    }
+                    Submitted::Unclear(reason) => {
+                        tracing::warn!(attempt = %root.display(), reason,
+                            "cannot resolve an unclear submission yet");
+                        continue;
+                    }
+                }
+            }
             self.stop(&root, &journal, CANCEL_GRACE).await?;
         }
         Ok(())
+    }
+
+    /// Finds the Job of a journal whose submission left no UID, by its name, which only this
+    /// attempt has, and the label of the backend that made it.
+    async fn identify(&self, journal: &serde_json::Value) -> Submitted {
+        let Some(name) = journal["name"].as_str().filter(|name| !name.is_empty()) else {
+            return Submitted::Unclear("the journal names no Job");
+        };
+        let found = tokio::time::timeout(REQUEST_GRACE, self.cluster.jobs().get_opt(name)).await;
+        match found {
+            Ok(Ok(Some(job))) => {
+                let labels = job.metadata.labels.as_ref();
+                let label = labels.and_then(|labels| labels.get(crate::manifest::LABEL));
+                match job.metadata.uid.filter(|uid| !uid.is_empty()) {
+                    Some(uid) if label.map(String::as_str) == journal["label"].as_str() => {
+                        Submitted::Found(uid)
+                    }
+                    _ => Submitted::Unclear("a Job of another backend has the name"),
+                }
+            }
+            Ok(Ok(None)) => {
+                let selector = ListParams::default().labels(&format!("job-name={name}"));
+                let pods = self.cluster.pods();
+                match tokio::time::timeout(REQUEST_GRACE, pods.list(&selector)).await {
+                    Ok(Ok(list)) if list.items.is_empty() => Submitted::Absent,
+                    Ok(Ok(_)) => Submitted::Unclear("pods of the Job are still there"),
+                    _ => Submitted::Unclear("the cluster cannot list the pods"),
+                }
+            }
+            _ => Submitted::Unclear("the cluster cannot tell"),
+        }
     }
 
     /// The last lines of the log of the pod of a Job, of its `container` or else its first one,
@@ -628,6 +683,16 @@ impl KubernetesBackend {
         std::fs::remove_file(root.join("remote.json"))?;
         Ok(())
     }
+}
+
+/// What became of a submission whose answer was lost.
+enum Submitted {
+    /// The Job with this UID.
+    Found(String),
+    /// The cluster has no such Job: it never took it, or it is gone.
+    Absent,
+    /// The cluster cannot tell yet, for this reason.
+    Unclear(&'static str),
 }
 
 /// The lock of an attempt. It lets go of the lock before it closes the file, as a process that

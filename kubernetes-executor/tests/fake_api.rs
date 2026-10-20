@@ -928,7 +928,7 @@ async fn cancelled_jobs_stop() {
 }
 
 #[tokio::test]
-async fn retains_ambiguous_submissions() {
+async fn recovers_lost_submissions() {
     let root = tempfile::tempdir().unwrap();
     let (backend, state) = backend(root.path()).await;
     std::fs::write(root.path().join("server/lose-submit"), "").unwrap();
@@ -957,13 +957,21 @@ async fn retains_ambiguous_submissions() {
         staging: &staging,
         placement: &placement,
     };
-    let error = backend
-        .run(blocked, &CancellationToken::new())
-        .await
-        .unwrap_err();
-    assert!(error.to_string().contains("UID was not recorded"));
-    assert!(journal.is_file());
-    assert_eq!(state.lock().unwrap().submitted.len(), 1);
+    // Recovery finds the Job by its name and label, removes it, and the next run goes on.
+    std::fs::remove_file(root.path().join("server/lose-submit")).unwrap();
+    let finished = backend.run(blocked, &CancellationToken::new()).await;
+    assert_eq!(finished.expect("the job ends").exit_code, Some(0));
+    assert!(!journal.exists());
+    assert_eq!(state.lock().unwrap().submitted.len(), 2);
+    assert!(state.lock().unwrap().jobs["iunctus-ambiguous"].deleted);
+    // A Job that the cluster never took is lost, and blocks nothing.
+    let never = backend.scratch.join("never");
+    std::fs::create_dir_all(&never).unwrap();
+    std::fs::write(never.join("remote.lock"), "").unwrap();
+    record["name"] = json!("iunctus-never");
+    std::fs::write(never.join("remote.json"), record.to_string()).unwrap();
+    backend.reconcile().await.unwrap();
+    assert!(!never.join("remote.json").exists());
 }
 
 #[tokio::test]

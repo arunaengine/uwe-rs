@@ -2,6 +2,8 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::os::unix::fs::PermissionsExt;
+
 use bytes::Bytes;
 use content_store::{Store, StoreError, layout};
 use task_model::Digest;
@@ -141,7 +143,7 @@ async fn rejects_corrupt_shared() {
         .put_content(Bytes::from_static(b"good"))
         .await
         .unwrap();
-    std::fs::write(shared_folder.path().join(layout::content(&digest)), b"bad").unwrap();
+    damage(&shared_folder.path().join(layout::content(&digest)), b"bad");
     let store = Store::layered(Store::local(folder.path()).unwrap(), shared).unwrap();
     let target = folder.path().join("target");
     assert!(matches!(
@@ -162,7 +164,7 @@ async fn rejects_corrupt_local() {
         .put_content(Bytes::from_static(b"good"))
         .await
         .unwrap();
-    std::fs::write(folder.path().join(layout::content(&digest)), b"bad").unwrap();
+    damage(&folder.path().join(layout::content(&digest)), b"bad");
     let target = folder.path().join("target");
     std::fs::write(&target, b"old").unwrap();
     assert!(matches!(
@@ -236,4 +238,10 @@ async fn isolates_concurrent_temporaries() {
         assert_eq!(std::fs::read(&target).unwrap(), b"same");
     }
     assert_eq!(std::fs::read_dir(folder.path()).unwrap().count(), 16);
+}
+
+/// Changes a stored file the way a user can: unlock it, then write other bytes.
+fn damage(path: &std::path::Path, bytes: &[u8]) {
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::fs::write(path, bytes).unwrap();
 }

@@ -2,6 +2,8 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::os::unix::fs::PermissionsExt;
+
 use bytes::Bytes;
 use content_store::{Store, layout};
 use task_model::{Digest, Tree, TreeEntry};
@@ -88,7 +90,9 @@ async fn validates_directory_hits() {
     std::fs::remove_file(root.join("selected")).unwrap();
     std::os::unix::fs::symlink("empty", root.join("selected")).unwrap();
     assert!(entry.complete(&store).await.unwrap());
-    std::fs::write(folder.path().join(layout::tree(&manifest)), b"{").unwrap();
+    let stored = folder.path().join(layout::tree(&manifest));
+    std::fs::set_permissions(&stored, std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::fs::write(stored, b"{").unwrap();
     assert!(!entry.complete(&store).await.unwrap());
 }
 

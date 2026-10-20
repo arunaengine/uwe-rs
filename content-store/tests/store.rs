@@ -2,6 +2,8 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::os::unix::fs::PermissionsExt;
+
 use bytes::Bytes;
 use content_store::{S3Options, Store, StoreError, layout};
 use task_model::{Digest, Tree, TreeEntry};
@@ -102,7 +104,9 @@ async fn detects_corruption() {
         .put_content(Bytes::from_static(b"good"))
         .await
         .expect("put");
-    std::fs::write(root.path().join(layout::content(&digest)), b"bad").expect("overwrite");
+    let stored = root.path().join(layout::content(&digest));
+    std::fs::set_permissions(&stored, std::fs::Permissions::from_mode(0o644)).expect("unlocks");
+    std::fs::write(stored, b"bad").expect("overwrite");
     let error = store
         .get_content(&digest)
         .await

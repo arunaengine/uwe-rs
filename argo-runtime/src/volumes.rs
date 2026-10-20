@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
 
 use argo_parser::model::Template;
@@ -437,7 +438,13 @@ fn write_back(file: &Path, root: &Path, target: &Path) -> std::result::Result<()
         std::fs::create_dir_all(parent).map_err(failed)?;
     }
     std::fs::copy(file, target).map_err(failed)?;
-    Ok(())
+    // Store files are read-only; the host file must stay writable for the next write back.
+    let mode = std::fs::metadata(target)
+        .map_err(failed)?
+        .permissions()
+        .mode()
+        | 0o200;
+    std::fs::set_permissions(target, std::fs::Permissions::from_mode(mode)).map_err(failed)
 }
 
 fn confined(root: &Path, target: &Path) -> std::result::Result<(), String> {

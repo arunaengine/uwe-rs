@@ -18,6 +18,23 @@ pub struct Delivered {
 }
 
 impl Database {
+    /// Where the results of every run went, like the links to the store that clean-up keeps.
+    pub fn all_deliveries(&self) -> Result<Vec<Delivered>, DatabaseError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT target, location FROM deliveries ORDER BY rowid")?;
+        let found = statement
+            .query_map([], |row| {
+                Ok(Delivered {
+                    target: row.get(0)?,
+                    location: row.get(1)?,
+                    task: None,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(found)
+    }
+
     /// Where the results of a run went, in the order they went there.
     pub fn deliveries(&self, run: &str) -> Result<Vec<Delivered>, DatabaseError> {
         let mut statement = self.connection.prepare(

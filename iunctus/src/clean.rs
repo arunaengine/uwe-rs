@@ -51,7 +51,7 @@ fn rules(arguments: &Arguments) -> Option<Vec<String>> {
 
 /// `iunctus clean`.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
-    let Some(rules) = rules(arguments) else {
+    let Some(mut rules) = rules(arguments) else {
         return Err(Failure::usage(
             "iunctus: say what `iunctus clean` keeps: -keep-days <n> keeps what runs made or \
              used in the last n days, -keep-run <run> what a run needs, -keep-slower-than \
@@ -126,12 +126,18 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let references = database
         .references(&listed)
         .map_err(|error| broken(&error))?;
+    let linked = linked_results(&database, &store)?;
+    if !linked.is_empty() {
+        let files = count(linked.len(), "stored file");
+        rules.push(format!("the {files} that published results link to"));
+    }
     let keep = Keep {
         used_since,
         slower_than: arguments.keep_slower_than,
         runs: kept.clone(),
         locations: (references.locations.iter())
             .filter_map(|location| store.location_of(location))
+            .chain(linked)
             .collect(),
         digests: (references.digests.iter())
             .filter_map(|digest| digest.parse().ok())
@@ -206,6 +212,30 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         );
     }
     Ok(())
+}
+
+/// The locations in the store that published results link to: the links that runs made and
+/// that still point there. Removing those files would break the results, so they stay.
+fn linked_results(
+    database: &Database,
+    store: &content_store::Store,
+) -> Result<BTreeSet<String>, Failure> {
+    let deliveries =
+        (database.all_deliveries()).map_err(|error| failure(format!("iunctus: {error}")))?;
+    let mut linked = BTreeSet::new();
+    for delivery in deliveries {
+        let target = Path::new(&delivery.target);
+        let link = std::fs::symlink_metadata(target).is_ok_and(|found| found.is_symlink());
+        let pointed = std::fs::canonicalize(target).ok();
+        if link
+            && pointed.is_some()
+            && pointed == std::fs::canonicalize(&delivery.location).ok()
+            && let Some(location) = store.location_of(&delivery.location)
+        {
+            linked.insert(location);
+        }
+    }
+    Ok(linked)
 }
 
 /// Old copies of remote files and of contents of a store elsewhere, which runs download again,
@@ -644,6 +674,67 @@ mod tests {
         let reading = std::fs::File::open(folder.path().join("in-use.lock")).expect("the lock");
         reading.lock_shared().expect("locks");
         assert!(names(None).is_empty(), "a process reads downloads");
+    }
+
+    #[test]
+    fn keeps_linked_results() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let store = content_store::Store::local(&folder.path().join("store")).expect("a store");
+        let start = run_database::RunStart {
+            id: "old".into(),
+            resumes: None,
+            workflow: "main.nf".into(),
+            language: workflow_graph::Language::Nextflow,
+            revision: None,
+            arguments: Vec::new(),
+            parameters: Vec::new(),
+            executor: "local".into(),
+            simulated: false,
+            store: None,
+            program: None,
+            launch: None,
+            workflow_folder: None,
+            repeats: None,
+        };
+        let mut recorder = Database::open(&folder.path().join("runs.sqlite"))
+            .and_then(|database| database.record(&start))
+            .expect("records");
+        let results = folder.path().join("results");
+        std::fs::create_dir(&results).expect("a results folder");
+        let mut outputs = Vec::new();
+        for name in ["linked", "replaced", "copied"] {
+            let location = format!("runs/old/T-1/1/work/{name}.txt");
+            let path = store.local_path(&location).expect("a local store");
+            std::fs::create_dir_all(path.parent().unwrap()).expect("folders");
+            std::fs::write(&path, name).expect("an output");
+            let target = results.join(format!("{name}.txt"));
+            match name {
+                "copied" => std::fs::write(&target, name).expect("a copy"),
+                _ => std::os::unix::fs::symlink(&path, &target).expect("a link"),
+            }
+            recorder.delivered(&target.to_string_lossy(), &path.to_string_lossy());
+            outputs.push(location);
+        }
+        recorder.close().expect("closes");
+        // The user replaced one link with a file of their own.
+        std::fs::remove_file(results.join("replaced.txt")).expect("removes the link");
+        std::fs::write(results.join("replaced.txt"), "own").expect("writes");
+        let database = Database::open(&folder.path().join("runs.sqlite")).expect("opens");
+        let linked = linked_results(&database, &store).expect("finds links");
+        assert_eq!(linked, BTreeSet::from([outputs[0].clone()]));
+        let keep = Keep {
+            locations: linked,
+            ..Keep::default()
+        };
+        let runtime = workflow_graph::runtime().expect("a runtime");
+        let planned = runtime.block_on(plan(&store, &keep)).expect("plans");
+        let removed: BTreeSet<&str> = (planned.objects.iter())
+            .map(|object| object.location.as_str())
+            .collect();
+        assert_eq!(
+            removed,
+            BTreeSet::from([outputs[1].as_str(), outputs[2].as_str()])
+        );
     }
 
     #[test]

@@ -436,7 +436,7 @@ fn matches_s3_endpoints() {
         address: Some(address.into()),
     };
     let start = |endpoints| {
-        argo_runtime::driver_with(&launch, endpoints)
+        argo_runtime::driver_with(&launch, endpoints, None)
             .unwrap()
             .start()
     };

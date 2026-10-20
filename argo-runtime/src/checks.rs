@@ -100,16 +100,6 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
     {
         return Some(error.message);
     }
-    if template.suspend.as_ref().is_some_and(|suspend| {
-        suspend
-            .duration
-            .as_ref()
-            .is_none_or(|duration| duration.0.is_empty())
-    }) {
-        return Some(format!(
-            "template {name}: suspend without duration requires manual resume; iunctus has no resume command for suspended Argo nodes"
-        ));
-    }
     for artifact in template
         .inputs
         .artifacts

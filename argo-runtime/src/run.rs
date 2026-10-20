@@ -212,6 +212,10 @@ pub(crate) struct Run {
     pub deadlines: HashMap<usize, crate::timers::Limit>,
     pub workflow_limit: Option<std::time::Instant>,
     pub stopped: bool,
+    /// The requests of `iunctus resume` that arrived since the run last went on.
+    pub requests: Vec<crate::resume::Request>,
+    /// Whether the workflow waits for `iunctus resume` before it starts (`spec.suspend`).
+    pub held: bool,
     pub expired: HashMap<usize, String>,
     pub cancel_tasks: Vec<TaskId>,
     pub locks: Rc<std::cell::RefCell<crate::sync::Locks>>,
@@ -361,6 +365,8 @@ impl Run {
             deadlines: HashMap::new(),
             workflow_limit: None,
             stopped: false,
+            requests: Vec::new(),
+            held: false,
             expired: HashMap::new(),
             cancel_tasks: Vec::new(),
             locks: Rc::new(std::cell::RefCell::new(crate::sync::Locks::default())),
@@ -421,6 +427,21 @@ impl Run {
             }
         }
         run.spec.hooks = hooks;
+        // A suspended workflow starts on `iunctus resume`, as on `argo resume`.
+        let suspended =
+            (spec_node.get("suspend")).is_some_and(|node| node.value == Yaml::Bool(true));
+        if suspended && !run.options.assume_inputs {
+            if run.options.resume.is_none() {
+                return Err(Failure::unsupported(
+                    "spec.suspend needs `iunctus resume`, which this run cannot hear",
+                ));
+            }
+            run.held = true;
+            let name = run.run_name();
+            run.warn(format!(
+                "the workflow is suspended until `iunctus resume {name}`"
+            ));
+        }
         Ok(run)
     }
 
@@ -438,13 +459,21 @@ impl Run {
         if !self.options.assume_inputs {
             self.clock = std::time::Instant::now();
         }
+        self.take_requests();
+        if self.held && self.requests.iter().any(|request| request.step.is_none()) {
+            self.held = false;
+        }
         loop {
             self.changed = false;
-            self.pass()?;
+            if !self.held {
+                self.pass()?;
+            }
             if !self.changed {
                 break;
             }
         }
+        // Like `argo resume`, a request is for the steps that are suspended when it comes.
+        self.requests.clear();
         Ok(std::mem::take(&mut self.emitted))
     }
 
@@ -454,6 +483,7 @@ impl Run {
             .copied()
             .chain(self.deadlines.values().map(|limit| limit.at))
             .chain(self.workflow_limit)
+            .chain(self.held.then(|| self.clock + crate::resume::POLL))
             .chain(self.children.iter().filter_map(|child| child.run.wake_at()))
             .min()
     }
@@ -775,30 +805,52 @@ impl Run {
         let Some(processed) = self.nodes[index].processed.clone() else {
             return Ok(());
         };
-        let duration = processed
-            .template
-            .suspend
-            .as_ref()
+        let duration = (processed.template.suspend.as_ref())
             .and_then(|suspend| suspend.duration.as_ref())
-            .ok_or_else(|| {
-                Failure::unsupported("suspend without duration requires manual resume")
-            })?;
-        let duration = crate::resources::duration(&duration.0)
-            .ok_or_else(|| Failure::error("suspend.duration has invalid duration format"))?;
-        let at = self.nodes[index]
-            .started_at
-            .checked_add(duration)
-            .ok_or_else(|| Failure::error("suspend.duration overflow"))?;
-        if self.clock < at {
-            self.waits.insert(index, at);
-            return Ok(());
+            .filter(|duration| !duration.0.is_empty());
+        let mut supplied = std::collections::BTreeMap::new();
+        if let Some(duration) = duration {
+            let duration = crate::resources::duration(&duration.0)
+                .ok_or_else(|| Failure::error("suspend.duration has invalid duration format"))?;
+            let at = self.nodes[index]
+                .started_at
+                .checked_add(duration)
+                .ok_or_else(|| Failure::error("suspend.duration overflow"))?;
+            if self.clock < at {
+                self.waits.insert(index, at);
+                return Ok(());
+            }
+        } else if self.options.assume_inputs {
+            self.warn(format!(
+                "step {} waits for `iunctus resume` in a real run",
+                display_name(&self.nodes[index].name)
+            ));
+        } else if self.options.resume.is_none() {
+            return Err(Failure::unsupported(
+                "suspend without duration needs `iunctus resume`, which this run cannot hear",
+            ));
+        } else {
+            let Some(request) = self.request_for(index) else {
+                if !self.waits.contains_key(&index) {
+                    self.warn(format!(
+                        "step {} is suspended until `iunctus resume {} {}`",
+                        display_name(&self.nodes[index].name),
+                        self.run_name(),
+                        display_name(&self.nodes[index].name)
+                    ));
+                }
+                self.waits.insert(index, self.clock + crate::resume::POLL);
+                return Ok(());
+            };
+            self.waits.remove(&index);
+            supplied = request.outputs;
         }
         let mut parameters = Vec::new();
         for parameter in &processed.template.outputs.parameters {
+            let given = supplied.get(&parameter.name).cloned().map(AnyString);
             let supplied = parameter.value_from.as_ref();
-            let value = parameter
-                .value
-                .clone()
+            let value = given
+                .or_else(|| parameter.value.clone())
                 .or_else(|| supplied.and_then(|from| from.default.clone()))
                 .or_else(|| parameter.default.clone())
                 .or_else(|| parameter.enumeration.first().cloned());

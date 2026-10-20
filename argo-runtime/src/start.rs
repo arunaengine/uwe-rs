@@ -108,7 +108,8 @@ impl Run {
         self.warn_left_out(spec);
         if spec
             .get("suspend")
-            .is_some_and(|node| node.value != Yaml::Null)
+            .is_some_and(|node| node.value == Yaml::Bool(true))
+            && self.options.assume_inputs
         {
             self.warn("the workflow starts at once instead of suspended".to_owned());
         }

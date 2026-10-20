@@ -348,14 +348,15 @@ impl Interpreter<'_> {
         Ok(Completion::Normal(value))
     }
 
-    /// Whether a `case` value takes the subject of a `switch`, as Groovy's `isCase` decides:
-    /// a class by type, a closure by its result, others as `subject in value`.
-    fn is_case(&mut self, value: &Value, subject: &Value, span: Span) -> Result<bool, Error> {
+    /// Whether a `case` value or the right side of `in` takes the subject, as Groovy's
+    /// `isCase` decides: a closure by its result, others as `Value::is_case`.
+    pub(super) fn is_case(
+        &mut self,
+        value: &Value,
+        subject: &Value,
+        span: Span,
+    ) -> Result<bool, Error> {
         match value {
-            Value::Class(class) => Ok(super::access::instance_of(
-                subject,
-                crate::value::simple_class_name(class),
-            )),
             Value::Closure(closure) => Ok(self
                 .call_closure_value(closure, vec![subject.clone()], span)?
                 .truth()),

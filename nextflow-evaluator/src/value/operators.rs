@@ -230,10 +230,15 @@ impl Value {
     }
 
     /// `a in b`, which is `b.isCase(a)`: membership by Java equality for collections, a
-    /// truthy value for maps, equal text for strings and equal value for numbers.
+    /// truthy value for maps, equal text for strings, equal value for numbers and an
+    /// instance or subclass for classes. Callers handle closures, which need the interpreter.
     pub fn is_case(&self, item: &Value) -> Result<bool, Exception> {
         Ok(match self {
             Value::Null => matches!(item, Value::Null),
+            Value::Class(class) => match item {
+                Value::Class(other) => super::assignable(class, other),
+                _ => crate::interpreter::instance_of(item, super::simple_class_name(class)),
+            },
             Value::List(list) => {
                 let list = list.borrow();
                 match &list.range {

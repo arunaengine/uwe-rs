@@ -300,6 +300,23 @@ fn gathering() {
     );
 }
 
+/// `filter`, `count` and `first` with a class keep its instances, as Nextflow 26.04.6 does.
+#[test]
+fn filters_by_class() {
+    let source = "channel.of(1, 'x', 2L, 2.5)";
+    assert_eq!(
+        lines(&format!("{source}.filter(Number).view()")),
+        ["1", "2", "2.5"]
+    );
+    assert_eq!(lines(&format!("{source}.filter(Integer).view()")), ["1"]);
+    assert_eq!(
+        lines("channel.of(1, 'x', \"${1}x\").filter(String).view()"),
+        ["x", "1x"]
+    );
+    assert_eq!(lines(&format!("{source}.count(Number).view()")), ["3"]);
+    assert_eq!(lines("channel.of('x', 2L).first(Number).view()"), ["2"]);
+}
+
 #[test]
 fn pipes_and_waiting() {
     assert_eq!(

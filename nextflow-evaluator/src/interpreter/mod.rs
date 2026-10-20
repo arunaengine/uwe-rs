@@ -14,6 +14,7 @@ mod statement;
 mod task;
 mod template;
 
+pub(crate) use access::instance_of;
 pub use output::OutputOptions;
 
 use std::cell::RefCell;

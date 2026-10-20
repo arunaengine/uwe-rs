@@ -172,8 +172,10 @@ fn rejects_before_execution() {
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }
 
+/// The check reads `--count 3` as the integer of the schema, but the script gets the text, as
+/// in Nextflow 26.04.6, where `params.count + 1` is '31'.
 #[test]
-fn executes_normalized_values() {
+fn keeps_launch_texts() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let pipeline = r#"
 process COUNT {
@@ -218,5 +220,5 @@ workflow { COUNT() }
         .script
         .as_deref()
         .unwrap_or_default();
-    assert!(script.contains("echo 4 > count.txt"), "{script}");
+    assert!(script.contains("echo 31 > count.txt"), "{script}");
 }

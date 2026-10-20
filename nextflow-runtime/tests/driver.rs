@@ -268,8 +268,10 @@ fn combines_launch_parameters() {
     assert!(script.contains("echo hello 3 world"), "{script}");
 }
 
+/// The check reads `--count 3` as the integer of the schema, but the script gets the text, as
+/// in Nextflow 26.04.6, where `params.count + 1` is '31'.
 #[test]
-fn plans_normalized_parameters() {
+fn keeps_parameter_texts() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let pipeline = PIPELINE.replace("${params.count}", "${params.count + 1}");
     std::fs::write(directory.path().join("main.nf"), pipeline).expect("writes the script");
@@ -299,7 +301,7 @@ fn plans_normalized_parameters() {
         .into_result()
         .expect("the run succeeds");
     let script = graph.nodes[0].task.script.as_deref().unwrap_or_default();
-    assert!(script.contains("echo hi 4 world"), "{script}");
+    assert!(script.contains("echo hi 31 world"), "{script}");
 }
 
 #[test]

@@ -52,6 +52,48 @@ pub(crate) async fn remove(client: &Docker, id: &str) {
     eprintln!("iunctus: warning: could not remove container {id}: {reason}");
 }
 
+/// A created container that is removed when the guard goes, so that a run whose future is
+/// dropped between creating and removing a container leaves none behind.
+pub(crate) struct Created {
+    client: Docker,
+    id: String,
+}
+
+impl Created {
+    pub(crate) fn new(client: &Docker, id: &str) -> Created {
+        Created {
+            client: client.clone(),
+            id: id.to_owned(),
+        }
+    }
+
+    /// Removes the container while the run goes on.
+    pub(crate) async fn remove(mut self) {
+        let id = std::mem::take(&mut self.id);
+        remove(&self.client, &id).await;
+    }
+}
+
+impl Drop for Created {
+    // A dropped future cannot await, so a thread of its own removes the container before
+    // the drop returns, also while the runtime of the run shuts down.
+    fn drop(&mut self) {
+        if self.id.is_empty() {
+            return;
+        }
+        let (client, id) = (self.client.clone(), std::mem::take(&mut self.id));
+        let removal = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build();
+            if let Ok(runtime) = runtime {
+                runtime.block_on(remove(&client, &id));
+            }
+        });
+        let _ = removal.join();
+    }
+}
+
 /// The engine of this machine, with a client of its API.
 #[derive(Clone)]
 pub struct ContainerEngine {
@@ -263,6 +305,55 @@ impl EngineCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A future that runs a container and is dropped before it removed the container, like
+    /// the task of a run that failed meanwhile, still removes it.
+    #[test]
+    fn removes_dropped_containers() {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let folder = tempfile::tempdir().unwrap();
+        let socket = folder.path().join("engine.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        let (sender, requests) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let (mut first, mut line, mut length) = (String::new(), String::new(), 0);
+                reader.read_line(&mut first).unwrap();
+                while reader.read_line(&mut line).unwrap() > 0 && line != "\r\n" {
+                    if let Some(value) = line.to_lowercase().strip_prefix("content-length:") {
+                        length = value.trim().parse().unwrap();
+                    }
+                    line.clear();
+                }
+                reader.read_exact(&mut vec![0; length]).unwrap();
+                let body = r#"{"ApiVersion":"1.44"}"#;
+                let reply = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream.write_all(reply.as_bytes()).unwrap();
+                let _ = sender.send(first);
+            }
+        });
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let engine = ContainerEngine::connect(socket.to_str().unwrap())
+                .await
+                .unwrap();
+            let created = Created::new(engine.client(), "left-id");
+            let running = tokio::spawn(async move {
+                let _created = created;
+                std::future::pending::<()>().await;
+            });
+            running.abort();
+            assert!(running.await.unwrap_err().is_cancelled());
+        });
+        let removal = std::iter::from_fn(|| requests.recv_timeout(Duration::from_secs(5)).ok())
+            .find(|request| request.starts_with("DELETE "));
+        assert!(removal.is_some_and(|request| request.contains("/containers/left-id")));
+    }
 
     #[test]
     fn preserves_user_files() {

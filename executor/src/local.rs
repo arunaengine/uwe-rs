@@ -22,7 +22,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::access::{self, Access, NO_NEW_PRIVILEGES};
-use crate::engine::{ContainerEngine, EngineCommand, remove};
+use crate::engine::{ContainerEngine, Created, EngineCommand};
 use crate::image::{self, Commands};
 use crate::job::{CONTROL, ExecutorError, Finished, HOME, Job, Usage, WORK};
 use crate::manifest::parse;
@@ -779,6 +779,7 @@ impl LocalContainer {
             Ok(id) => id,
             Err(_) => return,
         };
+        let created = Created::new(client, &id);
         let mut exited = tokio::spawn(exit_code(client.clone(), id.clone()));
         let ended = async {
             client.start_container(&id, None).await?;
@@ -790,7 +791,7 @@ impl LocalContainer {
             _ = ended => {},
         }
         exited.abort();
-        remove(client, &id).await;
+        created.remove().await;
     }
 
     /// What containers of an image run by default, asked once per run.
@@ -847,6 +848,7 @@ impl LocalContainer {
                     message: error.to_string(),
                 },
             })?;
+        let created = Created::new(client, &id);
         let attach = AttachContainerOptions {
             stream: true,
             stdout: true,
@@ -880,7 +882,7 @@ impl LocalContainer {
                 ),
             }
         };
-        remove(client, &id).await;
+        created.remove().await;
         ending
     }
 

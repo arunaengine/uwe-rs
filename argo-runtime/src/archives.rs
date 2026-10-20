@@ -411,11 +411,14 @@ fn is_tarball(file: &Path) -> bool {
 fn unpacked(file: &Path, folder: &Path, zip: bool) -> io::Result<PathBuf> {
     let content = folder.join("content");
     std::fs::create_dir_all(&content)?;
-    if zip {
-        let mut archive = zip::ZipArchive::new(File::open(file)?).map_err(io::Error::other)?;
-        archive.extract(&content).map_err(io::Error::other)?;
+    let result = if zip {
+        unzip(file, &content)
     } else {
-        untar(file, &content)?;
+        untar(file, &content)
+    };
+    if let Err(error) = result.and_then(|()| check_links(&content, Path::new(""))) {
+        let _ = std::fs::remove_dir_all(&content);
+        return Err(error);
     }
     let mut entries: Vec<PathBuf> = std::fs::read_dir(&content)?
         .map(|entry| entry.map(|entry| entry.path()))
@@ -426,53 +429,129 @@ fn unpacked(file: &Path, folder: &Path, zip: bool) -> io::Result<PathBuf> {
     }
 }
 
-/// Unpacks a gzipped tar, refusing paths and links that lead out of the folder, as Argo does.
+/// The most bytes and entries that one archive may unpack to, so that a small archive that
+/// unpacks to a huge one cannot fill the disk.
+const MOST_BYTES: u64 = 64 << 30;
+const MOST_ENTRIES: u64 = 1_000_000;
+
+fn oversized() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!("the archive unpacks to more than {MOST_ENTRIES} entries or 64 GiB"),
+    )
+}
+
+/// Unpacks a zip file within the limits; links are checked once all are written.
+fn unzip(file: &Path, folder: &Path) -> io::Result<()> {
+    let mut archive = zip::ZipArchive::new(File::open(file)?).map_err(io::Error::other)?;
+    let mut size = 0u64;
+    for index in 0..archive.len() {
+        size += archive
+            .by_index_raw(index)
+            .map_err(io::Error::other)?
+            .size();
+    }
+    if archive.len() as u64 > MOST_ENTRIES || size > MOST_BYTES {
+        return Err(oversized());
+    }
+    archive.extract(folder).map_err(io::Error::other)
+}
+
+/// Unpacks a gzipped tar within the limits, refusing paths and links that lead out of the
+/// folder, as Argo does; links count with the links unpacked before them.
 fn untar(file: &Path, folder: &Path) -> io::Result<()> {
     let invalid = |message: String| io::Error::new(io::ErrorKind::InvalidData, message);
     let mut archive = tar::Archive::new(GzDecoder::new(File::open(file)?));
+    let (mut size, mut count) = (0u64, 0u64);
     for entry in archive.entries()? {
         let mut entry = entry?;
-        let path = entry.path()?.into_owned();
-        if entry.header().entry_type().is_symlink() {
-            let link = entry.link_name()?.unwrap_or_default().into_owned();
-            let base = folder.join(&path);
-            let target = base.parent().unwrap_or(folder).join(&link);
-            if link.is_absolute() || !lexical(&target).starts_with(folder) {
-                return Err(invalid(format!(
-                    "illegal symlink target: {} -> {}",
-                    path.display(),
-                    link.display()
-                )));
-            }
+        count += 1;
+        size += entry.size();
+        if count > MOST_ENTRIES || size > MOST_BYTES {
+            return Err(oversized());
         }
+        let path = entry.path()?.into_owned();
         if !entry.unpack_in(folder)? {
             return Err(invalid(format!("illegal file path: {}", path.display())));
+        }
+        if entry.header().entry_type().is_symlink() && resolved(folder, &path).is_none() {
+            let link = entry.link_name()?.unwrap_or_default().into_owned();
+            return Err(invalid(format!(
+                "illegal symlink target: {} -> {}",
+                path.display(),
+                link.display()
+            )));
         }
     }
     Ok(())
 }
 
-/// A path with its `.` and `..` parts resolved by name alone.
-fn lexical(path: &Path) -> PathBuf {
-    let mut result = PathBuf::new();
-    for part in path.components() {
-        match part {
-            std::path::Component::ParentDir => {
-                result.pop();
-            }
-            std::path::Component::CurDir => {}
-            other => result.push(other),
+/// Fails when a link below `relative` leads out of `root`, which a later link can cause too.
+fn check_links(root: &Path, relative: &Path) -> io::Result<()> {
+    for entry in std::fs::read_dir(root.join(relative))? {
+        let entry = entry?;
+        let path = relative.join(entry.file_name());
+        let kind = entry.file_type()?;
+        if kind.is_symlink() && resolved(root, &path).is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("illegal symlink target: {}", path.display()),
+            ));
+        }
+        if kind.is_dir() {
+            check_links(root, &path)?;
         }
     }
-    result
+    Ok(())
 }
 
+/// Where a path below `root` leads with its links followed, relative to `root`: `None` when
+/// it leaves `root`, is absolute or loops. Missing parts count by name.
+pub(crate) fn resolved(root: &Path, relative: &Path) -> Option<PathBuf> {
+    let mut pending: Vec<PathBuf> = (relative.components().rev())
+        .map(|part| PathBuf::from(part.as_os_str()))
+        .collect();
+    let (mut current, mut hops) = (PathBuf::new(), 0);
+    while let Some(part) = pending.pop() {
+        match part.components().next()? {
+            std::path::Component::Normal(name) => {
+                let next = current.join(name);
+                let place = root.join(&next);
+                if !std::fs::symlink_metadata(&place).is_ok_and(|meta| meta.is_symlink()) {
+                    current = next;
+                    continue;
+                }
+                hops += 1;
+                if hops > 40 {
+                    return None;
+                }
+                let target = std::fs::read_link(&place).ok()?;
+                pending.extend(
+                    (target.components().rev()).map(|part| PathBuf::from(part.as_os_str())),
+                );
+            }
+            std::path::Component::ParentDir => {
+                if !current.pop() {
+                    return None;
+                }
+            }
+            std::path::Component::CurDir => {}
+            _ => return None,
+        }
+    }
+    Some(current)
+}
+
+/// Copies a folder; links stay links, so that nothing is read through them.
 fn copy_tree(source: &Path, target: &Path) -> io::Result<()> {
     std::fs::create_dir_all(target)?;
     for entry in std::fs::read_dir(source)? {
         let entry = entry?;
         let to = target.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
+        let kind = entry.file_type()?;
+        if kind.is_symlink() {
+            std::os::unix::fs::symlink(std::fs::read_link(entry.path())?, &to)?;
+        } else if kind.is_dir() {
             copy_tree(&entry.path(), &to)?;
         } else {
             std::fs::copy(entry.path(), &to)?;
@@ -483,7 +562,11 @@ fn copy_tree(source: &Path, target: &Path) -> io::Result<()> {
 
 /// Sets the mode of a folder and of everything below it, as `recurseMode` does.
 fn set_modes(path: &Path, mode: u32) -> io::Result<()> {
-    if path.is_dir() {
+    let kind = std::fs::symlink_metadata(path)?.file_type();
+    if kind.is_symlink() {
+        return Ok(());
+    }
+    if kind.is_dir() {
         for entry in std::fs::read_dir(path)? {
             set_modes(&entry?.path(), mode)?;
         }

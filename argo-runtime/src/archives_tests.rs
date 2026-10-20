@@ -175,3 +175,70 @@ fn requires_repository_location() {
     assert!(error.unsupported);
     assert!(error.message.contains("supply a key"), "{}", error.message);
 }
+
+/// A gzipped tar of these entries: a path and a link target, or a path and content.
+fn tarball(file: &std::path::Path, entries: &[(&str, &str, bool)]) {
+    let mut archive = tar::Builder::new(flate2::write::GzEncoder::new(
+        File::create(file).unwrap(),
+        flate2::Compression::default(),
+    ));
+    for (path, text, link) in entries {
+        let mut header = tar::Header::new_gnu();
+        header.set_mode(0o644);
+        if *link {
+            header.set_entry_type(tar::EntryType::Symlink);
+            header.set_size(0);
+            archive.append_link(&mut header, path, text).unwrap();
+        } else {
+            header.set_size(text.len() as u64);
+            archive
+                .append_data(&mut header, path, text.as_bytes())
+                .unwrap();
+        }
+    }
+    archive.into_inner().unwrap().finish().unwrap();
+}
+
+#[test]
+fn refuses_chained_links() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(folder.path().join("secret"), "host").unwrap();
+    let file = folder.path().join("input.tgz");
+    // `a/a/x` lands at `content/x`, whose target leads two folders up.
+    tarball(&file, &[("a", ".", true), ("a/a/x", "../../secret", true)]);
+    let unpacked = folder.path().join("unpacked");
+    let error = super::unpacked(&file, &unpacked, false).unwrap_err();
+    assert!(error.to_string().contains("illegal symlink"), "{error}");
+    assert!(!unpacked.join("content").exists());
+    // A link that a later link turns outward is refused too.
+    tarball(&file, &[("b", "c/../secret", true), ("c", ".", true)]);
+    assert!(super::unpacked(&file, &unpacked, false).is_err());
+    tarball(
+        &file,
+        &[
+            ("a", ".", true),
+            ("a/a/x", "a/y", true),
+            ("y", "data", false),
+        ],
+    );
+    let kept = super::unpacked(&file, &unpacked, false).unwrap();
+    assert_eq!(std::fs::read_to_string(kept.join("x")).unwrap(), "data");
+}
+
+#[test]
+fn refuses_huge_archives() {
+    let folder = tempfile::tempdir().unwrap();
+    let file = folder.path().join("bomb.tgz");
+    let mut header = tar::Header::new_gnu();
+    header.set_path("huge").unwrap();
+    header.set_size(super::MOST_BYTES + 1);
+    header.set_cksum();
+    let mut bytes = header.as_bytes().to_vec();
+    bytes.extend([0u8; 1024]);
+    let mut encoder =
+        flate2::write::GzEncoder::new(File::create(&file).unwrap(), flate2::Compression::fast());
+    std::io::Write::write_all(&mut encoder, &bytes).unwrap();
+    encoder.finish().unwrap();
+    let error = super::unpacked(&file, &folder.path().join("unpacked"), false).unwrap_err();
+    assert!(error.to_string().contains("64 GiB"), "{error}");
+}

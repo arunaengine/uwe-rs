@@ -404,15 +404,7 @@ impl Run {
     /// A new folder that holds the files of a volume, linked from the store where it can.
     fn volume_copy(&mut self, files: &[(String, PathBuf)]) -> std::result::Result<PathBuf, String> {
         let failed = |error: std::io::Error| format!("cannot copy a volume for a task: {error}");
-        if self.volume_copies.is_none() {
-            self.volume_copies = Some(tempfile::tempdir().map_err(failed)?);
-        }
-        let root = self.volume_copies.as_ref().map(|copies| copies.path());
-        let root = root.expect("the folder of volume copies");
-        let folder = tempfile::Builder::new()
-            .tempdir_in(root)
-            .map_err(failed)?
-            .keep();
+        let folder = self.private_folder().map_err(failed)?;
         for (inside, location) in files {
             let target = folder.join(inside);
             confined(&folder, &target)?;

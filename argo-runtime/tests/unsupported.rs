@@ -248,7 +248,6 @@ fn rejects_transfer_options() {
         "s3: {key: input.txt}",
         "s3: {bucket: data, key: input.txt, endpoint: example.org}",
         "http: {url: 'https://example.org/input', headers: [{name: Authorization, value: secret}]}",
-        "raw: {data: input}, mode: 0755",
         "raw: {data: input}, archive: {tar: {}}",
     ] {
         let error = start_error(&format!(

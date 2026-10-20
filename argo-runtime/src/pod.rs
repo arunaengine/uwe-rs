@@ -38,7 +38,9 @@ impl Run {
         let inbound = self.nodes[index].inbound.clone();
         let mut inputs: Vec<Input> = Vec::new();
         for artifact in &processed.artifacts {
-            if let Some(input) = input_of(artifact) {
+            let declared =
+                (template.inputs.artifacts.iter()).find(|declared| declared.name == artifact.name);
+            if let Some(input) = self.input_artifact(artifact, declared)? {
                 inputs.push(input);
             }
         }
@@ -404,6 +406,13 @@ impl Run {
                 ..artifact.clone()
             };
             let archived = self.archive_output(index, artifact, &found.location)?;
+            if artifact
+                .archive
+                .as_ref()
+                .is_some_and(|node| node.get("none").is_some())
+            {
+                self.raw_outputs.insert(found.location.clone().into());
+            }
             if let Ok(declared) = self.artifact_value(&plain)
                 && let Some(Location::Url(url)) = declared.location
             {
@@ -790,7 +799,7 @@ fn container_order(containers: &[Container]) -> std::result::Result<Vec<usize>, 
 
 /// The input of a task for an artifact. The task gets a copy that it may change, as Argo's
 /// executor writes each input artifact into the pod.
-fn input_of(artifact: &ArtifactValue) -> Option<Input> {
+pub(crate) fn input_of(artifact: &ArtifactValue) -> Option<Input> {
     let location = artifact.location.as_ref()?;
     let path = if artifact.path.is_empty() {
         format!("/tmp/{}", artifact.name)

@@ -216,8 +216,10 @@ pub(crate) struct Run {
     pub cancel_tasks: Vec<TaskId>,
     pub locks: Rc<std::cell::RefCell<crate::sync::Locks>>,
     pub archives: Option<tempfile::TempDir>,
-    /// Writable copies of shared volumes, one folder per mount of a task.
-    pub volume_copies: Option<tempfile::TempDir>,
+    /// Folders of the run's own: writable copies of volumes and unpacked input artifacts.
+    pub folders: Option<tempfile::TempDir>,
+    /// Output files that Argo would store as they are (`archive: none`), not as tarballs.
+    pub raw_outputs: HashSet<PathBuf>,
     pub packed: HashMap<(usize, String), PathBuf>,
     pub deliveries: Vec<workflow_graph::Delivery>,
 }
@@ -363,7 +365,8 @@ impl Run {
             cancel_tasks: Vec::new(),
             locks: Rc::new(std::cell::RefCell::new(crate::sync::Locks::default())),
             archives: None,
-            volume_copies: None,
+            folders: None,
+            raw_outputs: HashSet::new(),
             packed: HashMap::new(),
             deliveries: Vec::new(),
             store: HashMap::new(),
@@ -974,6 +977,19 @@ impl Run {
             self.nodes[index].started = self.options.now.unwrap_or_else(Timestamp::now);
         }
         true
+    }
+
+    /// A new empty folder that lasts as long as the run.
+    pub(crate) fn private_folder(&mut self) -> std::io::Result<PathBuf> {
+        if self.folders.is_none() {
+            self.folders = Some(tempfile::tempdir()?);
+        }
+        let root = self
+            .folders
+            .as_ref()
+            .map(|folders| folders.path().to_owned());
+        let folder = tempfile::Builder::new().tempdir_in(root.unwrap_or_default())?;
+        Ok(folder.keep())
     }
 
     /// Whether a steps or DAG node with template-level `failFast` has a failed child, which

@@ -361,3 +361,62 @@ data: {{present: contents}}
         }
     }
 }
+
+#[test]
+fn unpacks_input_archives() {
+    let folder = tempfile::tempdir().unwrap();
+    let tree = folder.path().join("tree");
+    std::fs::create_dir(&tree).unwrap();
+    std::fs::write(tree.join("a"), "a").unwrap();
+    std::fs::write(tree.join("b"), "b").unwrap();
+    let packed = std::fs::File::create(folder.path().join("tree.tgz")).unwrap();
+    let encoder = flate2::write::GzEncoder::new(packed, flate2::Compression::default());
+    let mut archive = tar::Builder::new(encoder);
+    archive.append_dir_all("tree", &tree).unwrap();
+    archive.into_inner().unwrap().finish().unwrap();
+    let zipped = std::fs::File::create(folder.path().join("files.zip")).unwrap();
+    let mut zip = zip::ZipWriter::new(zipped);
+    for name in ["x", "y"] {
+        zip.start_file(name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        std::io::Write::write_all(&mut zip, name.as_bytes()).unwrap();
+    }
+    zip.finish().unwrap();
+    std::fs::write(folder.path().join("tool"), "#!/bin/sh\n").unwrap();
+    let spec = r#"  entrypoint: main
+  templates:
+  - name: main
+    inputs:
+      artifacts:
+      - {name: tree, path: /in/tree, s3: {bucket: store, key: tree.tgz}}
+      - {name: plain, path: /in/plain, archive: {none: {}}, s3: {bucket: store, key: tree.tgz}}
+      - {name: files, path: /in/files, archive: {zip: {}}, s3: {bucket: store, key: files.zip}}
+      - {name: tool, path: /in/tool, mode: 0755, s3: {bucket: store, key: tool}}
+    container: {image: alpine, command: [ls, /in]}
+"#;
+    let mut run = driver(folder.path(), spec);
+    let tasks = run.start().unwrap();
+    let input = |path: &str| {
+        let found = tasks[0].inputs.iter().find(|input| input.path == path);
+        found.unwrap_or_else(|| panic!("no input {path}")).clone()
+    };
+    let names = |source: &str| {
+        let mut names: Vec<String> = std::fs::read_dir(source)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    };
+    // A tarball of one folder becomes that folder; zip files unpack only when asked.
+    let tree = input("/in/tree");
+    assert!(tree.directory, "{tree:?}");
+    assert_eq!(names(&tree.source), ["a", "b"]);
+    assert_eq!(input("/in/plain").source, "s3://store/tree.tgz");
+    let files = input("/in/files");
+    assert!(files.directory, "{files:?}");
+    assert_eq!(names(&files.source), ["x", "y"]);
+    let tool = input("/in/tool");
+    assert_eq!(tool.source, "s3://store/tool");
+    assert!(tool.executable, "mode 0755 makes the tool executable");
+}

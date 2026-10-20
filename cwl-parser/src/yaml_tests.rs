@@ -121,6 +121,28 @@ fn expands_aliases() {
 }
 
 #[test]
+fn limits_alias_expansion() {
+    // Ten levels of ten aliases each would copy 10^10 values.
+    let mut text = String::from("a0: &a0 [x, x, x, x, x, x, x, x, x, x]\n");
+    for level in 1..10 {
+        let previous = format!("*a{}", level - 1);
+        let items = vec![previous.as_str(); 10].join(", ");
+        text.push_str(&format!("a{level}: &a{level} [{items}]\n"));
+    }
+    let error = failure(&text);
+    assert_eq!(error.message, "aliases expand to too many values");
+    // Aliases of deep anchors nest deeper than the text.
+    let nest = |inner: &str| format!("{}{inner}{}", "[".repeat(200), "]".repeat(200));
+    let mut deep = format!("a0: &a0 {}\n", nest("x"));
+    for level in 1..6 {
+        let inner = format!("*a{}", level - 1);
+        deep.push_str(&format!("a{level}: &a{level} {}\n", nest(&inner)));
+    }
+    let message = failure(&deep).message;
+    assert!(message.contains("nested more than"), "{message}");
+}
+
+#[test]
 fn applies_core_tags() {
     assert_eq!(scalar("!!str 12"), Value::String("12".into()));
     assert_eq!(scalar("!!float 2"), Value::Float(2.0));

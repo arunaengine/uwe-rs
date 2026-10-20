@@ -17,6 +17,12 @@ const QUOTED_INDENTATION: &str = "invalid indentation in multiline quoted scalar
 /// The message of the parser for a lone `-` in a flow collection, like `[cat, -]`.
 const LONE_DASH: &str = "plain scalar cannot start with '-'";
 
+/// Aliases may copy at most this many values in one document, which stops alias bombs.
+const ALIAS_BUDGET: usize = 1_000_000;
+
+/// Deeper nesting is refused, so recursion over trees cannot overflow the stack.
+const DEPTH_LIMIT: usize = 1_000;
+
 /// Reads the first document of a YAML stream, resolving scalars with the YAML 1.2 core schema.
 pub fn read(text: &str, file: &Arc<str>) -> Result<Node, Error> {
     let mut text = std::borrow::Cow::Borrowed(text);
@@ -53,6 +59,7 @@ fn read_once(text: &str, file: &Arc<str>) -> Result<Node, Error> {
         file,
         stack: Vec::new(),
         anchors: HashMap::new(),
+        budget: ALIAS_BUDGET,
         root: None,
     };
     while let Some(next) = parser.next_event() {
@@ -88,7 +95,10 @@ struct Frame {
 struct Builder<'a> {
     file: &'a Arc<str>,
     stack: Vec<Frame>,
-    anchors: HashMap<usize, Node>,
+    /// Each anchored node with its count of values and its depth.
+    anchors: HashMap<usize, (Node, usize, usize)>,
+    /// How many more values aliases may copy.
+    budget: usize,
     root: Option<Node>,
 }
 
@@ -128,9 +138,7 @@ impl Builder<'_> {
             None => Value::String(text.to_owned()),
         };
         let node = Node::new(value, location);
-        if anchor != 0 {
-            self.anchors.insert(anchor, node.clone());
-        }
+        self.remember(anchor, &node);
         self.push(node)
     }
 
@@ -143,6 +151,10 @@ impl Builder<'_> {
     ) -> Result<(), Error> {
         if self.expects_key() {
             return Err(Error::new(&location, "a map key must be a string"));
+        }
+        if self.stack.len() >= DEPTH_LIMIT {
+            let message = format!("values are nested more than {DEPTH_LIMIT} levels deep");
+            return Err(Error::new(&location, message));
         }
         if let Some(tag) = tag {
             let expected = if matches!(value, Value::Map(_)) {
@@ -167,9 +179,7 @@ impl Builder<'_> {
         let Some(frame) = self.stack.pop() else {
             return Ok(());
         };
-        if frame.anchor != 0 {
-            self.anchors.insert(frame.anchor, frame.node.clone());
-        }
+        self.remember(frame.anchor, &frame.node);
         self.push(frame.node)
     }
 
@@ -177,9 +187,25 @@ impl Builder<'_> {
         if self.expects_key() {
             return Err(Error::new(&location, "a map key must not be an alias"));
         }
-        match self.anchors.get(&anchor) {
-            Some(node) => self.push(node.clone()),
-            None => Err(Error::new(&location, "alias to an unknown anchor")),
+        let Some((node, size, depth)) = self.anchors.get(&anchor) else {
+            return Err(Error::new(&location, "alias to an unknown anchor"));
+        };
+        if *size > self.budget {
+            return Err(Error::new(&location, "aliases expand to too many values"));
+        }
+        if self.stack.len() + depth > DEPTH_LIMIT {
+            let message = format!("values are nested more than {DEPTH_LIMIT} levels deep");
+            return Err(Error::new(&location, message));
+        }
+        self.budget -= size;
+        let node = node.clone();
+        self.push(node)
+    }
+
+    fn remember(&mut self, anchor: usize, node: &Node) {
+        if anchor != 0 {
+            let (size, depth) = measure(node);
+            self.anchors.insert(anchor, (node.clone(), size, depth));
         }
     }
 
@@ -207,6 +233,21 @@ impl Builder<'_> {
         }
         Ok(())
     }
+}
+
+/// The number of values in a node and how deep it nests.
+fn measure(node: &Node) -> (usize, usize) {
+    let children: Vec<&Node> = match &node.value {
+        Value::List(items) => items.iter().collect(),
+        Value::Map(entries) => entries.iter().map(|entry| &entry.value).collect(),
+        _ => return (1, 0),
+    };
+    children
+        .into_iter()
+        .map(measure)
+        .fold((1, 1), |(size, depth), child| {
+            (size + child.0, depth.max(child.1 + 1))
+        })
 }
 
 fn scan_error(error: &ScanError, file: &Arc<str>) -> Error {

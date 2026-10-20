@@ -516,6 +516,7 @@ pub const COMMANDS: &[&str] = &[
     "replay",
     "telemetry",
     "report",
+    "resume",
     "version",
 ];
 const WORKFLOW: &[&str] = &[
@@ -683,6 +684,7 @@ pub fn help(command: &str) -> Result<String, String> {
         "page" => " [run]",
         "compare" => " <run> [run]",
         "why" => " [run [task]]",
+        "resume" => " <run> [step] [name=value ...]",
         "replay" => " <run> <task>",
         "config" => " [project] [--param value]",
         "origin" => " <file>",

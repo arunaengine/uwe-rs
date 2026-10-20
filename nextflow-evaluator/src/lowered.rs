@@ -283,6 +283,11 @@ pub struct Output {
     pub emit: Option<Rc<str>>,
     pub topic: Option<Rc<str>>,
     pub optional: Option<Expression>,
+    /// The value of a typed output, computed after the task from its parts, which
+    /// `ExpressionKind::TaskOutput` reads.
+    pub typed: Option<Rc<Expression>>,
+    /// Whether the output only feeds its topic, as an entry of a `topic:` section does.
+    pub hidden: bool,
     pub span: Span,
 }
 
@@ -298,6 +303,12 @@ pub enum OutputPart {
     /// `eval(command)`: the output of a command run after the script.
     Eval(Expression),
     Stdout,
+    /// `file(pattern)` or `files(pattern)` of a typed output: one file or a set of files.
+    Files {
+        pattern: Expression,
+        options: Arguments,
+        single: bool,
+    },
 }
 
 /// The `script:`, `shell:` or `exec:` section of a process.
@@ -473,6 +484,8 @@ pub struct Expression {
 
 #[derive(Debug)]
 pub enum ExpressionKind {
+    /// A part of a typed output, like `file('out.txt')`, by its place in `Output::parts`.
+    TaskOutput(usize),
     /// `null`, a boolean, a number or a string.
     Literal(Value),
     Variable(Place),

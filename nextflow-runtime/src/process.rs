@@ -277,6 +277,17 @@ impl Behaviour for ProcessNode {
             &bound.files,
         )?;
         context.deliver(deliveries);
+        // Typed outputs compute their values from their parts in the frame of the task.
+        let mut flight = flight;
+        for (output, value) in flight.outputs.iter().zip(values.iter_mut()) {
+            if let (Some(typed), Some(Value::List(parts))) = (&output.typed, value.as_ref()) {
+                let parts = parts.borrow().items.clone();
+                let computed = context
+                    .interpreter
+                    .typed_output(&mut flight.frame, typed, parts);
+                *value = Some(computed?);
+            }
+        }
         context.accept(outcome.id, true);
         *context.succeeded += 1;
         if !self.fair {
@@ -515,8 +526,12 @@ impl ProcessNode {
         };
         for part in rendered.outputs.iter().flat_map(|output| &output.parts) {
             match part {
-                RenderedPart::Path { patterns, .. } => {
-                    request.output_patterns.extend(patterns.iter().cloned())
+                RenderedPart::Path { patterns, .. } | RenderedPart::Files { patterns, .. } => {
+                    for pattern in patterns {
+                        if !request.output_patterns.contains(pattern) {
+                            request.output_patterns.push(pattern.clone());
+                        }
+                    }
                 }
                 RenderedPart::Env(name) => request.env.push(name.clone()),
                 RenderedPart::Eval(command) => request.eval.push(command.clone()),
@@ -693,6 +708,11 @@ impl ProcessNode {
                     *eval_index += 1;
                     value
                 }
+                RenderedPart::Files {
+                    patterns,
+                    options,
+                    single,
+                } => typed_files(patterns, options, *single, outcome, task, bound)?,
                 RenderedPart::Path { patterns, options } => {
                     let mut files: Vec<Value> = Vec::new();
                     let arity = output_arity(options)?;
@@ -1127,6 +1147,53 @@ fn thrown(exception: Exception) -> Error {
         exception: Rc::new(exception),
         span: Default::default(),
     }
+}
+
+/// The files of `file()` or `files()` of a typed output: one file, or a set of files. An
+/// optional one gives null or an empty set when nothing matches.
+fn typed_files(
+    patterns: &[String],
+    options: &Value,
+    single: bool,
+    outcome: &TaskOutcome,
+    task: &str,
+    bound: &mut Bound,
+) -> Result<Value, Error> {
+    let optional = option(options, "optional").is_some_and(|value| value.truth());
+    let inputs = option(options, "includeInputs").is_some_and(|value| value.truth());
+    let mut files = Vec::new();
+    for pattern in patterns {
+        let glob = pattern.contains(['*', '?', '[', '{']);
+        let matching = || (outcome.files.iter()).filter(|(name, _)| glob_matches(pattern, name));
+        let mut found: Vec<&(String, PathValue)> = matching()
+            .filter(|(name, _)| inputs || !glob || !bound.staged.contains(&name.as_str()))
+            .collect();
+        if found.is_empty() && bound.simulated {
+            found = matching().collect();
+        }
+        if found.is_empty() && !optional {
+            let message =
+                format!("Missing output file(s) `{pattern}` expected by process `{task}`");
+            return Err(thrown(Exception::new("MissingFileException", message)));
+        }
+        if single && found.len() > 1 {
+            let message = format!(
+                "Process output file '{pattern}' in `{task}` yielded {} files but expected only one",
+                found.len()
+            );
+            return Err(thrown(Exception::new("IllegalArityException", message)));
+        }
+        for (name, path) in found {
+            files.push(Value::Path(Rc::new(path.clone())));
+            if !bound.files.iter().any(|(known, _)| known == name) {
+                bound.files.push((name.clone(), path.clone()));
+            }
+        }
+    }
+    Ok(match single {
+        true => files.into_iter().next().unwrap_or(Value::Null),
+        false => Value::set(files),
+    })
 }
 
 #[cfg(test)]

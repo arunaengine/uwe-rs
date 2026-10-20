@@ -18,6 +18,11 @@ impl Interpreter<'_> {
         let span = expression.span;
         Ok(match &expression.kind {
             Kind::Literal(value) => value.clone(),
+            Kind::TaskOutput(index) => self
+                .task_outputs
+                .get(*index)
+                .cloned()
+                .unwrap_or(Value::Null),
             Kind::Variable(place) => frame.read(*place, span)?,
             Kind::Operator(name) => Value::Operator(Rc::new((name.clone(), Vec::new()))),
             Kind::Definition(name) => Value::Definition(Rc::new(DefinitionRef {

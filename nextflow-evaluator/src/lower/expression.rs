@@ -443,6 +443,10 @@ impl Lowering<'_> {
 
     /// A call without a receiver: a function of the script or a built-in function.
     fn function_call(&mut self, name: &str, span: Span, arguments: Arguments) -> Kind {
+        let arguments = match self.task_output(name, span, arguments) {
+            Ok(part) => return part,
+            Err(arguments) => arguments,
+        };
         let arguments = match self.class_call(name, span, arguments) {
             Ok(call) => return call,
             Err(arguments) => arguments,

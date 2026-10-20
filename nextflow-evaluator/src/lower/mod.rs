@@ -347,6 +347,8 @@ pub(crate) struct Lowering<'a> {
     in_function: bool,
     /// Whether the script sets `nextflow.enable.types = true`, which makes its processes typed.
     types: bool,
+    /// While a typed output is lowered: the parts it reads, like `file('out.txt')`.
+    task_outputs: Option<Vec<crate::lowered::OutputPart>>,
     /// Whether the code is the statements of a script without declarations, which legacy
     /// syntax runs as the script itself.
     top_level: bool,
@@ -392,6 +394,7 @@ impl<'a> Lowering<'a> {
             in_process: false,
             in_function: false,
             types: false,
+            task_outputs: None,
             top_level: false,
             implicit_declarations: false,
             config: false,

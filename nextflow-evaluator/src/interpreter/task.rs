@@ -52,6 +52,10 @@ pub struct RenderedOutput {
     pub emit: Option<Rc<str>>,
     pub topic: Option<Rc<str>>,
     pub optional: bool,
+    /// The value of a typed output, which `Interpreter::typed_output` computes from the parts.
+    pub typed: Option<Rc<crate::lowered::Expression>>,
+    /// Whether the output only feeds its topic.
+    pub hidden: bool,
 }
 
 #[derive(Debug)]
@@ -67,9 +71,28 @@ pub enum RenderedPart {
     /// A command whose output becomes the value, run after the script.
     Eval(String),
     Stdout,
+    /// The patterns of `file()` or `files()` of a typed output, with its options as a map.
+    Files {
+        patterns: Vec<String>,
+        options: Value,
+        single: bool,
+    },
 }
 
 impl Interpreter<'_> {
+    /// The value of a typed output after its task, from the values of its parts.
+    pub fn typed_output(
+        &mut self,
+        task: &mut TaskFrame,
+        value: &crate::lowered::Expression,
+        parts: Vec<Value>,
+    ) -> Result<Value, Error> {
+        let outer = std::mem::replace(&mut self.task_outputs, parts);
+        let result = self.expression(&mut task.frame, value);
+        self.task_outputs = outer;
+        result
+    }
+
     /// Binds the values of one task to the process inputs, in their order. Input files become
     /// staged paths, which print their staged name.
     pub fn bind_task(
@@ -534,6 +557,16 @@ impl Interpreter<'_> {
                         RenderedPart::Eval(self.expression(&mut task.frame, command)?.to_string())
                     }
                     OutputPart::Stdout => RenderedPart::Stdout,
+                    OutputPart::Files {
+                        pattern,
+                        options,
+                        single,
+                    } => RenderedPart::Files {
+                        patterns: self.output_patterns(&mut task.frame, pattern)?,
+                        options: (self.arguments(&mut task.frame, options)?.into_iter().next())
+                            .unwrap_or(Value::map([])),
+                        single: *single,
+                    },
                 });
             }
             let optional = match &output.optional {
@@ -546,6 +579,8 @@ impl Interpreter<'_> {
                 emit: output.emit.clone(),
                 topic: output.topic.clone(),
                 optional,
+                typed: output.typed.clone(),
+                hidden: output.hidden,
             });
         }
         Ok(RenderedTask {

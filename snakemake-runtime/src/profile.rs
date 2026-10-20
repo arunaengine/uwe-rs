@@ -346,7 +346,6 @@ impl Profile {
                 "P",
                 "set-scatter",
                 "consider-ancient",
-                "allowed-rules",
                 "batch",
             ];
             if pending.contains(&interpreter.to_str(&key)?.as_str()) {

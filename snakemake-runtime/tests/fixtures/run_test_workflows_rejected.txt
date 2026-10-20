@@ -9,11 +9,10 @@ catalog/AToL-Bioinformatics__genome-launcher-workflow	missing	Needs the Python p
 catalog/Addimator__compare_meth	missing	Reads /projects/koesterlab/benchmark-methylation/data_analysis_jochen/compare_meth/config/sample.tsv, a file on its authors' machines.
 catalog/Albinam1__bioinformatics_school	invalid	Has a rule whose output, log and benchmark files do not name the same wildcards.
 catalog/AmberFu__snakemake_BAMmetrics_mosdepth	missing	Needs the config file ../config/config.yaml, which is not in its repository.
-catalog/BesenbacherLab__bbq_pipeline	unsupported (decision 2)	Its profile sets __use_yte__, which the native Snakemake profile subset refuses rather than ignoring.
+catalog/BesenbacherLab__bbq_pipeline	missing	Its profile reads the environment variable ACCOUNT_NAME, which only its authors' machines set.
 catalog/CAST-genomics__snakemake-gfa-complexity	invalid	Reads the config key 'trait', which its config does not have.
 catalog/CBIbigA__hicstuff_pipeline	unsupported (decision 16)	Uses a task path containing a parent component, which the simulator refuses to keep outputs inside task scratch.
 catalog/CSB-IG__GSE167150_HiC_matrices	invalid	Has a rule whose output, log and benchmark files do not name the same wildcards.
-catalog/CVUA-RRW__FooDMe	unsupported (decision 17)	Its lifecycle hook calls time.asctime, which has no native library implementation.
 catalog/Cesconlab__ExomeSeq	missing	Works in /cluster, a folder of its authors' machines that cannot be made here.
 catalog/ClavelLab__genome-assembly	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 catalog/Crollo95__survhive-workflow	missing	Needs the config file config/config.yaml, which is not in its repository.
@@ -25,7 +24,7 @@ catalog/GooglingTheCancerGenome__sv-callers	unsupported (decision 19)	Its valida
 catalog/GooglingTheCancerGenome__sv-gen	unsupported (decision 19)	Its validator passes its own classes to yatiml, and decision 19 says that classes defined in workflow code cannot be used by a package that runs in the Python container.
 catalog/IKIM-Essen__uncovar	missing	Needs input data that is not in its repository.
 catalog/JeremyTournayre__Pipeline-Holoruminant-Meta	invalid	Reads the config key 'params-file', which its config does not have.
-catalog/JoseFcoMH__af3_screening	unsupported (decision 2)	Its profile sets jobs, which the native Snakemake profile subset refuses rather than ignoring.
+catalog/JoseFcoMH__af3_screening	missing	Needs the config value out_dir, which the config files in its repository do not set.
 catalog/JoyceS13__BEP_pipeline	invalid	Has Snakefile code that Snakemake cannot parse.
 catalog/KonstantinBurkin__cbai	missing	Needs input data that is not in its repository.
 catalog/MPUSP__snakemake-ont-basecalling	runtime	Its onstart checks Dorado's version, but simulated hook commands return no version output.
@@ -36,14 +35,14 @@ catalog/NeuroGranberg__NODDIpipeline	invalid	Uses snakemake.io.Wildcards, which 
 catalog/Ovewh__Climaso	missing	Needs input data that is not in its repository; Snakemake's input function for rule calculate_SW_ERF fails the same way.
 catalog/Phlya__distill-reorder-C	invalid	Reads the config key 'output', which its config does not have.
 catalog/Phlya__tagmap	unsupported (decision 16)	While it is planned, the workflow reads the primer positions that a job writes to a JSON file, which the simulator makes empty.
-catalog/PyPSA__grid-builder	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
+catalog/PyPSA__grid-builder	runtime	Imports earth_osm while it is planned, which needs a Python container that this simulation does not have.
 catalog/SamBryce-Smith__LAPA_snakemake	invalid	Reads the config key 'lapa_disable_internal_priming_filter', which its config does not have.
 catalog/SarahSaadain__Single_Copy_Gene_Selector	missing	Reads the environment variable CONDA_DEFAULT_ENV, which is set only inside a conda environment.
 catalog/SarahSaadain__pastForward	missing	Needs environment variables that are not set, which the workflow asks for with envvars.
 catalog/SilasK__Metagenome-Profile	missing	Reads samples.csv, which is not in its repository.
 catalog/SilasK__Metagenome-QC	invalid	Reads the config key 'database_dir', which its config does not have.
 catalog/SilasK__Snakebread	missing	Needs a sample table samples.csv or samples.tsv, which is not in its repository.
-catalog/TRON-Bioinformatics__neorasp	unsupported (decision 2)	Its profile sets latency-wait, which the native Snakemake profile subset refuses rather than ignoring.
+catalog/TRON-Bioinformatics__neorasp	runtime	Imports magic while it is planned, which needs a Python container that this simulation does not have.
 catalog/TRON-Bioinformatics__oblx	unsupported (decision 16)	While it is planned, the workflow reads the UniProt release that a checkpoint writes, which the simulator makes empty.
 catalog/Xavster838__assembly_validation	invalid	Calls srcdir(), which Snakemake 8 removed.
 catalog/Xavster838__coreDupGraph	invalid	Calls srcdir(), which Snakemake 8 removed.
@@ -52,14 +51,14 @@ catalog/Xavster838__get_and_annotate_locus	invalid	Calls srcdir(), which Snakema
 catalog/Xavster838__run_NucFreq	invalid	Calls srcdir(), which Snakemake 8 removed.
 catalog/Zilong-Li__array-imputation-workflow	missing	Reads data/chip/megaMergedPlus.autosomes.QCedHg38.nonoverlap.bim, which is not in its repository.
 catalog/abbyevewilliams__map-pipeline	missing	Reads /data/biol-silvereye/ball6625/map-pipeline/config/zborb-samples.txt, a file on its authors' machines.
-catalog/adrisede__Isoseq_smk_min	unsupported (decision 2)	Its profile sets conda-frontend, which the native Snakemake profile subset refuses rather than ignoring.
+catalog/adrisede__Isoseq_smk_min	invalid	Has a rule whose output, log and benchmark files do not name the same wildcards.
 catalog/aekrylova__scPASU	missing	Needs the config file ../config/config.yaml, which is not in its repository.
 catalog/akcorut__kGWASflow	missing	Needs its sample table, which is not in its repository, and stops with an error.
 catalog/ammaraziz__voi	invalid	Reads the config key 'output', which its config does not have.
 catalog/aryazand__proseq_workflow	missing	Reads config/samples.tsv, which is not in its repository.
 catalog/aryazand__rnaseq_to_genome_annotation	missing	Reads config/samples.tsv, which is not in its repository.
 catalog/bakerwm__snakemake-rnaseq-star	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
-catalog/boulardlab__3t-seq	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
+catalog/boulardlab__3t-seq	missing	Needs the sample sheet resources/sample-sheet.csv, which is not in its repository.
 catalog/cbg-ethz__V-pipe	invalid	Imports load_configfile from snakemake.io, which Snakemake 9.27 does not have.
 catalog/cecivale__snakemake-phylo-beast2	unsupported (decision 17)	Its input function explicitly calls the Namedlist __iter__ method, which the native implementation lacks.
 catalog/clami66__AF_server	invalid	Reads workflow.use_env_modules, which Snakemake 9 does not have.
@@ -111,17 +110,16 @@ catalog/ltalignani__evo-shave	missing	Reads resources/genomes/GCA_018104305.1_Aa
 catalog/lueong1__cfdna_methylation_public	missing	Reads config/samples.tsv, which is not in its repository.
 catalog/magwenelab__WeavePop	missing	Needs input data that is not in its repository, and stops with an error.
 catalog/markschl__uvsnake	invalid	Its config does not match the workflow's own config schema.
-catalog/martykardos__asacphus_fire_frogs	unsupported (decision 2)	Its profile sets local-cores, which the native Snakemake profile subset refuses rather than ignoring.
+catalog/martykardos__asacphus_fire_frogs	invalid	Reads logger.mode, which Snakemake 9 no longer has.
 catalog/massiddamt__rna_vc_docker	missing	Needs FASTQ files that are not in its repository.
 catalog/mdondrup__admixture_workflow	missing	Reads input/selected-SNPINDEL_Ploidy2.vcf.gz, which is not in its repository.
 catalog/mdondrup__ras_meta_transcriptomics	missing	Reads input/fastq, which is not in its repository.
 catalog/mdondrup__yeast_variantcalling	missing	Reads config/chico3.clust, which is not in its repository.
 catalog/merfre__Adaptive_Sequencing_Analysis_Workflow	missing	Reads ./resources/ONT_skin1_adap/LF1A_adap.fastq, which is not in its repository.
 catalog/merfre__MMCAW	missing	Reads ./resources/ONT_mockecoli1_cont1/CN3.1_cont.fastq, which is not in its repository.
-catalog/milesroberts-123__poolseq-kmers	unsupported (decision 2)	Its profile sets executor, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/milesroberts-123__slim-sweep-cnn	unsupported (decision 2)	Its profile sets executor, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/modelblocks-org__module_demand_electricity	unsupported (decision 2)	Its profile sets software-deployment-method, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/moiexpositoalonsolab__grenepipe	unsupported (decision 2)	Its profile sets local-cores, which the native Snakemake profile subset refuses rather than ignoring.
+catalog/milesroberts-123__poolseq-kmers	missing	Needs the config file ../config/config.yaml, which is not in its repository.
+catalog/milesroberts-123__slim-sweep-cnn	missing	Needs the config file ../config/config.yaml, which is not in its repository.
+catalog/moiexpositoalonsolab__grenepipe	invalid	Reads logger.mode, which Snakemake 9 no longer has.
 catalog/monagrland__MB_Pipeline	invalid	Its config does not match the workflow's own config schema.
 catalog/mrvollger__sd-divergence	invalid	Calls srcdir(), which Snakemake 8 removed.
 catalog/mukherjeelab__CLIPs4U	invalid	Reads the config key three_prime_adapter, which its config does not have.
@@ -147,15 +145,15 @@ catalog/nixonlab__HERV_um_mets	missing	Reads resources/mskruns.txt, which is not
 catalog/nixonlab__snakemake_rule_library	missing	Includes workflow/rules/common.smk, which is not in its repository.
 catalog/nodrogluap__tamor	missing	Needs the DRAGEN software (dragen_info), which only its authors' machines have.
 catalog/ntnn19__gaptrick-af_unmasked	invalid	Its config does not match the workflow's own config schema.
-catalog/odcambc__dumpling	unsupported (decision 2)	Its profile sets resources, which the native Snakemake profile subset refuses rather than ignoring.
+catalog/odcambc__dumpling	missing	Needs the data folder example/data, which is not in its repository.
 catalog/omidalam__can_vac	invalid	Reads the config key 'ref', which its config does not have.
-catalog/open2c__distiller-sm	unsupported (decision 2)	Its profile sets jobs, which the native Snakemake profile subset refuses rather than ignoring.
+catalog/open2c__distiller-sm	missing	Needs the config value output, which the config files in its repository do not set.
 catalog/panguangze__trio_call_phase_pipeline	invalid	Reads the config key 'joint_calling_groups', which its config does not have.
 catalog/plycrsk__rna-seq-star-deseq2	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 catalog/poloarol__snakemake-methylseq	missing	Needs the config file ../config/config.yaml, which is not in its repository.
 catalog/rabiafidan__pure-faf	missing	Reads /nemo/project/proj-tracerX/working/CRENAL/fidanr/Mutect2/temp/or_flagged_K1058_HB005_D02.vcf.gz, a file on its authors' machines.
-catalog/regulatory-genomics__hic_sm	unsupported (decision 2)	Its profile sets executor, which the native Snakemake profile subset refuses rather than ignoring.
-catalog/richardstoeckl__QCforSeqCode	unsupported (decision 7)	Requests copy-minimal shadow, while isolated task staging supports minimal, shallow and full symlink modes.
+catalog/regulatory-genomics__hic_sm	missing	Reads config/20260119_hic_sample_2.csv, which is not in its repository.
+catalog/richardstoeckl__QCforSeqCode	unsupported (decision 16)	While it is planned, the workflow reads the assembly statistics that a job writes, which the simulator makes empty.
 catalog/richardstoeckl__basecallNanopore	missing	Needs a config file given at launch, which its repository does not name.
 catalog/rmFlynn__snakemake_example	invalid	Imports its folder workflow as a Python package, which is not on the Python path when Snakemake runs.
 catalog/rnsherpa__TLand-predict	missing	Reads /path/to/your/runs_table.tsv, a placeholder path of its example config.
@@ -195,7 +193,7 @@ catalog/thomasbtf__sars-cov-2-wbe	missing	Needs environment variables that are n
 catalog/tmweiskittel__tmw_align_emseq	unsupported (decision 16)	While it is planned, the workflow reads the sample sheet that a checkpoint downloads, which the simulator makes empty.
 catalog/trickovicmatija__kingfisher_workflow	missing	Needs the config file ../config/default_config.yaml, which is not in its repository.
 catalog/vkpat__short-read-mapping-and-QC-snakemake-pipeline	missing	Needs the config file config.yaml, which is not in its repository.
-catalog/vollgerlab__DSA-phasing	unsupported (decision 2)	Its profile sets rerun-incomplete, which the native Snakemake profile subset refuses rather than ignoring.
+catalog/vollgerlab__DSA-phasing	invalid	Its config file does not satisfy its own schema.
 catalog/wharvey31__denovo_sv_validation	invalid	The shell command of rule make_multi_fa names {ids}, which the rule does not have; it means {wildcards.ids}.
 catalog/ylab-hi__ScanNeo2	missing	Needs sequence files for its samples, which are not in its repository.
 catalog/zavolanlab__mirflowz	missing	Needs the config file workflow/../test/config_lint.yaml, which is not in its repository.

@@ -128,6 +128,26 @@ fn lists_s3_providers() {
 }
 
 #[test]
+fn gives_https_accounts() {
+    let storage = Storage::from_config(&config(
+        "[storage.git]\ntype = \"https\"\nprefixes = [\"https://git.example.org/team/\"]\n\
+         token = \"secret-token\"\n",
+    ))
+    .expect("valid settings");
+    let account = storage.account("https://git.example.org/team/pipeline.git");
+    assert_eq!(
+        account.unwrap(),
+        Some(("git".into(), "secret-token".into()))
+    );
+    assert_eq!(
+        storage
+            .account("https://git.example.org/other.git")
+            .unwrap(),
+        None
+    );
+}
+
+#[test]
 fn locates_settings_errors() {
     let file = "/home/me/.config/iunctus/config.toml";
     assert_eq!(

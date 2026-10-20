@@ -223,6 +223,28 @@ impl Storage {
         Ok(Storage::new(Settings::from_config(config)?))
     }
 
+    /// The account of the `https` provider of the config file that serves an address, for
+    /// clients like Git that sign in with a user and a password: its user and password, or
+    /// its token as the password. `None` without such a provider or account.
+    pub fn account(&self, address: &str) -> Result<Option<(String, String)>, ConfigError> {
+        let Some((provider, _)) = longest(&self.inner.configured, address) else {
+            return Ok(None);
+        };
+        let backend::Source::Configured(settings) = &provider.source else {
+            return Ok(None);
+        };
+        let settings::Kind::Https(https) = &settings.kind else {
+            return Ok(None);
+        };
+        let user = https.user.clone();
+        Ok(match (&https.password, &https.token) {
+            (Some(password), _) => Some((user.unwrap_or_default(), password.reveal()?)),
+            // Git servers take a token as the password of any user.
+            (None, Some(token)) => Some((user.unwrap_or_else(|| "git".into()), token.reveal()?)),
+            (None, None) => None,
+        })
+    }
+
     /// The S3 providers of the config file: name, the prefixes they serve, and the address of
     /// their service, `None` for AWS itself. No secrets.
     pub fn s3_providers(&self) -> Vec<(String, Vec<String>, Option<String>)> {

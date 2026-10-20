@@ -25,7 +25,7 @@ use tokio_util::sync::CancellationToken;
 use crate::cluster::Cluster;
 use crate::manifest::{Limits, Volumes, job_name};
 use crate::pods::{Look, Pods};
-use crate::staging::PodStaging;
+use crate::staging::{PodStaging, Prepared};
 
 /// How often the cluster is asked about the pods, by default.
 const POLL: Duration = Duration::from_secs(5);
@@ -127,6 +127,7 @@ impl Backend for KubernetesBackend {
                 .await
                 .map_err(|error| std::io::Error::other(error.to_string()))?
         };
+        let mut staged = None;
         let result = match placed {
             // Another attempt has this name; its directory is not ours to remove.
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -135,10 +136,16 @@ impl Backend for KubernetesBackend {
             Err(error) => Err(error.into()),
             Ok(mounts) => {
                 let _ownership = ownership(&root)?;
-                self.attempt(job, &root, &mounts, cancel).await
+                self.attempt(job, &root, &mounts, &mut staged, cancel).await
             }
         };
-        if result.is_err() && !root.join("remote.json").try_exists().unwrap_or(true) {
+        // Without a journal no Job of the attempt can run any more. A Job that may still run
+        // keeps its journal, and the recovery of the attempt cleans the staging root.
+        let ended = !root.join("remote.json").try_exists().unwrap_or(true);
+        if let (Some(remote), Some(prepared), true) = (&self.remote, &staged, ended) {
+            remote.stage.clean(&prepared.prefix, &prepared.plan).await;
+        }
+        if result.is_err() && ended {
             let _ = tokio::fs::remove_dir_all(&root).await;
         }
         result
@@ -146,12 +153,14 @@ impl Backend for KubernetesBackend {
 }
 
 impl KubernetesBackend {
-    /// Writes the wrapper of a staged attempt, creates its Job and waits for its end.
+    /// Writes the wrapper of a staged attempt, creates its Job and waits for its end. What it
+    /// staged goes to `prepared` as soon as it is in the staging root.
     async fn attempt(
         &self,
         job: Job<'_>,
         root: &Path,
         mounts: &[Mount],
+        prepared: &mut Option<Prepared>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
         // The command runs through the entrypoint of the image, as `docker run` and the local
@@ -245,17 +254,18 @@ impl KubernetesBackend {
             wrapper_path: None,
             access: &access,
         };
-        let prepared = match &self.remote {
+        match &self.remote {
             Some(_) if !spec.containers.is_empty() => {
                 return Err(ExecutorError::Unsupported(
                     "Kubernetes object-store and kubedal staging run only tasks of one container"
                         .into(),
                 ));
             }
-            Some(remote) => Some(remote.prepare(job, &run, &spec).await?),
-            None => None,
-        };
-        let run = match &prepared {
+            Some(remote) => *prepared = Some(remote.prepare(job, &run, &spec).await?),
+            None => {}
+        }
+        let prepared = &*prepared;
+        let run = match prepared {
             Some(prepared) => ContainerRun {
                 mounts: &prepared.mounts,
                 ..run
@@ -311,7 +321,7 @@ impl KubernetesBackend {
         let volumes = (prepared.as_ref()).map_or(&self.volumes, |prepared| &prepared.volumes);
         let mut manifest = crate::manifest::job(&name, &self.label, &runs, &limits, volumes)
             .map_err(ExecutorError::Unsupported)?;
-        if let (Some(remote), Some(prepared)) = (&self.remote, &prepared) {
+        if let (Some(remote), Some(prepared)) = (&self.remote, prepared) {
             remote.complete(&mut manifest, prepared, root, limits.seconds);
         }
         let platforms: Vec<&str> = runs
@@ -335,6 +345,11 @@ impl KubernetesBackend {
         let mut journal = serde_json::json!({"backend": "Kubernetes", "server": self.cluster.server(),
             "namespace": self.cluster.namespace(), "name": name, "label": self.label, "uid": null,
             "owner": std::process::id(), "host": host, "started": started, "locked": true});
+        // The recovery of the attempt removes its objects from the staging root.
+        if let Some(prepared) = prepared {
+            journal["staging"] =
+                serde_json::json!({"prefix": prepared.prefix, "plan": prepared.plan});
+        }
         journal_at(root, &journal)?;
         let uid = tokio::select! {
             result = self.create(manifest) => result.map_err(|error| unresolved(root, error))?,
@@ -361,7 +376,7 @@ impl KubernetesBackend {
             .await;
         self.pods.remove(&name).await;
         stopped?;
-        if let (Some(remote), Some(prepared), Ok(_)) = (&self.remote, &prepared, &ended) {
+        if let (Some(remote), Some(prepared), Ok(_)) = (&self.remote, prepared, &ended) {
             remote.collect(prepared, root).await?;
         }
         let finished = finish(ended?, root.to_owned(), limits.seconds, &spec).await;
@@ -513,6 +528,7 @@ impl KubernetesBackend {
                         tracing::warn!(attempt = %root.display(),
                             "the Job of an unclear submission is not in the cluster; the attempt is lost");
                         std::fs::remove_file(&path)?;
+                        self.clean_staging(&journal).await;
                         continue;
                     }
                     Submitted::Unclear(reason) => {
@@ -523,8 +539,18 @@ impl KubernetesBackend {
                 }
             }
             self.stop(&root, &journal, CANCEL_GRACE).await?;
+            self.clean_staging(&journal).await;
         }
         Ok(())
+    }
+
+    /// Removes the objects in the staging root that the journal of an attempt names.
+    async fn clean_staging(&self, journal: &serde_json::Value) {
+        let staging = &journal["staging"];
+        let (prefix, plan) = (staging["prefix"].as_str(), staging["plan"].as_str());
+        if let (Some(remote), Some(prefix), Some(plan)) = (&self.remote, prefix, plan) {
+            remote.stage.clean(prefix, plan).await;
+        }
     }
 
     /// Finds the Job of a journal whose submission left no UID, by its name, which only this

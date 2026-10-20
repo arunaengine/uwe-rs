@@ -307,3 +307,19 @@ fn counts_local_gpus() {
         assert_eq!(task.resources.gpus, gpus, "local {local}");
     }
 }
+
+/// Snakemake 9.27 finds the wrapper `demo` under the profile's `wrapper-prefix`, here a local
+/// folder, and runs its `wrapper.py`.
+#[test]
+fn prefixes_wrapper_names() {
+    let snakefile = "rule a:\n    output: 'o'\n    wrapper: 'demo'\n";
+    let folder = tempfile::tempdir().expect("a folder");
+    let settings = "wrapper-prefix: 'file:wraps/'\n";
+    let launch = profile_launch(folder.path(), settings, snakefile);
+    let script = folder.path().join("wraps/demo");
+    std::fs::create_dir_all(&script).expect("a wrapper folder");
+    std::fs::write(script.join("wrapper.py"), "print('from prefix')\n").expect("a wrapper");
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    let task = driver.start().expect("starts").remove(0);
+    assert!(format!("{task:?}").contains("from prefix"), "{task:?}");
+}

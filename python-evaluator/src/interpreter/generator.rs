@@ -291,6 +291,12 @@ impl Generator {
         statement: &Stmt,
     ) -> Result<Option<Value>, Error> {
         let statement_slice = std::slice::from_ref(statement);
+        // A `yield` inside an expression first moves to a statement of its own.
+        if super::hoist::needed(statement) {
+            let statements = super::hoist::statement(statement)?;
+            self.suite(&statements);
+            return Ok(None);
+        }
         match statement {
             Stmt::Expr(expression) => match &*expression.value {
                 Expr::Yield(expression) => {
@@ -398,9 +404,7 @@ impl Generator {
 
     fn ordinary(&mut self, interpreter: &mut Interpreter, statement: &Stmt) -> Result<(), Error> {
         if contains_yield(std::slice::from_ref(statement)) {
-            return Err(Error::unsupported(
-                "generator suspension in nested expressions, try or match",
-            ));
+            return Err(Error::unsupported("generator suspension in this statement"));
         }
         match interpreter.exec(&self.frame, statement)? {
             Flow::Next => {}

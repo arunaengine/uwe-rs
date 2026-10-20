@@ -6,6 +6,7 @@
 pub(crate) mod call;
 mod expression;
 pub mod generator;
+mod hoist;
 mod import;
 mod operators;
 mod statement;

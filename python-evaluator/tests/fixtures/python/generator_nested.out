@@ -1,0 +1,3 @@
+call|None
+['first', 3, 'second', ['a', None, 3, 4], 'third', {'k': None, 'n': 4}, 'fourth', 'else', 'or', 'last', 'and', None, 'condition', 'none', 'iterable', 7, 'twice', None, 'return']
+[1, 'a', [3, 4], 'k', 'call', False, 'else', 0, 'last', 1]

@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use nextflow_config::{Config, tree};
 use nextflow_evaluator::date;
+use nextflow_evaluator::interpreter::{Host, Interpreter};
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{Key, Object, PathValue, State, Value, Workflow};
 
@@ -17,10 +18,23 @@ pub const NEXTFLOW_VERSION: &str = "26.04.6";
 
 /// The containers of the `process` scope, as Nextflow's `fetchContainers`: the one text of
 /// `process.container`, else a map by selector with the default as `default`, else `[:]`.
-/// iunctus does not run config closures here and shows them as Nextflow shows failed ones.
+/// A closure runs as Nextflow runs it at the start: with empty params and without `workflow`
+/// and `task`, where it fails and shows as `(dynamic resolved)`.
 fn containers(config: &Config) -> Value {
+    struct Quiet;
+    impl Host for Quiet {
+        fn print(&mut self, _: &str) {}
+    }
     let resolved = |value: &Value| match value {
-        Value::Closure(_) => Value::string("(dynamic resolved)"),
+        Value::Closure(closure) => {
+            let mut host = Quiet;
+            let mut interpreter = Interpreter::new(&mut host);
+            interpreter.set_global("params", Value::map([]));
+            match interpreter.call_closure(closure, Vec::new()) {
+                Ok(value) => Value::string(value.to_string()),
+                Err(_) => Value::string("(dynamic resolved)"),
+            }
+        }
         other => Value::string(other.to_string()),
     };
     let Some(process @ Value::Map(_)) = config.get(&["process"]) else {

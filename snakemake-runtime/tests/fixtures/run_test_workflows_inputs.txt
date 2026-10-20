@@ -629,7 +629,7 @@ tests/test_google_lifesciences 1 Snakefile:5: NotImplementedError: Remote provid
 tests/test_group_job_fail ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_group_jobs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_group_jobs_attempts ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-tests/test_group_jobs_resources 1 Snakefile:3: WorkflowError: resource_scopes are not supported by iunctus
+tests/test_group_jobs_resources ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_group_parallel ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_group_temp ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_group_with_pipe ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -638,7 +638,7 @@ tests/test_groupid_expand_cluster ok: 0 inputs, 0 required, 0 files, 0 tables; 0
 tests/test_groups_out_of_jobs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_gs_requester_pays 1 Snakefile:2: the workflow imports the Python package google, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 tests/test_handle_storage_multi_consumers ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-tests/test_handover 1 Snakefile:1: WorkflowError: handover is not supported by iunctus for rule a
+tests/test_handover ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_immediate_submit ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_immediate_submit_without_shared_fs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_incomplete_params ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -831,7 +831,7 @@ tests/test_set_resources ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 
 tests/test_set_resources_complex ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_set_threads ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_shadow ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-tests/test_shadow_copy 33 Snakefile:18: Not supported yet: shadow mode 'copy-minimal' for rule minimal_rel_curdir; only 'minimal', 'shallow' and 'full' are supported
+tests/test_shadow_copy ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_shadow_prefix ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_shadowed_log ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_shell ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -848,10 +848,10 @@ tests/test_source_path ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 
 tests/test_source_path_rerun ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_spaces_in_fnames ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_speed ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-tests/test_storage 33 Snakefile:1: Not supported yet: Snakemake storage plugin options; configure provider credentials in iunctus storage settings
+tests/test_storage 1 Snakefile:12: KeyError: 's3_prefix'
 tests/test_storage_call 1 Snakefile:7: KeyError: 's3_prefix'
 tests/test_storage_cleanup_local ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-tests/test_storage_dependency_edge_flags 33 Snakefile:1: Not supported yet: Snakemake storage plugin options; configure provider credentials in iunctus storage settings
+tests/test_storage_dependency_edge_flags 1 Snakefile:6: KeyError: 's3_prefix'
 tests/test_storage_localrule ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_storage_noretrieve_dryrun ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_strict_mode ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read

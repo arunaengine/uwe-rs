@@ -14,3 +14,9 @@ for bad in [(2024, 1), "x"]:
         time.strftime("%Y", bad)
     except TypeError as error:
         print("TypeError", error)
+given = (2024, 1, 1, 0, 0, 0, 3, 100, 0)
+print(time.strftime("%a %A %w %u %j|%c", given), time.asctime(given))
+try:
+    time.strftime("%a", (2024, 1, 1, 0, 0, 0, 0, 400, 0))
+except ValueError as error:
+    print("ValueError", error)

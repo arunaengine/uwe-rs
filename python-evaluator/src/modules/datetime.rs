@@ -669,8 +669,9 @@ pub fn time() -> Vec<(&'static str, Value)> {
                     .first()
                     .and_then(|format| format.as_str().map(str::to_owned))
                     .unwrap_or_default();
-                let time = time_of(args.positional.get(1), "strftime")?;
-                Ok(Value::str(time.strftime(&c_locale(&format)).to_string()))
+                let (time, days) = time_of(args.positional.get(1), "strftime")?;
+                let format = days.format(&c_locale(&format));
+                Ok(Value::str(time.strftime(&format).to_string()))
             }),
         ),
         (
@@ -694,8 +695,8 @@ pub fn time() -> Vec<(&'static str, Value)> {
         (
             "asctime",
             function("asctime", |_, args| {
-                let time = time_of(args.positional.first(), "asctime")?;
-                Ok(Value::str(time.strftime(ASCTIME).to_string()))
+                let (time, days) = time_of(args.positional.first(), "asctime")?;
+                Ok(Value::str(time.strftime(&days.format(ASCTIME)).to_string()))
             }),
         ),
         (
@@ -737,13 +738,13 @@ fn c_locale(format: &str) -> String {
 
 /// The time of a `struct_time` or of a plain tuple of its nine numbers, as `time.strftime`
 /// and `time.asctime` take it, in the zone of this machine; now without one.
-fn time_of(value: Option<&Value>, function: &str) -> Result<jiff::Zoned, Error> {
+fn time_of(value: Option<&Value>, function: &str) -> Result<(jiff::Zoned, Days), Error> {
     let items = match value.map(Value::plain) {
-        None => return Ok(jiff::Zoned::now()),
+        None => return Ok((jiff::Zoned::now(), Days::default())),
         Some(Value::Tuple(items)) => items,
         Some(other) => {
             return match other.as_native::<DateTime>() {
-                Some(time) => Ok(time.time.clone()),
+                Some(time) => Ok((time.time.clone(), Days::default())),
                 None => Err(Error::type_error("Tuple or struct_time argument required")),
             };
         }
@@ -752,9 +753,18 @@ fn time_of(value: Option<&Value>, function: &str) -> Result<jiff::Zoned, Error> 
     let numbers: Vec<i64> = (items.iter())
         .map(|item| item.as_int().ok_or_else(illegal))
         .collect::<Result<_, _>>()?;
-    let [year, month, day, hour, minute, second, ..] = numbers[..] else {
+    let [year, month, day, hour, minute, second, weekday, yearday, _] = numbers[..] else {
         return Err(illegal());
     };
+    // As `gettmarg` takes them: Monday is 0 and wraps, and day 0 of the year is day 1.
+    if weekday < 0 {
+        return Err(Error::value_error("day of week out of range"));
+    }
+    let yearday = yearday.max(1);
+    if yearday > 366 {
+        return Err(Error::value_error("day of year out of range"));
+    }
+    let days = Days(Some((weekday % 7, yearday)));
     if numbers.len() != 9 {
         return Err(illegal());
     }
@@ -770,9 +780,55 @@ fn time_of(value: Option<&Value>, function: &str) -> Result<jiff::Zoned, Error> 
         0,
     )
     .map_err(|error| Error::value_error(error.to_string()))?;
-    civil
-        .to_zoned(jiff::tz::TimeZone::system())
-        .map_err(|error| Error::value_error(error.to_string()))
+    let time = (civil.to_zoned(jiff::tz::TimeZone::system()))
+        .map_err(|error| Error::value_error(error.to_string()))?;
+    Ok((time, days))
+}
+
+/// The day of the week, Monday 0, and the day of the year that a time tuple gives, which
+/// `time.strftime` takes as they are rather than from the date.
+#[derive(Default)]
+struct Days(Option<(i64, i64)>);
+
+const WEEKDAYS: [&str; 7] = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+];
+
+impl Days {
+    /// A format with `%a`, `%A`, `%w`, `%u` and `%j` replaced by the days of the tuple.
+    fn format(&self, format: &str) -> String {
+        let Some((weekday, yearday)) = self.0 else {
+            return format.to_owned();
+        };
+        let name = WEEKDAYS[weekday as usize];
+        let mut result = String::with_capacity(format.len());
+        let mut chars = format.chars();
+        while let Some(next) = chars.next() {
+            if next != '%' {
+                result.push(next);
+                continue;
+            }
+            match chars.next() {
+                Some('a') => result.push_str(&name[..3]),
+                Some('A') => result.push_str(name),
+                Some('w') => result.push_str(&((weekday + 1) % 7).to_string()),
+                Some('u') => result.push_str(&(weekday + 1).to_string()),
+                Some('j') => result.push_str(&format!("{yearday:03}")),
+                Some(other) => {
+                    result.push('%');
+                    result.push(other);
+                }
+                None => result.push('%'),
+            }
+        }
+        result
+    }
 }
 
 /// The time of seconds since the epoch in a zone, as `time.localtime(secs)` takes them; now

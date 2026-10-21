@@ -10,14 +10,14 @@ container = "apptainer"
 # Jobs on rs700-bcf-3 fail: that node does not see /vol/cb/projects.
 options = ["--exclude=rs700-bcf-3.intra"]
 
-# The cache of iunctus: the store with the files of every task, the run database, the folders
+# The cache of uwe: the store with the files of every task, the run database, the folders
 # of running jobs and the SIF images. It must be on a file system that all nodes see at the same
 # path, and it should not fill the home folder.
 [cache]
 folder = "/vol/cb/projects/iunctus/no_backup/cache"
 
 # worm.intra, the login nodes and the compute nodes reach the internet only through this proxy.
-# iunctus asks the image registries through it, and its SLURM jobs get it too (as HTTPS_PROXY),
+# uwe asks the image registries through it, and its SLURM jobs get it too (as HTTPS_PROXY),
 # so that Apptainer pulls images through it.
 [network]
 proxy = "http://proxy.intra:3128"

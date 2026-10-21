@@ -777,3 +777,77 @@ fn run(
     let error = execution.error.map(|error| error.to_string());
     (folder, host, error)
 }
+
+/// As Snakemake 9.27 does, a run whose outputs another run of the folder locked stops before
+/// any job, and leaves the lock of the other run; its own lock goes once it ended.
+#[test]
+fn respects_other_locks() {
+    let snakefile = "rule a:\n    output: 'out.txt'\n    shell: 'unused'\n";
+    let steps: [(&str, Step); 1] = [("a", |folder| {
+        std::fs::write(folder.join("out.txt"), "made").unwrap();
+        0
+    })];
+    let folder = folder();
+    let locks = folder.path().join("work/.snakemake/locks");
+    std::fs::create_dir_all(&locks).unwrap();
+    std::fs::write(locks.join("0.output.lock"), "out.txt\n").unwrap();
+    let (folder, host, error) = run(folder, snakefile, &steps);
+    let error = error.expect("the run fails");
+    assert!(error.contains("LockException"), "{error}");
+    assert!(host.tasks.is_empty());
+    std::fs::remove_file(locks.join("0.output.lock")).unwrap();
+    std::fs::write(locks.join("0.output.lock"), "other.txt\n").unwrap();
+    let (folder, _host, error) = run(folder, snakefile, &steps);
+    assert_eq!(error, None);
+    let names: Vec<String> = std::fs::read_dir(&locks)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        names,
+        ["0.output.lock"],
+        "only the lock of the other run stays"
+    );
+    assert!(folder.path().join("work/out.txt").is_file());
+}
+
+/// A profile with `nolock: true` neither checks nor takes locks, as Snakemake's `--nolock`.
+#[test]
+fn nolock_skips_locks() {
+    let snakefile = "rule a:\n    output: 'out.txt'\n    shell: 'unused'\n";
+    let steps: [(&str, Step); 1] = [("a", |folder| {
+        std::fs::write(folder.join("out.txt"), "made").unwrap();
+        0
+    })];
+    let folder = folder();
+    let profile = folder.path().join("work/profiles/default");
+    std::fs::create_dir_all(&profile).unwrap();
+    std::fs::write(profile.join("config.yaml"), "nolock: true\n").unwrap();
+    let locks = folder.path().join("work/.snakemake/locks");
+    std::fs::create_dir_all(&locks).unwrap();
+    std::fs::write(locks.join("0.output.lock"), "out.txt\n").unwrap();
+    let (folder, _host, error) = run(folder, snakefile, &steps);
+    assert_eq!(error, None);
+    assert!(folder.path().join("work/out.txt").is_file());
+}
+
+/// An output that Snakemake's own incomplete record names is made again, as with
+/// `--rerun-incomplete`.
+#[test]
+fn reruns_snakemake_incomplete() {
+    let snakefile = "rule a:\n    output: 'out.txt'\n    shell: 'unused'\n";
+    let steps: [(&str, Step); 1] = [("a", |folder| {
+        std::fs::write(folder.join("out.txt"), "made").unwrap();
+        0
+    })];
+    let folder = folder();
+    std::fs::write(folder.path().join("work/out.txt"), "half").unwrap();
+    // Snakemake names the record by the URL-safe Base64 of the path.
+    let marks = folder.path().join("work/.snakemake/incomplete");
+    std::fs::create_dir_all(&marks).unwrap();
+    std::fs::write(marks.join("b3V0LnR4dA=="), "{}").unwrap();
+    let (folder, _host, error) = run(folder, snakefile, &steps);
+    assert_eq!(error, None);
+    let text = std::fs::read_to_string(folder.path().join("work/out.txt")).unwrap();
+    assert_eq!(text, "made");
+}

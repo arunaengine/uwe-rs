@@ -1096,3 +1096,30 @@ fn keeps_left_backups() {
     let text = std::fs::read_to_string(folder.path().join("work/acc.txt")).unwrap();
     assert_eq!(text, "first\nmore\n");
 }
+
+/// The source files of the workflow count for the cache key of a shared job too, so that a
+/// changed helper script is not a stale stored result.
+#[test]
+fn keys_workflow_sources() {
+    let snakefile = "rule a:\n    output: 'out.txt'\n    script: 'scripts/run.py'\n";
+    let steps: [(&str, Step); 1] = [("a", |folder| {
+        std::fs::write(folder.join("out.txt"), "made").unwrap();
+        0
+    })];
+    let folder = folder();
+    let scripts = folder.path().join("work/scripts");
+    std::fs::create_dir_all(&scripts).unwrap();
+    std::fs::write(scripts.join("run.py"), "print(1)\n").unwrap();
+    std::fs::write(scripts.join("helper.sh"), "echo help\n").unwrap();
+    let (folder, host, error) = run(folder, snakefile, &steps);
+    assert_eq!(error, None);
+    let helper = folder.path().join("work/scripts/helper.sh");
+    let task = host.tasks.iter().find(|task| task.step == "a").unwrap();
+    let keyed = (task.inputs.iter()).find(|input| Path::new(&input.source) == helper);
+    assert_eq!(
+        keyed.map(|input| input.writable),
+        Some(Writable::No),
+        "{:?}",
+        task.inputs
+    );
+}

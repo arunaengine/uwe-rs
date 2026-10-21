@@ -858,10 +858,11 @@ pub fn build(
         });
     }
     // The source files of the workflow, as Snakemake's jobs see them in the working directory.
+    // In the shared directory they are there already, and count for the cache key alone.
     let taken: Vec<&str> = (inputs.iter().map(|input| input.path.as_str()))
         .chain(outputs.iter().map(String::as_str))
         .collect();
-    if rule.shadow.is_none() && !setting.embedded.shared {
+    if rule.shadow.is_none() || setting.embedded.shared {
         let sources = setting.sources.inputs(&taken);
         inputs.extend(sources);
     }

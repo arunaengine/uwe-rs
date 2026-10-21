@@ -149,6 +149,9 @@ texts, applies the sample modifiers (remove, append, duplicate, imply, derive), 
 samples of the same name and the rows of subsample tables, and gives the samples as a table
 indexed by their names.
 
+Tables in Excel files (`.xlsx`) are read with calamine, a reader in pure Rust, as pandas'
+`read_excel` reads their first sheet with peppy's settings.
+
 ## src/plan.rs
 
 Plans the jobs of a workflow backwards from its targets, as Snakemake's DAG does: each

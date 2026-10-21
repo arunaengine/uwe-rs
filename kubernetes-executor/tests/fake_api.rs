@@ -1606,6 +1606,66 @@ async fn stages_through_objects() {
     }
 }
 
+/// A daemon with a staging root removes its objects and its journal once it stopped.
+#[tokio::test]
+async fn daemons_clean_staging() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (mut backend, _) = backend(root.path()).await;
+    let program = std::env::current_exe().expect("this program");
+    let script = format!(
+        "#!/bin/sh\nIFS=$(printf '\\037')\nIUNCTUS_TEST_STAGE=\"$*\" exec {} --exact \
+         stage_helper --nocapture --test-threads=1\n",
+        quote(&program.to_string_lossy())
+    );
+    let helper = root.path().join("server/helper");
+    std::fs::write(&helper, &script).expect("writes the helper");
+    let mode = std::os::unix::fs::PermissionsExt::from_mode(0o755);
+    std::fs::set_permissions(&helper, mode).expect("runs");
+    let objects = content_store::Store::local(&root.path().join("staging")).expect("a store");
+    backend.remote = Some(PodStaging {
+        stage: RemoteStage {
+            objects,
+            expiry: Duration::from_secs(600),
+            max_outputs: 4,
+            credentials: false,
+            cleanup: true,
+        },
+        via: Via::Helper(Helper {
+            image: "iunctus-helper:test".into(),
+            image_volume: true,
+            secret: None,
+            binary: None,
+        }),
+    });
+    let mut spec = spec("debian:stable-slim", "sleep 30");
+    spec.outputs.clear();
+    let daemon = EnvironmentValue::Literal("{}".into());
+    (spec.environment).insert(executor::daemon::DAEMON_ENV.into(), daemon);
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-D-3-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let served = backend.run(job, &cancel).await.expect("a ready daemon");
+    let journal = std::fs::read(served.root.join("remote.json")).expect("a journal");
+    let journal: Value = serde_json::from_slice(&journal).expect("JSON");
+    let plan = journal["staging"]["plan"]
+        .as_str()
+        .expect("a plan")
+        .to_owned();
+    let objects = &backend.remote.as_ref().expect("the staging").stage.objects;
+    assert_eq!(objects.objects(&plan).await.unwrap().len(), 1);
+    cancel.cancel();
+    let released = tokio::time::timeout(Duration::from_secs(30), backend.release()).await;
+    released.expect("the daemon stops");
+    let left = objects.objects(&plan).await.expect("the plan");
+    assert!(left.is_empty(), "{left:?}");
+    assert!(!served.root.exists());
+}
+
 /// A stage-in that fails ends the attempt with the end of its log, instead of a bare failure,
 /// and the cleanup removes its plan.
 #[tokio::test]

@@ -5,8 +5,8 @@
 use std::path::PathBuf;
 
 use executor::daemon::{Check, Daemon};
+use executor::poll::CANCEL_GRACE;
 use executor::{ExecutorError, Finished};
-use kube::api::{DeleteParams, Preconditions, PropagationPolicy};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -50,43 +50,35 @@ impl KubernetesBackend {
     pub(crate) async fn serve(
         &self,
         name: &str,
-        uid: &str,
+        journal: Value,
         root: PathBuf,
         lock: impl Send + 'static,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
-        let jobs = self.cluster.jobs();
-        let (name, uid) = (name.to_owned(), uid.to_owned());
+        let (cluster, poll, remote) = (self.cluster.clone(), self.poll, self.remote.clone());
         // The daemon stops when its run says so, or at once when it fails before it is ready.
         let stop = cancel.child_token();
-        let watched = (
-            jobs.clone(),
-            name.clone(),
-            uid.clone(),
-            root.clone(),
-            stop.clone(),
-        );
+        let watched = (root.clone(), stop.clone());
         let watcher = tokio::spawn(async move {
-            let (jobs, name, uid, root, stop) = watched;
+            let (root, stop) = watched;
             stop.cancelled().await;
-            let parameters = DeleteParams {
-                propagation_policy: Some(PropagationPolicy::Foreground),
-                preconditions: Some(Preconditions {
-                    uid: Some(uid),
-                    ..Preconditions::default()
-                }),
-                ..DeleteParams::default()
-            };
-            let _ = jobs.delete(&name, &parameters).await;
-            let _ = tokio::fs::remove_dir_all(&root).await;
+            let stopped = Self::stop(&cluster, poll, &root, &journal, CANCEL_GRACE).await;
+            // Without a confirmed end the journal stays, and the recovery of a run finishes it.
+            match stopped {
+                Ok(()) => {
+                    Self::clean_staging(remote.as_ref(), &journal).await;
+                    let _ = tokio::fs::remove_dir_all(&root).await;
+                }
+                Err(error) => tracing::warn!(%error, "cannot confirm that a daemon stopped"),
+            }
             // The attempt stays locked until its Job is gone, so no recovery takes it.
             drop(lock);
         });
         self.daemons.lock().expect("the daemons").push(watcher);
         // A daemon waits with the checks of every pod, like those for a node or an image.
-        self.pods.add(&name).await;
-        let ended = self.wait(&name, true, cancel).await;
-        self.pods.remove(&name).await;
+        self.pods.add(name).await;
+        let ended = self.wait(name, true, cancel).await;
+        self.pods.remove(name).await;
         if ended.is_err() {
             stop.cancel();
         }

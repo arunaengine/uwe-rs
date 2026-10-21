@@ -24,7 +24,7 @@ pub struct Settings {
     pub params: Map<String, Value>,
     pub profiles: Vec<String>,
     pub configs: Vec<PathBuf>,
-    /// Optional iunctus configuration file, separate from workflow config files.
+    /// Optional uwe configuration file, separate from workflow config files.
     pub config_file: Option<PathBuf>,
     /// `None` uses the configured default, then local containers.
     pub executor: Option<String>,
@@ -113,7 +113,7 @@ impl Settings {
         let cli = self.cli.is_some();
         if self.cpus == Some(0) || self.memory_bytes.is_some_and(|bytes| bytes < 6 << 20) {
             return Err(Failure::usage(
-                "iunctus: resource limits require at least one CPU and 6 MiB of memory",
+                "uwe: resource limits require at least one CPU and 6 MiB of memory",
             ));
         }
         let mut arguments = self.cli.take().unwrap_or_default();
@@ -149,15 +149,15 @@ impl Settings {
             let mut values = self.inputs.unwrap_or_else(|| Value::Object(Map::new()));
             let object = values
                 .as_object_mut()
-                .ok_or_else(|| Failure::usage("iunctus: embedded inputs must be a JSON object"))?;
+                .ok_or_else(|| Failure::usage("uwe: embedded inputs must be a JSON object"))?;
             object.extend(self.params);
             let file = tempfile::Builder::new()
                 .prefix("uwe-inputs-")
                 .suffix(".json")
                 .tempfile()
-                .map_err(|error| Failure::setup(format!("iunctus: {error}")))?;
+                .map_err(|error| Failure::setup(format!("uwe: {error}")))?;
             serde_json::to_writer(file.as_file(), &values)
-                .map_err(|error| Failure::setup(format!("iunctus: {error}")))?;
+                .map_err(|error| Failure::setup(format!("uwe: {error}")))?;
             arguments.inputs = Some(file.path().to_owned());
             Some(file)
         } else {

@@ -47,12 +47,12 @@ impl Telemetry {
     }
 }
 
-/// `iunctus telemetry <run>`: writes the trace of the run to `-output`, by default
+/// `uwe telemetry <run>`: writes the trace of the run to `-output`, by default
 /// `<run>-traces.jsonl`, and sends it to the endpoint of the config file.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let Some(run) = arguments.target.as_ref().map(|run| run.to_string_lossy()) else {
         return Err(Failure::usage(
-            "iunctus: name a run, like `iunctus telemetry 1a0f1cc4c10-3a2487`; `iunctus runs` \
+            "uwe: name a run, like `uwe telemetry 1a0f1cc4c10-3a2487`; `uwe runs` \
              lists the runs",
         ));
     };
@@ -65,12 +65,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let written = std::fs::File::create(&output)
         .map_err(run_telemetry::TelemetryError::from)
         .and_then(|file| run_telemetry::write_lines(&requests, BufWriter::new(file)));
-    written.map_err(|error| {
-        failure(format!(
-            "iunctus: cannot write {}: {error}",
-            output.display()
-        ))
-    })?;
+    written.map_err(|error| failure(format!("uwe: cannot write {}: {error}", output.display())))?;
     let spans: usize = requests.iter().map(|request| request.spans().count()).sum();
     println!(
         "wrote the trace of run {run} to {}: {spans} spans in OTLP JSON lines",
@@ -121,8 +116,8 @@ impl Telemetry {
 /// The trace of a run in export requests.
 fn traces(database: &run_database::Database, run: &str) -> Result<Vec<Request>, Failure> {
     run_telemetry::requests(database, run, SPANS_PER_REQUEST)
-        .map_err(|error| failure(format!("iunctus: {error}")))?
-        .ok_or_else(|| failure(format!("iunctus: the run database has no run `{run}`")))
+        .map_err(|error| failure(format!("uwe: {error}")))?
+        .ok_or_else(|| failure(format!("uwe: the run database has no run `{run}`")))
 }
 
 /// Sends export requests to the endpoint, with the headers of the config file, through the one
@@ -131,15 +126,13 @@ fn send(telemetry: &Telemetry, requests: &[Request]) -> Result<Sent, Failure> {
     let headers = (telemetry.headers.iter())
         .map(|(name, secret)| Ok((name.clone(), secret.reveal()?)))
         .collect::<Result<Vec<_>, ConfigError>>()
-        .map_err(|error| failure(format!("iunctus: {error}")))?;
-    let client =
-        storage::http_client().map_err(|message| failure(format!("iunctus: {message}")))?;
-    let runtime =
-        workflow_graph::runtime().map_err(|error| failure(format!("iunctus: {error}")))?;
+        .map_err(|error| failure(format!("uwe: {error}")))?;
+    let client = storage::http_client().map_err(|message| failure(format!("uwe: {message}")))?;
+    let runtime = workflow_graph::runtime().map_err(|error| failure(format!("uwe: {error}")))?;
     let sending = run_telemetry::send(client, &telemetry.endpoint, &headers, requests);
     runtime
         .block_on(sending)
-        .map_err(|error| failure(format!("iunctus: {error}")))
+        .map_err(|error| failure(format!("uwe: {error}")))
 }
 
 /// Where the trace went, in one line.

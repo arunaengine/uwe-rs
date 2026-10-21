@@ -16,7 +16,7 @@ const LISTED: usize = 5;
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let Some(id) = arguments.target.as_ref().map(|id| id.to_string_lossy()) else {
         return Err(Failure::usage(
-            "iunctus: name a run, like `iunctus time 1a0f1cc4c10-3a2487`; `iunctus runs` lists \
+            "uwe: name a run, like `uwe time 1a0f1cc4c10-3a2487`; `uwe runs` lists \
              the runs",
         ));
     };
@@ -26,7 +26,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let spent = database
         .time_spent(&id)
         .map_err(|error| failure(error.to_string()))?
-        .ok_or_else(|| failure(format!("iunctus: the run database has no run `{id}`")))?;
+        .ok_or_else(|| failure(format!("uwe: the run database has no run `{id}`")))?;
     if json {
         return print_json(serde_json::to_value(&spent));
     }

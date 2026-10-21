@@ -2766,6 +2766,8 @@ pub struct Settings {
     /// from a private server; the built-in ones without it.
     pub storage: Storage,
     pub cancel: executor::CancellationToken,
+    /// The Git client for Snakefiles of `gitfile(...)` in repositories on the web.
+    pub git: Option<crate::gitfile::GitClient>,
 }
 
 /// Runtime options supplied by the CLI in addition to workflow profile defaults.
@@ -2820,6 +2822,7 @@ pub fn driver_with_options(
             let channel = Rc::new(Channel::new(incoming, outgoing));
             let open = || -> Result<Session, DriverError> {
                 let mut session = Session::new(&launch, &settings.storage)?;
+                *session.state.borrow().mirrors.git.borrow_mut() = settings.git.clone();
                 session.rerun_triggers = options.rerun_triggers.clone();
                 session.shared = options.shared_workdir && !launch.simulated;
                 session.local = options.local;

@@ -6714,6 +6714,7 @@ dependencies = [
  "cwl-runtime",
  "executor",
  "fancy-regex 0.19.2",
+ "gix",
  "indexmap 2.14.2",
  "input-schema",
  "jsonschema",

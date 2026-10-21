@@ -1293,6 +1293,10 @@ pub fn io() -> Vec<(&'static str, Value)> {
 struct FieldSpec {
     default: Option<Value>,
     factory: Option<Value>,
+    /// Whether `__eq__` compares the field, and whether `__hash__` takes it: by default
+    /// when it compares, as `field(hash=None)`.
+    compare: bool,
+    hash: Option<bool>,
 }
 
 impl Native for FieldSpec {
@@ -1340,6 +1344,8 @@ fn dataclass_decorate(
     let class_ref = class_ref.clone();
     // Fields of base dataclasses come first.
     let mut fields: Vec<(String, Option<Value>, Option<Value>)> = Vec::new();
+    // The fields that `__eq__` compares and that `__hash__` takes.
+    let mut compared: Vec<(String, bool, bool)> = Vec::new();
     for ancestor in class_ref.mro.borrow().iter().rev() {
         let dict = ancestor.dict.borrow();
         let Some(Value::Dict(annotations)) = dict.get("__annotations__") else {
@@ -1347,19 +1353,27 @@ fn dataclass_decorate(
         };
         for key in annotations.borrow().entries.keys() {
             let Some(name) = key.0.as_str() else { continue };
-            let (default, factory) = match dict.get(name) {
+            let (default, factory, compare, hash) = match dict.get(name) {
                 Some(Value::Native(object)) if object.type_name() == "dataclasses.Field" => {
                     let spec = object
                         .as_any()
                         .downcast_ref::<FieldSpec>()
                         .expect("a field");
-                    (spec.default.clone(), spec.factory.clone())
+                    let hash = spec.hash.unwrap_or(spec.compare);
+                    (
+                        spec.default.clone(),
+                        spec.factory.clone(),
+                        spec.compare,
+                        hash,
+                    )
                 }
-                Some(value) => (Some(value.clone()), None),
-                None => (None, None),
+                Some(value) => (Some(value.clone()), None, true, true),
+                None => (None, None, true, true),
             };
             fields.retain(|(existing, _, _)| existing != name);
             fields.push((name.to_owned(), default, factory));
+            compared.retain(|(existing, _, _)| existing != name);
+            compared.push((name.to_owned(), compare, hash));
         }
     }
     let names: Vec<Value> = fields
@@ -1413,13 +1427,16 @@ fn dataclass_decorate(
             parts.join(", ")
         )))
     });
-    let eq_fields = fields.clone();
+    let eq_fields: Vec<String> = (compared.iter())
+        .filter(|(_, compare, _)| *compare)
+        .map(|(name, _, _)| name.clone())
+        .collect();
     let eq = Value::builtin("__eq__", move |interpreter, args| {
         let (a, b) = (&args.positional[0], &args.positional[1]);
         if !Rc::ptr_eq(&types::class_of(a), &types::class_of(b)) {
             return Ok(Value::NotImplemented);
         }
-        for (name, _, _) in eq_fields.iter() {
+        for name in eq_fields.iter() {
             let (x, y) = (
                 interpreter.get_attribute(a, name)?,
                 interpreter.get_attribute(b, name)?,
@@ -1430,11 +1447,14 @@ fn dataclass_decorate(
         }
         Ok(Value::Bool(true))
     });
-    let hash_fields = fields.clone();
+    let hash_fields: Vec<String> = (compared.iter())
+        .filter(|(_, _, hash)| *hash)
+        .map(|(name, _, _)| name.clone())
+        .collect();
     let hash = Value::builtin("__hash__", move |interpreter, args| {
         let this = &args.positional[0];
         let mut values = Vec::new();
-        for (name, _, _) in hash_fields.iter() {
+        for name in hash_fields.iter() {
             values.push(interpreter.get_attribute(this, name)?);
         }
         let hash = interpreter.builtins.get("hash").unwrap_or(Value::None);
@@ -1485,10 +1505,20 @@ pub fn dataclasses() -> Vec<(&'static str, Value)> {
         ),
         (
             "field",
-            function("field", |_, mut args| {
+            function("field", |interpreter, mut args| {
+                let compare = match args.take_keyword("compare") {
+                    Some(value) => interpreter.truthy(&value)?,
+                    None => true,
+                };
+                let hash = match args.take_keyword("hash") {
+                    Some(value) if !value.is_none() => Some(interpreter.truthy(&value)?),
+                    _ => None,
+                };
                 Ok(Value::native(FieldSpec {
                     default: args.take_keyword("default"),
                     factory: args.take_keyword("default_factory"),
+                    compare,
+                    hash,
                 }))
             }),
         ),

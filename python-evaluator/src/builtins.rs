@@ -655,20 +655,9 @@ fn hasattr(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
 }
 
 fn hash(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
-    use std::hash::{Hash, Hasher};
     let value = one(&args, "hash")?;
     let key = interpreter.key(&value)?;
-    if let Value::Instance(instance) = value.plain()
-        && let Some((hash, _)) = instance.hashed.get()
-    {
-        return Ok(Value::Int(hash));
-    }
-    if let Some(hash) = crate::hashing::stable_hash(&value) {
-        return Ok(Value::Int(hash));
-    }
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    key.hash(&mut hasher);
-    Ok(Value::Int((hasher.finish() >> 2) as i64))
+    Ok(Value::Int(crate::hashing::python_hash(&key.0)))
 }
 
 fn id(_interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {

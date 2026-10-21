@@ -234,6 +234,41 @@ rule shadowed:
     assert_eq!(shadows, 0, "the shadow directory is gone");
 }
 
+/// The declared inputs of a `copy-minimal` shadow count for the cache key like any other: the
+/// task names each one where it lies, so that a changed input is not a stale stored result.
+#[test]
+fn keys_copied_inputs() {
+    let snakefile = r#"
+rule all:
+    input: "b.txt"
+rule copy:
+    input: "a.txt"
+    output: "b.txt"
+    shadow: "copy-minimal"
+    shell: "cat {input} > {output}"
+"#;
+    let steps: [(&str, Step); 1] = [("copy", |folder| {
+        std::fs::copy(folder.join("a.txt"), folder.join("b.txt")).unwrap();
+        0
+    })];
+    let folder = folder();
+    std::fs::write(folder.path().join("work/a.txt"), "x").unwrap();
+    let (folder, host, error) = run(folder, snakefile, &steps);
+    assert_eq!(error, None);
+    let work = folder.path().join("work");
+    let task = host.tasks.iter().find(|task| task.step == "copy").unwrap();
+    let input = task
+        .inputs
+        .iter()
+        .find(|input| Path::new(&input.source) == work.join("a.txt"));
+    assert_eq!(
+        input.map(|input| input.writable),
+        Some(Writable::No),
+        "{:?}",
+        task.inputs
+    );
+}
+
 #[test]
 fn removes_failed_outputs() {
     let snakefile =

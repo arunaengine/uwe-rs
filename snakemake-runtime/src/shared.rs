@@ -104,10 +104,9 @@ pub fn place(workdir: &Path, task: &mut Task, placed: &mut Placed) -> std::io::R
     for input in std::mem::take(&mut task.inputs) {
         let target = workdir.join(&input.path);
         let inside = normal(&target).starts_with(normal(workdir));
-        // The job changes `update()` outputs in place; an input without a source is the
-        // folder of an output, which the job gets anyway.
-        if input.writable == Writable::Copy || (input.source.is_empty() && input.content.is_none())
-        {
+        // An input without a source is the folder of an output, which the job gets anyway.
+        // The inputs of a `copy-minimal` shadow count like others: the job reads copies.
+        if input.source.is_empty() && input.content.is_none() {
             continue;
         }
         if !inside || input.source.contains("://") {

@@ -979,3 +979,38 @@ fn restores_folder_links() {
     assert_eq!(link("out"), None, "a link that leads out is a copy");
     assert!(work.join("d/sub").is_dir());
 }
+
+/// As in Snakemake 9.27, outputs may lie outside the working directory, by `..` or by an
+/// absolute path: the job gets the folder of each such output, and only that folder.
+#[test]
+fn writes_outside_outputs() {
+    let folder = folder();
+    let absolute = folder.path().join("abs/y.txt");
+    let snakefile = format!(
+        "rule all:\n    input: '../outside/x.txt', '{0}'\nrule a:\n    output: '../outside/x.txt'\n    shell: 'unused'\nrule b:\n    output: '{0}'\n    shell: 'unused'\n",
+        absolute.display()
+    );
+    let steps: [(&str, Step); 2] = [
+        ("a", |folder| {
+            std::fs::write(folder.join("../outside/x.txt"), "x").unwrap();
+            0
+        }),
+        ("b", |folder| {
+            std::fs::write(folder.parent().unwrap().join("abs/y.txt"), "y").unwrap();
+            0
+        }),
+    ];
+    let (folder, host, error) = run(folder, &snakefile, &steps);
+    assert_eq!(error, None);
+    for (step, mounted, output) in [("a", "outside", "outside/x.txt"), ("b", "abs", "abs/y.txt")] {
+        let task = host.tasks.iter().find(|task| task.step == step).unwrap();
+        let shared: Vec<&str> = (task.inputs.iter())
+            .filter(|input| input.writable == Writable::Shared)
+            .map(|input| input.path.as_str())
+            .collect();
+        let mounted = folder.path().join(mounted);
+        assert!(shared.contains(&mounted.to_str().unwrap()), "{shared:?}");
+        assert_eq!(shared.len(), 2, "the working directory and that folder");
+        assert_eq!(task.outputs, [folder.path().join(output).to_string_lossy()]);
+    }
+}

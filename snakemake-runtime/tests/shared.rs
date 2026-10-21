@@ -321,6 +321,33 @@ fn keeps_full_folders() {
     assert_eq!(std::fs::read_to_string(kept).unwrap(), "x");
 }
 
+/// As Snakemake 9.27 does, an output that is there and read-only stops the run before any
+/// job, also without `protected()`, and the file stays as it was.
+#[test]
+fn refuses_readonly_outputs() {
+    let snakefile = "rule a:\n    input: 'in.txt'\n    output: 'out.txt'\n    shell: 'unused'\n";
+    let folder = folder();
+    let out = folder.path().join("work/out.txt");
+    std::fs::write(&out, "old").unwrap();
+    let mut permissions = std::fs::metadata(&out).unwrap().permissions();
+    permissions.set_readonly(true);
+    std::fs::set_permissions(&out, permissions).unwrap();
+    // Root may write any file, so Snakemake protects nothing from it.
+    if std::fs::OpenOptions::new().append(true).open(&out).is_ok() {
+        return;
+    }
+    let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    let opened = std::fs::File::open(&out).unwrap();
+    opened.set_modified(hour_ago).unwrap();
+    std::fs::write(folder.path().join("work/in.txt"), "new").unwrap();
+    let (folder, host, error) = run(folder, snakefile, &[]);
+    let error = error.expect("the run fails");
+    assert!(error.contains("ProtectedOutputException"), "{error}");
+    assert!(host.tasks.is_empty());
+    let out = folder.path().join("work/out.txt");
+    assert_eq!(std::fs::read_to_string(out).unwrap(), "old");
+}
+
 #[test]
 fn removes_failed_outputs() {
     let snakefile =

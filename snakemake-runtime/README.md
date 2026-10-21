@@ -175,8 +175,9 @@ The settings that change what runs work as on Snakemake's command line: `notemp`
 form group jobs, `prioritize` adds targets whose jobs start first, `set-scatter` overrides
 `scattergather:`, `consider-ancient` marks inputs `ancient()`, `allowed-rules` limits the
 rules that make files, and `batch` runs one part of the inputs of a rule. `envvars` gives
-the jobs the named variables of this environment, and `nolock` leaves the working directory
-unlocked.
+the jobs the named variables of this environment, by name only in the task, `nolock` leaves
+the working directory unlocked, and `rerun-incomplete` makes outputs with an incomplete
+record again instead of stopping.
 
 ## src/python.rs
 

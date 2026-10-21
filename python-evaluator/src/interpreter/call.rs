@@ -566,7 +566,7 @@ impl Interpreter {
                 }
             },
             Value::Dict(dict) => {
-                let lookup = self.key(key)?;
+                let lookup = self.dict_key(dict, key)?;
                 if let Some(found) = dict.borrow().entries.get(&lookup) {
                     return Ok(found.clone());
                 }
@@ -646,7 +646,7 @@ impl Interpreter {
                 Ok(())
             }
             Value::Dict(dict) => {
-                let key = self.key(key)?;
+                let key = self.dict_key(dict, key)?;
                 dict.borrow_mut().entries.insert(key, value);
                 Ok(())
             }
@@ -698,7 +698,7 @@ impl Interpreter {
                 Ok(())
             }
             Value::Dict(dict) => {
-                let lookup = self.key(key)?;
+                let lookup = self.dict_key(dict, key)?;
                 if dict.borrow_mut().entries.shift_remove(&lookup).is_none() {
                     return Err(Error::key_error(key.clone()));
                 }

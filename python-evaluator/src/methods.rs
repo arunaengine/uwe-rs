@@ -1053,13 +1053,13 @@ fn dict_method(
         )),
         "get" => {
             args.expect("get", 1, 2)?;
-            let key = interpreter.key(&args.positional[0])?;
+            let key = interpreter.dict_key(dict, &args.positional[0])?;
             let found = dict.borrow().entries.get(&key).cloned();
             Ok(found.unwrap_or_else(|| args.positional.get(1).cloned().unwrap_or(Value::None)))
         }
         "pop" => {
             args.expect("pop", 1, 2)?;
-            let key = interpreter.key(&args.positional[0])?;
+            let key = interpreter.dict_key(dict, &args.positional[0])?;
             let removed = dict.borrow_mut().entries.shift_remove(&key);
             match (removed, args.positional.get(1)) {
                 (Some(value), _) => Ok(value),
@@ -1078,7 +1078,7 @@ fn dict_method(
         }
         "setdefault" => {
             args.expect("setdefault", 1, 2)?;
-            let key = interpreter.key(&args.positional[0])?;
+            let key = interpreter.dict_key(dict, &args.positional[0])?;
             let default = args.positional.get(1).cloned().unwrap_or(Value::None);
             let mut dict = dict.borrow_mut();
             Ok(dict.entries.entry(key).or_insert(default).clone())
@@ -1274,7 +1274,7 @@ fn set_method(
     match name {
         "add" => {
             args.expect("add", 1, 1)?;
-            let key = interpreter.key(&args.positional[0])?;
+            let key = interpreter.set_key(&members, &args.positional[0])?;
             let set = mutable()?;
             if !set.borrow().contains(&key) {
                 crate::hashing::change(&set, Some(&key), true);
@@ -1284,7 +1284,7 @@ fn set_method(
         }
         "remove" | "discard" => {
             args.expect(name, 1, 1)?;
-            let key = interpreter.key(&args.positional[0])?;
+            let key = interpreter.set_key(&members, &args.positional[0])?;
             let set = mutable()?;
             if !set.borrow().contains(&key) {
                 return match name {

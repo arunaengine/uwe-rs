@@ -490,15 +490,16 @@ impl Interpreter {
                 }
             }
             Value::Dict(dict) => {
-                let key = self.key(item)?;
+                let key = self.dict_key(dict, item)?;
                 Ok(dict.borrow().entries.contains_key(&key))
             }
             Value::Set(set) => {
-                let key = self.key(item)?;
-                Ok(set.borrow().contains(&key))
+                let members = set.borrow().clone();
+                let key = self.set_key(&members, item)?;
+                Ok(members.contains(&key))
             }
             Value::FrozenSet(set) => {
-                let key = self.key(item)?;
+                let key = self.set_key(set, item)?;
                 Ok(set.contains(&key))
             }
             Value::Range(range) => Ok(match item.as_int() {
@@ -649,6 +650,67 @@ impl Interpreter {
     pub fn key(&mut self, value: &Value) -> Result<Key, Error> {
         self.prepare_key(value.plain())?;
         Key::new(value.plain().clone())
+    }
+
+    /// The key of a dict for a value: a key that equals it by `__eq__` when the value is
+    /// not there itself, as CPython's dict finds a key by its hash and then by `==`.
+    pub fn dict_key(
+        &mut self,
+        dict: &std::cell::RefCell<Dict>,
+        value: &Value,
+    ) -> Result<Key, Error> {
+        let key = self.key(value)?;
+        if dict.borrow().entries.contains_key(&key) {
+            return Ok(key);
+        }
+        let found = self.equal_key(&key, || dict.borrow().entries.keys().cloned().collect())?;
+        Ok(found.unwrap_or(key))
+    }
+
+    /// The member of a set for a value, found as `dict_key` finds a key.
+    pub fn set_key(&mut self, members: &IndexSet<Key>, value: &Value) -> Result<Key, Error> {
+        let key = self.key(value)?;
+        if members.contains(&key) {
+            return Ok(key);
+        }
+        let found = self.equal_key(&key, || members.iter().cloned().collect())?;
+        Ok(found.unwrap_or(key))
+    }
+
+    /// Among `candidates`, a key of another kind with the same hash that equals `key` by
+    /// `__eq__`: an object of a class with `__eq__` and a text, number or tuple. Keys of one
+    /// kind compare without Python code, so only these pairs need it.
+    fn equal_key(
+        &mut self,
+        key: &Key,
+        candidates: impl FnOnce() -> Vec<Key>,
+    ) -> Result<Option<Key>, Error> {
+        let hash = crate::hashing::python_hash(&key.0);
+        let instance = match key.0.plain() {
+            Value::Instance(instance) => Some(instance),
+            _ => None,
+        };
+        let applies = match instance {
+            Some(instance) => {
+                instance.hashed.get().is_some()
+                    && (instance.class.mro.borrow().iter())
+                        .any(|class| class.dict.borrow().contains_key("__eq__"))
+            }
+            None => self.hashed.contains_key(&hash),
+        };
+        if !applies {
+            return Ok(None);
+        }
+        for candidate in candidates() {
+            let other = matches!(candidate.0.plain(), Value::Instance(_));
+            if other == instance.is_some() || crate::hashing::python_hash(&candidate.0) != hash {
+                continue;
+            }
+            if self.equals(&key.0, &candidate.0)? {
+                return Ok(Some(candidate));
+            }
+        }
+        Ok(None)
     }
 
     /// Gives the objects in a key whose classes define `__hash__` their hash and equality.

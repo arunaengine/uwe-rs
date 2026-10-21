@@ -90,6 +90,33 @@ fn parses_host_identities() {
 }
 
 #[test]
+fn asks_for_git() {
+    use std::io::{BufRead, BufReader};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = std::thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(&stream).read_line(&mut line).unwrap();
+            // Only the repository answers as Git; the plain file is not found below it.
+            let answer = if line.contains("/team/tools/pipeline/info/refs") {
+                "HTTP/1.1 200 OK\r\nContent-Type: application/x-git-upload-pack-advertisement\r\nContent-Length: 0\r\n\r\n"
+            } else {
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"
+            };
+            stream.write_all(answer.as_bytes()).unwrap();
+        }
+    });
+    let runtime = workflow_graph::runtime().unwrap();
+    let git = format!("http://{address}/team/tools/pipeline");
+    let file = format!("http://{address}/team/tools/Snakefile");
+    assert!(runtime.block_on(speaks_git(&git, None)));
+    assert!(!runtime.block_on(speaks_git(&file, None)));
+    server.join().unwrap();
+}
+
+#[test]
 fn extracts_workflow_files() {
     use std::os::unix::fs::PermissionsExt;
     let folder = tempfile::tempdir().unwrap();

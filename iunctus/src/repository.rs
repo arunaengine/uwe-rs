@@ -388,10 +388,21 @@ pub(crate) fn prepare(
         let lookup = move |url: &str| storage.account(url).map_err(|error| error.to_string());
         Ok(Some(crate::git::Accounts(std::sync::Arc::new(lookup))))
     };
-    if repository.host == Host::Git {
-        return repository.fetch_git(&cache, reference, latest, accounts()?);
-    }
     let runtime = workflow_graph::runtime().map_err(|error| Failure::setup(error.to_string()))?;
+    if repository.host == Host::Git {
+        // A long path without `.git` is a repository only if the server answers as Git.
+        let accounts = accounts()?;
+        if !repository.url.ends_with(".git") {
+            let account = match &accounts {
+                Some(accounts) => (accounts.0)(&repository.url).map_err(Failure::setup)?,
+                None => None,
+            };
+            if !runtime.block_on(speaks_git(&repository.url, account)) {
+                return Ok(target.to_owned());
+            }
+        }
+        return repository.fetch_git(&cache, reference, latest, accounts);
+    }
     let token = repository.token();
     let fetched = runtime.block_on(repository.fetch(&cache, reference, latest, token.as_deref()));
     match fetched {
@@ -406,6 +417,27 @@ pub(crate) fn prepare(
         }
         fetched => fetched,
     }
+}
+
+/// Whether a server answers as Git over smart HTTP at an address, which a plain file does not.
+async fn speaks_git(url: &str, account: Option<(String, String)>) -> bool {
+    let Ok(client) = storage::http_client() else {
+        return false;
+    };
+    let refs = format!(
+        "{}/info/refs?service=git-upload-pack",
+        url.trim_end_matches('/')
+    );
+    let mut request = client.get(refs).timeout(Duration::from_secs(30));
+    if let Some((user, password)) = account.filter(|_| url.starts_with("https://")) {
+        request = request.basic_auth(user, Some(password));
+    }
+    let Ok(response) = request.send().await else {
+        return false;
+    };
+    let kind = response.headers().get(reqwest::header::CONTENT_TYPE);
+    response.status().is_success()
+        && kind.is_some_and(|kind| kind == "application/x-git-upload-pack-advertisement")
 }
 
 fn ready(folder: &Path, commit: &str) -> bool {

@@ -494,9 +494,8 @@ impl Interpreter {
                 Ok(dict.borrow().entries.contains_key(&key))
             }
             Value::Set(set) => {
-                let members = set.borrow().clone();
-                let key = self.set_key(&members, item)?;
-                Ok(members.contains(&key))
+                let key = self.member_key(set, item)?;
+                Ok(set.borrow().contains(&key))
             }
             Value::FrozenSet(set) => {
                 let key = self.set_key(set, item)?;
@@ -664,6 +663,21 @@ impl Interpreter {
             return Ok(key);
         }
         let found = self.equal_key(&key, || dict.borrow().entries.keys().cloned().collect())?;
+        Ok(found.unwrap_or(key))
+    }
+
+    /// The member of a mutable set for a value, found as `dict_key` finds a key, without a
+    /// copy of the set.
+    pub fn member_key(
+        &mut self,
+        set: &std::cell::RefCell<IndexSet<Key>>,
+        value: &Value,
+    ) -> Result<Key, Error> {
+        let key = self.key(value)?;
+        if set.borrow().contains(&key) {
+            return Ok(key);
+        }
+        let found = self.equal_key(&key, || set.borrow().iter().cloned().collect())?;
         Ok(found.unwrap_or(key))
     }
 

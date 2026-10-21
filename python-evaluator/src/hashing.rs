@@ -11,7 +11,7 @@ use indexmap::IndexSet;
 use num_bigint::{BigUint, Sign};
 use num_traits::ToPrimitive;
 
-use crate::set_table::Table;
+use crate::set_table::{Operand, Table};
 use crate::value::{Key, Value};
 
 /// CPython reduces numbers modulo the prime 2**61 - 1 (`_PyHASH_MODULUS`).
@@ -208,8 +208,7 @@ pub fn register(value: &Value, table: Table) {
 pub fn change(set: &Members, key: Option<&Key>, added: bool) {
     let hash = key.map(|key| stable_hash(&key.0));
     if let Some(None) = hash {
-        let address = address(&Value::Set(set.clone()));
-        TABLES.with(|registry| registry.borrow_mut().tables.remove(&address));
+        forget(address(&Value::Set(set.clone())));
         return;
     }
     in_place(set, |table| match (key, hash.flatten()) {
@@ -221,6 +220,24 @@ pub fn change(set: &Members, key: Option<&Key>, added: bool) {
     });
 }
 
+/// Applies `update` or `difference_update` to the table of a set where it is, before its
+/// members change; a set without such operands keeps no table.
+pub fn apply(set: &Members, name: &str, others: Option<&[Operand]>) {
+    let address = address(&Value::Set(set.clone()));
+    match others {
+        Some(others) => {
+            in_place(set, |table| {
+                crate::set_table::apply(table, address, name, others)
+            });
+        }
+        None => forget(address),
+    }
+}
+
+fn forget(address: usize) {
+    TABLES.with(|registry| registry.borrow_mut().tables.remove(&address));
+}
+
 /// The member that `set.pop()` takes: the first one of the table from where the last pop
 /// stopped; the first one inserted when the set has no table.
 pub fn pop(set: &Members) -> Option<Key> {
@@ -229,8 +246,7 @@ pub fn pop(set: &Members) -> Option<Key> {
         Some(key) if set.borrow().contains(&key) => Some(key),
         // A table that is not the set's anymore is built again.
         Some(_) => {
-            let value = Value::Set(set.clone());
-            TABLES.with(|registry| registry.borrow_mut().tables.remove(&address(&value)));
+            forget(address(&Value::Set(set.clone())));
             in_place(set, Table::pop).flatten()
         }
         None if set.borrow().is_empty() => None,

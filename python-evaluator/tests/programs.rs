@@ -66,6 +66,18 @@ fn merges_like_cpython() {
     assert_eq!(output, expected);
 }
 
+/// Sets change where they are: 200,000 adds, lookups and pops take seconds, not the hours of
+/// a copy of the set for each call.
+#[test]
+fn changes_sets_quickly() {
+    let code = "s = set()\nfor i in range(200000):\n    s.add(i * 7)\nfound = sum(1 for i in range(200000) if i * 7 in s)\nt = set()\nt.update(range(1000))\nwhile s:\n    s.pop()\nprint(found, len(s), len(t))\n";
+    let start = std::time::Instant::now();
+    let output = evaluate(code).expect("runs");
+    assert_eq!(output, "200000 0 1000\n");
+    let seconds = start.elapsed().as_secs();
+    assert!(seconds < 60, "took {seconds} s");
+}
+
 #[test]
 fn reports_exception_lines() {
     let error = evaluate("x = 1\ny = {}\ny['missing']\n").expect_err("a KeyError");

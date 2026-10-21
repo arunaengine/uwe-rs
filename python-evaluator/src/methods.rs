@@ -1226,6 +1226,14 @@ fn set_method(
     name: &str,
     args: Args,
 ) -> Result<Value, Error> {
+    if let Value::Set(set) = set_value
+        && let Some(result) = changed_in_place(interpreter, set, name, &args)?
+    {
+        return Ok(result);
+    }
+    if name == "__len__" {
+        return Ok(Value::Int(set_length(set_value)));
+    }
     let members = set_members(interpreter, set_value)?;
     let frozen = matches!(set_value, Value::FrozenSet(_));
     let make = |members: IndexSet<Key>| {
@@ -1272,46 +1280,6 @@ fn set_method(
         Some((this, others))
     };
     match name {
-        "add" => {
-            args.expect("add", 1, 1)?;
-            let key = interpreter.set_key(&members, &args.positional[0])?;
-            let set = mutable()?;
-            if !set.borrow().contains(&key) {
-                crate::hashing::change(&set, Some(&key), true);
-                set.borrow_mut().insert(key);
-            }
-            Ok(Value::None)
-        }
-        "remove" | "discard" => {
-            args.expect(name, 1, 1)?;
-            let key = interpreter.set_key(&members, &args.positional[0])?;
-            let set = mutable()?;
-            if !set.borrow().contains(&key) {
-                return match name {
-                    "remove" => Err(Error::key_error(args.positional[0].clone())),
-                    _ => Ok(Value::None),
-                };
-            }
-            crate::hashing::change(&set, Some(&key), false);
-            set.borrow_mut().shift_remove(&key);
-            Ok(Value::None)
-        }
-        "pop" => {
-            let set = mutable()?;
-            match crate::hashing::pop(&set) {
-                Some(key) => {
-                    set.borrow_mut().shift_remove(&key);
-                    Ok(key.0)
-                }
-                None => Err(Error::key_error(Value::str("pop from an empty set"))),
-            }
-        }
-        "clear" => {
-            let set = mutable()?;
-            crate::hashing::change(&set, None, false);
-            set.borrow_mut().clear();
-            Ok(Value::None)
-        }
         "update" | "intersection_update" | "difference_update" | "symmetric_difference_update" => {
             let set = mutable()?;
             let table = (operands()).and_then(|(this, others)| updated(&this, name, &others));
@@ -1368,13 +1336,95 @@ fn set_method(
             }
             Ok(value)
         }
-        "__len__" => Ok(Value::Int(members.len() as i64)),
         "__contains__" => Ok(Value::Bool(
             interpreter.contains(set_value, &args.positional[0])?,
         )),
-        "__iter__" => Ok(Value::iterator(members.into_iter().map(|key| key.0))),
+        "__iter__" => Ok(Value::iterator(match set_value {
+            Value::Set(set) => crate::hashing::set_order(set),
+            Value::FrozenSet(set) => crate::hashing::frozen_order(set),
+            _ => Vec::new(),
+        })),
+        "add" | "remove" | "discard" | "pop" | "clear" => mutable().map(|_| Value::None),
         _ => Err(Error::unsupported(format!("set.{name}"))),
     }
+}
+
+fn set_length(set: &Value) -> i64 {
+    match set {
+        Value::Set(set) => set.borrow().len() as i64,
+        Value::FrozenSet(set) => set.len() as i64,
+        _ => 0,
+    }
+}
+
+/// The methods of a set that change it where it is, without a copy of its members, so that
+/// a loop of them stays fast: `None` for the others.
+fn changed_in_place(
+    interpreter: &mut Interpreter,
+    set: &Rc<std::cell::RefCell<IndexSet<Key>>>,
+    name: &str,
+    args: &Args,
+) -> Result<Option<Value>, Error> {
+    match name {
+        "add" => {
+            args.expect("add", 1, 1)?;
+            let key = interpreter.member_key(set, &args.positional[0])?;
+            if !set.borrow().contains(&key) {
+                crate::hashing::change(set, Some(&key), true);
+                set.borrow_mut().insert(key);
+            }
+        }
+        "remove" | "discard" => {
+            args.expect(name, 1, 1)?;
+            let key = interpreter.member_key(set, &args.positional[0])?;
+            if !set.borrow().contains(&key) {
+                return match name {
+                    "remove" => Err(Error::key_error(args.positional[0].clone())),
+                    _ => Ok(Some(Value::None)),
+                };
+            }
+            crate::hashing::change(set, Some(&key), false);
+            // The table of the set, or else its insertion order, decides its order.
+            set.borrow_mut().swap_remove(&key);
+        }
+        "pop" => {
+            let Some(key) = crate::hashing::pop(set) else {
+                return Err(Error::key_error(Value::str("pop from an empty set")));
+            };
+            set.borrow_mut().swap_remove(&key);
+            return Ok(Some(key.0));
+        }
+        "clear" => {
+            crate::hashing::change(set, None, false);
+            set.borrow_mut().clear();
+        }
+        "__contains__" => {
+            args.expect(name, 1, 1)?;
+            let key = interpreter.member_key(set, &args.positional[0])?;
+            return Ok(Some(Value::Bool(set.borrow().contains(&key))));
+        }
+        "update" | "difference_update" => {
+            let mut others = Vec::new();
+            for other in &args.positional {
+                others.push((other.clone(), set_members(interpreter, other)?));
+            }
+            let operands = (others.iter())
+                .map(|(value, members)| Operand::of(value, members))
+                .collect::<Option<Vec<_>>>();
+            crate::hashing::apply(set, name, operands.as_deref());
+            let mut members = set.borrow_mut();
+            for (_, other) in &others {
+                for key in other {
+                    match name {
+                        "update" => members.insert(key.clone()),
+                        _ => members.swap_remove(key),
+                    };
+                }
+            }
+        }
+        _ => return Ok(None),
+    }
+    Ok(Some(Value::None))
 }
 
 fn bytes_method(

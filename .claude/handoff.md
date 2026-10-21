@@ -1,6 +1,6 @@
-# Iunctus remediation handoff
+# uwe remediation handoff
 
-Work resumed at the user's request on 2026-10-03. Continue in `/home/beavis/projects/iunctus` on **`fix/production-readiness`**, using the same shared checkout. The original review is [report.md](report.md), covering source `cd37a1843cc183955577804f63b3f8dbd111bf10`; remediation began from `5e5399d4e21647f51ed9997703aa74ca24f29608`.
+Work resumed at the user's request on 2026-10-03. Continue in `/home/beavis/projects/uwe-rs` on **`fix/production-readiness`**, using the same shared checkout. The original review is [report.md](report.md), covering source `cd37a1843cc183955577804f63b3f8dbd111bf10`; remediation began from `5e5399d4e21647f51ed9997703aa74ca24f29608`.
 
 The latest verified code checkpoint is **`9937441ad18bdf993967e78ff36608aa75096596`**. One hundred thirty-one small signed source commits preserve the completed batches, including one hundred two from the resumed work. Author and committer identities/dates match, subjects are single semantic lines, and each commit changes at most 500 lines. No push or pull request was performed. The remaining numbered remediation is committed in the same shared checkout.
 
@@ -39,7 +39,7 @@ Clippy also records a future Rust incompatibility in transitive `attribute-deriv
 
 Local receipts, exact staged/reviewed patches, source hashes, test logs, the full JSON finding ledger, corpus baseline and benchmark sources are preserved in [production-readiness-evidence](production-readiness-evidence/). This directory is excluded through the repository's resolved local `info/exclude`; the handoff and review are committed. Verified checkpoint source changes and tests are committed. The working tree was clean at this checkpoint; later continuation packets must be verified separately.
 
-Key receipts include `resumed-wave-3-commits.json`, `resumed-wave-4-commits.json`, `resumed-wave-3-tests-v5.log`, `resumed-wave-3-focused-v6.log`, `resumed-storage-wave-4-v1.log`, `resumed-languages-slurm-wave-4-v1.log`, `resumed-cache-public-wave-4-v2.log`, `resumed-slurm-runner-wave-4-v3.log`, `resumed-clippy-wave-4-final-v2.log`, `resumed-format-wave-4-final-v3.log`, `resumed-doctests-wave-3.log`, `resumed-wave-4-source-v3.json`, `resumed-wave-4-verification.json`, `future-incompatibility-report.json`, `ledger.json`, and each batch's exact reviewed patches. Older receipts and the exact corpus baseline remain preserved. Older `/tmp/iunctus-production-readiness` scratch paths did not survive this provider handoff; the excluded evidence directory remains authoritative.
+Key receipts include `resumed-wave-3-commits.json`, `resumed-wave-4-commits.json`, `resumed-wave-3-tests-v5.log`, `resumed-wave-3-focused-v6.log`, `resumed-storage-wave-4-v1.log`, `resumed-languages-slurm-wave-4-v1.log`, `resumed-cache-public-wave-4-v2.log`, `resumed-slurm-runner-wave-4-v3.log`, `resumed-clippy-wave-4-final-v2.log`, `resumed-format-wave-4-final-v3.log`, `resumed-doctests-wave-3.log`, `resumed-wave-4-source-v3.json`, `resumed-wave-4-verification.json`, `future-incompatibility-report.json`, `ledger.json`, and each batch's exact reviewed patches. Older receipts and the exact corpus baseline remain preserved. Older `/tmp/uwe-production-readiness` scratch paths did not survive this provider handoff; the excluded evidence directory remains authoritative.
 
 Fifth-wave receipts include `continued-wave-5-final-source-v4.json`, `continued-wave-5-verification.json`, `continued-wave-5-commits.json`, all fifteen exact staged/reviewed patches, `continued-wave-5-final-tests-v2.log`, `continued-snk-cwl-wave-5-final.log`, `continued-wave-5-format-v3.log`, `continued-wave-5-clippy-v2.log`, and `continued-snk-wave-5-final-clippy.log`. The final Nextflow fixture formatting-only delta is recorded in the source receipt.
 
@@ -205,7 +205,7 @@ Implemented entries show the relevant correction and any explicit support bounda
 | Python pins | Complete workflow constraints feed every UV preparation/install and the helper cache identity. Already-installed constrained distributions are validated before returning imports. Custom images need packaging or pip vendored packaging. |
 | Conda compatibility | Authoritative virtual capabilities, verified fetch callbacks and immutable base/platform/recipe identity/context APIs are implemented. Container build/transport/CLI integration and target capability discovery remain; never infer capabilities from the driver host. |
 
-The journal gate in `iunctus/src/clean.rs` remains inside the maintenance guard and must be preserved. It protects unresolved jobs whose ordinary run leases have ended. For remote recovery, cancel/status calls are individually bounded within the total grace and cancellation is sent promptly.
+The journal gate in `uwe/src/clean.rs` remains inside the maintenance guard and must be preserved. It protects unresolved jobs whose ordinary run leases have ended. For remote recovery, cancel/status calls are individually bounded within the total grace and cancellation is sent promptly.
 
 ## Missing production capabilities
 

@@ -1,4 +1,4 @@
-# Iunctus production-readiness review
+# uwe production-readiness review
 
 Reviewed source: `cd37a1843cc183955577804f63b3f8dbd111bf10` on `main`. Review date: 2026-10-02. Scope: all 29 workspace crates, CLI integration, documentation, tests, deployment assumptions, and code organization. Twelve parallel reviewers investigated separate areas; the parent integrated their findings and checked important cross-crate traces.
 
@@ -155,7 +155,7 @@ Apply channel constraints in every already-selected and constraint-check path. R
 
 ### REM-01 (P1): Task-level network denial bypasses remote capability checks
 
-`iunctus/src/main.rs:684` preflights only global `none_by_default`. `task-runner/src/request.rs:152` can still create offline placement from a workflow requirement; Kubernetes hardcodes online wrappers (`backend.rs:159`), TES ignores the field, and SLURM/Singularity omits isolation. A CWL denied-network task can run online without global `-no-network`.
+`uwe/src/main.rs:684` preflights only global `none_by_default`. `task-runner/src/request.rs:152` can still create offline placement from a workflow requirement; Kubernetes hardcodes online wrappers (`backend.rs:159`), TES ignores the field, and SLURM/Singularity omits isolation. A CWL denied-network task can run online without global `-no-network`.
 
 Reject unsupported offline placement at the backend boundary before submission. Regression: each affected backend receives an offline task directly and must refuse it before API create/sbatch; add the CWL integration trigger.
 
@@ -191,7 +191,7 @@ Define per-group allocation with a sum consistent with task placement, or reject
 
 ### REM-07 (P2, backend validation needed): TES coordination directories are not shared volumes
 
-`tes-executor/src/backend.rs:303` declares work, HOME, and /tmp volumes, while wrappers exchange state under `/iunctus/control` and `/iunctus/outbox` (`executor/src/containers.rs:164`). Separate executor filesystems can lose predecessor records and stall. The [TES specification](https://ga4gh.github.io/task-execution-schemas/docs/) guarantees declared volumes for inter-executor sharing; some servers may incidentally share more.
+`tes-executor/src/backend.rs:303` declares work, HOME, and /tmp volumes, while wrappers exchange state under `/uwe/control` and `/uwe/outbox` (`executor/src/containers.rs:164`). Separate executor filesystems can lose predecessor records and stall. The [TES specification](https://ga4gh.github.io/task-execution-schemas/docs/) guarantees declared volumes for inter-executor sharing; some servers may incidentally share more.
 
 Declare the required coordination volumes and validate stdin/output interactions. Regression: execute two wrappers in distinct containers sharing exactly the declared mounts. Existing fake-server output fabrication cannot establish this behavior.
 
@@ -223,7 +223,7 @@ Represent supported links consistently or reject them; following them requires c
 
 ### CAS-03 (P1): Cleanup deletes from a stale plan after objects become active
 
-`iunctus/src/clean.rs:73`, `:134` snapshots runs/leases and later applies a plan. `task-runner/src/clean.rs:241` deletes unconditionally, without acquisition/publication barriers or effective revalidation. A new run can reuse an old entry after planning and lose its referenced output when that earlier plan is removed.
+`uwe/src/clean.rs:73`, `:134` snapshots runs/leases and later applies a plan. `task-runner/src/clean.rs:241` deletes unconditionally, without acquisition/publication barriers or effective revalidation. A new run can reuse an old entry after planning and lose its referenced output when that earlier plan is removed.
 
 Synchronize acquisition/publication with deletion using effective pins/epochs or an equivalent protocol. Another unsynchronized snapshot is insufficient. Regression: obtain a plan, start a cache-hit consumer, apply the old plan, and require its live artifacts to survive.
 
@@ -699,7 +699,7 @@ Fail missing required keys and honor explicit optional behavior. Regression: pre
 
 ### SCH-01 (P2): Recursive input schemas can crash help or preprocessing
 
-`input-schema/src/text.rs:109` recursively renders array items after $ref resolution without active-reference tracking. A valid tree array schema referring to itself can overflow the stack through `iunctus inputs -format text`. `values.rs:12` similarly traverses recursive allOf before validator creation (`check.rs:49`).
+`input-schema/src/text.rs:109` recursively renders array items after $ref resolution without active-reference tracking. A valid tree array schema referring to itself can overflow the stack through `uwe inputs -format text`. `values.rs:12` similarly traverses recursive allOf before validator creation (`check.rs:49`).
 
 Terminate recursive rendering/preprocessing using active identities or bounded expansion without discarding valid recursive schemas. Regression: valid recursive help schema, recursive preprocessing, and nonrecursive nested schemas in guarded processes.
 
@@ -713,13 +713,13 @@ Evaluate alternatives under simulated existence rules while preserving real type
 
 ### RUN-01 (P1): Directory input edits can reuse stale resumed outputs
 
-`run-database/src/fingerprint.rs:30` records only the source directory's own size/mtime. Editing an existing descendant changes neither in the ordinary case. `iunctus/src/resume.rs:64` can return previous outputs despite changed directory data. This is distinct from intentionally preserving a regular file's timestamp.
+`run-database/src/fingerprint.rs:30` records only the source directory's own size/mtime. Editing an existing descendant changes neither in the ordinary case. `uwe/src/resume.rs:64` can return previous outputs despite changed directory data. This is distinct from intentionally preserving a regular file's timestamp.
 
 Use descendant identity for directories or conservatively exclude them from resume reuse. Regression: modify one existing child after a run, then resume and require execution and changed outputs.
 
 ### RUN-02 (P1): Repeating a repeated run drops effective original options
 
-`iunctus/src/record.rs:63` records process argv, which is repeat <old-id>, while execution uses reconstructed original arguments. `changes.rs:174` later rebuilds solely from that argv, not the separately recorded parameters/effective configs/input options. A second repeat can use defaults instead of the actual first repeat's settings.
+`uwe/src/record.rs:63` records process argv, which is repeat <old-id>, while execution uses reconstructed original arguments. `changes.rs:174` later rebuilds solely from that argv, not the separately recorded parameters/effective configs/input options. A second repeat can use defaults instead of the actual first repeat's settings.
 
 Record effective run options separately or reconstruct ancestry faithfully. Regression: nondefault parameter plus named config/input file, then repeat twice and compare effective inputs and commands.
 
@@ -749,13 +749,13 @@ Copy known output identity and reconstruct recorded input hashes. Regression: re
 
 ### RUN-07 (P2): Concurrent repeats delete each other's restored sources
 
-`iunctus/src/repeat.rs:48` gives every repeat of one original run the same cache/repeats/<run> directory; :141 removes it before restoration. A second repeat can delete/rewrite workflow/config files still used by the first.
+`uwe/src/repeat.rs:48` gives every repeat of one original run the same cache/repeats/<run> directory; :141 removes it before restoration. A second repeat can delete/rewrite workflow/config files still used by the first.
 
 Use invocation-owned restore locations or an immutable synchronized restoration. Regression: pause the first repeat after restoration, start the second, and verify the first can still read its exact sources.
 
 ### RUN-08 (P2): Export requires the old checkout even when a kept workflow copy exists
 
-`iunctus/src/runs.rs:117`, `:261` resolves the old main file before stored sources; `run-crate/src/lib.rs:86` also requires the original path to be a file. Removing a checkout can prevent archival export while all kept source content survives.
+`uwe/src/runs.rs:117`, `:261` resolves the old main file before stored sources; `run-crate/src/lib.rs:86` also requires the original path to be a file. Removing a checkout can prevent archival export while all kept source content survives.
 
 Resolve the logical main from recorded sources and validate the chosen stored copy. Regression: remove only the checkout after a real retained run, then export successfully from store-backed sources.
 
@@ -781,7 +781,7 @@ Propagate server shutdown into SSE or bound the graceful interval. Regression: k
 
 ### TEL-01 (P2): Collector responses can hang post-run completion or grow memory
 
-`run-telemetry/src/send.rs:79` lacks a total request deadline and :87 reads the whole response before truncating error text. Its shared HTTP client has only connect/per-read limits (`storage/src/web.rs:38`), so an endless trickle avoids them. `iunctus/src/insight/telemetry.rs:132` waits synchronously after the run.
+`run-telemetry/src/send.rs:79` lacks a total request deadline and :87 reads the whole response before truncating error text. Its shared HTTP client has only connect/per-read limits (`storage/src/web.rs:38`), so an endless trickle avoids them. `uwe/src/insight/telemetry.rs:132` waits synchronously after the run.
 
 Use telemetry-specific total timeout and bounded response reads. Regression: slow infinite response and oversized error body must not keep workflow completion waiting or allocate proportional memory.
 
@@ -789,7 +789,7 @@ Use telemetry-specific total timeout and bounded response reads. Regression: slo
 
 ### QLT-01 (P2): Config parity can pass with no pipeline comparisons
 
-`iunctus/tests/config_test_workflows.rs:60` iterates only locally present pipelines, and :107 checks only an empty mismatch list. An existing empty corpus/pipelines directory succeeds with zero comparisons; a partial corpus silently reduces coverage.
+`uwe/tests/config_test_workflows.rs:60` iterates only locally present pipelines, and :107 checks only an empty mismatch list. An existing empty corpus/pipelines directory succeeds with zero comparisons; a partial corpus silently reduces coverage.
 
 Check the pinned expected inventory and fail incomplete coverage, rather than relying only on comparison failures. Regression: empty and missing-member corpora must fail the explicit parity gate.
 
@@ -801,7 +801,7 @@ Separate inventory output from regression gates and assert expected outcomes. Re
 
 ### QLT-03 (P3): Python container integration reports success when disabled
 
-`snakemake-runtime/tests/python_container.rs:12` is an ordinary test that returns unless IUNCTUS_CONTAINER_TESTS is set. Captured skip output hides the absence of execution in normal results.
+`snakemake-runtime/tests/python_container.rs:12` is an ordinary test that returns unless UWE_CONTAINER_TESTS is set. Captured skip output hides the absence of execution in normal results.
 
 Make the prerequisite/skip explicit and enforce an integration invocation for release. The ordinary green test count must not be interpreted as container-bridge validation.
 
@@ -837,14 +837,14 @@ These are source-backed risks whose workload impact was not benchmarked in this 
 
 | Risk | Evidence | Needed bound or experiment |
 | --- | --- | --- |
-| Quadratic pending bookkeeping | `workflow-graph/src/pending.rs:86`, :111 uses linear lookup/min scans and vector removal; real CLI defaults max_pending to unlimited (`iunctus/src/main.rs:311`). | Large scatter completion/cancellation with bookkeeping CPU and memory; define admission bounds and appropriate lookup/completion data structures when justified. |
+| Quadratic pending bookkeeping | `workflow-graph/src/pending.rs:86`, :111 uses linear lookup/min scans and vector removal; real CLI defaults max_pending to unlimited (`uwe/src/main.rs:311`). | Large scatter completion/cancellation with bookkeeping CPU and memory; define admission bounds and appropriate lookup/completion data structures when justified. |
 | Eager fanout and retained graph state | CWL materializes scatter crossproducts and repeatedly clones gathered inputs (`cwl-runtime/src/run/step.rs:130`); Argo eagerly clones loop YAML; task/event graphs remain in memory. | Scaling at representative 10k/100k-task sizes, including peak memory, planner latency, and cancellation latency. Do not treat executor CPU slots as planner backpressure. |
 | Whole-object staging and logs | Remote CAS staging calls get_content (`task-runner/src/staging.rs:103`); Outcome reconstruction loads and copies full stdout/stderr (`executor.rs:278`). | Large input/log tests under memory limits; decide bounded or file-backed log/result interfaces separately from small local fixes. |
 | Telemetry duplicates run-scale data | `run-telemetry/src/spans.rs:38`, :66 loads all events and clones all spans into request chunks. Chunk count does not bound total memory. | Large-run trace peak memory and incremental export/sending requirements. |
 | Simulator expansion remains broad | Shell/braces/output expansion can create large collections without a consistent global work budget. | Adversarial but finite expansion tests and explicit synthetic-work/output limits. |
 | Directory retention closure is incomplete | `task-runner/src/clean.rs:176` expands children from kept cache directory outputs, not every arbitrary retained tree digest. Imported directory/no-cache output restoration needs a caller-level probe. | Retain a normal directory input/no-cache output, clean, then restore it and verify every child. Do not claim source-file loss: source references already include individual file digests (`run-database/src/keep.rs:59`). |
 | Best-effort run leases weaken retention guarantees | `task-runner/src/runner.rs:524` permanently caches first lease-acquisition failure as None. Remote lookup/staging I/O is not generally selected against cancellation (`:502`). | First-acquire transient failure followed by recovery, plus slow store operations during cancellation/cleanup. Specify behavior when cleanup protection cannot be obtained. |
-| Task/run identity is arrival/host sensitive | Nextflow task IDs use global arrival order rather than the design's canonical-input/occurrence identity. CLI run IDs use milliseconds and PID only (`iunctus/src/main.rs:897`). | Dynamic-order resume/replay probes and shared-host uniqueness expectations. These are design/validation risks, not demonstrated cache collisions from task IDs alone. |
+| Task/run identity is arrival/host sensitive | Nextflow task IDs use global arrival order rather than the design's canonical-input/occurrence identity. CLI run IDs use milliseconds and PID only (`uwe/src/main.rs:897`). | Dynamic-order resume/replay probes and shared-host uniqueness expectations. These are design/validation risks, not demonstrated cache collisions from task IDs alone. |
 | os.walk semantics are eager and follow links | `python-evaluator/src/modules/os.rs:388` materializes traversal, ignores followlinks/topdown, and cannot honor in-place dirs pruning. | Large directory/symlink/pruning cases under bounds. OS path limits can bound some cycles; universal nontermination was not established. |
 | Image/user/platform defaults change over time | Registry platform selection, mutable image tags, and per-image UID handling interact with cache/ownership. | Multiarchitecture, rootless, tag-change, cold-cache, and mixed-UID release cases tied to exact image digests. |
 | Model/schema evolution affects historical runs | TaskSpec FORMAT, serde deny_unknown_fields, stored task JSON, cache entries, and SQLite migrations are independently versioned. | Old-run export/resume/replay and old-cache rejection/migration across an explicit support window. Existing migration checks are useful but do not prove every historical payload path. |
@@ -879,7 +879,7 @@ Positive style evidence: workspace package/dependency settings are centralized; 
 | Nextflow | nextflow-parser, nextflow-evaluator, nextflow-config, nextflow-plugins, nextflow-runtime | No fresh native-Nextflow differential corpus execution. |
 | Snakemake/Python | snakemake-parser, snakemake-runtime, python-evaluator | Selected interpreter probes; no complete module/package/embedded-language parity audit. |
 | CWL/Argo | cwl-parser, cwl-runtime, argo-parser, argo-runtime | Selected source traces; no complete real-command conformance qualification. |
-| Run-facing systems | run-database, run-crate, run-page, run-telemetry, iunctus | No browser/live-service/NFS fault-injection run. |
+| Run-facing systems | run-database, run-crate, run-page, run-telemetry, uwe | No browser/live-service/NFS fault-injection run. |
 | Cross-project quality | config-file, input-schema, manifests, justfile, docs, test harnesses | No demonstrated config-file defect; release-host configuration and current dependency advisories not queried. |
 
 No full legacy-language parity, cluster deployment, arbitrary package compatibility, or vulnerability-free status is inferred from this coverage.
@@ -889,9 +889,9 @@ No full legacy-language parity, cluster deployment, arbitrary package compatibil
 The initial working tree was clean and the source revision was frozen. Tests ran with locked dependencies and offline resolution through the installed Cargo resource guard, with two build jobs. The first sandbox attempt could not reach systemd's bounded scope; the same guarded command succeeded with approved host access. The guard was preserved.
 
 - `cargo test --offline --locked --workspace --lib -j 2`: passed all workspace library test targets at the reviewed code revision. This excludes integration tests, corpus gates, doctests, and the CLI binary.
-- `cargo test --offline --locked -p iunctus --bin iunctus -j 2`: passed 58 CLI unit tests, with zero failures or ignored tests.
+- `cargo test --offline --locked -p uwe --bin uwe -j 2`: passed 58 CLI unit tests, with zero failures or ignored tests.
 - `cargo +nightly-2026-09-14 fmt --all -- --check`: passed, with no source changes.
-- Isolated probe executable: compiled from `/tmp/iunctus-review-probes.rs`, linked to newly built debug libraries selected from this run; no project source edits or stale release binary were used. Fixtures were confined to a new temporary directory. Each subprocess had an eight-second wall timeout, five-second CPU ceiling, two-GiB address-space ceiling, and core dumps disabled.
+- Isolated probe executable: compiled from `/tmp/uwe-review-probes.rs`, linked to newly built debug libraries selected from this run; no project source edits or stale release binary were used. Fixtures were confined to a new temporary directory. Each subprocess had an eight-second wall timeout, five-second CPU ceiling, two-GiB address-space ceiling, and core dumps disabled.
 
 **Twenty issue observations were reproduced across fourteen isolated probe cases:**
 
@@ -918,7 +918,7 @@ The initial working tree was clean and the source revision was frozen. Tests ran
 | PY-11 | Virtual append/read returned new, omitting old. |
 | PY-12 | Reverse .loc returned [1,2,3], unchanged. |
 
-Raw probe receipts are `/tmp/iunctus-review-probe-results.json`; CLI check output is `/tmp/iunctus-review-cli-tests.log`. These are local scratch receipts, not committed project artifacts. Probe crashes were intentional observations in isolated child processes; they did not modify project source or real user data. Other findings remain static unless explicitly qualified above.
+Raw probe receipts are `/tmp/uwe-review-probe-results.json`; CLI check output is `/tmp/uwe-review-cli-tests.log`. These are local scratch receipts, not committed project artifacts. Probe crashes were intentional observations in isolated child processes; they did not modify project source or real user data. Other findings remain static unless explicitly qualified above.
 
 The full all-targets/all-features suite, doctests, Clippy, ignored corpus tests, advisory scans, browser checks, real executor qualification, distributed lease races, and scalability benchmarks were not run. Existing passing unit tests do not invalidate these uncovered boundary failures.
 

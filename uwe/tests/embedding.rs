@@ -73,7 +73,7 @@ async fn defaults_to_local() {
             .contains("cannot reach a Docker or Podman engine")
     );
     assert!(failure.message.contains("-executor simulator"));
-    assert!(failure.message.contains("iunctus check-machine"));
+    assert!(failure.message.contains("uwe check-machine"));
     let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
     let runs = database.runs(1).unwrap();
     assert_eq!(runs[0].executor, "local");

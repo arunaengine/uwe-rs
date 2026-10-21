@@ -29,13 +29,13 @@ workflow {
 
 /// Runs the binary in `directory`; the result has the exit code and the standard output and
 /// error.
-fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String) {
+fn uwe(directory: &Path, arguments: &[&str]) -> (i32, String) {
     let output = common::command()
         .args(arguments)
         .current_dir(directory)
         .env("XDG_CACHE_HOME", directory.join("cache"))
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr);
     (
@@ -59,14 +59,14 @@ fn reuses_observed_memory() {
     std::fs::write(directory.join("main.nf"), SCRIPT).expect("writes the workflow");
     let asked = 4 * 1024 * 1024 * 1024;
 
-    let (code, output) = iunctus(directory, &["run", "main.nf", "-executor", "local"]);
+    let (code, output) = uwe(directory, &["run", "main.nf", "-executor", "local"]);
     assert_eq!(code, 0, "{output}");
     assert!(!output.contains("asked for less"), "{output}");
     assert_eq!(limit(directory, 1), asked);
 
     // The cache would answer every task, so the next runs leave it out.
     let again = ["run", "main.nf", "-executor", "local", "-no-cache"];
-    let (code, output) = iunctus(directory, &again);
+    let (code, output) = uwe(directory, &again);
     assert_eq!(code, 0, "{output}");
     assert!(
         output.contains("tasks asked for less than the workflow")
@@ -77,13 +77,13 @@ fn reuses_observed_memory() {
     assert_eq!(limit(directory, 2), task_model::LEAST_MEMORY);
 
     let kept = [&again[..], &["-no-right-sizing"]].concat();
-    let (code, output) = iunctus(directory, &kept);
+    let (code, output) = uwe(directory, &kept);
     assert_eq!(code, 0, "{output}");
     assert!(!output.contains("asked for less"), "{output}");
     assert_eq!(limit(directory, 2), asked);
 
     // A simulated run says what a real run would ask for.
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         directory,
         &["run", "-executor", "simulator", "main.nf", "-no-cache"],
     );
@@ -123,13 +123,13 @@ fn groups_keep_results() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let directory = directory.path();
     std::fs::write(directory.join("main.nf"), SHORT).expect("writes the workflow");
-    let (code, output) = iunctus(directory, &["run", "main.nf", "-executor", "local"]);
+    let (code, output) = uwe(directory, &["run", "main.nf", "-executor", "local"]);
     assert_eq!(code, 0, "{output}");
     assert!(!output.contains("[together]"), "{output}");
 
     std::fs::remove_dir_all(directory.join("results")).expect("removes the results");
     let again = ["run", "main.nf", "-executor", "local", "-no-cache"];
-    let (code, output) = iunctus(directory, &again);
+    let (code, output) = uwe(directory, &again);
     assert_eq!(code, 0, "{output}");
     // Nextflow commands keep the image entrypoint, so the grouping policy runs them separately.
     assert!(!output.contains("[together]"), "{output}");
@@ -166,7 +166,7 @@ fn groups_keep_results() {
     }
 
     let alone = [&again[..], &["-no-grouping"]].concat();
-    let (code, output) = iunctus(directory, &alone);
+    let (code, output) = uwe(directory, &alone);
     assert_eq!(code, 0, "{output}");
     assert!(!output.contains("[together]"), "{output}");
 }

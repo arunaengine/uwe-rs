@@ -1,4 +1,4 @@
-//! `iunctus lock-environment` locks a conda environment file with the repodata in the cache
+//! `uwe lock-environment` locks a conda environment file with the repodata in the cache
 //! folder, without network, and says what is missing when the folder lacks repodata.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -39,7 +39,7 @@ fn lock(folder: &Path, arguments: &[&str]) -> (i32, String, String) {
         .current_dir(folder)
         .env("XDG_CACHE_HOME", folder.join("cache"))
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     (
         output.status.code().unwrap_or(-1),
         String::from_utf8_lossy(&output.stdout).into_owned(),

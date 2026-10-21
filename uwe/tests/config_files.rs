@@ -9,7 +9,7 @@ mod common;
 
 const SCRIPT: &str = "workflow { }\n";
 
-/// A config file with a section that iunctus does not know, so that reading it is an error.
+/// A config file with a section that uwe does not know, so that reading it is an error.
 const BAD_CONFIG: &str = "[nonsense]\nkey = 1\n";
 
 /// Prints the graph of an empty workflow in `directory`, with the exit code and standard error.
@@ -20,7 +20,7 @@ fn graph(command: &mut Command, directory: &Path) -> (i32, String) {
         .current_dir(directory)
         .env("XDG_CACHE_HOME", directory.join("cache"))
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     (
         output.status.code().unwrap_or(-1),
         String::from_utf8_lossy(&output.stderr).into_owned(),
@@ -59,7 +59,7 @@ fn cache_configuration_wins() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let folder = directory.path().join("elsewhere");
     let site = directory.path().join("site.toml");
-    // An executor that this machine cannot reach, which `iunctus graph` must not use.
+    // An executor that this machine cannot reach, which `uwe graph` must not use.
     let text = format!(
         "[executor]\ndefault = \"kubernetes\"\n\n[cache]\nfolder = \"{}\"\n",
         folder.display()

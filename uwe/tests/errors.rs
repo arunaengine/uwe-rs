@@ -11,14 +11,14 @@ const PIPELINE: &str = "process A {\n    container 'debian:stable-slim'\n    out
                         path 'a.txt'\n    script:\n    \"echo a > a.txt\"\n}\n\nworkflow {\n    \
                         A()\n}\n";
 
-/// Runs iunctus in `directory` with its own cache, and gives the exit code and standard error.
-fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String) {
+/// Runs uwe in `directory` with its own cache, and gives the exit code and standard error.
+fn uwe(directory: &Path, arguments: &[&str]) -> (i32, String) {
     let output = common::command()
         .args(arguments)
         .env("XDG_CACHE_HOME", directory.join("cache"))
         .current_dir(directory)
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
     (output.status.code().unwrap_or(-1), stderr)
 }
@@ -29,13 +29,13 @@ fn project(script: &str) -> tempfile::TempDir {
     directory
 }
 
-/// Every line that does not continue the line before it names iunctus.
+/// Every line that does not continue the line before it names uwe.
 fn assert_form(stderr: &str) {
     for line in stderr.lines() {
         if line.is_empty() || line.starts_with(' ') {
             continue;
         }
-        assert!(line.starts_with("iunctus: "), "{stderr}");
+        assert!(line.starts_with("uwe: "), "{stderr}");
         assert!(!line.contains("(os error"), "{stderr}");
     }
 }
@@ -43,45 +43,42 @@ fn assert_form(stderr: &str) {
 #[test]
 fn formats_usage_errors() {
     let directory = project(PIPELINE);
-    let (code, stderr) = iunctus(directory.path(), &["run", "main.nf", "-bogus"]);
+    let (code, stderr) = uwe(directory.path(), &["run", "main.nf", "-bogus"]);
     assert_eq!(code, 2, "{stderr}");
     assert_eq!(
         stderr,
-        "iunctus: unknown option `-bogus`; `iunctus help` lists the commands and their options\n"
+        "uwe: unknown option `-bogus`; `uwe help` lists the commands and their options\n"
     );
-    let (code, stderr) = iunctus(directory.path(), &["launch", "main.nf"]);
+    let (code, stderr) = uwe(directory.path(), &["launch", "main.nf"]);
     assert_eq!(code, 2, "{stderr}");
     assert!(
-        stderr.starts_with("iunctus: unknown command `launch`; "),
+        stderr.starts_with("uwe: unknown command `launch`; "),
         "{stderr}"
     );
-    let (code, stderr) = iunctus(directory.path(), &["run"]);
+    let (code, stderr) = uwe(directory.path(), &["run"]);
     assert_eq!(code, 2, "{stderr}");
     assert_form(&stderr);
-    let output = common::command()
-        .arg("help")
-        .output()
-        .expect("runs iunctus");
+    let output = common::command().arg("help").output().expect("runs uwe");
     assert_eq!(output.status.code(), Some(0));
     let usage = String::from_utf8_lossy(&output.stdout);
-    assert!(usage.starts_with("usage: iunctus run"), "{usage}");
+    assert!(usage.starts_with("usage: uwe run"), "{usage}");
 }
 
 #[test]
 fn errors_name_location() {
     let directory = project("process A {\n    script:\n    \"echo a\"\n\nworkflow {\n    A()\n}\n");
-    let (code, stderr) = iunctus(
+    let (code, stderr) = uwe(
         directory.path(),
         &["run", "-executor", "simulator", "main.nf"],
     );
     assert_eq!(code, 1, "{stderr}");
-    assert!(stderr.starts_with("iunctus: "), "{stderr}");
+    assert!(stderr.starts_with("uwe: "), "{stderr}");
     assert!(stderr.contains("main.nf:8:1: "), "{stderr}");
     assert_form(&stderr);
     // A run that stopped before its first task simulated nothing, so it says nothing of it.
     assert!(!stderr.contains("This is a simulation"), "{stderr}");
     let directory = project("include { B } from './modules/b'\n\nworkflow {\n    B()\n}\n");
-    let (code, stderr) = iunctus(
+    let (code, stderr) = uwe(
         directory.path(),
         &["run", "-executor", "simulator", "main.nf"],
     );
@@ -94,14 +91,14 @@ fn errors_name_location() {
         )),
         "{stderr}"
     );
-    let (code, stderr) = iunctus(
+    let (code, stderr) = uwe(
         directory.path(),
         &["run", "-executor", "simulator", "nowhere.nf"],
     );
     assert_eq!(code, 1, "{stderr}");
     assert_eq!(
         stderr,
-        "iunctus: nowhere.nf: no such file or directory; name a workflow file or a project \
+        "uwe: nowhere.nf: no such file or directory; name a workflow file or a project \
          directory\n"
     );
 }
@@ -111,7 +108,7 @@ fn unsupported_exit_code() {
     let script = "nextflow.enable.dsl=1\nprocess A {\n    output:\n    file 'x' into ch\n    \
                   script:\n    \"touch x\"\n}\n";
     let directory = project(script);
-    let (code, stderr) = iunctus(
+    let (code, stderr) = uwe(
         directory.path(),
         &["run", "-executor", "simulator", "main.nf"],
     );
@@ -132,14 +129,11 @@ fn rejects_broken_configuration() {
     )
     .expect("writes the config file");
     let arguments = ["run", "main.nf", "-uwe-config", "lab.toml"];
-    let (code, stderr) = iunctus(directory.path(), &arguments);
+    let (code, stderr) = uwe(directory.path(), &arguments);
     assert_eq!(code, 3, "{stderr}");
-    assert!(
-        stderr.contains("iunctus has no section `stroe`"),
-        "{stderr}"
-    );
+    assert!(stderr.contains("uwe has no section `stroe`"), "{stderr}");
     let arguments = ["run", "main.nf", "-uwe-config", "none.toml"];
-    let (code, stderr) = iunctus(directory.path(), &arguments);
+    let (code, stderr) = uwe(directory.path(), &arguments);
     assert_eq!(code, 3, "{stderr}");
     assert_form(&stderr);
 }
@@ -153,7 +147,7 @@ fn explains_missing_prerequisites() {
         .env("UWE_ENGINE", "/nowhere/podman.sock")
         .current_dir(directory.path())
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(3), "{stderr}");
     assert!(
@@ -165,7 +159,7 @@ fn explains_missing_prerequisites() {
         "{stderr}"
     );
     assert!(stderr.contains("-executor simulator"), "{stderr}");
-    assert!(stderr.contains("iunctus check-machine"), "{stderr}");
+    assert!(stderr.contains("uwe check-machine"), "{stderr}");
     assert!(output.stdout.is_empty());
     let output = common::command()
         .args(["run", "main.nf", "-executor", "slurm"])
@@ -173,7 +167,7 @@ fn explains_missing_prerequisites() {
         .env("PATH", directory.path())
         .current_dir(directory.path())
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(3), "{stderr}");
     assert!(
@@ -181,16 +175,16 @@ fn explains_missing_prerequisites() {
         "{stderr}"
     );
     let arguments = ["run", "main.nf", "-executor", "tes"];
-    let (code, stderr) = iunctus(
+    let (code, stderr) = uwe(
         directory.path(),
         &[&arguments[..], &["-tes-server", "http://127.0.0.1:1"]].concat(),
     );
     assert_eq!(code, 3, "{stderr}");
     assert!(
-        stderr.starts_with("iunctus: the TES server at http://127.0.0.1:1 does not answer: "),
+        stderr.starts_with("uwe: the TES server at http://127.0.0.1:1 does not answer: "),
         "{stderr}"
     );
-    let (code, stderr) = iunctus(
+    let (code, stderr) = uwe(
         directory.path(),
         &["run", "main.nf", "-executor", "kubernetes"],
     );

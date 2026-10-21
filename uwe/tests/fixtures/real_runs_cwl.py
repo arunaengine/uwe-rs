@@ -26,7 +26,7 @@ TIMEOUT = 300
 # A docker that refuses to pull, so that no run fetches an image.
 DOCKER = """#!/bin/bash
 if [ "$1" = pull ]; then
-    echo "iunctus real runs: no pulls, the image must be on this machine" >&2
+    echo "uwe real runs: no pulls, the image must be on this machine" >&2
     exit 1
 fi
 exec /usr/bin/docker "$@"
@@ -175,7 +175,7 @@ def compare(test, suite, work, environment, images):
     if test.get("should_fail") and not our_ok:
         return "same: fails as the test expects"
     if not our_ok:
-        return f"iunctus fails (exit {our_code}): {our_error}"
+        return f"uwe fails (exit {our_code}): {our_error}"
     if not native_ok:
         return f"cwltool fails (exit {native_code}): {native_error}"
     expected = test.get("output")
@@ -217,7 +217,7 @@ def main():
         kind = record.split(":")[0].split(" (")[0]
         counts[kind] = counts.get(kind, 0) + 1
     summary = ", ".join(f"{count} {kind}" for kind, count in sorted(counts.items()))
-    header = ("# The CWL conformance tests (v1.2) run for real by iunctus and by cwltool, compared "
+    header = ("# The CWL conformance tests (v1.2) run for real by uwe and by cwltool, compared "
               "by their output objects; written by real_runs_cwl.py.\n"
               f"# {len(records)} tests: {summary}.\n")
     OUTPUT.write_text(header + "".join(f"{name} {record}\n"

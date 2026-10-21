@@ -30,7 +30,7 @@ fn discovery_skips_configuration() {
             .unwrap();
         assert!(output.status.success());
         let help = String::from_utf8_lossy(&output.stdout);
-        assert!(help.contains("usage: iunctus run"));
+        assert!(help.contains("usage: uwe run"));
         assert!(help.contains("-executor"));
         assert!(help.contains("Default executor: local"));
         assert!(help.contains("-profile <a,b>"));
@@ -44,7 +44,7 @@ fn discovery_skips_configuration() {
         assert!(output.status.success());
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
-            format!("iunctus {}\n", env!("CARGO_PKG_VERSION"))
+            format!("uwe {}\n", env!("CARGO_PKG_VERSION"))
         );
     }
     let output = common::command()

@@ -87,7 +87,7 @@ fn matches_oracle() {
             .args(["config", "-profile", "test", "."])
             .current_dir(test_workflows.join(name))
             .output()
-            .expect("runs iunctus");
+            .expect("runs uwe");
         let mine = String::from_utf8_lossy(&output.stdout);
         let kind = expected.get(name).map(String::as_str);
         let result = match (exit.trim() == "0", output.status.code()) {

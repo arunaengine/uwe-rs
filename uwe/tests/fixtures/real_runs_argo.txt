@@ -1,5 +1,5 @@
-# Argo workflows run for real by iunctus, against what Argo's tests expect (argo lint, expected failures); written by real_runs_argo.py. A tab ends the path.
-# 1182 workflows: 5 argo fails, 2 differs, 37 iunctus fails, 277 same, 861 skipped.
+# Argo workflows run for real by uwe, against what Argo's tests expect (argo lint, expected failures); written by real_runs_argo.py. A tab ends the path.
+# 1182 workflows: 5 argo fails, 2 differs, 37 uwe fails, 277 same, 861 skipped.
 # 696 of the skipped ones name images that are not on this machine; they are not listed.
 argo-hub/examples/ci-simple/versions/0.0.1/workflowTemplate.yaml	skipped: names its image by a parameter
 argo-hub/examples/failure-notification/versions/0.0.1/workflowTemplate.yaml	skipped: needs a value for a parameter, which a run of Argo needs too
@@ -14,11 +14,11 @@ argo-workflows-catalog/templates/distro/tests/run-task.yaml	same: succeeds
 argo-workflows-catalog/templates/hello-world/manifests.yaml	same: succeeds
 argo-workflows-catalog/templates/hello-world/tests/run-task.yaml	same: succeeds
 argo-workflows-catalog/templates/jenkins-pipeline/manifests.yaml	skipped: names its image by a parameter
-argo-workflows-catalog/templates/jenkins-pipeline/tests/run-task.yaml	iunctus fails (exit 1): iunctus: workflow failed: run-jenkins-pipeline-basic: Error (exit code 2)
+argo-workflows-catalog/templates/jenkins-pipeline/tests/run-task.yaml	uwe fails (exit 1): uwe: workflow failed: run-jenkins-pipeline-basic: Error (exit code 2)
 argo-workflows-catalog/templates/slack-workflow-notifications/manifests.yaml#1	skipped: one of several workflows in a file
 argo-workflows-catalog/templates/slack-workflow-notifications/tests/run-task.yaml	same: succeeds
 argo-workflows-catalog/templates/terraform-basic/manifests.yaml	skipped: names its image by a parameter
-argo-workflows-ci-example/bootstrap/workflow-templates/minio/git-checkout-pr-s3.yml	iunctus fails (exit 1): iunctus: workflow error: git-checkout-pr: output artifact git_repo: /tmp/{{workflow.parameters.app_repo}} was not made
+argo-workflows-ci-example/bootstrap/workflow-templates/minio/git-checkout-pr-s3.yml	uwe fails (exit 1): uwe: workflow error: git-checkout-pr: output artifact git_repo: /tmp/{{workflow.parameters.app_repo}} was not made
 argo-workflows-ci-example/bootstrap/workflow-templates/nfs/git-checkout-pr.yml	same: succeeds
 argo-workflows-hello-executor-plugin/hello-example-workflow.yaml	skipped: needs an executor plugin server
 argo-workflows/examples/arguments-artifacts.yaml	skipped: calls a web address
@@ -69,7 +69,7 @@ argo-workflows/examples/key-only-artifact.yaml	same: succeeds
 argo-workflows/examples/label-value-from-workflow.yaml	same: succeeds
 argo-workflows/examples/life-cycle-hooks-tmpl-level.yaml	skipped: calls a web address
 argo-workflows/examples/life-cycle-hooks-wf-level.yaml	skipped: calls a web address
-argo-workflows/examples/loops-arbitrary-sequential-steps.yaml	iunctus fails (exit 1): iunctus: workflow failed: unit-step(3:exit_code:1,message:will fail and stop here): Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/examples/loops-arbitrary-sequential-steps.yaml	uwe fails (exit 1): uwe: workflow failed: unit-step(3:exit_code:1,message:will fail and stop here): Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
 argo-workflows/examples/loops-maps.yaml	skipped: names its image by a parameter
 argo-workflows/examples/loops-param-argument.yaml	skipped: names its image by a parameter
 argo-workflows/examples/loops-param-result.yaml	same: succeeds
@@ -81,13 +81,13 @@ argo-workflows/examples/parallelism-nested-workflow.yaml	same: succeeds
 argo-workflows/examples/parallelism-nested.yaml	same: succeeds
 argo-workflows/examples/parallelism-template-limit.yaml	same: succeeds
 argo-workflows/examples/parameter-aggregation-script.yaml	same: succeeds
-argo-workflows/examples/pod-gc-strategy-with-label-selector.yaml	iunctus fails (exit 1): iunctus: workflow failed: fail: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
-argo-workflows/examples/pod-gc-strategy.yaml	iunctus fails (exit 1): iunctus: workflow failed: fail: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/examples/pod-gc-strategy-with-label-selector.yaml	uwe fails (exit 1): uwe: workflow failed: fail: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/examples/pod-gc-strategy.yaml	uwe fails (exit 1): uwe: workflow failed: fail: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
 argo-workflows/examples/pod-spec-from-previous-step.yaml	same: succeeds
 argo-workflows/examples/recursive-for-loop.yaml	same: succeeds
 argo-workflows/examples/resubmit.yaml	same: succeeds
 argo-workflows/examples/retry-backoff.yaml	same: succeeds
-argo-workflows/examples/retry-conditional.yaml	iunctus fails (exit 1): iunctus: workflow failed: retry(0): Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/examples/retry-conditional.yaml	uwe fails (exit 1): uwe: workflow failed: retry(0): Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
 argo-workflows/examples/retry-container-to-completion.yaml	same: succeeds
 argo-workflows/examples/retry-container.yaml	same: succeeds
 argo-workflows/examples/retry-on-error.yaml	same: succeeds
@@ -95,12 +95,12 @@ argo-workflows/examples/retry-script.yaml	same: succeeds
 argo-workflows/examples/retry-with-steps.yaml	same: succeeds
 argo-workflows/examples/scripts-bash.yaml	same: succeeds
 argo-workflows/examples/scripts-python.yaml	same: succeeds
-argo-workflows/examples/secrets.yaml	skipped: reads a Kubernetes Secret, which iunctus has no store for yet
+argo-workflows/examples/secrets.yaml	skipped: reads a Kubernetes Secret, which uwe has no store for yet
 argo-workflows/examples/skipped-output-defaults/consumer-input-default.yaml	same: succeeds
 argo-workflows/examples/skipped-output-defaults/expression-fallback.yaml	same: succeeds
 argo-workflows/examples/skipped-output-defaults/producer-output-default.yaml	same: succeeds
 argo-workflows/examples/status-reference.yaml	same: succeeds
-argo-workflows/examples/step-level-timeout.yaml	iunctus fails (exit 1): iunctus: workflow failed: sleep2: Error (exit code 143) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/examples/step-level-timeout.yaml	uwe fails (exit 1): uwe: workflow failed: sleep2: Error (exit code 143) (probable cause: a step fails on purpose, so Argo fails the workflow too)
 argo-workflows/examples/steps-inline-workflow.yaml	same: succeeds
 argo-workflows/examples/synchronization-db-mutex-tmpl-level.yaml	same: succeeds
 argo-workflows/examples/synchronization-db-tmpl-level.yaml	same: succeeds
@@ -156,7 +156,7 @@ argo-workflows/test/e2e/functional/custom_template_variable.yaml	same: succeeds
 argo-workflows/test/e2e/functional/dag-argument-passing.yaml	same: succeeds
 argo-workflows/test/e2e/functional/dag-depends.yaml	same: succeeds
 argo-workflows/test/e2e/functional/dag-omitted-output-ref.yaml	same: succeeds
-argo-workflows/test/e2e/functional/dag-skipped-artifact-subpath-ref.yaml	iunctus fails (exit 1): iunctus: task dag-skipped-artifact-subpath-ref-1ce4a.consumer: the input /tmp/uwe-real-argo-1cmzooi3/store/runs/1a0f6225445-fbf12/produce-artifact-1/1/root/
+argo-workflows/test/e2e/functional/dag-skipped-artifact-subpath-ref.yaml	uwe fails (exit 1): uwe: task dag-skipped-artifact-subpath-ref-1ce4a.consumer: the input /tmp/uwe-real-argo-1cmzooi3/store/runs/1a0f6225445-fbf12/produce-artifact-1/1/root/
 argo-workflows/test/e2e/functional/dag-skipped-consumer-default.yaml	same: succeeds
 argo-workflows/test/e2e/functional/dag-skipped-output-ref.yaml	same: succeeds
 argo-workflows/test/e2e/functional/dag-skipped-producer-default.yaml	same: succeeds
@@ -200,7 +200,7 @@ argo-workflows/test/e2e/functional/script-with-input-art.yaml	skipped: calls a w
 argo-workflows/test/e2e/functional/script-with-volume.yaml	same: succeeds
 argo-workflows/test/e2e/functional/scripts-bash.yaml	same: succeeds
 argo-workflows/test/e2e/functional/scripts-python.yaml	same: succeeds
-argo-workflows/test/e2e/functional/secrets.yaml	skipped: reads a Kubernetes Secret, which iunctus has no store for yet
+argo-workflows/test/e2e/functional/secrets.yaml	skipped: reads a Kubernetes Secret, which uwe has no store for yet
 argo-workflows/test/e2e/functional/steps-skipped-consumer-default.yaml	same: succeeds
 argo-workflows/test/e2e/functional/steps-skipped-output-ref.yaml	same: succeeds
 argo-workflows/test/e2e/functional/steps-skipped-producer-default.yaml	same: succeeds
@@ -208,13 +208,13 @@ argo-workflows/test/e2e/functional/steps-skipped-withparam-ref.yaml	same: succee
 argo-workflows/test/e2e/functional/steps-when-expr-filter.yaml	same: succeeds
 argo-workflows/test/e2e/functional/success-event.yaml	same: succeeds
 argo-workflows/test/e2e/functional/suspend-dag-template.yaml	same: succeeds
-argo-workflows/test/e2e/functional/template_level_host_aliases.yaml	iunctus fails (exit 1): iunctus: workflow failed: template-level-host-aliases-035c9: Error (exit code 1)
-argo-workflows/test/e2e/functional/tty.yaml	iunctus fails (exit 1): iunctus: workflow failed: tty-true: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/test/e2e/functional/template_level_host_aliases.yaml	uwe fails (exit 1): uwe: workflow failed: template-level-host-aliases-035c9: Error (exit code 1)
+argo-workflows/test/e2e/functional/tty.yaml	uwe fails (exit 1): uwe: workflow failed: tty-true: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
 argo-workflows/test/e2e/functional/volumes-emptydir.yaml	same: succeeds
 argo-workflows/test/e2e/functional/volumes-existing.yaml	same: succeeds
-argo-workflows/test/e2e/functional/workflow-exit-handler-sleep.yaml	iunctus fails (exit timeout): timeout
-argo-workflows/test/e2e/functional/workflow_level_host_aliases.yaml	iunctus fails (exit 1): iunctus: workflow failed: workflow-level-host-aliases-4bfcf: Error (exit code 1)
-argo-workflows/test/e2e/functional/workflow_template_level_host_aliases.yaml	iunctus fails (exit 1): iunctus: workflow failed: workflow-template-level-host-aliases-f5f62: Error (exit code 1)
+argo-workflows/test/e2e/functional/workflow-exit-handler-sleep.yaml	uwe fails (exit timeout): timeout
+argo-workflows/test/e2e/functional/workflow_level_host_aliases.yaml	uwe fails (exit 1): uwe: workflow failed: workflow-level-host-aliases-4bfcf: Error (exit code 1)
+argo-workflows/test/e2e/functional/workflow_template_level_host_aliases.yaml	uwe fails (exit 1): uwe: workflow failed: workflow-template-level-host-aliases-f5f62: Error (exit code 1)
 argo-workflows/test/e2e/smoke/artifact-passing.yaml	same: succeeds
 argo-workflows/test/e2e/smoke/basic-2.yaml	same: succeeds
 argo-workflows/test/e2e/smoke/basic.yaml	same: succeeds
@@ -246,7 +246,7 @@ argo-workflows/test/e2e/testdata/artifact-repository-ref.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/artifact-workflow-stopped.yaml	skipped: needs the MinIO server of Argo's tests
 argo-workflows/test/e2e/testdata/artifact-workflow.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/artifactgc/artgc-artifact-not-written-failed-plugin.yaml	skipped: needs the MinIO server of Argo's tests
-argo-workflows/test/e2e/testdata/artifactgc/artgc-artifact-not-written-failed.yaml	iunctus fails (exit 1): iunctus: workflow failed: artgc-artifact-not-written-failed-19cf0: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/test/e2e/testdata/artifactgc/artgc-artifact-not-written-failed.yaml	uwe fails (exit 1): uwe: workflow failed: artgc-artifact-not-written-failed-19cf0: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
 argo-workflows/test/e2e/testdata/artifactgc/artgc-dag-wf-self-delete-plugin.yaml	skipped: needs the MinIO server of Argo's tests
 argo-workflows/test/e2e/testdata/artifactgc/artgc-dag-wf-self-delete.yaml	skipped: needs the MinIO server of Argo's tests
 argo-workflows/test/e2e/testdata/artifactgc/artgc-dag-wf-stopped-pod-gc-on-pod-completion.yaml	skipped: needs the MinIO server of Argo's tests
@@ -260,7 +260,7 @@ argo-workflows/test/e2e/testdata/artifactgc/artgc-from-template.yaml	same: succe
 argo-workflows/test/e2e/testdata/artifactgc/artgc-multi-strategy-multi-anno-plugin.yaml	skipped: needs the MinIO server of Argo's tests
 argo-workflows/test/e2e/testdata/artifactgc/artgc-multi-strategy-multi-anno.yaml	skipped: needs the MinIO server of Argo's tests
 argo-workflows/test/e2e/testdata/artifactgc/artgc-non-optional-artifact-not-written-plugin.yaml	skipped: needs the MinIO server of Argo's tests
-argo-workflows/test/e2e/testdata/artifactgc/artgc-non-optional-artifact-not-written.yaml	iunctus fails (exit 1): iunctus: workflow failed: some-artifacts-not-written: output artifact notpresent: /tmp/notpresent was not made
+argo-workflows/test/e2e/testdata/artifactgc/artgc-non-optional-artifact-not-written.yaml	uwe fails (exit 1): uwe: workflow failed: some-artifacts-not-written: output artifact notpresent: /tmp/notpresent was not made
 argo-workflows/test/e2e/testdata/artifactgc/artgc-optional-artifact-not-written-plugin.yaml	skipped: needs the MinIO server of Argo's tests
 argo-workflows/test/e2e/testdata/artifactgc/artgc-optional-artifact-not-written.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/artifactgc/artgc-step-wf-tmpl-2-plugin.yaml	same: succeeds
@@ -283,7 +283,7 @@ argo-workflows/test/e2e/testdata/basic-clusterworkflowtemplate.yaml	same: succee
 argo-workflows/test/e2e/testdata/basic-cronworkflow.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/basic-workflow.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/basic-workflowtemplate.yaml	same: succeeds
-argo-workflows/test/e2e/testdata/cannot-start-workflow.yaml	iunctus fails (exit 1): iunctus: workflow failed: cannot-start-d3ed7: Error (exit code 127)
+argo-workflows/test/e2e/testdata/cannot-start-workflow.yaml	uwe fails (exit 1): uwe: workflow failed: cannot-start-d3ed7: Error (exit code 127)
 argo-workflows/test/e2e/testdata/cluster-workflow-template-ref.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/clustertemplateref-metrics.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/complex-global-artifact-passing-plugin.yaml	skipped: needs the MinIO server of Argo's tests
@@ -292,7 +292,7 @@ argo-workflows/test/e2e/testdata/convert/convert-legacy-sync.yaml	argo fails: ar
 argo-workflows/test/e2e/testdata/cronworkflow-metrics-forbid.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/cronworkflow-metrics-replace.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/default-params-plugin-workflow.yaml	same: succeeds
-argo-workflows/test/e2e/testdata/exit-1.yaml	iunctus fails (exit 1): iunctus: workflow failed: exit-1-986e0: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/test/e2e/testdata/exit-1.yaml	uwe fails (exit 1): uwe: workflow failed: exit-1-986e0: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
 argo-workflows/test/e2e/testdata/exit-handler-parameterized-global-artifacts.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/global-artifact-passing-plugin.yaml	skipped: needs the MinIO server of Argo's tests
 argo-workflows/test/e2e/testdata/global-artifact-passing.yaml	skipped: needs the MinIO server of Argo's tests
@@ -322,22 +322,22 @@ argo-workflows/test/e2e/testdata/plugins/executor/massive-executor-workflow.yaml
 argo-workflows/test/e2e/testdata/plugins/executor/template-executor-workflow.yaml	skipped: needs an executor plugin server
 argo-workflows/test/e2e/testdata/plugins/executor/workflow-level-template-executor-workflow.yaml	skipped: needs an executor plugin server
 argo-workflows/test/e2e/testdata/progress-workflow.yaml	same: succeeds
-argo-workflows/test/e2e/testdata/resubmit-dag-with-dependencies.yaml	iunctus fails (exit 1): iunctus: workflow failed: B: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
-argo-workflows/test/e2e/testdata/retry-nested-dag-test.yaml	iunctus fails (exit 1): iunctus: workflow failed: dag1-step3-tofail: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
-argo-workflows/test/e2e/testdata/retry-omit.yaml	iunctus fails (exit 1): iunctus: workflow failed: F: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
-argo-workflows/test/e2e/testdata/retry-on-error-workflow.yaml	iunctus fails (exit 1): iunctus: workflow failed: retry-on-error-628e8(0): Error (exit code 1)
+argo-workflows/test/e2e/testdata/resubmit-dag-with-dependencies.yaml	uwe fails (exit 1): uwe: workflow failed: B: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/test/e2e/testdata/retry-nested-dag-test.yaml	uwe fails (exit 1): uwe: workflow failed: dag1-step3-tofail: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/test/e2e/testdata/retry-omit.yaml	uwe fails (exit 1): uwe: workflow failed: F: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/test/e2e/testdata/retry-on-error-workflow.yaml	uwe fails (exit 1): uwe: workflow failed: retry-on-error-628e8(0): Error (exit code 1)
 argo-workflows/test/e2e/testdata/retry-on-stopped.yaml	skipped: needs the MinIO server of Argo's tests
 argo-workflows/test/e2e/testdata/retry-test.yaml	same: succeeds
-argo-workflows/test/e2e/testdata/retry-with-recreated-pvc-test.yaml	iunctus fails (exit 1): iunctus: workflow failed: print: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
-argo-workflows/test/e2e/testdata/retry-workflow-with-continueon.yaml	iunctus fails (exit 1): iunctus: workflow failed: continue: Error (exit code 2) (probable cause: a step fails on purpose, so Argo fails the workflow too)
-argo-workflows/test/e2e/testdata/retry-workflow-with-failed-exit-handler.yaml	iunctus fails (exit 1): iunctus: workflow failed: onExit: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/test/e2e/testdata/retry-with-recreated-pvc-test.yaml	uwe fails (exit 1): uwe: workflow failed: print: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/test/e2e/testdata/retry-workflow-with-continueon.yaml	uwe fails (exit 1): uwe: workflow failed: continue: Error (exit code 2) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/test/e2e/testdata/retry-workflow-with-failed-exit-handler.yaml	uwe fails (exit 1): uwe: workflow failed: onExit: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
 argo-workflows/test/e2e/testdata/same-input-output-path-optional-plugin.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/same-input-output-path-optional.yaml	same: succeeds
-argo-workflows/test/e2e/testdata/signaled-container-set-workflow.yaml	iunctus fails (exit 1): iunctus: workflow failed: example: one: Error (exit code 137)
+argo-workflows/test/e2e/testdata/signaled-container-set-workflow.yaml	uwe fails (exit 1): uwe: workflow failed: example: one: Error (exit code 137)
 argo-workflows/test/e2e/testdata/sleep-3s.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/sleepy-workflow.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/storage-limit.yaml	same: succeeds
-argo-workflows/test/e2e/testdata/template-status-failed-conditional-metric.yaml	iunctus fails (exit 1): iunctus: workflow failed: test: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/test/e2e/testdata/template-status-failed-conditional-metric.yaml	uwe fails (exit 1): uwe: workflow failed: test: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
 argo-workflows/test/e2e/testdata/templateref-metrics.yaml	skipped: needs an image that is not on this machine (found when it ran)
 argo-workflows/test/e2e/testdata/two-items.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/volume-claim-template-workflow.yaml	same: succeeds
@@ -351,7 +351,7 @@ argo-workflows/test/e2e/testdata/workflow-archive-logs-tracing.yaml	skipped: nee
 argo-workflows/test/e2e/testdata/workflow-dag-metrics.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/workflow-hook-parameter.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/workflow-node-sync-tracing.yaml	same: succeeds
-argo-workflows/test/e2e/testdata/workflow-pending-metrics.yaml	iunctus fails (exit 1): iunctus: workflow failed: runTest: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/test/e2e/testdata/workflow-pending-metrics.yaml	uwe fails (exit 1): uwe: workflow failed: runTest: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
 argo-workflows/test/e2e/testdata/workflow-pod-restart.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/workflow-retry-metrics.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/workflow-script-tracing.yaml	same: succeeds
@@ -361,12 +361,12 @@ argo-workflows/test/e2e/testdata/workflow-template-invalid-onexit.yaml	same: suc
 argo-workflows/test/e2e/testdata/workflow-template-ref-exithandler.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/workflow-template-ref.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/workflow-template-sub-test.yaml	argo fails: argo lint: ✖ 1 linting errors found!
-argo-workflows/test/e2e/testdata/workflow-template-with-containerset.yaml	iunctus fails (exit 1): iunctus: workflow failed: containerset-with-retrystrategy-8dfe0: c2: Error (exit code 127) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+argo-workflows/test/e2e/testdata/workflow-template-with-containerset.yaml	uwe fails (exit 1): uwe: workflow failed: containerset-with-retrystrategy-8dfe0: c2: Error (exit code 127) (probable cause: a step fails on purpose, so Argo fails the workflow too)
 argo-workflows/test/e2e/testdata/workflow-template-with-enum-values.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/workflow-templates/success-hook.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/workflow-templates/workflowtemplate.yaml	same: succeeds
 argo-workflows/test/e2e/testdata/workflow-tracing.yaml	same: succeeds
-gennext-workflows/plans/test-fusion-inspector-acu2.yaml	iunctus fails (exit 1): iunctus: template fusion-inspector-on-node mounts the host path /runspace/gennext/data/scratch/972f096e-488d-4752-9b33-7c4ed2090d67/097debda-5597-4857-ab2d-3425
+gennext-workflows/plans/test-fusion-inspector-acu2.yaml	uwe fails (exit 1): uwe: template fusion-inspector-on-node mounts the host path /runspace/gennext/data/scratch/972f096e-488d-4752-9b33-7c4ed2090d67/097debda-5597-4857-ab2d-3425
 gennext-workflows/tasks/get_rel_ref_dirs.yaml	skipped: needs a value for a parameter, which a run of Argo needs too
 gennext-workflows/workflows/ces-workflow.yaml	skipped: needs a value for a parameter, which a run of Argo needs too
 gennext-workflows/workflows/germline/germline-tps-gpu-workflow.yaml	skipped: needs a value for a parameter, which a run of Argo needs too
@@ -380,7 +380,7 @@ gennext-workflows/workflows/per-sample-somatic-fusion.yaml	skipped: needs a valu
 gennext-workflows/workflows/per-sample-somatic-rna.yaml	skipped: needs a value for a parameter, which a run of Argo needs too
 gennext-workflows/workflows/preprocess-fastq.yaml	skipped: needs a value for a parameter, which a run of Argo needs too
 gennext-workflows/workflows/prototypes/batch-orchestrator-prototype.yaml	skipped: needs a value for a parameter, which a run of Argo needs too
-gennext-workflows/workflows/prototypes/test-fusion-inspector.yaml	iunctus fails (exit 1): iunctus: template fastp mounts the host path /runspace/gennext/data/inputs/3c41bacd-22a6-4639-ab15-2fc9141a8d4f/105d5109-fda3-4e9b-a003-9207e5e450b5/Agi-S5_R1.f
+gennext-workflows/workflows/prototypes/test-fusion-inspector.yaml	uwe fails (exit 1): uwe: template fastp mounts the host path /runspace/gennext/data/inputs/3c41bacd-22a6-4639-ab15-2fc9141a8d4f/105d5109-fda3-4e9b-a003-9207e5e450b5/Agi-S5_R1.f
 gennext-workflows/workflows/prs/prs_workflow.yaml	skipped: needs a value for a parameter, which a run of Argo needs too
 gennext-workflows/workflows/wrapper-annotation.yaml	skipped: needs a value for a parameter, which a run of Argo needs too
 gennext-workflows/workflows/wrappers/wrapper-somatic-dna.yaml	skipped: needs a value for a parameter, which a run of Argo needs too
@@ -388,12 +388,12 @@ gennext-workflows/workflows/wrappers/wrapper-tps.yaml	skipped: needs a value for
 gennext-workflows/workflows/wrappers/wrapper-wes.yaml	skipped: needs a value for a parameter, which a run of Argo needs too
 gennext-workflows/workflows/wrappers/wrapper-wgs.yaml	skipped: needs a value for a parameter, which a run of Argo needs too
 hera/examples/workflows/dags/passing-parameters-between-tasks.yaml	same: succeeds
-hera/examples/workflows/loops/dynamic-fanout-container.yaml	iunctus fails (exit 1): iunctus: workflow failed: generate: Error (exit code 127)
-hera/examples/workflows/misc/container-set-with-env.yaml	skipped: reads a Kubernetes Secret, which iunctus has no store for yet
+hera/examples/workflows/loops/dynamic-fanout-container.yaml	uwe fails (exit 1): uwe: workflow failed: generate: Error (exit code 127)
+hera/examples/workflows/misc/container-set-with-env.yaml	skipped: reads a Kubernetes Secret, which uwe has no store for yet
 hera/examples/workflows/misc/container.yaml	same: succeeds
 hera/examples/workflows/misc/cron-workflow-stop-strategy.yaml	same: succeeds
-hera/examples/workflows/misc/env-from.yaml	skipped: reads a Kubernetes Secret, which iunctus has no store for yet
-hera/examples/workflows/misc/env.yaml	skipped: reads a Kubernetes Secret, which iunctus has no store for yet
+hera/examples/workflows/misc/env-from.yaml	skipped: reads a Kubernetes Secret, which uwe has no store for yet
+hera/examples/workflows/misc/env.yaml	skipped: reads a Kubernetes Secret, which uwe has no store for yet
 hera/examples/workflows/misc/http.yaml	skipped: calls a web address
 hera/examples/workflows/misc/suspend.yaml	same: succeeds
 hera/examples/workflows/misc/template-level-volume.yaml	same: succeeds
@@ -415,7 +415,7 @@ hera/examples/workflows/upstream/container-set-template--workspace-workflow.yaml
 hera/examples/workflows/upstream/dag-inline-cronworkflow.yaml	argo fails: argo lint: ✖ in "dag-inline" (CronWorkflow): strict decoding error: unknown field "spec.schedule"
 hera/examples/workflows/upstream/dag-inline-workflowtemplate.yaml	same: succeeds
 hera/examples/workflows/upstream/default-pdb-support.yaml	same: succeeds
-hera/examples/workflows/upstream/exit-handlers.yaml	iunctus fails (exit 1): iunctus: workflow failed: exit-handlers-9216d: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+hera/examples/workflows/upstream/exit-handlers.yaml	uwe fails (exit 1): uwe: workflow failed: exit-handlers-9216d: Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
 hera/examples/workflows/upstream/expression-tag-template-workflow.yaml	same: succeeds
 hera/examples/workflows/upstream/http-hello-world.yaml	skipped: calls a web address
 hera/examples/workflows/upstream/http-success-condition.yaml	skipped: calls a web address
@@ -429,7 +429,7 @@ hera/examples/workflows/upstream/key-only-artifact.yaml	same: succeeds
 hera/examples/workflows/upstream/label-value-from-workflow.yaml	same: succeeds
 hera/examples/workflows/upstream/life-cycle-hooks-tmpl-level.yaml	skipped: calls a web address
 hera/examples/workflows/upstream/life-cycle-hooks-wf-level.yaml	skipped: calls a web address
-hera/examples/workflows/upstream/loops-arbitrary-sequential-steps.yaml	iunctus fails (exit 1): iunctus: workflow failed: unit-step(3:exit_code:1,message:will fail and stop here): Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+hera/examples/workflows/upstream/loops-arbitrary-sequential-steps.yaml	uwe fails (exit 1): uwe: workflow failed: unit-step(3:exit_code:1,message:will fail and stop here): Error (exit code 1) (probable cause: a step fails on purpose, so Argo fails the workflow too)
 hera/examples/workflows/upstream/loops-maps.yaml	skipped: names its image by a parameter
 hera/examples/workflows/upstream/loops-param-argument.yaml	skipped: names its image by a parameter
 hera/examples/workflows/upstream/loops-sequence.yaml	same: succeeds
@@ -440,7 +440,7 @@ hera/examples/workflows/upstream/parallelism-nested-workflow.yaml	same: succeeds
 hera/examples/workflows/upstream/parallelism-nested.yaml	same: succeeds
 hera/examples/workflows/upstream/parallelism-template-limit.yaml	same: succeeds
 hera/examples/workflows/upstream/pod-spec-from-previous-step.yaml	same: succeeds
-hera/examples/workflows/upstream/step-level-timeout.yaml	iunctus fails (exit 1): iunctus: workflow failed: sleep1: Error (exit code 143) (probable cause: a step fails on purpose, so Argo fails the workflow too)
+hera/examples/workflows/upstream/step-level-timeout.yaml	uwe fails (exit 1): uwe: workflow failed: sleep1: Error (exit code 143) (probable cause: a step fails on purpose, so Argo fails the workflow too)
 hera/examples/workflows/upstream/steps-inline-workflow.yaml	same: succeeds
 hera/examples/workflows/upstream/synchronization-db-mutex-tmpl-level.yaml	same: succeeds
 hera/examples/workflows/upstream/synchronization-db-tmpl-level.yaml	same: succeeds
@@ -448,7 +448,7 @@ hera/examples/workflows/upstream/synchronization-mutex-tmpl-level-legacy.yaml	ar
 hera/examples/workflows/upstream/synchronization-mutex-tmpl-level.yaml	same: succeeds
 hera/examples/workflows/upstream/synchronization-tmpl-level-legacy.yaml	argo fails: argo lint: ✖ in "synchronization-tmpl-level-" (Workflow): strict decoding error: unknown field "spec.templates[0].synchronization.semaphore"
 hera/examples/workflows/upstream/synchronization-tmpl-level.yaml	same: succeeds
-hera/examples/workflows/upstream/timeouts-step.yaml	iunctus fails (exit 1): iunctus: workflow failed: timeouts-step-43ffc: Error (exit code 143)
+hera/examples/workflows/upstream/timeouts-step.yaml	uwe fails (exit 1): uwe: workflow failed: timeouts-step-43ffc: Error (exit code 143)
 hera/examples/workflows/upstream/volumes-existing.yaml	same: succeeds
 hera/examples/workflows/upstream/webhdfs-input-output-artifacts.yaml	skipped: calls a web address
 hera/examples/workflows/upstream/work-avoidance.yaml	skipped: needs the MinIO server of Argo's tests
@@ -475,8 +475,8 @@ regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml	skipped: n
 regulation-workflows/workflow-templates/peak-calling/genrich-values-cmd.yaml	skipped: needs a value for a parameter, which a run of Argo needs too
 snakemake-tutorial-argo-workflows/argo-workflows/workflows.yaml	skipped: reads a remote file
 talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/git-checkout-template.yaml	skipped: needs a value for a parameter, which a run of Argo needs too
-talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/nfs-workflow.yml	iunctus fails (exit 1): iunctus: workflow failed: setup: Error (exit code 137)
-talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/s3-workflow.yml	iunctus fails (exit timeout): timeout
+talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/nfs-workflow.yml	uwe fails (exit 1): uwe: workflow failed: setup: Error (exit code 137)
+talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/s3-workflow.yml	uwe fails (exit timeout): timeout
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/cpd-certification.yml	same: succeeds
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/run-unit-tests.yml	same: succeeds
 talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/demonstrating-argo-workflows-and-vcluster-at-scale/lots-of-hellos-workflow.yaml	skipped: needs an image that is not on this machine (found when it ran)

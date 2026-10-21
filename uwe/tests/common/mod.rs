@@ -1,4 +1,4 @@
-//! What the tests that run the `iunctus` binary share: a command that reads no config file of
+//! What the tests that run the `uwe` binary share: a command that reads no config file of
 //! the user and none of the site, so that results do not depend on the machine.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -7,15 +7,15 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-/// The path of the `iunctus` binary that Cargo built for the tests.
+/// The path of the `uwe` binary that Cargo built for the tests.
 pub const BINARY: &str = env!("CARGO_BIN_EXE_uwe");
 
-/// The `iunctus` binary with its own empty config folder and no site-wide file.
+/// The `uwe` binary with its own empty config folder and no site-wide file.
 pub fn command() -> Command {
     isolated(Command::new(BINARY))
 }
 
-/// Sets the environment of `command` so that iunctus reads no config file of the user (an
+/// Sets the environment of `command` so that uwe reads no config file of the user (an
 /// empty folder in place of `XDG_CONFIG_HOME`) and none of the site (`UWE_SITE_CONFIG` is
 /// empty). A test that needs a config file sets `XDG_CONFIG_HOME` again after this.
 pub fn isolated(mut command: Command) -> Command {
@@ -93,20 +93,20 @@ impl WebServer {
 }
 
 /// The output of a real run without what the run shows of itself in any language: its first
-/// line, like `iunctus 0.1.0: running main.nf (Nextflow) on local, run <id>`, and its steps
+/// line, like `uwe 0.1.0: running main.nf (Nextflow) on local, run <id>`, and its steps
 /// and summary at its end, from `executor >` to `More:`.
 pub fn without_display(output: &str) -> String {
-    let header = format!("iunctus {}: running ", env!("CARGO_PKG_VERSION"));
+    let header = format!("uwe {}: running ", env!("CARGO_PKG_VERSION"));
     let mut kept: Vec<&str> = Vec::new();
     let mut summary = false;
     for line in output.lines() {
         if line.starts_with("executor >  ") {
             summary = true;
         }
-        if !summary && !line.starts_with(&header) && !line.starts_with("iunctus: simulated run ") {
+        if !summary && !line.starts_with(&header) && !line.starts_with("uwe: simulated run ") {
             kept.push(line);
         }
-        if line.starts_with("More: `iunctus runs`") {
+        if line.starts_with("More: `uwe runs`") {
             summary = false;
         }
     }

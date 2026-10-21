@@ -104,7 +104,7 @@ def expected_failures():
 
 
 def probable_cause(path):
-    """Why a workflow probably fails in iunctus, from what it holds; None when nothing
+    """Why a workflow probably fails in uwe, from what it holds; None when nothing
     explains it."""
     text = path.read_text(errors="replace")
     if re.search(r"exit[ (\"',\]]+[1-9]|sys\.exit\(\s*[1-9]|exit_code|\bfail", text):
@@ -113,7 +113,7 @@ def probable_cause(path):
 
 
 def stop_containers(work):
-    """Kills the containers of iunctus that still run on folders of this script."""
+    """Kills the containers of uwe that still run on folders of this script."""
     names = subprocess.run(["docker", "ps", "--filter", "name=uwe-", "--format",
                             "{{.Names}}"], capture_output=True, text=True).stdout.split()
     for name in names:
@@ -125,10 +125,10 @@ def stop_containers(work):
 
 
 def last_error(text):
-    """The first line of an output that says `iunctus:` or names an error, else the last."""
+    """The first line of an output that says `uwe:` or names an error, else the last."""
     lines = [ANSI.sub("", line).strip() for line in text.splitlines() if line.strip()]
     for line in lines:
-        if line.startswith("iunctus: ") or "error" in line.lower():
+        if line.startswith("uwe: ") or "error" in line.lower():
             return line[:160]
     return (lines[-1] if lines else "")[:160]
 
@@ -156,7 +156,7 @@ def compare(name, work, environment, local):
         _, stderr = process.communicate(timeout=TIMEOUT)
         code, error, text = process.returncode, last_error(stderr), stderr
     except subprocess.TimeoutExpired:
-        # iunctus stops its containers on SIGTERM; any left are stopped here.
+        # uwe stops its containers on SIGTERM; any left are stopped here.
         process.terminate()
         try:
             process.communicate(timeout=30)
@@ -169,7 +169,7 @@ def compare(name, work, environment, local):
     if re.search(r"cannot read (https?|s3|gs)://", text):
         return "skipped: reads a remote file"
     if "no secret store yet" in text:
-        return "skipped: reads a Kubernetes Secret, which iunctus has no store for yet"
+        return "skipped: reads a Kubernetes Secret, which uwe has no store for yet"
     if "is required, but has no value" in text:
         return "skipped: needs a value for a parameter, which a run of Argo needs too"
     if re.search(r"couldn't find (cluster )?workflow template", text):
@@ -195,7 +195,7 @@ def compare(name, work, environment, local):
     if code != 0:
         cause = probable_cause(path)
         note = f" (probable cause: {cause})" if cause else ""
-        return f"iunctus fails (exit {code}): {error}{note}"
+        return f"uwe fails (exit {code}): {error}{note}"
     return "same: succeeds"
 
 
@@ -232,7 +232,7 @@ def main():
     summary = ", ".join(f"{count} {kind}" for kind, count in sorted(counts.items()))
     # The workflows whose images are not on this machine are only counted.
     absent = sorted(name for name, record in records.items() if record.startswith(ABSENT))
-    header = ("# Argo workflows run for real by iunctus, against what Argo's tests expect (argo "
+    header = ("# Argo workflows run for real by uwe, against what Argo's tests expect (argo "
               "lint, expected failures); written by real_runs_argo.py. A tab ends the path.\n"
               f"# {len(records)} workflows: {summary}.\n"
               f"# {len(absent)} of the skipped ones name images that are not on this machine; "

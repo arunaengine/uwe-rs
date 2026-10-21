@@ -153,6 +153,15 @@ impl Run {
                     }
                 };
                 run.nesting = self.nesting + 1;
+                // A held child resumes by its own name, not with the whole run.
+                if run.held {
+                    run.warnings.pop();
+                    let message = format!(
+                        "the workflow is suspended until `iunctus resume {} {name}`",
+                        run.run_name()
+                    );
+                    run.warn(message);
+                }
                 run.inbound = self.nodes[index].inbound.clone();
                 run.files = self.files.clone();
                 run.locks = Rc::clone(&self.locks);
@@ -188,6 +197,8 @@ impl Run {
         let next = self.next_task;
         let entry = &mut self.children[child];
         entry.run.next_task = next;
+        let requests = crate::resume::scoped(&self.requests, &entry.name);
+        entry.run.requests.extend(requests);
         let tasks = step(&mut entry.run)?;
         self.next_task = entry.run.next_task;
         let name = entry.name.clone();

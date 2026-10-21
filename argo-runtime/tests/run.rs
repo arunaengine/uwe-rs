@@ -232,35 +232,7 @@ fn short(name: &str) -> String {
 
 fn run_with(workflow: &str, setup: Setup) -> Ran {
     let directory = tempfile::tempdir().expect("a temporary directory");
-    let path = directory.path().join("workflow.yaml");
-    std::fs::write(&path, workflow).expect("the workflow is written");
-    let documents = load_file(&path).expect("the workflow loads");
-    let library = Library::new();
-    library.add_documents(0, documents.iter().cloned());
-    for (position, text) in setup.library.iter().enumerate() {
-        let file = directory.path().join(format!("library-{position}.yaml"));
-        std::fs::write(&file, text).expect("the library is written");
-        library.add_documents(1, load_file(&file).expect("the library loads"));
-    }
-    let document = documents
-        .iter()
-        .find(|document| document.runnable())
-        .cloned()
-        .expect("a runnable document");
-    let options = Options {
-        parameters: setup
-            .parameters
-            .iter()
-            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
-            .collect(),
-        scratch: directory.path().join("scratch"),
-        now: Some("2026-09-28T12:00:00Z".parse().expect("a time")),
-        assume_inputs: !setup.real_inputs,
-        keep_going: setup.keep_going,
-        resume: setup.resume.clone(),
-        ..Options::default()
-    };
-    let mut driver = ArgoDriver::new(document, Rc::new(library), options);
+    let mut driver = build(directory.path(), workflow, &setup);
     let mut executor = Scripted {
         simulator: Simulator::new(directory.path().join("simulator")),
         stdout: setup.stdout.into_iter().collect(),
@@ -279,6 +251,39 @@ fn run_with(workflow: &str, setup: Setup) -> Ran {
         warnings,
         listings: executor.listings,
     }
+}
+
+/// The driver of a workflow with the choices of a setup, in a folder of the test.
+fn build(directory: &std::path::Path, workflow: &str, setup: &Setup) -> ArgoDriver {
+    let path = directory.join("workflow.yaml");
+    std::fs::write(&path, workflow).expect("the workflow is written");
+    let documents = load_file(&path).expect("the workflow loads");
+    let library = Library::new();
+    library.add_documents(0, documents.iter().cloned());
+    for (position, text) in setup.library.iter().enumerate() {
+        let file = directory.join(format!("library-{position}.yaml"));
+        std::fs::write(&file, text).expect("the library is written");
+        library.add_documents(1, load_file(&file).expect("the library loads"));
+    }
+    let document = documents
+        .iter()
+        .find(|document| document.runnable())
+        .cloned()
+        .expect("a runnable document");
+    let options = Options {
+        parameters: setup
+            .parameters
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+            .collect(),
+        scratch: directory.join("scratch"),
+        now: Some("2026-09-28T12:00:00Z".parse().expect("a time")),
+        assume_inputs: !setup.real_inputs,
+        keep_going: setup.keep_going,
+        resume: setup.resume.clone(),
+        ..Options::default()
+    };
+    ArgoDriver::new(document, Rc::new(library), options)
 }
 
 fn run(workflow: &str) -> Ran {
@@ -731,6 +736,58 @@ fn resumes_suspended_steps() {
     let ran = run_with(&workflow(text), resumable);
     ran.succeeded();
     assert_eq!(ran.task("[1].show").command, ["echo", "yes"]);
+}
+
+#[test]
+fn resumes_own_scope() {
+    use workflow_graph::Driver;
+    let text = r#"
+  - name: main
+    steps:
+    - - {name: approve, template: approve}
+      - {name: start, template: start}
+    - - {name: show, template: print, arguments: {parameters: [{name: message, value: done}]}}
+  - name: approve
+    suspend: {}
+  - name: start
+    resource:
+      action: create
+      manifest: |
+        apiVersion: argoproj.io/v1alpha1
+        kind: Workflow
+        metadata: {name: kid}
+        spec:
+          entrypoint: main
+          templates:
+          - name: main
+            steps:
+            - - {name: approve, template: hold}
+            - - {name: after, template: after}
+          - name: hold
+            suspend: {}
+          - name: after
+            container: {image: alpine, command: [echo, after]}
+"#;
+    let directory = tempfile::tempdir().expect("a folder");
+    let requests = directory.path().join("requests");
+    let setup = Setup {
+        resume: Some(requests.clone()),
+        ..real()
+    };
+    let mut driver = build(directory.path(), &workflow(text), &setup);
+    assert!(driver.start().expect("starts").is_empty());
+    let mut wake = |step: Option<&str>| -> Vec<String> {
+        let request = argo_runtime::resume::Request {
+            step: step.map(str::to_owned),
+            ..Default::default()
+        };
+        request.write(&requests).expect("writes the request");
+        let tasks = driver.wake().expect("wakes");
+        tasks.iter().map(|task| short(&task.name)).collect()
+    };
+    // The child does not take the request of its parent, nor the reverse.
+    assert_eq!(wake(Some("approve")), ["[1].show"]);
+    assert_eq!(wake(Some("kid")), ["[1].after"]);
 }
 
 #[test]

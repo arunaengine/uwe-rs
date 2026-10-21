@@ -144,6 +144,8 @@ pub struct Session {
     lock: Option<crate::locks::Lock>,
     /// A name of this run among others in the folder, for the files that it holds there.
     run: String,
+    /// The `priority` of each built job, by which ready jobs start, highest first.
+    priorities: HashMap<usize, f64>,
 }
 
 struct SignaturePublication {
@@ -264,6 +266,7 @@ impl Session {
                     .map_or(0, |time| time.as_nanos());
                 format!("{}-{nanos}", std::process::id())
             },
+            priorities: HashMap::new(),
         })
     }
 
@@ -589,6 +592,7 @@ impl Session {
                     signature,
                     usage,
                     cwl,
+                    priority,
                 } = crate::task::build(
                     &mut self.interpreter,
                     &setting,
@@ -599,6 +603,7 @@ impl Session {
                 )
                 .map_err(|error| driver_error(&error, &self.workdir))?;
                 self.usages.insert(*job, usage);
+                self.priorities.insert(*job, priority);
                 if outputs.iter().any(|output| {
                     crate::metadata::signature_changed(
                         &self.workdir,
@@ -833,6 +838,7 @@ impl Session {
         }
         candidates.sort_by_key(|job| !self.urgent.contains(job));
         let mut tasks = Vec::new();
+        let mut built = Vec::new();
         for job in candidates {
             if !self.needrun.get(&job).copied().unwrap_or(false) || self.tasks.contains_key(&job) {
                 continue;
@@ -890,6 +896,7 @@ impl Session {
                     signature,
                     usage,
                     cwl,
+                    priority,
                 } = {
                     let state = self.state.borrow();
                     let setting = crate::task::TaskSetting {
@@ -904,11 +911,22 @@ impl Session {
                 .map_err(|error| self.error(&error))?;
                 self.signatures.insert(job, signature);
                 self.usages.insert(job, usage);
+                self.priorities.insert(job, priority);
                 if let Some(cwl) = cwl {
                     self.cwl_jobs.insert(job, cwl);
                 }
                 task
             };
+            built.push((job, task, rule, entry, id));
+        }
+        // Snakemake's scheduler picks the ready jobs of the highest priority first: those of
+        // `prioritize` and the jobs they wait for, then by the `priority` of their rules.
+        let rank = |job: &usize| match self.urgent.contains(job) {
+            true => f64::INFINITY,
+            false => self.priorities.get(job).copied().unwrap_or(0.0),
+        };
+        built.sort_by(|(one, ..), (other, ..)| rank(other).total_cmp(&rank(one)));
+        for (job, task, rule, entry, id) in built {
             let usage = self.tallied(self.usages.get(&job).cloned().unwrap_or_default());
             let limits = crate::scheduling::limits(&self.state.borrow().global_resources);
             if !self.gate.fits(&usage, &limits) || self.updates_read(job) {
@@ -2097,6 +2115,7 @@ impl Session {
                 signature,
                 cwl,
                 usage,
+                ..
             } = {
                 let state = self.state.borrow();
                 let setting = crate::task::TaskSetting {
@@ -2251,6 +2270,7 @@ impl Session {
                 signature,
                 cwl,
                 usage,
+                ..
             } = crate::task::build(
                 &mut self.interpreter,
                 &setting,

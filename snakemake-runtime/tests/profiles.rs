@@ -519,6 +519,32 @@ fn starts_prioritized_jobs() {
     assert_eq!(first, ["a2", "x"]);
 }
 
+/// Snakemake 9.27 with one core runs `b` (priority 5), then `c` (a priority function that
+/// gives 2), then `a`, though the rules come in the other order.
+#[test]
+fn orders_rule_priorities() {
+    let snakefile = "rule all:\n    input: 'a', 'b', 'c'\nrule a:\n    output: 'a'\n    shell: 'touch {output}'\nrule b:\n    output: 'b'\n    priority: 5\n    shell: 'touch {output}'\nrule c:\n    output: 'c'\n    priority: lambda wildcards: 2\n    shell: 'touch {output}'\n";
+    let folder = tempfile::tempdir().expect("a folder");
+    let launch = profile_launch(folder.path(), "{}\n", snakefile);
+    let started = snakemake_runtime::driver(&launch)
+        .expect("a driver")
+        .start()
+        .expect("starts");
+    let steps: Vec<&str> = started.iter().map(|task| task.step.as_str()).collect();
+    assert_eq!(steps, ["b", "c", "a"]);
+    let launch = profile_launch(folder.path(), "cores: 1\n", snakefile);
+    let started = snakemake_runtime::driver(&launch)
+        .expect("a driver")
+        .start()
+        .expect("starts");
+    let steps: Vec<&str> = started.iter().map(|task| task.step.as_str()).collect();
+    assert_eq!(
+        steps,
+        ["b"],
+        "one core takes the job of the highest priority"
+    );
+}
+
 /// Snakemake 9.27 with `batch: agg=1/2` makes the first three of five inputs of `agg` and
 /// omits `agg` and `all`; the final batch needs those three and then makes the rest.
 #[test]

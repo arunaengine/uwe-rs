@@ -99,7 +99,7 @@ impl Scripted {
 }
 
 /// Copies the input folder of each directory output into it, as a container mount, except
-/// the files that `rm` names.
+/// the files that `rm` names; `touch` makes a file.
 fn keep_given(task: &Task, outcome: &Outcome) {
     let words = task.command.join(" ");
     for directory in outcome.files.iter().filter(|file| file.directory) {
@@ -108,13 +108,23 @@ fn keep_given(task: &Task, outcome: &Outcome) {
         let Some(source) = given.map(|input| std::path::Path::new(&input.source)) else {
             continue;
         };
+        let location = std::path::Path::new(&directory.location);
         for entry in std::fs::read_dir(source).expect("the input folder") {
-            let name = entry.expect("an entry").file_name();
+            let entry = entry.expect("an entry");
+            let name = entry.file_name();
             let name = name.to_string_lossy();
-            if !words.contains(&format!("rm {mount}/{name}")) {
-                let target = std::path::Path::new(&directory.location).join(&*name);
+            let target = location.join(&*name);
+            if entry.file_type().expect("a type").is_symlink() {
+                let link = std::fs::read_link(entry.path()).expect("a link");
+                std::os::unix::fs::symlink(link, target).expect("the link is copied");
+            } else if !words.contains(&format!("rm {mount}/{name}")) {
                 std::fs::copy(source.join(&*name), target).expect("the input is copied");
             }
+        }
+        let prefix = format!("touch {mount}/");
+        for made in (words.split(&prefix).skip(1)).filter_map(|rest| rest.split_whitespace().next())
+        {
+            std::fs::write(location.join(made), "made").expect("the file is made");
         }
     }
 }
@@ -588,6 +598,76 @@ fn removes_host_files() {
         std::fs::read_to_string(host.path().join("keep")).unwrap(),
         "keep"
     );
+}
+
+#[test]
+fn siblings_keep_changes() {
+    use std::os::unix::fs::PermissionsExt;
+    let host = tempfile::tempdir().expect("a host folder");
+    for name in ["old", "keep"] {
+        std::fs::write(host.path().join(name), name).expect("writes a host file");
+    }
+    let fixed = host.path().join("keep");
+    std::fs::set_permissions(&fixed, std::fs::Permissions::from_mode(0o444)).expect("mode");
+    let text = format!(
+        r#"
+  - name: main
+    steps:
+    - - {{name: remove, template: work, arguments: {{parameters: [{{name: do, value: rm /data/old}}]}}}}
+      - {{name: make, template: work, arguments: {{parameters: [{{name: do, value: touch /data/new}}]}}}}
+  - name: work
+    inputs: {{parameters: [{{name: do}}]}}
+    volumes: [{{name: data, hostPath: {{path: {}, type: Directory}}}}]
+    container: {{image: alpine, command: [sh, -c, "{{{{inputs.parameters.do}}}}"], volumeMounts: [{{name: data, mountPath: /data}}]}}
+"#,
+        host.path().display()
+    );
+    let mounts = Setup {
+        mounts: true,
+        ..real()
+    };
+    run_with(&workflow(&text), mounts).succeeded();
+    // Both changes stay, as on one shared host path; the read-only file is not written.
+    assert!(
+        !host.path().join("old").exists(),
+        "the stale copy came back"
+    );
+    assert_eq!(
+        std::fs::read_to_string(host.path().join("new")).unwrap(),
+        "made"
+    );
+    assert_eq!(std::fs::read_to_string(&fixed).unwrap(), "keep");
+    std::fs::set_permissions(&fixed, std::fs::Permissions::from_mode(0o644)).expect("mode");
+}
+
+#[test]
+fn host_links_stay() {
+    let host = tempfile::tempdir().expect("a host folder");
+    let folder = host.path().join("data");
+    std::fs::create_dir(&folder).expect("a folder");
+    std::fs::write(folder.join("a"), "a").expect("writes a host file");
+    for name in ["self", "again"] {
+        std::os::unix::fs::symlink(".", folder.join(name)).expect("links");
+    }
+    let text = format!(
+        r#"
+  - name: main
+    volumes: [{{name: data, hostPath: {{path: {}, type: Directory}}}}]
+    container: {{image: alpine, command: [sh, -c, "touch /data/b"], volumeMounts: [{{name: data, mountPath: /data}}]}}
+"#,
+        folder.display()
+    );
+    let mounts = || Setup {
+        mounts: true,
+        ..real()
+    };
+    run_with(&workflow(&text), mounts()).succeeded();
+    assert!(folder.join("self").is_symlink());
+    assert_eq!(std::fs::read_to_string(folder.join("b")).unwrap(), "made");
+    // A link that leads out of the host path is refused, not read.
+    std::os::unix::fs::symlink("../secret", folder.join("out")).expect("links");
+    let ran = run_with(&workflow(&text), mounts());
+    assert!(ran.error().contains("leads out of it"), "{}", ran.error());
 }
 
 #[test]

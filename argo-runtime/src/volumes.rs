@@ -23,6 +23,8 @@ pub(crate) struct Written {
     pub sub_path: String,
     /// The paths in the volume of the files the task got below the mount.
     pub given: Vec<String>,
+    /// The folder the task got in a real run, which shows what it changed at its end.
+    pub start: Option<PathBuf>,
 }
 
 /// Where the files of a mounted volume come from.
@@ -263,6 +265,7 @@ impl Run {
                     };
                     let files = self.volumes.get(&key).cloned().unwrap_or_default();
                     let mut given = Vec::new();
+                    let mut start = None;
                     if whole {
                         let mut found = Vec::new();
                         if let Some(selected) =
@@ -274,6 +277,15 @@ impl Run {
                                     selected.display()
                                 ))
                             })?;
+                            let outward = found.iter().find(|(inside, _)| {
+                                crate::archives::resolved(selected, Path::new(inside)).is_none()
+                            });
+                            if let Some((inside, _)) = outward {
+                                return Err(Failure::error(format!(
+                                    "the host path {} holds the link {inside}, which leads out of it",
+                                    selected.display()
+                                )));
+                            }
                         }
                         let mut below: BTreeMap<String, PathBuf> = found.into_iter().collect();
                         below.extend(files.iter().filter_map(|(relative, location)| {
@@ -285,6 +297,7 @@ impl Run {
                         given = (below.into_iter())
                             .map(|(inside, _)| format!("{prefix}{inside}"))
                             .collect();
+                        start = Some(folder.clone());
                         task.inputs.push(Input {
                             path: path.clone(),
                             source: folder.to_string_lossy().into_owned(),
@@ -327,6 +340,7 @@ impl Run {
                             path,
                             sub_path: prefix,
                             given,
+                            start,
                         });
                     }
                 }
@@ -426,7 +440,10 @@ impl Run {
             if let Some(parent) = target.parent() {
                 std::fs::create_dir_all(parent).map_err(failed)?;
             }
-            if std::fs::hard_link(location, &target).is_err() {
+            if std::fs::symlink_metadata(location).is_ok_and(|meta| meta.is_symlink()) {
+                let link = std::fs::read_link(location).map_err(failed)?;
+                std::os::unix::fs::symlink(link, &target).map_err(failed)?;
+            } else if std::fs::hard_link(location, &target).is_err() {
                 std::fs::copy(location, &target).map_err(failed)?;
             }
         }
@@ -451,6 +468,14 @@ impl Run {
             };
             let mut files = Vec::new();
             walk(&location, &location, &mut files).map_err(|error| error.to_string())?;
+            let kept: std::collections::HashSet<String> = (files.iter())
+                .map(|(relative, _)| format!("{}{relative}", mount.sub_path))
+                .collect();
+            // Only what the task changed goes on, as on a shared host path, where siblings
+            // that run at the same time keep each other's changes.
+            if let Some(start) = &mount.start {
+                files.retain(|(relative, file)| !same(file, &start.join(relative)));
+            }
             let host = mount
                 .key
                 .strip_prefix("host:")
@@ -464,10 +489,18 @@ impl Run {
             let volume = self.volumes.entry(mount.key.clone()).or_default();
             // The mount shows the task's view at its end: files it got and no longer has were
             // removed or renamed. Simulated tasks show only what they make.
-            if !self.options.assume_inputs {
-                let kept: std::collections::HashSet<String> = (files.iter())
-                    .map(|(relative, _)| format!("{}{relative}", mount.sub_path))
+            if let (Some(host), Some(selected)) = (&host, &selected) {
+                let changed: Vec<(PathBuf, PathBuf)> = (files.iter())
+                    .map(|(relative, file)| {
+                        (
+                            file.clone(),
+                            host.join(format!("{}{relative}", mount.sub_path)),
+                        )
+                    })
                     .collect();
+                write_back(&changed, selected)?;
+            }
+            if !self.options.assume_inputs {
                 for relative in mount.given.iter().filter(|path| !kept.contains(*path)) {
                     volume.remove(relative);
                     // On a real host path, the task removed the file of the host.
@@ -499,11 +532,7 @@ impl Run {
                 }
             }
             for (relative, file) in files {
-                let relative = format!("{}{relative}", mount.sub_path);
-                if let (Some(host), Some(selected)) = (&host, &selected) {
-                    write_back(&file, selected, &host.join(&relative))?;
-                }
-                volume.insert(relative, file);
+                volume.insert(format!("{}{relative}", mount.sub_path), file);
             }
         }
         let outcomes = &self.nodes[index].outcomes;
@@ -518,27 +547,94 @@ impl Run {
     }
 }
 
-/// Copies a file that a task wrote into a host path to that path, over a file of the same name.
-fn write_back(file: &Path, root: &Path, target: &Path) -> std::result::Result<(), String> {
-    let failed = |error: std::io::Error| {
+/// Copies the files that a task wrote into a host path to that path, over files of the same
+/// name. All copies are made beside their targets first and then renamed into place, so that
+/// a failed copy leaves the host path as it was.
+fn write_back(files: &[(PathBuf, PathBuf)], root: &Path) -> std::result::Result<(), String> {
+    let failed = |target: &Path, error: std::io::Error| {
         format!(
             "cannot write {} back to the host path: {error}",
             target.display()
         )
     };
-    std::fs::create_dir_all(root).map_err(failed)?;
-    confined(root, target)?;
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(failed)?;
+    let mut staged = Vec::new();
+    let mut result = Ok(());
+    for (index, (file, target)) in files.iter().enumerate() {
+        let name = target.file_name().unwrap_or_default().to_string_lossy();
+        let copy = target.with_file_name(format!(".{name}.iunctus-{}-{index}", std::process::id()));
+        result = confined(root, target)
+            .and_then(|()| stage_copy(file, &copy).map_err(|error| failed(target, error)));
+        if result.is_err() {
+            let _ = std::fs::remove_file(&copy);
+            break;
+        }
+        staged.push((copy, target));
     }
-    std::fs::copy(file, target).map_err(failed)?;
-    // Store files are read-only; the host file must stay writable for the next write back.
-    let mode = std::fs::metadata(target)
-        .map_err(failed)?
-        .permissions()
-        .mode()
-        | 0o200;
-    std::fs::set_permissions(target, std::fs::Permissions::from_mode(mode)).map_err(failed)
+    if result.is_ok() {
+        for (copy, target) in &staged {
+            result = std::fs::rename(copy, target).map_err(|error| failed(target, error));
+            if result.is_err() {
+                break;
+            }
+        }
+    }
+    for (copy, _) in &staged {
+        let _ = std::fs::remove_file(copy);
+    }
+    result
+}
+
+/// Copies a file or a link to `copy`; a copied file stays writable for the next write back.
+fn stage_copy(file: &Path, copy: &Path) -> std::io::Result<()> {
+    if let Some(parent) = copy.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let metadata = std::fs::symlink_metadata(file)?;
+    if metadata.is_symlink() {
+        return std::os::unix::fs::symlink(std::fs::read_link(file)?, copy);
+    }
+    std::fs::copy(file, copy)?;
+    let mode = metadata.permissions().mode() | 0o200;
+    std::fs::set_permissions(copy, std::fs::Permissions::from_mode(mode))
+}
+
+/// Whether a task left a file or link as it got it.
+fn same(file: &Path, start: &Path) -> bool {
+    let (Ok(left), Ok(right)) = (
+        std::fs::symlink_metadata(file),
+        std::fs::symlink_metadata(start),
+    ) else {
+        return false;
+    };
+    if left.is_symlink() || right.is_symlink() {
+        return left.is_symlink()
+            && right.is_symlink()
+            && std::fs::read_link(file).ok() == std::fs::read_link(start).ok();
+    }
+    use std::os::unix::fs::MetadataExt;
+    if (left.dev(), left.ino()) == (right.dev(), right.ino()) {
+        return true;
+    }
+    left.len() == right.len() && equal_bytes(file, start).unwrap_or(false)
+}
+
+fn equal_bytes(left: &Path, right: &Path) -> std::io::Result<bool> {
+    use std::io::Read;
+    let (mut left, mut right) = (
+        std::io::BufReader::new(std::fs::File::open(left)?),
+        std::io::BufReader::new(std::fs::File::open(right)?),
+    );
+    let (mut one, mut two) = (vec![0; 1 << 16], vec![0; 1 << 16]);
+    loop {
+        let count = left.read(&mut one)?;
+        if count == 0 {
+            return Ok(right.read(&mut two[..1])? == 0);
+        }
+        right.read_exact(&mut two[..count])?;
+        if one[..count] != two[..count] {
+            return Ok(false);
+        }
+    }
 }
 
 fn confined(root: &Path, target: &Path) -> std::result::Result<(), String> {
@@ -570,14 +666,15 @@ fn directory_of(outcome: &Outcome, path: &str) -> Option<String> {
         .map(|file| file.location.clone())
 }
 
-/// The files below a directory, by their path relative to `root`.
+/// The files and links below a directory, by their path relative to `root`; links are never
+/// followed, so that a link to a folder is not read as one.
 fn walk(root: &Path, directory: &Path, files: &mut Vec<(String, PathBuf)>) -> std::io::Result<()> {
     let mut paths: Vec<PathBuf> = std::fs::read_dir(directory)?
         .map(|entry| entry.map(|entry| entry.path()))
         .collect::<std::io::Result<_>>()?;
     paths.sort();
     for path in paths {
-        if path.is_dir() {
+        if std::fs::symlink_metadata(&path)?.is_dir() {
             walk(root, &path, files)?;
         } else if let Ok(relative) = path.strip_prefix(root) {
             files.push((relative.to_string_lossy().into_owned(), path));

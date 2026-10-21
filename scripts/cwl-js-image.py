@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build the native CWL JavaScript helper from a trusted Linux binary and its libraries."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 import argparse

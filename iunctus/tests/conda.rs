@@ -1,6 +1,6 @@
 //! `iunctus lock-environment` locks a conda environment file with the repodata in the cache
 //! folder, without network, and says what is missing when the folder lacks repodata.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;

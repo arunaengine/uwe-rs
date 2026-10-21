@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Records native Nextflow stub scripts for the selected nf-core pipelines.
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"

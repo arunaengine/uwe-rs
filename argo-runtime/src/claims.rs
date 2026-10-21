@@ -1,6 +1,6 @@
 //! Resource templates that manage a PersistentVolumeClaim (decision 18). They run no task: a
 //! claim becomes a volume of the run, which the module `volumes` shares between tasks.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use argo_parser::model::Template;

@@ -1,5 +1,5 @@
 //! Reads Argo git artifacts into checkouts that the Git client of the run makes.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;

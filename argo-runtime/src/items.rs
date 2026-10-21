@@ -1,6 +1,6 @@
 //! Loops: `withItems`, `withParam` and `withSequence` expand a step or task into one per item
 //! (workflow/controller/steps.go, `expandStep` and `processItem`), named like `name(0:item)`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;

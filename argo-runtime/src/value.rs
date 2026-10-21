@@ -1,6 +1,6 @@
 //! Values of Argo's expressions, printed the way Go prints them: `fmt.Sprintf("%v")` for
 //! expression results and `encoding/json` for `toJson`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Checks Argo workflow outcomes on SLURM with Apptainer."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 import os

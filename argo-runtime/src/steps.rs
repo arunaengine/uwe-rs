@@ -1,6 +1,6 @@
 //! Steps templates (workflow/controller/steps.go): a list of step groups that run one after the
 //! other, each a list of steps that run side by side.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

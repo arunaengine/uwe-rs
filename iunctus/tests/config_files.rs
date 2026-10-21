@@ -1,5 +1,5 @@
 //! Checks site configuration selection and isolation from user configuration.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;

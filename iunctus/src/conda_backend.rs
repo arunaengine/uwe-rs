@@ -1,5 +1,5 @@
 //! Resolves local Conda environment files into inspected images before task cache lookup.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::sync::Arc;

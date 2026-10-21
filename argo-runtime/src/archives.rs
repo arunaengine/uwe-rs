@@ -1,5 +1,5 @@
 //! Packs output artifacts and unpacks and sets the mode of input artifacts as Argo does.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::fs::File;

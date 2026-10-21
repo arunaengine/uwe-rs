@@ -1,6 +1,6 @@
 //! What the tests that run the `iunctus` binary share: a command that reads no config file of
 //! the user and none of the site, so that results do not depend on the machine.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 #![allow(dead_code, reason = "each test file uses only a part of this module")]
 

@@ -1,6 +1,6 @@
 //! Arguments into inputs, as Argo's `ProcessArgs` and `SubstituteParams` do: the values of input
 //! parameters, the substitution of a template in two phases, and where artifacts come from.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;

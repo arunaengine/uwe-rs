@@ -1,6 +1,6 @@
 //! The Git commit of a workflow, read from the `.git` folder of its repository without a Git
 //! program, so that each run records which version of the workflow it ran.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::fs::read_to_string;

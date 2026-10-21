@@ -1,6 +1,6 @@
 //! Runs `iunctus check` on small workflows of every language: it reports every problem that
 //! would stop a real run at once, runs no task and records no run.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;

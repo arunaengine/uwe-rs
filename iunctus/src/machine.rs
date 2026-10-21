@@ -1,5 +1,5 @@
 //! Reports configured machine and executor prerequisites for real runs.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 #[path = "machine_local.rs"]
@@ -129,7 +129,7 @@ mod tests {
 mod config {
     //! The config files of the machine, their storage providers, and the secrets that they take
     //! from environment variables.
-    // Copyright (c) 2026 The iunctus Contributors
+    // Copyright (c) 2026 The uwe Contributors
     // SPDX-License-Identifier: MIT or Apache-2.0
 
     use config_file::{ConfigFile, Table};
@@ -275,7 +275,7 @@ mod config {
 mod executors {
     //! The executors that the config file or the command line sets up: the TES server, the tools
     //! of SLURM and the kubeconfig of a Kubernetes cluster.
-    // Copyright (c) 2026 The iunctus Contributors
+    // Copyright (c) 2026 The uwe Contributors
     // SPDX-License-Identifier: MIT or Apache-2.0
 
     use std::path::Path;

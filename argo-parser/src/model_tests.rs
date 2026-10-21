@@ -1,5 +1,5 @@
 //! Tests for the typed model and the v3 to v4 normalization.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use super::{AnyString, CronWorkflowSpec, Document, Template, WorkflowSpec, json_float, normalize};

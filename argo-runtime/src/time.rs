@@ -1,6 +1,6 @@
 //! Times as Go formats them: `time.Time.String()`, Go layouts like `2006-01-02`, and the
 //! strftime variables Argo derives from `workflow.creationTimestamp`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use jiff::Timestamp;

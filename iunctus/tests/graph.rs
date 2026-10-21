@@ -1,6 +1,6 @@
 //! Runs `iunctus graph` and `iunctus run -graph` on a small Nextflow pipeline, and checks the
 //! default executor, which writes a TES task document for each task.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;

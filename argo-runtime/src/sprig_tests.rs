@@ -1,5 +1,5 @@
 //! Tests for the Sprig functions.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use super::{base64_decode, base64_encode, call, path_base, path_clean, path_dir, path_ext};

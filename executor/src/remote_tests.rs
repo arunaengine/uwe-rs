@@ -426,3 +426,29 @@ async fn collects_patiently() {
     assert!(matches!(cancelled, Err(ExecutorError::Cancelled)));
     assert_eq!(tries.into_inner(), 1, "a cancel ends at once");
 }
+
+#[tokio::test]
+async fn remembers_file_digests() {
+    let folder = tempfile::tempdir().unwrap();
+    let file = folder.path().join("image.tar");
+    std::fs::write(&file, "one").unwrap();
+    let first = remembered(&file).await.unwrap();
+    assert_eq!(first, (Digest::sha256(b"one"), 3));
+    // The same size and time of change: the file is not read again.
+    let time = std::fs::metadata(&file).unwrap().modified().unwrap();
+    std::fs::write(&file, "two").unwrap();
+    let set = |time| {
+        std::fs::File::options()
+            .write(true)
+            .open(&file)
+            .unwrap()
+            .set_modified(time)
+    };
+    set(time).unwrap();
+    assert_eq!(remembered(&file).await.unwrap(), first);
+    set(time + Duration::from_secs(1)).unwrap();
+    assert_eq!(
+        remembered(&file).await.unwrap(),
+        (Digest::sha256(b"two"), 3)
+    );
+}

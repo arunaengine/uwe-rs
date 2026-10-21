@@ -54,7 +54,7 @@ pub struct Launch {
 #[error("{message}")]
 pub struct DriverError {
     pub message: String,
-    /// Whether the cause is a feature of the language that iunctus does not support yet; the
+    /// Whether the cause is a feature of the language that uwe does not support yet; the
     /// command then exits with code 33, as CWL runners do.
     pub unsupported: bool,
 }

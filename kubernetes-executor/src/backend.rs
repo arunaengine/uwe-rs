@@ -1029,12 +1029,12 @@ fn outcome(
         }
         Ended::Exited(status, reason) if reason == "OOMKilled" => Ok((
             *status,
-            Some("iunctus: Kubernetes stopped the task for lack of memory\n".to_owned()),
+            Some("uwe: Kubernetes stopped the task for lack of memory\n".to_owned()),
         )),
         Ended::Exited(status @ 129..=192, _) => Ok((
             *status,
             Some(format!(
-                "iunctus: the container ended with exit code {status}, maybe for lack of memory\n"
+                "uwe: the container ended with exit code {status}, maybe for lack of memory\n"
             )),
         )),
         // A captured wrapper ends with the code of its task, which it recorded first.
@@ -1051,8 +1051,8 @@ fn outcome(
 /// The note of a task that ran longer than its time, or than Kubernetes allows.
 fn too_long(time: Option<u64>) -> String {
     match time {
-        Some(time) => format!("iunctus: the task ran longer than its time of {time} seconds\n"),
-        None => "iunctus: the task ran longer than Kubernetes allows\n".to_owned(),
+        Some(time) => format!("uwe: the task ran longer than its time of {time} seconds\n"),
+        None => "uwe: the task ran longer than Kubernetes allows\n".to_owned(),
     }
 }
 

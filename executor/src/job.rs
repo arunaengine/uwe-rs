@@ -189,9 +189,7 @@ pub enum ExecutorError {
     )]
     MissingImage { image: String, reason: String },
     /// The image has no `sh`, which runs the wrapper of every task.
-    #[error(
-        "the image {0} has no sh, which iunctus needs to run a task; use an image with a shell"
-    )]
+    #[error("the image {0} has no sh, which uwe needs to run a task; use an image with a shell")]
     NoShell(String),
     #[error("cannot prepare the task directory: {0}")]
     Io(#[from] std::io::Error),

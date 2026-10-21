@@ -26,7 +26,7 @@ pub struct ResourceSpans {
     pub scope_spans: Vec<ScopeSpans>,
 }
 
-/// What made the spans: iunctus, as `service.name`, with its version.
+/// What made the spans: uwe, as `service.name`, with its version.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Resource {
     pub attributes: Vec<KeyValue>,

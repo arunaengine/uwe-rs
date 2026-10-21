@@ -267,7 +267,7 @@ fn key(job: &Job<'_>) -> String {
 /// runs it, one after another, whatever the ones before gave. A stop ends the group.
 fn script(members: &[Member]) -> String {
     let mut script = String::from(
-        "#!/bin/sh\n# Short tasks of iunctus, one after another in one container.\ngroup=$(pwd)\n",
+        "#!/bin/sh\n# Short tasks of uwe, one after another in one container.\ngroup=$(pwd)\n",
     );
     for (number, member) in members.iter().enumerate() {
         let folder = format!("m{number}");

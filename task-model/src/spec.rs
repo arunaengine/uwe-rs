@@ -43,7 +43,7 @@ pub struct TaskSpec {
     pub replaces_entrypoint: bool,
     /// Kubernetes identity: the image user or `RunAs`, in the image directory or `workdir`.
     /// Here `workdir` selects the command's starting directory, not the task's work directory.
-    /// Omitted when `None`: runs as the iunctus user in the task's work directory.
+    /// Omitted when `None`: runs as the uwe user in the task's work directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_as: Option<RunAs>,
 }
@@ -259,7 +259,7 @@ impl TaskSpec {
                     .any(|parent| destinations.contains(parent))
             });
         if overlays {
-            bytes.extend_from_slice(b"\0iunctus:ordered-input-overlays:v1\0");
+            bytes.extend_from_slice(b"\0uwe:ordered-input-overlays:v1\0");
             bytes.extend(
                 serde_jcs::to_vec(&self.inputs)
                     .map_err(|error| SpecError::Encoding(error.to_string()))?,

@@ -51,7 +51,7 @@ pub struct ContainerSpec {
     /// The bytes of memory that the container may use; no limit when `None`.
     pub memory: Option<u64>,
     /// Passes what the container writes to standard error on to the standard error of
-    /// iunctus; the last lines are always kept for errors.
+    /// uwe; the last lines are always kept for errors.
     pub show_stderr: bool,
 }
 
@@ -512,7 +512,7 @@ pub(crate) async fn create_id(
             match tokio::time::timeout(STOP_GRACE, receiver.recv()).await {
                 Ok(Some(Ok(id))) => remove_async(engine.client(), &id).await,
                 Err(_) => eprintln!(
-                    "iunctus: warning: container creation for {name} is still pending; its removal could not be confirmed"
+                    "uwe: warning: container creation for {name} is still pending; its removal could not be confirmed"
                 ),
                 _ => {}
             }

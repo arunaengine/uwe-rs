@@ -232,7 +232,7 @@ fn readme(run: &Run, workflow: &str, tasks: usize, inputs: bool, pinned: &Pinned
     let ended = run.ended.map(ids::time).unwrap_or_else(|| "not yet".into());
     text.push_str(&format!(
         "This folder is a Workflow Run RO-Crate of the Provenance Run Crate profile 0.5, written by \
-         iunctus {}.\n\n\
+         uwe {}.\n\n\
          - `ro-crate-metadata.json` describes the run: the workflow, its steps, and one action per \
          task with its command, container image, inputs, outputs, start and end.\n\
          - `{workflow}` is the workflow that ran.\n{}\

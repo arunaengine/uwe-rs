@@ -102,7 +102,7 @@ fn record_with_address(directory: &Path, address: Option<&str>) -> Database {
         executor: "simulator".into(),
         simulated: true,
         store: None,
-        program: Some("iunctus 0.1.0".into()),
+        program: Some("uwe 0.1.0".into()),
         launch: Some("/work".into()),
         workflow_folder: Some("/work".into()),
         repeats: None,

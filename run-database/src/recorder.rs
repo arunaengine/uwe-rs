@@ -33,7 +33,7 @@ pub struct RunStart {
     pub language: Language,
     /// The Git commit of the workflow's repository.
     pub revision: Option<String>,
-    /// The command line after `iunctus`.
+    /// The command line after `uwe`.
     pub arguments: Vec<String>,
     /// The workflow parameters, in the order given.
     pub parameters: Vec<(String, String)>,
@@ -42,14 +42,14 @@ pub struct RunStart {
     pub simulated: bool,
     /// Where a real run keeps its files.
     pub store: Option<String>,
-    /// The iunctus that runs it, like `iunctus 0.1.0`.
+    /// The uwe that runs it, like `uwe 0.1.0`.
     pub program: Option<String>,
     /// The folder the run starts in, where relative paths of its command line start.
     pub launch: Option<String>,
     /// The folder of the workflow whose files the run records: the Git repository of the
     /// workflow, or its folder.
     pub workflow_folder: Option<String>,
-    /// The run that this one repeats, with `iunctus repeat`.
+    /// The run that this one repeats, with `uwe repeat`.
     pub repeats: Option<String>,
 }
 

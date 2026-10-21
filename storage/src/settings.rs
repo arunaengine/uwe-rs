@@ -176,7 +176,7 @@ fn provider(table: &Table<'_>) -> Result<ProviderSettings, ConfigError> {
         return Err(table.invalid(
             "type",
             format!(
-                "is `{kind_name}`, which iunctus does not know; use one of {}",
+                "is `{kind_name}`, which uwe does not know; use one of {}",
                 TYPES.join(", ")
             ),
         ));

@@ -1746,7 +1746,7 @@ async fn reports_stage_failures() {
     let root = tempfile::tempdir().expect("a folder");
     let (mut backend, _) = backend(root.path()).await;
     let helper = root.path().join("server/helper");
-    let script = "#!/bin/sh\necho 'iunctus: cannot download the plan: refused' >&2\nexit 1\n";
+    let script = "#!/bin/sh\necho 'uwe: cannot download the plan: refused' >&2\nexit 1\n";
     std::fs::write(&helper, script).expect("writes the helper");
     let mode = std::os::unix::fs::PermissionsExt::from_mode(0o755);
     std::fs::set_permissions(&helper, mode).expect("runs");
@@ -1792,7 +1792,7 @@ async fn reports_stage_failures() {
 fn stage_helper() {
     if let Ok(arguments) = std::env::var("UWE_TEST_STAGE") {
         let arguments: Vec<String> = arguments.split('\u{1f}').map(str::to_owned).collect();
-        // The first argument is `__stage`, as the iunctus program takes it.
+        // The first argument is `__stage`, as the uwe program takes it.
         executor::helper::main(&arguments[1..]).expect("the helper stages");
     }
 }

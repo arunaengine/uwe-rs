@@ -22,7 +22,7 @@ pub use text::{outputs_text, text};
 pub use upgrade::upgrade;
 pub use valid::valid;
 
-/// The draft of every schema that iunctus makes.
+/// The draft of every schema that uwe makes.
 pub const DRAFT: &str = "https://json-schema.org/draft/2020-12/schema";
 
 /// The `format` of a text that names a file.

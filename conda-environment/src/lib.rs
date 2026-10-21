@@ -62,9 +62,7 @@ pub enum LockError {
     NoPackage { spec: String, channels: Vec<String> },
     #[error("the packages of `{}` cannot all be installed together", specs.join("`, `"))]
     Conflict { specs: Vec<String> },
-    #[error(
-        "the environment needs a longer search than the {tries} tries of the resolver of iunctus"
-    )]
+    #[error("the environment needs a longer search than the {tries} tries of the resolver of uwe")]
     TooComplex { tries: usize },
     #[error("the package {package} names a dependency that cannot be read: {error}")]
     Package { package: String, error: SpecError },

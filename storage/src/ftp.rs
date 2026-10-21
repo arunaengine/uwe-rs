@@ -17,7 +17,7 @@ use crate::error::Problem;
 use crate::web::open;
 use crate::{Downloaded, Entry, Metadata, address};
 
-/// How long iunctus waits for a server to answer a connection.
+/// How long uwe waits for a server to answer a connection.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(crate) struct Ftp {

@@ -103,7 +103,7 @@ number=0
 flatten() {
     local source="$1" path="$2" child name
     if [ -d "$source" ]; then
-        [ ! -L "$source" ] || { echo 'iunctus: cannot capture directory links' >&2; exit 33; }
+        [ ! -L "$source" ] || { echo 'uwe: cannot capture directory links' >&2; exit 33; }
         for child in "$source"/* "$source"/.[!.]* "$source"/..?*; do
             [ -e "$child" ] || [ -L "$child" ] || continue
             name=${child##*/}
@@ -111,12 +111,12 @@ flatten() {
         done
     elif [ -f "$source" ]; then
         case "$path" in *'
-'*) echo 'iunctus: cannot capture newline paths' >&2; exit 33 ;; esac
+'*) echo 'uwe: cannot capture newline paths' >&2; exit 33 ;; esac
         number=$((number + 1))
         cp -L "$source" "$transfer/$number" || exit 1
         printf '%s %s\n' "$number" "$path" >> "$control/objects"
     else
-        echo 'iunctus: an output is not a regular file' >&2
+        echo 'uwe: an output is not a regular file' >&2
         exit 33
     fi
 }

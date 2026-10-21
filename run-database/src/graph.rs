@@ -1,5 +1,5 @@
 //! The execution graph of a recorded run, as the engine built it while the run went on, so that
-//! the page draws the same graph as `iunctus graph`.
+//! the page draws the same graph as `uwe graph`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

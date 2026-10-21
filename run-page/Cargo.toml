@@ -4,7 +4,7 @@
 
 [package]
 name = "run-page"
-description = "The web page of iunctus: the graph, the tasks, the logs and the outputs of each run, live"
+description = "The web page of uwe: the graph, the tasks, the logs and the outputs of each run, live"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

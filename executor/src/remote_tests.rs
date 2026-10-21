@@ -280,7 +280,7 @@ fn s3_stage(name: &str, credentials: bool) -> RemoteStage {
 }
 
 /// A staging root below the address in the environment variable `root`, through the storage
-/// providers of `UWE_TEST_STORAGE`, as iunctus opens it.
+/// providers of `UWE_TEST_STORAGE`, as uwe opens it.
 fn configured_stage(root: &str) -> RemoteStage {
     let root = std::env::var(root).expect("the address of the staging root");
     let root = format!("{root}/uwe-remote-{}", std::process::id());

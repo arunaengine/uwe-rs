@@ -213,7 +213,7 @@ fn of_ignored(error: &ValidationError<'_>, inputs: &Inputs) -> bool {
     })
 }
 
-/// The problem that a validation error stands for, in the words of iunctus.
+/// The problem that a validation error stands for, in the words of uwe.
 fn problem(error: &ValidationError<'_>, simulated: bool, assumes_values: bool) -> Problem {
     let at = input_name(error.instance_path().as_str());
     let schema_path = error.schema_path().as_str();

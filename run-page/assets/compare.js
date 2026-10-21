@@ -1,4 +1,4 @@
-// Comparing two runs on the page of iunctus: what differs between the runs themselves, and task
+// Comparing two runs on the page of uwe: what differs between the runs themselves, and task
 // by task what each does, which outputs have other content, and which came from the cache or an
 // earlier run in one run and ran in the other. The run view offers it for the runs of the same
 // workflow. It uses the helpers of `page.js`.
@@ -20,7 +20,7 @@ const PAIR_ROWS = 100;
 async function showCompare(first, second) {
   leave();
   trail.replaceChildren(link("/", "runs"), " / compare");
-  document.title = "iunctus: compare two runs";
+  document.title = "uwe: compare two runs";
   main.replaceChildren(el("p", { class: "quiet" }, "Comparing..."));
   let data;
   try {
@@ -119,7 +119,7 @@ async function comparePart(run) {
   }
   const others = runs.filter((other) => other.workflow === run.workflow && other.id !== run.id);
   if (!others.length) return part;
-  // The run before this one first, as `iunctus compare <run>` takes it.
+  // The run before this one first, as `uwe compare <run>` takes it.
   const before = others.find((other) => other.started <= run.started) || others[0];
   const choice = el("select", {}, others.map((other) => el("option", {
     value: other.id, selected: other.id === before.id,

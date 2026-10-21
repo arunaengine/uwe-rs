@@ -98,7 +98,7 @@ fn rejects_invalid_environment() {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "iunctus: invalid task specification\n"
+        "uwe: invalid task specification\n"
     );
     assert!(!injected.exists());
 }

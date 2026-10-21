@@ -1,4 +1,4 @@
-// The view of one run on the page of iunctus: its summary, graph, steps, tasks, and one task
+// The view of one run on the page of uwe: its summary, graph, steps, tasks, and one task
 // or step with its details. A running run updates live through Server-Sent Events. It uses
 // the helpers of `page.js` and the graph view of `graph.js`.
 // Copyright (c) 2026 The uwe Contributors
@@ -30,7 +30,7 @@ async function showRun(id, task) {
     events: null,
     graph: null,
   };
-  document.title = `iunctus: ${base(data.run.workflow)} ${id}`;
+  document.title = `uwe: ${base(data.run.workflow)} ${id}`;
   buildRun();
   drawAll();
   drawGraph();
@@ -397,7 +397,7 @@ function checksPart(checks) {
         return ["It ran again and gave the same bytes as the result of ", earlier(check), " in the cache."];
       case "differs":
         return ["It ran again and gave other bytes than the result of ", earlier(check), " in the cache, in ",
-          check.differing.join(", "), ". iunctus shares no results of this tool any more; resumed runs still take them."];
+          check.differing.join(", "), ". uwe shares no results of this tool any more; resumed runs still take them."];
       default:
         return ["It ran again and failed with exit code ", String(check.exit_code ?? ""), "."];
     }
@@ -424,7 +424,7 @@ function whyPart(id, task) {
 
 // How to run the task again alone, and the runs that did.
 function replayPart(id, task, replays) {
-  const command = `iunctus replay ${id} ${task}`;
+  const command = `uwe replay ${id} ${task}`;
   const shown = el("div", { hidden: true },
     el("p", { class: "quiet" }, "Run this to run the task again alone, in the image it ran in " +
       "and with the same inputs, on this machine; add -executor tes, slurm or kubernetes to run " +

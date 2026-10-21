@@ -642,7 +642,7 @@ fn limits_container_permissions() {
         "OUT".into(),
         task_model::EnvironmentValue::Literal("out.txt".into()),
     );
-    // As the user who runs iunctus: no capabilities, and no way to gain privileges.
+    // As the user who runs uwe: no capabilities, and no way to gain privileges.
     let finished = run(&executor, "least-1", &task, &Staging::default()).expect("runs");
     assert_eq!(
         written(&finished),
@@ -690,7 +690,7 @@ fn uses_image_identity() {
         "the files are the user's"
     );
     // As another user that the task names, starting in its `workdir`: what it made is
-    // handed back to the user who runs iunctus.
+    // handed back to the user who runs uwe.
     let mut task = spec(Some("debian:stable-slim"), &["/tmp/made"]);
     let script = "id -u > /tmp/id && mkdir -p /tmp/made/deeper && chmod 700 /tmp/made/deeper && \
                   mv /tmp/id /tmp/made/deeper/id && pwd > /tmp/made/where";

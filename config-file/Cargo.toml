@@ -1,10 +1,10 @@
-# Manifest of config-file, the iunctus config file: where it is, how files merge, secrets.
+# Manifest of config-file, the uwe config file: where it is, how files merge, secrets.
 # Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
 name = "config-file"
-description = "The iunctus config file: the site, user and named files, merged, with secrets from environment variables"
+description = "The uwe config file: the site, user and named files, merged, with secrets from environment variables"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

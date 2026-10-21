@@ -14,7 +14,7 @@ use crate::otlp::{
     SpanEvent, Status, UNSET,
 };
 
-/// The name of iunctus as the service and the scope of its spans.
+/// The name of uwe as the service and the scope of its spans.
 const SERVICE: &str = "uwe";
 
 /// The spans of a run, in export requests of at most `per_request` spans each; `None` for an
@@ -67,7 +67,7 @@ pub fn requests(
     Ok(Some(requests))
 }
 
-/// One export request with these spans of iunctus.
+/// One export request with these spans of uwe.
 pub(crate) fn request(spans: Vec<Span>) -> Request {
     let version = env!("CARGO_PKG_VERSION");
     Request {
@@ -190,7 +190,7 @@ impl Ids {
     fn of(run: &str) -> Ids {
         Ids {
             run: run.to_owned(),
-            trace: hex(&format!("iunctus trace {run}"), 16),
+            trace: hex(&format!("uwe trace {run}"), 16),
         }
     }
 

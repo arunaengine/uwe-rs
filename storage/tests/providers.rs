@@ -160,7 +160,7 @@ fn locates_settings_errors() {
     assert_eq!(
         settings_error("[storage.a]\ntype = \"dropbox\"\n"),
         format!(
-            "{file}:2: `storage.a.type` is `dropbox`, which iunctus does not know; use \
+            "{file}:2: `storage.a.type` is `dropbox`, which uwe does not know; use \
              one of s3, google-cloud-storage, azure-blob-storage, https, ftp, folder"
         )
     );
@@ -573,7 +573,7 @@ async fn reads_ftp_inputs() {
 
 #[tokio::test]
 async fn reads_builtin_ftp() {
-    // Without a provider, iunctus logs in as `anonymous`, as public servers ask.
+    // Without a provider, uwe logs in as `anonymous`, as public servers ask.
     let public = FtpServer::start(&[("/pub/a.txt", "alpha")], "anonymous", "anonymous@");
     let file = format!("{}/pub/a.txt", public.address);
     let found = Storage::default().stat(&file).await.unwrap();

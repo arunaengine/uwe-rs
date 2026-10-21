@@ -106,7 +106,7 @@ impl<B: Backend> Runner<B> {
             // Missing a cache write is harmless: a later run only runs the task again.
             (Err(error), Some(entry)) if !cancel.is_cancelled() => {
                 eprintln!(
-                    "iunctus: warning: the result of task {} is not cached: {error}",
+                    "uwe: warning: the result of task {} is not cached: {error}",
                     entry.task
                 );
                 Ok(())

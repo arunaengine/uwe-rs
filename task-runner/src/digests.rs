@@ -74,7 +74,7 @@ impl fmt::Debug for DigestCache {
 }
 
 impl DigestCache {
-    /// The name of the file of the cache in the cache folder of iunctus.
+    /// The name of the file of the cache in the cache folder of uwe.
     pub const FILE_NAME: &str = "digests.sqlite";
 
     /// Opens the cache in the file `path`, making it and its folder when they are missing.

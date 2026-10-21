@@ -32,7 +32,7 @@ impl StorageFiles {
     fn copy_here(&self, location: &str) -> io::Result<PathBuf> {
         match self.storage.stat(location).map_err(other)? {
             Some(found) if found.directory => {
-                // As fetch does, so that `iunctus clean` leaves the copy alone while it grows.
+                // As fetch does, so that `uwe clean` leaves the copy alone while it grows.
                 self.storage.hold(&self.downloads).map_err(other)?;
                 let name = self.storage.download_name(location).map_err(other)?;
                 let turn = (self
@@ -56,7 +56,7 @@ impl StorageFiles {
 
     /// Downloads a directory whole into a temporary folder and only then renames it to a
     /// bundle of this process, as tasks of other runs may read their own copy while it changes.
-    /// A crash leaves a `.tmp` folder; `iunctus clean` removes it and old bundles.
+    /// A crash leaves a `.tmp` folder; `uwe clean` removes it and old bundles.
     fn copy_directory(&self, location: &str, name: &str) -> io::Result<PathBuf> {
         std::fs::create_dir_all(&self.downloads)?;
         let ready = tempfile::tempdir_in(&self.downloads)?;

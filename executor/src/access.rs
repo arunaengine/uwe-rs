@@ -29,7 +29,7 @@ pub struct Access {
     pub user: Option<String>,
     /// The capabilities that the container keeps; it drops all others.
     pub capabilities: Vec<&'static str>,
-    /// The ids that the user who runs iunctus has in the container, when the container may
+    /// The ids that the user who runs uwe has in the container, when the container may
     /// run as another user; what the task makes goes back to them.
     pub hand_back: Option<(u32, u32)>,
 }
@@ -76,7 +76,7 @@ impl Access {
     }
 
     /// The ids that the wrapper gives what the task made, like `1000:100`; empty when the
-    /// container runs as the user who runs iunctus.
+    /// container runs as the user who runs uwe.
     pub fn owner(&self) -> String {
         match self.hand_back {
             Some((user, group)) => format!("{user}:{group}"),

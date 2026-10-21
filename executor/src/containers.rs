@@ -109,7 +109,7 @@ pub fn container_wrapper(spec: &TaskSpec, position: usize, folders: &Folders<'_>
     let main = position == 0;
     let own = own_folder(spec, position);
     let mut script = format!(
-        "#!/bin/sh\n# The iunctus wrapper of container {} of a task.\nset -u\n",
+        "#!/bin/sh\n# The uwe wrapper of container {} of a task.\nset -u\n",
         container.name
     );
     script.push_str(BASH);
@@ -154,7 +154,7 @@ pub fn container_wrapper(spec: &TaskSpec, position: usize, folders: &Folders<'_>
         script.push_str(&format!(
             "if [ \"$status\" -eq 0 ] && ! waited {exit}; then\n    status={DEPENDENCY_FAILED}\n    echo {} > \"$own/{STDERR}\"\nfi\n",
             quote(&format!(
-                "iunctus: container {} did not run, since container {name} failed",
+                "uwe: container {} did not run, since container {name} failed",
                 container.name
             ))
         ));
@@ -277,7 +277,7 @@ pub fn group_wrapper(members: &[(String, String)], owner: &str, root: &str) -> S
     // The script is the first process of its container, which ignores a stop that it has no
     // trap for; when it ends, the container ends with every process in it.
     let mut script = String::from(
-        "#!/bin/sh\n# Containers of an iunctus task that share an image.\ntrap 'exit 143' TERM INT HUP\n",
+        "#!/bin/sh\n# Containers of an uwe task that share an image.\ntrap 'exit 143' TERM INT HUP\n",
     );
     for (wrapper, exit) in members {
         let command = format!("sh {} > /dev/null", quote(wrapper));

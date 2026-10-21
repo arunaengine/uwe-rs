@@ -1,4 +1,4 @@
-// The report of one run, a single HTML file that `iunctus report` and `iunctus run -report`
+// The report of one run, a single HTML file that `uwe report` and `uwe run -report`
 // write: the page of the run without a server. The data that the page would ask the server for
 // is in the file; this script answers the requests of the other scripts from it, and adds the
 // parts that only the report has: the timeline of the tasks, what each task used, and where the
@@ -26,7 +26,7 @@ window.fetch = async (address) => {
     return new Response(REPORT_DATA.pictures[path], { headers: { "content-type": "image/svg+xml" } });
   }
   return new Response(`This report holds only run ${REPORT_DATA.run}, and not this view of it. ` +
-    `\`iunctus page ${REPORT_DATA.run}\` shows everything.`, { status: 404 });
+    `\`uwe page ${REPORT_DATA.run}\` shows everything.`, { status: 404 });
 };
 
 // The view that the report shows first.

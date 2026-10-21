@@ -105,7 +105,7 @@ pub enum RunnerError {
     /// A local input of the task is not there.
     #[error("the input {} does not exist", .0.display())]
     Missing(PathBuf),
-    #[error("the input {0} is a remote directory, which iunctus cannot read yet")]
+    #[error("the input {0} is a remote directory, which uwe cannot read yet")]
     Remote(String),
     /// A lookup of the cache cannot know a remote input that no run downloaded yet.
     #[error("the input {0} is not downloaded yet")]
@@ -603,7 +603,7 @@ impl<B: Backend> Runner<B> {
                 {
                     Ok(_) => {}
                     Err(error) if !cancel.is_cancelled() => eprintln!(
-                        "iunctus: warning: the result of task {} is not cached: {error}",
+                        "uwe: warning: the result of task {} is not cached: {error}",
                         entry.task
                     ),
                     Err(error) => return Err(error),

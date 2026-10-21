@@ -1,5 +1,5 @@
-// The graph view of a run on the page of iunctus. The server draws the picture with the layout
-// of iunctus, the same SVG as `iunctus graph -format svg`; this script shows it in a card with
+// The graph view of a run on the page of uwe. The server draws the picture with the layout
+// of uwe, the same SVG as `uwe graph -format svg`; this script shows it in a card with
 // switches for the view and the direction, and opens a step that is folded into one box with a
 // click. While a run goes on, a new picture takes the place of the old one when tasks come, and
 // the boxes glide to their new places. `camera.js` moves and zooms the picture, `boxes.js` keeps

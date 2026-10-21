@@ -1,4 +1,4 @@
-// The camera of the graph view on the page of iunctus: drag to move the picture, zoom with the
+// The camera of the graph view on the page of uwe: drag to move the picture, zoom with the
 // wheel, the buttons or the keys, and fit it to the view. The first view shows the start of the
 // graph, and large pictures hide what lies outside the view, so that moving stays fast. A click
 // that does not move the picture goes to the box under the pointer.

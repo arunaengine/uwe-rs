@@ -63,7 +63,7 @@ pub fn tag_file_name(reference: &str) -> Option<String> {
 pub fn pull_script(program: &str, reference: &str, file: &Path, exit: &Path) -> String {
     let file = quote(&file.to_string_lossy());
     format!(
-        "#!/bin/bash\n# The iunctus job that pulls an image into a SIF file once, for the jobs \
+        "#!/bin/bash\n# The uwe job that pulls an image into a SIF file once, for the jobs \
          of tasks.\npart={file}.part-$SLURM_JOB_ID\n{} pull --disable-cache \"$part\" {} && {{ sync \
          -- \"$part\" 2> /dev/null; mv -f \"$part\" {file}; }}\nstatus=$?\nrm -f \"$part\"\necho $status > {}\n",
         quote(program),
@@ -92,7 +92,7 @@ pub fn archive_path(reference: &str) -> Option<&Path> {
 }
 
 /// The name of the SIF file of an image archive, and whether it lasts across runs: only for an
-/// archive named by its image ID, like `sha256-<hex>.tar`, as iunctus saves them.
+/// archive named by its image ID, like `sha256-<hex>.tar`, as uwe saves them.
 pub fn archive_file(reference: &str) -> Option<(String, bool)> {
     let path = archive_path(reference)?;
     let named = path.file_name().and_then(|name| name.to_str());
@@ -214,7 +214,7 @@ mod tests {
             Path::new("/c/images/sha256-ab.sif"),
             Path::new("/c/images/sha256-ab/control/container-exit"),
         );
-        let expected = "#!/bin/bash\n# The iunctus job that pulls an image into a SIF file \
+        let expected = "#!/bin/bash\n# The uwe job that pulls an image into a SIF file \
             once, for the jobs of tasks.\npart='/c/images/sha256-ab.sif'.part-$SLURM_JOB_ID\n\
             'apptainer' pull --disable-cache \"$part\" 'docker://debian@sha256:ab' && { sync -- \
             \"$part\" 2> /dev/null; mv -f \"$part\" '/c/images/sha256-ab.sif'; }\nstatus=$?\nrm -f \"$part\"\necho $status > \

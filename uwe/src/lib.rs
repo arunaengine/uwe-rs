@@ -22,6 +22,7 @@ mod local;
 mod logging;
 mod machine;
 mod nextflow;
+mod old_folders;
 mod order;
 mod page;
 mod preview;

@@ -5,6 +5,7 @@
 pub use crate::arguments::{Arguments, help, parse_command};
 pub use crate::failure::{Failure, USAGE};
 pub use crate::logging::init;
+pub use crate::old_folders::hint as hint_old_folders;
 use crate::repeat::Pinned;
 pub use crate::setup::Defaults;
 use crate::setup::Setup;

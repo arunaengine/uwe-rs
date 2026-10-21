@@ -29,6 +29,7 @@ fn main() -> ExitCode {
             }
         };
     }
+    cli::hint_old_folders();
     let Some((command, rest)) = arguments.split_first() else {
         eprintln!("{USAGE}");
         return ExitCode::from(cli::USAGE);

@@ -86,7 +86,7 @@ fn stubs_match_oracle() {
             .env("XDG_CACHE_HOME", cache.path())
             .current_dir(cache.path())
             .output()
-            .expect("runs iunctus");
+            .expect("runs uwe");
         if !output.status.success() {
             let error = String::from_utf8_lossy(&output.stderr);
             problems.push(format!("{name}: the run failed: {}", error.trim()));

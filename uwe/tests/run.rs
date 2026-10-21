@@ -36,16 +36,16 @@ workflow {
 
 /// Runs the binary in `directory`; the result has the exit code and the standard output and
 /// error, without the note of a simulated run, which `tests/graph.rs` checks.
-fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String) {
+fn uwe(directory: &Path, arguments: &[&str]) -> (i32, String) {
     let output = common::command()
         .args(arguments)
         .current_dir(directory)
         .env("XDG_CACHE_HOME", directory.join("cache"))
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let stderr = stderr.replace(&format!("iunctus: {SIMULATION}\n"), "");
+    let stderr = stderr.replace(&format!("uwe: {SIMULATION}\n"), "");
     (
         output.status.code().unwrap_or(-1),
         common::without_display(&format!("{stdout}{stderr}")),
@@ -59,7 +59,7 @@ fn reuses_run_tasks() {
     std::fs::write(directory.path().join("main.nf"), SCRIPT).expect("writes the script");
     std::fs::write(directory.path().join("input.txt"), "one\ntwo\n").expect("writes the input");
     let arguments = ["run", "main.nf", "-executor", "local"];
-    let (code, output) = iunctus(directory.path(), &arguments);
+    let (code, output) = uwe(directory.path(), &arguments);
     assert_eq!(code, 0, "{output}");
     // The three `view` operators print in an order that Nextflow does not define either.
     let mut lines: Vec<&str> = output.lines().collect();
@@ -68,7 +68,7 @@ fn reuses_run_tasks() {
         lines,
         ["", "2", "TWO", "[done] UPPER (1)", "a: ONE", "shouted"]
     );
-    let (code, output) = iunctus(directory.path(), &arguments);
+    let (code, output) = uwe(directory.path(), &arguments);
     assert_eq!(code, 0, "{output}");
     assert!(output.starts_with("[cached] UPPER (1)\n"), "{output}");
 }
@@ -87,13 +87,13 @@ fn reports_real_results() {
         .current_dir(directory.path())
         .env("XDG_CACHE_HOME", directory.path().join("cache"))
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "{stdout}");
     // Standard output is no terminal here, so the lines come one after another.
     let lines: Vec<&str> = stdout.lines().collect();
     let header = format!(
-        "iunctus {}: running main.nf (Nextflow) on local, run ",
+        "uwe {}: running main.nf (Nextflow) on local, run ",
         env!("CARGO_PKG_VERSION")
     );
     assert!(lines[0].starts_with(&header), "{stdout}");
@@ -111,7 +111,7 @@ fn reports_real_results() {
     );
     assert_eq!(lines[7..9], ["Results:", "  results/ a.txt, b.txt"]);
     assert!(lines[9].starts_with("Files of every task: "), "{stdout}");
-    let more = format!("More: `iunctus runs`, `iunctus page {run}`, `iunctus time {run}`");
+    let more = format!("More: `uwe runs`, `uwe page {run}`, `uwe time {run}`");
     assert_eq!(lines[10], more);
 }
 
@@ -142,7 +142,7 @@ fn interrupt_stops_tasks() {
         .current_dir(directory.path())
         .env("XDG_CACHE_HOME", directory.path().join("cache"))
         .spawn()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     std::thread::sleep(std::time::Duration::from_secs(4));
     let begin = std::time::Instant::now();
     let interrupt = Command::new("kill")
@@ -150,7 +150,7 @@ fn interrupt_stops_tasks() {
         .status()
         .expect("sends Ctrl-C");
     assert!(interrupt.success());
-    let status = child.wait().expect("iunctus ends");
+    let status = child.wait().expect("uwe ends");
     assert_eq!(status.code(), Some(130));
     // Both containers stopped at once, long before their minute.
     assert!(begin.elapsed() < std::time::Duration::from_secs(30));
@@ -170,7 +170,7 @@ fn requires_task_images() {
     let script = "process P {\n    script:\n    'true'\n}\nworkflow {\n    P()\n}\n";
     std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
     // The check comes before the container engine, so this test needs no Docker.
-    let (code, output) = iunctus(directory.path(), &["run", "main.nf", "-executor", "local"]);
+    let (code, output) = uwe(directory.path(), &["run", "main.nf", "-executor", "local"]);
     assert_eq!(code, 1, "{output}");
     assert!(
         output.contains("task P: the task names no container image"),
@@ -186,7 +186,7 @@ fn script_project_defaults() {
         "workflow {\n    println(projectDir == launchDir)\n}\n",
     )
     .expect("writes the script");
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         directory.path(),
         &["run", "-executor", "simulator", "main.nf"],
     );
@@ -201,7 +201,7 @@ fn unsupported_exit_code() {
         "enum Color {\n    RED\n}\n",
     )
     .expect("writes the script");
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         directory.path(),
         &["run", "-executor", "simulator", "main.nf"],
     );
@@ -216,7 +216,7 @@ fn unsupported_exit_code() {
         "process P {\n    input:\n    val x from Channel.from(1)\n    script:\n    'true'\n}\n",
     )
     .expect("writes the script");
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         directory.path(),
         &["run", "-executor", "simulator", "dsl1.nf"],
     );
@@ -232,7 +232,7 @@ fn unsupported_exit_code() {
          process Q {\n    input:\n    val x from EXIT_STAT\n    script:\n    'true'\n}\n",
     )
     .expect("writes the script");
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         directory.path(),
         &["run", "-executor", "simulator", "dsl1.nf"],
     );
@@ -277,7 +277,7 @@ fn simulation_uses_settings() {
         "-profile",
         "loud",
     ];
-    let (code, output) = iunctus(directory.path(), &arguments);
+    let (code, output) = uwe(directory.path(), &arguments);
     assert_eq!(code, 0, "{output}");
     let mut lines: Vec<&str> = output.lines().collect();
     lines.sort_unstable();
@@ -291,7 +291,7 @@ fn simulation_uses_settings() {
         ]
     );
     let arguments = ["config", "-profile", "loud", "--greeting", "hey"];
-    let (code, output) = iunctus(directory.path(), &arguments);
+    let (code, output) = uwe(directory.path(), &arguments);
     assert_eq!(code, 0, "{output}");
     assert_eq!(output, "params.greeting = 'hey'\n");
 }
@@ -304,7 +304,7 @@ fn simulates_output_directories() {
                   workflow {\n    P()\n    P.out.db.view { d -> \"${d.name} ${d.isDirectory()}\" }\n    \
                   P.out.x.view { f -> f.name }\n    P.out.table.view { f -> f.name }\n}\n";
     std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         directory.path(),
         &["run", "main.nf", "-executor", "simulator"],
     );
@@ -330,7 +330,7 @@ fn preserves_output_names() {
                   P.out.c.view { f -> f.name }\n}\n";
     std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
     let arguments = ["run", "main.nf", "-stub-run", "-executor", "simulator"];
-    let (code, output) = iunctus(directory.path(), &arguments);
+    let (code, output) = uwe(directory.path(), &arguments);
     assert_eq!(code, 0, "{output}");
     let mut lines: Vec<&str> = output.lines().collect();
     lines.sort_unstable();
@@ -339,16 +339,16 @@ fn preserves_output_names() {
         [
             "[s_1.fq, s_2.fq]",
             "[simulated] P",
-            // `d.list()` lists a made-up folder, which a real run may fill with other files.
-            "iunctus: the graph marks 1 point where real data can add or remove tasks.",
             "s true [a.txt]",
-            "s.cluster"
+            "s.cluster",
+            // `d.list()` lists a made-up folder, which a real run may fill with other files.
+            "uwe: the graph marks 1 point where real data can add or remove tasks."
         ]
     );
     // An output that the stub surely does not make fails the task, as in Nextflow.
     let script = script.replace("path '*cluster', emit: c", "path 'none.txt', emit: c");
     std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
-    let (code, output) = iunctus(directory.path(), &arguments);
+    let (code, output) = uwe(directory.path(), &arguments);
     assert_eq!(code, 1, "{output}");
     assert!(
         output.contains("Missing output file(s) `none.txt` expected by process `P`"),

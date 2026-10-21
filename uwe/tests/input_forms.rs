@@ -23,7 +23,7 @@ fn command(folder: &std::path::Path, name: &str, format: &str) -> Value {
             format,
         ])
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     assert!(
         output.status.success(),
         "{}",

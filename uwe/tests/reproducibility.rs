@@ -111,13 +111,13 @@ workflow {
 
 /// Runs the binary in `directory` with the cache folder `cache`, and gives its exit code and
 /// what it printed.
-fn iunctus(directory: &Path, cache: &Path, arguments: &[&str]) -> (i32, String) {
+fn uwe(directory: &Path, cache: &Path, arguments: &[&str]) -> (i32, String) {
     let output = common::command()
         .args(arguments)
         .current_dir(directory)
         .env("XDG_CACHE_HOME", cache)
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     (
@@ -146,7 +146,7 @@ fn reports_pinned_changes() {
     std::fs::write(folder.join("extra.config"), "params.unused = 1\n").expect("writes");
     let server = WebServer::start(&[("/sheet.csv", "id\na\nb\n")]);
     let sheet = format!("{}/sheet.csv", server.address);
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         &folder,
         &cache,
         &[
@@ -164,7 +164,7 @@ fn reports_pinned_changes() {
     let run = latest(&cache);
     let database = database(&cache);
     let recorded = database.run(&run).expect("reads").expect("the run");
-    assert!(recorded.program.expect("a program").starts_with("iunctus "));
+    assert!(recorded.program.expect("a program").starts_with("uwe "));
     let canonical = folder.canonicalize().expect("a folder");
     let launch = Path::new(recorded.launch.as_deref().expect("a launch folder"));
     assert_eq!(launch.canonicalize().expect("the folder"), canonical);
@@ -188,7 +188,7 @@ fn reports_pinned_changes() {
     assert_eq!(remote[0].address, sheet);
     assert_eq!(remote[0].size, 7);
     assert!(remote[0].version.is_some(), "the ETag of the server");
-    let (code, output) = iunctus(&folder, &cache, &["changes", &run]);
+    let (code, output) = uwe(&folder, &cache, &["changes", &run]);
     assert_eq!(code, 0, "{output}");
     assert!(
         output.contains("Nothing changed since the run."),
@@ -201,7 +201,7 @@ fn reports_pinned_changes() {
     )
     .expect("writes");
     server.set("/sheet.csv", "id\na\nc\n");
-    let (code, output) = iunctus(&folder, &cache, &["changes", &run]);
+    let (code, output) = uwe(&folder, &cache, &["changes", &run]);
     assert_eq!(code, 0, "{output}");
     assert!(
         output.contains("The files of the workflow: 1 of"),
@@ -213,7 +213,7 @@ fn reports_pinned_changes() {
         "{output}"
     );
     // A simulated run keeps no copy of its workflow, so its repeat cannot restore it.
-    let (code, output) = iunctus(&folder, &cache, &["repeat", &run]);
+    let (code, output) = uwe(&folder, &cache, &["repeat", &run]);
     assert_eq!(code, 1, "{output}");
     assert!(output.contains("keeps no copy"), "{output}");
 }
@@ -224,7 +224,7 @@ fn identifies_order_dependence() {
     let cache = root.path().join("cache");
     let script = COLLECT_WORKFLOW.replace("SORTED", "");
     std::fs::write(root.path().join("main.nf"), script).expect("writes");
-    let (code, output) = iunctus(root.path(), &cache, &["check-order", "main.nf"]);
+    let (code, output) = uwe(root.path(), &cache, &["check-order", "main.nf"]);
     assert_eq!(code, 1, "{output}");
     assert!(
         output.contains("1 step depends on the order in which tasks finished"),
@@ -237,7 +237,7 @@ fn identifies_order_dependence() {
     // Sorted by name, the files come in the same order in both runs.
     let sorted = COLLECT_WORKFLOW.replace("SORTED", ".map { files -> files.sort { it.name } }");
     std::fs::write(root.path().join("main.nf"), sorted).expect("writes");
-    let (code, output) = iunctus(root.path(), &cache, &["check-order", "main.nf"]);
+    let (code, output) = uwe(root.path(), &cache, &["check-order", "main.nf"]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("No step depends on the order"), "{output}");
 }
@@ -268,7 +268,7 @@ fn repeats_pinned_workflow() {
     let run = |extra: &[&str]| {
         let mut arguments = vec!["run", "main.nf", "-executor", "local", "--data", &data];
         arguments.extend(extra);
-        let (code, output) = iunctus(&folder, &cache, &arguments);
+        let (code, output) = uwe(&folder, &cache, &arguments);
         assert_eq!(code, 0, "{output}");
         (latest(&cache), output)
     };
@@ -301,7 +301,7 @@ fn repeats_pinned_workflow() {
     )
     .expect("writes");
     server.set("/data.txt", "now it has more bytes");
-    let (code, output) = iunctus(&folder, &cache, &["repeat", &first]);
+    let (code, output) = uwe(&folder, &cache, &["repeat", &first]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("changed  main.nf"), "{output}");
     assert!(output.contains(&format!("changed  {data}")), "{output}");
@@ -317,7 +317,7 @@ fn repeats_pinned_workflow() {
         "the repeat names the step that differs: {output}"
     );
     // The crate of the first run holds its workflow as it ran, not as it is now.
-    let (code, output) = iunctus(&folder, &cache, &["export", &first, "-output", "crate"]);
+    let (code, output) = uwe(&folder, &cache, &["export", &first, "-output", "crate"]);
     assert_eq!(code, 0, "{output}");
     let main = std::fs::read_to_string(folder.join("crate/main.nf")).expect("reads");
     assert_eq!(main, REAL_WORKFLOW);
@@ -338,7 +338,7 @@ fn rejects_unsupported_isolation() {
     ] {
         let mut arguments = vec!["run", "main.nf", "-no-network"];
         arguments.extend(executor);
-        let (code, output) = iunctus(root.path(), &cache, &arguments);
+        let (code, output) = uwe(root.path(), &cache, &arguments);
         assert_eq!(code, 2, "{output}");
         assert!(
             output.contains("cannot run without network there yet"),
@@ -367,7 +367,7 @@ fn enforces_network_policy() {
             .current_dir(root.path())
             .env("XDG_CACHE_HOME", &cache)
             .output()
-            .expect("runs iunctus");
+            .expect("runs uwe");
         assert!(output.status.success(), "{output:?}");
         output_text(&cache, &latest(&cache), "NETS")
     };

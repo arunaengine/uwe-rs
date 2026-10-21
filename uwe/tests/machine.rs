@@ -6,7 +6,7 @@ use std::path::Path;
 
 mod common;
 
-/// Runs `iunctus check-machine` in `directory` with its own cache and no container engine, and
+/// Runs `uwe check-machine` in `directory` with its own cache and no container engine, and
 /// gives the exit code and standard output.
 fn check_machine(directory: &Path, arguments: &[&str]) -> (i32, String) {
     let output = common::command()
@@ -18,7 +18,7 @@ fn check_machine(directory: &Path, arguments: &[&str]) -> (i32, String) {
         .env_remove("UWE_TES_TOKEN")
         .current_dir(directory)
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     (output.status.code().unwrap_or(-1), stdout)
 }
@@ -39,7 +39,7 @@ fn explains_missing_engine() {
     assert_eq!(
         line(&stdout, "container engine"),
         format!(
-            "missing    container engine: no container engine answers at {}; iunctus runs every \
+            "missing    container engine: no container engine answers at {}; uwe runs every \
              task in a container, so start the engine of {}",
             socket.display(),
             socket.display()
@@ -101,7 +101,7 @@ fn checks_configured_executors() {
     assert_eq!(
         line(&stdout, "executor slurm"),
         "missing    executor slurm: `sbatch`, `squeue` and `scancel` are not on the PATH; run \
-         iunctus on a node of the SLURM cluster, like its login node"
+         uwe on a node of the SLURM cluster, like its login node"
     );
     assert_eq!(
         line(&stdout, "executor kubernetes"),
@@ -122,7 +122,7 @@ fn configuration_failure_continues() {
     let config = line(&stdout, "config file");
     assert!(
         config.starts_with(
-            "missing    config file: lab.toml:1: iunctus has no section `stroe`; it knows `store`"
+            "missing    config file: lab.toml:1: uwe has no section `stroe`; it knows `store`"
         ),
         "{stdout}"
     );

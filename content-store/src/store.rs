@@ -474,15 +474,14 @@ impl Store {
     /// Removes the copies of a content or a manifest that no longer match its digest, here
     /// and in the shared store behind, so that the next write of the digest stores it again.
     pub async fn repair(&self, location: &str, digest: &Digest) -> Result<(), StoreError> {
-        let found = match self.local_path(location) {
-            Some(path) => hash_file(&path).await,
-            None => hash_object(&self.operator, location).await,
-        };
-        match found {
-            Ok((actual, _)) if &actual != digest => self.remove(location).await?,
-            Ok(_) => {}
-            Err(error) if error.missing() => {}
-            Err(error) => return Err(error),
+        match self.local_path(location) {
+            Some(path) => repair_file(&path, digest).await?,
+            None => match hash_object(&self.operator, location).await {
+                Ok((actual, _)) if &actual != digest => self.remove(location).await?,
+                Ok(_) => {}
+                Err(error) if error.missing() => {}
+                Err(error) => return Err(error),
+            },
         }
         if let Some(shared) = &self.shared {
             Box::pin(shared.repair(location, digest)).await?;
@@ -1000,6 +999,43 @@ pub async fn hash_file(file: &std::path::Path) -> Result<(Digest, u64), StoreErr
     Ok((Digest::from_sha256(&hasher.finalize()), size))
 }
 
+/// Removes a local copy that does not match its digest, if it is still the file that was read:
+/// a good write may put a new file in its place meanwhile, which must stay.
+async fn repair_file(path: &std::path::Path, digest: &Digest) -> Result<(), StoreError> {
+    let read = match tokio::fs::symlink_metadata(path).await {
+        Ok(found) => found,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(at(path)(error)),
+    };
+    match hash_file(path).await {
+        Ok((actual, _)) if &actual == digest => Ok(()),
+        Ok(_) => remove_read(path, &read).await,
+        Err(error) if error.missing() => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+/// Moves a file aside and removes it when it is the file of `read`; another file goes back to
+/// its place, unless a newer one is there already.
+async fn remove_read(path: &std::path::Path, read: &std::fs::Metadata) -> Result<(), StoreError> {
+    use std::os::unix::fs::MetadataExt;
+    let stamp = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH))
+        .map_or(0, |since| since.as_nanos());
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let aside = path.with_file_name(format!(".{name}.{}-{stamp}.repair", std::process::id()));
+    match tokio::fs::rename(path, &aside).await {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        result => result.map_err(at(path))?,
+    }
+    let moved = tokio::fs::symlink_metadata(&aside)
+        .await
+        .map_err(at(&aside))?;
+    if (moved.dev(), moved.ino()) != (read.dev(), read.ino()) {
+        let _ = tokio::fs::hard_link(&aside, path).await;
+    }
+    tokio::fs::remove_file(&aside).await.map_err(at(&aside))
+}
+
 /// An error of a file operation on this machine, with the path of the file.
 fn at(path: &std::path::Path) -> impl FnOnce(std::io::Error) -> StoreError + '_ {
     move |error| StoreError::File {
@@ -1011,6 +1047,26 @@ fn at(path: &std::path::Path) -> impl FnOnce(std::io::Error) -> StoreError + '_ 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn repair_keeps_rewrites() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("object");
+        std::fs::write(&path, b"damaged").unwrap();
+        let read = std::fs::symlink_metadata(&path).unwrap();
+        // A good write puts a new file in place after repair read the damaged one.
+        let good = folder.path().join("good");
+        std::fs::write(&good, b"content").unwrap();
+        std::fs::rename(&good, &path).unwrap();
+        remove_read(&path, &read).await.unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"content");
+        let digest = Digest::sha256(b"content");
+        std::fs::write(&path, b"damaged").unwrap();
+        repair_file(&path, &digest).await.unwrap();
+        assert!(!path.exists(), "a damaged copy goes");
+        let names = std::fs::read_dir(folder.path()).unwrap().count();
+        assert_eq!(names, 0, "nothing stays aside");
+    }
 
     #[test]
     fn explains_service_errors() {

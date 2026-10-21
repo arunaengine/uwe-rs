@@ -125,7 +125,7 @@ fn writes_run_documents() {
     let graph: ExecutionGraph = serde_json::from_str(&text).expect("the graph as JSON");
     check(&graph);
     // The simulator keeps one task document per task under the scratch directory.
-    let runs = directory.path().join("cache/iunctus/scratch/simulator");
+    let runs = directory.path().join("cache/uwe/scratch/simulator");
     let run = std::fs::read_dir(&runs)
         .expect("reads the runs")
         .next()

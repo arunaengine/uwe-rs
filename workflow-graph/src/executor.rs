@@ -115,7 +115,7 @@ pub fn runtime() -> Result<&'static tokio::runtime::Runtime, ExecuteError> {
         let workers = std::thread::available_parallelism().map_or(2, |cpus| cpus.get().min(4));
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(workers)
-            .thread_name("iunctus-attempts")
+            .thread_name("uwe-attempts")
             .enable_all()
             .build()
             .map_err(|error| error.to_string())

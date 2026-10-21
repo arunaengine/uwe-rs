@@ -109,7 +109,7 @@ fn delivered(folder: &Path) -> Vec<String> {
 
 /// The cache entries in the store of a cache folder.
 fn entries(cache: &Path) -> usize {
-    let folder = cache.join("iunctus/store/ac/v1/default");
+    let folder = cache.join("uwe/store/ac/v1/default");
     let entries = std::fs::read_dir(folder).map_or(Vec::new(), |entries| entries.collect());
     (entries.iter().flatten())
         .filter(|entry| entry.file_name().to_string_lossy().ends_with(".json"))
@@ -317,7 +317,7 @@ fn concurrent_runs_deduplicate() {
 
 /// The ids of the runs in the run database of a cache folder, the latest first.
 fn run_ids(cache: &Path) -> Vec<String> {
-    let database = run_database::Database::open(&cache.join("iunctus/runs.sqlite"));
+    let database = run_database::Database::open(&cache.join("uwe/runs.sqlite"));
     let runs = database.expect("opens").runs(50).expect("reads");
     runs.into_iter().map(|run| run.id).collect()
 }
@@ -342,13 +342,13 @@ fn clean_requires_rule() {
         );
         assert_eq!(code, 0, "{output}");
     }
-    let simulated = cache.join("iunctus/scratch/simulator");
+    let simulated = cache.join("uwe/scratch/simulator");
     assert_eq!(std::fs::read_dir(&simulated).expect("lists").count(), 2);
     let mut ids = run_ids(&cache);
     let (latest, earlier) = (ids.remove(0), ids.remove(0));
     // Folders of attempts that the ended run left, in the scratch folder of each executor; the
     // SIF files of SLURM jobs and folders of unknown runs stay.
-    let scratch = cache.join("iunctus/scratch");
+    let scratch = cache.join("uwe/scratch");
     let attempts = ["", "tes/", "kubernetes/", "slurm/"]
         .map(|folder| scratch.join(format!("{folder}{earlier}-1-1")));
     let staying = [scratch.join("slurm/images"), scratch.join("slurm/1-2-3-4")];
@@ -433,7 +433,7 @@ fn clean_respects_retention() {
         let bytes = std::fs::read(second.join(file)).expect("reads");
         let digest = task_model::Digest::sha256(&bytes);
         let stored = cache
-            .join("iunctus/store")
+            .join("uwe/store")
             .join(content_store::layout::content(&digest));
         assert!(stored.exists(), "{file} of the kept run is gone");
     }
@@ -457,7 +457,7 @@ fn clean_respects_retention() {
     assert!(output.contains("It keeps nothing"), "{output}");
     assert_eq!(entries(&cache), 0);
     let objects = |kind: &str| -> usize {
-        let folder = cache.join("iunctus/store").join(kind);
+        let folder = cache.join("uwe/store").join(kind);
         std::fs::read_dir(folder).map_or(0, |entries| entries.count())
     };
     assert_eq!(
@@ -527,7 +527,7 @@ fn previews_cached_results() {
     assert!(picture.contains("reused"), "{picture}");
     // The run database knows it too, for the web page.
     let latest = run_ids(&cache).remove(0);
-    let database = run_database::Database::open(&cache.join("iunctus/runs.sqlite"));
+    let database = run_database::Database::open(&cache.join("uwe/runs.sqlite"));
     let graph = database.expect("opens").graph(&latest).expect("reads");
     let graph = graph.expect("the graph of the run");
     assert_eq!(graph.cache_note().as_deref(), Some(note));
@@ -694,7 +694,7 @@ fn layered_store_shares() {
         "main.nf",
         "-executor",
         "local",
-        "-iunctus-config",
+        "-uwe-config",
         &config,
     ];
     let (code, output) = iunctus(&first, &root.path().join("cache-first"), &arguments);
@@ -711,7 +711,7 @@ fn layered_store_shares() {
         "main.nf",
         "-executor",
         "local",
-        "-iunctus-config",
+        "-uwe-config",
         &config,
     ];
     let (code, output) = iunctus(&second, &root.path().join("cache-second"), &arguments);

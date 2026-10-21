@@ -123,7 +123,7 @@ pub(crate) fn run_arguments(arguments: &Arguments) -> Vec<String> {
         max_pending => "-max-pending", address => "-address", port => "-port",
         format => "-format", fold => "-fold", platform => "-platform", license => "-license",
         keep_days => "-keep-days", revision => "-r");
-    paths!(config_file => "-iunctus-config", inputs => "-inputs", graph => "-graph",
+    paths!(config_file => "-uwe-config", inputs => "-inputs", graph => "-graph",
         report => "-report", output_dir => "-output-dir", kubeconfig => "-kubeconfig",
         database => "-database", output => "-output");
     flags!(stub => "-stub", keep_going => "-keep-going", page => "-page",

@@ -139,7 +139,7 @@ impl Settings {
                 if relative {
                     return Err(store.invalid(
                         "location",
-                        "must be an absolute folder or an address, like \"s3://my-bucket/iunctus\"",
+                        "must be an absolute folder or an address, like \"s3://my-bucket/uwe\"",
                     ));
                 }
                 let local = store.text("local")?;
@@ -149,7 +149,7 @@ impl Settings {
                 {
                     return Err(store.invalid(
                         "local",
-                        "must be an absolute folder of this machine, like \"/scratch/iunctus\"",
+                        "must be an absolute folder of this machine, like \"/scratch/uwe\"",
                     ));
                 }
                 (location, local)

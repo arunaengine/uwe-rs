@@ -81,7 +81,7 @@ async fn authenticate(State(state): State<Shared>, request: Request, next: Next)
         .and_then(|cookies| {
             cookies
                 .split(';')
-                .find_map(|cookie| cookie.trim().strip_prefix("iunctus_token="))
+                .find_map(|cookie| cookie.trim().strip_prefix("uwe_token="))
         });
     let query = Query::<HashMap<String, String>>::try_from_uri(request.uri()).ok();
     let supplied = query.as_ref().and_then(|query| query.get("token"));
@@ -89,7 +89,7 @@ async fn authenticate(State(state): State<Shared>, request: Request, next: Next)
         let mut response = Redirect::to(request.uri().path()).into_response();
         response.headers_mut().insert(
             header::SET_COOKIE,
-            format!("iunctus_token={token}; HttpOnly; SameSite=Strict; Path=/")
+            format!("uwe_token={token}; HttpOnly; SameSite=Strict; Path=/")
                 .parse()
                 .expect("validated token"),
         );

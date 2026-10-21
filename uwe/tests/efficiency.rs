@@ -139,7 +139,7 @@ fn groups_keep_results() {
     }
     assert!(!directory.join("results/out-3.txt").exists());
     // Each task has its own exit code and log.
-    let database = run_database::Database::open(&directory.join("cache/iunctus/runs.sqlite"))
+    let database = run_database::Database::open(&directory.join("cache/uwe/runs.sqlite"))
         .expect("opens the run database");
     let workflow = directory.join("main.nf").to_string_lossy().into_owned();
     let run = database

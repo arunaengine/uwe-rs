@@ -46,9 +46,9 @@ fn redacted(text: &str) -> (String, bool) {
 
 /// A stable public identity for a private credential-bearing resource.
 pub fn public_resource_id(address: &str) -> String {
-    if redacted(address).1 || address.starts_with("iunctus-resource://") {
+    if redacted(address).1 || address.starts_with("uwe-resource://") {
         format!(
-            "iunctus-resource://{}",
+            "uwe-resource://{}",
             task_model::Digest::sha256(address.as_bytes()).hex()
         )
     } else {

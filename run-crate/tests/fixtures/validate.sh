@@ -8,7 +8,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 cd "$here/../../.."
 RUN_CRATE_WRITE_FIXTURE=1 cargo test -p run-crate --test export --locked
 # A copy in a fixed folder, so that the report is the same on every machine.
-copy=/tmp/iunctus-crate-validation
+copy=/tmp/uwe-crate-validation
 rm -rf "$copy"
 mkdir -p "$copy"
 trap 'rm -rf "$copy"' EXIT

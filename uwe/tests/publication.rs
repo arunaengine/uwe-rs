@@ -83,7 +83,7 @@ impl Server {
                                 .unwrap(),
                         );
                         std::fs::create_dir_all(folder).unwrap();
-                        if output["path"] == "/iunctus/control" {
+                        if output["path"] == "/uwe/control" {
                             std::fs::write(folder.join("exit"), "0\n").unwrap();
                             std::fs::write(folder.join("manifest"), "file out.txt\n").unwrap();
                         } else {
@@ -220,7 +220,7 @@ async fn submits_conda_digest() {
         common::command()
             .args(["run", "Snakefile", "-executor", "tes", "-tes-server"])
             .arg(format!("http://{}", server.address))
-            .arg("-iunctus-config")
+            .arg("-uwe-config")
             .arg(&config)
             .args(["-no-cache", "-forceall"])
             .env("UWE_LOG", "debug")
@@ -275,7 +275,7 @@ async fn submits_conda_digest() {
         .unwrap();
     std::fs::remove_file(root.join("engine.sock")).unwrap();
     let image = json!({"Id":receipt.image_id(),"Os":"linux","Architecture":"amd64","Config":{"Labels":{
-        "org.iunctus.conda.preparation":preparation.digest(),"org.iunctus.conda.base":preparation.base(),"org.iunctus.conda.recipe":preparation.recipe_digest()
+        "org.uwe.conda.preparation":preparation.digest(),"org.uwe.conda.base":preparation.base(),"org.uwe.conda.recipe":preparation.recipe_digest()
     }}}).to_string();
     let pushing = crate::engine(
         root,

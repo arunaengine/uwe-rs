@@ -44,7 +44,7 @@ fn environment_selects_config() {
 fn isolates_user_configuration() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     // The user's file of a home folder, which the empty config folder makes unreachable.
-    let user = directory.path().join("home/.config/iunctus");
+    let user = directory.path().join("home/.config/uwe");
     std::fs::create_dir_all(&user).expect("makes the user's folder");
     std::fs::write(user.join("config.toml"), BAD_CONFIG).expect("writes the user's file");
     let (code, error) = graph(
@@ -71,7 +71,7 @@ fn cache_configuration_wins() {
     );
     assert_eq!(code, 0, "{error}");
     assert!(folder.join(run_database::FILE_NAME).exists(), "{error}");
-    assert!(!directory.path().join("cache/iunctus").exists(), "{error}");
+    assert!(!directory.path().join("cache/uwe").exists(), "{error}");
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn executor_config_precedence() {
         let mut command = common::command();
         command
             .args(["run", "main.nf"])
-            .arg("-iunctus-config")
+            .arg("-uwe-config")
             .arg(&config)
             .env("UWE_ENGINE", directory.path().join("missing.sock"))
             .env("XDG_CACHE_HOME", directory.path().join("cache"))
@@ -115,7 +115,7 @@ fn inspection_uses_simulation() {
     for name in ["graph", "check", "check-order", "inputs", "outputs"] {
         let output = common::command()
             .args([name, "tool.cwl"])
-            .arg("-iunctus-config")
+            .arg("-uwe-config")
             .arg(&config)
             .env("UWE_ENGINE", directory.path().join("missing.sock"))
             .env("XDG_CACHE_HOME", directory.path().join("cache"))

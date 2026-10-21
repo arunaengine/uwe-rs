@@ -266,12 +266,12 @@
       "version": "4f3c2a1"
     },
     {
-      "@id": "https://github.com/arunaengine/iunctus",
+      "@id": "https://github.com/arunaengine/uwe-rs",
       "@type": "SoftwareApplication",
       "description": "Runs Nextflow, Snakemake, CWL and Argo workflows in containers",
-      "name": "iunctus",
+      "name": "uwe",
       "softwareVersion": "0.1.0",
-      "url": "https://github.com/arunaengine/iunctus"
+      "url": "https://github.com/arunaengine/uwe-rs"
     },
     {
       "@id": "#engine/fixture-run",
@@ -280,7 +280,7 @@
       "description": "iunctus run main.nf --greeting hello",
       "endTime": "2026-09-30T17:26:29.449+00:00",
       "instrument": {
-        "@id": "https://github.com/arunaengine/iunctus"
+        "@id": "https://github.com/arunaengine/uwe-rs"
       },
       "name": "Run of iunctus 0.1.0",
       "object": [

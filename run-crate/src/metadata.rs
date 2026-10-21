@@ -37,7 +37,7 @@ const PROFILES: [(&str, &str, &str); 4] = [
 ];
 
 /// The home of iunctus, which ran the workflow.
-const ENGINE: &str = "https://github.com/arunaengine/iunctus";
+const ENGINE: &str = "https://github.com/arunaengine/uwe-rs";
 
 /// The file that tells a reader what the crate holds.
 pub(crate) const README: &str = "README.md";
@@ -148,7 +148,7 @@ impl Record<'_> {
         graph.push(json!({
             "@id": ENGINE,
             "@type": "SoftwareApplication",
-            "name": "iunctus",
+            "name": "uwe",
             "url": ENGINE,
             "softwareVersion": env!("CARGO_PKG_VERSION"),
             "description": "Runs Nextflow, Snakemake, CWL and Argo workflows in containers"

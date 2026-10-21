@@ -29,7 +29,7 @@ pub struct Arguments {
     pub keep_going: bool,
     /// `-store folder|address`: where the cache store lives; a folder is made absolute.
     pub store: Option<String>,
-    /// `-iunctus-config file`: a config file of iunctus, read after the site-wide file and
+    /// `-uwe-config file`: a config file of iunctus, read after the site-wide file and
     /// the user's file.
     pub config_file: Option<PathBuf>,
     /// `-profile a,b`
@@ -276,7 +276,7 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
                         .map_or(place, |folder| folder.to_string_lossy().into_owned()),
                 });
             }
-            "-iunctus-config" => parsed.config_file = Some(value()?.into()),
+            "-uwe-config" => parsed.config_file = Some(value()?.into()),
             "-profile" => {
                 // Groovy's `tokenize(',')`: empty names are dropped, spaces are kept.
                 let names = value()?;
@@ -545,7 +545,7 @@ const OPTIONS: &[(&str, &[&str])] = &[
     ("-version,--version", COMMANDS),
     ("-v,-verbose", CONFIGURED),
     ("-quiet", CONFIGURED),
-    ("-iunctus-config <file>", CONFIGURED),
+    ("-uwe-config <file>", CONFIGURED),
     (
         "-database <file>",
         &[
@@ -1103,9 +1103,9 @@ mod tests {
 
     #[test]
     fn store_locations_parsed() {
-        let parsed = parse_all(&["main.nf", "-store", "s3://cache/iunctus"]);
-        assert_eq!(parsed.store.as_deref(), Some("s3://cache/iunctus"));
-        let parsed = parse_all(&["main.nf", "-store", "cache", "-iunctus-config", "lab.toml"]);
+        let parsed = parse_all(&["main.nf", "-store", "s3://cache/uwe"]);
+        assert_eq!(parsed.store.as_deref(), Some("s3://cache/uwe"));
+        let parsed = parse_all(&["main.nf", "-store", "cache", "-uwe-config", "lab.toml"]);
         let folder = std::path::absolute("cache").expect("an absolute path");
         assert_eq!(parsed.store, Some(folder.to_string_lossy().into_owned()));
         assert_eq!(parsed.config_file, Some(PathBuf::from("lab.toml")));

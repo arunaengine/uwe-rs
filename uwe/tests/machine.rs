@@ -49,14 +49,14 @@ fn explains_missing_engine() {
         line(&stdout, "config file").starts_with("not set up "),
         "{stdout}"
     );
-    let store = directory.path().join("cache/iunctus/store");
+    let store = directory.path().join("cache/uwe/store");
     let store_line = line(&stdout, "store");
     assert!(
         store_line.starts_with(&format!("ready      store: {}, ", store.display())),
         "{stdout}"
     );
     assert!(store_line.ends_with(" free"), "{stdout}");
-    let database = directory.path().join("cache/iunctus/runs.sqlite");
+    let database = directory.path().join("cache/uwe/runs.sqlite");
     assert_eq!(
         line(&stdout, "run database"),
         format!("ready      run database: {}, 0 runs", database.display())
@@ -80,7 +80,7 @@ fn checks_configured_executors() {
                   \"UWE_TEST_TES_TOKEN\" }\n\n[executor.slurm]\ncontainer = \"podman\"\n\n\
                   [executor.kubernetes]\nkubeconfig = \"nowhere.yaml\"\n";
     std::fs::write(directory.path().join("lab.toml"), config).expect("writes the config file");
-    let (code, stdout) = check_machine(directory.path(), &["-iunctus-config", "lab.toml"]);
+    let (code, stdout) = check_machine(directory.path(), &["-uwe-config", "lab.toml"]);
     assert_eq!(code, 3, "{stdout}");
     assert_eq!(
         line(&stdout, "config file"),
@@ -117,7 +117,7 @@ fn configuration_failure_continues() {
         "[stroe]\nlocation = \"x\"\n",
     )
     .expect("writes the config file");
-    let (code, stdout) = check_machine(directory.path(), &["-iunctus-config", "lab.toml"]);
+    let (code, stdout) = check_machine(directory.path(), &["-uwe-config", "lab.toml"]);
     assert_eq!(code, 3, "{stdout}");
     let config = line(&stdout, "config file");
     assert!(
@@ -163,7 +163,7 @@ fn checks_slurm_runtime() {
     tool("apptainer");
     let (code, stdout) = check_machine(directory.path(), &["-executor", "slurm"]);
     assert_eq!(code, 0, "{stdout}");
-    let cache = directory.path().join("cache/iunctus");
+    let cache = directory.path().join("cache/uwe");
     assert_eq!(
         line(&stdout, "executor slurm"),
         format!(

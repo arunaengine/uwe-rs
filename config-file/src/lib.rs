@@ -24,9 +24,9 @@ use node::Node;
 pub const FILE_NAME: &str = "config.toml";
 
 /// The folder of the site-wide config file, which every user of the machine reads.
-pub const SITE_FOLDER: &str = "/etc/iunctus";
+pub const SITE_FOLDER: &str = "/etc/uwe";
 
-/// The environment variable that names another site-wide file than `/etc/iunctus/config.toml`.
+/// The environment variable that names another site-wide file than `/etc/uwe/config.toml`.
 /// An empty value means no site-wide file. Tests set it, so that the file of the machine
 /// never changes their results.
 pub const SITE_FILE_VARIABLE: &str = "UWE_SITE_CONFIG";
@@ -114,7 +114,7 @@ pub fn default_files() -> Vec<PathBuf> {
     site_file().into_iter().chain(user_file()).collect()
 }
 
-/// The site-wide file: `/etc/iunctus/config.toml`, or the file that `UWE_SITE_CONFIG`
+/// The site-wide file: `/etc/uwe/config.toml`, or the file that `UWE_SITE_CONFIG`
 /// names, or none when that is empty.
 pub fn site_file() -> Option<PathBuf> {
     site_file_named(std::env::var_os(SITE_FILE_VARIABLE))
@@ -128,14 +128,14 @@ fn site_file_named(variable: Option<OsString>) -> Option<PathBuf> {
     }
 }
 
-/// The user's file: `$XDG_CONFIG_HOME/iunctus/config.toml`, else
-/// `~/.config/iunctus/config.toml`.
+/// The user's file: `$XDG_CONFIG_HOME/uwe/config.toml`, else
+/// `~/.config/uwe/config.toml`.
 pub fn user_file() -> Option<PathBuf> {
     let folder = std::env::var_os("XDG_CONFIG_HOME")
         .filter(|folder| !folder.is_empty())
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))?;
-    Some(folder.join("iunctus").join(FILE_NAME))
+    Some(folder.join("uwe").join(FILE_NAME))
 }
 
 #[cfg(test)]
@@ -146,7 +146,7 @@ mod tests {
     fn resolves_site_file() {
         assert_eq!(
             site_file_named(None),
-            Some(PathBuf::from("/etc/iunctus/config.toml"))
+            Some(PathBuf::from("/etc/uwe/config.toml"))
         );
         assert_eq!(
             site_file_named(Some("/srv/site.toml".into())),

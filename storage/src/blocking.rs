@@ -114,7 +114,7 @@ fn runtime() -> Result<&'static tokio::runtime::Runtime, StorageError> {
     let runtime = RUNTIME.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
-            .thread_name("iunctus-storage")
+            .thread_name("uwe-storage")
             .enable_all()
             .build()
             .map_err(|error| error.to_string())

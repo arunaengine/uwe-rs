@@ -152,7 +152,7 @@ impl Settings {
                 .ok_or_else(|| Failure::usage("iunctus: embedded inputs must be a JSON object"))?;
             object.extend(self.params);
             let file = tempfile::Builder::new()
-                .prefix("iunctus-inputs-")
+                .prefix("uwe-inputs-")
                 .suffix(".json")
                 .tempfile()
                 .map_err(|error| Failure::setup(format!("iunctus: {error}")))?;

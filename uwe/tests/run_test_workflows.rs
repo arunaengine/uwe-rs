@@ -162,12 +162,12 @@ fn runs_as_recorded(targets: Vec<(String, PathBuf, PathBuf)>, fixture: &str, fal
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .expect("HOME is set");
-    let downloads = home.join(".cache/iunctus/downloads");
+    let downloads = home.join(".cache/uwe/downloads");
     std::fs::create_dir_all(&downloads).expect("creates the downloads directory");
     let run = |(name, target, project): &(String, PathBuf, PathBuf)| {
         let cache = cache.path().join(name);
-        std::fs::create_dir_all(cache.join("iunctus")).expect("creates the cache");
-        std::os::unix::fs::symlink(&downloads, cache.join("iunctus/downloads"))
+        std::fs::create_dir_all(cache.join("uwe")).expect("creates the cache");
+        std::os::unix::fs::symlink(&downloads, cache.join("uwe/downloads"))
             .expect("links the downloads");
         // The run starts from a copy of the folder of the workflow, as a clone of a user, so
         // that what it writes there, like `work/`, stays out of the test workflows.

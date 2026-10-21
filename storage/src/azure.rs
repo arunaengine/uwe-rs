@@ -228,7 +228,7 @@ mod tests {
             account: key.then(|| ("devstoreaccount1".to_owned(), KEY.to_owned())),
             endpoint: "http://127.0.0.1:10000/devstoreaccount1".into(),
             container: "staging".into(),
-            root: "iunctus/root".into(),
+            root: "uwe/root".into(),
         }
     }
 
@@ -240,10 +240,7 @@ mod tests {
             .unwrap();
         assert_eq!(signed.method(), http::Method::GET);
         let url = reqwest::Url::parse(&signed.uri().to_string()).unwrap();
-        assert_eq!(
-            url.path(),
-            "/devstoreaccount1/staging/iunctus/root/cas/a%20b"
-        );
+        assert_eq!(url.path(), "/devstoreaccount1/staging/uwe/root/cas/a%20b");
         let query: std::collections::HashMap<_, _> = url.query_pairs().collect();
         assert_eq!(query["sr"], "b", "a SAS of one blob");
         assert_eq!(query["sp"], "r");

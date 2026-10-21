@@ -173,7 +173,7 @@ mod tests {
     use config_file::ConfigFile;
 
     fn read(text: &str) -> Result<Settings, ConfigError> {
-        let config = ConfigFile::parse(text, std::path::Path::new("iunctus.toml"))?;
+        let config = ConfigFile::parse(text, std::path::Path::new("uwe.toml"))?;
         let section = config.section("executor")?.expect("a section");
         Settings::read(
             &section.table("slurm")?.expect("a table"),

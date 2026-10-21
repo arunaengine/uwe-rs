@@ -127,7 +127,7 @@ fn iunctus(directory: &Path, cache: &Path, arguments: &[&str]) -> (i32, String) 
 }
 
 fn database(cache: &Path) -> Database {
-    Database::open(&cache.join("iunctus/runs.sqlite")).expect("opens the run database")
+    Database::open(&cache.join("uwe/runs.sqlite")).expect("opens the run database")
 }
 
 /// The id of the latest run in the database.
@@ -360,7 +360,7 @@ fn enforces_network_policy() {
         if let Some(text) = config {
             let file = root.path().join("network.toml");
             std::fs::write(&file, text).expect("writes the config file");
-            arguments.extend(["-iunctus-config", "network.toml"]);
+            arguments.extend(["-uwe-config", "network.toml"]);
         }
         let output = command
             .args(&arguments)

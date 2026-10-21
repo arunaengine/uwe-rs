@@ -84,12 +84,14 @@ impl Run {
         };
         for item in items {
             let name = item.get("name").map(scalar_text).unwrap_or_default();
-            let target = match name.as_str() {
-                "main" => ["container", "script"]
-                    .into_iter()
-                    .find(|key| template.get(key).is_some())
-                    .and_then(|key| entry_mut(template, key)),
-                _ => entry_mut(template, "containerSet")
+            // `main` is the container of a container or script template, else the container
+            // of that name in a container set.
+            let single = ["container", "script"]
+                .into_iter()
+                .find(|key| name == "main" && template.get(key).is_some());
+            let target = match single {
+                Some(key) => entry_mut(template, key),
+                None => entry_mut(template, "containerSet")
                     .and_then(|set| entry_mut(set, "containers"))
                     .and_then(|list| match &mut list.value {
                         Yaml::Sequence(items) => (items.iter_mut()).find(|item| {

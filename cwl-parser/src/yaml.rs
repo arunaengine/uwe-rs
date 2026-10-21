@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use granit_parser::{Event, Parser, ScalarStyle, ScanError, Span, Tag, options};
@@ -59,6 +59,7 @@ fn read_once(text: &str, file: &Arc<str>) -> Result<Node, Error> {
         file,
         stack: Vec::new(),
         anchors: HashMap::new(),
+        aliased: aliased(text),
         budget: ALIAS_BUDGET,
         root: None,
     };
@@ -85,18 +86,46 @@ fn read_once(text: &str, file: &Arc<str>) -> Result<Node, Error> {
     Ok(builder.root.unwrap_or(empty))
 }
 
-/// A list or map under construction, with the key that waits for its value.
+/// The anchors that aliases of the first document name. Only these are copied, so anchors
+/// that no alias names cost nothing.
+fn aliased(text: &str) -> HashSet<usize> {
+    let mut parser = Parser::new_from_str_with_options(text, options! { emit_comments: false });
+    let mut found = HashSet::new();
+    while let Some(Ok((event, _))) = parser.next_event() {
+        match event {
+            Event::Alias(anchor) => {
+                found.insert(anchor);
+            }
+            Event::DocumentEnd => break,
+            _ => {}
+        }
+    }
+    found
+}
+
+/// A list or map under construction, with the key that waits for its value, and the count
+/// of values and the depth of what it holds so far.
 struct Frame {
     node: Node,
     anchor: usize,
     key: Option<(String, Location)>,
+    size: Size,
+}
+
+/// The count of values in a node and how deep it nests, kept while building so that each node
+/// is counted once.
+#[derive(Clone, Copy)]
+struct Size {
+    values: usize,
+    depth: usize,
 }
 
 struct Builder<'a> {
     file: &'a Arc<str>,
     stack: Vec<Frame>,
-    /// Each anchored node with its count of values and its depth.
-    anchors: HashMap<usize, (Node, usize, usize)>,
+    /// Each anchored node that an alias names, with its count of values and its depth.
+    anchors: HashMap<usize, (Node, Size)>,
+    aliased: HashSet<usize>,
     /// How many more values aliases may copy.
     budget: usize,
     root: Option<Node>,
@@ -138,8 +167,12 @@ impl Builder<'_> {
             None => Value::String(text.to_owned()),
         };
         let node = Node::new(value, location);
-        self.remember(anchor, &node);
-        self.push(node)
+        let size = Size {
+            values: 1,
+            depth: 0,
+        };
+        self.remember(anchor, &node, size)?;
+        self.push(node, size)
     }
 
     fn open(
@@ -171,6 +204,10 @@ impl Builder<'_> {
             node,
             anchor,
             key: None,
+            size: Size {
+                values: 1,
+                depth: 1,
+            },
         });
         Ok(())
     }
@@ -179,43 +216,60 @@ impl Builder<'_> {
         let Some(frame) = self.stack.pop() else {
             return Ok(());
         };
-        self.remember(frame.anchor, &frame.node);
-        self.push(frame.node)
+        self.remember(frame.anchor, &frame.node, frame.size)?;
+        self.push(frame.node, frame.size)
     }
 
     fn alias(&mut self, anchor: usize, location: Location) -> Result<(), Error> {
         if self.expects_key() {
             return Err(Error::new(&location, "a map key must not be an alias"));
         }
-        let Some((node, size, depth)) = self.anchors.get(&anchor) else {
+        let Some((node, size)) = self.anchors.get(&anchor) else {
             return Err(Error::new(&location, "alias to an unknown anchor"));
         };
-        if *size > self.budget {
+        let size = *size;
+        if size.values > self.budget {
             return Err(Error::new(&location, "aliases expand to too many values"));
         }
-        if self.stack.len() + depth > DEPTH_LIMIT {
+        if self.stack.len() + size.depth > DEPTH_LIMIT {
             let message = format!("values are nested more than {DEPTH_LIMIT} levels deep");
             return Err(Error::new(&location, message));
         }
-        self.budget -= size;
+        self.budget -= size.values;
         let node = node.clone();
-        self.push(node)
+        self.push(node, size)
     }
 
-    fn remember(&mut self, anchor: usize, node: &Node) {
-        if anchor != 0 {
-            let (size, depth) = measure(node);
-            self.anchors.insert(anchor, (node.clone(), size, depth));
+    /// Keeps a copy of an anchored node that an alias names, which counts as a copy of aliases.
+    fn remember(&mut self, anchor: usize, node: &Node, size: Size) -> Result<(), Error> {
+        if anchor == 0 || !self.aliased.contains(&anchor) {
+            return Ok(());
         }
+        if size.values > self.budget {
+            return Err(Error::new(
+                &node.location,
+                "aliases expand to too many values",
+            ));
+        }
+        self.budget -= size.values;
+        self.anchors.insert(anchor, (node.clone(), size));
+        Ok(())
     }
 
-    fn push(&mut self, node: Node) -> Result<(), Error> {
+    fn push(&mut self, node: Node, size: Size) -> Result<(), Error> {
         let Some(frame) = self.stack.last_mut() else {
             self.root.get_or_insert(node);
             return Ok(());
         };
+        let counted = Size {
+            values: frame.size.values + size.values,
+            depth: frame.size.depth.max(size.depth + 1),
+        };
         match &mut frame.node.value {
-            Value::List(items) => items.push(node),
+            Value::List(items) => {
+                items.push(node);
+                frame.size = counted;
+            }
             Value::Map(entries) => {
                 let Some((key, location)) = frame.key.take() else {
                     return Ok(());
@@ -228,26 +282,12 @@ impl Builder<'_> {
                     location,
                     value: node,
                 });
+                frame.size = counted;
             }
             _ => {}
         }
         Ok(())
     }
-}
-
-/// The number of values in a node and how deep it nests.
-fn measure(node: &Node) -> (usize, usize) {
-    let children: Vec<&Node> = match &node.value {
-        Value::List(items) => items.iter().collect(),
-        Value::Map(entries) => entries.iter().map(|entry| &entry.value).collect(),
-        _ => return (1, 0),
-    };
-    children
-        .into_iter()
-        .map(measure)
-        .fold((1, 1), |(size, depth), child| {
-            (size + child.0, depth.max(child.1 + 1))
-        })
 }
 
 fn scan_error(error: &ScanError, file: &Arc<str>) -> Error {

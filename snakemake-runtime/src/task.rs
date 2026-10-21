@@ -544,9 +544,11 @@ pub fn build(
         if setting.embedded.shared {
             if let Some(stat) = interpreter.host.stat(&path) {
                 inputs.retain(|input| input.path != file);
+                // Where it is, without `..`, which no executor takes in an input path.
+                let place = path.to_string_lossy().into_owned();
                 inputs.push(Input {
-                    path: file.to_owned(),
-                    source: path.to_string_lossy().into_owned(),
+                    path: place.clone(),
+                    source: place,
                     directory: stat.kind == python_evaluator::FileKind::Directory,
                     ..Default::default()
                 });

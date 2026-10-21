@@ -1123,3 +1123,41 @@ fn keys_workflow_sources() {
         task.inputs
     );
 }
+
+/// An `update()` output given with `..` keeps its backup below `.snakemake/backups`, the
+/// task names it without `..`, and a failed job gives it its content back.
+#[test]
+fn backs_up_outside_updates() {
+    let snakefile =
+        "rule add:\n    input: 'in.txt'\n    output: update('../acc.txt')\n    shell: 'unused'\n";
+    let steps: [(&str, Step); 1] = [("add", |folder| {
+        let backup = folder
+            .join(".snakemake/backups")
+            .read_dir()
+            .unwrap()
+            .count();
+        std::fs::write(folder.join("../acc.txt"), format!("half {backup}")).unwrap();
+        1
+    })];
+    let folder = folder();
+    let acc = folder.path().join("acc.txt");
+    std::fs::write(&acc, "first\n").unwrap();
+    let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    std::fs::File::open(&acc)
+        .unwrap()
+        .set_modified(hour_ago)
+        .unwrap();
+    std::fs::write(folder.path().join("work/in.txt"), "new").unwrap();
+    let (folder, host, error) = run(folder, snakefile, &steps);
+    assert!(error.is_some());
+    let task = host.tasks.iter().find(|task| task.step == "add").unwrap();
+    let paths: Vec<&str> = task
+        .inputs
+        .iter()
+        .map(|input| input.path.as_str())
+        .collect();
+    assert!(paths.iter().all(|path| !path.contains("..")), "{paths:?}");
+    let text = std::fs::read_to_string(folder.path().join("acc.txt")).unwrap();
+    assert_eq!(text, "first\n");
+    assert!(!folder.path().join("work/.snakemake/acc.txt").exists());
+}

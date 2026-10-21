@@ -35,23 +35,6 @@ impl Run {
         if let Some(reason) = crate::checks::cluster_only(&typed) {
             return Err(Failure::unsupported(reason));
         }
-        // Artifacts that name an S3 endpoint need the provider of that service, before any
-        // step of the template starts.
-        let steps = typed
-            .steps
-            .iter()
-            .flatten()
-            .map(|step| &step.arguments.artifacts);
-        let tasks = typed.dag.iter().flat_map(|dag| &dag.tasks);
-        let declared = (steps.chain(tasks.map(|task| &task.arguments.artifacts)))
-            .flatten()
-            .chain(&typed.inputs.artifacts)
-            .chain(&typed.outputs.artifacts);
-        for artifact in declared {
-            if let Ok(Some(url)) = artifact_url(artifact) {
-                self.check_endpoint(artifact, &url)?;
-            }
-        }
         let mut node = template.clone();
         let mut values: Vec<(String, String)> = Vec::new();
         for (position, input) in typed.inputs.parameters.iter().enumerate() {
@@ -113,30 +96,16 @@ impl Run {
             set_input_value(&mut node, position, &value.0);
             values.push((input.name.clone(), value.0));
         }
-        let mut artifacts = Vec::new();
-        let mut deferred_sub_paths = Vec::new();
-        for input in &typed.inputs.artifacts {
-            let argument = args
-                .artifacts
-                .iter()
-                .find(|artifact| artifact.name == input.name);
-            let from_argument = argument.is_some_and(|argument| argument.location.is_some());
-            let mut value = match argument.filter(|argument| argument.location.is_some()) {
-                Some(argument) => argument.clone(),
-                None => self.artifact_value(input)?,
-            };
-            if value.location.is_none() && !input.optional {
-                return Err(Failure::error(format!(
-                    "inputs.artifacts.{} was not supplied",
-                    input.name
-                )));
-            }
-            value.name = input.name.clone();
-            value.path = input.path.clone();
-            value.optional = input.optional;
-            artifacts.push(value);
-            deferred_sub_paths.push(from_argument || crate::tags::has_tag(&input.sub_path));
-        }
+        // Artifacts that arguments supply; the others come from their own location once
+        // tags are filled in, like a bucket that an input parameter names.
+        let supplied: Vec<Option<ArtifactValue>> = (typed.inputs.artifacts.iter())
+            .map(|input| {
+                (args.artifacts.iter())
+                    .find(|artifact| artifact.name == input.name)
+                    .filter(|argument| argument.location.is_some())
+                    .cloned()
+            })
+            .collect();
         let mut locals = locals.unwrap_or_default();
         if is_pod(&typed) {
             locals
@@ -207,16 +176,44 @@ impl Run {
         self.apply_patches(&mut node)?;
         let (template, _) = decode::<Template>(&node)
             .map_err(|error| Failure::error(format!("template {}: {error}", typed.name)))?;
-        // Paths of input artifacts may hold tags that the passes resolved.
-        for (index, (artifact, input)) in artifacts
-            .iter_mut()
-            .zip(&template.inputs.artifacts)
-            .enumerate()
-        {
-            artifact.path = input.path.clone();
-            if deferred_sub_paths[index] {
-                apply_sub_path(artifact, &input.sub_path)?;
+        // Artifacts that name an S3 endpoint need the provider of that service, before any
+        // step of the template starts; tags that steps fill in later are checked then.
+        let steps = (template.steps.iter().flatten()).map(|step| &step.arguments.artifacts);
+        let tasks = template.dag.iter().flat_map(|dag| &dag.tasks);
+        let declared = (steps.chain(tasks.map(|task| &task.arguments.artifacts)))
+            .flatten()
+            .chain(&template.inputs.artifacts)
+            .chain(&template.outputs.artifacts);
+        for artifact in declared {
+            let endpoint = (artifact.s3.as_ref()).and_then(|s3| s3.get("endpoint"));
+            let later = endpoint.is_some_and(|node| crate::tags::has_tag(&scalar_text(node)));
+            if let Ok(Some(url)) = artifact_url(artifact)
+                && !crate::tags::has_tag(&url)
+                && !later
+            {
+                self.check_endpoint(artifact, &url)?;
             }
+        }
+        let mut artifacts = Vec::new();
+        for (value, input) in supplied.into_iter().zip(&template.inputs.artifacts) {
+            let mut value = match value {
+                Some(mut value) => {
+                    value.name = input.name.clone();
+                    apply_sub_path(&mut value, &input.sub_path)?;
+                    value
+                }
+                None => self.artifact_value(input)?,
+            };
+            if value.location.is_none() && !input.optional {
+                return Err(Failure::error(format!(
+                    "inputs.artifacts.{} was not supplied",
+                    input.name
+                )));
+            }
+            value.name = input.name.clone();
+            value.path = input.path.clone();
+            value.optional = input.optional;
+            artifacts.push(value);
         }
         Ok(Processed {
             node,

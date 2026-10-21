@@ -45,7 +45,7 @@ summary and the tasks, and the graph of the processes. nf-core pipelines turn al
 with files in `pipeline_info/`. The driver writes them at the end of the run into its own
 folder and asks the engine to deliver them, so that a simulated run writes none.
 
-The trace has the columns that Nextflow's has. What iunctus does not measure yet, like the
+The trace has the columns that Nextflow's has. What uwe does not measure yet, like the
 CPU and memory that a task used, or has no counterpart for, like the hash of a work folder,
 is `-`, which Nextflow writes for unknown values too.
 

@@ -8,7 +8,7 @@
 
 The benchmark file of a Snakemake job (`benchmark:`), which Snakemake writes after the job
 with the time it took and what it used: tab-separated values under a header, or one JSON
-line when the name ends with `.jsonl` (Snakemake 9.27, `benchmark.py`). iunctus fills it
+line when the name ends with `.jsonl` (Snakemake 9.27, `benchmark.py`). uwe fills it
 from the tool's own start and end and from what the cgroup of the container counted;
 the values that it does not know (`max_vms`, `max_uss`, `max_pss`) are `NA`, as Snakemake
 writes them when it could not sample the job.
@@ -16,7 +16,7 @@ writes them when it could not sample the job.
 ## src/commands.rs
 
 Commands that workflow code runs while the workflow is planned, like `shell()` or
-`subprocess.run`. They never run on the machine of iunctus (decision 11): each becomes a
+`subprocess.run`. They never run on the machine of uwe (decision 11): each becomes a
 container task that the engine runs like the task of a job. The image is the workflow's
 global `container:`, else a small default image. The task runs in the working directory of
 the workflow, which it changes where it is, as Snakemake runs the command there: the files
@@ -32,7 +32,7 @@ session has handled the request that ran the command.
 
 The values of a job as plain data, which each language's preamble writes in its own
 syntax. Snakemake hands the values to a script by pickling them (Python) or by writing them
-as code (R, Julia, Bash, Rust); iunctus writes code for every language, so it first turns
+as code (R, Julia, Bash, Rust); uwe writes code for every language, so it first turns
 the interpreter's values into this plain form.
 
 ## src/embedded/globals.rs
@@ -49,22 +49,22 @@ The context of embedded code: what the code of a job gets besides its files. Sna
 gives scripts, wrappers and notebooks a `snakemake` object with the job's input, output,
 params, wildcards, threads, resources, log, config and rule, through a preamble in each
 language, and it runs `run:` blocks as functions with these names and the Snakefile's
-globals. iunctus builds the same preambles while it plans the job, so that the code runs
+globals. uwe builds the same preambles while it plans the job, so that the code runs
 unchanged in the task's container (decision 11).
 
 ## src/embedded/python.rs
 
 Python: the preamble of scripts, wrappers and notebooks, which makes the `snakemake` object
 as Snakemake's `PythonScript.generate_preamble` does. Snakemake pickles the object; the
-container of a task has no Snakemake to unpickle it with, so iunctus writes the object as
+container of a task has no Snakemake to unpickle it with, so uwe writes the object as
 Python code that builds it with the stand-in package (`snakemake/iocontainers.py`).
 
 ## src/embedded/run.rs
 
 `run:` blocks. Snakemake runs a block as a function of the Snakefile's module, with the
-job's values as its arguments and the Snakefile's globals around it. In iunctus the
+job's values as its arguments and the Snakefile's globals around it. In uwe the
 Snakefile runs in the native interpreter (decision 17), and a job runs in a container
-(decision 11). So the block runs in the task's container, in a module that iunctus writes:
+(decision 11). So the block runs in the task's container, in a module that uwe writes:
 the rule function of Snakemake with the block as its body, and the Snakefile's globals that
 the block uses, carried over from the interpreter: plain values as literals, modules as
 imports, and functions of the workflow by their source text, with what they use in turn.
@@ -80,7 +80,7 @@ script, whose other files scripts import or source.
 
 ## src/embedded/snakemake/__init__.py
 
-The stand-in of the snakemake package that iunctus gives the code of jobs in their
+The stand-in of the snakemake package that uwe gives the code of jobs in their
 containers: the `snakemake` object of scripts, wrappers and notebooks, `shell()`, and the
 helpers that such code imports from snakemake. It needs only the Python standard library, and runs
 with Python 3.7 or later, as the scripts of Snakemake 9.27 do.
@@ -190,7 +190,7 @@ packages.
 
 Workflow files on the web, like the Snakefile of a module from `github(...)` or an
 `include:` of a web address. Snakemake clones the git repository or downloads the file.
-iunctus mirrors each repository at its reference, or each web server, into a folder of
+uwe mirrors each repository at its reference, or each web server, into a folder of
 downloads, and downloads a file the first time the workflow reads it. So paths relative to
 a remote Snakefile, like its includes, config schemas and scripts, work as local ones do.
 
@@ -222,7 +222,7 @@ job is capped at the global resource of its name.
 Service jobs: a job with a `service()` output provides something, like a socket, that the
 jobs that read it use while it runs. Snakemake runs such a job in one group with the jobs
 that use it, all at once, and ends it with SIGTERM once they ended; the group succeeds when
-they do. iunctus runs the group as one task in one container: the service starts first in
+they do. uwe runs the group as one task in one container: the service starts first in
 the background, each job that uses it starts once the service made its output, and the
 service gets SIGTERM when they ended. The output of a service is no file that a run keeps
 or checks.
@@ -247,9 +247,9 @@ result of a task stays tied to what it could read.
 Snakemake's storage: files in remote storage, like `storage.http(url)` or
 `storage("s3://bucket/key")`. Snakemake's storage plugins download such an input into
 `.snakemake/storage/<provider>/...` before the job runs, and the job sees that local path.
-iunctus gives the job the same local path, and its task gets the file from the storage
+uwe gives the job the same local path, and its task gets the file from the storage
 address, which the executor downloads. While the workflow is planned, a file in storage
-counts as present, as iunctus does not look into the storage itself.
+counts as present, as uwe does not look into the storage itself.
 
 ## tests/names.rs
 
@@ -339,7 +339,7 @@ should not fail.
 Writes run_test_workflows_oracle.txt: what real Snakemake 9.27.0 does with each workflow of the
 Snakemake test workflows and each launch that launches.py considers for it. Each run is
 `snakemake --dry-run --printshellcmds` in a copy of the workflow folder under the temporary
-directory, so that Snakemake also formats the shell command of each job, as iunctus does
+directory, so that Snakemake also formats the shell command of each job, as uwe does
 when it builds the task of a job. Run it from the repository root after
 `just snakemake-test-workflows-data`, then run launches.py:
 
@@ -351,7 +351,7 @@ when it builds the task of a job. Run it from the repository root after
 
 With `--only FILE`, it runs only the workflows that FILE names, one per line, and replaces
 their lines in the oracle file, keeping them even when Snakemake evaluates their first
-launch: the evidence for the workflows that iunctus cannot run.
+launch: the evidence for the workflows that uwe cannot run.
 
 The workflows of run_test_workflows_containers.txt import Python packages that run in the
 Python container of decision 19. Their evidence comes from a run with those packages too:
@@ -364,7 +364,7 @@ Python container of decision 19. Their evidence comes from a run with those pack
         --with pybedtools --with google-auth --with pillow --with utils \
         python snakemake-runtime/tests/fixtures/oracle.py --only /tmp/containers.txt
 
-Snakemake is only the reference here; iunctus never runs it (decision 1).
+Snakemake is only the reference here; uwe never runs it (decision 1).
 
 ## src/inputs.rs:354
 

@@ -25,7 +25,7 @@ pub struct Mirrors {
     /// The Git client for the repositories on the web of `gitfile(...)`, and the ones that
     /// this run fetched already.
     pub git: RefCell<Option<crate::gitfile::GitClient>>,
-    fetched: RefCell<HashSet<String>>,
+    fetched: RefCell<std::collections::HashMap<String, PathBuf>>,
 }
 
 /// A folder name for each part of a web address: parts like `..` or empty ones become `_`.
@@ -56,7 +56,7 @@ impl Mirrors {
             mirrors: RefCell::new(Vec::new()),
             missing: RefCell::new(HashSet::new()),
             git: RefCell::new(None),
-            fetched: RefCell::new(HashSet::new()),
+            fetched: RefCell::default(),
         }
     }
 
@@ -69,11 +69,13 @@ impl Mirrors {
         let client = self.git.borrow().clone().ok_or_else(|| {
             format!("{repository} is on the web, and this run has no Git client to fetch it")
         })?;
-        let fresh = self
-            .fetched
-            .borrow_mut()
-            .insert(format!("{repository}@{reference}"));
-        crate::gitfile::web(&client, repository, reference, &self.downloads, fresh)
+        let key = format!("{repository}@{reference}");
+        if let Some(folder) = self.fetched.borrow().get(&key) {
+            return Ok(folder.clone());
+        }
+        let folder = crate::gitfile::web(&client, repository, reference, &self.downloads)?;
+        self.fetched.borrow_mut().insert(key, folder.clone());
+        Ok(folder)
     }
 
     fn add(&self, folder: PathBuf, url: String) -> PathBuf {

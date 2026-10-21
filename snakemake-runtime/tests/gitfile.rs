@@ -119,11 +119,30 @@ fn fetches_web_repositories() {
     };
     let snakefile =
         "include: gitfile('https://example.org/repo.git', 'rules/main.smk', ref='dev')\n";
-    let text = script(folder.path(), snakefile, settings);
+    let text = script(folder.path(), snakefile, settings.clone());
     assert!(text.contains("echo web > a.txt"), "{text}");
     assert_eq!(*asked.lock().unwrap(), ["https://example.org/repo.git@dev"]);
+    // The next run fetches into a folder of its own; one that a run may still read stays.
+    let fetched = folder.path().join("scratch/downloads/snakemake/git/web");
+    let first: Vec<_> = std::fs::read_dir(&fetched)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    assert_eq!(first.len(), 1);
+    script(folder.path(), snakefile, settings);
+    assert!(first[0].join("rules/main.smk").is_file());
+    assert_eq!(std::fs::read_dir(&fetched).unwrap().count(), 2);
     let refused = script(folder.path(), snakefile, Default::default());
     assert!(refused.contains("no Git client"), "{refused}");
+    // A script of a reference that is not there says so where it is named.
+    let snakefile =
+        "rule a:\n    output: 'a.txt'\n    script: gitfile('repo', 's.py', ref='nope')\n";
+    let missing = script(folder.path(), snakefile, Default::default());
+    assert!(
+        missing.contains("Failed to read source") && missing.contains("nope"),
+        "{missing}"
+    );
 }
 
 /// A crafted tree that holds a link `a` to a folder outside and a folder `a` with a file

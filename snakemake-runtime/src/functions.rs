@@ -1275,10 +1275,15 @@ fn hosted(provider: &'static str, state: Rc<RefCell<State>>) -> Value {
                     .into_owned(),
             };
             let mirrors = state.borrow().mirrors.clone();
-            let folder = mirrors.git_folder(&absolute, reference).ok();
+            let url = format!("git+file://{absolute}/{path}@{reference}");
+            let folder = mirrors.git_folder(&absolute, reference).map_err(|error| {
+                workflow_error(format!(
+                    "Failed to read source {url} from git repo: {error}"
+                ))
+            })?;
             return Ok(Value::native(RemoteSource {
-                url: format!("git+file://{absolute}/{path}@{reference}"),
-                local: folder.map(|folder| folder.join(path.trim_matches('/'))),
+                url,
+                local: Some(folder.join(path.trim_matches('/'))),
                 git: Some((repository, reference.clone(), path)),
             }));
         }

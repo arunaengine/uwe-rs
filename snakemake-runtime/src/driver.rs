@@ -527,6 +527,40 @@ impl Session {
                 pending.extend(planner.jobs[job].dependencies.iter().map(|(_, job)| *job));
             }
         }
+        // Snakemake's `check_incomplete` when it first plans: outputs that are there with an
+        // incomplete record of a job that ran in place, of iunctus or of Snakemake, stop the
+        // run unless the profile sets `rerun-incomplete`, which makes them again.
+        if self.tasks.is_empty() && self.done.is_empty() {
+            let mut incomplete = Vec::new();
+            for job in &self.order {
+                let outputs = (planner.jobs[*job].output.values.iter())
+                    .filter(|value| value.tag("service").is_none())
+                    .filter_map(Value::as_str);
+                for output in outputs {
+                    let marked =
+                        crate::metadata::snakemake_incomplete(&self.workdir, output).is_file();
+                    let path = self.interpreter.host.resolve(output.trim_end_matches('/'));
+                    if marked && std::fs::symlink_metadata(path).is_ok() {
+                        incomplete.push((*job, output.to_owned()));
+                    }
+                }
+            }
+            if !incomplete.is_empty() && !self.state.borrow().profile.rerun_incomplete {
+                let files: Vec<&str> = incomplete.iter().map(|(_, file)| file.as_str()).collect();
+                let message = format!(
+                    "IncompleteFilesException: The files below seem to be incomplete. If you are \
+                     sure that certain files are not incomplete, mark them as complete by \
+                     removing their records in .snakemake/incomplete. To re-generate the \
+                     files, set \
+                     `rerun-incomplete: true` in a profile.\nIncomplete files:\n{}",
+                    files.join("\n")
+                );
+                return Err(DriverError::new(message));
+            }
+            for (job, _) in incomplete {
+                self.needrun.insert(job, true);
+            }
+        }
         self.prepared.clear();
         if !self.launch.simulated {
             for job in &self.order {
@@ -548,15 +582,11 @@ impl Session {
                     .filter(|value| value.tag("service").is_none())
                     .filter_map(Value::as_str)
                     .collect();
-                // The incomplete records of iunctus, and those of Snakemake for outputs that
-                // are there, as `--rerun-incomplete` takes them.
+                // An output whose delivery did not end is made again.
                 if outputs.iter().any(|output| {
-                    let snakemake = crate::metadata::snakemake_incomplete(&self.workdir, output);
-                    let path = self.interpreter.host.resolve(output);
                     crate::metadata::incomplete_path(&self.workdir, output)
                         .try_exists()
                         .unwrap_or(true)
-                        || (snakemake.is_file() && std::fs::symlink_metadata(path).is_ok())
                 }) {
                     self.needrun.insert(*job, true);
                     continue;
@@ -1535,7 +1565,7 @@ impl Session {
                 .filter(|value| value.tag("service").is_none())
                 .filter_map(Value::as_str);
             for output in outputs {
-                crate::metadata::mark_incomplete(&self.workdir, output).map_err(|error| {
+                crate::metadata::mark_running(&self.workdir, output).map_err(|error| {
                     DriverError::new(format!("cannot mark output {output} incomplete: {error}"))
                 })?;
             }
@@ -1682,6 +1712,11 @@ impl Session {
         for job in jobs {
             crate::shared::remove_outputs(&self.workdir, &planner.jobs[*job], false)
                 .map_err(|error| DriverError::new(format!("cannot remove outputs: {error}")))?;
+            // Snakemake's `cleanup`: the outputs of a failed job are not incomplete anymore.
+            let outputs = (planner.jobs[*job].output.values.iter()).filter_map(Value::as_str);
+            for output in outputs {
+                let _ = crate::metadata::clear_incomplete(&self.workdir, output);
+            }
         }
         Ok(())
     }

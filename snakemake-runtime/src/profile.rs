@@ -56,6 +56,8 @@ pub struct Profile {
     pub batch: Option<(String, usize, usize)>,
     /// `nolock:`, which leaves the working directory unlocked.
     pub nolock: bool,
+    /// `rerun-incomplete:`, which makes outputs with an incomplete record again.
+    pub rerun_incomplete: bool,
     /// `envvars:`, the variables of this environment that jobs get.
     pub envvars: Vec<String>,
 }
@@ -296,6 +298,7 @@ impl Profile {
         self.all_temp = self.all_temp || other.all_temp;
         self.notemp = self.notemp || other.notemp;
         self.nolock = self.nolock || other.nolock;
+        self.rerun_incomplete = self.rerun_incomplete || other.rerun_incomplete;
         if !other.envvars.is_empty() {
             self.envvars = other.envvars;
         }
@@ -421,6 +424,9 @@ impl Profile {
                 "all-temp" => profile.all_temp = interpreter.truthy(&value)?,
                 "notemp" | "nt" | "no-temp" => profile.notemp = interpreter.truthy(&value)?,
                 "nolock" => profile.nolock = interpreter.truthy(&value)?,
+                "rerun-incomplete" | "ri" => {
+                    profile.rerun_incomplete = interpreter.truthy(&value)?
+                }
                 "envvars" => profile.envvars = words(interpreter, &value)?,
                 "wrapper-prefix" => profile.wrapper_prefix = Some(interpreter.to_str(&value)?),
                 "groups" => profile.groups = pairs(interpreter, &value)?,
@@ -530,7 +536,6 @@ impl Profile {
                 | "scheduler"
                 | "reason"
                 | "keep-going"
-                | "rerun-incomplete"
                 | "keep-incomplete"
                 | "jobname"
                 | "jn"

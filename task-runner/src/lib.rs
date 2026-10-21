@@ -30,6 +30,7 @@ pub use executor::RunnerExecutor;
 pub use files::StorageFiles;
 pub use lookup::Lookup;
 pub use network::NetworkRule;
+pub use outputs::resolved;
 pub use request::{identity, request};
 pub use runner::{
     ContainerResult, Prepared, Runner, RunnerError, Settings, StoredFile, TaskResult,

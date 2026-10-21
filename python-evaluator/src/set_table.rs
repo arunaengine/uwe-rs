@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use crate::hashing::stable_hash;
 use crate::value::Key;
 
 /// The probing constants of CPython's `setobject.c`.
@@ -12,6 +13,7 @@ const LINEAR_PROBES: usize = 9;
 #[derive(Clone)]
 enum Slot {
     Empty,
+    Dummy,
     Used(i64, Key),
 }
 
@@ -20,9 +22,11 @@ enum Slot {
 #[derive(Clone)]
 pub struct Table {
     slots: Vec<Slot>,
-    /// The slots that are used, and the members.
+    /// The slots that are used or dummies, and the members.
     fill: usize,
-    used: usize,
+    pub(crate) used: usize,
+    /// Where the next `pop` starts to look.
+    finger: usize,
 }
 
 impl Table {
@@ -31,6 +35,7 @@ impl Table {
             slots: vec![Slot::Empty; 8],
             fill: 0,
             used: 0,
+            finger: 0,
         }
     }
 
@@ -59,12 +64,38 @@ impl Table {
             & mask
     }
 
-    /// `set_add_entry`: a new member goes to its first free slot, and the table grows once
-    /// it is three fifths full.
+    /// `set_lookkey`: the slot of a member.
+    pub(crate) fn find(&self, key: &Key) -> Option<usize> {
+        let hash = stable_hash(&key.0)?;
+        let mask = self.mask();
+        let mut perturb = hash as u64;
+        let mut slot = (hash as u64 as usize) & mask;
+        loop {
+            let probes = if slot + LINEAR_PROBES <= mask {
+                LINEAR_PROBES
+            } else {
+                0
+            };
+            for (offset, entry) in self.slots[slot..=slot + probes].iter().enumerate() {
+                match entry {
+                    Slot::Empty => return None,
+                    Slot::Used(other, member) if *other == hash && member == key => {
+                        return Some(slot + offset);
+                    }
+                    _ => {}
+                }
+            }
+            slot = Table::next(slot, &mut perturb, mask);
+        }
+    }
+
+    /// `set_add_entry`: a new member goes to the first dummy of its probe sequence, or else
+    /// to its first free slot, and the table grows once it is three fifths full.
     pub(crate) fn add(&mut self, key: Key, hash: i64) {
         let mask = self.mask();
         let mut perturb = hash as u64;
         let mut slot = (hash as u64 as usize) & mask;
+        let mut dummy = None;
         loop {
             let probes = if slot + LINEAR_PROBES <= mask {
                 LINEAR_PROBES
@@ -75,6 +106,10 @@ impl Table {
                 match &self.slots[index] {
                     Slot::Empty => {
                         self.used += 1;
+                        if let Some(dummy) = dummy {
+                            self.slots[dummy] = Slot::Used(hash, key);
+                            return;
+                        }
                         self.slots[index] = Slot::Used(hash, key);
                         self.fill += 1;
                         if self.fill * 5 >= mask * 3 {
@@ -86,6 +121,7 @@ impl Table {
                         return;
                     }
                     Slot::Used(other, member) if *other == hash && *member == key => return,
+                    Slot::Dummy if dummy.is_none() => dummy = Some(index),
                     _ => {}
                 }
             }
@@ -129,6 +165,41 @@ impl Table {
                 self.insert_clean(hash, key);
             }
         }
+    }
+
+    /// `set_discard_entry`: the member's slot becomes a dummy.
+    pub(crate) fn discard(&mut self, key: &Key, hash: i64) -> bool {
+        let _ = hash;
+        let Some(index) = self.find(key) else {
+            return false;
+        };
+        self.slots[index] = Slot::Dummy;
+        self.used -= 1;
+        true
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.slots = vec![Slot::Empty; 8];
+        self.fill = 0;
+        self.used = 0;
+    }
+
+    /// `set_pop`.
+    pub(crate) fn pop(&mut self) -> Option<Key> {
+        if self.used == 0 {
+            return None;
+        }
+        let mask = self.mask();
+        let mut index = self.finger & mask;
+        while !matches!(self.slots[index], Slot::Used(..)) {
+            index = (index + 1) & mask;
+        }
+        let Slot::Used(_, key) = std::mem::replace(&mut self.slots[index], Slot::Dummy) else {
+            return None;
+        };
+        self.used -= 1;
+        self.finger = index + 1;
+        Some(key)
     }
 
     /// `set_merge`: the members of another set into this one. An empty table of the same

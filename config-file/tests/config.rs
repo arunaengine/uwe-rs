@@ -107,7 +107,7 @@ fn later_keys_win() {
 fn resolves_secret_sources() {
     let config = parse(
         "[web]\ntoken = \"written-secret\"\nkey = { environment = \"PATH\" }\n\
-         gone = { environment = \"IUNCTUS_TEST_VARIABLE_THAT_IS_NOT_SET\" }\n",
+         gone = { environment = \"UWE_TEST_VARIABLE_THAT_IS_NOT_SET\" }\n",
     )
     .unwrap();
     let web = config.section("web").unwrap().unwrap();
@@ -128,7 +128,7 @@ fn resolves_secret_sources() {
     assert_eq!(
         error,
         "/site/config.toml:4: the environment variable \
-         IUNCTUS_TEST_VARIABLE_THAT_IS_NOT_SET, which holds this secret, is not set"
+         UWE_TEST_VARIABLE_THAT_IS_NOT_SET, which holds this secret, is not set"
     );
     assert!(web.secret("absent").unwrap().is_none());
 }

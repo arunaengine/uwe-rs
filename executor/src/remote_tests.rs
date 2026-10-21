@@ -265,9 +265,9 @@ async fn refuses_unplaceable_inputs() {
 /// A staging root in the S3 bucket of the environment, below its own prefix.
 fn s3_stage(name: &str, credentials: bool) -> RemoteStage {
     let options = content_store::S3Options {
-        bucket: std::env::var("IUNCTUS_S3_BUCKET").expect("IUNCTUS_S3_BUCKET is set"),
+        bucket: std::env::var("UWE_S3_BUCKET").expect("UWE_S3_BUCKET is set"),
         prefix: Some(format!("iunctus-{name}-{}", std::process::id())),
-        endpoint: std::env::var("IUNCTUS_S3_ENDPOINT").ok(),
+        endpoint: std::env::var("UWE_S3_ENDPOINT").ok(),
         region: Some(std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".into())),
     };
     RemoteStage {
@@ -280,11 +280,11 @@ fn s3_stage(name: &str, credentials: bool) -> RemoteStage {
 }
 
 /// A staging root below the address in the environment variable `root`, through the storage
-/// providers of `IUNCTUS_TEST_STORAGE`, as iunctus opens it.
+/// providers of `UWE_TEST_STORAGE`, as iunctus opens it.
 fn configured_stage(root: &str) -> RemoteStage {
     let root = std::env::var(root).expect("the address of the staging root");
     let root = format!("{root}/iunctus-remote-{}", std::process::id());
-    let text = std::env::var("IUNCTUS_TEST_STORAGE").expect("IUNCTUS_TEST_STORAGE is set");
+    let text = std::env::var("UWE_TEST_STORAGE").expect("UWE_TEST_STORAGE is set");
     let config = config_file::ConfigFile::parse(&text, Path::new("storage.toml")).unwrap();
     let storage = storage::Storage::from_config(&config).unwrap();
     let storage::StoreLocation::Objects(operator) = storage.store(&root).unwrap() else {
@@ -329,23 +329,23 @@ async fn presigned_object(stage: &RemoteStage) {
 #[tokio::test]
 #[ignore = "needs fake-gcs-server; run `just emulator-test`"]
 async fn gcs_presigned_requests() {
-    presigned_object(&configured_stage("IUNCTUS_GCS_ROOT")).await;
+    presigned_object(&configured_stage("UWE_GCS_ROOT")).await;
 }
 
 #[tokio::test]
 #[ignore = "needs Azurite; run `just emulator-test`"]
 async fn azure_round_trip() {
-    round_trip(&configured_stage("IUNCTUS_AZURE_ROOT")).await;
+    round_trip(&configured_stage("UWE_AZURE_ROOT")).await;
 }
 
 #[tokio::test]
-#[ignore = "needs an S3 bucket; set IUNCTUS_S3_BUCKET and AWS credentials, then run with --ignored"]
+#[ignore = "needs an S3 bucket; set UWE_S3_BUCKET and AWS credentials, then run with --ignored"]
 async fn presigned_round_trip() {
     round_trip(&s3_stage("remote", false)).await;
 }
 
 #[tokio::test]
-#[ignore = "needs an S3 bucket and its provider in IUNCTUS_STAGING_STORAGE; run `just s3-test`"]
+#[ignore = "needs an S3 bucket and its provider in UWE_STAGING_STORAGE; run `just s3-test`"]
 async fn credentials_round_trip() {
     round_trip(&s3_stage("credentials", true)).await;
 }
@@ -353,7 +353,7 @@ async fn credentials_round_trip() {
 /// Nodes with credentials download the binary through a presigned URL too, as they have no
 /// helper yet.
 #[tokio::test]
-#[ignore = "needs an S3 bucket and its provider in IUNCTUS_STAGING_STORAGE; run `just s3-test`"]
+#[ignore = "needs an S3 bucket and its provider in UWE_STAGING_STORAGE; run `just s3-test`"]
 async fn presigns_binary_download() {
     let stage = s3_stage("binary", true);
     let sources = tempfile::tempdir().unwrap();
@@ -371,7 +371,7 @@ async fn presigns_binary_download() {
 /// Sends an output larger than one part as an object in parts, which S3 marks with the count of
 /// its parts in the ETag.
 #[tokio::test]
-#[ignore = "needs an S3 bucket and its provider in IUNCTUS_STAGING_STORAGE; run `just s3-test`"]
+#[ignore = "needs an S3 bucket and its provider in UWE_STAGING_STORAGE; run `just s3-test`"]
 async fn sends_large_outputs() {
     let stage = s3_stage("large", true);
     let folder = tempfile::tempdir().unwrap();

@@ -801,9 +801,9 @@ async fn publishes_local_image() {
     use bollard::query_parameters::{BuildImageOptions, BuilderVersion, RemoveImageOptions};
     use futures_util::StreamExt;
 
-    let base = std::env::var("IUNCTUS_PUBLISH_BASE").unwrap();
-    let registry = std::env::var("IUNCTUS_PUBLISH_REGISTRY").unwrap();
-    let context = std::fs::read(std::env::var("IUNCTUS_PUBLISH_CONTEXT").unwrap()).unwrap();
+    let base = std::env::var("UWE_PUBLISH_BASE").unwrap();
+    let registry = std::env::var("UWE_PUBLISH_REGISTRY").unwrap();
+    let context = std::fs::read(std::env::var("UWE_PUBLISH_CONTEXT").unwrap()).unwrap();
     assert!(context.len() <= 16 * 1024);
     let p = ImagePreparation::new(preparation().lock(), &base, "linux/amd64", &[]).unwrap();
     let engine = ContainerEngine::named(Some("docker")).await.unwrap();

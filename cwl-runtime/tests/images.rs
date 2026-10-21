@@ -224,9 +224,9 @@ fn saves_slurm_archives() {
 }
 
 #[test]
-#[ignore = "needs Docker and a registry at IUNCTUS_TEST_REGISTRY, like localhost:5000/cwl"]
+#[ignore = "needs Docker and a registry at UWE_TEST_REGISTRY, like localhost:5000/cwl"]
 fn pushes_remote_images() {
-    let registry = std::env::var("IUNCTUS_TEST_REGISTRY").expect("IUNCTUS_TEST_REGISTRY");
+    let registry = std::env::var("UWE_TEST_REGISTRY").expect("UWE_TEST_REGISTRY");
     let root = tempfile::tempdir().unwrap();
     let remote = Options {
         simulated: false,

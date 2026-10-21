@@ -155,7 +155,7 @@ fn replays_recorded_container() {
         "-iunctus-config",
         "config.toml",
     ];
-    let (code, output) = iunctus_with(path, &arguments, &[("IUNCTUS_LOG", "info")]);
+    let (code, output) = iunctus_with(path, &arguments, &[("UWE_LOG", "info")]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("sent the trace to"), "{output}");
     let (_, body) = received.recv().expect("the trace");
@@ -198,7 +198,7 @@ fn delivers_run_traces() {
     let (endpoint, received) = receiver();
     let config = format!(
         "[telemetry]\nendpoint = \"{endpoint}\"\nheaders = {{ authorization = {{ environment = \
-         \"IUNCTUS_TEST_OTLP\" }} }}\n"
+         \"UWE_TEST_OTLP\" }} }}\n"
     );
     std::fs::write(path.join("config.toml"), config).expect("writes the config");
     let arguments = [
@@ -209,7 +209,7 @@ fn delivers_run_traces() {
         "-iunctus-config",
         "config.toml",
     ];
-    let (code, output) = iunctus_with(path, &arguments, &[("IUNCTUS_TEST_OTLP", "Bearer t")]);
+    let (code, output) = iunctus_with(path, &arguments, &[("UWE_TEST_OTLP", "Bearer t")]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains(&format!(
         "wrote the trace of run {run} to trace.jsonl: 5 spans"
@@ -229,7 +229,7 @@ fn delivers_run_traces() {
     // A secret whose variable is not set stops the command before anything is sent.
     let (code, output) = iunctus(path, &arguments);
     assert_eq!(code, 1, "{output}");
-    assert!(output.contains("IUNCTUS_TEST_OTLP"), "{output}");
+    assert!(output.contains("UWE_TEST_OTLP"), "{output}");
 }
 
 /// A small OTLP HTTP receiver: it answers every request with 200 and hands the head and body of

@@ -15,7 +15,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import real_runs_snakemake as local  # noqa: E402
 
-IUNCTUS = os.environ.get("IUNCTUS") or "iunctus"
+UWE = os.environ.get("UWE") or "iunctus"
 OUTPUT = Path(os.environ.get("RECORD") or Path(__file__).with_name("real_runs_slurm_snakemake.txt"))
 IMAGE = "python:3-slim"
 ALLOWED = {"python:3-slim", "docker.io/python:3-slim", "debian:stable-slim",
@@ -55,7 +55,7 @@ def skipped(source, fields):
 
 def command(fields):
     """The command of iunctus for the fields of a launch."""
-    words = [IUNCTUS, "run", "Snakefile", "-lang", "snakemake", "-executor", "slurm",
+    words = [UWE, "run", "Snakefile", "-lang", "snakemake", "-executor", "slurm",
              "-no-cache", "-default-image", IMAGE, "-python-image", IMAGE, "-max-pending", "3"]
     for field in fields:
         key, _, value = field.partition("=")

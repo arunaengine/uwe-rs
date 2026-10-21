@@ -90,7 +90,7 @@ fn executor_config_precedence() {
             .args(["run", "main.nf"])
             .arg("-iunctus-config")
             .arg(&config)
-            .env("IUNCTUS_ENGINE", directory.path().join("missing.sock"))
+            .env("UWE_ENGINE", directory.path().join("missing.sock"))
             .env("XDG_CACHE_HOME", directory.path().join("cache"))
             .current_dir(directory.path());
         if let Some(option) = option {
@@ -117,7 +117,7 @@ fn inspection_uses_simulation() {
             .args([name, "tool.cwl"])
             .arg("-iunctus-config")
             .arg(&config)
-            .env("IUNCTUS_ENGINE", directory.path().join("missing.sock"))
+            .env("UWE_ENGINE", directory.path().join("missing.sock"))
             .env("XDG_CACHE_HOME", directory.path().join("cache"))
             .current_dir(directory.path())
             .output()

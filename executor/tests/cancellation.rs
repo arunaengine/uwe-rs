@@ -39,7 +39,7 @@ fn cancellation_warns_timeout() {
 }
 
 fn check_removal(test: &str, helper: bool, status: u16) {
-    if let Ok(socket) = std::env::var("IUNCTUS_CANCEL_ENGINE") {
+    if let Ok(socket) = std::env::var("UWE_CANCEL_ENGINE") {
         probe(Path::new(&socket), helper);
         return;
     }
@@ -54,7 +54,7 @@ fn check_removal(test: &str, helper: bool, status: u16) {
     });
     let mut child = Command::new(std::env::current_exe().unwrap())
         .args(["--exact", test, "--nocapture"])
-        .env("IUNCTUS_CANCEL_ENGINE", &socket)
+        .env("UWE_CANCEL_ENGINE", &socket)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

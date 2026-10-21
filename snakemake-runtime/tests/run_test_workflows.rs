@@ -20,9 +20,9 @@ const CONTAINERS: &str = include_str!("fixtures/run_test_workflows_containers.tx
 /// What the error of a workflow that needs the Python container says without it.
 const NO_RUNTIME: &str = "(decision 19), but this run has no container runtime";
 
-/// Whether the workflows run with the Python container: `IUNCTUS_CONTAINER_TESTS=1`.
+/// Whether the workflows run with the Python container: `UWE_CONTAINER_TESTS=1`.
 fn containers() -> bool {
-    std::env::var_os("IUNCTUS_CONTAINER_TESTS").is_some()
+    std::env::var_os("UWE_CONTAINER_TESTS").is_some()
 }
 
 /// The settings of a run: the Python container, when the test runs with it. What uv
@@ -35,7 +35,7 @@ fn settings() -> Settings {
         std::env::var_os("SNAKEMAKE_TEST_WORKFLOWS").map_or_else(std::env::temp_dir, PathBuf::from);
     Settings {
         python: Some(PythonContainers {
-            engine: std::env::var("IUNCTUS_ENGINE").unwrap_or_else(|_| "docker".into()),
+            engine: std::env::var("UWE_ENGINE").unwrap_or_else(|_| "docker".into()),
             image: None,
             cache: root.join("python-cache"),
             show_output: false,
@@ -260,7 +260,7 @@ fn run_one() {
         return;
     };
     // SAFETY: the variable is set before any other thread of this process reads it.
-    unsafe { std::env::set_var("IUNCTUS_QUIET", "1") };
+    unsafe { std::env::set_var("UWE_QUIET", "1") };
     let folder = PathBuf::from(folder);
     // The parent removes the scratch folder, also after a timeout ended this process.
     let scratch = std::env::var_os("SNAKEMAKE_RUN_SCRATCH").map(PathBuf::from);

@@ -41,7 +41,7 @@ fn sets_shm_size() {
         ] {
             let task = task(class, field, Options::default()).unwrap();
             let flags: serde_json::Value =
-                serde_json::from_str(&task.environment["IUNCTUS_CONTAINER_FLAGS"]).unwrap();
+                serde_json::from_str(&task.environment["UWE_CONTAINER_FLAGS"]).unwrap();
             assert_eq!(flags["shm"], bytes);
         }
     }

@@ -521,13 +521,13 @@ fn shares_ordered_folders() {
 }
 
 #[test]
-#[ignore = "needs rootless Docker/Podman, cgroup v2 delegation, and IUNCTUS_TEST_NONROOT_IMAGE with USER nobody and Debian tools"]
+#[ignore = "needs rootless Docker/Podman, cgroup v2 delegation, and UWE_TEST_NONROOT_IMAGE with USER nobody and Debian tools"]
 fn recovers_rootless_outputs() {
     use std::os::unix::fs::MetadataExt;
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
     assert!(executor.engine.rootless, "requires a rootless engine");
-    let secondary = std::env::var("IUNCTUS_TEST_NONROOT_IMAGE").expect("a USER nobody image");
+    let secondary = std::env::var("UWE_TEST_NONROOT_IMAGE").expect("a USER nobody image");
     let inspected = runtime()
         .block_on(executor.engine.client().inspect_image(&secondary))
         .unwrap();

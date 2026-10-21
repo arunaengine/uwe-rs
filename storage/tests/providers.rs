@@ -1142,7 +1142,7 @@ fn identity_excludes_secrets() {
         key(configured("https://one", "'old'")),
         key(configured(
             "https://one",
-            "{ environment = 'IUNCTUS_CAS16_MISSING_SECRET' }"
+            "{ environment = 'UWE_CAS16_MISSING_SECRET' }"
         ))
     );
     assert_ne!(

@@ -409,7 +409,7 @@ pub fn task(
     }
 
     if let Some(size) = crate::shm::size(scope, &evaluator, vars, options, process.version)? {
-        let key = "IUNCTUS_CONTAINER_FLAGS";
+        let key = "UWE_CONTAINER_FLAGS";
         let mut flags: BTreeMap<String, i64> = match environment.get(key) {
             Some(flags) => {
                 serde_json::from_str(flags).map_err(|error| format!("container flags: {error}"))?

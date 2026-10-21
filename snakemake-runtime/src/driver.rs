@@ -1368,7 +1368,7 @@ impl Session {
     fn report_assumed(&self) {
         let Some(planner) = &self.planner else { return };
         let assumed = planner.assumed_files(&self.roots);
-        if assumed.is_empty() || std::env::var_os("IUNCTUS_QUIET").is_some() {
+        if assumed.is_empty() || std::env::var_os("UWE_QUIET").is_some() {
             return;
         }
         eprintln!(

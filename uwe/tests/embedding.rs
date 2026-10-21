@@ -2,8 +2,8 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use uwe::{CancellationToken, Resume, RunRequest, run::Settings, setup::Setup};
 use serde_json::json;
+use uwe::{CancellationToken, Resume, RunRequest, run::Settings, setup::Setup};
 
 /// The cache folder of this test process, below the target folder and empty at its start,
 /// so that no test writes into the cache folder of the user.

@@ -130,7 +130,7 @@ fn dispatches_system_methods() {
         ),
         "[[2, 2, 2.0, 3, 3, 2.0, 1024.0, 3, 2.0], true, true, true, true]"
     );
-    assert_eq!(value("System.getenv('IUNCTUS_NOT_SET')"), "null");
+    assert_eq!(value("System.getenv('UWE_NOT_SET')"), "null");
     assert_eq!(
         value("[Arrays.asList(1, 2), Arrays.asList(['a'])]"),
         "[[1, 2], [a]]"

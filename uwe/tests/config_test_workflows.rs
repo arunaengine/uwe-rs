@@ -53,7 +53,7 @@ fn normalised(text: &str) -> String {
 #[ignore = "needs the nf-core test workflows and the recorded oracle; run `just config-test-workflows-test`"]
 fn matches_oracle() {
     let test_workflows = directory("NF_CORE_TEST_WORKFLOWS").join("pipelines");
-    let oracle = directory("IUNCTUS_CONFIG_ORACLE");
+    let oracle = directory("UWE_CONFIG_ORACLE");
     let expected = expected();
     let mut pipelines: Vec<String> = std::fs::read_dir(&test_workflows)
         .expect("reads the test workflows")

@@ -19,7 +19,7 @@ impl Host for Recorder {
     fn print(&mut self, _: &str) {}
 
     fn environment(&self, name: &str) -> Option<String> {
-        (name == "IUNCTUS_TEST").then(|| "from the environment".into())
+        (name == "UWE_TEST").then(|| "from the environment".into())
     }
 
     fn namespace_method(
@@ -276,7 +276,7 @@ validation {
         text = \"version ${manifest.version}\"
     }
 }
-env.FROM = IUNCTUS_TEST
+env.FROM = UWE_TEST
 includeConfig 'test.config'
 ",
         ),

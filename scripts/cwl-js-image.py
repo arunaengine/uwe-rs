@@ -17,8 +17,8 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path, help="trusted compiled iunctus binary")
-    parser.add_argument("--engine", default=os.environ.get("IUNCTUS_ENGINE", "docker"))
-    parser.add_argument("--image", default=os.environ.get("IUNCTUS_CWL_JS_IMAGE", "iunctus-cwl-js:0.1.0"))
+    parser.add_argument("--engine", default=os.environ.get("UWE_ENGINE", "docker"))
+    parser.add_argument("--image", default=os.environ.get("UWE_CWL_JS_IMAGE", "iunctus-cwl-js:0.1.0"))
     arguments = parser.parse_args()
     binary = arguments.binary.resolve(strict=True)
     resolved = subprocess.run(["ldd", "--", str(binary)], capture_output=True, text=True,

@@ -1501,7 +1501,7 @@ async fn stages_through_objects() {
         // The pod starts this test program as the helper, which runs `stage_helper`.
         let program = std::env::current_exe().expect("this program");
         let script = format!(
-            "#!/bin/sh\nIFS=$(printf '\\037')\nIUNCTUS_TEST_STAGE=\"$*\" exec {} --exact \
+            "#!/bin/sh\nIFS=$(printf '\\037')\nUWE_TEST_STAGE=\"$*\" exec {} --exact \
              stage_helper --nocapture --test-threads=1\n",
             quote(&program.to_string_lossy())
         );
@@ -1648,7 +1648,7 @@ async fn staged_backend(root: &Path) -> KubernetesBackend {
     let (mut backend, _) = backend(root).await;
     let program = std::env::current_exe().expect("this program");
     let script = format!(
-        "#!/bin/sh\nIFS=$(printf '\\037')\nIUNCTUS_TEST_STAGE=\"$*\" exec {} --exact \
+        "#!/bin/sh\nIFS=$(printf '\\037')\nUWE_TEST_STAGE=\"$*\" exec {} --exact \
          stage_helper --nocapture --test-threads=1\n",
         quote(&program.to_string_lossy())
     );
@@ -1790,7 +1790,7 @@ async fn reports_stage_failures() {
 /// Runs the staging helper when a pod of `stages_through_objects` starts this program as it.
 #[test]
 fn stage_helper() {
-    if let Ok(arguments) = std::env::var("IUNCTUS_TEST_STAGE") {
+    if let Ok(arguments) = std::env::var("UWE_TEST_STAGE") {
         let arguments: Vec<String> = arguments.split('\u{1f}').map(str::to_owned).collect();
         // The first argument is `__stage`, as the iunctus program takes it.
         executor::helper::main(&arguments[1..]).expect("the helper stages");

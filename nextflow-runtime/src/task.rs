@@ -17,7 +17,7 @@ pub const SCRIPT: &str = ".command.sh";
 pub const STDOUT: &str = ".command.out";
 pub const STDERR: &str = ".command.err";
 pub const ENVIRONMENT: &str = ".command.env";
-pub const SECRET_NAMES: &str = "IUNCTUS_SECRET_NAMES";
+pub const SECRET_NAMES: &str = "UWE_SECRET_NAMES";
 pub const SECRET_FILE: &str = "/run/iunctus/secrets";
 
 pub fn secrets(

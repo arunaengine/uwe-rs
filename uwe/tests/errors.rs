@@ -150,7 +150,7 @@ fn explains_missing_prerequisites() {
     let output = common::command()
         .args(["run", "main.nf"])
         .env("XDG_CACHE_HOME", directory.path().join("cache"))
-        .env("IUNCTUS_ENGINE", "/nowhere/podman.sock")
+        .env("UWE_ENGINE", "/nowhere/podman.sock")
         .current_dir(directory.path())
         .output()
         .expect("runs iunctus");

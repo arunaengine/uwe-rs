@@ -122,14 +122,14 @@ impl fmt::Debug for ContainerEngine {
 pub struct NoEngine(String);
 
 impl ContainerEngine {
-    /// The engine that `IUNCTUS_ENGINE` names, else Docker when its socket answers, else
+    /// The engine that `UWE_ENGINE` names, else Docker when its socket answers, else
     /// Podman.
     pub async fn find() -> Result<ContainerEngine, NoEngine> {
-        let named = std::env::var("IUNCTUS_ENGINE").ok();
+        let named = std::env::var("UWE_ENGINE").ok();
         Self::named(named.as_deref().filter(|name| !name.is_empty())).await
     }
 
-    /// The engine of a name as `IUNCTUS_ENGINE` takes it: `docker`, `podman`, or a socket like
+    /// The engine of a name as `UWE_ENGINE` takes it: `docker`, `podman`, or a socket like
     /// `/run/user/1000/podman/podman.sock` or `unix:///var/run/docker.sock`. `None` looks for
     /// Docker, then for Podman.
     pub async fn named(name: Option<&str>) -> Result<ContainerEngine, NoEngine> {
@@ -213,7 +213,7 @@ fn missing(name: Option<&str>, sockets: &[String], failed: &[String]) -> String 
         Some("docker") => "start Docker".to_owned(),
         Some(socket) => format!("start the engine of {socket}"),
         None => "start Docker, or turn on the socket of Podman with `systemctl --user enable \
-                 --now podman.socket`, or name a socket with IUNCTUS_ENGINE"
+                 --now podman.socket`, or name a socket with UWE_ENGINE"
             .to_owned(),
     };
     if denied {

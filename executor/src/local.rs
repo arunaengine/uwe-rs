@@ -157,7 +157,7 @@ fn admit<'a>(job: Job<'a>) -> Result<Job<'a>, ExecutorError> {
     Ok(job)
 }
 
-const FLAGS_ENV: &str = "IUNCTUS_CONTAINER_FLAGS";
+const FLAGS_ENV: &str = "UWE_CONTAINER_FLAGS";
 
 #[derive(Default)]
 struct Flags {
@@ -476,7 +476,7 @@ impl LocalContainer {
             };
         }
         if let Some(task_model::EnvironmentValue::Literal(names)) =
-            spec.environment.remove("IUNCTUS_WORK_VARIABLES")
+            spec.environment.remove("UWE_WORK_VARIABLES")
         {
             let names: Vec<String> = serde_json::from_str(&names).map_err(|_| {
                 ExecutorError::Unsupported("invalid work directory environment binding".into())

@@ -1545,7 +1545,7 @@ async fn stage_objects(credentials: bool, upload: bool, archive: bool) {
     let helper = root.path().join("iunctus");
     let program = std::env::current_exe().expect("this program");
     let script = format!(
-        "#!/bin/sh\nIFS=$(printf '\\037')\nIUNCTUS_TEST_STAGE=\"$*\" exec {} --exact stage_helper \
+        "#!/bin/sh\nIFS=$(printf '\\037')\nUWE_TEST_STAGE=\"$*\" exec {} --exact stage_helper \
          --nocapture --test-threads=1\n",
         text(&program)
     );
@@ -1891,7 +1891,7 @@ async fn runs_image_archives() {
 /// Runs the staging helper when a job of `stage_objects` starts this program as it.
 #[test]
 fn stage_helper() {
-    if let Ok(arguments) = std::env::var("IUNCTUS_TEST_STAGE") {
+    if let Ok(arguments) = std::env::var("UWE_TEST_STAGE") {
         let arguments: Vec<String> = arguments.split('\u{1f}').map(str::to_owned).collect();
         // The first argument is `__stage`, as the iunctus program takes it.
         executor::helper::main(&arguments[1..]).expect("the helper stages");

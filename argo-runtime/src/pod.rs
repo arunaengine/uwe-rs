@@ -669,7 +669,7 @@ fn main_mounts(template: &Template) -> Vec<Node> {
 
 /// The variable of a task's environment that makes the executor run it as a daemon, with the
 /// JSON of its readiness probe, as `executor::daemon::Daemon` reads it.
-const DAEMON_ENV: &str = "IUNCTUS_DAEMON";
+const DAEMON_ENV: &str = "UWE_DAEMON";
 
 impl Run {
     /// The daemon settings of a template that runs as a daemon: the readiness probe of its

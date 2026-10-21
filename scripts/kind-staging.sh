@@ -4,7 +4,7 @@
 # Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 #
-# Needs docker, kind, kubectl and helm, the static binary of `just release-binary` (IUNCTUS),
+# Needs docker, kind, kubectl and helm, the static binary of `just release-binary` (UWE),
 # a checkout of kubedal (KUBEDAL, default ../kubedal) and its image (KUBEDAL_IMAGE, default
 # kubedal:e2e). MODES picks some of self, image-volume, init-container, kubedal, credentials and
 # shared-claim;
@@ -13,7 +13,7 @@
 set -euo pipefail
 
 repository="$(cd "$(dirname "$0")/.." && pwd)"
-binary="$(realpath "${IUNCTUS:-$repository/target/x86_64-unknown-linux-musl/release/iunctus}")"
+binary="$(realpath "${UWE:-$repository/target/x86_64-unknown-linux-musl/release/iunctus}")"
 kubedal="${KUBEDAL:-$repository/../kubedal}"
 kubedal_image="${KUBEDAL_IMAGE:-kubedal:e2e}"
 cluster="${KIND_CLUSTER:-iunctus-staging}"
@@ -73,7 +73,7 @@ apiVersion: v1
 kind: Secret
 metadata: {name: staging-storage, namespace: iunctus}
 stringData:
-  IUNCTUS_STAGING_STORAGE: |
+  UWE_STAGING_STORAGE: |
     [storage.staging]
     type = "s3"
     prefixes = ["s3://staging/"]
@@ -117,7 +117,7 @@ keys() {
     curl -sf --aws-sigv4 aws:amz:us-east-1:s3 --user "$STAGING_KEY:$STAGING_SECRET" \
         "$endpoint/staging?list-type=2&prefix=$1"
 }
-export XDG_CONFIG_HOME="$work/config" IUNCTUS_SITE_CONFIG=""
+export XDG_CONFIG_HOME="$work/config" UWE_SITE_CONFIG=""
 status=0
 for mode in ${MODES:-self image-volume init-container kubedal credentials shared-claim}; do
     echo "=== $mode"

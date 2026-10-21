@@ -283,7 +283,7 @@ Before each run, the test describes the inputs of the workflow, as the binary do
 Workflows that import a Python package without a stand-in while they are planned need the
 Python container of decision 19. Without a container runtime they stop with an error that
 says so, and `tests/fixtures/run_test_workflows_containers.txt` must list them. With
-`IUNCTUS_CONTAINER_TESTS=1`, the test runs only these workflows, with the container, and
+`UWE_CONTAINER_TESTS=1`, the test runs only these workflows, with the container, and
 compares their outcomes with that file; each may then take up to fifteen minutes.
 
 ## tests/sources.rs

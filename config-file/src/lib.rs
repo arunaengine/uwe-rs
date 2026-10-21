@@ -29,7 +29,7 @@ pub const SITE_FOLDER: &str = "/etc/iunctus";
 /// The environment variable that names another site-wide file than `/etc/iunctus/config.toml`.
 /// An empty value means no site-wide file. Tests set it, so that the file of the machine
 /// never changes their results.
-pub const SITE_FILE_VARIABLE: &str = "IUNCTUS_SITE_CONFIG";
+pub const SITE_FILE_VARIABLE: &str = "UWE_SITE_CONFIG";
 
 /// The merged settings of the config files.
 #[derive(Clone, Debug)]
@@ -114,7 +114,7 @@ pub fn default_files() -> Vec<PathBuf> {
     site_file().into_iter().chain(user_file()).collect()
 }
 
-/// The site-wide file: `/etc/iunctus/config.toml`, or the file that `IUNCTUS_SITE_CONFIG`
+/// The site-wide file: `/etc/iunctus/config.toml`, or the file that `UWE_SITE_CONFIG`
 /// names, or none when that is empty.
 pub fn site_file() -> Option<PathBuf> {
     site_file_named(std::env::var_os(SITE_FILE_VARIABLE))

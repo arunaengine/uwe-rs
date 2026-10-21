@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(os.environ.get("REAL_RUNS") or Path.home() / ".cache/iunctus/real-runs")
-IUNCTUS = Path(os.environ.get("IUNCTUS") or "target/release/iunctus").resolve()
+UWE = Path(os.environ.get("UWE") or "target/release/iunctus").resolve()
 OUTPUT = Path(__file__).with_name("real_runs.txt")
 TIMEOUT = 3600
 
@@ -158,7 +158,7 @@ def run(case, command, folder):
         "workflow": str(fetch(case)),
         "out": str(folder / "out"),
         "limits": str(limits),
-        "iunctus": str(IUNCTUS),
+        "iunctus": str(UWE),
     }
     words = [word.format(**values) for word in command]
     environment = dict(os.environ, NXF_ANSI_LOG="false")

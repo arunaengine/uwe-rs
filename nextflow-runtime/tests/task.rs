@@ -521,7 +521,7 @@ fn maps_shared_memory() {
     });
     let task = task(&request, &BTreeMap::new()).unwrap();
     let flags: serde_json::Value =
-        serde_json::from_str(&task.environment["IUNCTUS_CONTAINER_FLAGS"]).unwrap();
+        serde_json::from_str(&task.environment["UWE_CONTAINER_FLAGS"]).unwrap();
     assert_eq!(flags["shm"], 214748364);
     assert_eq!(flags["swap"], 512 << 20);
     assert_eq!(flags["gpus"], -1);
@@ -538,7 +538,7 @@ fn maps_work_environment() {
         arguments: vec![Value::string("-e HOME=$PWD -e LITERAL='$PWD'")],
     });
     let mapped = task(&request, &BTreeMap::new()).unwrap();
-    assert_eq!(mapped.environment["IUNCTUS_WORK_VARIABLES"], "[\"HOME\"]");
+    assert_eq!(mapped.environment["UWE_WORK_VARIABLES"], "[\"HOME\"]");
     assert_eq!(mapped.environment["LITERAL"], "$PWD");
     request.directives.last_mut().unwrap().arguments = vec![Value::map([(
         Value::string("shm-size"),
@@ -546,6 +546,6 @@ fn maps_work_environment() {
     )])];
     let mapped = task(&request, &BTreeMap::new()).unwrap();
     let flags: serde_json::Value =
-        serde_json::from_str(&mapped.environment["IUNCTUS_CONTAINER_FLAGS"]).unwrap();
+        serde_json::from_str(&mapped.environment["UWE_CONTAINER_FLAGS"]).unwrap();
     assert_eq!(flags["shm"], 4i64 << 30);
 }

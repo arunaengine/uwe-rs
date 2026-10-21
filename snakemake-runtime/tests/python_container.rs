@@ -1,4 +1,4 @@
-//! Tests external Python packages in containers when IUNCTUS_CONTAINER_TESTS=1; requires network.
+//! Tests external Python packages in containers when UWE_CONTAINER_TESTS=1; requires network.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -8,19 +8,19 @@ use python_evaluator::{Interpreter, LocalHost};
 use snakemake_runtime::{ContainerStarter, PythonContainers};
 
 #[test]
-#[ignore = "needs a container engine and network; set IUNCTUS_CONTAINER_TESTS=1 and run with --ignored"]
+#[ignore = "needs a container engine and network; set UWE_CONTAINER_TESTS=1 and run with --ignored"]
 fn executes_container_packages() {
     assert_eq!(
-        std::env::var("IUNCTUS_CONTAINER_TESTS").as_deref(),
+        std::env::var("UWE_CONTAINER_TESTS").as_deref(),
         Ok("1"),
-        "set IUNCTUS_CONTAINER_TESTS=1 to run code in a container"
+        "set UWE_CONTAINER_TESTS=1 to run code in a container"
     );
     let folder = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(folder.path().join("data.fa"), ">a\nACGT\n>b\nGG\n").expect("writes");
     let host = Rc::new(LocalHost::new(folder.path()));
     let mut interpreter = Interpreter::new(host.clone());
     let settings = PythonContainers {
-        engine: std::env::var("IUNCTUS_ENGINE").unwrap_or_else(|_| "docker".into()),
+        engine: std::env::var("UWE_ENGINE").unwrap_or_else(|_| "docker".into()),
         image: None,
         cache: folder.path().join("python-cache"),
         show_output: false,

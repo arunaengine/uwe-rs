@@ -2,8 +2,8 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use uwe::cli::{self, Failure, HELP};
 use std::process::ExitCode;
+use uwe::cli::{self, Failure, HELP};
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -121,7 +121,7 @@ usage: iunctus run <workflow file, directory or repository> [<targets>] [options
 options:
   -help                               lists the options of this command
   -version, --version                 prints the crate version
-  -v, -verbose                        enables debug logging on stderr; IUNCTUS_LOG sets the
+  -v, -verbose                        enables debug logging on stderr; UWE_LOG sets the
                                       filter otherwise (default: warn)
   -quiet                              suppresses operational logging
   -machine-retries <n>                retries a task after a machine failure (default: 2)

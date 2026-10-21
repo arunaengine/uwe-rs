@@ -56,11 +56,11 @@ pub struct Setup {
 /// and environment variables win over them.
 #[derive(Clone, Debug, Default)]
 pub struct Executors {
-    /// `[executor.local] engine`: the container engine, as `IUNCTUS_ENGINE` names it.
+    /// `[executor.local] engine`: the container engine, as `UWE_ENGINE` names it.
     pub engine: Option<String>,
     /// `[executor.tes] server`, like `-tes-server`.
     pub tes_server: Option<String>,
-    /// `[executor.tes] token`, like `IUNCTUS_TES_TOKEN`.
+    /// `[executor.tes] token`, like `UWE_TES_TOKEN`.
     pub tes_token: Option<Secret>,
     pub tes: tes_executor::Settings,
     /// `[executor.tes.sites.<name>]`: more TES servers, each near some data.
@@ -597,10 +597,10 @@ impl Setup {
         })
     }
 
-    /// The container engine as `IUNCTUS_ENGINE` names it, else as `[executor.local] engine`
+    /// The container engine as `UWE_ENGINE` names it, else as `[executor.local] engine`
     /// does; empty for Docker, else Podman.
     pub fn engine(&self) -> String {
-        (std::env::var("IUNCTUS_ENGINE")
+        (std::env::var("UWE_ENGINE")
             .ok()
             .filter(|name| !name.is_empty()))
         .or_else(|| self.executors.engine.clone())

@@ -228,14 +228,14 @@ fn rejects_bad_locations() {
 
 /// Runs the contract on a real S3-compatible bucket, for example RustFS started by `just s3-server`.
 #[tokio::test]
-#[ignore = "needs an S3 bucket; set IUNCTUS_S3_BUCKET and AWS credentials, then run with --ignored"]
+#[ignore = "needs an S3 bucket; set UWE_S3_BUCKET and AWS credentials, then run with --ignored"]
 async fn s3_contract() {
-    let bucket = std::env::var("IUNCTUS_S3_BUCKET").expect("IUNCTUS_S3_BUCKET is set");
+    let bucket = std::env::var("UWE_S3_BUCKET").expect("UWE_S3_BUCKET is set");
     let unique = std::process::id().to_string();
     let options = S3Options {
         bucket,
         prefix: Some(format!("iunctus-test-{unique}")),
-        endpoint: std::env::var("IUNCTUS_S3_ENDPOINT").ok(),
+        endpoint: std::env::var("UWE_S3_ENDPOINT").ok(),
         region: Some(std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".into())),
     };
     check_contract(&Store::s3(&options).expect("s3 store")).await;

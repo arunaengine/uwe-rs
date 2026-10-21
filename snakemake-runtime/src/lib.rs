@@ -54,6 +54,6 @@ pub use locks::release_locks;
 
 /// The variable of a task that names, as a JSON list, the variables of the environment of
 /// iunctus that the job gets, from `envvars`; the executor puts their values in its place.
-pub const ENVIRONMENT_NAMES: &str = "IUNCTUS_ENVIRONMENT_NAMES";
+pub const ENVIRONMENT_NAMES: &str = "UWE_ENVIRONMENT_NAMES";
 pub use pattern::{Matcher, Wildcards, apply as apply_wildcards, regex_text, wildcard_names};
 pub use python::{ContainerStarter, DEFAULT_IMAGE, PythonContainers};

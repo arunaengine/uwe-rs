@@ -223,7 +223,7 @@ async fn submits_conda_digest() {
             .arg("-iunctus-config")
             .arg(&config)
             .args(["-no-cache", "-forceall"])
-            .env("IUNCTUS_LOG", "debug")
+            .env("UWE_LOG", "debug")
             .current_dir(root)
             .output()
             .unwrap()

@@ -21,7 +21,7 @@ HOME = Path.home() / ".cache/iunctus/test-workflows/snakemake"
 TESTS = Path(os.environ.get("SNAKEMAKE_TESTS") or HOME / "snakemake-tests") / "tests"
 REPOSITORY = Path(__file__).resolve().parents[3]
 LAUNCHES = REPOSITORY / "snakemake-runtime/tests/fixtures/run_test_workflows_launches.txt"
-IUNCTUS = Path(os.environ.get("IUNCTUS") or "target/release/iunctus").resolve()
+UWE = Path(os.environ.get("UWE") or "target/release/iunctus").resolve()
 SNAKEMAKE = os.environ.get("SNAKEMAKE") or "snakemake"
 OUTPUT = Path(__file__).with_name("real_runs_snakemake.txt")
 IMAGE = "pandas/pandas:pip-all"
@@ -117,7 +117,7 @@ def commands(fields, work):
     # `workflow.cores` and to the threads of jobs.
     native = [SNAKEMAKE, "--cores", str(os.cpu_count()), "--jobs", JOBS, "--snakefile",
               "Snakefile"]
-    ours = [str(IUNCTUS), "run", "Snakefile", "-lang", "snakemake", "-executor", "local",
+    ours = [str(UWE), "run", "Snakefile", "-lang", "snakemake", "-executor", "local",
             "-no-network",
             "-default-image", IMAGE, "-python-image", IMAGE, "-max-pending", JOBS,
             "-store", str(work / "store")]

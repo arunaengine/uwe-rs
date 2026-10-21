@@ -378,7 +378,7 @@ mod tests {
         let home = task_model::EnvironmentValue::Literal(std::env::var("HOME").unwrap());
         assert_eq!(filled.environment.get("HOME"), Some(&home));
         assert!(!filled.environment.contains_key(&key));
-        let unset = r#"["IUNCTUS_SURELY_UNSET_VARIABLE"]"#.into();
+        let unset = r#"["UWE_SURELY_UNSET_VARIABLE"]"#.into();
         spec.environment
             .insert(key, task_model::EnvironmentValue::Literal(unset));
         assert!(with_environment(&spec).is_err());

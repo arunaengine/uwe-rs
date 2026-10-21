@@ -18,7 +18,7 @@ HOME = Path.home()
 TESTS = Path(os.environ.get("CWL_TEST_WORKFLOWS") or HOME / ".cache/iunctus/test-workflows/cwl")
 DATA = Path(os.environ.get("CWL_CONFORMANCE_DATA")
             or HOME / ".cache/iunctus/test-workflows/cwl-conformance-data")
-IUNCTUS = Path(os.environ.get("IUNCTUS") or "target/release/iunctus").resolve()
+UWE = Path(os.environ.get("UWE") or "target/release/iunctus").resolve()
 OUTPUT = Path(__file__).with_name("real_runs_cwl.txt")
 IMAGE = "debian:stable-slim"
 TIMEOUT = 300
@@ -161,7 +161,7 @@ def compare(test, suite, work, environment, images):
     folder = Path(tempfile.mkdtemp(dir=work))
     native = ["cwltool", "--quiet", "--default-container", IMAGE, "--outdir",
               str(folder / "native"), tool] + ([job] if job else [])
-    ours = [str(IUNCTUS), "run", tool, "-lang", "cwl", "-executor", "local", "-default-image",
+    ours = [str(UWE), "run", tool, "-lang", "cwl", "-executor", "local", "-default-image",
             IMAGE, "-store", str(work / "store"), "-output-dir", str(folder / "iunctus")]
     ours += ["-inputs", job] if job else []
     native_code, native_output, native_error = run(native, folder, environment)

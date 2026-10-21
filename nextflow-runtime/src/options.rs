@@ -7,8 +7,8 @@ use nextflow_evaluator::value::Value;
 use std::collections::BTreeMap;
 use workflow_graph::Resources;
 
-pub(crate) const FLAGS_ENV: &str = "IUNCTUS_CONTAINER_FLAGS";
-pub(crate) const WORK_ENV: &str = "IUNCTUS_WORK_VARIABLES";
+pub(crate) const FLAGS_ENV: &str = "UWE_CONTAINER_FLAGS";
+pub(crate) const WORK_ENV: &str = "UWE_WORK_VARIABLES";
 const WORK_MARKER: &str = "\0PWD\0";
 
 pub(crate) fn apply(

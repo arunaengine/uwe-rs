@@ -37,7 +37,7 @@ def main():
         try:
             with proxy(root) as socket:
                 environment = dict(os.environ, XDG_CONFIG_HOME=str(root / "config"),
-                                   IUNCTUS_SITE_CONFIG="", DOCKER_HOST=f"unix://{socket}")
+                                   UWE_SITE_CONFIG="", DOCKER_HOST=f"unix://{socket}")
                 for name in ("snakemake", "nextflow", "cwl", "argo", "failure", "tes", "cancel", "simulator"):
                     begin = time.monotonic()
                     try:

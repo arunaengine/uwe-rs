@@ -13,9 +13,9 @@ fn check_machine(directory: &Path, arguments: &[&str]) -> (i32, String) {
         .arg("check-machine")
         .args(arguments)
         .env("XDG_CACHE_HOME", directory.join("cache"))
-        .env("IUNCTUS_ENGINE", directory.join("docker.sock"))
+        .env("UWE_ENGINE", directory.join("docker.sock"))
         .env("PATH", directory)
-        .env_remove("IUNCTUS_TES_TOKEN")
+        .env_remove("UWE_TES_TOKEN")
         .current_dir(directory)
         .output()
         .expect("runs iunctus");
@@ -77,7 +77,7 @@ fn explains_missing_engine() {
 fn checks_configured_executors() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let config = "[executor.tes]\nserver = \"http://127.0.0.1:1\"\ntoken = { environment = \
-                  \"IUNCTUS_TEST_TES_TOKEN\" }\n\n[executor.slurm]\ncontainer = \"podman\"\n\n\
+                  \"UWE_TEST_TES_TOKEN\" }\n\n[executor.slurm]\ncontainer = \"podman\"\n\n\
                   [executor.kubernetes]\nkubeconfig = \"nowhere.yaml\"\n";
     std::fs::write(directory.path().join("lab.toml"), config).expect("writes the config file");
     let (code, stdout) = check_machine(directory.path(), &["-iunctus-config", "lab.toml"]);
@@ -88,7 +88,7 @@ fn checks_configured_executors() {
     );
     assert_eq!(
         line(&stdout, "secret"),
-        "missing    secret: lab.toml:3: the environment variable IUNCTUS_TEST_TES_TOKEN, which \
+        "missing    secret: lab.toml:3: the environment variable UWE_TEST_TES_TOKEN, which \
          holds this secret, is not set; set it before a run"
     );
     assert!(

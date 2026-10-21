@@ -51,30 +51,37 @@ impl Lock {
         if !stale.is_empty() {
             return Err(refusal(workdir, &stale));
         }
-        std::fs::create_dir_all(&folder).map_err(failed)?;
         let mut lock = Lock { files: Vec::new() };
         for (kind, files) in [("input", inputs), ("output", outputs)] {
             if files.is_empty() {
                 continue;
             }
-            for number in 0.. {
-                let path = folder.join(format!("{number}.{kind}.lock"));
-                let created = std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&path);
-                let mut file = match created {
-                    Ok(file) => file,
-                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                    Err(error) => return Err(failed(error)),
-                };
-                lock.files.push(path.clone());
-                (HELD.lock().unwrap_or_else(PoisonError::into_inner)).push(path);
-                writeln!(file, "{}", files.join("\n")).map_err(failed)?;
-                break;
-            }
+            let path = write_lock(&folder, kind, files).map_err(failed)?;
+            lock.files.push(path.clone());
+            (HELD.lock().unwrap_or_else(PoisonError::into_inner)).push(path);
         }
         Ok(lock)
+    }
+}
+
+/// Writes the first free lock file of a kind, `N.input.lock` or `N.output.lock`, with the
+/// files it holds, and makes the folder again when another run removed it meanwhile.
+fn write_lock(folder: &Path, kind: &str, files: &[String]) -> std::io::Result<PathBuf> {
+    let mut number = 0;
+    loop {
+        let path = folder.join(format!("{number}.{kind}.lock"));
+        let created = (std::fs::OpenOptions::new().write(true).create_new(true)).open(&path);
+        match created {
+            Ok(mut file) => {
+                writeln!(file, "{}", files.join("\n"))?;
+                return Ok(path);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => number += 1,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                std::fs::create_dir_all(folder)?;
+            }
+            Err(error) => return Err(error),
+        }
     }
 }
 
@@ -191,5 +198,8 @@ mod tests {
         release_locks();
         assert!(!locks.exists());
         std::mem::forget(kept);
+        // A folder that another run removed is made again.
+        let path = write_lock(&locks, "input", &names(&["e.txt"])).expect("a lock file");
+        assert!(path.is_file());
     }
 }

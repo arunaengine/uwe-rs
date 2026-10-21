@@ -143,6 +143,8 @@ pub(crate) fn stop_on_interrupt() -> CancellationToken {
                 stop.cancel();
             }
             if asked().await {
+                // An exit now drops nothing, so the locks of Snakemake runs go first.
+                snakemake_runtime::release_locks();
                 std::process::exit(INTERRUPTED.into());
             }
         });

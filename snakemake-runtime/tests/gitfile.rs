@@ -205,3 +205,46 @@ fn contains_crafted_trees() {
     );
     assert!(checkout.join("near").is_symlink(), "an inward link stays");
 }
+
+/// As in Snakemake 9.27, `gitfile(...)` names a script and a schema of `validate` as well,
+/// read at the reference; `configfile:` takes no such file and fails with a TypeError.
+#[test]
+fn reads_git_sources() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let repository = gix::init(folder.path().join("repo")).expect("a repository");
+    let blob = |text: &str| repository.write_blob(text).expect("a blob").detach();
+    let entry = |name: &str, oid| Entry {
+        mode: EntryKind::Blob.into(),
+        filename: name.into(),
+        oid,
+    };
+    let schema = "type: object\nrequired: [x]\n";
+    let top = gix::objs::Tree {
+        entries: vec![
+            entry("schema.yaml", blob(schema)),
+            entry("script.py", blob("print('from git script')\n")),
+        ],
+    };
+    let top = repository.write_object(&top).expect("a tree").detach();
+    let person = gix::actor::SignatureRef {
+        name: "test".into(),
+        email: "test@example.org".into(),
+        time: "0 +0000",
+    };
+    let parents = Vec::<gix::ObjectId>::new();
+    let commit = repository.commit_as(person, person, "refs/heads/main", "one", top, parents);
+    commit.expect("a commit");
+    let snakefile = "from snakemake.utils import validate\nconfig['x'] = 1\nvalidate(config, gitfile('repo', 'schema.yaml', ref='main'))\nrule a:\n    output: 'a.txt'\n    script: gitfile('repo', 'script.py', ref='main')\n";
+    let text = script(folder.path(), snakefile, Default::default());
+    assert!(text.contains("from git script"), "{text}");
+    let missing = "config['y'] = 1\nvalidate(config, gitfile('repo', 'schema.yaml', ref='main'))\n";
+    let snakefile = format!("from snakemake.utils import validate\n{missing}");
+    let text = script(folder.path(), &snakefile, Default::default());
+    assert!(text.contains("is a required property"), "{text}");
+    let snakefile = "configfile: gitfile('repo', 'schema.yaml', ref='main')\n";
+    let text = script(folder.path(), snakefile, Default::default());
+    assert!(
+        text.contains("TypeError") && text.contains("LocalGitFile"),
+        "{text}"
+    );
+}

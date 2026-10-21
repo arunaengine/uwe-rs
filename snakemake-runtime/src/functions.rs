@@ -1207,15 +1207,23 @@ pub struct RemoteSource {
 
 impl Native for RemoteSource {
     fn type_name(&self) -> &str {
-        "HostingProviderFile"
+        match self.git {
+            Some(_) => "LocalGitFile",
+            None => "HostingProviderFile",
+        }
     }
 
     fn as_any(&self) -> &dyn Any {
         self
     }
 
+    /// The address; for `gitfile(...)` the file in the checkout, so that scripts, Conda
+    /// environments and schemas read it as a local file.
     fn to_str(&self, _: &mut Interpreter) -> Result<Option<String>, Error> {
-        Ok(Some(self.url.clone()))
+        match (&self.git, &self.local) {
+            (Some(_), Some(local)) => Ok(Some(local.to_string_lossy().into_owned())),
+            _ => Ok(Some(self.url.clone())),
+        }
     }
 }
 
@@ -1258,9 +1266,19 @@ fn hosted(provider: &'static str, state: Rc<RefCell<State>>) -> Value {
             ));
         };
         if provider == "gitfile" {
+            // Written out now, so that every use of the file reads it from the checkout; an
+            // error shows where the file is read.
+            let absolute = match crate::gitfile::on_web(&repository) {
+                true => repository.clone(),
+                false => (interpreter.host.resolve(&repository))
+                    .to_string_lossy()
+                    .into_owned(),
+            };
+            let mirrors = state.borrow().mirrors.clone();
+            let folder = mirrors.git_folder(&absolute, reference).ok();
             return Ok(Value::native(RemoteSource {
-                url: format!("git+file://{repository}/{path}@{reference}"),
-                local: None,
+                url: format!("git+file://{absolute}/{path}@{reference}"),
+                local: folder.map(|folder| folder.join(path.trim_matches('/'))),
                 git: Some((repository, reference.clone(), path)),
             }));
         }

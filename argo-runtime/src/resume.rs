@@ -40,10 +40,34 @@ impl Request {
     }
 }
 
+/// The requests of a run for its child workflow `name`: by the name of the child, which
+/// resumes all of it as `argo resume` does, or by the full name or ID of one of its steps,
+/// which start with the name of the child.
+pub(crate) fn scoped(requests: &[Request], name: &str) -> Vec<Request> {
+    let inside = |step: &str| {
+        step.strip_prefix(name)
+            .is_some_and(|rest| rest.starts_with(['.', '-', '[', '(']))
+    };
+    (requests.iter())
+        .filter_map(|request| match request.step.as_deref() {
+            Some(step) if step == name => Some(Request {
+                step: None,
+                outputs: request.outputs.clone(),
+            }),
+            Some(step) if inside(step) => Some(request.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 impl Run {
     /// Takes the requests that arrived; like `argo resume`, they apply to the steps that are
     /// suspended now, and go away.
     pub(crate) fn take_requests(&mut self) {
+        // Child workflows get their requests from the run that made them.
+        if self.nesting > 0 {
+            return;
+        }
         let Some(folder) = self.options.resume.clone() else {
             return;
         };
@@ -84,6 +108,16 @@ impl Run {
                 Some(step) => step == display || step == node.name || step == node.id,
             })
             .cloned()
+    }
+
+    /// The step as `iunctus resume` names it: its display name, or its full name in a child
+    /// workflow, whose display names may be those of steps of the parent.
+    pub(crate) fn resume_name(&self, index: usize) -> String {
+        let name = &self.nodes[index].name;
+        match self.nesting {
+            0 => display_name(name),
+            _ => name.clone(),
+        }
     }
 
     /// The run as `iunctus resume` names it: the folder of its requests.

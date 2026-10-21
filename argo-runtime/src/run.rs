@@ -839,7 +839,7 @@ impl Run {
                         "step {} is suspended until `iunctus resume {} {}`",
                         display_name(&self.nodes[index].name),
                         self.run_name(),
-                        display_name(&self.nodes[index].name)
+                        self.resume_name(index)
                     ));
                 }
                 self.waits.insert(index, self.clock + crate::resume::POLL);

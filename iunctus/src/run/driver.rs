@@ -29,13 +29,10 @@ pub(crate) fn target_and_language(arguments: &Arguments) -> Result<(PathBuf, Lan
                     .unwrap_or_default()
                     .ends_with(".cwl")));
     let target = if remote && !cwl {
-        storage::Storage::default()
-            .blocking()
-            .fetch(
-                &target.to_string_lossy(),
-                &cache_directory().join("downloads"),
-            )
-            .map_err(|error| failure(error.to_string()))?
+        fetch_workflow(
+            &target.to_string_lossy(),
+            &cache_directory().join("downloads"),
+        )?
     } else {
         target
     };
@@ -62,6 +59,14 @@ pub(crate) fn target_and_language(arguments: &Arguments) -> Result<(PathBuf, Lan
         .into());
     }
     Ok((target, language))
+}
+
+/// A copy of a workflow file on the web. The storage that fetched it holds the downloads
+/// until the process ends, so that `iunctus clean` leaves the file alone while the run reads it.
+fn fetch_workflow(url: &str, downloads: &Path) -> Result<PathBuf, Failure> {
+    static FETCHING: std::sync::OnceLock<storage::Storage> = std::sync::OnceLock::new();
+    let storage = FETCHING.get_or_init(storage::Storage::default);
+    (storage.blocking().fetch(url, downloads)).map_err(|error| failure(error.to_string()))
 }
 
 /// Where `iunctus resume` leaves its requests for the suspended Argo steps of a run.
@@ -235,5 +240,36 @@ pub(crate) fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
         // source files of the workflow exist, as the graph needs them rather than their content.
         simulated: arguments.executor.as_deref().unwrap_or("local") == "simulator",
         keep_going: arguments.keep_going,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{BufRead, BufReader, Write};
+
+    #[test]
+    fn holds_fetched_workflows() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                while reader.read_line(&mut line).is_ok_and(|count| count > 2) {
+                    line.clear();
+                }
+                let body = "process A { script: 'true' }\n";
+                let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
+                let mut stream = stream;
+                let _ = stream.write_all(format!("{head}{body}").as_bytes());
+            }
+        });
+        let downloads = tempfile::tempdir().unwrap();
+        let url = format!("http://{address}/main.nf");
+        let copy = super::fetch_workflow(&url, downloads.path()).unwrap();
+        assert!(copy.is_file());
+        // Clean-up cannot take the downloads alone while the run may read the file.
+        let alone = storage::hold_downloads(downloads.path()).unwrap();
+        assert!(alone.is_none(), "the run holds its downloads");
     }
 }

@@ -1,6 +1,5 @@
-//! The git repositories of `gitfile(...)`: a repository of this machine is read with gix, one
-//! on the web is fetched over HTTPS by the Git client of the run. Each is written out at its
-//! reference into a folder of downloads, so that paths relative to its Snakefiles work.
+//! The git repositories of `gitfile(...)`, written out at their reference: one of this machine
+//! read with gix, one on the web fetched over HTTPS by the Git client of the run.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

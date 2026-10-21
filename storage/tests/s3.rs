@@ -17,20 +17,20 @@ fn variable(name: &str) -> String {
 fn two_providers(inputs_secret: &str) -> Storage {
     let text = format!(
         "[storage.inputs]\ntype = \"s3\"\nprefixes = [\"s3://inputs/\"]\nendpoint = \"{}\"\n\
-         access_key_id = {{ environment = \"IUNCTUS_TEST_INPUTS_KEY\" }}\n\
+         access_key_id = {{ environment = \"UWE_TEST_INPUTS_KEY\" }}\n\
          secret_access_key = {inputs_secret}\n\
          [storage.store]\ntype = \"s3\"\nprefixes = [\"s3://cache/\"]\nendpoint = \"{}\"\n\
-         access_key_id = {{ environment = \"IUNCTUS_TEST_STORE_KEY\" }}\n\
-         secret_access_key = {{ environment = \"IUNCTUS_TEST_STORE_SECRET\" }}\n",
-        variable("IUNCTUS_TEST_INPUTS_ENDPOINT"),
-        variable("IUNCTUS_TEST_STORE_ENDPOINT"),
+         access_key_id = {{ environment = \"UWE_TEST_STORE_KEY\" }}\n\
+         secret_access_key = {{ environment = \"UWE_TEST_STORE_SECRET\" }}\n",
+        variable("UWE_TEST_INPUTS_ENDPOINT"),
+        variable("UWE_TEST_STORE_ENDPOINT"),
     );
     let config = ConfigFile::parse(&text, Path::new("/test/config.toml")).expect("TOML");
     Storage::from_config(&config).expect("valid settings")
 }
 
 fn right() -> Storage {
-    two_providers("{ environment = \"IUNCTUS_TEST_INPUTS_SECRET\" }")
+    two_providers("{ environment = \"UWE_TEST_INPUTS_SECRET\" }")
 }
 
 #[tokio::test]
@@ -99,8 +99,8 @@ async fn redacts_wrong_secret() {
     );
     for secret in [
         "wrong-secret-7788".to_owned(),
-        variable("IUNCTUS_TEST_INPUTS_SECRET"),
-        variable("IUNCTUS_TEST_STORE_SECRET"),
+        variable("UWE_TEST_INPUTS_SECRET"),
+        variable("UWE_TEST_STORE_SECRET"),
     ] {
         assert!(!message.contains(&secret), "{message}");
     }

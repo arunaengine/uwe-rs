@@ -33,7 +33,7 @@ pub struct Mount {
 /// How to start the container.
 #[derive(Clone, Debug, Default)]
 pub struct ContainerSpec {
-    /// The container engine as `IUNCTUS_ENGINE` names it: `docker`, `podman` or a socket;
+    /// The container engine as `UWE_ENGINE` names it: `docker`, `podman` or a socket;
     /// empty for Docker, else Podman.
     pub engine: String,
     /// The name of the container, unique on the machine.
@@ -768,7 +768,7 @@ async fn tail(engine: &ContainerEngine, name: &str) -> String {
     text.trim_end().to_owned()
 }
 
-/// Whether the engine answers, as `IUNCTUS_ENGINE` names it.
+/// Whether the engine answers, as `UWE_ENGINE` names it.
 pub fn check_engine(engine: &str) -> Result<(), ProcessError> {
     let spec = ContainerSpec {
         engine: engine.to_owned(),

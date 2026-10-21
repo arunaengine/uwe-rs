@@ -43,7 +43,7 @@ def main():
             minio = arguments.minio or download_minio(root)
             report["versions"]["funnel"] = command([funnel, "version"]).stdout.strip()
             report["versions"]["minio"] = command([minio, "--version"]).stdout.strip()
-            environment = dict(os.environ, IUNCTUS_SITE_CONFIG="", XDG_CONFIG_HOME=str(root / "config"),
+            environment = dict(os.environ, UWE_SITE_CONFIG="", XDG_CONFIG_HOME=str(root / "config"),
                                MINIO_ROOT_USER="qualification", MINIO_ROOT_PASSWORD="qualification-secret")
             endpoint = f"http://127.0.0.1:{free_port()}"
             server = f"http://127.0.0.1:{free_port()}"

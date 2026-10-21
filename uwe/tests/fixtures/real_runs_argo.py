@@ -21,7 +21,7 @@ TESTS = Path(os.environ.get("ARGO_TEST_WORKFLOWS")
              or Path.home() / ".cache/iunctus/test-workflows/argo")
 REPOSITORY = Path(__file__).resolve().parents[3]
 OUTCOMES = REPOSITORY / "argo-runtime/tests/fixtures/test-workflows/outcomes.txt"
-IUNCTUS = Path(os.environ.get("IUNCTUS") or "target/release/iunctus").resolve()
+UWE = Path(os.environ.get("UWE") or "target/release/iunctus").resolve()
 OUTPUT = Path(__file__).with_name("real_runs_argo.txt")
 TIMEOUT = 300
 # The start of the record of a workflow whose images are not all on this machine.
@@ -146,7 +146,7 @@ def compare(name, work, environment, local):
     lint = subprocess.run(["argo", "lint", "--offline", str(path)], capture_output=True,
                           text=True, cwd=path.parent)
     folder = Path(tempfile.mkdtemp(dir=work))
-    command = ["unshare", "--user", "--net", "--map-current-user", "--", str(IUNCTUS), "run",
+    command = ["unshare", "--user", "--net", "--map-current-user", "--", str(UWE), "run",
                str(path), "-lang", "argo", "-executor", "local", "-no-network",
                "-max-pending", "3",
                "-store", str(work / "store"), "-output-dir", str(folder / "out")]

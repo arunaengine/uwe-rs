@@ -549,7 +549,7 @@ fn stops_daemons_after() {
     let mut run = driver(folder.path(), spec);
     let server = run.start().unwrap().remove(0);
     assert_eq!(
-        server.environment["IUNCTUS_DAEMON"],
+        server.environment["UWE_DAEMON"],
         r#"{"probe":{"check":{"http":{"path":"/health","port":8000}},"delay_seconds":0,"period_seconds":2,"timeout_seconds":1}}"#
     );
     assert_eq!(server.reuse, workflow_graph::Reuse::Denied);
@@ -560,7 +560,7 @@ fn stops_daemons_after() {
     );
     let probe = driver(folder.path(), &secure).start().unwrap().remove(0);
     assert_eq!(
-        probe.environment["IUNCTUS_DAEMON"],
+        probe.environment["UWE_DAEMON"],
         r#"{"probe":{"check":{"http":{"headers":[{"name":"X-Probe","value":"probe"}],"host":"localhost","path":"/health","port":8443,"scheme":"HTTPS"}},"delay_seconds":0,"period_seconds":2,"timeout_seconds":1}}"#
     );
     // The daemon is ready at an address, which the next step reads as its `ip`.

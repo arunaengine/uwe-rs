@@ -34,7 +34,7 @@ iunctus run nextflow/main.nf         # every task is a Docker container; writes 
 
 `demo/local-env.sh` changes only the shell it is sourced in: it puts `target/release` first
 on the PATH and makes [`local-config.toml`](local-config.toml) the config through
-`IUNCTUS_SITE_CONFIG`.
+`UWE_SITE_CONFIG`.
 
 The rest of this file explains each example, how it compares with the native tool, and what
 was changed.

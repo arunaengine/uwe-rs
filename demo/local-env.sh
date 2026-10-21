@@ -12,7 +12,7 @@ iunctus_root=$(dirname "$iunctus_demo")
 
 if (cd "$iunctus_root" && cargo build --release -p uwe); then
   export PATH="$iunctus_root/target/release:$PATH"
-  export IUNCTUS_SITE_CONFIG="$iunctus_demo/local-config.toml"
+  export UWE_SITE_CONFIG="$iunctus_demo/local-config.toml"
   cd "$iunctus_demo" || return
   # The complex examples are not in the repository: the first time, download them.
   if [ ! -d nextflow/nf-core-demo ]; then

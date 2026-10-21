@@ -135,7 +135,7 @@ def decode(value):
 
 # Where packages that later imports need are installed, in the running container.
 EXTRA = "/tmp/iunctus-packages"
-CONSTRAINTS = json.loads(os.environ.get("IUNCTUS_PYTHON_CONSTRAINTS", "[]"))
+CONSTRAINTS = json.loads(os.environ.get("UWE_PYTHON_CONSTRAINTS", "[]"))
 
 
 def failures():

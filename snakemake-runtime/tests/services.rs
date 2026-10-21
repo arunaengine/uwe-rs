@@ -249,11 +249,11 @@ rule bridge:
 }
 
 #[test]
-#[ignore = "needs a container engine; set IUNCTUS_CONTAINER_TESTS=1 and run with --ignored"]
+#[ignore = "needs a container engine; set UWE_CONTAINER_TESTS=1 and run with --ignored"]
 fn orders_live_consumers() {
     use std::os::unix::fs::MetadataExt;
 
-    assert_eq!(std::env::var("IUNCTUS_CONTAINER_TESTS").as_deref(), Ok("1"));
+    assert_eq!(std::env::var("UWE_CONTAINER_TESTS").as_deref(), Ok("1"));
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(folder.path().join("Snakefile"), bridged_snakefile()).unwrap();
     let mut driver = snakemake_runtime::driver(&Launch {
@@ -264,7 +264,7 @@ fn orders_live_consumers() {
     .unwrap();
     let group = driver.start().unwrap().remove(0);
     let owner = std::fs::metadata(folder.path()).unwrap();
-    let engine = std::env::var("IUNCTUS_ENGINE").unwrap_or_else(|_| "docker".into());
+    let engine = std::env::var("UWE_ENGINE").unwrap_or_else(|_| "docker".into());
     let spec = executor::process::ContainerSpec {
         engine,
         name: format!(

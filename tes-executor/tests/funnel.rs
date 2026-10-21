@@ -10,7 +10,7 @@ use tes_executor::{Client, TesBackend};
 use tokio_util::sync::CancellationToken;
 
 fn backend(folder: &std::path::Path) -> TesBackend {
-    let server = std::env::var("IUNCTUS_TES_SERVER").expect("IUNCTUS_TES_SERVER names Funnel");
+    let server = std::env::var("UWE_TES_SERVER").expect("UWE_TES_SERVER names Funnel");
     // Funnel runs images of this machine, whose configs no registry needs to give.
     let config = executor::registry::ImageConfig::default();
     TesBackend {
@@ -176,9 +176,9 @@ fn transfers_s3_outputs() {
     use storage::Storage;
     use tes_executor::{ObjectStage, Settings};
 
-    let server = std::env::var("IUNCTUS_TES_SERVER").expect("IUNCTUS_TES_SERVER");
-    let root = std::env::var("IUNCTUS_TES_STAGING_ROOT").expect("IUNCTUS_TES_STAGING_ROOT");
-    let endpoint = std::env::var("IUNCTUS_S3_ENDPOINT").expect("IUNCTUS_S3_ENDPOINT");
+    let server = std::env::var("UWE_TES_SERVER").expect("UWE_TES_SERVER");
+    let root = std::env::var("UWE_TES_STAGING_ROOT").expect("UWE_TES_STAGING_ROOT");
+    let endpoint = std::env::var("UWE_S3_ENDPOINT").expect("UWE_S3_ENDPOINT");
     let text = format!(
         "[storage.tes]\ntype = 's3'\nprefixes = ['s3://']\nendpoint = {}\nregion = 'us-east-1'\naccess_key_id = {{ environment = 'AWS_ACCESS_KEY_ID' }}\nsecret_access_key = {{ environment = 'AWS_SECRET_ACCESS_KEY' }}\n",
         serde_json::to_string(&endpoint).unwrap()
@@ -192,7 +192,7 @@ fn transfers_s3_outputs() {
         ..Settings::default()
     };
     let backend = TesBackend {
-        client: Client::new(&server, std::env::var("IUNCTUS_TES_TOKEN").ok()).unwrap(),
+        client: Client::new(&server, std::env::var("UWE_TES_TOKEN").ok()).unwrap(),
         staging: Some(ObjectStage::configured(source, &storage, &settings).unwrap()),
         settings,
         ..backend(folder.path())

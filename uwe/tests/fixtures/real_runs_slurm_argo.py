@@ -11,7 +11,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-IUNCTUS = os.environ.get("IUNCTUS") or "iunctus"
+UWE = os.environ.get("UWE") or "iunctus"
 LOCAL = Path(__file__).with_name("real_runs_argo.txt")
 OUTPUT = Path(os.environ.get("RECORD") or Path(__file__).with_name("real_runs_slurm_argo.txt"))
 IMAGES = {"argoproj/argosay:v2", "alpine:3.23", "alpine:latest", "alpine", "python:alpine3.23"}
@@ -62,7 +62,7 @@ def run_stopped(command, cwd):
 def compare(name, succeeds, tests, work):
     """The record line of one workflow."""
     folder = Path(tempfile.mkdtemp(dir=work))
-    command = [IUNCTUS, "run", str(tests / name), "-lang", "argo", "-executor", "slurm",
+    command = [UWE, "run", str(tests / name), "-lang", "argo", "-executor", "slurm",
                "-no-network", "-no-cache", "-max-pending", "3",
                "-output-dir", str(folder / "out")]
     code, _, stderr = run_stopped(command, folder)

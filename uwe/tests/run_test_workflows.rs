@@ -184,8 +184,8 @@ fn runs_as_recorded(targets: Vec<(String, PathBuf, PathBuf)>, fixture: &str, fal
         let _ = std::fs::remove_dir_all(&copy);
         format!("{name} {outcome}")
     };
-    // The runs go in parallel, `IUNCTUS_TEST_WORKFLOWS_JOBS` at a time (4 by default).
-    let jobs: usize = std::env::var("IUNCTUS_TEST_WORKFLOWS_JOBS")
+    // The runs go in parallel, `UWE_TEST_WORKFLOWS_JOBS` at a time (4 by default).
+    let jobs: usize = std::env::var("UWE_TEST_WORKFLOWS_JOBS")
         .ok()
         .and_then(|jobs| jobs.parse().ok())
         .unwrap_or(4);

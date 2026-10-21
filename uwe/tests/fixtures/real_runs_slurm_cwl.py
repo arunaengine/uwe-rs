@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-IUNCTUS = os.environ.get("IUNCTUS") or "iunctus"
+UWE = os.environ.get("UWE") or "iunctus"
 OUTPUT = Path(os.environ.get("RECORD") or Path(__file__).with_name("real_runs_slurm_cwl.txt"))
 IMAGE = "debian:stable-slim"
 # The images that tests may name; others are left out to keep the downloads small.
@@ -112,7 +112,7 @@ def compare(test, suite, work):
     if other:
         return f"skipped: names images that this run does not pull: {', '.join(other)}"
     folder = Path(tempfile.mkdtemp(dir=work))
-    command = [IUNCTUS, "run", tool, "-lang", "cwl", "-executor", "slurm", "-no-cache",
+    command = [UWE, "run", tool, "-lang", "cwl", "-executor", "slurm", "-no-cache",
                "-default-image", IMAGE, "-output-dir", str(folder / "out")]
     command += ["-inputs", job] if job else []
     code, stdout, stderr = run_stopped(command, folder)

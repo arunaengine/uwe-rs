@@ -179,7 +179,7 @@ fn tes_groups_tasks() {
     use task_model::Measured;
     use workflow_graph::{Attempt, CancellationToken, Executor, Task, TaskId};
 
-    let server = std::env::var("IUNCTUS_TES_SERVER").unwrap_or("http://localhost:18000".into());
+    let server = std::env::var("UWE_TES_SERVER").unwrap_or("http://localhost:18000".into());
     // Funnel may read and write below /tmp.
     let folder = tempfile::tempdir_in("/tmp").expect("a temporary directory");
     let folder = folder.path();
@@ -276,7 +276,7 @@ fn routes_near_inputs() {
     use std::sync::Arc;
     use workflow_graph::{Attempt, CancellationToken, Executor, Input, Task, TaskId};
 
-    let first = std::env::var("IUNCTUS_TES_SERVER").unwrap_or("http://localhost:18000".into());
+    let first = std::env::var("UWE_TES_SERVER").unwrap_or("http://localhost:18000".into());
     let second = "http://localhost:18001";
     let (before_first, before_second) = (tes_tasks(&first), tes_tasks(second));
     let folder = tempfile::tempdir_in("/tmp").expect("a temporary directory");

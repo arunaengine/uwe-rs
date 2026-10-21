@@ -133,11 +133,11 @@ fn secrets_never_show() {
     std::fs::write(path.join("main.nf"), SCRIPT.replace("__SERVER__", &server)).expect("writes");
     let config = format!(
         "[storage.private]\ntype = \"https\"\nprefixes = [\"{server}/private/\"]\n\
-         token = {{ environment = \"IUNCTUS_TEST_TOKEN\" }}\n"
+         token = {{ environment = \"UWE_TEST_TOKEN\" }}\n"
     );
     std::fs::write(path.join("iunctus.toml"), config).expect("writes the config file");
 
-    let right = [("IUNCTUS_TEST_TOKEN", TOKEN)];
+    let right = [("UWE_TEST_TOKEN", TOKEN)];
     let run = [
         "run",
         "-executor",
@@ -162,7 +162,7 @@ fn secrets_never_show() {
 
     // A wrong token is an error that names the file, never a token.
     let wrong = "wrong-token-of-the-test-9981";
-    let (code, refused) = iunctus(path, "other", &[("IUNCTUS_TEST_TOKEN", wrong)], &run);
+    let (code, refused) = iunctus(path, "other", &[("UWE_TEST_TOKEN", wrong)], &run);
     assert_eq!(code, 1, "{refused}");
     assert!(
         refused.contains(&format!(
@@ -179,7 +179,7 @@ fn secrets_never_show() {
     assert_eq!(code, 1, "{unset}");
     assert!(
         unset.contains(
-            "the environment variable IUNCTUS_TEST_TOKEN, which holds this secret, is not set"
+            "the environment variable UWE_TEST_TOKEN, which holds this secret, is not set"
         ),
         "{unset}"
     );
@@ -224,18 +224,18 @@ fn loads_provider_documents() {
     .expect("writes the workflow");
     let config = format!(
         "[storage.private]\ntype = \"https\"\nprefixes = [\"{server}/private/\"]\n\
-         token = {{ environment = \"IUNCTUS_TEST_TOKEN\" }}\n"
+         token = {{ environment = \"UWE_TEST_TOKEN\" }}\n"
     );
     std::fs::write(path.join("iunctus.toml"), config).expect("writes the config file");
     let graph = ["graph", "wf.cwl", "-iunctus-config", "iunctus.toml"];
 
-    let (code, output) = iunctus(path, "cache", &[("IUNCTUS_TEST_TOKEN", TOKEN)], &graph);
+    let (code, output) = iunctus(path, "cache", &[("UWE_TEST_TOKEN", TOKEN)], &graph);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("hello"), "{output}");
     // Without the token, the private server refuses the document, and the error names the
     // provider.
     let wrong = "wrong-token-of-the-test-9981";
-    let (code, refused) = iunctus(path, "other", &[("IUNCTUS_TEST_TOKEN", wrong)], &graph);
+    let (code, refused) = iunctus(path, "other", &[("UWE_TEST_TOKEN", wrong)], &graph);
     assert_eq!(code, 1, "{refused}");
     assert!(
         refused.contains("the server refused access (401 Unauthorized)"),
@@ -293,14 +293,14 @@ fn separates_s3_providers() {
     let config = format!(
         "[store]\nlocation = \"s3://cache/iunctus\"\n\
          [storage.inputs]\ntype = \"s3\"\nprefixes = [\"s3://inputs/\"]\nendpoint = \"{}\"\n\
-         access_key_id = {{ environment = \"IUNCTUS_TEST_INPUTS_KEY\" }}\n\
-         secret_access_key = {{ environment = \"IUNCTUS_TEST_INPUTS_SECRET\" }}\n\
+         access_key_id = {{ environment = \"UWE_TEST_INPUTS_KEY\" }}\n\
+         secret_access_key = {{ environment = \"UWE_TEST_INPUTS_SECRET\" }}\n\
          [storage.store]\ntype = \"s3\"\nprefixes = [\"s3://cache/\"]\nendpoint = \"{}\"\n\
-         access_key_id = {{ environment = \"IUNCTUS_TEST_STORE_KEY\" }}\n\
-         secret_access_key = {{ environment = \"IUNCTUS_TEST_STORE_SECRET\" }}\n\
+         access_key_id = {{ environment = \"UWE_TEST_STORE_KEY\" }}\n\
+         secret_access_key = {{ environment = \"UWE_TEST_STORE_SECRET\" }}\n\
          [storage.results]\ntype = \"folder\"\nprefixes = [\"s3://results/\"]\npath = \"{}\"\n",
-        variable("IUNCTUS_TEST_INPUTS_ENDPOINT"),
-        variable("IUNCTUS_TEST_STORE_ENDPOINT"),
+        variable("UWE_TEST_INPUTS_ENDPOINT"),
+        variable("UWE_TEST_STORE_ENDPOINT"),
         path.join("results").display(),
     );
     std::fs::write(path.join("iunctus.toml"), &config).expect("writes the config file");
@@ -324,10 +324,10 @@ fn separates_s3_providers() {
     );
     std::fs::write(path.join("main.nf"), REAL_SCRIPT).expect("writes the script");
     let environment: Vec<(String, String)> = [
-        "IUNCTUS_TEST_INPUTS_KEY",
-        "IUNCTUS_TEST_INPUTS_SECRET",
-        "IUNCTUS_TEST_STORE_KEY",
-        "IUNCTUS_TEST_STORE_SECRET",
+        "UWE_TEST_INPUTS_KEY",
+        "UWE_TEST_INPUTS_SECRET",
+        "UWE_TEST_STORE_KEY",
+        "UWE_TEST_STORE_SECRET",
     ]
     .iter()
     .map(|name| (name.to_string(), variable(name)))

@@ -301,7 +301,7 @@ mod executors {
             );
             return;
         };
-        let token = match std::env::var("IUNCTUS_TES_TOKEN") {
+        let token = match std::env::var("UWE_TES_TOKEN") {
             Ok(token) if !token.is_empty() => Some(token),
             _ => (executors.tes_token.as_ref()).and_then(|secret| secret.reveal().ok()),
         };

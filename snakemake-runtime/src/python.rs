@@ -25,7 +25,7 @@ const PREPARE_DEADLINE: Duration = Duration::from_secs(600);
 /// How the Python container of a run starts.
 #[derive(Clone, Debug)]
 pub struct PythonContainers {
-    /// The container engine as `IUNCTUS_ENGINE` names it: `docker`, `podman` or a socket;
+    /// The container engine as `UWE_ENGINE` names it: `docker`, `podman` or a socket;
     /// empty for Docker, else Podman.
     pub engine: String,
     /// An image with `python3` and the packages; `None` installs them into the default image.
@@ -167,7 +167,7 @@ impl ContainerStarter {
                 self.uv_cache().to_string_lossy().into_owned(),
             ),
             (
-                "IUNCTUS_PYTHON_CONSTRAINTS".to_owned(),
+                "UWE_PYTHON_CONSTRAINTS".to_owned(),
                 serde_json::to_string(constraints).expect("string constraints serialize"),
             ),
         ]
@@ -462,7 +462,7 @@ mod tests {
             let environment = starter.environment(&constraints);
             let json = &environment
                 .iter()
-                .find(|(name, _)| name == "IUNCTUS_PYTHON_CONSTRAINTS")
+                .find(|(name, _)| name == "UWE_PYTHON_CONSTRAINTS")
                 .unwrap()
                 .1;
             assert_eq!(

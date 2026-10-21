@@ -8,8 +8,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use input_schema::Severity;
-use uwe::application::{self, ApplicationError, Description, Policy};
 use serde_json::json;
+use uwe::application::{self, ApplicationError, Description, Policy};
 use workflow_graph::{
     Attempt, CancellationToken, Driver, DriverError, Executor, Inputs, Language, Outcome,
     RunOptions, Running, Simulator, Task,

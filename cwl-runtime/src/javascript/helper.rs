@@ -41,8 +41,8 @@ pub struct JavaScriptSettings {
 impl Default for JavaScriptSettings {
     fn default() -> Self {
         Self {
-            engine: std::env::var("IUNCTUS_ENGINE").unwrap_or_default(),
-            image: std::env::var("IUNCTUS_CWL_JS_IMAGE")
+            engine: std::env::var("UWE_ENGINE").unwrap_or_default(),
+            image: std::env::var("UWE_CWL_JS_IMAGE")
                 .unwrap_or_else(|_| "iunctus-cwl-js:0.1.0".into()),
             cancel: CancellationToken::new(),
             helper: Arc::default(),
@@ -270,9 +270,9 @@ impl JavaScriptSettings {
     }
 
     /// Settings whose helper runs the running iunctus binary, in an image that is made from
-    /// it when the engine lacks it; `IUNCTUS_CWL_JS_IMAGE` names another image instead.
+    /// it when the engine lacks it; `UWE_CWL_JS_IMAGE` names another image instead.
     pub fn from_binary(engine: String, cancel: CancellationToken) -> Self {
-        let own = std::env::var_os("IUNCTUS_CWL_JS_IMAGE").is_none();
+        let own = std::env::var_os("UWE_CWL_JS_IMAGE").is_none();
         Self {
             own,
             ..Self::new(engine, cancel)
@@ -365,7 +365,7 @@ impl JavaScriptSettings {
                 ),
                 entrypoint: Some("/usr/local/bin/iunctus".into()),
                 command: vec!["__cwl-js-worker".into()],
-                environment: vec![("IUNCTUS_CWL_WORKER".into(), "1".into())],
+                environment: vec![("UWE_CWL_WORKER".into(), "1".into())],
                 memory: Some(256 << 20),
                 ..ContainerSpec::default()
             };

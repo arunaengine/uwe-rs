@@ -12,10 +12,10 @@ pub fn init(arguments: &Arguments) -> Result<(), Failure> {
     } else if arguments.verbose {
         "debug".to_owned()
     } else {
-        std::env::var("IUNCTUS_LOG").unwrap_or_else(|_| "warn".into())
+        std::env::var("UWE_LOG").unwrap_or_else(|_| "warn".into())
     };
     let filter = EnvFilter::try_new(level)
-        .map_err(|error| Failure::usage(format!("iunctus: invalid IUNCTUS_LOG filter: {error}")))?;
+        .map_err(|error| Failure::usage(format!("iunctus: invalid UWE_LOG filter: {error}")))?;
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(std::io::stderr)

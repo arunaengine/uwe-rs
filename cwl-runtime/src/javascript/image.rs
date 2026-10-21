@@ -19,7 +19,7 @@ const REPOSITORY: &str = "iunctus-cwl-js";
 
 /// Names a static Linux binary of iunctus to make the helper image from, instead of the
 /// running binary, for example on macOS.
-const BINARY_VARIABLE: &str = "IUNCTUS_CWL_JS_BINARY";
+const BINARY_VARIABLE: &str = "UWE_CWL_JS_BINARY";
 
 /// `iunctus-cwl-js:<digest>` of the running binary, made with the engine when it lacks it, so
 /// that a new iunctus never uses the helper of an old one.
@@ -96,7 +96,7 @@ fn linux_machine(binary: &Path, configured: bool) -> Result<u16, String> {
 fn linux_help() -> String {
     format!(
         "Set {BINARY_VARIABLE} to a static Linux binary of iunctus for the architecture of the \
-         container engine (`just release-binary` makes one), or IUNCTUS_CWL_JS_IMAGE to a \
+         container engine (`just release-binary` makes one), or UWE_CWL_JS_IMAGE to a \
          helper image built with `scripts/cwl-js-image.py`."
     )
 }
@@ -312,7 +312,7 @@ mod tests {
         let error = linux_machine(&binary, false).unwrap_err();
         assert!(error.contains("is not a Linux binary"), "{error}");
         assert!(error.contains(BINARY_VARIABLE), "{error}");
-        assert!(error.contains("IUNCTUS_CWL_JS_IMAGE"), "{error}");
+        assert!(error.contains("UWE_CWL_JS_IMAGE"), "{error}");
         let running = std::env::current_exe().expect("the test binary");
         let machine = linux_machine(&running, false).expect("a Linux binary");
         assert_eq!(engine_machine(std::env::consts::ARCH), Some(machine));

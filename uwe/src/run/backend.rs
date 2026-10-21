@@ -189,7 +189,7 @@ pub(crate) fn executor(
             let server = (arguments.tes_server.as_deref())
                 .or(settings.tes_server.as_deref())
                 .unwrap_or(tes::DEFAULT_SERVER);
-            let token = match std::env::var("IUNCTUS_TES_TOKEN") {
+            let token = match std::env::var("UWE_TES_TOKEN") {
                 Ok(token) if !token.is_empty() => Some(token),
                 _ => (settings.tes_token.as_ref().map(|secret| secret.reveal()))
                     .transpose()

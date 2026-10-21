@@ -25,7 +25,7 @@ fn discovery_skips_configuration() {
     for words in [vec!["run", "-help"], vec!["help", "run"]] {
         let output = common::command()
             .args(words)
-            .env("IUNCTUS_SITE_CONFIG", "/missing.toml")
+            .env("UWE_SITE_CONFIG", "/missing.toml")
             .output()
             .unwrap();
         assert!(output.status.success());
@@ -65,25 +65,25 @@ fn logging_respects_filters() {
     let root = tempfile::tempdir().unwrap();
     let output = common::command()
         .args(["runs", "-verbose"])
-        .env("IUNCTUS_LOG", "invalid[")
+        .env("UWE_LOG", "invalid[")
         .env("XDG_CACHE_HOME", root.path())
         .output()
         .unwrap();
     assert!(output.status.success());
     let output = common::command()
         .args(["runs", "-quiet"])
-        .env("IUNCTUS_LOG", "invalid[")
+        .env("UWE_LOG", "invalid[")
         .env("XDG_CACHE_HOME", root.path())
         .output()
         .unwrap();
     assert!(output.status.success());
     let output = common::command()
         .arg("runs")
-        .env("IUNCTUS_LOG", "invalid[")
+        .env("UWE_LOG", "invalid[")
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("invalid IUNCTUS_LOG"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("invalid UWE_LOG"));
     assert!(output.stdout.is_empty());
 }
 

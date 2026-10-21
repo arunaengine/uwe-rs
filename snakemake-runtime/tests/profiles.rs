@@ -390,14 +390,14 @@ fn passes_profile_envvars() {
     assert_eq!(task.environment.get("HOME"), None);
     let names = task.environment.get(snakemake_runtime::ENVIRONMENT_NAMES);
     assert_eq!(names.map(String::as_str), Some(r#"["HOME"]"#));
-    let unset = "envvars: [IUNCTUS_SURELY_UNSET_VARIABLE]\n";
+    let unset = "envvars: [UWE_SURELY_UNSET_VARIABLE]\n";
     let launch = profile_launch(folder.path(), unset, snakefile);
     let error = snakemake_runtime::driver(&launch)
         .unwrap()
         .start()
         .unwrap_err();
     assert!(
-        error.message.contains("IUNCTUS_SURELY_UNSET_VARIABLE"),
+        error.message.contains("UWE_SURELY_UNSET_VARIABLE"),
         "{error}"
     );
 }

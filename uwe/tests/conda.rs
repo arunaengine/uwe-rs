@@ -258,10 +258,10 @@ fn rejects_pip_forms() {
 }
 
 #[test]
-#[ignore = "requires Docker/Podman, the pinned micromamba base, and IUNCTUS_CONDA_TEST_FIXTURE with target.json, repodata and SHA-256 packages"]
+#[ignore = "requires Docker/Podman, the pinned micromamba base, and UWE_CONDA_TEST_FIXTURE with target.json, repodata and SHA-256 packages"]
 fn reuses_prepared_image() {
     let fixture = std::path::PathBuf::from(
-        std::env::var_os("IUNCTUS_CONDA_TEST_FIXTURE").expect("explicit offline fixture"),
+        std::env::var_os("UWE_CONDA_TEST_FIXTURE").expect("explicit offline fixture"),
     );
     let target = fixture.join("target.json");
     let metadata: serde_json::Value =

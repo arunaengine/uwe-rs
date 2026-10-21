@@ -161,7 +161,7 @@ fn describes_workflow_inputs() {
     }
     assert!(!targets.is_empty(), "no test workflows are set");
     let outcomes = tempfile::tempdir().expect("a temporary directory");
-    let jobs: usize = std::env::var("IUNCTUS_TEST_WORKFLOWS_JOBS")
+    let jobs: usize = std::env::var("UWE_TEST_WORKFLOWS_JOBS")
         .ok()
         .and_then(|jobs| jobs.parse().ok())
         .unwrap_or(4);

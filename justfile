@@ -142,7 +142,7 @@ config-oracle:
 	#!/usr/bin/env bash
 	set -euo pipefail
 	test_workflows="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}/pipelines"
-	oracle="${IUNCTUS_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}"
+	oracle="${UWE_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}"
 	mkdir -p "$oracle"
 	find "$test_workflows" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | xargs -P 4 -I{} sh -c \
 		"cd '$test_workflows/{}' && nextflow config -flat -profile test . > '$oracle/{}.txt' 2> '$oracle/{}.err'; echo \$? > '$oracle/{}.exit'"
@@ -150,7 +150,7 @@ config-oracle:
 # Compares `iunctus config` with the recorded `nextflow config` of every nf-core pipeline.
 config-test-workflows-test:
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
-	IUNCTUS_CONFIG_ORACLE="${IUNCTUS_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}" \
+	UWE_CONFIG_ORACLE="${UWE_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}" \
 	cargo test --release --locked -p uwe --test config_test_workflows -- --ignored
 
 # Runs every nf-core pipeline and every Nextflow workflow of WorkflowHub of the test workflows
@@ -461,7 +461,7 @@ funnel-server:
 
 # Runs the TES tests against the server from `just funnel-server`.
 tes-test:
-	IUNCTUS_TES_SERVER=http://localhost:18000 cargo test -p tes-executor --test funnel -- --ignored
+	UWE_TES_SERVER=http://localhost:18000 cargo test -p tes-executor --test funnel -- --ignored
 
 # Qualifies object staging with isolated MinIO, Funnel and Docker, then removes its resources.
 tes-qualification *arguments:
@@ -483,11 +483,11 @@ s3-server:
 # `just s3-server`.
 s3-test:
 	AWS_ACCESS_KEY_ID=rustfsadmin AWS_SECRET_ACCESS_KEY=rustfsadmin AWS_REGION=us-east-1 \
-	IUNCTUS_S3_BUCKET=iunctus-test IUNCTUS_S3_ENDPOINT=http://127.0.0.1:9000 \
+	UWE_S3_BUCKET=iunctus-test UWE_S3_ENDPOINT=http://127.0.0.1:9000 \
 	cargo test -p content-store --test store -- --ignored
 	AWS_ACCESS_KEY_ID=rustfsadmin AWS_SECRET_ACCESS_KEY=rustfsadmin AWS_REGION=us-east-1 \
-	IUNCTUS_S3_BUCKET=iunctus-test IUNCTUS_S3_ENDPOINT=http://127.0.0.1:9000 \
-	IUNCTUS_STAGING_STORAGE='storage.test = { type = "s3", prefixes = ["s3://iunctus-test/"], endpoint = "http://127.0.0.1:9000", region = "us-east-1", access_key_id = "rustfsadmin", secret_access_key = "rustfsadmin" }' \
+	UWE_S3_BUCKET=iunctus-test UWE_S3_ENDPOINT=http://127.0.0.1:9000 \
+	UWE_STAGING_STORAGE='storage.test = { type = "s3", prefixes = ["s3://iunctus-test/"], endpoint = "http://127.0.0.1:9000", region = "us-east-1", access_key_id = "rustfsadmin", secret_access_key = "rustfsadmin" }' \
 	cargo test -p executor --lib -- --ignored presigned_round_trip credentials_round_trip sends_large_outputs \
 		presigns_binary_download
 
@@ -512,8 +512,8 @@ emulator-test:
 	python3 -I -c 'import json, sys; json.dump({"type": "service_account", "project_id": "test", "private_key_id": "1", "private_key": open(sys.argv[1] + "/key.pem").read(), "client_email": "test@test.iam.gserviceaccount.com", "client_id": "1", "token_uri": "http://127.0.0.1:4443/token"}, open(sys.argv[1] + "/account.json", "w"))' "$work"
 	key="Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
 	uv run -q --with azure-storage-blob python -I -c 'import sys; from azure.storage.blob import BlobServiceClient; BlobServiceClient("http://127.0.0.1:10000/devstoreaccount1", {"account_name": "devstoreaccount1", "account_key": sys.argv[1]}).create_container("iunctus-test")' "$key"
-	export IUNCTUS_GCS_ROOT=gs://iunctus-test/staging IUNCTUS_AZURE_ROOT=az://iunctus-test/staging
-	export IUNCTUS_TEST_STORAGE="[storage.gcs]
+	export UWE_GCS_ROOT=gs://iunctus-test/staging UWE_AZURE_ROOT=az://iunctus-test/staging
+	export UWE_TEST_STORAGE="[storage.gcs]
 	type = \"google-cloud-storage\"
 	prefixes = [\"gs://iunctus-test/\"]
 	endpoint = \"http://127.0.0.1:4443\"
@@ -533,9 +533,9 @@ emulator-test:
 storage-test:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	export IUNCTUS_TEST_INPUTS_ENDPOINT=http://127.0.0.1:9100 IUNCTUS_TEST_INPUTS_KEY=inputs-user \
-		IUNCTUS_TEST_INPUTS_SECRET=inputs-secret-5031 IUNCTUS_TEST_STORE_ENDPOINT=http://127.0.0.1:9101 \
-		IUNCTUS_TEST_STORE_KEY=store-user IUNCTUS_TEST_STORE_SECRET=store-secret-8264
+	export UWE_TEST_INPUTS_ENDPOINT=http://127.0.0.1:9100 UWE_TEST_INPUTS_KEY=inputs-user \
+		UWE_TEST_INPUTS_SECRET=inputs-secret-5031 UWE_TEST_STORE_ENDPOINT=http://127.0.0.1:9101 \
+		UWE_TEST_STORE_KEY=store-user UWE_TEST_STORE_SECRET=store-secret-8264
 	trap 'docker stop iunctus-storage-inputs iunctus-storage-store >/dev/null 2>&1 || true' EXIT
 	serve() {
 		docker run -d --rm --pull=never --name "iunctus-storage-$1" --memory 1g -p "127.0.0.1:$2:9000" \
@@ -550,7 +550,7 @@ storage-test:
 		echo "the RustFS server $1 did not start" >&2
 		return 1
 	}
-	serve inputs 9100 "$IUNCTUS_TEST_INPUTS_KEY" "$IUNCTUS_TEST_INPUTS_SECRET" inputs
-	serve store 9101 "$IUNCTUS_TEST_STORE_KEY" "$IUNCTUS_TEST_STORE_SECRET" cache
+	serve inputs 9100 "$UWE_TEST_INPUTS_KEY" "$UWE_TEST_INPUTS_SECRET" inputs
+	serve store 9101 "$UWE_TEST_STORE_KEY" "$UWE_TEST_STORE_SECRET" cache
 	cargo test --locked -p storage --test s3 -- --ignored
 	cargo test --locked -p uwe --test storage -- --ignored

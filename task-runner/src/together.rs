@@ -24,10 +24,10 @@ const SCRIPT: &str = "together.sh";
 
 /// The variable with the container options of a task, like its shared memory or GPUs, which
 /// the backend reads.
-const FLAGS: &str = "IUNCTUS_CONTAINER_FLAGS";
+const FLAGS: &str = "UWE_CONTAINER_FLAGS";
 
 /// The line that ends the wrapper of a task in the script of its group.
-const END_OF_WRAPPER: &str = "IUNCTUS_END_OF_WRAPPER";
+const END_OF_WRAPPER: &str = "UWE_END_OF_WRAPPER";
 
 /// What the wrapper of a task in a group starts its folders with: the folder of the group,
 /// which its own path tells, since the wrapper lies in `<group>/m<number>/`.

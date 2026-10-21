@@ -135,13 +135,13 @@ async fn preserves_sibling_layout() {
 
 #[test]
 fn preserves_snapshot_permissions() {
-    if std::env::var_os("IUNCTUS_SNAPSHOT_UMASK_TEST").is_none() {
+    if std::env::var_os("UWE_SNAPSHOT_UMASK_TEST").is_none() {
         let status = std::process::Command::new("sh")
             .arg("-c")
             .arg("umask 077; exec \"$1\" --exact snapshot_permissions_under_restrictive_umask")
             .arg("snapshot-permissions")
             .arg(std::env::current_exe().unwrap())
-            .env("IUNCTUS_SNAPSHOT_UMASK_TEST", "1")
+            .env("UWE_SNAPSHOT_UMASK_TEST", "1")
             .status()
             .unwrap();
         assert!(status.success());

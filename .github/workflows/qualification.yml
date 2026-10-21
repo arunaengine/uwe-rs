@@ -37,7 +37,7 @@ jobs:
       CORPUS_URL: ${{ inputs.corpus_url }}
       CORPUS_SHA256: ${{ inputs.corpus_sha256 }}
       NF_CORE_TEST_WORKFLOWS: ${{ github.workspace }}/corpus/nf-core-text
-      IUNCTUS_CONFIG_ORACLE: ${{ github.workspace }}/corpus/config-oracle
+      UWE_CONFIG_ORACLE: ${{ github.workspace }}/corpus/config-oracle
       SNAKEMAKE_TEST_WORKFLOWS: ${{ github.workspace }}/corpus/snakemake
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -69,8 +69,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      IUNCTUS_CONTAINER_TESTS: '1'
-      IUNCTUS_ENGINE: docker
+      UWE_CONTAINER_TESTS: '1'
+      UWE_ENGINE: docker
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:

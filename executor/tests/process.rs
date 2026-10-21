@@ -6,7 +6,7 @@ use executor::process::{ContainerProcess, ContainerSpec, ProcessError, run_to_en
 
 fn spec(name: &str, script: &str) -> ContainerSpec {
     ContainerSpec {
-        engine: std::env::var("IUNCTUS_ENGINE").unwrap_or_default(),
+        engine: std::env::var("UWE_ENGINE").unwrap_or_default(),
         name: format!("iunctus-test-{name}-{}", std::process::id()),
         image: "debian:stable-slim".into(),
         entrypoint: Some("/bin/bash".into()),
@@ -112,7 +112,7 @@ fn constrains_package_installs() {
     let mut settings = spec("package-pins", "");
     let owner = std::fs::metadata(folder.path()).unwrap();
     settings.user = Some(format!("{}:{}", owner.uid(), owner.gid()));
-    settings.image = std::env::var("IUNCTUS_TEST_PYTHON_IMAGE")
+    settings.image = std::env::var("UWE_TEST_PYTHON_IMAGE")
         .unwrap_or_else(|_| "ghcr.io/astral-sh/uv:0.9.30-python3.12-bookworm-slim".into());
     settings.entrypoint = Some("python3".into());
     settings.command = vec![
@@ -127,7 +127,7 @@ fn constrains_package_installs() {
     }];
     settings.environment = vec![
         ("PYTHONPATH".into(), "/fixture".into()),
-        ("IUNCTUS_PYTHON_CONSTRAINTS".into(), r#"["b==1"]"#.into()),
+        ("UWE_PYTHON_CONSTRAINTS".into(), r#"["b==1"]"#.into()),
     ];
     let mut process = ContainerProcess::start(&settings).unwrap();
     for (module, packages) in [
@@ -159,7 +159,7 @@ fn constrains_package_installs() {
             "PATH".into(),
             "/fixture:/usr/local/bin:/usr/bin:/bin".into(),
         ),
-        ("IUNCTUS_PYTHON_CONSTRAINTS".into(), r#"["c==1"]"#.into()),
+        ("UWE_PYTHON_CONSTRAINTS".into(), r#"["c==1"]"#.into()),
     ];
     let mut process = ContainerProcess::start(&settings).unwrap();
     let request = serde_json::json!({"op": "import", "module": "c", "packages": ["c==1"]});

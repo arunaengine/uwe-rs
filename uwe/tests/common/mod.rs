@@ -16,7 +16,7 @@ pub fn command() -> Command {
 }
 
 /// Sets the environment of `command` so that iunctus reads no config file of the user (an
-/// empty folder in place of `XDG_CONFIG_HOME`) and none of the site (`IUNCTUS_SITE_CONFIG` is
+/// empty folder in place of `XDG_CONFIG_HOME`) and none of the site (`UWE_SITE_CONFIG` is
 /// empty). A test that needs a config file sets `XDG_CONFIG_HOME` again after this.
 pub fn isolated(mut command: Command) -> Command {
     command

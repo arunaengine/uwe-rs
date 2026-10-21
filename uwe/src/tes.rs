@@ -94,7 +94,7 @@ pub fn answers(client: &Client, server: &str) -> Result<(), String> {
         Ok(_) => Ok(()),
         Err(TesError::Status { status, .. }) if status == 401 || status == 403 => Err(format!(
             "the TES server at {server} refuses the request (status {status}); give its token \
-             with IUNCTUS_TES_TOKEN or `token` in [executor.tes] of the config file"
+             with UWE_TES_TOKEN or `token` in [executor.tes] of the config file"
         )),
         Err(TesError::Request { message, .. }) => Err(format!(
             "the TES server at {server} does not answer: {message}; start it, or name another \

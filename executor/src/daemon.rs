@@ -15,7 +15,7 @@ use crate::local::LocalContainer;
 
 /// The variable of a task's environment that makes it a daemon: the JSON of a [`Daemon`].
 /// The executor takes it out; the task never sees it.
-pub const DAEMON_ENV: &str = "IUNCTUS_DAEMON";
+pub const DAEMON_ENV: &str = "UWE_DAEMON";
 
 /// A task that serves others until its run stops it, like an Argo daemon: it counts as
 /// ended once it is ready, and the run reaches it at the address of its outcome.

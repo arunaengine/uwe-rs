@@ -104,7 +104,7 @@ fn prove_limits(group: &Path, unified: bool) -> Result<(), String> {
 
 pub(crate) fn prove_worker_budget() -> Result<(), String> {
     marker_allowed(
-        std::env::var("IUNCTUS_CWL_WORKER").ok().as_deref(),
+        std::env::var("UWE_CWL_WORKER").ok().as_deref(),
         Path::new("/.dockerenv").is_file() || Path::new("/run/.containerenv").is_file(),
     )?;
     let groups = std::fs::read_to_string("/proc/self/cgroup")

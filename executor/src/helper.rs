@@ -20,7 +20,7 @@ pub const TRANSFER: &str = "transfer";
 pub const MOST_BYTES: u64 = 5 << 30;
 /// The environment variable that holds the storage providers of the staging root, as the
 /// `[storage.<name>]` tables of a config file, for a plan of object addresses.
-pub const STORAGE: &str = "IUNCTUS_STAGING_STORAGE";
+pub const STORAGE: &str = "UWE_STAGING_STORAGE";
 
 /// How long a transfer may get no data before it fails and is tried again. A large file has no
 /// limit on its whole time.

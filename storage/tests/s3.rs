@@ -1,5 +1,5 @@
 //! Checks separate S3 input and store providers against local RustFS servers.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;

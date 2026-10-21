@@ -1,5 +1,5 @@
 //! Stages shallow directory links or full file links while keeping shadow outputs isolated.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashSet;

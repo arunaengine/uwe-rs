@@ -1,6 +1,6 @@
 //! Storage providers from the config file: which provider serves an address, web servers with
 //! credentials that never show in messages, files downloaded once, and folders.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod common;

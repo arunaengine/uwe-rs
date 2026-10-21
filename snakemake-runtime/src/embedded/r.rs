@@ -1,6 +1,6 @@
 //! R: the S4 `snakemake` object of R scripts and R Markdown documents, as Snakemake's
 //! `REncoder` and `RScript.generate_preamble` write it.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use python_evaluator::format::quote;

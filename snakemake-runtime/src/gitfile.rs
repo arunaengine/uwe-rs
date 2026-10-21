@@ -1,6 +1,6 @@
 //! The git repositories of `gitfile(...)`, written out at their reference: one of this machine
 //! read with gix, one on the web fetched over HTTPS by the Git client of the run.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::{Path, PathBuf};

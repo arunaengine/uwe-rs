@@ -1,6 +1,6 @@
 //! Runs task requests: answers them from the cache, or stages their inputs, runs them on a
 //! backend, and stores the outputs and the cache entry.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 // The futures of attempts nest deeply, deeper than the default limit lets the compiler check.

@@ -1,5 +1,5 @@
 //! Checks merged command-line config values and YTE config templates.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use workflow_graph::{Launch, Simulator, execute};

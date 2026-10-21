@@ -1,5 +1,5 @@
 //! Checks cached task results without executing tasks or populating storage.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use content_store::Store;

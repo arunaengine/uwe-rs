@@ -1,6 +1,6 @@
 //! Turns a task that a driver asked for into a task request: the hashed specification with its
 //! inputs in the store, and the identity of the task in its run.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;

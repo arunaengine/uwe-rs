@@ -1,5 +1,5 @@
 //! Loads peppy-compatible PEP projects, applies sample modifiers, and merges sample tables.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 #[path = "modifiers.rs"]

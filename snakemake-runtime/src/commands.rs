@@ -1,5 +1,5 @@
 //! Runs planning commands as uncached container tasks and synchronizes their engine outcomes.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::{Cell, RefCell};

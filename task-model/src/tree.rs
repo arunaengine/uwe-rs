@@ -1,5 +1,5 @@
 //! Directory manifests; the digest of a directory is the digest of its canonical manifest.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use serde::{Deserialize, Serialize};

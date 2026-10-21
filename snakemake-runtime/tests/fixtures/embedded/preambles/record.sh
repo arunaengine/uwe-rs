@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Records Snakemake 9.27.0 preambles with normalized folders using uv and a fixed hash seed.
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"

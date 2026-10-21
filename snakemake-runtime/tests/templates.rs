@@ -1,6 +1,6 @@
 //! Rules of `template_engine:`, which iunctus renders natively for yte and in the Python
 //! process for jinja2, and rules of `cwl:`, which run their tool with the CWL runtime.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use workflow_graph::Launch;

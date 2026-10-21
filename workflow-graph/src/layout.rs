@@ -1,5 +1,5 @@
 //! Lays out directed graph nodes and edges in ordered layers.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 /// The space between two nodes of a layer.

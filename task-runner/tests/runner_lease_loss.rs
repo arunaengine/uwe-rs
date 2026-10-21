@@ -1,5 +1,5 @@
 //! Caller lease loss cancels work without publishing late results or removing journals.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 // The futures of attempts nest deeply, deeper than the default limit lets the compiler check.

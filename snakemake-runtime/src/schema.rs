@@ -1,6 +1,6 @@
 //! `snakemake.utils.validate`: checks a config or a sample table against a JSON schema,
 //! and fills in the defaults that the schema gives, as Snakemake does with `set_default`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::{Path, PathBuf};

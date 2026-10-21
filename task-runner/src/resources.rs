@@ -1,6 +1,6 @@
 //! Right-sized resources for the tasks of a run, from what the tasks of the same step used in
 //! earlier runs (see [`task_model::right_sized`]).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use task_model::{Measured, Placement, right_sized};

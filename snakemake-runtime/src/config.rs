@@ -1,5 +1,5 @@
 //! Config files and config values from the command line, merged as Snakemake merges them.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use python_evaluator::modules::data::{load_yaml, parse_json};

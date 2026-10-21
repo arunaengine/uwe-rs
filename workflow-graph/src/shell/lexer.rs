@@ -1,6 +1,6 @@
 //! Reads the shell script of a task into lines, words and commands, for the simulator:
 //! continued lines, here documents, quotes, variables and redirects.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 /// A line of commands with the bodies of its here documents.

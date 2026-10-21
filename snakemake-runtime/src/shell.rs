@@ -1,6 +1,6 @@
 //! Formatting of shell commands and other job texts with Snakemake's rules: lists become
 //! space-separated items, `:q` quotes for the shell, wildcards print as `name=value`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;

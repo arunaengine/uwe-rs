@@ -1,5 +1,5 @@
 <!-- Contracts for job planning, embedded code, workflow sources, and corpus validation. -->
-<!-- Copyright (c) 2026 The iunctus Contributors -->
+<!-- Copyright (c) 2026 The uwe Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
 # Source contracts

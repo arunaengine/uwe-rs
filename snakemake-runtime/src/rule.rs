@@ -1,6 +1,6 @@
 //! Rules as the Snakefile defines them: file patterns, input functions and the other
 //! directive values, kept as Python values until jobs evaluate them.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::PathBuf;

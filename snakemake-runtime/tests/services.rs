@@ -1,6 +1,6 @@
 //! Service jobs, as Snakemake 9.27.0 runs `test_service_jobs`: the job with a `service()`
 //! output runs at once with the jobs that use it, which end it; the run goes on after them.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use workflow_graph::{Attempt, Engine, Executor, Launch, Outcome, OutputFile, Running, Task};

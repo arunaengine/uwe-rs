@@ -1,6 +1,6 @@
 //! Evaluation of Snakefiles: the Python code runs in the interpreter, and each Snakemake
 //! statement runs when the code reaches it, as the Python that Snakemake generates would.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;

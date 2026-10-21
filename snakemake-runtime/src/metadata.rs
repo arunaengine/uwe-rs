@@ -1,5 +1,5 @@
 //! Records input checksums so unchanged newer inputs can reuse Snakemake outputs.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use base64::Engine;

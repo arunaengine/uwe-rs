@@ -1,5 +1,5 @@
 //! Checks that a cache hit reads each stored output once and its content only by size.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::os::unix::fs::PermissionsExt;

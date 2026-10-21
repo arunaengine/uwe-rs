@@ -1,6 +1,6 @@
 //! peppy's sample modifiers: remove, append, duplicate, imply and derive, and the merging of
 //! samples of the same name and of the rows of subsample tables.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use indexmap::IndexMap;

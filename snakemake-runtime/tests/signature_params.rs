@@ -1,5 +1,5 @@
 //! Signature capture reads supported values without invoking unused Python callbacks.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use workflow_graph::{Files, Launch, LocalFiles, Outcome, OutputFile};

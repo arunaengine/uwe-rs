@@ -1,6 +1,6 @@
 //! A job whose outputs exist runs again when an input is newer than its oldest output, as
 //! Snakemake's default `mtime` trigger decides, unless the input is `ancient`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::time::{Duration, SystemTime};

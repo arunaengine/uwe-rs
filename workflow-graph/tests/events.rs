@@ -1,6 +1,6 @@
 //! The engine tells an observer what happens in a run, each step before its effect, and always
 //! the end.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use workflow_graph::{

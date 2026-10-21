@@ -1,5 +1,5 @@
 //! How the engine runs tasks: how many may be pending at once, and in which order they finish.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 /// Options of a run. The default runs one task at a time in the order the driver asked for

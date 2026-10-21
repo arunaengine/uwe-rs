@@ -1,5 +1,5 @@
 //! Checks the parser against Snakemake 9.27.0's parser.py on the test workflows from `just snakemake-test-workflows`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeMap, BTreeSet};

@@ -1,5 +1,5 @@
 //! Parses storage addresses, encoded object keys and version selectors.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 /// The scheme of an address, like `s3` of `s3://bucket/key`; `None` for a local path.

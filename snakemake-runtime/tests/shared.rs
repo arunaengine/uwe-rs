@@ -919,3 +919,63 @@ fn moves_across_devices() {
     let shadows = std::fs::read_dir(folder.path().join("work/.snakemake/shadow")).unwrap();
     assert_eq!(shadows.count(), 0, "the shadow directory is gone");
 }
+
+/// Answers each task from a stored folder with a file, a folder and links to both, as a
+/// cache hit of a `directory()` output does.
+struct Folders(PathBuf);
+
+impl Executor for Folders {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let task = &attempt.task;
+        let mut files = Vec::new();
+        for (number, output) in task.outputs.iter().enumerate() {
+            let location = self.0.join(format!("{}-{number}", task.id));
+            std::fs::create_dir_all(location.join("sub")).unwrap();
+            std::fs::write(location.join("a.txt"), "a").unwrap();
+            std::os::unix::fs::symlink("a.txt", location.join("b.txt")).unwrap();
+            std::os::unix::fs::symlink("sub", location.join("s")).unwrap();
+            std::os::unix::fs::symlink("/etc/hostname", location.join("out")).unwrap();
+            files.push(OutputFile {
+                path: output.clone(),
+                location: location.to_string_lossy().into_owned(),
+                directory: true,
+                ..OutputFile::default()
+            });
+        }
+        Running::ended(Ok(Outcome {
+            id: task.id,
+            files,
+            cached: true,
+            ..Outcome::default()
+        }))
+    }
+}
+
+/// A stored `directory()` output comes back with its links inside the working directory as
+/// links, also those to folders; a link that leads out becomes a copy of what it names.
+#[test]
+fn restores_folder_links() {
+    let folder = folder();
+    let work = folder.path().join("work");
+    let snakefile = "rule a:\n    output: directory('d')\n    shell: 'unused'\n";
+    std::fs::write(work.join("Snakefile"), snakefile).unwrap();
+    let launch = Launch {
+        target: work.clone(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let options = snakemake_runtime::RunSettings {
+        shared_workdir: true,
+        ..Default::default()
+    };
+    let mut driver = snakemake_runtime::driver_with_options(&launch, Default::default(), options)
+        .expect("a driver");
+    let mut executor = Folders(folder.path().join("store"));
+    let execution = Engine::new(&mut executor).run("Snakefile", driver.as_mut());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    let link = |name: &str| std::fs::read_link(work.join("d").join(name)).ok();
+    assert_eq!(link("b.txt"), Some(PathBuf::from("a.txt")));
+    assert_eq!(link("s"), Some(PathBuf::from("sub")));
+    assert_eq!(link("out"), None, "a link that leads out is a copy");
+    assert!(work.join("d/sub").is_dir());
+}

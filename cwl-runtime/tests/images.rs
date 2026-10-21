@@ -207,7 +207,11 @@ fn saves_slurm_archives() {
         ..Options::default()
     };
     let fields = "    dockerLoad: image.tar";
-    let first = image(root.path(), fields, options()).unwrap();
+    let held = options();
+    let first = image(root.path(), fields, held.clone()).unwrap();
+    // The run holds the folder, so that clean-up removes nothing that it uses.
+    assert!(storage::hold_downloads(&archives).unwrap().is_none());
+    drop(held);
     // The task names the image ID, which is the same on every machine.
     let file = archives.join(LOADED.replace(':', "-") + ".tar");
     assert_eq!(first, LOADED);

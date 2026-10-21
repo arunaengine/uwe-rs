@@ -118,6 +118,13 @@ fn prepare(docker: &Docker, source: ImageSource, options: &Options) -> Result<St
     if options.simulated {
         return Ok(tag);
     }
+    // Held until the run ends, so that `iunctus clean` removes no archive that it uses.
+    if let (None, None, Some(folder)) =
+        (&options.local_engine, &options.registry, &options.archives)
+    {
+        let storage = options.remote.storage.blocking();
+        storage.hold(folder).map_err(|error| error.to_string())?;
+    }
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

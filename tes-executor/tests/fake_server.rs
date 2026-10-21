@@ -407,6 +407,17 @@ fn bounds_accepted_tasks() {
 
 #[test]
 fn stops_task_time() {
+    stop_task(false);
+}
+
+#[test]
+fn keeps_own_timeouts() {
+    stop_task(true);
+}
+
+/// A task that ends with 124: its timer ended it, or with `own` the task ended so itself, like
+/// a `timeout` inside it.
+fn stop_task(own: bool) {
     let folder = tempfile::tempdir().expect("a folder");
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
     let address = format!("http://{}", listener.local_addr().unwrap());
@@ -422,6 +433,11 @@ fn stops_task_time() {
                 let document: serde_json::Value = serde_json::from_str(&body).unwrap();
                 for output in document["outputs"].as_array().unwrap() {
                     leave(output);
+                    let url = output["url"].as_str().unwrap();
+                    if own && output["path"] == "/iunctus/control" {
+                        let folder = PathBuf::from(url.strip_prefix("file://").unwrap());
+                        std::fs::write(folder.join("exit"), "124\n").unwrap();
+                    }
                 }
                 *kept.lock().unwrap() = Some(document);
             }
@@ -459,6 +475,10 @@ fn stops_task_time() {
         .block_on(backend.run(job, &CancellationToken::new()))
         .expect("an end");
     server.join().unwrap();
+    if own {
+        assert_eq!(finished.exit_code, Some(124), "the task's own end");
+        return;
+    }
     assert_eq!(finished.exit_code, Some(143));
     let stderr = std::fs::read_to_string(finished.stderr()).expect("the standard error");
     assert!(

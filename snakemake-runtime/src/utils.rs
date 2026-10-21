@@ -71,7 +71,11 @@ fn validate(
     if skip {
         return Ok(Value::None);
     }
-    let schema_path = python_evaluator::modules::path_text(interpreter, &schema)?;
+    // A schema of `gitfile(...)` is read from its checkout.
+    let schema_path = match schema.as_native::<functions::RemoteSource>() {
+        Some(remote) if remote.git.is_some() => interpreter.to_str(&schema)?,
+        _ => python_evaluator::modules::path_text(interpreter, &schema)?,
+    };
     let (schema, file) = crate::schema::load_schema(interpreter, &schema_path, &base)?;
     if matches!(data.plain(), Value::Dict(_)) {
         if let Err(message) =

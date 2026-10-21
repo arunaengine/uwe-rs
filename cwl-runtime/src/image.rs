@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 use crate::tool::Options;
 
 pub(crate) fn select(docker: Option<(&Docker, bool)>, options: &Options) -> Result<String, String> {
-    let Some((docker, _)) = docker else {
+    let Some((docker, required)) = docker else {
         return Ok(options.image.clone());
     };
     let source = if docker.docker_file.is_some() {
@@ -30,13 +30,22 @@ pub(crate) fn select(docker: Option<(&Docker, bool)>, options: &Options) -> Resu
             .clone()
             .unwrap_or_else(|| options.image.clone()));
     };
-    // A hint too, since the tool would hardly run in the default image instead.
+    // Like cwltool, a hint whose image cannot be made fails the tool instead of running it in
+    // the default image; only a requirement counts as unsupported.
     if !options.simulated && options.local_engine.is_none() && options.registry.is_none() {
-        return Err(crate::tool::unsupported(
-            "a DockerRequirement with dockerFile, dockerLoad or dockerImport needs an image that \
-             remote executors can pull: set `registry` in the `[cwl]` section of the config file, \
-             so that iunctus makes the image here and pushes it there, or name a dockerPull image",
-        ));
+        let message = format!(
+            "a DockerRequirement {} with dockerFile, dockerLoad or dockerImport needs an image \
+             that remote executors can pull. Set `registry` in the `[cwl]` section of the config \
+             file to a registry that iunctus can push to and the nodes can pull from (Apptainer \
+             on SLURM pulls from it too); iunctus then makes the image here and pushes it there. \
+             Otherwise push the image yourself and name it in dockerPull, or run the tool with \
+             the local executor",
+            if required { "requirement" } else { "hint" }
+        );
+        return Err(match required {
+            true => crate::tool::unsupported(&message),
+            false => message,
+        });
     }
     let docker = docker.clone();
     let options = options.clone();

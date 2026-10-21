@@ -9,7 +9,8 @@ fn image(root: &std::path::Path, fields: &str, options: Options) -> Result<Strin
     image_in(root, "requirements", fields, options)
 }
 
-/// The image of a tool whose DockerRequirement is in `section`, `requirements` or `hints`.
+/// The image of a tool whose DockerRequirement is in `section`, `requirements` or `hints`; an
+/// error of an unsupported feature starts with `unsupported: `.
 fn image_in(
     root: &std::path::Path,
     section: &str,
@@ -32,7 +33,10 @@ fn image_in(
         options,
     )
     .map_err(|error| error.message)?;
-    let mut tasks = driver.start().map_err(|error| error.message)?;
+    let mut tasks = driver.start().map_err(|error| match error.unsupported {
+        true => format!("unsupported: {}", error.message),
+        false => error.message,
+    })?;
     Ok(tasks.remove(0).image.unwrap())
 }
 
@@ -84,7 +88,8 @@ fn refuses_remote_preparation() {
         "    dockerLoad: missing.tar",
         "    dockerImport: missing.tar",
     ];
-    // A hint is refused too, rather than run in the default image.
+    // As in cwltool, a hint fails too, rather than run in the default image, but only a
+    // requirement is unsupported.
     for (section, fields) in ["requirements", "hints"]
         .into_iter()
         .flat_map(|section| fields.map(|fields| (section, fields)))
@@ -95,6 +100,9 @@ fn refuses_remote_preparation() {
         };
         let error = image_in(root.path(), section, fields, remote).unwrap_err();
         assert!(error.contains("`[cwl]` section"), "{error}");
+        assert!(error.contains("Apptainer on SLURM"), "{error}");
+        let unsupported = error.starts_with("unsupported: ");
+        assert_eq!(unsupported, section == "requirements", "{error}");
     }
 }
 

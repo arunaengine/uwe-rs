@@ -1,6 +1,6 @@
 //! Every run records itself in the run database (decision 10), simulated or real. This module
 //! starts the record of a run, and finds the earlier run that `-resume` continues.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;

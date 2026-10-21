@@ -1,5 +1,5 @@
 //! Tests for building value trees from YAML and JSON text.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use saphyr_parser::{ScalarStyle, Tag};

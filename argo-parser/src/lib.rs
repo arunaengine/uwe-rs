@@ -1,6 +1,6 @@
 //! Loads Argo Workflows documents (Workflow, WorkflowTemplate, ClusterWorkflowTemplate and
 //! CronWorkflow) from YAML and JSON into a typed model, following Argo v4.1.4.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod decode;

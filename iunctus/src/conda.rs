@@ -1,6 +1,6 @@
 //! `iunctus lock-environment <file>`: offline locks or configured cached HTTPS acquisition
 //! for an explicit container target.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::io::{self, Read};

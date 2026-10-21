@@ -1,5 +1,5 @@
 //! Loads and merges site, user and named TOML settings while preserving value locations.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod error;

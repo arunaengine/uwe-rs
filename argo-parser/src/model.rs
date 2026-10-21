@@ -1,6 +1,6 @@
 //! The typed model of Argo documents, after the Go types of Argo v4.1.4. Fields that Argo hands
 //! to Kubernetes unchanged, and artifact locations, stay raw [`Node`]s.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;

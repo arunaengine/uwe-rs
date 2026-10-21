@@ -1,6 +1,6 @@
 //! The environment of a container: plain values, fields of the pod as the run makes them up,
 //! and the keys of ConfigMaps and Secrets (decision 18).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;

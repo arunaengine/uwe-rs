@@ -1,6 +1,6 @@
 //! The command line of `iunctus run`, `iunctus graph` and `iunctus config`: Nextflow's options,
 //! and those that the other languages add.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::net::IpAddr;

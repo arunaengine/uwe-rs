@@ -1,6 +1,6 @@
 //! The nodes of a run, after Argo's node status: their kind, phase and outputs, and the
 //! artifacts that they pass on.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::PathBuf;

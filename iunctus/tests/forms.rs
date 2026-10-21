@@ -1,5 +1,5 @@
 //! Form descriptions preserve complete schemas and validate posted typed JSON.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use iunctus::application::{ApplicationError, Description, Policy};

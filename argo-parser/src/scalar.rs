@@ -1,5 +1,5 @@
 //! Resolves plain YAML scalars with the YAML 1.1 rules of go-yaml v2, which Argo uses.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use crate::node::Value;

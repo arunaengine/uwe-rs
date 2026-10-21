@@ -1,6 +1,6 @@
 //! `iunctus compare <run> [<run>]`: what differs between two runs, of the same workflow or of
 //! two versions of it. With one run, it is compared with the run of its workflow before it.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::fmt::Write as _;

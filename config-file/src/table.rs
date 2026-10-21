@@ -1,6 +1,6 @@
 //! A table of the config file, like `[storage.lab]`, and its settings by type. A value of the
 //! wrong type, an unknown key or a missing key is an error that names the file and the line.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;

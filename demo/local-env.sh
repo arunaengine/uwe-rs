@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds and selects the demo binary and config for this shell.
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 if [ -n "${ZSH_VERSION:-}" ]; then

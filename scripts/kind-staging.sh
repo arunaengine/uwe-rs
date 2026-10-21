@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs a workflow with the Kubernetes executor on a kind cluster, with object-store staging (with the
 # uploaded binary, a helper image, or credentials), with kubedal staging, and with a shared claim.
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 #
 # Needs docker, kind, kubectl and helm, the static binary of `just release-binary` (IUNCTUS),

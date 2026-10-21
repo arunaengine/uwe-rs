@@ -1,6 +1,6 @@
 //! Resources of a task from the Kubernetes resources of a container: CPU cores, bytes of memory
 //! and disk, GPUs, and the time limit.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use argo_parser::Node;

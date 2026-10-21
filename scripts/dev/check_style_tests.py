@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Self-tests for check_style.py. Plain Python; no Rust toolchain or build."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 import os
 import sys
@@ -21,8 +21,8 @@ def messages(findings):
     return [finding[3] for finding in findings]
 
 
-NOTICE_BLOCK = "// Copyright (c) 2026 The iunctus Contributors\n// SPDX-License-Identifier: MIT or Apache-2.0\n"
-HASH_NOTICES = "# Copyright (c) 2026 The iunctus Contributors\n# SPDX-License-Identifier: MIT or Apache-2.0\n"
+NOTICE_BLOCK = "// Copyright (c) 2026 The uwe Contributors\n// SPDX-License-Identifier: MIT or Apache-2.0\n"
+HASH_NOTICES = "# Copyright (c) 2026 The uwe Contributors\n# SPDX-License-Identifier: MIT or Apache-2.0\n"
 
 
 class IdentifierKindsTest(unittest.TestCase):
@@ -878,18 +878,18 @@ class HeaderTest(TreeTest):
         )
 
     def test_doc_notices(self):
-        text = "//! Starts the node.\n//! Copyright (c) 2026 The iunctus Contributors\n"
+        text = "//! Starts the node.\n//! Copyright (c) 2026 The uwe Contributors\n"
         self.assertIn(("header", "pkg/src/probe.rs", 2, "the notices must not use '//!'"), self.rust(text))
 
     def test_license_text(self):
-        text = "//! Starts the node.\n// Copyright (c) 2026 The iunctus Contributors\n// SPDX-License-Identifier: MIT OR Apache-2.0\n"
+        text = "//! Starts the node.\n// Copyright (c) 2026 The uwe Contributors\n// SPDX-License-Identifier: MIT OR Apache-2.0\n"
         self.assertEqual(
             messages(self.rust(text)),
             ["line must read '// SPDX-License-Identifier: MIT or Apache-2.0'"],
         )
 
     def test_notice_order(self):
-        text = "//! Starts the node.\n// SPDX-License-Identifier: MIT or Apache-2.0\n// Copyright (c) 2026 The iunctus Contributors\n"
+        text = "//! Starts the node.\n// SPDX-License-Identifier: MIT or Apache-2.0\n// Copyright (c) 2026 The uwe Contributors\n"
         self.assertEqual(len(self.rust(text)), 2)
 
     def test_description_last(self):
@@ -914,7 +914,7 @@ class HeaderTest(TreeTest):
         self.assertEqual(
             messages(self.headers([("Cargo.toml", text)])),
             [
-                "line must read '# Copyright (c) 2026 The iunctus Contributors'",
+                "line must read '# Copyright (c) 2026 The uwe Contributors'",
                 "line must read '# SPDX-License-Identifier: MIT or Apache-2.0'",
             ],
         )
@@ -939,7 +939,7 @@ class HeaderTest(TreeTest):
     def test_markdown_header(self):
         text = (
             "<!-- The contributor guide. -->\n"
-            "<!-- Copyright (c) 2026 The iunctus Contributors -->\n"
+            "<!-- Copyright (c) 2026 The uwe Contributors -->\n"
             "<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->\n\n# Guide\n"
         )
         self.assertEqual(self.headers([("CONTRIBUTING.md", text)]), [])

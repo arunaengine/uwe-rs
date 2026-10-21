@@ -1,6 +1,6 @@
 //! Tests for the checks of submitted documents. The expected messages are those of
 //! `argo lint --offline` v4.1.4 on the same documents.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use super::validate;

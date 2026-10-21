@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Style checks for folders, shared prefixes, names, comments and file headers.
 EXTERNAL_NAMES, SMALL_DOMAINS and HEADER_EXCEPTIONS hold the reviewed exceptions."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 import argparse
 import bisect
@@ -33,7 +33,7 @@ TERM_MAX = 3
 COMMENT_MAX = 3
 HEADER_MAX = 2
 HEADER_NOTICES = (
-    "Copyright (c) 2026 The iunctus Contributors",
+    "Copyright (c) 2026 The uwe Contributors",
     "SPDX-License-Identifier: MIT or Apache-2.0",
 )
 HEADER_SKIP = frozenset({"target", "vendor", "node_modules", ".git", ".claude"})

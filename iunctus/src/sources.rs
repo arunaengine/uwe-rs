@@ -1,5 +1,5 @@
 //! Collects workflow sources and command-line files for run recording.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::os::unix::fs::MetadataExt;

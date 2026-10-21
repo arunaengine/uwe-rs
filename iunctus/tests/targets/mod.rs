@@ -1,6 +1,6 @@
 //! The Nextflow workflows of the test workflows, which the test-workflows tests share: each by
 //! its name, its target (a folder or a main script) and the folder of its project.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::{Path, PathBuf};

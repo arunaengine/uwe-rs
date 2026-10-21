@@ -1,5 +1,5 @@
 //! Complete runs from a Tokio host use the same recording and resume path as the CLI.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use iunctus::{CancellationToken, Resume, RunRequest, run::Settings, setup::Setup};

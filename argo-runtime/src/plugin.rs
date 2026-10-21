@@ -1,5 +1,5 @@
 //! Lowers executor plugin templates to calls of the Argo plugin API.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use argo_parser::model::{Container, Template};

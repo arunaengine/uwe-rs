@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Compares real workflow outputs from iunctus and native tools."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 import hashlib

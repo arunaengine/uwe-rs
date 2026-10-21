@@ -1,5 +1,5 @@
 //! Applies `podSpecPatch` to the containers and volumes of a template, as Argo's strategic merge does.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use argo_parser::{Entry, Node, Value as Yaml, parse_yaml};

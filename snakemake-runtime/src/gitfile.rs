@@ -47,14 +47,13 @@ pub fn local(repository: &Path, reference: &str, downloads: &Path) -> Result<Pat
     Ok(folder)
 }
 
-/// The folder with the files of a repository on the web at a reference, fetched again with
-/// `fresh`, as a run reads the reference as it is now.
+/// The folder with the files of a repository on the web at a reference, fetched now into a
+/// folder of its own: another run may still read the folder of an earlier fetch.
 pub fn web(
     client: &GitClient,
     url: &str,
     reference: &str,
     downloads: &Path,
-    fresh: bool,
 ) -> Result<PathBuf, String> {
     let name = sha2::Sha256::digest(format!("{url}@{reference}").as_bytes());
     let name: String = name
@@ -62,30 +61,52 @@ pub fn web(
         .take(8)
         .map(|byte| format!("{byte:02x}"))
         .collect();
-    let folder = downloads.join("git").join("web").join(name);
-    if folder.is_dir() && !fresh {
-        return Ok(folder);
-    }
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |time| time.as_nanos());
+    let parent = downloads.join("git").join("web");
+    let folder = parent.join(format!("{name}-{}-{nanos}", std::process::id()));
     written(&folder, |target| (client.0)(url, reference, target))?;
+    prune(&parent, &name, &folder);
     Ok(folder)
 }
 
-/// Writes a folder through a temporary one beside it, so that a folder is whole or absent.
+/// How long the folder of an earlier fetch stays, for runs that still read it.
+const KEPT: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
+
+/// Removes the folders of earlier fetches of the same repository and reference that are older
+/// than a week.
+fn prune(parent: &Path, name: &str, current: &Path) {
+    let Ok(entries) = std::fs::read_dir(parent) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let ours = entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(&format!("{name}-"));
+        let old = (entry.metadata()).and_then(|metadata| metadata.modified());
+        let old = old.is_ok_and(|time| time.elapsed().is_ok_and(|age| age > KEPT));
+        if ours && old && path != current {
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+}
+
+/// Writes a folder through a temporary one beside it, so that a folder is whole or absent. A
+/// folder that another run wrote meanwhile stays, as it holds the same files.
 fn written(folder: &Path, write: impl FnOnce(&Path) -> Result<(), String>) -> Result<(), String> {
     let parent = folder.parent().unwrap_or(folder);
     std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     let name = folder.file_name().unwrap_or_default().to_string_lossy();
     let target = parent.join(format!(".{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&target);
-    let result = write(&target).and_then(|()| {
-        if folder.exists() {
-            std::fs::remove_dir_all(folder).map_err(|error| error.to_string())?;
-        }
-        std::fs::rename(&target, folder).map_err(|error| error.to_string())
+    let result = write(&target).and_then(|()| match folder.exists() {
+        true => Ok(()),
+        false => std::fs::rename(&target, folder).map_err(|error| error.to_string()),
     });
-    if result.is_err() {
-        let _ = std::fs::remove_dir_all(&target);
-    }
+    let _ = std::fs::remove_dir_all(&target);
     result
 }
 

@@ -84,6 +84,10 @@ pub fn deep_merge(target: &Value, source: &Value) {
 
 /// A copy of nested maps and lists, so that no file shares them with another.
 pub fn deep_copy(value: &Value) -> Value {
+    super::deep(|| deep_copy_body(value))
+}
+
+fn deep_copy_body(value: &Value) -> Value {
     match value {
         Value::Map(map) => {
             let map = map.borrow();
@@ -102,8 +106,10 @@ pub fn deep_copy(value: &Value) -> Value {
             let list = list.borrow();
             let items = list.items.iter().map(deep_copy).collect();
             Value::List(Rc::new(RefCell::new(List {
+                kind: list.kind,
                 items,
-                ..list.clone()
+                range: list.range.clone(),
+                default: list.default.clone(),
             })))
         }
         other => other.clone(),

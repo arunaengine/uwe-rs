@@ -81,6 +81,10 @@ impl Value {
     /// Groovy's `DefaultTypeTransformation.compareEqual`, which `==` falls back on and which
     /// compares the elements of lists, sets and maps.
     pub fn groovy_equals(&self, other: &Value) -> bool {
+        super::deep(|| self.groovy_equals_body(other))
+    }
+
+    fn groovy_equals_body(&self, other: &Value) -> bool {
         match (self, other) {
             (Value::Null, Value::Null) => true,
             (Value::Null, _) | (_, Value::Null) => false,

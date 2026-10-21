@@ -131,6 +131,54 @@ impl List {
     }
 }
 
+impl Drop for List {
+    fn drop(&mut self) {
+        if self.items.iter().any(nested) {
+            release(std::mem::take(&mut self.items));
+        }
+    }
+}
+
+impl Drop for Map {
+    fn drop(&mut self) {
+        if self.entries.values().any(nested) {
+            let entries = std::mem::take(&mut self.entries);
+            release(entries.into_values().collect());
+        }
+    }
+}
+
+/// Runs a recursive step over a value on a stack that grows as needed, so that deeply nested
+/// lists and maps cannot overflow it.
+pub(crate) fn deep<R>(step: impl FnOnce() -> R) -> R {
+    stacker::maybe_grow(64 << 10, 8 << 20, step)
+}
+
+fn nested(value: &Value) -> bool {
+    matches!(value, Value::List(_) | Value::Map(_))
+}
+
+/// Frees nested lists and maps one after another instead of within each other, so that deep
+/// nesting cannot overflow the stack.
+fn release(mut pending: Vec<Value>) {
+    while let Some(value) = pending.pop() {
+        match value {
+            Value::List(list) => {
+                if let Ok(cell) = Rc::try_unwrap(list) {
+                    pending.append(&mut cell.into_inner().items);
+                }
+            }
+            Value::Map(map) => {
+                if let Ok(cell) = Rc::try_unwrap(map) {
+                    let entries = std::mem::take(&mut cell.into_inner().entries);
+                    pending.extend(entries.into_values());
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 /// The Java classes behind a list; they differ in class name, equality and what they allow.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ListKind {

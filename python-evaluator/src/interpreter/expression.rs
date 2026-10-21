@@ -98,6 +98,9 @@ impl Interpreter {
                 // As in Python, a comparison gives what the operator gives, like a series of
                 // booleans, and a chain stops at the first result that is not true.
                 let mut left = self.eval(frame, &compare.operands[0])?;
+                if let Some(found) = self.in_keys(frame, compare, &left)? {
+                    return Ok(found);
+                }
                 let mut result = Value::Bool(true);
                 let count = compare.ops.len();
                 for (position, (operator, right)) in compare
@@ -683,6 +686,37 @@ const FOLDED_TEXT: usize = 4096;
 const FOLDED_ITEMS: usize = 256;
 
 impl Interpreter {
+    /// `key in d.keys()` of a dict, which looks the key up as `key in d` does instead of
+    /// copying the keys first; `None` for other comparisons.
+    fn in_keys(
+        &mut self,
+        frame: &Frame,
+        compare: &ast::ExprCompare,
+        left: &Value,
+    ) -> Result<Option<Value>, Error> {
+        let ([operator], [_, Expr::Call(call)]) = (&*compare.ops, &*compare.operands) else {
+            return Ok(None);
+        };
+        let Expr::Attribute(attribute) = &*call.func else {
+            return Ok(None);
+        };
+        if !matches!(operator, CmpOp::In | CmpOp::NotIn)
+            || attribute.attr.as_str() != "keys"
+            || !call.arguments.is_empty()
+        {
+            return Ok(None);
+        }
+        let receiver = self.eval(frame, &attribute.value)?;
+        let container = match receiver.plain() {
+            Value::Dict(_) => receiver,
+            _ => {
+                let keys = self.get_attribute(&receiver, "keys")?;
+                self.call(&keys, Args::default())?
+            }
+        };
+        self.compare_value(*operator, left, &container).map(Some)
+    }
+
     fn all_folded(&mut self, frame: &Frame, items: &[Expr]) -> bool {
         items.iter().all(|item| self.folded(frame, item))
     }

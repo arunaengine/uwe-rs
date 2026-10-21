@@ -44,6 +44,12 @@ pub(crate) fn cache_directory() -> PathBuf {
     base.join("iunctus")
 }
 
+/// Where CWL images that tools build are saved as archives for SLURM with Apptainer, named by
+/// their image ID.
+pub(crate) fn cwl_archives() -> PathBuf {
+    cache_directory().join("cwl-images")
+}
+
 /// A run id from the clock and the process id.
 pub(crate) fn run_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};

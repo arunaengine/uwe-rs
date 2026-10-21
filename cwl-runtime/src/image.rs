@@ -138,11 +138,13 @@ fn prepare(docker: &Docker, source: ImageSource, options: &Options) -> Result<St
             (None, Some(registry), _) => {
                 (engine.push_image(&id, registry, cancel).await).map_err(|error| error.to_string())
             }
-            // Saved once for each image, by its ID; the jobs run the archive.
+            // Saved once for each image, by its ID. The task names the ID, not the path, so
+            // that its results are found on other machines too; the executor finds the file.
             (None, None, Some(folder)) => {
-                let file = folder.join(format!("{}.tar", id.replace(':', "-")));
+                let hex = id.trim_start_matches("sha256:");
+                let file = folder.join(format!("sha256-{hex}.tar"));
                 (engine.save_image(&id, &file, cancel).await).map_err(|error| error.to_string())?;
-                Ok(format!("docker-archive:{}", file.display()))
+                Ok(format!("sha256:{hex}"))
             }
             _ => Ok(id),
         }

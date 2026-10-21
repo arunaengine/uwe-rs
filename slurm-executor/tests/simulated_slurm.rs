@@ -1794,9 +1794,17 @@ async fn runs_image_archives() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
     let apptainer = || Container::Apptainer(text(&bin.join("apptainer")));
-    let reference = image_archive(root.path(), &["/bin/sh", "-c"]);
-    let first_run = backend(root.path(), &bin, apptainer());
-    assert_eq!(first_run.pin(&reference).await.expect("no registry"), None);
+    image_archive(root.path(), &["/bin/sh", "-c"]);
+    // Tasks name the archive by its image ID, which the backend finds in its folder.
+    let reference = format!("sha256:{}", "cd".repeat(32));
+    let backend = |container| {
+        let mut backend = backend(root.path(), &bin, container);
+        backend.archives = Some(root.path().join("archives"));
+        backend
+    };
+    let first_run = backend(apptainer());
+    let pinned = first_run.pin(&reference).await.expect("no registry");
+    assert_eq!(pinned.as_deref(), Some(reference.as_str()));
     // The arguments go to the entrypoint of the archive.
     let spec = TaskSpec {
         image: Some(Image {
@@ -1849,7 +1857,7 @@ async fn runs_image_archives() {
             .all(|entry| !entry.file_name().to_string_lossy().starts_with("image-"))
     );
     // An archive named by its image ID keeps its SIF file for the next run.
-    let next_run = backend(root.path(), &bin, apptainer());
+    let next_run = backend(apptainer());
     let finished = next_run
         .run(job("run-A-3-1"), &cancel)
         .await
@@ -1857,12 +1865,25 @@ async fn runs_image_archives() {
     assert_eq!(finished.exit_code, Some(0));
     let pulls = std::fs::read_to_string(bin.join("state/pulls")).expect("a pull");
     assert_eq!(pulls.lines().count(), 1, "{pulls}");
-    // Podman and Docker on the nodes cannot run it.
-    let engine = backend(
-        root.path(),
-        &bin,
-        Container::Engine(EngineCommand::docker("docker")),
+    // An image ID without a saved archive fails clearly.
+    let mut missing = spec.clone();
+    missing.image = Some(Image {
+        reference: format!("sha256:{}", "ef".repeat(32)),
+        platform: None,
+    });
+    let absent = Job {
+        name: "run-A-5-1",
+        spec: &missing,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = next_run.run(absent, &cancel).await.unwrap_err();
+    assert!(
+        matches!(error, ExecutorError::MissingImage { .. }),
+        "{error}"
     );
+    // Podman and Docker on the nodes cannot run it.
+    let engine = backend(Container::Engine(EngineCommand::docker("docker")));
     let error = engine.run(job("run-A-4-1"), &cancel).await.unwrap_err();
     assert!(matches!(error, ExecutorError::Unsupported(_)), "{error}");
 }

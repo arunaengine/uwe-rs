@@ -123,7 +123,7 @@ pub(crate) fn driver(
                         setup.slurm_container(arguments),
                         "apptainer" | "singularity"
                     ))
-                .then(|| cache_directory().join("cwl-images")),
+                .then(crate::cwl_archives),
                 ..cwl_runtime::Options::default()
             };
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)

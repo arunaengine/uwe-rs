@@ -21,7 +21,8 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::images::{
-    Images, archive_config, archive_file, archive_path, file_name, pull_script, tag_file_name,
+    Images, archive_config, archive_file, archive_path, file_name, image_id, pull_script,
+    tag_file_name,
 };
 use crate::queue::{Look, Queue};
 use crate::remote::{NodeStaging, records};
@@ -110,6 +111,9 @@ pub struct SlurmBackend {
     /// How much longer than its task a job may run: for staging, the wait for its files and the
     /// start of its container. The task itself keeps its time.
     pub staging_time: Duration,
+    /// Where the archives of images that tasks name by image ID, `sha256:<hex>`, are saved as
+    /// `sha256-<hex>.tar`, like those of CWL tools.
+    pub archives: Option<PathBuf>,
     queue: Queue,
     made: Images,
     recovery: Mutex<()>,
@@ -165,6 +169,7 @@ impl SlurmBackend {
             configs: ImageConfigs::default(),
             remote: None,
             staging_time: STAGING_TIME,
+            archives: None,
             scratch,
             container,
             options: Vec::new(),
@@ -199,9 +204,12 @@ impl SlurmBackend {
 
 impl Backend for SlurmBackend {
     async fn pin(&self, image: &str) -> Result<Option<String>, ExecutorError> {
-        // An image archive has no registry to ask.
+        // An image archive has no registry to ask; an image ID is pinned already.
         if archive_path(image).is_some() {
             return Ok(None);
+        }
+        if image_id(image).is_some() {
+            return Ok(Some(image.to_owned()));
         }
         registry::pin(image).await
     }
@@ -325,6 +333,22 @@ impl SlurmBackend {
         Ok(command)
     }
 
+    /// Names the saved archive of an image that a task names by image ID, `sha256:<hex>`.
+    fn locate(&self, image: &mut task_model::Image) -> Result<(), ExecutorError> {
+        let (Some(folder), Some(hex)) = (&self.archives, image_id(&image.reference)) else {
+            return Ok(());
+        };
+        let file = folder.join(format!("sha256-{hex}.tar"));
+        if !file.is_file() {
+            return Err(ExecutorError::MissingImage {
+                image: image.reference.clone(),
+                reason: format!("{} holds no archive of it", folder.display()),
+            });
+        }
+        image.reference = format!("docker-archive:{}", file.display());
+        Ok(())
+    }
+
     /// The config of an image of a registry.
     async fn image_config(&self, reference: &str) -> Result<ImageConfig, ExecutorError> {
         let kept =
@@ -369,10 +393,12 @@ impl SlurmBackend {
         let _ownership = ownership(root)?;
         let mut spec = job.spec.clone();
         let image = spec.image.as_mut().ok_or(ExecutorError::NoImage)?;
+        self.locate(image)?;
         let replaces = spec.replaces_entrypoint;
         spec.arguments = self.task_command(image, replaces, &spec.arguments).await?;
         for container in &mut spec.containers {
             let image = container.image.as_mut().ok_or(ExecutorError::NoImage)?;
+            self.locate(image)?;
             let replaces = container.replaces_entrypoint;
             container.arguments = self
                 .task_command(image, replaces, &container.arguments)

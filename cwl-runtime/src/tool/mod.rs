@@ -64,7 +64,7 @@ pub struct Options {
     /// DockerRequirement builds, loads or imports go to, made with the JavaScript engine.
     pub registry: Option<String>,
     /// For SLURM with Apptainer without a registry: the folder where those images are saved as
-    /// docker-archive tars by image ID, which the jobs run.
+    /// docker-archive tars, `sha256-<hex>.tar`; tasks name them by image ID, `sha256:<hex>`.
     pub archives: Option<std::path::PathBuf>,
 }
 

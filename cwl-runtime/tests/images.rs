@@ -208,8 +208,9 @@ fn saves_slurm_archives() {
     };
     let fields = "    dockerLoad: image.tar";
     let first = image(root.path(), fields, options()).unwrap();
+    // The task names the image ID, which is the same on every machine.
     let file = archives.join(LOADED.replace(':', "-") + ".tar");
-    assert_eq!(first, format!("docker-archive:{}", file.display()));
+    assert_eq!(first, LOADED);
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "saved image");
     // The next run finds the image and its archive, and saves nothing again.
     assert_eq!(image(root.path(), fields, options()).unwrap(), first);

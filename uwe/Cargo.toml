@@ -1,9 +1,9 @@
-# Manifest of iunctus, the command that runs workflows.
+# Manifest of uwe, the command that runs workflows.
 # Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
-name = "iunctus"
+name = "uwe"
 description = "Runs Nextflow, Snakemake, CWL and Argo workflows in containers with a shared, content-addressed cache"
 version.workspace = true
 edition.workspace = true

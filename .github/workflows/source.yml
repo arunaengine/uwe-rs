@@ -47,7 +47,7 @@ jobs:
         if: matrix.check == 'tests'
         run: |
           docker info
-          cargo +1.97.1 build --offline --locked -p iunctus -j 2
+          cargo +1.97.1 build --offline --locked -p uwe -j 2
           python3 scripts/cwl-js-image.py target/debug/iunctus
       - name: Workspace tests
         if: matrix.check == 'tests'

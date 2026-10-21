@@ -24,7 +24,7 @@ EXTERNAL_NAMES = {}
 SMALL_DOMAINS = {
     "nextflow-evaluator/src/number": "grouped shared-prefix domain; hoisting recreates number_*",
     "nextflow-plugins/src/nf_schema": "grouped shared-prefix domain; hoisting recreates nf_schema_*",
-    "iunctus/src/run": "grouped shared-prefix domain; hoisting recreates run_*",
+    "uwe/src/run": "grouped shared-prefix domain; hoisting recreates run_*",
     "run-database/src/compare": "grouped shared-prefix domain; hoisting recreates compare_*",
     "workflow-graph/src/shell": "grouped shared-prefix domain; hoisting recreates shell_*",
 }
@@ -41,14 +41,14 @@ HEADER_HASH_NAMES = frozenset({".dockerignore", ".gitignore", "Dockerfile", "jus
 HEADER_HASH_SUFFIXES = (".env", ".example", ".sh", ".toml", ".ttl", ".yaml", ".yml")
 HEADER_EXCEPTIONS = {
     "Cargo.lock": "generated lockfile; Cargo rewrites it",
-    "iunctus/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_COWPY.sh": "native Nextflow stub script compared byte for byte",
-    "iunctus/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_FASTQC_SAMPLE1_PE.sh": "native Nextflow stub script compared byte for byte",
-    "iunctus/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_FASTQC_SAMPLE2_PE.sh": "native Nextflow stub script compared byte for byte",
-    "iunctus/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_FASTQC_SAMPLE3_SE.sh": "native Nextflow stub script compared byte for byte",
-    "iunctus/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_MULTIQC_demo.sh": "native Nextflow stub script compared byte for byte",
-    "iunctus/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_SEQTK_TRIM_SAMPLE1_PE.sh": "native Nextflow stub script compared byte for byte",
-    "iunctus/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_SEQTK_TRIM_SAMPLE2_PE.sh": "native Nextflow stub script compared byte for byte",
-    "iunctus/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_SEQTK_TRIM_SAMPLE3_SE.sh": "native Nextflow stub script compared byte for byte",
+    "uwe/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_COWPY.sh": "native Nextflow stub script compared byte for byte",
+    "uwe/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_FASTQC_SAMPLE1_PE.sh": "native Nextflow stub script compared byte for byte",
+    "uwe/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_FASTQC_SAMPLE2_PE.sh": "native Nextflow stub script compared byte for byte",
+    "uwe/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_FASTQC_SAMPLE3_SE.sh": "native Nextflow stub script compared byte for byte",
+    "uwe/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_MULTIQC_demo.sh": "native Nextflow stub script compared byte for byte",
+    "uwe/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_SEQTK_TRIM_SAMPLE1_PE.sh": "native Nextflow stub script compared byte for byte",
+    "uwe/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_SEQTK_TRIM_SAMPLE2_PE.sh": "native Nextflow stub script compared byte for byte",
+    "uwe/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_SEQTK_TRIM_SAMPLE3_SE.sh": "native Nextflow stub script compared byte for byte",
     "demo/argo/dag-diamond.yaml": "copied upstream example",
     "demo/argo/hello-world.yaml": "copied upstream example",
     "demo/cwl/LICENSE.md": "third-party license text",

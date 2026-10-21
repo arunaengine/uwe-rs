@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 /// The path of the `iunctus` binary that Cargo built for the tests.
-pub const BINARY: &str = env!("CARGO_BIN_EXE_iunctus");
+pub const BINARY: &str = env!("CARGO_BIN_EXE_uwe");
 
 /// The `iunctus` binary with its own empty config folder and no site-wide file.
 pub fn command() -> Command {

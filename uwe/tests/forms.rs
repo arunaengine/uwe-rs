@@ -2,8 +2,8 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use iunctus::application::{ApplicationError, Description, Policy};
-use iunctus::forms::{self, Form};
+use uwe::application::{ApplicationError, Description, Policy};
+use uwe::forms::{self, Form};
 use serde_json::{Value, json};
 use workflow_graph::{Driver, DriverError, Inputs, Language, Launch, Outcome, Task};
 

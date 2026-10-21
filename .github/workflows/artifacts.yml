@@ -45,7 +45,7 @@ jobs:
           rustup toolchain install 1.97.1 --profile minimal
           rustup target add --toolchain 1.97.1 x86_64-unknown-linux-musl
           cargo +1.97.1 fetch --locked --target x86_64-unknown-linux-musl
-          nice -n 19 cargo +1.97.1 build --release --offline --locked --target x86_64-unknown-linux-musl -p iunctus -j 8
+          nice -n 19 cargo +1.97.1 build --release --offline --locked --target x86_64-unknown-linux-musl -p uwe -j 8
           strip --strip-debug target/x86_64-unknown-linux-musl/release/iunctus
           target/x86_64-unknown-linux-musl/release/iunctus help
       - name: Build and export native CWL JavaScript helper

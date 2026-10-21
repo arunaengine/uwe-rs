@@ -63,7 +63,7 @@ You need a container engine (Docker or Podman) and a Rust toolchain to build iun
 Install Docker or Podman from your distribution, plus a C compiler (for example `build-essential` on Debian and Ubuntu, `base-devel` on Arch). Then build and install from a checkout of this repository:
 
 ```sh
-cargo build --release --locked -p iunctus
+cargo build --release --locked -p uwe
 mkdir -p "$HOME/.local/bin"
 install -m 755 target/release/iunctus "$HOME/.local/bin/iunctus"
 ```
@@ -77,7 +77,7 @@ If you use Podman, start its socket with `systemctl --user enable --now podman.s
 Install the Xcode command line tools (`xcode-select --install`) and either Docker Desktop or Podman. Then build from a checkout, like on Linux:
 
 ```sh
-cargo build --release --locked -p iunctus
+cargo build --release --locked -p uwe
 mkdir -p "$HOME/.local/bin"
 install -m 755 target/release/iunctus "$HOME/.local/bin/iunctus"
 ```

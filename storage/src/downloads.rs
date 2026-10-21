@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn preserves_historical_names() {
-        // The SHA-256 of the public web address, as `iunctus/src/remote.rs` named copies.
+        // The SHA-256 of the public web address, as `uwe/src/remote.rs` named copies.
         let name = |text: &str| -> String {
             Sha256::digest(text.as_bytes())
                 .iter()

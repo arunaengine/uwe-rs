@@ -12,7 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-HOME = Path.home() / ".cache/iunctus/test-workflows"
+HOME = Path.home() / ".cache/uwe/test-workflows"
 TEST_WORKFLOWS = Path(os.environ.get("CWL_TEST_WORKFLOWS") or HOME / "cwl")
 DATA = Path(os.environ.get("CWL_CONFORMANCE_DATA") or HOME / "cwl-conformance-data")
 OUTPUT = Path(__file__).with_name("graph_evidence.txt")

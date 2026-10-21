@@ -12,7 +12,7 @@ import tempfile
 import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.environ.get("ARGO_TEST_WORKFLOWS") or os.path.expanduser("~/.cache/iunctus/test-workflows/argo")
+ROOT = os.environ.get("ARGO_TEST_WORKFLOWS") or os.path.expanduser("~/.cache/uwe/test-workflows/argo")
 KINDS = ("WorkflowTemplate", "ClusterWorkflowTemplate")
 HEADER = """\
 # Why each Argo test workflow that does not pass cannot run, recorded by rejected.py: the

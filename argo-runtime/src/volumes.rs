@@ -561,7 +561,7 @@ fn write_back(files: &[(PathBuf, PathBuf)], root: &Path) -> std::result::Result<
     let mut result = Ok(());
     for (index, (file, target)) in files.iter().enumerate() {
         let name = target.file_name().unwrap_or_default().to_string_lossy();
-        let copy = target.with_file_name(format!(".{name}.iunctus-{}-{index}", std::process::id()));
+        let copy = target.with_file_name(format!(".{name}.uwe-{}-{index}", std::process::id()));
         result = confined(root, target)
             .and_then(|()| stage_copy(file, &copy).map_err(|error| failed(target, error)));
         if result.is_err() {

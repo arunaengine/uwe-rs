@@ -12,7 +12,7 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
-HOME = Path.home() / ".cache/iunctus/test-workflows"
+HOME = Path.home() / ".cache/uwe/test-workflows"
 TEST_WORKFLOWS = Path(os.environ.get("CWL_TEST_WORKFLOWS") or HOME / "cwl")
 FIXTURES = Path(__file__).parent
 # cwltool wraps its messages to the width of the terminal.

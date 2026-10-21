@@ -15,13 +15,13 @@ use sha2::{Digest, Sha256};
 const DOCKERFILE: &str = include_str!("../../../containers/cwl-js/Dockerfile");
 
 /// The repository of the helper images; each tag is the digest of the binary inside.
-const REPOSITORY: &str = "iunctus-cwl-js";
+const REPOSITORY: &str = "uwe-cwl-js";
 
 /// Names a static Linux binary of iunctus to make the helper image from, instead of the
 /// running binary, for example on macOS.
 const BINARY_VARIABLE: &str = "UWE_CWL_JS_BINARY";
 
-/// `iunctus-cwl-js:<digest>` of the running binary, made with the engine when it lacks it, so
+/// `uwe-cwl-js:<digest>` of the running binary, made with the engine when it lacks it, so
 /// that a new iunctus never uses the helper of an old one.
 pub(crate) fn own_image(engine: &str, cancel: &CancellationToken) -> Result<String, String> {
     remember(engine, cancel, || make_image(engine, cancel))
@@ -151,8 +151,8 @@ fn build(
 /// Writes the build context: the recipe, the binary, the libraries it loaded with its
 /// interpreter, and their digests, as `scripts/cwl-js-image.py` does.
 fn pack(binary: &Path, digest: &str, file: File) -> io::Result<()> {
-    let mut files = BTreeMap::from([("/usr/local/bin/iunctus".to_owned(), binary.to_owned())]);
-    let mut digests = BTreeMap::from([("/usr/local/bin/iunctus".to_owned(), digest.to_owned())]);
+    let mut files = BTreeMap::from([("/usr/local/bin/uwe".to_owned(), binary.to_owned())]);
+    let mut digests = BTreeMap::from([("/usr/local/bin/uwe".to_owned(), digest.to_owned())]);
     if let Some(interpreter) = interpreter(binary)? {
         files.insert(interpreter.clone(), std::fs::canonicalize(&interpreter)?);
         for library in libraries(binary)? {
@@ -165,7 +165,7 @@ fn pack(binary: &Path, digest: &str, file: File) -> io::Result<()> {
             digests.insert(location.clone(), file_digest(source)?);
         }
         let folder = location.rsplit_once('/').map_or("", |(folder, _)| folder);
-        if location != "/usr/local/bin/iunctus" && !folders.iter().any(|known| known == folder) {
+        if location != "/usr/local/bin/uwe" && !folders.iter().any(|known| known == folder) {
             folders.push(folder.to_owned());
         }
     }
@@ -186,7 +186,7 @@ fn pack(binary: &Path, digest: &str, file: File) -> io::Result<()> {
         .map(|(location, digest)| format!("{digest}  {location}\n"))
         .collect();
     add(
-        "rootfs/usr/share/iunctus/cwl-js.sha256",
+        "rootfs/usr/share/uwe/cwl-js.sha256",
         identities.as_bytes(),
         0o644,
     )?;
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn explains_foreign_binaries() {
         let folder = tempfile::tempdir().expect("a folder");
-        let binary = folder.path().join("iunctus");
+        let binary = folder.path().join("uwe");
         std::fs::write(&binary, b"\xcf\xfa\xed\xfe\x07\x00\x00\x01 a Mach-O file").expect("writes");
         let error = linux_machine(&binary, false).unwrap_err();
         assert!(error.contains("is not a Linux binary"), "{error}");
@@ -358,9 +358,9 @@ mod tests {
             names.push(name);
         }
         for name in [
-            "rootfs/usr/local/bin/iunctus",
+            "rootfs/usr/local/bin/uwe",
             "rootfs/tmp",
-            "rootfs/usr/share/iunctus/cwl-js.sha256",
+            "rootfs/usr/share/uwe/cwl-js.sha256",
         ] {
             assert!(names.iter().any(|known| known == name), "{name}: {names:?}");
         }

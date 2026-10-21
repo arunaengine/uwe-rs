@@ -1,6 +1,6 @@
 1 tasks, 1 steps, 0 edges
 1 1 <- []
 task 1: -
-  command: bash .snakemake/shell_tmp.iunctus/script.sh
-  inputs: test.in .snakemake/shell_tmp.iunctus/script.sh
+  command: bash .snakemake/shell_tmp.uwe/script.sh
+  inputs: test.in .snakemake/shell_tmp.uwe/script.sh
   outputs: test.out

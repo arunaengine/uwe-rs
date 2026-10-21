@@ -96,7 +96,7 @@ fn providers_serve_documents() {
 
 #[test]
 fn default_downloads_removed() {
-    let shared = std::env::temp_dir().join("iunctus-downloads");
+    let shared = std::env::temp_dir().join("uwe-downloads");
     let remote = Remote::default();
     let folder = remote.downloads();
     assert_ne!(folder, shared, "the default folder must be private");

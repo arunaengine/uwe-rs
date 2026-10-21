@@ -63,7 +63,7 @@ pub trait Host {
     /// is removed when the thread ends; custom storage hosts may override it.
     fn operator_directory(&mut self) -> Result<PathValue, Error> {
         let directory = tempfile::Builder::new()
-            .prefix("iunctus-nextflow-")
+            .prefix("uwe-nextflow-")
             .tempdir()
             .map_err(|error| Error::Thrown {
                 exception: Rc::new(Exception::new(

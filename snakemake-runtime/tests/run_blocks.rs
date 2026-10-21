@@ -45,7 +45,7 @@ fn captures_run_globals() {
         "    from helpers import tidy as tidy\n",
         &format!("sys.path.extend(['{lib}'])"),
         // Live objects of the interpreter cannot go.
-        "workflow = __iunctus.Unavailable('workflow is ",
+        "workflow = __uwe.Unavailable('workflow is ",
         "shell._process_prefix = 'set -e; '\n",
         "config = {}\n",
     ] {
@@ -56,6 +56,6 @@ fn captures_run_globals() {
     assert!(
         task.inputs
             .iter()
-            .any(|input| input.path == ".snakemake/iunctus")
+            .any(|input| input.path == ".snakemake/uwe")
     );
 }

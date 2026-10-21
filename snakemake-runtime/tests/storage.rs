@@ -170,7 +170,7 @@ fn delivers_protected_objects() {
 fn transfers_s3_objects() {
     let server = Server::start();
     let folder = tempfile::tempdir().unwrap();
-    let config = config_file::ConfigFile::parse(&format!("[storage.test]\ntype = 's3'\nprefixes = ['s3://bucket/']\nendpoint = '{}'\nanonymous = true\nregion = 'local'\n", server.address), &folder.path().join("iunctus.toml")).unwrap();
+    let config = config_file::ConfigFile::parse(&format!("[storage.test]\ntype = 's3'\nprefixes = ['s3://bucket/']\nendpoint = '{}'\nanonymous = true\nregion = 'local'\n", server.address), &folder.path().join("uwe.toml")).unwrap();
     let storage = Storage::from_config(&config).unwrap();
     let launch = launch(
         folder.path(),
@@ -294,7 +294,7 @@ fn maps_default_storage() {
 fn stages_unflagged_inputs() {
     let server = Server::start();
     let folder = tempfile::tempdir().unwrap();
-    let config = config_file::ConfigFile::parse(&format!("[storage.test]\ntype = 's3'\nprefixes = ['s3://bucket/']\nendpoint = '{}'\nanonymous = true\nregion = 'local'\n", server.address), &folder.path().join("iunctus.toml")).unwrap();
+    let config = config_file::ConfigFile::parse(&format!("[storage.test]\ntype = 's3'\nprefixes = ['s3://bucket/']\nendpoint = '{}'\nanonymous = true\nregion = 'local'\n", server.address), &folder.path().join("uwe.toml")).unwrap();
     let storage = Storage::from_config(&config).unwrap();
     let launch = launch(
         folder.path(),

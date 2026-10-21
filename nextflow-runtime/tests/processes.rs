@@ -502,7 +502,7 @@ fn exposes_workflow_metadata() {
         ..Options::default()
     };
     let (_, printed) = run(&source, &options).expect("runs");
-    assert_eq!(printed, "iunctus standard demo /launch /\ndone true 2\n");
+    assert_eq!(printed, "uwe standard demo /launch /\ndone true 2\n");
 }
 
 /// The `onComplete:` section of the entry workflow runs when the run ends, after its body, and

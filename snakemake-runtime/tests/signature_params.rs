@@ -46,12 +46,7 @@ rule make:
         driver.delivered(&delivery).unwrap();
     }
     let value: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(
-            folder
-                .path()
-                .join(".snakemake/iunctus-signatures/b3V0LnR4dA=="),
-        )
-        .unwrap(),
+        &std::fs::read(folder.path().join(".snakemake/uwe-signatures/b3V0LnR4dA==")).unwrap(),
     )
     .unwrap();
     assert_eq!(value["params"][0], serde_json::Value::Null);

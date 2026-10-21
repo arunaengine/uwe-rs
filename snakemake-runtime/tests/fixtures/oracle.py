@@ -59,7 +59,7 @@ def first_error(output, copy):
 
 def run(name, folder, via, fields):
     """One line of the oracle file."""
-    with tempfile.TemporaryDirectory(prefix="iunctus-oracle-") as scratch:
+    with tempfile.TemporaryDirectory(prefix="uwe-oracle-") as scratch:
         copy = os.path.join(scratch, "workflow")
         shutil.copytree(folder, copy, symlinks=True)
         workdir, arguments = command(folder, copy, fields)
@@ -123,7 +123,7 @@ def record_jobs(resume=False):
                 continue
             folder = folders[name]
             via, fields = launches.get(name, ("plain", []))
-            with tempfile.TemporaryDirectory(prefix="iunctus-oracle-") as scratch:
+            with tempfile.TemporaryDirectory(prefix="uwe-oracle-") as scratch:
                 copy = os.path.join(scratch, "workflow")
                 shutil.copytree(folder, copy, symlinks=True)
                 workdir, arguments = command(folder, copy, fields)

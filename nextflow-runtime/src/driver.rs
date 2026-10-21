@@ -46,7 +46,7 @@ impl Default for Settings {
         Settings {
             host: Box::new(Console),
             container_engine: None,
-            run_name: "iunctus".into(),
+            run_name: "uwe".into(),
             command_line: String::new(),
             secret_env: false,
             local_options: false,

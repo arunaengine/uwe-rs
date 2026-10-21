@@ -15,7 +15,7 @@ use crate::otlp::{
 };
 
 /// The name of iunctus as the service and the scope of its spans.
-const SERVICE: &str = "iunctus";
+const SERVICE: &str = "uwe";
 
 /// The spans of a run, in export requests of at most `per_request` spans each; `None` for an
 /// unknown run. The run span comes first, then each task, followed by its attempts.
@@ -254,21 +254,21 @@ fn run_span(run: &Run, ids: &Ids, ended: i64, tasks: usize, events: &[Event]) ->
         |name| name.to_string_lossy().into_owned(),
     );
     let mut attributes = vec![
-        KeyValue::text("iunctus.run.id", &run.id),
-        KeyValue::text("iunctus.run.lineage", &run.lineage),
-        KeyValue::text("iunctus.run.state", &run.state),
-        KeyValue::text("iunctus.workflow", &run.workflow),
-        KeyValue::text("iunctus.language", &run.language),
-        KeyValue::text("iunctus.executor", &run.executor),
-        KeyValue::flag("iunctus.simulated", run.simulated),
-        KeyValue::integer("iunctus.run.tasks", tasks as i64),
+        KeyValue::text("uwe.run.id", &run.id),
+        KeyValue::text("uwe.run.lineage", &run.lineage),
+        KeyValue::text("uwe.run.state", &run.state),
+        KeyValue::text("uwe.workflow", &run.workflow),
+        KeyValue::text("uwe.language", &run.language),
+        KeyValue::text("uwe.executor", &run.executor),
+        KeyValue::flag("uwe.simulated", run.simulated),
+        KeyValue::integer("uwe.run.tasks", tasks as i64),
     ];
     let optional = [
-        ("iunctus.run.resumes", &run.resumes),
-        ("iunctus.run.replays", &run.replays),
-        ("iunctus.revision", &run.revision),
-        ("iunctus.store", &run.store),
-        ("iunctus.run.error", &run.error),
+        ("uwe.run.resumes", &run.resumes),
+        ("uwe.run.replays", &run.replays),
+        ("uwe.revision", &run.revision),
+        ("uwe.store", &run.store),
+        ("uwe.run.error", &run.error),
     ];
     for (key, value) in optional {
         if let Some(value) = value {
@@ -276,7 +276,7 @@ fn run_span(run: &Run, ids: &Ids, ended: i64, tasks: usize, events: &[Event]) ->
         }
     }
     for (name, value) in &run.parameters {
-        attributes.push(KeyValue::text(&format!("iunctus.parameter.{name}"), value));
+        attributes.push(KeyValue::text(&format!("uwe.parameter.{name}"), value));
     }
     let own = events.iter().filter(|event| event.task.is_none());
     Span {
@@ -308,17 +308,17 @@ fn task_span(
         None => task.requested,
     };
     let mut attributes = vec![
-        KeyValue::integer("iunctus.task.id", task.id as i64),
-        KeyValue::text("iunctus.task.name", &task.name),
-        KeyValue::text("iunctus.task.step", &task.step),
-        KeyValue::text("iunctus.task.state", &task.state),
-        KeyValue::integer("iunctus.task.attempts", i64::from(task.attempts)),
+        KeyValue::integer("uwe.task.id", task.id as i64),
+        KeyValue::text("uwe.task.name", &task.name),
+        KeyValue::text("uwe.task.step", &task.step),
+        KeyValue::text("uwe.task.state", &task.state),
+        KeyValue::integer("uwe.task.attempts", i64::from(task.attempts)),
     ];
     if let Some(code) = task.exit_code {
-        attributes.push(KeyValue::integer("iunctus.task.exit_code", i64::from(code)));
+        attributes.push(KeyValue::integer("uwe.task.exit_code", i64::from(code)));
     }
     if let Some(reused) = &task.reused {
-        attributes.push(KeyValue::text("iunctus.task.reused", reused));
+        attributes.push(KeyValue::text("uwe.task.reused", reused));
     }
     // Each `marked` event of the task goes with its next marker, in the order they were found.
     let events = (events.iter())
@@ -328,8 +328,8 @@ fn task_span(
                 .flatten();
             let attributes = marker.map_or_else(Vec::new, |marker| {
                 vec![
-                    KeyValue::text("iunctus.marker.kind", &marker.kind),
-                    KeyValue::text("iunctus.marker.reason", &marker.reason),
+                    KeyValue::text("uwe.marker.kind", &marker.kind),
+                    KeyValue::text("uwe.marker.reason", &marker.reason),
                 ]
             });
             event(found, attributes)
@@ -359,13 +359,13 @@ fn attempt_span(
     events: &[&Event],
 ) -> Span {
     let mut attributes = vec![
-        KeyValue::integer("iunctus.attempt.number", i64::from(attempt.number)),
-        KeyValue::text("iunctus.task.name", &task.name),
-        KeyValue::flag("iunctus.attempt.retried", attempt.retried),
+        KeyValue::integer("uwe.attempt.number", i64::from(attempt.number)),
+        KeyValue::text("uwe.task.name", &task.name),
+        KeyValue::flag("uwe.attempt.retried", attempt.retried),
     ];
     let texts = [
-        ("iunctus.attempt.image", &attempt.image),
-        ("iunctus.attempt.reused", &attempt.reused),
+        ("uwe.attempt.image", &attempt.image),
+        ("uwe.attempt.reused", &attempt.reused),
     ];
     for (key, value) in texts {
         if let Some(value) = value {
@@ -373,14 +373,11 @@ fn attempt_span(
         }
     }
     let numbers = [
-        (
-            "iunctus.attempt.exit_code",
-            attempt.exit_code.map(i64::from),
-        ),
-        ("iunctus.attempt.cpu_usec", attempt.cpu_usec),
-        ("iunctus.attempt.memory_peak", attempt.memory_peak),
-        ("iunctus.attempt.read_bytes", attempt.read_bytes),
-        ("iunctus.attempt.write_bytes", attempt.write_bytes),
+        ("uwe.attempt.exit_code", attempt.exit_code.map(i64::from)),
+        ("uwe.attempt.cpu_usec", attempt.cpu_usec),
+        ("uwe.attempt.memory_peak", attempt.memory_peak),
+        ("uwe.attempt.read_bytes", attempt.read_bytes),
+        ("uwe.attempt.write_bytes", attempt.write_bytes),
     ];
     for (key, value) in numbers {
         if let Some(value) = value {

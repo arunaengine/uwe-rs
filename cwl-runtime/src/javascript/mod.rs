@@ -66,8 +66,8 @@ pub(crate) fn evaluate_literals(
         code.push_str(&format!("var {name} = {value};\n"));
     }
     code.push_str(&format!(
-        "var $iunctus = (function(){{{body}\n}})();\n\
-         $iunctus === undefined ? {UNDEFINED:?} : JSON.stringify($iunctus)"
+        "var $uwe = (function(){{{body}\n}})();\n\
+         $uwe === undefined ? {UNDEFINED:?} : JSON.stringify($uwe)"
     ));
     let mut context = Context::default();
     context

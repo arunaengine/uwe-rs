@@ -47,7 +47,7 @@ pub fn used_names(text: &str) -> Vec<String> {
 /// An import that binds `name`, or an object that says which module the image lacks.
 fn guarded(statement: &str, name: &str, module: &str) -> String {
     format!(
-        "try:\n    {statement}\nexcept ImportError as error:\n    {name} = __iunctus.Unavailable({} + str(error))\n",
+        "try:\n    {statement}\nexcept ImportError as error:\n    {name} = __uwe.Unavailable({} + str(error))\n",
         quote(&format!(
             "the run: block uses the module {module}, which the image of the task cannot import: "
         ))
@@ -57,7 +57,7 @@ fn guarded(statement: &str, name: &str, module: &str) -> String {
 /// An object that raises, when the block uses it, why the value could not go.
 fn unavailable(name: &str, repr: &str) -> String {
     format!(
-        "{name} = __iunctus.Unavailable({})\n",
+        "{name} = __uwe.Unavailable({})\n",
         quote(&format!(
             "{name} is {repr}, an object that only the native interpreter of iunctus has, so \
              the run: block cannot use it in the container of its task"

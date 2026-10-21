@@ -19,7 +19,7 @@ fn evaluate(evaluator: &Evaluator, body: &str) -> Result<Value, String> {
 }
 
 #[test]
-#[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
+#[ignore = "requires the packaged uwe-cwl-js image and bounded Docker or Podman"]
 fn preserves_worker_fallback() {
     let evaluator = Evaluator::with_javascript(Vec::new());
     let value =
@@ -46,7 +46,7 @@ fn preserves_worker_fallback() {
 }
 
 #[tokio::test]
-#[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
+#[ignore = "requires the packaged uwe-cwl-js image and bounded Docker or Podman"]
 async fn supports_async_callers() {
     tokio::spawn(async {
         let evaluator = Evaluator::with_javascript(Vec::new());
@@ -61,7 +61,7 @@ async fn supports_async_callers() {
 }
 
 #[test]
-#[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
+#[ignore = "requires the packaged uwe-cwl-js image and bounded Docker or Podman"]
 fn bounds_native_work() {
     for body in [
         "${function f(n) {return n ? f(n-1) + f(n-1) : 1;} return f(55);}".to_owned(),
@@ -86,7 +86,7 @@ fn bounds_native_work() {
 }
 
 #[test]
-#[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
+#[ignore = "requires the packaged uwe-cwl-js image and bounded Docker or Podman"]
 fn rejects_unbounded_results() {
     for body in [
         "${return 'x'.repeat(20 << 20);}",
@@ -109,7 +109,7 @@ fn rejects_unbounded_results() {
 }
 
 #[test]
-#[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
+#[ignore = "requires the packaged uwe-cwl-js image and bounded Docker or Podman"]
 fn cancellation_cleans_worker() {
     let evaluator = Evaluator::with_javascript(Vec::new());
     assert_eq!(evaluate(&evaluator, "${return 1;}"), Ok(Value::Integer(1)));
@@ -129,7 +129,7 @@ fn cancellation_cleans_worker() {
 }
 
 #[test]
-#[ignore = "requires the packaged iunctus-cwl-js image and bounded Docker or Podman"]
+#[ignore = "requires the packaged uwe-cwl-js image and bounded Docker or Podman"]
 fn cancels_driver_planning() {
     use workflow_graph::{
         Attempt, CancellationToken, Engine, Executor, Launch, Running, Simulator,

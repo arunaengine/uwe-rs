@@ -24,7 +24,7 @@ use self::data::{Data, Named, from_value};
 
 /// The folder of the work directory of a task where the stand-in of the snakemake package
 /// is, which the Python preamble puts on the module path.
-pub const PACKAGE_FOLDER: &str = ".snakemake/iunctus";
+pub const PACKAGE_FOLDER: &str = ".snakemake/uwe";
 
 /// The folder of the work directory where the scripts with their preambles are, as Snakemake
 /// writes them to `.snakemake/scripts`.
@@ -90,7 +90,7 @@ impl Setting {
     }
 
     /// The folder with the stand-in of the snakemake package, written once per run: the
-    /// task sees it at `.snakemake/iunctus`, so that tasks share one folder rather than each
+    /// task sees it at `.snakemake/uwe`, so that tasks share one folder rather than each
     /// carrying the modules.
     pub fn package(&self) -> Result<Input, String> {
         let folder = match self.package.get() {

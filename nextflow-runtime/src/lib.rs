@@ -327,7 +327,7 @@ impl Default for Options {
             profile: "standard".into(),
             project_dir: "/".into(),
             script_file: "/main.nf".into(),
-            run_name: "iunctus".into(),
+            run_name: "uwe".into(),
             config_files: Vec::new(),
             command_line: String::new(),
             exec_folder: None,

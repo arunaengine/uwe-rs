@@ -579,7 +579,7 @@ impl Run {
             ("metadata.name", pod),
             ("metadata.namespace", global("workflow.namespace")),
             ("spec.serviceAccountName", account),
-            ("spec.nodeName", "iunctus".to_owned()),
+            ("spec.nodeName", "uwe".to_owned()),
             ("status.podIP", crate::run::pod_ip(&node.name)),
             ("status.hostIP", "127.0.0.1".to_owned()),
         ])

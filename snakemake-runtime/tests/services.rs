@@ -268,7 +268,7 @@ fn orders_live_consumers() {
     let spec = executor::process::ContainerSpec {
         engine,
         name: format!(
-            "iunctus-test-service-{}",
+            "uwe-test-service-{}",
             folder.path().file_name().unwrap().to_string_lossy()
         ),
         image: group.image.unwrap(),

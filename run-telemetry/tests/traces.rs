@@ -119,15 +119,15 @@ fn traces_task_attempts() {
     );
     assert_eq!(align.status.code, 1);
     assert_eq!(
-        text(run, "iunctus.parameter.reads"),
+        text(run, "uwe.parameter.reads"),
         Some(&Value::Text("*.fq".into()))
     );
     assert_eq!(
-        text(attempt, "iunctus.attempt.cpu_usec"),
+        text(attempt, "uwe.attempt.cpu_usec"),
         Some(&Value::Integer("1500000".into()))
     );
     assert_eq!(
-        text(attempt, "iunctus.attempt.image"),
+        text(attempt, "uwe.attempt.image"),
         Some(&Value::Text("debian@sha256:5bc3".into()))
     );
     let marker = (align.events.iter())
@@ -138,7 +138,7 @@ fn traces_task_attempts() {
         .iter()
         .map(|value| value.key.as_str())
         .collect();
-    assert_eq!(kinds, ["iunctus.marker.kind", "iunctus.marker.reason"]);
+    assert_eq!(kinds, ["uwe.marker.kind", "uwe.marker.reason"]);
     let events: Vec<&str> = attempt
         .events
         .iter()
@@ -208,16 +208,13 @@ fn redacts_trace_passwords() {
     };
     let public = "https://user:[secret]@host/path";
     assert_eq!(
-        text(run, &format!("iunctus.parameter.{public}")),
+        text(run, &format!("uwe.parameter.{public}")),
         Some(&Value::Text(public.into()))
     );
-    assert_eq!(
-        text(run, "iunctus.executor"),
-        Some(&Value::Text(public.into()))
-    );
+    assert_eq!(text(run, "uwe.executor"), Some(&Value::Text(public.into())));
     assert_eq!(task.name, public);
     assert_eq!(
-        text(task, "iunctus.task.name"),
+        text(task, "uwe.task.name"),
         Some(&Value::Text(public.into()))
     );
     assert_eq!(run.status.message, public);

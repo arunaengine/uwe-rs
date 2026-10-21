@@ -18,7 +18,7 @@ pub const STDOUT: &str = ".command.out";
 pub const STDERR: &str = ".command.err";
 pub const ENVIRONMENT: &str = ".command.env";
 pub const SECRET_NAMES: &str = "UWE_SECRET_NAMES";
-pub const SECRET_FILE: &str = "/run/iunctus/secrets";
+pub const SECRET_FILE: &str = "/run/uwe/secrets";
 
 pub fn secrets(
     directives: &[TaskDirective],
@@ -65,7 +65,7 @@ pub fn command_script(request: &TaskRequest) -> String {
     let mut script = request.script.clone();
     script.push_str("\n# capture process environment\nset +u\nset +e\n");
     script.push_str(concat!(
-        "iunctus_eval() {\n",
+        "uwe_eval() {\n",
         "    local output status\n",
         "    output=$(bash -c \"$2\" 2> .command.eval)\n",
         "    status=$?\n",
@@ -82,10 +82,7 @@ pub fn command_script(request: &TaskRequest) -> String {
     }
     for (index, command) in request.eval.iter().enumerate() {
         let quoted = format!("'{}'", command.replace('\'', r"'\''"));
-        script.push_str(&format!(
-            "iunctus_eval nxf_out_eval_{} {quoted}\n",
-            index + 1
-        ));
+        script.push_str(&format!("uwe_eval nxf_out_eval_{} {quoted}\n", index + 1));
     }
     script
 }
@@ -114,7 +111,7 @@ pub fn launcher(request: &TaskRequest) -> Option<String> {
         return None;
     }
     let mut script = String::from(
-        "set -e\nset +u\niunctus_status=0\ntrap 'iunctus_last=$?; if [ \"$iunctus_status\" -ne 0 ]; then exit \"$iunctus_status\"; fi; exit \"$iunctus_last\"' EXIT\n",
+        "set -e\nset +u\nuwe_status=0\ntrap 'uwe_last=$?; if [ \"$uwe_status\" -ne 0 ]; then exit \"$uwe_status\"; fi; exit \"$uwe_last\"' EXIT\n",
     );
     if let Some(before) = before {
         script.push_str(&format!("{{\n{before}\n}} >&2\n"));
@@ -137,11 +134,11 @@ pub fn launcher(request: &TaskRequest) -> Option<String> {
             quote(name)
         ));
     }
-    script.push_str("set +e\n\"$@\"\niunctus_status=$?\n");
+    script.push_str("set +e\n\"$@\"\nuwe_status=$?\n");
     if let Some(after) = after {
-        script.push_str(&format!("{{\n{after}\n}} >&2\niunctus_after=$?\n[ \"$iunctus_status\" -eq 0 ] && iunctus_status=$iunctus_after\n"));
+        script.push_str(&format!("{{\n{after}\n}} >&2\nuwe_after=$?\n[ \"$uwe_status\" -eq 0 ] && uwe_status=$uwe_after\n"));
     }
-    script.push_str("exit \"$iunctus_status\"\n");
+    script.push_str("exit \"$uwe_status\"\n");
     Some(script)
 }
 

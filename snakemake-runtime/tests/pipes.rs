@@ -265,7 +265,7 @@ fn runs_local_pipes() {
             .find(|task| task.name.contains("produce"))
             .unwrap();
         let result = run_to_end(&ContainerSpec {
-            name: format!("iunctus-pipe-{}-{number}", std::process::id()),
+            name: format!("uwe-pipe-{}-{number}", std::process::id()),
             image: "debian:stable-slim".into(),
             user: Some(format!(
                 "{}:{}",

@@ -31,7 +31,7 @@ pub struct GitSource {
     pub depth: Option<u32>,
     pub fetch: Vec<String>,
     pub submodules: bool,
-    /// Whether the artifact names a user and a password; iunctus takes the account that its
+    /// Whether the artifact names a user and a password; uwe takes the account that its
     /// config file gives the address instead of Kubernetes secrets.
     pub account: bool,
 }
@@ -60,7 +60,7 @@ pub(crate) fn check(artifact: &str, git: &Node) -> Result<()> {
     if !crate::tags::has_tag(&repo) && !repo.starts_with("https://") && !repo.starts_with("http://")
     {
         return refused(format!(
-            "git repository {repo} is no HTTPS address; iunctus fetches Git over HTTPS only"
+            "git repository {repo} is no HTTPS address; uwe fetches Git over HTTPS only"
         ));
     }
     if let Yaml::Mapping(fields) = &git.value {

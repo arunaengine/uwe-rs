@@ -335,7 +335,7 @@ impl Run {
                 index,
                 Phase::Error,
                 format!(
-                    "executor plugin {plugin} replied {phase}; iunctus does not call a plugin again later"
+                    "executor plugin {plugin} replied {phase}; uwe does not call a plugin again later"
                 ),
             ),
             phase => self.fail(

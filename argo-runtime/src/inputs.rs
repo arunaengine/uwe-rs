@@ -262,7 +262,7 @@ impl Run {
 }
 
 /// The address of an artifact without raw data. A key without a bucket names the artifact
-/// repository, which iunctus keeps inside the run, as [`REPOSITORY`] addresses.
+/// repository, which uwe keeps inside the run, as [`REPOSITORY`] addresses.
 /// Fields of an S3 artifact that the configured storage provider stands for.
 const S3_PROVIDED: [&str; 7] = [
     "endpoint",
@@ -391,7 +391,7 @@ pub(crate) fn check_artifact(artifact: &Artifact) -> Result<()> {
             artifact.name
         )));
     }
-    // Argo fails to unpack raw text as an archive, so iunctus refuses it up front.
+    // Argo fails to unpack raw text as an archive, so uwe refuses it up front.
     if (artifact.archive.as_ref())
         .is_some_and(|node| node.get("none").is_none() && artifact.raw.is_some())
         || artifact

@@ -142,7 +142,7 @@ struct Setup {
     keep_going: bool,
     containers: Vec<(&'static str, Vec<(&'static str, i32)>)>,
     mounts: bool,
-    /// The folder of `iunctus resume` requests.
+    /// The folder of `uwe resume` requests.
     resume: Option<std::path::PathBuf>,
 }
 
@@ -717,11 +717,11 @@ fn resumes_suspended_steps() {
     suspend: {}
     outputs: {parameters: [{name: message, valueFrom: {supplied: {}}}]}
 "#;
-    // Without a way to hear `iunctus resume`, a real run cannot wait.
+    // Without a way to hear `uwe resume`, a real run cannot wait.
     assert!(
         run_with(&workflow(text), real())
             .error()
-            .contains("iunctus resume")
+            .contains("uwe resume")
     );
     let folder = tempfile::tempdir().expect("a folder");
     let request = argo_runtime::resume::Request {
@@ -1652,7 +1652,7 @@ fn shares_volume_files() {
     );
     assert!(read.outputs.is_empty(), "a read-only mount is no output");
     assert_eq!(ran.upstream("[1].read"), ["[0].write"]);
-    // A host path is read on the machine that runs iunctus; a simulated run needs no such folder.
+    // A host path is read on the machine that runs uwe; a simulated run needs no such folder.
     let host = ran.task("[2].host");
     assert!(
         host.inputs
@@ -1925,7 +1925,7 @@ fn resolves_environment_secrets() {
     let ran = run_with(&with_documents(SETTINGS, templates), real());
     assert!(
         ran.error().contains(
-            "environment variable TOKEN reads key password of Secret db; iunctus has no secret store yet"
+            "environment variable TOKEN reads key password of Secret db; uwe has no secret store yet"
         ),
         "{}",
         ran.error()

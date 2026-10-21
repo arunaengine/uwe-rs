@@ -41,7 +41,7 @@ enum Source {
     },
 }
 
-/// A path of the machine that runs iunctus, read as a `hostPath` volume.
+/// A path of the machine that runs uwe, read as a `hostPath` volume.
 struct Host {
     path: String,
     file: bool,
@@ -401,7 +401,7 @@ impl Run {
                         );
                         if !self.options.assume_inputs && !reference.optional {
                             return Err(Failure::error(format!(
-                                "{message}; iunctus has no secret store yet, so a real run cannot give it to a task"
+                                "{message}; uwe has no secret store yet, so a real run cannot give it to a task"
                             )));
                         }
                         self.warn(format!(

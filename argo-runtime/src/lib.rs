@@ -79,7 +79,7 @@ pub struct Options {
     pub keep_going: bool,
     /// The S3 providers of the config file, for artifacts that name an endpoint.
     pub endpoints: Vec<Endpoint>,
-    /// The folder where `iunctus resume` leaves requests for the suspended steps of this run;
+    /// The folder where `uwe resume` leaves requests for the suspended steps of this run;
     /// without it, a real run cannot suspend without a duration.
     pub resume: Option<PathBuf>,
     /// The Git client that checks out git artifacts in a real run.

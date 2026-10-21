@@ -9,7 +9,7 @@ use std::rc::Rc;
 use argo_parser::model::{CronWorkflowSpec, WorkflowSpec, normalize};
 use argo_parser::{Node, UnknownField, Value, decode, parse_documents};
 
-/// The kinds of Argo documents that iunctus reads.
+/// The kinds of Argo documents that uwe reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
     Workflow,

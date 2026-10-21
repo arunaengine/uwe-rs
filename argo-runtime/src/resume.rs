@@ -1,4 +1,4 @@
-//! Takes the requests of `iunctus resume` for suspended steps, as `argo resume` and `argo node set` give them.
+//! Takes the requests of `uwe resume` for suspended steps, as `argo resume` and `argo node set` give them.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -110,7 +110,7 @@ impl Run {
             .cloned()
     }
 
-    /// The step as `iunctus resume` names it: its display name, or its full name in a child
+    /// The step as `uwe resume` names it: its display name, or its full name in a child
     /// workflow, whose display names may be those of steps of the parent.
     pub(crate) fn resume_name(&self, index: usize) -> String {
         let name = &self.nodes[index].name;
@@ -120,7 +120,7 @@ impl Run {
         }
     }
 
-    /// The run as `iunctus resume` names it: the folder of its requests.
+    /// The run as `uwe resume` names it: the folder of its requests.
     pub(crate) fn run_name(&self) -> String {
         let folder = self.options.resume.as_deref();
         let name = folder

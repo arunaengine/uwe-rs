@@ -109,7 +109,7 @@ impl Run {
         if let Some(reference) = source.get("secretRef").map(KeyRef::of) {
             if !self.options.assume_inputs && !reference.optional {
                 return Err(Failure::error(format!(
-                    "envFrom reads Secret {}; iunctus has no secret store yet, so a real run cannot give it to a task",
+                    "envFrom reads Secret {}; uwe has no secret store yet, so a real run cannot give it to a task",
                     reference.name
                 )));
             }

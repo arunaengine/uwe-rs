@@ -68,7 +68,7 @@ fn rejects_template_controls() {
     assert!(
         start_error("  templates:\n  - name: main\n    suspend: {}\n")
             .message
-            .contains("iunctus resume")
+            .contains("uwe resume")
     );
 }
 

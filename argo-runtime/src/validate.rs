@@ -100,12 +100,12 @@ impl<'a> Holder<'a> {
     }
 }
 
-/// Why a document cannot run: Argo rejects it, or it needs a feature that iunctus does not
+/// Why a document cannot run: Argo rejects it, or it needs a feature that uwe does not
 /// support.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rejection {
     pub message: String,
-    /// The document needs a feature that iunctus leaves out on purpose, like a template that
+    /// The document needs a feature that uwe leaves out on purpose, like a template that
     /// needs a Kubernetes cluster (decision 18).
     pub unsupported: bool,
 }
@@ -186,7 +186,7 @@ fn check_document(check: &mut Check, document: &Document) -> Result<(), String> 
 /// Argo's `results`.
 pub(crate) struct Check<'a> {
     library: &'a Library,
-    /// Whether the error is about a feature that iunctus does not support.
+    /// Whether the error is about a feature that uwe does not support.
     unsupported: bool,
     checked: HashSet<(String, String)>,
     bases: Vec<((PathBuf, usize), Rc<Base>)>,
@@ -215,7 +215,7 @@ impl<'a> Check<'a> {
         self.metadata = metadata.cloned();
     }
 
-    /// Whether the error of a check is about a feature that iunctus does not support.
+    /// Whether the error of a check is about a feature that uwe does not support.
     pub fn unsupported(&self) -> bool {
         self.unsupported
     }

@@ -225,7 +225,7 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
         return None;
     };
     Some(format!(
-        "template {name} {reason}; iunctus runs workflows without Kubernetes and does not support this (decision 18)"
+        "template {name} {reason}; uwe runs workflows without Kubernetes and does not support this (decision 18)"
     ))
 }
 

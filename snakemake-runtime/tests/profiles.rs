@@ -378,7 +378,7 @@ fn prefixes_local_wrappers() {
 }
 
 /// Snakemake's `envvars` setting gives jobs the named variables of this environment, and
-/// refuses a variable that is not set.
+/// refuses a variable that is not set; the task holds only their names.
 #[test]
 fn passes_profile_envvars() {
     let snakefile = "rule a:\n    output: 'o'\n    shell: 'echo $HOME > {output}'\n";
@@ -386,10 +386,10 @@ fn passes_profile_envvars() {
     let launch = profile_launch(folder.path(), "envvars: [HOME]\n", snakefile);
     let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
     let task = driver.start().expect("starts").remove(0);
-    assert_eq!(
-        task.environment.get("HOME"),
-        std::env::var("HOME").ok().as_ref()
-    );
+    // Only the names: the executor gives the job the values, which no record holds.
+    assert_eq!(task.environment.get("HOME"), None);
+    let names = task.environment.get(snakemake_runtime::ENVIRONMENT_NAMES);
+    assert_eq!(names.map(String::as_str), Some(r#"["HOME"]"#));
     let unset = "envvars: [IUNCTUS_SURELY_UNSET_VARIABLE]\n";
     let launch = profile_launch(folder.path(), unset, snakefile);
     let error = snakemake_runtime::driver(&launch)

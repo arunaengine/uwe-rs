@@ -178,6 +178,34 @@ impl Local {
     }
 }
 
+/// The spec of a task with the values of the variables that it names in
+/// `snakemake_runtime::ENVIRONMENT_NAMES`, read from this environment as the job starts, so
+/// that only the names are part of its records and its key.
+fn with_environment(
+    spec: &task_model::TaskSpec,
+) -> Result<Option<task_model::TaskSpec>, ExecutorError> {
+    let Some(task_model::EnvironmentValue::Literal(names)) =
+        spec.environment.get(snakemake_runtime::ENVIRONMENT_NAMES)
+    else {
+        return Ok(None);
+    };
+    let failed = ExecutorError::Unsupported;
+    let names: Vec<String> = serde_json::from_str(names)
+        .map_err(|_| failed("Invalid names of environment variables".into()))?;
+    let mut spec = spec.clone();
+    spec.environment
+        .remove(snakemake_runtime::ENVIRONMENT_NAMES);
+    for name in names {
+        let value = std::env::var(&name).map_err(|_| {
+            failed(format!(
+                "The environment variable {name} that the workflow requests is not set"
+            ))
+        })?;
+        (spec.environment).insert(name, task_model::EnvironmentValue::Literal(value));
+    }
+    Ok(Some(spec))
+}
+
 impl Backend for Local {
     async fn pin(&self, image: &str) -> Result<Option<String>, ExecutorError> {
         self.prepare(image, None).await
@@ -188,6 +216,11 @@ impl Backend for Local {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
+        let filled = with_environment(job.spec)?;
+        let job = Job {
+            spec: filled.as_ref().unwrap_or(job.spec),
+            ..job
+        };
         let Some(task_model::EnvironmentValue::Literal(names)) = job
             .spec
             .environment
@@ -298,6 +331,11 @@ impl<B: Backend> Backend for Remote<B> {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
+        let filled = with_environment(job.spec)?;
+        let job = Job {
+            spec: filled.as_ref().unwrap_or(job.spec),
+            ..job
+        };
         self.backend.run(job, cancel).await
     }
 
@@ -307,5 +345,42 @@ impl<B: Backend> Backend for Remote<B> {
 
     async fn release(&self) {
         self.backend.release().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The values of the named variables reach the spec of the job only, from this
+    /// environment, and a variable that is not set fails the job.
+    #[test]
+    fn fills_named_variables() {
+        let mut spec = task_model::TaskSpec {
+            format: task_model::FORMAT,
+            namespace: String::new(),
+            image: None,
+            arguments: Vec::new(),
+            workdir: None,
+            environment: Default::default(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            stdin: None,
+            containers: Vec::new(),
+            replaces_entrypoint: false,
+            run_as: None,
+        };
+        assert!(with_environment(&spec).unwrap().is_none());
+        let names = task_model::EnvironmentValue::Literal(r#"["HOME"]"#.into());
+        let key = snakemake_runtime::ENVIRONMENT_NAMES.to_owned();
+        spec.environment.insert(key.clone(), names);
+        let filled = with_environment(&spec).unwrap().expect("a filled spec");
+        let home = task_model::EnvironmentValue::Literal(std::env::var("HOME").unwrap());
+        assert_eq!(filled.environment.get("HOME"), Some(&home));
+        assert!(!filled.environment.contains_key(&key));
+        let unset = r#"["IUNCTUS_SURELY_UNSET_VARIABLE"]"#.into();
+        spec.environment
+            .insert(key, task_model::EnvironmentValue::Literal(unset));
+        assert!(with_environment(&spec).is_err());
     }
 }

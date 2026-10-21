@@ -871,10 +871,14 @@ pub fn build(
         crate::shadow::stage(setting, mode, &mut inputs, &outputs, &mut command)?;
     }
     let mut environment = BTreeMap::new();
-    for name in &setting.state.envvars {
-        if let Ok(value) = std::env::var(name) {
-            environment.insert(name.clone(), value);
-        }
+    // The variables of `envvars` are often secrets: the task names them, and the executor
+    // gives the job their values when it starts, so that no record and no key holds them.
+    if !setting.state.envvars.is_empty() {
+        let mut names = setting.state.envvars.clone();
+        names.sort();
+        names.dedup();
+        let names = serde_json::to_string(&names).unwrap_or_default();
+        environment.insert(crate::ENVIRONMENT_NAMES.to_owned(), names);
     }
     // Snakemake's shell() gives every command of a job its threads for the numerical
     // libraries, and its temporary folder.

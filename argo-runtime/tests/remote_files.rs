@@ -463,6 +463,31 @@ fn matches_s3_endpoints() {
 }
 
 #[test]
+fn fills_endpoint_tags() {
+    let folder = tempfile::tempdir().unwrap();
+    let target = folder.path().join("workflow.yaml");
+    let artifact = "{name: data, path: /in, s3: {endpoint: '{{inputs.parameters.endpoint}}', bucket: '{{workflow.parameters.bucket}}', key: in.txt}}";
+    std::fs::write(&target, format!("apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {{name: s3}}\nspec:\n  entrypoint: main\n  arguments: {{parameters: [{{name: bucket, value: lab-data}}]}}\n  templates:\n  - name: main\n    inputs:\n      parameters: [{{name: endpoint, value: 'minio.lab.example.org:9000'}}]\n      artifacts: [{artifact}]\n    container: {{image: alpine}}\n")).unwrap();
+    let launch = Launch {
+        target,
+        simulated: true,
+        ..Launch::default()
+    };
+    let services = argo_runtime::Services {
+        endpoints: vec![argo_runtime::Endpoint {
+            provider: "lab".into(),
+            prefixes: vec!["s3://lab-data/".into()],
+            address: Some("http://minio.lab.example.org:9000/".into()),
+        }],
+        ..Default::default()
+    };
+    // The bucket and the endpoint are known once the tags are filled in.
+    let mut driver = argo_runtime::driver_with(&launch, services).unwrap();
+    let tasks = driver.start().unwrap();
+    assert_eq!(tasks[0].inputs[0].source, "s3://lab-data/in.txt");
+}
+
+#[test]
 fn checks_out_git() {
     let folder = tempfile::tempdir().unwrap();
     let target = folder.path().join("workflow.yaml");

@@ -207,12 +207,35 @@ pub fn remove_outputs(workdir: &Path, job: &Job, logs: bool) -> std::io::Result<
     let logs = if logs { &job.log.values[..] } else { &[] };
     let outputs = (job.output.values.iter())
         .filter(|value| value.tag("update").is_none())
-        .chain(logs)
-        .filter_map(Value::as_str);
-    for output in outputs {
-        remove(&workdir.join(output.trim_end_matches('/')))?;
+        .chain(logs);
+    for value in outputs {
+        let Some(output) = value.as_str() else {
+            continue;
+        };
+        let path = workdir.join(output.trim_end_matches('/'));
+        match value.tag("directory") {
+            Some(_) => remove(&path)?,
+            None => remove_output(&path, output)?,
+        }
     }
     Ok(())
+}
+
+/// Removes an output that is not flagged `directory()`: a file, a link, or a folder only
+/// when it is empty, as Snakemake's `remove` keeps a folder with files in it.
+fn remove_output(path: &Path, shown: &str) -> std::io::Result<()> {
+    let folder = std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir());
+    if !folder {
+        return remove(path);
+    }
+    match std::fs::remove_dir(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty => {
+            eprintln!("Skipped removing non-empty directory {shown}");
+            Ok(())
+        }
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
+        _ => Ok(()),
+    }
 }
 
 /// The local inputs of a job that are not there, by Snakemake's `wait_for_files`, which

@@ -301,6 +301,26 @@ rule add:
     assert_eq!(text, "first\nmore\n");
 }
 
+/// As Snakemake 9.27 does, an output without `directory()` that is a folder with files stays
+/// before and after its job: the job then fails, and the files are still there.
+#[test]
+fn keeps_full_folders() {
+    let snakefile = "rule a:\n    input: 'in.txt'\n    output: 'out'\n    shell: 'unused'\n";
+    let folder = folder();
+    let out = folder.path().join("work/out");
+    std::fs::create_dir(&out).unwrap();
+    std::fs::write(out.join("keep.txt"), "x").unwrap();
+    let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    let opened = std::fs::File::open(&out).unwrap();
+    opened.set_modified(hour_ago).unwrap();
+    std::fs::write(folder.path().join("work/in.txt"), "new").unwrap();
+    let (folder, _host, error) = run(folder, snakefile, &[]);
+    let error = error.expect("the run fails");
+    assert!(error.contains("ImproperOutputException"), "{error}");
+    let kept = folder.path().join("work/out/keep.txt");
+    assert_eq!(std::fs::read_to_string(kept).unwrap(), "x");
+}
+
 #[test]
 fn removes_failed_outputs() {
     let snakefile =

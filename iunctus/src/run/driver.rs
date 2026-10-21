@@ -126,10 +126,16 @@ pub(crate) fn driver(
                 .collect();
             let storage = setup.storage.clone();
             let git = move |source: &argo_runtime::GitSource, folder: &Path| {
-                let account = storage
-                    .account(&source.repo)
-                    .map_err(|error| error.to_string())?;
-                if source.account && account.is_none() {
+                if source.account && !source.repo.starts_with("https://") {
+                    return Err(format!(
+                        "{} signs in over plain HTTP, which would send the account in clear text; use https",
+                        source.repo
+                    ));
+                }
+                let storage = storage.clone();
+                let lookup =
+                    move |url: &str| storage.account(url).map_err(|error| error.to_string());
+                if source.account && lookup(&source.repo)?.is_none() {
                     return Err(format!(
                         "{} signs in; give it an account with an https storage provider of the config file",
                         source.repo
@@ -141,7 +147,7 @@ pub(crate) fn driver(
                     depth: source.depth,
                     refspecs: source.fetch.clone(),
                     submodules: source.submodules,
-                    account,
+                    accounts: Some(crate::git::Accounts(std::sync::Arc::new(lookup))),
                 };
                 let stop = std::sync::atomic::AtomicBool::new(false);
                 crate::git::checkout(&fetch, folder, &stop).map(|_| ())

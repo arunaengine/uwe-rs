@@ -396,6 +396,38 @@ fn formats_java_times() {
     }
 }
 
+/// `java.time` values compare with `<` and sort, and dates give their `DayOfWeek`, as
+/// Nextflow 26.04.6 prints them.
+#[test]
+fn compares_java_times() {
+    let code = "def d1 = java.time.LocalDate.of(2024, 1, 15)\n\
+                def d2 = java.time.LocalDate.of(2024, 3, 1)\n\
+                def i1 = java.time.Instant.ofEpochSecond(10)\n\
+                def i2 = java.time.Instant.ofEpochSecond(20)\n\
+                def t1 = java.time.LocalDateTime.of(2024, 1, 15, 10, 0)\n\
+                def t2 = java.time.LocalDateTime.of(2024, 1, 15, 11, 0)\n\
+                def day = d1.dayOfWeek\n\
+                [d1 < d2, d1 > d2, d1 <=> d2, d2 >= d1, t1 < t2, i1 < i2, [i2, i1].max(),\n\
+                 [d2, d1].sort(), java.time.Duration.ofSeconds(5) < java.time.Duration.ofSeconds(7),\n\
+                 d1.getDayOfWeek(), day.getClass().name, day.value, day.name(),\n\
+                 day == java.time.DayOfWeek.MONDAY, java.time.DayOfWeek.of(7), day.plus(8),\n\
+                 day.ordinal()]";
+    assert_eq!(
+        value(code),
+        "[true, false, -1, true, true, true, 1970-01-01T00:00:20Z, [2024-01-15, 2024-03-01], \
+         true, MONDAY, java.time.DayOfWeek, 1, MONDAY, true, SUNDAY, TUESDAY, 0]"
+    );
+}
+
+/// The closure of `with` and `tap` reaches the properties and methods of the object as its
+/// delegate, as Nextflow 26.04.6 prints them with `NXF_SYNTAX_PARSER=v1`.
+#[test]
+fn delegates_with_object() {
+    let code = "[[a: 1, b: 2].with { a + b }, [a: 1].with { it.a }, 'abc'.with { toUpperCase() },\n\
+                [1, 2, 3].with { size() }, [a: 1].with { b }, [a: 1].tap { a }]";
+    assert_eq!(value(code), "[3, 1, ABC, 3, null, [a:1]]");
+}
+
 /// Rarer text, character, encoding and random helpers, as Nextflow 26.04.6 prints them.
 #[test]
 fn rare_text_helpers() {

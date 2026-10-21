@@ -93,6 +93,8 @@ pub enum Time {
     Instant(jiff::Timestamp),
     /// `java.time.Duration`
     Duration(jiff::SignedDuration),
+    /// `java.time.DayOfWeek`, from 1 for Monday to 7 for Sunday.
+    Day(u8),
 }
 
 impl Time {
@@ -137,9 +139,21 @@ impl Time {
                 }
                 text
             }
+            Time::Day(day) => DAYS[usize::from(day.clamp(1, 7) - 1)].into(),
         }
     }
 }
+
+/// The names of the days of `java.time.DayOfWeek`, from Monday.
+pub const DAYS: [&str; 7] = [
+    "MONDAY",
+    "TUESDAY",
+    "WEDNESDAY",
+    "THURSDAY",
+    "FRIDAY",
+    "SATURDAY",
+    "SUNDAY",
+];
 
 /// The `workflow` of a run: its properties, and the handlers that run when it ends.
 #[derive(Debug)]

@@ -21,6 +21,7 @@ pub(in crate::interpreter) fn time_value(time: Time) -> Value {
         Time::DateTime(_) => "java.time.LocalDateTime",
         Time::Instant(_) => "java.time.Instant",
         Time::Duration(_) => "java.time.Duration",
+        Time::Day(_) => "java.time.DayOfWeek",
     };
     Value::Object(Rc::new(RefCell::new(Object {
         class,
@@ -100,6 +101,13 @@ pub(super) fn time_static(
         ("Instant", "ofEpochSecond", [seconds]) => {
             Time::Instant(Timestamp::from_second(int(seconds)?).ok()?)
         }
+        ("DayOfWeek", "of", [day]) => match int(day)? {
+            day @ 1..=7 => Time::Day(day as u8),
+            day => {
+                let message = format!("Invalid value for DayOfWeek: {day}");
+                return Some(Err(Exception::new("DateTimeException", message)));
+            }
+        },
         ("java.time.Duration", "ofMillis", [count]) => {
             Time::Duration(SignedDuration::from_millis(int(count)?))
         }
@@ -202,6 +210,10 @@ pub(super) fn time_method(
                 integer(i64::from(civil.second()))
             }
             ("toLocalDate", []) => Some(Ok(time_value(Time::Date(civil.date())))),
+            ("getDayOfWeek", []) => {
+                let day = civil.weekday().to_monday_one_offset();
+                Some(Ok(time_value(Time::Day(day as u8))))
+            }
             ("plusDays" | "minusDays", [count]) => shifted(sign(name) * int(count)?.days()),
             ("plusWeeks" | "minusWeeks", [count]) => shifted(sign(name) * int(count)?.weeks()),
             ("plusMonths" | "minusMonths", [count]) => shifted(sign(name) * int(count)?.months()),
@@ -234,6 +246,13 @@ pub(super) fn time_method(
             Some(Ok(time_value(Time::Instant(
                 instant.checked_add(duration).ok()?,
             ))))
+        }
+        (Time::Day(day), "getValue", []) => integer(i64::from(day)),
+        (Time::Day(day), "ordinal", []) => integer(i64::from(day) - 1),
+        (Time::Day(_), "name", []) => Some(Ok(Value::string(time.text()))),
+        (Time::Day(day), "plus" | "minus", [count]) => {
+            let shifted = (i64::from(day) - 1 + sign(name) * int(count)?).rem_euclid(7);
+            Some(Ok(time_value(Time::Day(shifted as u8 + 1))))
         }
         (Time::Duration(duration), "toMillis", []) => long(duration.as_millis() as i64),
         (Time::Duration(duration), "getSeconds" | "toSeconds", []) => long(duration.as_secs()),

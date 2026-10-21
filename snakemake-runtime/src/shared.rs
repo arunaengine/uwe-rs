@@ -128,11 +128,22 @@ pub fn place(
     }
     let mut kept = Vec::new();
     for input in std::mem::take(&mut task.inputs) {
-        let target = workdir.join(&input.path);
-        let inside = normal(&target).starts_with(normal(workdir));
+        let target = normal(&workdir.join(&input.path));
+        let inside = target.starts_with(normal(workdir));
         // An input without a source is the folder of an output, which the job gets anyway.
         // The inputs of a `copy-minimal` shadow count like others: the job reads copies.
         if input.source.is_empty() && input.content.is_none() {
+            continue;
+        }
+        // One in the folder of an output outside, like an `update()` output there, is read
+        // where it is too.
+        let mounted = folders.iter().any(|folder| target.starts_with(folder))
+            && normal(Path::new(&input.source)) == target;
+        if mounted {
+            kept.push(present(
+                target.to_string_lossy().into_owned(),
+                input.directory,
+            ));
             continue;
         }
         if !inside || input.source.contains("://") {
@@ -364,13 +375,14 @@ fn updated(job: &Job) -> impl Iterator<Item = &str> {
         .filter_map(Value::as_str)
 }
 
-/// Where Snakemake keeps the backup of an output: below `.snakemake/backups`, an absolute
-/// path without its root.
+/// Where Snakemake keeps the backup of an output: below `.snakemake/backups`, by its path
+/// in the working directory, or else by its absolute path without the root.
 fn backup_path(workdir: &Path, output: &str) -> PathBuf {
-    let output = output.trim_end_matches('/');
-    let relative = Path::new(output)
-        .strip_prefix("/")
-        .unwrap_or(Path::new(output));
+    // Without `..`, so that a backup stays below `.snakemake/backups`.
+    let path = normal(&workdir.join(output.trim_end_matches('/')));
+    let relative = (path.strip_prefix(normal(workdir)))
+        .or_else(|_| path.strip_prefix("/"))
+        .unwrap_or(&path);
     workdir.join(".snakemake").join("backups").join(relative)
 }
 

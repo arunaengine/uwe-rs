@@ -38,8 +38,11 @@ pub struct Generator {
     tasks: Vec<Task>,
     /// Whether the body ran up to a `yield`, which `send` needs before a value.
     started: bool,
-    /// The value that `send` gives the `yield` where the body waits.
+    /// The value that `send` gives the `yield` where the body waits, or that the generator
+    /// that a `yield from` delegated to returned.
     sent: Option<Value>,
+    /// What the body returned, which its `StopIteration` holds.
+    pub(crate) returned: Option<Value>,
 }
 
 impl Generator {
@@ -49,6 +52,7 @@ impl Generator {
             tasks: vec![Task::Suite(Rc::new(body.to_vec()), 0)],
             started: false,
             sent: None,
+            returned: None,
         }
     }
 
@@ -66,6 +70,7 @@ impl Generator {
             )],
             started: false,
             sent: None,
+            returned: None,
         }
     }
 
@@ -345,6 +350,10 @@ impl Generator {
                         self.tasks.push(Task::Delegate(iterator));
                         return Ok(Some(item));
                     }
+                    // `x = yield from g` takes what `g` returned.
+                    if matches!(self.tasks.last(), Some(Task::Assign(_))) {
+                        self.sent = Some(interpreter.returned_value(&iterator));
+                    }
                 }
                 Task::Comprehension(expression, level, iterator) => {
                     let clause = &expression.generators[level];
@@ -438,6 +447,15 @@ impl Generator {
                 self.tasks.push(Task::Assign(assign.targets.clone()));
                 return Ok(Some(value));
             }
+            Stmt::Assign(assign) if matches!(&*assign.value, Expr::YieldFrom(_)) => {
+                let Expr::YieldFrom(expression) = &*assign.value else {
+                    unreachable!()
+                };
+                let value = interpreter.eval(&self.frame, &expression.value)?;
+                let iterator = interpreter.make_iterator(&value)?;
+                self.tasks.push(Task::Assign(assign.targets.clone()));
+                self.tasks.push(Task::Delegate(iterator));
+            }
             Stmt::If(branch) => {
                 let test = interpreter.eval(&self.frame, &branch.test)?;
                 if interpreter.truthy(&test)? {
@@ -523,7 +541,10 @@ impl Generator {
         }
         match interpreter.exec(&self.frame, statement)? {
             Flow::Next => {}
-            Flow::Return(_) => self.leave(interpreter, false, true),
+            Flow::Return(value) => {
+                self.returned = Some(value);
+                self.leave(interpreter, false, true)
+            }
             Flow::Break => self.leave(interpreter, false, false),
             Flow::Continue => self.leave(interpreter, true, false),
         }

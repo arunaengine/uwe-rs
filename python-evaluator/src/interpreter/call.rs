@@ -242,6 +242,10 @@ impl Interpreter {
         let mut dict = IndexMap::new();
         if class.builtin == Some(TypeTag::BaseException) {
             dict.insert("args".into(), Value::tuple(args.positional.clone()));
+            if class.derives_from("StopIteration") {
+                let value = args.positional.first().cloned().unwrap_or(Value::None);
+                dict.insert("value".into(), value);
+            }
         }
         let object = Value::Instance(Rc::new(Instance {
             class: class.clone(),
@@ -829,6 +833,28 @@ impl Interpreter {
             .try_borrow_mut()
             .map_err(|_| Error::value_error("generator already executing"))?;
         self.evaluation(|this| state.next_value(this))
+    }
+
+    /// What a generator returned once it ended; `None` for other iterators.
+    pub fn returned_value(&self, iterator: &Value) -> Value {
+        let Value::Iterator(state) = iterator.plain() else {
+            return Value::None;
+        };
+        match state.try_borrow().as_deref() {
+            Ok(Iter::Generator(generator)) => generator.returned.clone().unwrap_or(Value::None),
+            _ => Value::None,
+        }
+    }
+
+    /// The `StopIteration` of an iterator that ended, with what a generator returned.
+    pub fn exhausted(&self, iterator: &Value) -> Error {
+        match self.returned_value(iterator) {
+            Value::None => Error::stop_iteration(),
+            value => {
+                let class = types::exception_class("StopIteration").expect("StopIteration exists");
+                Error::from_value(crate::error::exception(&class, vec![value]))
+            }
+        }
     }
 
     /// `iterator.send(value)` of a generator; other iterators have no `send`.

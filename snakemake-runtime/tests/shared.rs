@@ -1127,7 +1127,7 @@ fn keys_workflow_sources() {
 /// An `update()` output given with `..` keeps its backup below `.snakemake/backups`, the
 /// task names it without `..`, and a failed job gives it its content back.
 #[test]
-fn backs_up_outside_updates() {
+fn backs_up_outside() {
     let snakefile =
         "rule add:\n    input: 'in.txt'\n    output: update('../acc.txt')\n    shell: 'unused'\n";
     let steps: [(&str, Step); 1] = [("add", |folder| {

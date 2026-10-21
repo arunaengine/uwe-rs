@@ -12,12 +12,12 @@ use crate::{Failure, Ran, execute, failure, runs};
 /// the reverse order hands many results to the workflow in another order.
 const PENDING: usize = 64;
 
-/// `iunctus check-order`: two runs, the comparison of their steps, and a report. It fails when
+/// `uwe check-order`: two runs, the comparison of their steps, and a report. It fails when
 /// the outputs of a step depend on the order in which tasks finished.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     if arguments.order.is_some() || arguments.resume.is_some() || arguments.page {
         return Err(Failure::usage(
-            "iunctus: `iunctus check-order` chooses the orders of its two runs itself; leave out \
+            "uwe: `uwe check-order` chooses the orders of its two runs itself; leave out \
              `-order`, `-resume` and `-page`",
         ));
     }
@@ -33,7 +33,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let first = run(Order::AsAsked)?;
     let second = run(Order::Reversed)?;
     eprintln!(
-        "iunctus: ran the workflow twice: run {} with the results of tasks in the order the \
+        "uwe: ran the workflow twice: run {} with the results of tasks in the order the \
          workflow asked for them, run {} in the reverse order",
         first.id, second.id
     );
@@ -42,7 +42,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     if a != b {
         let said = |error: Option<String>| error.unwrap_or_else(|| "succeeded".into());
         return Err(failure(format!(
-            "iunctus: the workflow depends on the order in which tasks finished: the run in the \
+            "uwe: the workflow depends on the order in which tasks finished: the run in the \
              order asked ended with: {}; the run in the reverse order ended with: {}",
             said(a),
             said(b)
@@ -55,10 +55,10 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     print!("{text}");
     match (depends, a) {
         (_, Some(error)) => Err(failure(format!(
-            "iunctus: both runs failed the same way: {error}"
+            "uwe: both runs failed the same way: {error}"
         ))),
         (true, None) => Err(failure(
-            "iunctus: the outputs of the workflow depend on the order in which tasks finished",
+            "uwe: the outputs of the workflow depend on the order in which tasks finished",
         )),
         (false, None) => Ok(()),
     }

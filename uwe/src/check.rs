@@ -22,7 +22,7 @@ const NAMED_FILES: usize = 3;
 /// How bad a problem is, the worst first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Kind {
-    /// A feature that iunctus does not support: a run stops with exit code 33.
+    /// A feature that uwe does not support: a run stops with exit code 33.
     Unsupported,
     /// A run stops.
     Error,
@@ -89,7 +89,7 @@ impl Report {
                     last.message.push_str(line);
                 }
                 _ if line.trim().is_empty() => {}
-                _ => self.add(kind, line.trim_start_matches("iunctus: ")),
+                _ => self.add(kind, line.trim_start_matches("uwe: ")),
             }
         }
     }
@@ -128,7 +128,7 @@ impl Report {
 
     /// The tasks of the planned run: those without a container image, when `-default-image`
     /// gives none, and the local files they read that do not exist. Files in `scratch` are
-    /// iunctus's own, like the made-up values of inputs that have none.
+    /// uwe's own, like the made-up values of inputs that have none.
     fn tasks(&mut self, graph: &ExecutionGraph, default_image: Option<&str>, scratch: &Path) {
         let mut without_image: BTreeMap<&str, usize> = BTreeMap::new();
         // Each missing file, with the steps that read it.
@@ -172,7 +172,7 @@ impl Report {
             self.add(
                 Kind::Error,
                 format!(
-                    "step {step}: {tasks} no container image; iunctus runs every task in a \
+                    "step {step}: {tasks} no container image; uwe runs every task in a \
                      container, so name an image in the workflow or give one with \
                      `-default-image <image>`"
                 ),
@@ -327,7 +327,7 @@ fn language_name(language: Language) -> &'static str {
     }
 }
 
-/// `iunctus check`: prints what would stop a real run of the workflow with the same options,
+/// `uwe check`: prints what would stop a real run of the workflow with the same options,
 /// and exits with 33 when a feature is not supported, else 1 when something would stop the
 /// run, else 0.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
@@ -431,7 +431,7 @@ mod tests {
     fn preserves_message_continuations() {
         let mut report = Report::default();
         let error = DriverError::new(
-            "iunctus: WorkflowError: Missing input files for rule copy:\n    affected files:\n",
+            "uwe: WorkflowError: Missing input files for rule copy:\n    affected files:\n",
         );
         report.driver_error(&error);
         assert_eq!(

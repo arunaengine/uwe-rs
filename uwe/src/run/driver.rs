@@ -12,7 +12,7 @@ use workflow_graph::{CancellationToken, Driver, DriverError, Language, Launch};
 pub(crate) fn target_and_language(arguments: &Arguments) -> Result<(PathBuf, Language), Failure> {
     let Some(target) = &arguments.target else {
         return Err(Failure::usage(
-            "iunctus: name a workflow file or a project directory to run",
+            "uwe: name a workflow file or a project directory to run",
         ));
     };
     let revision = arguments.revision.as_deref();
@@ -38,9 +38,7 @@ pub(crate) fn target_and_language(arguments: &Arguments) -> Result<(PathBuf, Lan
     };
     let language = match arguments.language.or(cwl.then_some(Language::Cwl)) {
         Some(language) => language,
-        None => {
-            detect::language(&target).map_err(|message| failure(format!("iunctus: {message}")))?
-        }
+        None => detect::language(&target).map_err(|message| failure(format!("uwe: {message}")))?,
     };
     let target = if remote && language == Language::Cwl {
         arguments.target.clone().unwrap()
@@ -62,14 +60,14 @@ pub(crate) fn target_and_language(arguments: &Arguments) -> Result<(PathBuf, Lan
 }
 
 /// A copy of a workflow file on the web. The storage that fetched it holds the downloads
-/// until the process ends, so that `iunctus clean` leaves the file alone while the run reads it.
+/// until the process ends, so that `uwe clean` leaves the file alone while the run reads it.
 fn fetch_workflow(url: &str, downloads: &Path) -> Result<PathBuf, Failure> {
     static FETCHING: std::sync::OnceLock<storage::Storage> = std::sync::OnceLock::new();
     let storage = FETCHING.get_or_init(storage::Storage::default);
     (storage.blocking().fetch(url, downloads)).map_err(|error| failure(error.to_string()))
 }
 
-/// Where `iunctus resume` leaves its requests for the suspended Argo steps of a run.
+/// Where `uwe resume` leaves its requests for the suspended Argo steps of a run.
 pub(crate) fn resume_folder(run: &str) -> PathBuf {
     cache_directory().join("scratch").join("resume").join(run)
 }

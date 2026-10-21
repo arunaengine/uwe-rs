@@ -28,7 +28,7 @@ pub fn executor(
     let found = runtime.block_on(ContainerEngine::named(named));
     let engine = found.map_err(|error| {
         format!(
-            "cannot reach a Docker or Podman engine: {error}; use `-executor simulator` for a run without containers, or `iunctus check-machine` to check the setup"
+            "cannot reach a Docker or Podman engine: {error}; use `-executor simulator` for a run without containers, or `uwe check-machine` to check the setup"
         )
     })?;
     let backend = LocalContainer::new(engine, scratch.to_owned(), Pool::of_this_machine());

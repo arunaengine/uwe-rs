@@ -17,7 +17,7 @@ use workflow_graph::ExecutionGraph;
 use workflow_graph::render::{Format, Options, render};
 
 /// What an error of the command line points to.
-pub const HELP: &str = "`iunctus help` lists the commands and their options";
+pub const HELP: &str = "`uwe help` lists the commands and their options";
 
 pub fn command(command: &str, arguments: &Arguments, usage: &str) -> Result<(), Failure> {
     match command {
@@ -54,18 +54,14 @@ pub fn command(command: &str, arguments: &Arguments, usage: &str) -> Result<(), 
     }
 }
 
-/// `iunctus run`: runs the workflow and writes its graph to `-graph` if given. With `-page`,
+/// `uwe run`: runs the workflow and writes its graph to `-graph` if given. With `-page`,
 /// the page of the run stays open after the run until Ctrl-C.
 fn run(arguments: &Arguments) -> Result<(), Failure> {
     if arguments.format.is_some() {
-        return Err(Failure::usage(
-            "iunctus: `-format` is an option of `iunctus graph`",
-        ));
+        return Err(Failure::usage("uwe: `-format` is an option of `uwe graph`"));
     }
     if arguments.executor.as_deref() == Some("simulator") {
-        println!(
-            "iunctus: simulated run selected; outputs are made-up files, no task containers run"
-        );
+        println!("uwe: simulated run selected; outputs are made-up files, no task containers run");
     }
     let Ran {
         execution, page, ..
@@ -74,26 +70,24 @@ fn run(arguments: &Arguments) -> Result<(), Failure> {
         write_graph(file, &execution.graph, &picture(arguments))?;
     }
     if let Some(page) = page {
-        eprintln!("iunctus: the run has ended; the page stays open until you press Ctrl-C");
+        eprintln!("uwe: the run has ended; the page stays open until you press Ctrl-C");
         page.serve_until_interrupted();
     }
     finish(execution)
 }
 
-/// `iunctus graph`: runs the workflow, with the simulator unless `-executor` says otherwise,
+/// `uwe graph`: runs the workflow, with the simulator unless `-executor` says otherwise,
 /// and prints its graph. What the workflow prints goes to standard error.
 fn graph(arguments: &Arguments) -> Result<(), Failure> {
     if arguments.page {
-        return Err(Failure::usage(
-            "iunctus: `-page` is an option of `iunctus run`",
-        ));
+        return Err(Failure::usage("uwe: `-page` is an option of `uwe run`"));
     }
     let options = picture(arguments);
     let format = match arguments.format.as_deref() {
         None => Format::default(),
         Some(name) => Format::parse(name).ok_or_else(|| {
             Failure::usage(format!(
-                "iunctus: `-format {name}` is a format of `iunctus inputs`; use json, dot, \
+                "uwe: `-format {name}` is a format of `uwe inputs`; use json, dot, \
                  summary or svg"
             ))
         })?,
@@ -107,7 +101,7 @@ fn graph(arguments: &Arguments) -> Result<(), Failure> {
     finish(execution)
 }
 
-/// `iunctus config`: the config of a Nextflow project, by default the launch directory.
+/// `uwe config`: the config of a Nextflow project, by default the launch directory.
 fn config(arguments: &Arguments) -> Result<(), Failure> {
     let setup = Setup::load(arguments)?;
     let project = arguments.target.clone().unwrap_or_else(|| ".".into());
@@ -131,5 +125,5 @@ fn picture(arguments: &Arguments) -> Options {
 fn write_graph(file: &Path, graph: &ExecutionGraph, options: &Options) -> Result<(), Failure> {
     let text = render(graph, options, Format::of_file(file));
     std::fs::write(file, text)
-        .map_err(|error| failure(format!("iunctus: cannot write {}: {error}", file.display())))
+        .map_err(|error| failure(format!("uwe: cannot write {}: {error}", file.display())))
 }

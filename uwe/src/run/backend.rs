@@ -87,7 +87,7 @@ pub(crate) fn real<B: executor::Backend>(
         .any(|image| task_model::conda_image(image))
     {
         return Err(Failure::setup(
-            "iunctus: repeating historical Conda image pins is unsupported; run the workflow with current explicit Conda preparation inputs",
+            "uwe: repeating historical Conda image pins is unsupported; run the workflow with current explicit Conda preparation inputs",
         ));
     }
     executor.verbose = verbose;
@@ -100,8 +100,7 @@ pub(crate) fn real<B: executor::Backend>(
     executor.network = network_rule(arguments, setup);
     // A resumed run takes the results of its lineage, also of images without a digest.
     if arguments.resume.is_some() {
-        let broken =
-            |error: run_database::DatabaseError| Failure::setup(format!("iunctus: {error}"));
+        let broken = |error: run_database::DatabaseError| Failure::setup(format!("uwe: {error}"));
         let database = runs::open(arguments)?;
         let run = database.run(executor.runner().run_id()).map_err(broken)?;
         if let Some(run) = run {
@@ -138,12 +137,12 @@ pub(crate) fn offline_possible(arguments: &Arguments, setup: &Setup) -> Result<(
         }
         Some("slurm") if named == "singularity" => {
             "Singularity cuts a task off the network only where the site allows it, which \
-             iunctus does not ask for (`-slurm-container apptainer`, `podman` or `docker` can)"
+             uwe does not ask for (`-slurm-container apptainer`, `podman` or `docker` can)"
         }
         _ => return Ok(()),
     };
     Err(Failure::usage(format!(
-        "iunctus: {why}, so tasks cannot run without network there yet; leave out \
+        "uwe: {why}, so tasks cannot run without network there yet; leave out \
          `-no-network` and `default = \"none\"` of `[network]`, or use `-executor local`"
     )))
 }
@@ -164,7 +163,7 @@ pub(crate) fn executor(
     offline_possible(arguments, setup)?;
     match arguments.executor.as_deref().unwrap_or("local") {
         "simulator" if arguments.check_reproducibility.is_some() => Err(Failure::usage(
-            "iunctus: the reproducibility check runs cached tasks again, so it needs a real \
+            "uwe: the reproducibility check runs cached tasks again, so it needs a real \
              executor, like `-executor local`",
         )),
         "simulator" => {
@@ -179,7 +178,7 @@ pub(crate) fn executor(
             let engine = setup.engine();
             let mut executor =
                 local::executor(store, &scratch, run, default_image, storage, &engine, setup)
-                    .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
+                    .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             executor.priorities = std::sync::Arc::new(chains(arguments));
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
@@ -193,7 +192,7 @@ pub(crate) fn executor(
                 Ok(token) if !token.is_empty() => Some(token),
                 _ => (settings.tes_token.as_ref().map(|secret| secret.reveal()))
                     .transpose()
-                    .map_err(|error| Failure::setup(format!("iunctus: {error}")))?,
+                    .map_err(|error| Failure::setup(format!("uwe: {error}")))?,
             };
             let store = setup.store(arguments)?;
             let storage = setup.storage.clone();
@@ -205,7 +204,7 @@ pub(crate) fn executor(
                 scratch: &scratch,
             };
             let executor = tes::executor(store, place, run, default_image, storage, setup)
-                .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
         "slurm" => {
@@ -214,7 +213,7 @@ pub(crate) fn executor(
             let named =
                 (arguments.slurm_container.as_deref()).or(settings.slurm_container.as_deref());
             let container = slurm::container(named)
-                .map_err(|message| Failure::usage(format!("iunctus: {message}")))?;
+                .map_err(|message| Failure::usage(format!("uwe: {message}")))?;
             let options = match arguments.slurm_options.as_deref() {
                 Some(options) => options.split_whitespace().map(str::to_owned).collect(),
                 None => settings.slurm_options.clone().unwrap_or_default(),
@@ -223,13 +222,13 @@ pub(crate) fn executor(
             let storage = setup.storage.clone();
             let mut backend = slurm::backend(&scratch, container, options, settings.slurm_pull);
             backend.remote = slurm::remote(settings, &storage)
-                .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             backend.staging_time = settings.slurm_staging.margin();
             if let Some(seconds) = settings.slurm_query {
                 backend.query_grace = std::time::Duration::from_secs(seconds);
             }
             let executor = slurm::executor(store, backend, run, default_image, storage, setup)
-                .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
         "kubernetes" => {
@@ -248,11 +247,11 @@ pub(crate) fn executor(
                 namespace,
                 setup,
             )
-            .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
+            .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
         other => Err(Failure::usage(format!(
-            "iunctus: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm` or \
+            "uwe: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm` or \
              `kubernetes`"
         ))),
     }
@@ -285,9 +284,8 @@ fn previewed(simulator: Simulator, arguments: &Arguments, setup: &Setup) -> Box<
     if arguments.no_cache {
         return Box::new(simulator);
     }
-    let pins = runs::open(arguments).and_then(|database| {
-        (database.pins()).map_err(|error| failure(format!("iunctus: {error}")))
-    });
+    let pins = runs::open(arguments)
+        .and_then(|database| (database.pins()).map_err(|error| failure(format!("uwe: {error}"))));
     let (Ok(pins), Ok(store)) = (pins, setup.store(arguments)) else {
         return Box::new(simulator);
     };

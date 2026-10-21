@@ -24,8 +24,8 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let task = (arguments.targets.first()).and_then(|task| task.parse::<u64>().ok());
     let (Some(run), Some(task)) = (run, task) else {
         return Err(Failure::usage(
-            "iunctus: name a run and the number of one of its tasks, like `iunctus replay \
-             1a0f1cc4c10-3a2487 4`; `iunctus runs` lists the runs",
+            "uwe: name a run and the number of one of its tasks, like `uwe replay \
+             1a0f1cc4c10-3a2487 4`; `uwe runs` lists the runs",
         ));
     };
     let broken = |error: run_database::DatabaseError| failure(error.to_string());
@@ -33,16 +33,16 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let original = super::run(&database, &run)?;
     if original.simulated {
         return Err(failure(format!(
-            "iunctus: run {run} was simulated, so its files are made up and its tasks cannot \
+            "uwe: run {run} was simulated, so its files are made up and its tasks cannot \
              be replayed; replay a task of a run with a real executor"
         )));
     }
     let Some(detail) = database.task(&run, task).map_err(broken)? else {
-        return Err(failure(format!("iunctus: run {run} has no task {task}")));
+        return Err(failure(format!("uwe: run {run} has no task {task}")));
     };
     if detail.description.is_no_op() {
         return Err(failure(format!(
-            "iunctus: task {task} of run {run} does nothing: it has neither a command nor an image"
+            "uwe: task {task} of run {run} does nothing: it has neither a command nor an image"
         )));
     }
     // A replay runs for real, by default on this machine, with the store of the run.
@@ -53,7 +53,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         .clone();
     if executor == "simulator" {
         return Err(Failure::usage(
-            "iunctus: a replay runs the task for real; use -executor local, tes, slurm or \
+            "uwe: a replay runs the task for real; use -executor local, tes, slurm or \
              kubernetes",
         ));
     }
@@ -64,7 +64,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let store = setup.store(&arguments)?;
     let (replayed, from_store) = replayed_task(&database, &detail, &store)?;
     let language: Language = serde_json::from_value(original.language.clone().into())
-        .map_err(|_| failure(format!("iunctus: run {run} has an unknown language")))?;
+        .map_err(|_| failure(format!("uwe: run {run} has an unknown language")))?;
     let id = crate::run_id();
     let mut executor_of_run = crate::executor(
         &arguments,
@@ -87,21 +87,21 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         executor: executor.clone(),
         simulated: false,
         store: Some(setup.store_location(&arguments)),
-        program: Some(format!("iunctus {}", env!("CARGO_PKG_VERSION"))),
+        program: Some(format!("uwe {}", env!("CARGO_PKG_VERSION"))),
         launch: (std::env::current_dir().ok()).map(|folder| folder.to_string_lossy().into_owned()),
         workflow_folder: original.workflow_folder.clone(),
         repeats: None,
     };
     let mut recorder = runs::open(&arguments)?
         .record(&start)
-        .map_err(|error| failure(format!("iunctus: {error}")))?;
+        .map_err(|error| failure(format!("uwe: {error}")))?;
     recorder.replays(&run, task);
     let telemetry = setup
         .telemetry
         .as_ref()
         .and_then(|telemetry| telemetry.start(&arguments, &mut recorder));
     eprintln!(
-        "iunctus: replaying task {task} {} of run {run} as run {id} on {executor}",
+        "uwe: replaying task {task} {} of run {run} as run {id} on {executor}",
         replayed.name
     );
     let mut driver = Replay {
@@ -163,7 +163,7 @@ fn replayed_task(
         };
         let gone = || {
             failure(format!(
-                "iunctus: the input `{}` is gone: {} is no longer there, and the store has no \
+                "uwe: the input `{}` is gone: {} is no longer there, and the store has no \
                  copy of it by its digest",
                 input.path, input.source
             ))

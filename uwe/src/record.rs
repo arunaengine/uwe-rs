@@ -39,7 +39,7 @@ pub struct Started<'a> {
 /// Opens the run database and starts the record of a run. With `-resume`, the run joins the
 /// lineage of the run it continues, and gets the finished tasks of that lineage.
 pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure> {
-    let broken = |error: run_database::DatabaseError| Failure::setup(format!("iunctus: {error}"));
+    let broken = |error: run_database::DatabaseError| Failure::setup(format!("uwe: {error}"));
     let database = runs::open(arguments)?;
     let workflow = if storage::address::scheme(&run.target.to_string_lossy()).is_some() {
         run.target.to_owned()
@@ -76,7 +76,7 @@ pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure>
         executor: run.executor.to_owned(),
         simulated: run.simulated,
         store: run.store.map(str::to_owned),
-        program: Some(format!("iunctus {}", env!("CARGO_PKG_VERSION"))),
+        program: Some(format!("uwe {}", env!("CARGO_PKG_VERSION"))),
         launch: (std::env::current_dir().ok()).map(|folder| folder.to_string_lossy().into_owned()),
         workflow_folder: Some(run.sources.folder.to_string_lossy().into_owned()),
         repeats: run.repeats.map(str::to_owned),
@@ -176,40 +176,38 @@ fn resumed(
     workflow: &str,
     simulated: bool,
 ) -> Result<Option<Run>, Failure> {
-    let broken = |error: run_database::DatabaseError| failure(format!("iunctus: {error}"));
+    let broken = |error: run_database::DatabaseError| failure(format!("uwe: {error}"));
     let earlier = match resume {
         Resume::Last => database.last_run(workflow, !simulated).map_err(broken)?,
         Resume::Run(id) => match database.run(id).map_err(broken)? {
             Some(run) => Some(run),
             None => {
                 return Err(failure(format!(
-                    "iunctus: the run database has no run `{id}` to resume; `iunctus runs` \
+                    "uwe: the run database has no run `{id}` to resume; `uwe runs` \
                      lists the runs"
                 )));
             }
         },
     };
     let Some(earlier) = earlier else {
-        eprintln!(
-            "iunctus: no earlier run of {workflow} to resume; the run starts from the beginning"
-        );
+        eprintln!("uwe: no earlier run of {workflow} to resume; the run starts from the beginning");
         return Ok(None);
     };
     if earlier.workflow != workflow {
         return Err(failure(format!(
-            "iunctus: run {} ran {}, not {workflow}; resume a run of the same workflow",
+            "uwe: run {} ran {}, not {workflow}; resume a run of the same workflow",
             earlier.id, earlier.workflow
         )));
     }
     if earlier.state == "running" {
         return Err(failure(format!(
-            "iunctus: run {} is still running; resume it when it has stopped",
+            "uwe: run {} is still running; resume it when it has stopped",
             earlier.id
         )));
     }
     if earlier.simulated && !simulated {
         return Err(failure(format!(
-            "iunctus: run {} was simulated, so its files are made up; a real run cannot \
+            "uwe: run {} was simulated, so its files are made up; a real run cannot \
              resume it",
             earlier.id
         )));

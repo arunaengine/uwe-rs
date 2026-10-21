@@ -8,7 +8,7 @@ use workflow_graph::{DriverError, ExecuteError};
 /// do not fit its schema, a task that failed, or a result that cannot be delivered.
 pub const FAILED: u8 = 1;
 
-/// The exit code of a command line that iunctus does not understand: an unknown command or
+/// The exit code of a command line that uwe does not understand: an unknown command or
 /// option, a value that an option does not take, or an option of another command.
 pub const USAGE: u8 = 2;
 
@@ -16,7 +16,7 @@ pub const USAGE: u8 = 2;
 /// engine, the store, the run database, or what an executor needs, like its server.
 pub const SETUP: u8 = 3;
 
-/// The exit code for a feature that a workflow language supports but iunctus does not yet, as
+/// The exit code for a feature that a workflow language supports but uwe does not yet, as
 /// CWL runners use it for unsupported requirements.
 pub const UNSUPPORTED: u8 = 33;
 
@@ -24,7 +24,7 @@ pub const UNSUPPORTED: u8 = 33;
 pub const INTERRUPTED: u8 = 130;
 
 /// What every error line starts with, so that the user knows who speaks.
-const PREFIX: &str = "iunctus: ";
+const PREFIX: &str = "uwe: ";
 
 /// Why a command failed, and its exit code.
 #[derive(Debug)]
@@ -110,7 +110,7 @@ pub fn failure(message: impl Into<String>) -> Failure {
     Failure::new(message)
 }
 
-/// A line of an error as iunctus shows it: with the prefix of every error, unless it continues
+/// A line of an error as uwe shows it: with the prefix of every error, unless it continues
 /// the line before it, and without the numbers of system errors, like ` (os error 2)` after
 /// `No such file or directory`, which say nothing more.
 fn shown(line: &str) -> String {
@@ -130,7 +130,7 @@ pub fn continues(line: &str) -> bool {
         || line.starts_with("- ")
 }
 
-/// The text without ` (os error <number>)`, which iunctus never shows.
+/// The text without ` (os error <number>)`, which uwe never shows.
 pub fn without_error_numbers(line: &str) -> String {
     const START: &str = " (os error ";
     let mut shown = String::with_capacity(line.len());
@@ -157,14 +157,14 @@ mod tests {
     #[test]
     fn prefixes_each_line() {
         let failure = Failure::new(
-            "main.nf:3:5: Expected `}`\niunctus: the input `x` is required\n    affected files:\n* \
+            "main.nf:3:5: Expected `}`\nuwe: the input `x` is required\n    affected files:\n* \
              --input: missing\n",
         );
         assert_eq!(
             failure.lines(),
             [
-                "iunctus: main.nf:3:5: Expected `}`",
-                "iunctus: the input `x` is required",
+                "uwe: main.nf:3:5: Expected `}`",
+                "uwe: the input `x` is required",
                 "    affected files:",
                 "* --input: missing"
             ]
@@ -176,7 +176,7 @@ mod tests {
         let line = "cannot read job.yml: No such file or directory (os error 2)";
         assert_eq!(
             shown(line),
-            "iunctus: cannot read job.yml: No such file or directory"
+            "uwe: cannot read job.yml: No such file or directory"
         );
         let line = "a (os error 2) and b (os error x) and c (os error 13)";
         assert_eq!(without_error_numbers(line), "a and b (os error x) and c");

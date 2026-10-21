@@ -1,4 +1,4 @@
-//! The command line of `iunctus run`, `iunctus graph` and `iunctus config`: Nextflow's options,
+//! The command line of `uwe run`, `uwe graph` and `uwe config`: Nextflow's options,
 //! and those that the other languages add.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -29,7 +29,7 @@ pub struct Arguments {
     pub keep_going: bool,
     /// `-store folder|address`: where the cache store lives; a folder is made absolute.
     pub store: Option<String>,
-    /// `-uwe-config file`: a config file of iunctus, read after the site-wide file and
+    /// `-uwe-config file`: a config file of uwe, read after the site-wide file and
     /// the user's file.
     pub config_file: Option<PathBuf>,
     /// `-profile a,b`
@@ -56,7 +56,7 @@ pub struct Arguments {
     pub executor: Option<String>,
     /// `-graph file`: where to write the execution graph.
     pub graph: Option<PathBuf>,
-    /// `-report file`: where `iunctus run` writes the report of the run when it ends.
+    /// `-report file`: where `uwe run` writes the report of the run when it ends.
     pub report: Option<PathBuf>,
     /// `-output-dir folder`: where results go that the workflow gives no place of its own.
     pub output_dir: Option<PathBuf>,
@@ -71,10 +71,10 @@ pub struct Arguments {
     pub kubeconfig: Option<PathBuf>,
     /// `-kubernetes-namespace name`: the namespace of the Jobs of `-executor kubernetes`.
     pub kubernetes_namespace: Option<String>,
-    /// `-format name`: `json`, `dot`, `summary` or `svg` for `iunctus graph`; `json`, `text` or
-    /// `form` for `iunctus inputs`.
+    /// `-format name`: `json`, `dot`, `summary` or `svg` for `uwe graph`; `json`, `text` or
+    /// `form` for `uwe inputs`.
     pub format: Option<String>,
-    /// `-check`: `iunctus inputs` also checks the values of the launch against the schema.
+    /// `-check`: `uwe inputs` also checks the values of the launch against the schema.
     pub check: bool,
     /// `-view tasks|steps`: the graph with one node per task, or one node per step.
     pub view: Option<View>,
@@ -97,7 +97,7 @@ pub struct Arguments {
     pub python_image: Option<String>,
     /// `-database file`: the run database, instead of the one in the cache directory.
     pub database: Option<PathBuf>,
-    /// `-output folder|file`: where `iunctus export` writes the crate, `iunctus report` the
+    /// `-output folder|file`: where `uwe export` writes the crate, `uwe report` the
     /// report, and some other commands their file.
     pub output: Option<PathBuf>,
     /// `-platform name`: the conda platform of a lock, like `linux-64`.
@@ -112,14 +112,14 @@ pub struct Arguments {
     pub address: Option<IpAddr>,
     /// `-port number`: the port of the web page; a free one by default.
     pub port: Option<u16>,
-    /// `-keep-days n`: `iunctus clean` keeps what runs made or used in the last n days.
+    /// `-keep-days n`: `uwe clean` keeps what runs made or used in the last n days.
     pub keep_days: Option<u64>,
-    /// `-keep-run run`, as often as needed: `iunctus clean` keeps what the run needs.
+    /// `-keep-run run`, as often as needed: `uwe clean` keeps what the run needs.
     pub keep_runs: Vec<String>,
-    /// `-keep-slower-than time`, like `10m`: `iunctus clean` keeps the results of tasks that
+    /// `-keep-slower-than time`, like `10m`: `uwe clean` keeps the results of tasks that
     /// ran at least this long.
     pub keep_slower_than: Option<std::time::Duration>,
-    /// `-remove`: `iunctus clean` removes what it lists, instead of only listing it.
+    /// `-remove`: `uwe clean` removes what it lists, instead of only listing it.
     pub remove: bool,
     /// `-check-reproducibility percent`, like `10%`: the share of the tasks whose results come
     /// from the cache that run again, to check that their tools give the same bytes; from 0 to 1.
@@ -188,7 +188,7 @@ pub fn parse_command(command: &str, arguments: &[String]) -> Result<Arguments, S
     }
     let parsed = parse_for(Some(command), arguments)?;
     if command == "version" && parsed.target.is_some() {
-        return Err("`iunctus version` takes no target".into());
+        return Err("`uwe version` takes no target".into());
     }
     Ok(parsed)
 }
@@ -216,7 +216,7 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
                 && !allowed.contains(&command)
             {
                 return Err(format!(
-                    "option `{argument}` does not apply to `iunctus {command}`; use `iunctus {command} -help`"
+                    "option `{argument}` does not apply to `uwe {command}`; use `uwe {command} -help`"
                 ));
             }
         }
@@ -310,7 +310,7 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
                 if Format::parse(&name).is_none() && !matches!(name.as_str(), "text" | "form") {
                     return Err(format!(
                         "unknown graph format `{name}`; use json, dot, summary or svg, or json, \
-                         text or form for `iunctus inputs`"
+                         text or form for `uwe inputs`"
                     ));
                 }
                 parsed.format = Some(name);
@@ -485,7 +485,7 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
         }
         if language == Some(Language::Snakemake) {
             return Err(format!(
-                "Snakemake option `{option}` is unsupported; use `--config name=value` for workflow parameters or `iunctus run -help` for engine options"
+                "Snakemake option `{option}` is unsupported; use `--config name=value` for workflow parameters or `uwe run -help` for engine options"
             ));
         }
     }
@@ -678,7 +678,7 @@ pub fn help(command: &str) -> Result<String, String> {
     if !COMMANDS.contains(&command) {
         return Err(format!("unknown command `{command}`"));
     }
-    let mut help = format!("usage: iunctus {command} [options]");
+    let mut help = format!("usage: uwe {command} [options]");
     let target = match command {
         "runs" | "clean" | "check-machine" | "version" => "",
         "page" => " [run]",
@@ -708,14 +708,14 @@ pub fn help(command: &str) -> Result<String, String> {
 
 fn engine_option(option: &str, language: Option<Language>) -> Option<&'static str> {
     Some(match option {
-        "-work-dir" | "-w" => "set `[cache] folder` in the iunctus config file",
+        "-work-dir" | "-w" => "set `[cache] folder` in the uwe config file",
         "-with-docker" | "-with-podman" | "-with-singularity" | "-with-apptainer" => {
             "use `-executor local` and `-default-image image`, or `-executor slurm -slurm-container name`"
         }
-        "-bg" => "run iunctus in the foreground or use your service manager",
+        "-bg" => "run uwe in the foreground or use your service manager",
         "-with-report" => "use `-report file`",
         "-with-dag" => "use `-graph file`",
-        "-with-trace" | "-with-timeline" => "use `-report file` or `iunctus telemetry`",
+        "-with-trace" | "-with-timeline" => "use `-report file` or `uwe telemetry`",
         "-R" => "use `-forcerun rules,files` for a Snakemake workflow",
         "-F" => "use `-forceall` for a Snakemake workflow",
         "-j" | "-n" => {
@@ -726,7 +726,7 @@ fn engine_option(option: &str, language: Option<Language>) -> Option<&'static st
                 "use `-max-pending n` to limit concurrent tasks; task CPUs are defined by the workflow"
             }
             "--use-conda" => {
-                "configure `[conda]` in the iunctus config file; Conda preparation is container-only"
+                "configure `[conda]` in the uwe config file; Conda preparation is container-only"
             }
             "--use-singularity" | "--use-apptainer" => {
                 "use `-executor slurm -slurm-container apptainer`"
@@ -735,7 +735,7 @@ fn engine_option(option: &str, language: Option<Language>) -> Option<&'static st
             "--profile" | "--workflow-profile" => {
                 "use `-profile name` or `-profile path` for Snakemake profiles"
             }
-            "--directory" => "launch iunctus from the desired working directory",
+            "--directory" => "launch uwe from the desired working directory",
             "--snakefile" => "give the Snakefile as the workflow argument",
             "--until" => "use `-until rules,files`",
             "--omit-from" => "use `-omit-from rules,files`",
@@ -770,7 +770,7 @@ fn take_job_file(parsed: &mut Arguments) {
     }
 }
 
-/// Whether a word is a run id as iunctus makes them: two hexadecimal numbers joined by `-`, the
+/// Whether a word is a run id as uwe makes them: two hexadecimal numbers joined by `-`, the
 /// time in milliseconds and the process id.
 fn looks_like_run(text: &str) -> bool {
     text.split_once('-').is_some_and(|(time, process)| {

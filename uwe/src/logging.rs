@@ -15,7 +15,7 @@ pub fn init(arguments: &Arguments) -> Result<(), Failure> {
         std::env::var("UWE_LOG").unwrap_or_else(|_| "warn".into())
     };
     let filter = EnvFilter::try_new(level)
-        .map_err(|error| Failure::usage(format!("iunctus: invalid UWE_LOG filter: {error}")))?;
+        .map_err(|error| Failure::usage(format!("uwe: invalid UWE_LOG filter: {error}")))?;
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(std::io::stderr)
@@ -23,5 +23,5 @@ pub fn init(arguments: &Arguments) -> Result<(), Failure> {
         .without_time()
         .with_ansi(false)
         .try_init()
-        .map_err(|error| Failure::setup(format!("iunctus: cannot start logging: {error}")))
+        .map_err(|error| Failure::setup(format!("uwe: cannot start logging: {error}")))
 }

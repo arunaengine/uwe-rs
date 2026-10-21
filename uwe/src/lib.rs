@@ -1,4 +1,4 @@
-//! Embeddable application services for configured iunctus workflow drivers and executors.
+//! Embeddable application services for configured uwe workflow drivers and executors.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

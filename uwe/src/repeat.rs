@@ -27,14 +27,14 @@ pub struct Pinned {
     pub files: Vec<Fetched>,
 }
 
-/// `iunctus repeat <run>`: what changed since the run, the run again with what it pinned, and
+/// `uwe repeat <run>`: what changed since the run, the run again with what it pinned, and
 /// the steps whose outputs differ from those of the run.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let database = runs::open(arguments)?;
     let run = changes::named_run(&database, arguments, "repeat")?;
     if run.state == "running" {
         return Err(failure(format!(
-            "iunctus: run {} is still running; repeat it when it has ended",
+            "uwe: run {} is still running; repeat it when it has ended",
             run.id
         )));
     }
@@ -59,9 +59,8 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         .as_deref()
         .filter(|launch| Path::new(launch).is_dir())
     {
-        std::env::set_current_dir(launch).map_err(|error| {
-            Failure::setup(format!("iunctus: cannot work in {launch}: {error}"))
-        })?;
+        std::env::set_current_dir(launch)
+            .map_err(|error| Failure::setup(format!("uwe: cannot work in {launch}: {error}")))?;
     }
     let Ran { execution, id, .. } = execute(&repeated, false, &pinned)?;
     let differences = (runs::open(arguments)?.compare_steps(&run.id, &id)).map_err(broken)?;
@@ -69,7 +68,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     finish(execution)
 }
 
-/// The options of `iunctus repeat` that choose where and how the run runs again: its executor
+/// The options of `uwe repeat` that choose where and how the run runs again: its executor
 /// and store, the settings of the executor, the page, and the reproducibility check. The
 /// workflow and its parameters stay those of the run.
 pub(crate) fn chosen_here(repeated: &mut Arguments, given: &Arguments) {
@@ -142,15 +141,15 @@ fn restore(
 ) -> Result<(), Failure> {
     let Some(store) = store else {
         return Err(failure(format!(
-            "iunctus: the files of the workflow changed since run {}, and a simulated run keeps \
-             no copy of them; restore them, or run the workflow again with `iunctus run`",
+            "uwe: the files of the workflow changed since run {}, and a simulated run keeps \
+             no copy of them; restore them, or run the workflow again with `uwe run`",
             run.id
         )));
     };
     let sources = database.sources(&run.id).map_err(broken)?;
     let (Some(workflow_folder), false) = (&run.workflow_folder, sources.is_empty()) else {
         return Err(failure(format!(
-            "iunctus: run {} recorded no files of its workflow, so its workflow cannot be \
+            "uwe: run {} recorded no files of its workflow, so its workflow cannot be \
              restored",
             run.id
         )));
@@ -182,7 +181,7 @@ fn restore(
     repeated.configs = repeated.configs.iter().map(moved).collect();
     repeated.inputs = repeated.inputs.as_ref().map(moved);
     eprintln!(
-        "iunctus: the repeat runs the workflow as run {} had it, restored from the store into {}",
+        "uwe: the repeat runs the workflow as run {} had it, restored from the store into {}",
         run.id,
         workflow.display()
     );
@@ -193,7 +192,7 @@ fn restore(
 async fn copy_out(store: &Store, source: &Source, target: &Path) -> Result<(), Failure> {
     let failed = |error: String| {
         failure(format!(
-            "iunctus: cannot restore {} from the store: {error}",
+            "uwe: cannot restore {} from the store: {error}",
             source.path
         ))
     };
@@ -235,7 +234,7 @@ fn remote_files(
         };
         let Some(copy) = copy else {
             tracing::warn!(
-                "iunctus: the store does not keep {} as run {} read it; the repeat reads \
+                "uwe: the store does not keep {} as run {} read it; the repeat reads \
                  it again from its address",
                 file.address,
                 run.id
@@ -275,12 +274,12 @@ pub async fn kept_copy(store: &Store, digest: &str, folder: &Path) -> Option<Pat
 fn compared(run: &Run, repeat: &str, differences: &[run_database::StepDifference]) -> String {
     if differences.is_empty() {
         return format!(
-            "iunctus: repeat {repeat} made the same outputs as run {} in every step\n",
+            "uwe: repeat {repeat} made the same outputs as run {} in every step\n",
             run.id
         );
     }
     let mut text = format!(
-        "iunctus: repeat {repeat} differs from run {} in {} of its steps:\n",
+        "uwe: repeat {repeat} differs from run {} in {} of its steps:\n",
         run.id,
         differences.len()
     );

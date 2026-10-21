@@ -24,7 +24,7 @@ fn main() -> ExitCode {
         return match executor::helper::main(&arguments[1..]) {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
-                eprintln!("iunctus: {message}");
+                eprintln!("uwe: {message}");
                 ExitCode::FAILURE
             }
         };
@@ -42,11 +42,11 @@ fn main() -> ExitCode {
             [command] => cli::help(command)
                 .map(|text| println!("{text}"))
                 .map_err(Failure::usage),
-            _ => Err(Failure::usage("use `iunctus help [command]`")),
+            _ => Err(Failure::usage("use `uwe help [command]`")),
         });
     }
     if matches!(command.as_str(), "-version" | "--version" | "version") && rest.is_empty() {
-        println!("iunctus {}", env!("CARGO_PKG_VERSION"));
+        println!("uwe {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
     let mut arguments = match cli::parse_command(command, rest) {
@@ -61,7 +61,7 @@ fn main() -> ExitCode {
         );
     }
     if arguments.version || command == "version" {
-        println!("iunctus {}", env!("CARGO_PKG_VERSION"));
+        println!("uwe {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
     if let Err(failure) = cli::init(&arguments) {
@@ -91,32 +91,32 @@ fn exit(result: Result<(), Failure>) -> ExitCode {
 }
 
 const USAGE: &str = "\
-usage: iunctus run <workflow file, directory or repository> [<targets>] [options]
-       iunctus graph <workflow file or directory> [-format json|dot|summary|svg] [-view tasks|steps]
+usage: uwe run <workflow file, directory or repository> [<targets>] [options]
+       uwe graph <workflow file or directory> [-format json|dot|summary|svg] [-view tasks|steps]
                      [-direction down|right] [-fold <n>] [options]
-       iunctus check <workflow file or directory> [-default-image <image>] [options]
-       iunctus check-machine [-executor <executor>] [-store <folder or address>]
-       iunctus config [<project>] [-profile <names>] [-c <config>] [--<param> <value>]
-       iunctus runs
-       iunctus page [<run>] [-address <ip>] [-port <number>]
-       iunctus export <run> [-output <folder>] [-license <url>]
-       iunctus why <run> <task>
-       iunctus origin <file>
-       iunctus time <run> [-format text|json]
-       iunctus compare <run> [<run>] [-format text|json]
-       iunctus replay <run> <task> [-executor local|tes|slurm|kubernetes] [-store <place>]
-       iunctus telemetry <run> [-output <file>]
-       iunctus report <run> [-output <file>]
-       iunctus resume <run> [<step>] [<name>=<value>]...
-       iunctus inputs <workflow file or directory> [-format json|text] [-check] [options]
-       iunctus outputs <workflow file or directory> [-format json|text] [options]
-       iunctus clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove]
-       iunctus check-order <workflow file or directory> [options]
-       iunctus changes <run>
-       iunctus repeat <run> [-executor <executor>] [-store <folder or address>] [options]
-       iunctus lock-environment <conda environment file> [-platform <name>] [-output <file>]
-       iunctus version
-       iunctus help [command]
+       uwe check <workflow file or directory> [-default-image <image>] [options]
+       uwe check-machine [-executor <executor>] [-store <folder or address>]
+       uwe config [<project>] [-profile <names>] [-c <config>] [--<param> <value>]
+       uwe runs
+       uwe page [<run>] [-address <ip>] [-port <number>]
+       uwe export <run> [-output <folder>] [-license <url>]
+       uwe why <run> <task>
+       uwe origin <file>
+       uwe time <run> [-format text|json]
+       uwe compare <run> [<run>] [-format text|json]
+       uwe replay <run> <task> [-executor local|tes|slurm|kubernetes] [-store <place>]
+       uwe telemetry <run> [-output <file>]
+       uwe report <run> [-output <file>]
+       uwe resume <run> [<step>] [<name>=<value>]...
+       uwe inputs <workflow file or directory> [-format json|text] [-check] [options]
+       uwe outputs <workflow file or directory> [-format json|text] [options]
+       uwe clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove]
+       uwe check-order <workflow file or directory> [options]
+       uwe changes <run>
+       uwe repeat <run> [-executor <executor>] [-store <folder or address>] [options]
+       uwe lock-environment <conda environment file> [-platform <name>] [-output <file>]
+       uwe version
+       uwe help [command]
 
 options:
   -help                               lists the options of this command
@@ -147,7 +147,7 @@ options:
                                       apptainer (the default), singularity, podman or docker
   -slurm-options '<options>'          more options of sbatch, like '--account=lab'
   -kubeconfig <file>                  the kubeconfig of the cluster of -executor kubernetes;
-                                      iunctus never takes the default one
+                                      uwe never takes the default one
   -kubernetes-namespace <name>        the namespace of the Jobs; the kubeconfig's by default
   -max-pending <n>                    lets up to n tasks be pending at once (default 1 for
                                       the simulator, 1024 for real executors)
@@ -156,7 +156,7 @@ options:
                                       asked for the simulator, finished for real executors)
   -store <folder or address>          the cache store of real executors, in a folder or at an
                                       address of a storage provider, like s3://bucket/cache
-  -uwe-config <file>              a config file of iunctus, read after
+  -uwe-config <file>              a config file of uwe, read after
                                       /etc/uwe/config.toml and
                                       ~/.config/uwe/config.toml
   -default-image <image>              the image of tasks that name none, for real executors

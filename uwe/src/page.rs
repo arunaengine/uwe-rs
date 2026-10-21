@@ -15,7 +15,7 @@ use crate::{Failure, runs};
 /// like `/runs/<run>`. In a terminal, the browser opens it too.
 pub fn start(arguments: &Arguments, path: &str) -> Result<Server, Failure> {
     let config = config_file::ConfigFile::load(arguments.config_file.as_deref())
-        .map_err(|error| Failure::setup(format!("iunctus: {error}")))?;
+        .map_err(|error| Failure::setup(format!("uwe: {error}")))?;
     let token = (|| {
         let Some(page) = config.section("page")? else {
             return Ok(None);
@@ -25,7 +25,7 @@ pub fn start(arguments: &Arguments, path: &str) -> Result<Server, Failure> {
             .map(|secret| secret.reveal())
             .transpose()
     })()
-    .map_err(|error: config_file::ConfigError| Failure::setup(format!("iunctus: {error}")))?;
+    .map_err(|error: config_file::ConfigError| Failure::setup(format!("uwe: {error}")))?;
     let mut settings = Settings {
         database: runs::database_path(arguments),
         address: arguments.address.unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST)),
@@ -37,20 +37,20 @@ pub fn start(arguments: &Arguments, path: &str) -> Result<Server, Failure> {
         std::fs::File::open("/dev/urandom")
             .and_then(|mut random| random.read_exact(&mut bytes))
             .map_err(|error| {
-                Failure::setup(format!("iunctus: cannot generate a page token: {error}"))
+                Failure::setup(format!("uwe: cannot generate a page token: {error}"))
             })?;
         settings.token = Some(bytes.iter().map(|byte| format!("{byte:02x}")).collect());
     }
     let server =
-        Server::start(&settings).map_err(|error| Failure::setup(format!("iunctus: {error}")))?;
+        Server::start(&settings).map_err(|error| Failure::setup(format!("uwe: {error}")))?;
     let mut url = format!("{}{path}", server.url());
     if let Some(token) = &settings.token {
         url.push_str(&format!("?token={token}"));
     }
-    eprintln!("iunctus: the page is at {url}");
+    eprintln!("uwe: the page is at {url}");
     if !settings.address.is_loopback() {
         eprintln!(
-            "iunctus: the page listens on {} and requires the token in this URL",
+            "uwe: the page listens on {} and requires the token in this URL",
             settings.address
         );
     }
@@ -60,14 +60,14 @@ pub fn start(arguments: &Arguments, path: &str) -> Result<Server, Failure> {
     Ok(server)
 }
 
-/// `iunctus page [<run>]`: serves the page until Ctrl-C.
+/// `uwe page [<run>]`: serves the page until Ctrl-C.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let path = match &arguments.target {
         Some(run) => format!("/runs/{}", run.to_string_lossy()),
         None => "/".to_owned(),
     };
     let server = start(arguments, &path)?;
-    eprintln!("iunctus: press Ctrl-C to stop the page");
+    eprintln!("uwe: press Ctrl-C to stop the page");
     server.serve_until_interrupted();
     Ok(())
 }

@@ -22,7 +22,7 @@ pub fn executor(
 ) -> Result<RunnerExecutor<crate::conda_backend::Remote<KubernetesBackend>>, String> {
     let kubeconfig = kubeconfig.ok_or(
         "-executor kubernetes needs the kubeconfig of the cluster: name it with -kubeconfig \
-         <file>; iunctus never takes the default one",
+         <file>; uwe never takes the default one",
     )?;
     let kubeconfig = std::path::absolute(kubeconfig).map_err(|error| error.to_string())?;
     if !kubeconfig.is_file() {
@@ -43,7 +43,7 @@ pub fn executor(
         && !backend.scratch.starts_with(root)
     {
         return Err(format!(
-            "the scratch folder {} is not in the shared volume at {}; keep the cache of iunctus \
+            "the scratch folder {} is not in the shared volume at {}; keep the cache of uwe \
              there",
             backend.scratch.display(),
             root.display()

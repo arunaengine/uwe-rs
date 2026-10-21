@@ -9,12 +9,12 @@ use run_database::Database;
 use crate::arguments::Arguments;
 use crate::{Failure, failure, runs};
 
-/// `iunctus report <run>`: writes the report of the run to `-output`, by default
+/// `uwe report <run>`: writes the report of the run to `-output`, by default
 /// `<run>-report.html`.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let Some(run) = arguments.target.as_ref().map(|run| run.to_string_lossy()) else {
         return Err(Failure::usage(
-            "iunctus: name a run, like `iunctus report 1a0f1cc4c10-3a2487`; `iunctus runs` lists \
+            "uwe: name a run, like `uwe report 1a0f1cc4c10-3a2487`; `uwe runs` lists \
              the runs",
         ));
     };
@@ -39,8 +39,8 @@ pub fn after_run(arguments: &Arguments, run: &str) -> Option<PathBuf> {
         Ok(_) => Some(std::path::absolute(file).unwrap_or_else(|_| file.clone())),
         Err(problem) => {
             tracing::warn!(
-                "iunctus: the report of the run was not written: {}",
-                problem.message.trim_start_matches("iunctus: ")
+                "uwe: the report of the run was not written: {}",
+                problem.message.trim_start_matches("uwe: ")
             );
             None
         }
@@ -50,15 +50,14 @@ pub fn after_run(arguments: &Arguments, run: &str) -> Option<PathBuf> {
 /// Writes the report of a run to a file, and gives its size in bytes.
 fn write(database: &Database, run: &str, file: &Path) -> Result<u64, Failure> {
     let html = run_page::report(database, run)
-        .map_err(|error| failure(format!("iunctus: {error}")))?
+        .map_err(|error| failure(format!("uwe: {error}")))?
         .ok_or_else(|| {
             failure(format!(
-                "iunctus: the run database has no run `{run}`; `iunctus runs` lists the runs"
+                "uwe: the run database has no run `{run}`; `uwe runs` lists the runs"
             ))
         })?;
-    let cannot = |error: std::io::Error| {
-        failure(format!("iunctus: cannot write {}: {error}", file.display()))
-    };
+    let cannot =
+        |error: std::io::Error| failure(format!("uwe: cannot write {}: {error}", file.display()));
     if let Some(folder) = file
         .parent()
         .filter(|folder| !folder.as_os_str().is_empty())

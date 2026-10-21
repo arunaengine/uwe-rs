@@ -1,6 +1,6 @@
 #!/bin/sh
 # Records org.json and everit Groovy results with Nextflow 26.04.6 and nf-validation 1.1.3.
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 lib="$HOME/.nextflow/plugins/nf-validation-1.1.3/lib"
 classes="$HOME/.nextflow/framework/26.04.6/nextflow-26.04.6-one.jar:$lib/json-20220320.jar"

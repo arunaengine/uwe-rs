@@ -1,6 +1,6 @@
 //! The declarations of the `output { }` block: each workflow output with its options, like
 //! `path 'fastq'` or `index { path 'samples.csv' }`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

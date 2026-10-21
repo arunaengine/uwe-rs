@@ -1,6 +1,6 @@
 //! The build phase of a run: calls of processes and workflows, operators on channels, pipes,
 //! and `.out`. The host wires the network; workflow bodies run here.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;

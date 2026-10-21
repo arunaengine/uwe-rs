@@ -1,5 +1,5 @@
 //! Config values: the names they may use, and names resolved when a task runs.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

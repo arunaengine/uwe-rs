@@ -1,5 +1,5 @@
 //! Regular expressions with the rules of `java.util.regex` for matching, splitting and replacing.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use fancy_regex::{Captures, Regex};

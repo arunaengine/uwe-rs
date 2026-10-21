@@ -1,6 +1,6 @@
 //! Templates, as Groovy's `SimpleTemplateEngine` and the process `template` function render
 //! them: text with `$name.path` and `${expression}` parts, whose names come from a binding.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;

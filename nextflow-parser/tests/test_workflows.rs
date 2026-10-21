@@ -1,5 +1,5 @@
 //! Checks the parser against `nextflow lint` on the text-only nf-core test workflows from `just test-workflows`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeSet;

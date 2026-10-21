@@ -1,6 +1,6 @@
 //! `collectFile`: values become the content of files, which are written when the source ends
 //! (channels spec, section 5.6).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::VecDeque;

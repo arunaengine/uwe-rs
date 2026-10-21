@@ -1,5 +1,5 @@
 //! Checks operators on values against Nextflow 26.04.6 (Groovy spec, sections 5.6, 8.5 and 8.13).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;

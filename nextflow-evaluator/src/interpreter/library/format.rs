@@ -1,6 +1,6 @@
 //! Java's `String.format`: `%[index$][flags][width][.precision]conversion` for the conversions
 //! `s`, `d`, `f`, `x`, `o`, `c`, `b`, `n` and `%`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use num_traits::Signed;

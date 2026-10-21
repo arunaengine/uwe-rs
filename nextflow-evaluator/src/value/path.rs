@@ -1,5 +1,5 @@
 //! Paths as Nextflow shows them: local paths, and remote paths like `s3://` and `https://`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 /// An absolute, normalised path. A remote path keeps the part of its URI before the path:

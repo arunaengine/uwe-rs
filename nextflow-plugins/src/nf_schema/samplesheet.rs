@@ -1,6 +1,6 @@
 //! `samplesheetToList`: the entries of a CSV, TSV, JSON or YAML samplesheet, checked against
 //! a schema and converted by it, as nf-schema does.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_evaluator::interpreter::{Error, parse_json, parse_yaml};

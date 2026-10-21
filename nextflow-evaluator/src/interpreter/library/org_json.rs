@@ -1,5 +1,5 @@
 //! Implements org.json objects and everit validation for legacy Nextflow library classes.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;

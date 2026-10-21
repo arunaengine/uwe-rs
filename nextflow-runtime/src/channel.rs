@@ -1,5 +1,5 @@
 //! Channels: queue channels, which every reader reads in full, and value channels, bound once.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::VecDeque;

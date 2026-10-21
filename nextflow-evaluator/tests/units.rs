@@ -1,5 +1,5 @@
 //! Checks `MemoryUnit` and `Duration` against Nextflow 26.04.6 (Groovy spec, 4.5, 5.6 and 6.4).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_evaluator::number::Number;

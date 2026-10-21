@@ -1,6 +1,6 @@
 //! Checks number and unit methods, unit properties and `as` conversions against Nextflow 26.04.6
 //! (Groovy spec, sections 4.5, 5.7, 8.9 and 10.8).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

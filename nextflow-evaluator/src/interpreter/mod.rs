@@ -1,5 +1,5 @@
 //! The interpreter: runs the lowered tree with Groovy's semantics.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod access;

@@ -1,6 +1,6 @@
 //! Groovy's `ConfigSlurper`, which old pipelines use in `lib/` to read their own config files,
 //! like nf-core/hicar reads the `publishDir` of a process from `conf/modules.config`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;

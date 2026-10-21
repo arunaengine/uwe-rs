@@ -1,6 +1,6 @@
 //! Checks that lowering gives legacy code the meaning of Nextflow's legacy parser, as
 //! `NXF_SYNTAX_PARSER=v1` runs it, and lists it in `Module::legacy` with the strict error.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_evaluator::lower::lower_module;

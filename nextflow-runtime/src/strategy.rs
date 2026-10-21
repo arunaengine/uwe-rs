@@ -1,5 +1,5 @@
 //! What Nextflow does when a task fails: its `errorStrategy`, and `maxRetries` for `retry`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_evaluator::interpreter::TaskDirective;

@@ -1,5 +1,5 @@
 //! `java.util.Date`: its text and Java's `SimpleDateFormat` patterns, in the local time zone.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use jiff::Timestamp;

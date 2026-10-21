@@ -1,6 +1,6 @@
 //! Typed processes, which `nextflow.enable.types = true` turns on, against a fake executor,
 //! as Nextflow 26.04.6 runs them.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

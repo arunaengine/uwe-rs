@@ -1,6 +1,6 @@
 //! Script syntax of the legacy parser that strict syntax rejects: the tree keeps it with its
 //! legacy meaning, and `Parsed::legacy` lists the errors of strict syntax (decision 14).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_parser::ast::{

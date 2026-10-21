@@ -1,5 +1,5 @@
 //! Channel factories and the first operators, with the rules of the channels spec, section 5.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

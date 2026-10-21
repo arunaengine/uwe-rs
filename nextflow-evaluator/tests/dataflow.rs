@@ -1,6 +1,6 @@
 //! Checks the build phase of a run: the interpreter hands factories, operators and process
 //! calls to the host, runs workflow bodies itself, and keeps `.out` of each call.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

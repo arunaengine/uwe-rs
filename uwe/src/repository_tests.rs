@@ -148,7 +148,7 @@ fn refuses_unsafe_archives() {
     let folder = tempfile::tempdir().unwrap();
     for files in [
         vec![("checkout/.git/HEAD", "bad")],
-        vec![("checkout/.iunctus-revision", "bad")],
+        vec![("checkout/.uwe-revision", "bad")],
         vec![("first/main.nf", ""), ("other/main.nf", "")],
     ] {
         assert!(unpack(archive(&files).as_slice(), folder.path()).is_err());

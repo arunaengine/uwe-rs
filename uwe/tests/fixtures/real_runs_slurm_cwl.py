@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-UWE = os.environ.get("UWE") or "iunctus"
+UWE = os.environ.get("UWE") or "uwe"
 OUTPUT = Path(os.environ.get("RECORD") or Path(__file__).with_name("real_runs_slurm_cwl.txt"))
 IMAGE = "debian:stable-slim"
 # The images that tests may name; others are left out to keep the downloads small.
@@ -139,7 +139,7 @@ def main():
     tests = yaml.safe_load((suite / "conformance_tests.yaml").read_text())
     chosen = [test for test in tests if "tool" in test
               and (not wanted or (test.get("id") or test.get("label")) in wanted)]
-    work = Path(tempfile.mkdtemp(prefix="iunctus-slurm-cwl-", dir=os.getcwd()))
+    work = Path(tempfile.mkdtemp(prefix="uwe-slurm-cwl-", dir=os.getcwd()))
     with ThreadPoolExecutor(PARALLEL) as pool:
         records = dict(zip((test.get("id") or test.get("label") for test in chosen),
                            pool.map(lambda test: compare(test, suite, work), chosen)))

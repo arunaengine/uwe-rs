@@ -45,11 +45,11 @@ workflow {
 /// Runs the binary in `directory`; the result has the exit code and the standard output and
 /// error.
 fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String) {
-    iunctus_with(directory, arguments, &[])
+    uwe_with(directory, arguments, &[])
 }
 
 /// Runs the binary in `directory` with more environment variables.
-fn iunctus_with(directory: &Path, arguments: &[&str], variables: &[(&str, &str)]) -> (i32, String) {
+fn uwe_with(directory: &Path, arguments: &[&str], variables: &[(&str, &str)]) -> (i32, String) {
     let output = common::command()
         .args(arguments)
         .current_dir(directory)
@@ -152,18 +152,18 @@ fn replays_recorded_container() {
         "main.nf",
         "-executor",
         "local",
-        "-iunctus-config",
+        "-uwe-config",
         "config.toml",
     ];
-    let (code, output) = iunctus_with(path, &arguments, &[("UWE_LOG", "info")]);
+    let (code, output) = uwe_with(path, &arguments, &[("UWE_LOG", "info")]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("sent the trace to"), "{output}");
     let (_, body) = received.recv().expect("the trace");
-    assert!(body.contains("\"iunctus.attempt.image\""), "{body}");
+    assert!(body.contains("\"uwe.attempt.image\""), "{body}");
     let [run] = runs(path).try_into().expect("one run");
     // The file that COUNT read is gone from its place; the store still has it by its digest.
     let stored = path.join(format!(
-        "cache/iunctus/store/runs/{run}/UPPER-1/1/work/upper.txt"
+        "cache/uwe/store/runs/{run}/UPPER-1/1/work/upper.txt"
     ));
     std::fs::remove_file(&stored).expect("removes the stored output");
 
@@ -206,10 +206,10 @@ fn delivers_run_traces() {
         &run,
         "-output",
         "trace.jsonl",
-        "-iunctus-config",
+        "-uwe-config",
         "config.toml",
     ];
-    let (code, output) = iunctus_with(path, &arguments, &[("UWE_TEST_OTLP", "Bearer t")]);
+    let (code, output) = uwe_with(path, &arguments, &[("UWE_TEST_OTLP", "Bearer t")]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains(&format!(
         "wrote the trace of run {run} to trace.jsonl: 5 spans"

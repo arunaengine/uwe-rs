@@ -161,7 +161,7 @@ pub fn tes_task(task: &Task, work: &Path) -> Value {
         "outputs": outputs,
         "resources": resources,
         "executors": executors,
-        "tags": { "iunctus-task": task.id.to_string(), "iunctus-step": task.step },
+        "tags": { "uwe-task": task.id.to_string(), "uwe-step": task.step },
     })
 }
 

@@ -167,7 +167,7 @@ mod config {
             .collect();
         if files.is_empty() {
             let user = config_file::user_file()
-                .map_or("~/.config/iunctus/config.toml".to_owned(), |file| {
+                .map_or("~/.config/uwe/config.toml".to_owned(), |file| {
                     file.display().to_string()
                 });
             report.add(

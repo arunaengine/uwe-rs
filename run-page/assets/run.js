@@ -114,7 +114,7 @@ function drawSummary() {
   }
   parts.push(el("details", {},
     el("summary", {}, "command line"),
-    el("pre", {}, ["iunctus", ...run.arguments].join(" "))));
+    el("pre", {}, ["uwe", ...run.arguments].join(" "))));
   view.parts.summary.replaceChildren(...parts);
   view.clock = view.parts.summary.querySelector("[data-time]");
   // The parameters and the command line side by side, until one opens.

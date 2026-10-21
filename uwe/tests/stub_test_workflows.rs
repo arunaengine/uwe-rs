@@ -82,7 +82,7 @@ fn stubs_match_oracle() {
             ])
             .args(["-profile", "test,docker", "-stub"])
             .args(["-graph", &graph.to_string_lossy()])
-            .args(["--outdir", "/tmp/iunctus-stub-out"])
+            .args(["--outdir", "/tmp/uwe-stub-out"])
             .env("XDG_CACHE_HOME", cache.path())
             .current_dir(cache.path())
             .output()

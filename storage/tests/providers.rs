@@ -17,7 +17,7 @@ use storage::settings::Kind;
 use storage::{Entry, Metadata, Settings, Storage, StorageError, StoreLocation};
 
 fn config(text: &str) -> ConfigFile {
-    ConfigFile::parse(text, Path::new("/home/me/.config/iunctus/config.toml")).expect("TOML")
+    ConfigFile::parse(text, Path::new("/home/me/.config/uwe/config.toml")).expect("TOML")
 }
 
 fn storage(text: &str) -> Storage {
@@ -72,7 +72,7 @@ fn s3_put_server(version: Option<&str>) -> (String, std::sync::mpsc::Receiver<(S
 #[test]
 fn parses_provider_settings() {
     let settings = Settings::from_config(&config(
-        "[store]\nlocation = \"s3://cache/iunctus\"\n\
+        "[store]\nlocation = \"s3://cache/uwe\"\n\
          [storage.lab]\ntype = \"s3\"\nprefixes = [\"s3://lab-data/\", \"s3://cache/\"]\n\
          endpoint = \"https://minio.lab.example.org/\"\naccess_key_id = \"lab\"\n\
          secret_access_key = { environment = \"LAB_SECRET\" }\n\
@@ -81,7 +81,7 @@ fn parses_provider_settings() {
          token = { environment = \"DATA_TOKEN\" }\nheaders = { X-Api-Key = \"key\" }\n",
     ))
     .expect("valid settings");
-    assert_eq!(settings.store.as_deref(), Some("s3://cache/iunctus"));
+    assert_eq!(settings.store.as_deref(), Some("s3://cache/uwe"));
     let names: Vec<&str> = settings.providers.iter().map(|p| p.name.as_str()).collect();
     assert_eq!(names, ["lab", "mirror", "web"]);
     let Kind::S3(lab) = &settings.providers[0].kind else {
@@ -149,7 +149,7 @@ fn gives_https_accounts() {
 
 #[test]
 fn locates_settings_errors() {
-    let file = "/home/me/.config/iunctus/config.toml";
+    let file = "/home/me/.config/uwe/config.toml";
     assert_eq!(
         settings_error("[storage.a]\nprefixes = [\"s3://a/\"]\n"),
         format!(

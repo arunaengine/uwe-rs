@@ -15,7 +15,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import real_runs_snakemake as local  # noqa: E402
 
-UWE = os.environ.get("UWE") or "iunctus"
+UWE = os.environ.get("UWE") or "uwe"
 OUTPUT = Path(os.environ.get("RECORD") or Path(__file__).with_name("real_runs_slurm_snakemake.txt"))
 IMAGE = "python:3-slim"
 ALLOWED = {"python:3-slim", "docker.io/python:3-slim", "debian:stable-slim",
@@ -140,7 +140,7 @@ def main():
     launched = local.launches()
     names = [folder.name for folder in sorted(tests.iterdir())
              if (folder / "Snakefile").is_file() and (not wanted or folder.name in wanted)]
-    work = Path(tempfile.mkdtemp(prefix="iunctus-slurm-snakemake-", dir=os.getcwd()))
+    work = Path(tempfile.mkdtemp(prefix="uwe-slurm-snakemake-", dir=os.getcwd()))
     with ThreadPoolExecutor(PARALLEL) as pool:
         results = pool.map(lambda name: compare(name, launched.get(name, []), tests, work),
                            names)

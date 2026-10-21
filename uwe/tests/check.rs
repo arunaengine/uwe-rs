@@ -79,7 +79,7 @@ fn reports_planning_problems() {
         "main.nf (Nextflow): nothing would stop a real run of 2 tasks in 2 steps.\n"
     );
     // No run was recorded, and no made-up file stayed.
-    let cache = directory.path().join("cache/iunctus");
+    let cache = directory.path().join("cache/uwe");
     assert!(!cache.join("runs.sqlite").exists());
     let checks = cache.join("scratch/check");
     let left = std::fs::read_dir(&checks).map_or(0, |entries| entries.count());

@@ -31,8 +31,8 @@ pub(crate) fn use_cache_folder(folder: PathBuf) {
     let _ = CACHE_FOLDER.set(folder);
 }
 
-/// The folder of `[cache] folder` of the config file, else `$XDG_CACHE_HOME/iunctus`, else
-/// `~/.cache/iunctus`.
+/// The folder of `[cache] folder` of the config file, else `$XDG_CACHE_HOME/uwe`, else
+/// `~/.cache/uwe`.
 pub(crate) fn cache_directory() -> PathBuf {
     if let Some(folder) = CACHE_FOLDER.get() {
         return folder.clone();
@@ -41,7 +41,7 @@ pub(crate) fn cache_directory() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
         .unwrap_or_else(std::env::temp_dir);
-    base.join("iunctus")
+    base.join("uwe")
 }
 
 /// Where CWL images that tools build are saved as archives for SLURM with Apptainer, named by

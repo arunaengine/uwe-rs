@@ -19,7 +19,7 @@ test13	same (2 files)
 test15	same (1 files)
 testHighWorkload	same (33 files)
 test_access_patterns	same: both differ from expected-results in fs-storage/test1.out
-test_all_temp	snakemake fails (exit 1): RuleException: ValueError in file "/tmp/iunctus-real-snakemake-wt2br1qh/test/test_all_temp/Snakefile", line 7: (known: it needs --all-temp, an option of Snakemake's test suite)
+test_all_temp	snakemake fails (exit 1): RuleException: ValueError in file "/tmp/uwe-real-snakemake-wt2br1qh/test/test_all_temp/Snakefile", line 7: (known: it needs --all-temp, an option of Snakemake's test suite)
 test_ambiguousruleexception	same: both fail
 test_ancient	skipped: reads remote files
 test_ancient_cli	same: both differ from expected-results in 2
@@ -77,7 +77,7 @@ test_default_storage_local_job	same (3 files)
 test_default_target	same (2 files)
 test_deferred_func_eval	same (1 files)
 test_delete_all_output	same: both fail
-test_delete_output	snakemake fails (exit 1): RuleException: CalledProcessError in file "/tmp/iunctus-real-snakemake-g8dehxd1/test/test_delete_output/Snakefile", line 36: (known: Snakemake fails here too: its job finds output.file, which the setup code of the Snakefile makes)
+test_delete_output	snakemake fails (exit 1): RuleException: CalledProcessError in file "/tmp/uwe-real-snakemake-g8dehxd1/test/test_delete_output/Snakefile", line 36: (known: Snakemake fails here too: its job finds output.file, which the setup code of the Snakefile makes)
 test_delete_temp_fs	same (1 files)
 test_deploy_hashing	skipped: needs a Conda environment
 test_deploy_script	skipped: needs a Conda environment
@@ -294,8 +294,8 @@ test_pathvars	same (6 files)
 test_pathvars_cycle	same: fails as the test expects
 test_pathvars_modules	same (7 files)
 test_pathvars_storage	same: both fail
-test_pep_pathlib	snakemake fails (exit 1): WorkflowError in file "/tmp/iunctus-real-snakemake-wt2br1qh/test/test_pep_pathlib/Snakefile", line 6: For PEP schema support, please install eido.
-test_peppy	snakemake fails (exit 1): WorkflowError in file "/tmp/iunctus-real-snakemake-wt2br1qh/test/test_peppy/Snakefile", line 4: For PEP schema support, please install eido.
+test_pep_pathlib	snakemake fails (exit 1): WorkflowError in file "/tmp/uwe-real-snakemake-wt2br1qh/test/test_pep_pathlib/Snakefile", line 6: For PEP schema support, please install eido.
+test_peppy	snakemake fails (exit 1): WorkflowError in file "/tmp/uwe-real-snakemake-wt2br1qh/test/test_peppy/Snakefile", line 4: For PEP schema support, please install eido.
 test_persistence_backend_db_run_directive_concurrency	same (100 files)
 test_pipe_depend	same: fails as the test expects
 test_pipes	same (2 files)
@@ -348,7 +348,7 @@ test_run_namedlist	same (1 files)
 test_same_wildcard	same (1 files)
 test_scatter_gather	same: both differ from expected-results in splitted/1-of-2.post.txt
 test_scatter_gather_multiple_processes	same: both differ from expected-results in split_b/1-of-2.post.txt
-test_scheduler_sequential_all_cores	snakemake fails (exit 1): RuleException: ValueError in file "/tmp/iunctus-real-snakemake-wt2br1qh/test/test_scheduler_sequential_all_cores/Snakefile", line 22:
+test_scheduler_sequential_all_cores	snakemake fails (exit 1): RuleException: ValueError in file "/tmp/uwe-real-snakemake-wt2br1qh/test/test_scheduler_sequential_all_cores/Snakefile", line 22:
 test_script	skipped: needs a Conda environment
 test_script_hy	skipped: needs a Conda environment
 test_script_import_snakemake_obj	same (1 files)
@@ -415,7 +415,7 @@ test_update_flag_fail	same: fails as the test expects
 test_update_flag_fail_cleanup	same: fails as the test expects
 test_url_include	skipped: reads remote files
 test_use_rule_same_module	same (2 files)
-test_validate	snakemake fails (exit 1): ModuleNotFoundError in file "/tmp/iunctus-real-snakemake-wt2br1qh/test/test_validate/Snakefile", line 4: No module named 'polars'
+test_validate	snakemake fails (exit 1): ModuleNotFoundError in file "/tmp/uwe-real-snakemake-wt2br1qh/test/test_validate/Snakefile", line 4: No module named 'polars'
 test_wildcard_annotatedstrings	same: both fail
 test_wildcard_count_ambiguity	same (1 files)
 test_wildcard_keyword	same (8 files)

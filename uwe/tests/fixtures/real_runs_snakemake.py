@@ -17,11 +17,11 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 from docker_no_pull import NoPull  # noqa: E402
 
-HOME = Path.home() / ".cache/iunctus/test-workflows/snakemake"
+HOME = Path.home() / ".cache/uwe/test-workflows/snakemake"
 TESTS = Path(os.environ.get("SNAKEMAKE_TESTS") or HOME / "snakemake-tests") / "tests"
 REPOSITORY = Path(__file__).resolve().parents[3]
 LAUNCHES = REPOSITORY / "snakemake-runtime/tests/fixtures/run_test_workflows_launches.txt"
-UWE = Path(os.environ.get("UWE") or "target/release/iunctus").resolve()
+UWE = Path(os.environ.get("UWE") or "target/release/uwe").resolve()
 SNAKEMAKE = os.environ.get("SNAKEMAKE") or "snakemake"
 OUTPUT = Path(__file__).with_name("real_runs_snakemake.txt")
 IMAGE = "pandas/pandas:pip-all"
@@ -309,7 +309,7 @@ def compare(name, fields, work, environment, images):
 
 def main():
     wanted = set(sys.argv[1:])
-    work = Path(tempfile.mkdtemp(prefix="iunctus-real-snakemake-"))
+    work = Path(tempfile.mkdtemp(prefix="uwe-real-snakemake-"))
     records = {}
     try:
         images = local_images()

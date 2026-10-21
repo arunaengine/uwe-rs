@@ -156,9 +156,9 @@ options:
                                       asked for the simulator, finished for real executors)
   -store <folder or address>          the cache store of real executors, in a folder or at an
                                       address of a storage provider, like s3://bucket/cache
-  -iunctus-config <file>              a config file of iunctus, read after
-                                      /etc/iunctus/config.toml and
-                                      ~/.config/iunctus/config.toml
+  -uwe-config <file>              a config file of iunctus, read after
+                                      /etc/uwe/config.toml and
+                                      ~/.config/uwe/config.toml
   -default-image <image>              the image of tasks that name none, for real executors
   -python-image <image>               the image of the Python packages without a stand-in
   -stub                               runs the stubs of tasks

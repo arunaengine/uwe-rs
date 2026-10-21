@@ -208,7 +208,7 @@ fn report_location_configurable() {
         "{html}"
     );
 
-    let config = path.join("iunctus.toml");
+    let config = path.join("uwe.toml");
     std::fs::write(&config, "[report]\nfile = \"reports/last.html\"\n").expect("writes");
     let config = config.to_string_lossy();
     let (code, output) = iunctus(
@@ -218,7 +218,7 @@ fn report_location_configurable() {
             "-executor",
             "simulator",
             "main.nf",
-            "-iunctus-config",
+            "-uwe-config",
             &config,
         ],
     );
@@ -288,7 +288,7 @@ fn leaves_resume_requests() {
     let id = id.expect("a run");
     let (code, output) = iunctus(path, &["resume", id, "approve", "message=yes"]);
     assert_eq!(code, 0, "{output}");
-    let folder = path.join("cache/iunctus/scratch/resume").join(id);
+    let folder = path.join("cache/uwe/scratch/resume").join(id);
     let request = std::fs::read_dir(folder).expect("the requests").next();
     let text = std::fs::read_to_string(request.expect("a request").unwrap().path()).unwrap();
     assert_eq!(text, r#"{"step":"approve","outputs":{"message":"yes"}}"#);

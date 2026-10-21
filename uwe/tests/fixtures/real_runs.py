@@ -13,8 +13,8 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(os.environ.get("REAL_RUNS") or Path.home() / ".cache/iunctus/real-runs")
-UWE = Path(os.environ.get("UWE") or "target/release/iunctus").resolve()
+ROOT = Path(os.environ.get("REAL_RUNS") or Path.home() / ".cache/uwe/real-runs")
+UWE = Path(os.environ.get("UWE") or "target/release/uwe").resolve()
 OUTPUT = Path(__file__).with_name("real_runs.txt")
 TIMEOUT = 3600
 
@@ -36,7 +36,7 @@ NEXTFLOW_LIMITS = """executor {
 NEXTFLOW_SLURM = """process.executor = 'slurm'
 executor {
     queueSize = 4
-    jobName = { "iunctus-native-" + task.hash.toString().substring(0, 8) }
+    jobName = { "uwe-native-" + task.hash.toString().substring(0, 8) }
 }
 apptainer.envWhitelist = 'HTTP_PROXY,HTTPS_PROXY,http_proxy,https_proxy,NO_PROXY,no_proxy'
 """
@@ -49,7 +49,7 @@ CASES = [
         "revision": "555d145",
         "native": ["nextflow", "run", "{workflow}", "-profile", "test,docker",
                    "--outdir", "{out}", "-c", "{limits}"],
-        "iunctus": ["{iunctus}", "run", "{workflow}", "-profile", "test,docker",
+        "uwe": ["{iunctus}", "run", "{workflow}", "-profile", "test,docker",
                     "--outdir", "{out}", "-executor", "local", "-max-pending", "4"],
         "notes": "The FastQC reports differ only in the date of the run (the native runs were a "
                  "day earlier); pipeline_dag is the graph page of iunctus, not the Mermaid page "
@@ -64,7 +64,7 @@ CASES = [
         "limits": NEXTFLOW_SLURM,
         "native": ["nextflow", "run", "{workflow}", "-profile", "test,apptainer",
                    "--outdir", "{out}", "-c", "{limits}"],
-        "iunctus": ["{iunctus}", "run", "{workflow}", "-profile", "test,apptainer",
+        "uwe": ["{iunctus}", "run", "{workflow}", "-profile", "test,apptainer",
                     "--outdir", "{out}", "-executor", "slurm", "-max-pending", "4"],
         "notes": "pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.",
     },
@@ -76,7 +76,7 @@ CASES = [
         "limits": NEXTFLOW_SLURM,
         "native": ["nextflow", "run", "{workflow}", "-profile", "test,apptainer",
                    "--outdir", "{out}", "-c", "{limits}"],
-        "iunctus": ["{iunctus}", "run", "{workflow}", "-profile", "test,apptainer",
+        "uwe": ["{iunctus}", "run", "{workflow}", "-profile", "test,apptainer",
                     "--outdir", "{out}", "-executor", "slurm", "-max-pending", "4"],
         "notes": "invalid: at daf99df the pipeline fails its own test profile in Nextflow "
                  "26.04.6 too: SAMTOOLS_FAIDX gets no FASTA and ends with exit 1, and iunctus "
@@ -91,7 +91,7 @@ CASES = [
         "limits": NEXTFLOW_SLURM,
         "native": ["nextflow", "run", "{workflow}", "-profile", "test,apptainer",
                    "--outdir", "{out}", "-c", "{limits}"],
-        "iunctus": ["{iunctus}", "run", "{workflow}", "-profile", "test,apptainer",
+        "uwe": ["{iunctus}", "run", "{workflow}", "-profile", "test,apptainer",
                     "--outdir", "{out}", "-executor", "slurm", "-max-pending", "4"],
         "notes": "pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.",
     },
@@ -111,7 +111,7 @@ def slurm_case(pipeline, revision, notes="pipeline_dag is the graph page of iunc
         "limits": NEXTFLOW_SLURM,
         "native": ["nextflow", *command, "-c", "{limits}"],
         # Without the cache, so that a run after a fix runs every task and takes its time.
-        "iunctus": ["{iunctus}", *command, "-executor", "slurm", "-max-pending", "4",
+        "uwe": ["{iunctus}", *command, "-executor", "slurm", "-max-pending", "4",
                     "-no-cache"],
         "notes": notes,
     }
@@ -158,7 +158,7 @@ def run(case, command, folder):
         "workflow": str(fetch(case)),
         "out": str(folder / "out"),
         "limits": str(limits),
-        "iunctus": str(UWE),
+        "uwe": str(UWE),
     }
     words = [word.format(**values) for word in command]
     environment = dict(os.environ, NXF_ANSI_LOG="false")
@@ -221,8 +221,8 @@ def took(first, second):
 def compare(case):
     """The record of a case: how many files match, and the names of those that do not."""
     first, second = native_manifests(case)
-    folder = ROOT / case["name"] / "iunctus"
-    code, seconds = run(case, case["iunctus"], folder)
+    folder = ROOT / case["name"] / "uwe"
+    code, seconds = run(case, case["uwe"], folder)
     results = Path(case.get("results", "{out}").format(out=folder / "out"))
     ours = manifest(results)
     native = first["files"]

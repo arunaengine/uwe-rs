@@ -18,10 +18,10 @@ from docker_no_pull import NoPull  # noqa: E402
 import yaml
 
 TESTS = Path(os.environ.get("ARGO_TEST_WORKFLOWS")
-             or Path.home() / ".cache/iunctus/test-workflows/argo")
+             or Path.home() / ".cache/uwe/test-workflows/argo")
 REPOSITORY = Path(__file__).resolve().parents[3]
 OUTCOMES = REPOSITORY / "argo-runtime/tests/fixtures/test-workflows/outcomes.txt"
-UWE = Path(os.environ.get("UWE") or "target/release/iunctus").resolve()
+UWE = Path(os.environ.get("UWE") or "target/release/uwe").resolve()
 OUTPUT = Path(__file__).with_name("real_runs_argo.txt")
 TIMEOUT = 300
 # The start of the record of a workflow whose images are not all on this machine.
@@ -114,7 +114,7 @@ def probable_cause(path):
 
 def stop_containers(work):
     """Kills the containers of iunctus that still run on folders of this script."""
-    names = subprocess.run(["docker", "ps", "--filter", "name=iunctus-", "--format",
+    names = subprocess.run(["docker", "ps", "--filter", "name=uwe-", "--format",
                             "{{.Names}}"], capture_output=True, text=True).stdout.split()
     for name in names:
         mounts = subprocess.run(["docker", "inspect", "--format",
@@ -201,7 +201,7 @@ def compare(name, work, environment, local):
 
 def main():
     wanted = set(sys.argv[1:])
-    work = Path(tempfile.mkdtemp(prefix="iunctus-real-argo-"))
+    work = Path(tempfile.mkdtemp(prefix="uwe-real-argo-"))
     records = {}
     try:
         local = local_images()

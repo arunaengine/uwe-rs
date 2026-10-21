@@ -9,7 +9,7 @@ mod common;
 
 /// The repodata of one small channel for linux-64, and its empty `noarch`.
 fn repodata(cache: &Path) {
-    let folder = cache.join("iunctus/conda/conda-forge");
+    let folder = cache.join("uwe/conda/conda-forge");
     let packages = serde_json::json!({
         "packages": {
             "libzlib-1.3.1-hb9d3cd8_2.tar.bz2": {
@@ -33,7 +33,7 @@ fn lock(folder: &Path, arguments: &[&str]) -> (i32, String, String) {
     std::fs::write(&config, "[network]\ndefault = 'none'\n").unwrap();
     let output = common::command()
         .arg("lock-environment")
-        .arg("-iunctus-config")
+        .arg("-uwe-config")
         .arg(&config)
         .args(arguments)
         .current_dir(folder)
@@ -150,7 +150,7 @@ fn rejects_unbound_capabilities() {
     ] {
         std::fs::write(&config, original.replace(from, to)).unwrap();
         let output = common::command()
-            .args(["graph", "main.nf", "-iunctus-config"])
+            .args(["graph", "main.nf", "-uwe-config"])
             .arg(&config)
             .current_dir(root)
             .env("XDG_CACHE_HOME", root.join("cache"))
@@ -166,7 +166,7 @@ fn rejects_unbound_capabilities() {
     )
     .unwrap();
     let output = common::command()
-        .args(["graph", "main.nf", "-iunctus-config"])
+        .args(["graph", "main.nf", "-uwe-config"])
         .arg(&config)
         .current_dir(root)
         .env("XDG_CACHE_HOME", root.join("cache"))
@@ -185,7 +185,7 @@ fn validates_target_capabilities() {
     let root = folder.path();
     let cache = root.join("cache");
     repodata(&cache);
-    let repodata = cache.join("iunctus/conda");
+    let repodata = cache.join("uwe/conda");
     let path = repodata.join("conda-forge/linux-64/repodata.json");
     let mut metadata: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
@@ -210,10 +210,8 @@ fn validates_target_capabilities() {
             .to_string(),
         )
         .unwrap();
-        let (actual, output, error) = lock(
-            root,
-            &["env.yaml", "-iunctus-config", config.to_str().unwrap()],
-        );
+        let (actual, output, error) =
+            lock(root, &["env.yaml", "-uwe-config", config.to_str().unwrap()]);
         assert_eq!(actual, code, "{error}");
         if code == 0 {
             let lock: serde_json::Value = serde_json::from_str(&output).unwrap();
@@ -225,10 +223,7 @@ fn validates_target_capabilities() {
         "dependencies:\n  - pip:\n    - '-e .'\n",
     )
     .unwrap();
-    let (code, _, error) = lock(
-        root,
-        &["env.yaml", "-iunctus-config", config.to_str().unwrap()],
-    );
+    let (code, _, error) = lock(root, &["env.yaml", "-uwe-config", config.to_str().unwrap()]);
     assert_eq!(code, 33);
     assert!(error.contains("pip"), "{error}");
 }
@@ -297,7 +292,7 @@ fn reuses_prepared_image() {
         let work = root.join(name);
         std::fs::create_dir(&work).unwrap();
         std::fs::write(work.join("env.yaml"), &environment).unwrap();
-        std::fs::write(work.join("Snakefile"), "rule result:\n    output: 'timezone.txt'\n    conda: 'env.yaml'\n    shell: \"test -s /opt/iunctus/share/zoneinfo/UTC && printf timezone-ready > {output}\"\n").unwrap();
+        std::fs::write(work.join("Snakefile"), "rule result:\n    output: 'timezone.txt'\n    conda: 'env.yaml'\n    shell: \"test -s /opt/uwe/share/zoneinfo/UTC && printf timezone-ready > {output}\"\n").unwrap();
         let output = common::command()
             .args([
                 "run",
@@ -306,7 +301,7 @@ fn reuses_prepared_image() {
                 "local",
                 "-no-cache",
                 "-no-network",
-                "-iunctus-config",
+                "-uwe-config",
             ])
             .arg(&config)
             .arg("-store")

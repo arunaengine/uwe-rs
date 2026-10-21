@@ -75,9 +75,9 @@ async fn memory_contract() {
 #[tokio::test]
 async fn names_remote_objects() {
     let operator = opendal::Operator::new(opendal::services::Memory::default()).expect("memory");
-    let store = Store::remote(operator, "s3://cache/iunctus/").expect("a store");
+    let store = Store::remote(operator, "s3://cache/uwe/").expect("a store");
     check_contract(&store).await;
-    assert_eq!(store.url("cas/x"), "s3://cache/iunctus/cas/x");
+    assert_eq!(store.url("cas/x"), "s3://cache/uwe/cas/x");
     assert_eq!(store.local_path("cas/x"), None);
 }
 
@@ -234,7 +234,7 @@ async fn s3_contract() {
     let unique = std::process::id().to_string();
     let options = S3Options {
         bucket,
-        prefix: Some(format!("iunctus-test-{unique}")),
+        prefix: Some(format!("uwe-test-{unique}")),
         endpoint: std::env::var("UWE_S3_ENDPOINT").ok(),
         region: Some(std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".into())),
     };

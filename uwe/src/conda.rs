@@ -501,8 +501,8 @@ mod tests {
             ("offline = true\n", true),
             ("offline = false\n[network]\ndefault = 'none'\n", true),
         ] {
-            let file = ConfigFile::parse(&format!("{settings}{extra}"), &root.join("iunctus.toml"))
-                .unwrap();
+            let file =
+                ConfigFile::parse(&format!("{settings}{extra}"), &root.join("uwe.toml")).unwrap();
             let config = Config::read(&file).unwrap().unwrap();
             assert_eq!(config.offline, offline);
             assert!(config.for_network(true).unwrap().offline);
@@ -511,7 +511,7 @@ mod tests {
         for registry in ["registry.example.org/team/conda", "127.0.0.1:5000/conda"] {
             let file = ConfigFile::parse(
                 &format!("{settings}registry = '{registry}'\n"),
-                &root.join("iunctus.toml"),
+                &root.join("uwe.toml"),
             )
             .unwrap();
             assert_eq!(
@@ -528,7 +528,7 @@ mod tests {
         ] {
             let file = ConfigFile::parse(
                 &format!("{settings}registry = '{registry}'\n"),
-                &root.join("iunctus.toml"),
+                &root.join("uwe.toml"),
             )
             .unwrap();
             assert!(Config::read(&file).is_err());

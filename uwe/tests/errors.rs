@@ -131,14 +131,14 @@ fn rejects_broken_configuration() {
         "[stroe]\nlocation = \"x\"\n",
     )
     .expect("writes the config file");
-    let arguments = ["run", "main.nf", "-iunctus-config", "lab.toml"];
+    let arguments = ["run", "main.nf", "-uwe-config", "lab.toml"];
     let (code, stderr) = iunctus(directory.path(), &arguments);
     assert_eq!(code, 3, "{stderr}");
     assert!(
         stderr.contains("iunctus has no section `stroe`"),
         "{stderr}"
     );
-    let arguments = ["run", "main.nf", "-iunctus-config", "none.toml"];
+    let arguments = ["run", "main.nf", "-uwe-config", "none.toml"];
     let (code, stderr) = iunctus(directory.path(), &arguments);
     assert_eq!(code, 3, "{stderr}");
     assert_form(&stderr);

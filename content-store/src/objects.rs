@@ -116,7 +116,7 @@ impl Store {
     }
 
     /// The location in the store of a path or address that [`Store::url`] gave, like
-    /// `runs/...` for `/home/me/.cache/iunctus/store/runs/...`; `None` for one outside it.
+    /// `runs/...` for `/home/me/.cache/uwe/store/runs/...`; `None` for one outside it.
     pub fn location_of(&self, url: &str) -> Option<String> {
         if let Some(shared) = &self.shared
             && let Some(location) = shared.location_of(url)

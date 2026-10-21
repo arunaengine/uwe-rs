@@ -15,10 +15,10 @@ from pathlib import Path
 import yaml
 
 HOME = Path.home()
-TESTS = Path(os.environ.get("CWL_TEST_WORKFLOWS") or HOME / ".cache/iunctus/test-workflows/cwl")
+TESTS = Path(os.environ.get("CWL_TEST_WORKFLOWS") or HOME / ".cache/uwe/test-workflows/cwl")
 DATA = Path(os.environ.get("CWL_CONFORMANCE_DATA")
-            or HOME / ".cache/iunctus/test-workflows/cwl-conformance-data")
-UWE = Path(os.environ.get("UWE") or "target/release/iunctus").resolve()
+            or HOME / ".cache/uwe/test-workflows/cwl-conformance-data")
+UWE = Path(os.environ.get("UWE") or "target/release/uwe").resolve()
 OUTPUT = Path(__file__).with_name("real_runs_cwl.txt")
 IMAGE = "debian:stable-slim"
 TIMEOUT = 300
@@ -162,7 +162,7 @@ def compare(test, suite, work, environment, images):
     native = ["cwltool", "--quiet", "--default-container", IMAGE, "--outdir",
               str(folder / "native"), tool] + ([job] if job else [])
     ours = [str(UWE), "run", tool, "-lang", "cwl", "-executor", "local", "-default-image",
-            IMAGE, "-store", str(work / "store"), "-output-dir", str(folder / "iunctus")]
+            IMAGE, "-store", str(work / "store"), "-output-dir", str(folder / "uwe")]
     ours += ["-inputs", job] if job else []
     native_code, native_output, native_error = run(native, folder, environment)
     our_code, our_output, our_error = run(ours, folder, environment)
@@ -185,7 +185,7 @@ def compare(test, suite, work, environment, images):
 
 def main():
     wanted = set(sys.argv[1:])
-    work = Path(tempfile.mkdtemp(prefix="iunctus-real-cwl-"))
+    work = Path(tempfile.mkdtemp(prefix="uwe-real-cwl-"))
     try:
         suite_root = work / "conformance"
         shutil.copytree(TESTS / "conformance", suite_root, symlinks=True)

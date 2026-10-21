@@ -9,7 +9,7 @@ shift
 for pipeline in "$@"; do
 	run="$(mktemp -d)"
 	(cd "$run" && nextflow run "$test_workflows/$pipeline" -profile test,docker -stub-run \
-		--outdir /tmp/iunctus-stub-out -ansi-log false > run.log 2>&1)
+		--outdir /tmp/uwe-stub-out -ansi-log false > run.log 2>&1)
 	rm -rf "$here/$pipeline"
 	mkdir -p "$here/$pipeline"
 	for header in "$run"/work/*/*/.command.run; do

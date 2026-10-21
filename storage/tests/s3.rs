@@ -68,18 +68,18 @@ async fn separates_input_store() {
         .unwrap();
     assert_eq!(std::fs::read_to_string(copy).unwrap(), "id,reads\na,1\n");
 
-    // The store lives below `s3://cache/iunctus` on the other server.
-    let StoreLocation::Objects(operator) = storage.store("s3://cache/iunctus").unwrap() else {
+    // The store lives below `s3://cache/uwe` on the other server.
+    let StoreLocation::Objects(operator) = storage.store("s3://cache/uwe").unwrap() else {
         panic!("an object store");
     };
     operator
         .write("cas/x", "stored")
         .await
         .expect("a write to the store");
-    let stored = storage.stat("s3://cache/iunctus/cas/x").await.unwrap();
+    let stored = storage.stat("s3://cache/uwe/cas/x").await.unwrap();
     assert_eq!(stored.map(|found| found.size), Some(6));
     // The server of the inputs has no such bucket: each provider has its own endpoint.
-    let crossed = storage.stat("s3://inputs/iunctus/cas/x").await.unwrap();
+    let crossed = storage.stat("s3://inputs/uwe/cas/x").await.unwrap();
     assert_eq!(crossed, None);
 }
 

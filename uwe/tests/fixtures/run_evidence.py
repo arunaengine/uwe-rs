@@ -13,7 +13,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-HOME = Path.home() / ".cache/iunctus/test-workflows"
+HOME = Path.home() / ".cache/uwe/test-workflows"
 PIPELINES = Path(os.environ.get("NF_CORE_TEST_WORKFLOWS") or HOME / "nf-core-text") / "pipelines"
 # The Nextflow workflows of WorkflowHub, which records name `workflowhub/<id>`.
 WORKFLOWHUB = Path(os.environ.get("WORKFLOWHUB_TEST_WORKFLOWS") or HOME / "nextflow-workflowhub")

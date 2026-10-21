@@ -13,7 +13,7 @@ use workflow_graph::DriverError;
 
 use crate::{Failure, failure, revision};
 
-pub(crate) const MARKER: &str = ".iunctus-revision";
+pub(crate) const MARKER: &str = ".uwe-revision";
 const MOST_BYTES: u64 = 256 << 20;
 const MOST_FILES: usize = 20_000;
 

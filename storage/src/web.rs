@@ -86,7 +86,7 @@ fn origin(url: &reqwest::Url) -> (String, Option<String>, Option<u16>) {
 /// The settings that the clients of iunctus share.
 fn builder() -> Result<reqwest::ClientBuilder, String> {
     let mut builder = reqwest::Client::builder()
-        .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("uwe/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(Duration::from_secs(30));
     if MOZILLA_ROOTS.get().is_some() {
         let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS

@@ -105,7 +105,7 @@ impl Server {
         listener.set_nonblocking(true).map_err(PageError::Start)?;
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
-            .thread_name("iunctus-page")
+            .thread_name("uwe-page")
             .enable_all()
             .build()
             .map_err(PageError::Start)?;
@@ -117,7 +117,7 @@ impl Server {
         });
         let (stop, stopped) = oneshot::channel();
         let thread = std::thread::Builder::new()
-            .name("iunctus-page".into())
+            .name("uwe-page".into())
             .spawn(move || {
                 runtime.block_on(async move {
                     let Ok(listener) = tokio::net::TcpListener::from_std(listener) else {

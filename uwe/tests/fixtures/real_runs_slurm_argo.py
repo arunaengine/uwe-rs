@@ -11,7 +11,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-UWE = os.environ.get("UWE") or "iunctus"
+UWE = os.environ.get("UWE") or "uwe"
 LOCAL = Path(__file__).with_name("real_runs_argo.txt")
 OUTPUT = Path(os.environ.get("RECORD") or Path(__file__).with_name("real_runs_slurm_argo.txt"))
 IMAGES = {"argoproj/argosay:v2", "alpine:3.23", "alpine:latest", "alpine", "python:alpine3.23"}
@@ -86,7 +86,7 @@ def main():
         names = [name for name in sorted(known)
                  if (tests / name).is_file() and images(tests / name)
                  and images(tests / name) <= IMAGES]
-    work = Path(tempfile.mkdtemp(prefix="iunctus-slurm-argo-", dir=os.getcwd()))
+    work = Path(tempfile.mkdtemp(prefix="uwe-slurm-argo-", dir=os.getcwd()))
     with ThreadPoolExecutor(PARALLEL) as pool:
         records = dict(zip(names, pool.map(
             lambda name: compare(name, known[name], tests, work), names)))

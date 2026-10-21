@@ -145,8 +145,7 @@ fn run(folder: &Path, url: &str, options: &[&str]) -> String {
 }
 
 fn database(folder: &Path) -> run_database::Database {
-    run_database::Database::open(&folder.join("cache/iunctus").join(run_database::FILE_NAME))
-        .unwrap()
+    run_database::Database::open(&folder.join("cache/uwe").join(run_database::FILE_NAME)).unwrap()
 }
 
 #[test]
@@ -298,7 +297,7 @@ fn refuses_repository_submodules() {
     assert_eq!(code, 33, "{text}");
     assert!(text.contains("submodules"));
     assert_eq!(
-        std::fs::read_dir(folder.path().join("cache/iunctus/pipelines"))
+        std::fs::read_dir(folder.path().join("cache/uwe/pipelines"))
             .unwrap()
             .count(),
         1
@@ -306,7 +305,7 @@ fn refuses_repository_submodules() {
     assert!(
         !folder
             .path()
-            .join("cache/iunctus")
+            .join("cache/uwe")
             .join(run_database::FILE_NAME)
             .exists()
     );

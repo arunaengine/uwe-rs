@@ -135,7 +135,7 @@ fn secrets_never_show() {
         "[storage.private]\ntype = \"https\"\nprefixes = [\"{server}/private/\"]\n\
          token = {{ environment = \"UWE_TEST_TOKEN\" }}\n"
     );
-    std::fs::write(path.join("iunctus.toml"), config).expect("writes the config file");
+    std::fs::write(path.join("uwe.toml"), config).expect("writes the config file");
 
     let right = [("UWE_TEST_TOKEN", TOKEN)];
     let run = [
@@ -143,8 +143,8 @@ fn secrets_never_show() {
         "-executor",
         "simulator",
         "main.nf",
-        "-iunctus-config",
-        "iunctus.toml",
+        "-uwe-config",
+        "uwe.toml",
     ];
     let (code, output) = iunctus(path, "cache", &right, &run);
     assert_eq!(code, 0, "{output}");
@@ -226,8 +226,8 @@ fn loads_provider_documents() {
         "[storage.private]\ntype = \"https\"\nprefixes = [\"{server}/private/\"]\n\
          token = {{ environment = \"UWE_TEST_TOKEN\" }}\n"
     );
-    std::fs::write(path.join("iunctus.toml"), config).expect("writes the config file");
-    let graph = ["graph", "wf.cwl", "-iunctus-config", "iunctus.toml"];
+    std::fs::write(path.join("uwe.toml"), config).expect("writes the config file");
+    let graph = ["graph", "wf.cwl", "-uwe-config", "uwe.toml"];
 
     let (code, output) = iunctus(path, "cache", &[("UWE_TEST_TOKEN", TOKEN)], &graph);
     assert_eq!(code, 0, "{output}");
@@ -291,7 +291,7 @@ fn separates_s3_providers() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     let config = format!(
-        "[store]\nlocation = \"s3://cache/iunctus\"\n\
+        "[store]\nlocation = \"s3://cache/uwe\"\n\
          [storage.inputs]\ntype = \"s3\"\nprefixes = [\"s3://inputs/\"]\nendpoint = \"{}\"\n\
          access_key_id = {{ environment = \"UWE_TEST_INPUTS_KEY\" }}\n\
          secret_access_key = {{ environment = \"UWE_TEST_INPUTS_SECRET\" }}\n\
@@ -303,9 +303,9 @@ fn separates_s3_providers() {
         variable("UWE_TEST_STORE_ENDPOINT"),
         path.join("results").display(),
     );
-    std::fs::write(path.join("iunctus.toml"), &config).expect("writes the config file");
+    std::fs::write(path.join("uwe.toml"), &config).expect("writes the config file");
     // The inputs go to the server of the inputs first.
-    let parsed = config_file::ConfigFile::parse(&config, Path::new("iunctus.toml")).expect("TOML");
+    let parsed = config_file::ConfigFile::parse(&config, Path::new("uwe.toml")).expect("TOML");
     let storage = storage::Storage::from_config(&parsed).expect("valid settings");
     let runtime = tokio::runtime::Runtime::new().expect("a runtime");
     let upload = |name: &str, text: &str| {
@@ -340,8 +340,8 @@ fn separates_s3_providers() {
         "main.nf",
         "-executor",
         "local",
-        "-iunctus-config",
-        "iunctus.toml",
+        "-uwe-config",
+        "uwe.toml",
     ];
     let (code, first) = iunctus(path, "cache", &environment, &run);
     assert_eq!(code, 0, "{first}");
@@ -353,7 +353,7 @@ fn separates_s3_providers() {
     assert_eq!(counts, ["4", "8"]);
     // The store lives on the second server: it holds the contents of the outputs.
     let stored = runtime
-        .block_on(storage.list("s3://cache/iunctus/"))
+        .block_on(storage.list("s3://cache/uwe/"))
         .expect("a listing of the store");
     let names: Vec<&str> = stored.iter().map(|entry| entry.name.as_str()).collect();
     assert!(names.contains(&"cas") && names.contains(&"ac"), "{names:?}");

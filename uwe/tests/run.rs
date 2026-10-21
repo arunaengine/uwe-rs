@@ -154,7 +154,7 @@ fn interrupt_stops_tasks() {
     assert_eq!(status.code(), Some(130));
     // Both containers stopped at once, long before their minute.
     assert!(begin.elapsed() < std::time::Duration::from_secs(30));
-    let scratch = directory.path().join("cache/iunctus/scratch");
+    let scratch = directory.path().join("cache/uwe/scratch");
     let left = std::fs::read_dir(&scratch).map_or(0, |entries| entries.count());
     assert_eq!(
         left,

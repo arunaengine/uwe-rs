@@ -124,7 +124,7 @@ impl Recorder {
         let (stop, stopped) = mpsc::channel::<()>();
         let shared = Arc::clone(&writer);
         let thread = std::thread::Builder::new()
-            .name("iunctus-recorder".into())
+            .name("uwe-recorder".into())
             .spawn(move || {
                 while let Err(RecvTimeoutError::Timeout) = stopped.recv_timeout(BATCH) {
                     lock(&shared).commit_if_old();

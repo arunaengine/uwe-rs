@@ -782,7 +782,7 @@ mod tests {
     #[test]
     fn loads_remote_staging() {
         let text = "[executor.slurm]\nstaging = 'object-store'\nstaging_root = 's3://b/s'\n\
-                    helper_url = 'https://example.org/iunctus'\nhelper_sha256 = '";
+                    helper_url = 'https://example.org/uwe'\nhelper_sha256 = '";
         let settings = read(&format!("{text}{}'\n", "AB".repeat(32))).expect("settings");
         let helper = settings.slurm_helper.expect("a helper");
         assert!(
@@ -805,9 +805,9 @@ mod tests {
         assert!(settings.slurm_helper.is_none());
         let current = std::env::current_exe().expect("this program");
         assert_eq!(settings.slurm_helper_file, Some(current));
-        let file = read(&format!("{text}helper_file = '/opt/iunctus-arm64'\n"));
+        let file = read(&format!("{text}helper_file = '/opt/uwe-arm64'\n"));
         let file = file.expect("settings").slurm_helper_file;
-        assert_eq!(file.as_deref(), Some(Path::new("/opt/iunctus-arm64")));
+        assert_eq!(file.as_deref(), Some(Path::new("/opt/uwe-arm64")));
         assert!(
             read("[executor.slurm]\n")
                 .expect("settings")
@@ -824,11 +824,11 @@ mod tests {
         assert!(!helper.image_volume);
         let text = format!("{text}staging_access = 'credentials'\n");
         assert!(read(&text).unwrap_err().contains("staging_secret"));
-        let text = format!("{text}staging_secret = 'iunctus-staging'\n");
+        let text = format!("{text}staging_secret = 'uwe-staging'\n");
         let helper = read(&text).expect("settings").kubernetes_helper;
         assert_eq!(
             helper.expect("a helper").secret.as_deref(),
-            Some("iunctus-staging")
+            Some("uwe-staging")
         );
         assert!(read(&format!("{text}helper_file = '/a'\n")).is_err());
         assert!(read(&format!("{text}helper_download_image = 'b'\n")).is_err());
@@ -840,7 +840,7 @@ mod tests {
         let current = std::env::current_exe().expect("this program");
         assert_eq!(settings.kubernetes_helper_file, Some(current));
         let text = format!(
-            "{text}helper_file = '/opt/iunctus-arm64'\nhelper_download_image = 'mirror/busybox'\n"
+            "{text}helper_file = '/opt/uwe-arm64'\nhelper_download_image = 'mirror/busybox'\n"
         );
         let settings = read(&text).expect("settings");
         assert_eq!(
@@ -848,15 +848,15 @@ mod tests {
             "mirror/busybox"
         );
         let file = settings.kubernetes_helper_file;
-        assert_eq!(file.as_deref(), Some(Path::new("/opt/iunctus-arm64")));
+        assert_eq!(file.as_deref(), Some(Path::new("/opt/uwe-arm64")));
         assert!(read(&format!("{text}helper_mount = 'init-container'\n")).is_err());
         let text = "[executor.kubernetes.shared_volume]\nnfs_server = 'nfs.example.org'\n\
-                    nfs_path = '/export'\npath = '/mnt/iunctus'\n";
+                    nfs_path = '/export'\npath = '/mnt/uwe'\n";
         let volumes = read(text).expect("settings").kubernetes_volumes;
         let kubernetes_executor::Volumes::Under { root, source } = volumes else {
             panic!("one volume");
         };
-        assert_eq!(root, Path::new("/mnt/iunctus"));
+        assert_eq!(root, Path::new("/mnt/uwe"));
         assert_eq!(source["nfs"]["server"], "nfs.example.org");
         let claim = "[executor.kubernetes.shared_volume]\nclaim = 'cache'\nnfs_path = '/x'\n\
                      path = '/mnt'\n";

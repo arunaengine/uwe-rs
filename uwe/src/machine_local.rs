@@ -164,7 +164,7 @@ fn cache_folder(store: Option<&Path>, report: &mut Report) {
 /// Whether iunctus can make the folder and write into it.
 fn writable(folder: &Path) -> Result<(), String> {
     std::fs::create_dir_all(folder).map_err(|error| error.to_string())?;
-    let probe = folder.join(format!(".iunctus-check-{}", std::process::id()));
+    let probe = folder.join(format!(".uwe-check-{}", std::process::id()));
     std::fs::write(&probe, b"").map_err(|error| error.to_string())?;
     let _ = std::fs::remove_file(&probe);
     Ok(())

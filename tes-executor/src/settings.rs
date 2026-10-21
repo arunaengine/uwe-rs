@@ -121,11 +121,11 @@ impl Settings {
         let idempotency_tag = table.text("idempotency_tag")?;
         if idempotency_tag
             .as_deref()
-            .is_some_and(|tag| tag.is_empty() || tag == "iunctus-attempt")
+            .is_some_and(|tag| tag.is_empty() || tag == "uwe-attempt")
         {
             return Err(table.invalid(
                 "idempotency_tag",
-                "must be nonempty and differ from iunctus-attempt",
+                "must be nonempty and differ from uwe-attempt",
             ));
         }
         let staging_minutes = match table.integer("staging_minutes")? {

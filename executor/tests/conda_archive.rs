@@ -58,9 +58,9 @@ fn inspect(preparation: &ImagePreparation) -> Reply {
         json!({
             "Id": receipt(preparation).image_id(), "Os": "linux", "Architecture": "amd64",
             "Config": {"Labels": {
-                "org.iunctus.conda.preparation": preparation.digest(),
-                "org.iunctus.conda.base": preparation.base(),
-                "org.iunctus.conda.recipe": preparation.recipe_digest()
+                "org.uwe.conda.preparation": preparation.digest(),
+                "org.uwe.conda.base": preparation.base(),
+                "org.uwe.conda.recipe": preparation.recipe_digest()
             }}
         })
         .to_string(),

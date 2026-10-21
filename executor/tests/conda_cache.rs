@@ -58,7 +58,7 @@ fn receipt(p: &ImagePreparation) -> CompletedImage {
 fn inspect(p: &ImagePreparation) -> Reply {
     (format!("sha256:{}/json", "b".repeat(64)), 200, json!({
         "Id": receipt(p).image_id(), "Os": "linux", "Architecture": "amd64",
-        "Config": {"Labels": {"org.iunctus.conda.preparation": p.digest(), "org.iunctus.conda.base": p.base(), "org.iunctus.conda.recipe": p.recipe_digest()}}
+        "Config": {"Labels": {"org.uwe.conda.preparation": p.digest(), "org.uwe.conda.base": p.base(), "org.uwe.conda.recipe": p.recipe_digest()}}
     }).to_string())
 }
 
@@ -130,7 +130,7 @@ async fn engine(
             reader.read_line(&mut line).unwrap();
             assert!(line.contains(&expected), "{line} expected {expected}");
             if expected == "/images/json?" {
-                assert!(line.contains("org.iunctus.conda.preparation"));
+                assert!(line.contains("org.uwe.conda.preparation"));
             }
             let mut size = 0;
             let mut chunked = false;
@@ -820,9 +820,9 @@ async fn publishes_local_image() {
         cpuperiod: Some(100_000),
         cpuquota: Some(100_000),
         labels: Some(std::collections::HashMap::from([
-            ("org.iunctus.conda.preparation".into(), p.digest().into()),
-            ("org.iunctus.conda.base".into(), p.base().into()),
-            ("org.iunctus.conda.recipe".into(), p.recipe_digest()),
+            ("org.uwe.conda.preparation".into(), p.digest().into()),
+            ("org.uwe.conda.base".into(), p.base().into()),
+            ("org.uwe.conda.recipe".into(), p.recipe_digest()),
         ])),
         ..Default::default()
     };

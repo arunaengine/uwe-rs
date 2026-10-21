@@ -124,7 +124,7 @@ fn sends_captured_outputs() {
 #[test]
 fn installs_this_program() {
     let folder = tempfile::tempdir().unwrap();
-    let file = folder.path().join("iunctus");
+    let file = folder.path().join("uwe");
     main(&["install".into(), file.to_string_lossy().into_owned()]).unwrap();
     let metadata = std::fs::metadata(&file).unwrap();
     assert_eq!(metadata.permissions().mode() & 0o777, 0o755);

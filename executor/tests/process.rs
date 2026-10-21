@@ -7,7 +7,7 @@ use executor::process::{ContainerProcess, ContainerSpec, ProcessError, run_to_en
 fn spec(name: &str, script: &str) -> ContainerSpec {
     ContainerSpec {
         engine: std::env::var("UWE_ENGINE").unwrap_or_default(),
-        name: format!("iunctus-test-{name}-{}", std::process::id()),
+        name: format!("uwe-test-{name}-{}", std::process::id()),
         image: "debian:stable-slim".into(),
         entrypoint: Some("/bin/bash".into()),
         command: vec!["-c".into(), script.into()],

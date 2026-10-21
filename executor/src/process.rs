@@ -114,7 +114,7 @@ fn runtime() -> Result<&'static Runtime, ProcessError> {
     let runtime = RUNTIME.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
-            .thread_name("iunctus-containers")
+            .thread_name("uwe-containers")
             .enable_all()
             .build()
             .map_err(|error| error.to_string())
@@ -786,7 +786,7 @@ mod tests {
         let cancel = CancellationToken::new();
         cancel.cancel();
         let spec = ContainerSpec {
-            engine: "/nowhere/iunctus.sock".into(),
+            engine: "/nowhere/uwe.sock".into(),
             ..ContainerSpec::default()
         };
         assert!(matches!(
@@ -921,17 +921,14 @@ mod tests {
     #[test]
     fn explains_missing_engine() {
         let spec = ContainerSpec {
-            engine: "/nowhere/iunctus.sock".into(),
+            engine: "/nowhere/uwe.sock".into(),
             ..ContainerSpec::default()
         };
         let Err(error) = ContainerProcess::start(&spec) else {
             panic!("an engine that does not exist started a container");
         };
         assert!(matches!(error, ProcessError::NoEngine(_)), "{error}");
-        assert!(
-            error.to_string().contains("/nowhere/iunctus.sock"),
-            "{error}"
-        );
+        assert!(error.to_string().contains("/nowhere/uwe.sock"), "{error}");
     }
 
     #[test]
@@ -949,7 +946,7 @@ mod tests {
         };
         for memory in [None, Some(0), Some(u64::MAX)] {
             let spec = ContainerSpec {
-                engine: "/nowhere/iunctus.sock".into(),
+                engine: "/nowhere/uwe.sock".into(),
                 memory,
                 ..Default::default()
             };

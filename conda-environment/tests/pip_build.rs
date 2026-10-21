@@ -93,7 +93,7 @@ async fn builds_requests_image() {
 async fn qualify() {
     let docker = Docker::connect_with_local_defaults().unwrap();
     let existed = docker.inspect_image(BASE).await.is_ok();
-    let tag = format!("iunctus-pip-test-{}", std::process::id());
+    let tag = format!("uwe-pip-test-{}", std::process::id());
     let result = std::panic::AssertUnwindSafe(async {
     if !existed {
         let mut pulling = docker.create_image(
@@ -180,7 +180,7 @@ async fn qualify() {
             if let Some(error) = step.error_detail.and_then(|error| error.message) { return Err(error); }
             if let Some(stream) = step.stream { print!("{stream}"); }
         }
-        let output = run(&docker, &tag, vec!["/opt/iunctus/bin/python".into(), "-c".into(), "import requests; assert requests.__version__ == '2.32.3'; print('requests=' + requests.__version__)".into()]).await?;
+        let output = run(&docker, &tag, vec!["/opt/uwe/bin/python".into(), "-c".into(), "import requests; assert requests.__version__ == '2.32.3'; print('requests=' + requests.__version__)".into()]).await?;
         println!("{output}");
         Ok::<_, String>(())
     }.await;

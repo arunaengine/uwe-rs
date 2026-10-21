@@ -94,7 +94,7 @@ pub fn pull_options(
 fn head(name: &str, root: &Path) -> Vec<String> {
     vec![
         "--parsable".to_owned(),
-        format!("--job-name=iunctus-{name}"),
+        format!("--job-name=uwe-{name}"),
         format!("--chdir={}", root.display()),
         format!("--output={}", root.join(CONTROL).join(LOG).display()),
         "--nodes=1".into(),
@@ -351,7 +351,7 @@ mod tests {
         workdir: Option<&'a str>,
     ) -> ContainerRun<'a> {
         ContainerRun {
-            name: "iunctus-run-P-1-1",
+            name: "uwe-run-P-1-1",
             image,
             root: Path::new("/shared/scratch/run-P-1-1"),
             workdir,
@@ -398,7 +398,7 @@ mod tests {
         let options = sbatch_options(job, root, 0, &["--account=lab".into()]);
         let expected = [
             "--parsable",
-            "--job-name=iunctus-run-P-1-1",
+            "--job-name=uwe-run-P-1-1",
             "--chdir=/shared/scratch/run-P-1-1",
             "--output=/shared/scratch/run-P-1-1/control/slurm.log",
             "--nodes=1",
@@ -543,7 +543,7 @@ mod tests {
         let command = (script.lines())
             .find(|line| line.starts_with("'podman'"))
             .expect("the command");
-        let expected = "'podman' 'run' '--init' '--rm' '--name' 'iunctus-run-P-1-1' \
+        let expected = "'podman' 'run' '--init' '--rm' '--name' 'uwe-run-P-1-1' \
             '--entrypoint' 'sh' '--userns=keep-id' '--user' '1000:100' \
             '--cap-drop' 'ALL' '--security-opt' 'no-new-privileges' \
             '--volume' '/shared/scratch/run-P-1-1:/shared/scratch/run-P-1-1' \

@@ -111,7 +111,7 @@ impl ContainerEngine {
                 } else {
                     inspect(self, tag).await?.id.ok_or_else(|| self.image_error("prepared image has no ID"))?
                 };
-                self.tag_image(&id, &format!("iunctus-cwl:{}", id.trim_start_matches("sha256:"))).await?;
+                self.tag_image(&id, &format!("uwe-cwl:{}", id.trim_start_matches("sha256:"))).await?;
                 Ok(id)
             }) => result.unwrap_or_else(|_| Err(self.image_error("image preparation exceeded 600 seconds"))),
         }

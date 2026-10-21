@@ -250,7 +250,7 @@ fn reports_failures() {
     let error = run(
         &executor,
         "task-4",
-        &spec(Some("iunctus.invalid/none:0"), &[]),
+        &spec(Some("uwe.invalid/none:0"), &[]),
         &staged,
     )
     .unwrap_err();
@@ -775,7 +775,7 @@ fn releases_failed_daemons() {
     let found = runtime().block_on(
         engine
             .client()
-            .inspect_container(&format!("iunctus-{name}"), None),
+            .inspect_container(&format!("uwe-{name}"), None),
     );
     assert!(found.is_err(), "the container of the daemon is gone");
 }
@@ -809,7 +809,7 @@ fn daemons_keep_time() {
     let engine = runtime()
         .block_on(ContainerEngine::find())
         .expect("an engine");
-    let container = format!("iunctus-{name}");
+    let container = format!("uwe-{name}");
     let running = || {
         let found = runtime().block_on(engine.client().inspect_container(&container, None));
         found.ok().and_then(|found| found.state?.running) == Some(true)

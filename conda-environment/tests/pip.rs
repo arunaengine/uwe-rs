@@ -376,7 +376,7 @@ fn builds_pinned_context() {
     assert_eq!(
         requirements.unwrap(),
         format!(
-            "file:///tmp/iunctus-pip-packages/0/{} --hash=sha256:{}\n",
+            "file:///tmp/uwe-pip-packages/0/{} --hash=sha256:{}\n",
             package.file, package.sha256
         )
     );

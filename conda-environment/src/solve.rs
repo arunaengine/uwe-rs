@@ -177,7 +177,7 @@ pub(crate) fn resolve(
 fn qualifier(kind: &str, value: &str) -> String {
     let digest = Sha256::digest(value.as_bytes());
     let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
-    format!("iunctus-{kind}-{hex}")
+    format!("uwe-{kind}-{hex}")
 }
 
 fn qualified(mut spec: rattler_conda_types::MatchSpec) -> rattler_conda_types::MatchSpec {

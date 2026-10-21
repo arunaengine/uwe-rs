@@ -206,17 +206,17 @@ async fn leave(operator: &Operator, objects: &Store, task: &Value) -> Vec<Value>
         let path = output["path"].as_str().unwrap();
         let url = output["url"].as_str().unwrap();
         let entries: Vec<(&str, &str)> = match path {
-            "/iunctus/control/exit" => vec![("", "0\n")],
-            "/iunctus/control/manifest" => {
+            "/uwe/control/exit" => vec![("", "0\n")],
+            "/uwe/control/manifest" => {
                 vec![("", "file out/a.txt\ndirectory tree\ndirectory empty\n")]
             }
-            "/iunctus/control/objects" => vec![("", "1 ./out/a.txt\n2 ./tree/deep/.hidden\n")],
-            "/iunctus/control/stdout" => vec![("", "captured output\n")],
-            "/iunctus/control/stderr" => vec![("", "")],
-            "/iunctus/control/start" => vec![("", "1700000000\n")],
-            "/iunctus/control/end" => vec![("", "1700000001\n")],
-            "/iunctus/control/usage" => vec![("", "")],
-            "/iunctus/transfer/*" => vec![("1", "alpha beta\n"), ("2", "hidden\n")],
+            "/uwe/control/objects" => vec![("", "1 ./out/a.txt\n2 ./tree/deep/.hidden\n")],
+            "/uwe/control/stdout" => vec![("", "captured output\n")],
+            "/uwe/control/stderr" => vec![("", "")],
+            "/uwe/control/start" => vec![("", "1700000000\n")],
+            "/uwe/control/end" => vec![("", "1700000001\n")],
+            "/uwe/control/usage" => vec![("", "")],
+            "/uwe/transfer/*" => vec![("1", "alpha beta\n"), ("2", "hidden\n")],
             _ => vec![("a.txt", "alpha beta\n")],
         };
         for (suffix, bytes) in entries {
@@ -362,11 +362,7 @@ async fn preserves_sibling_objects() {
     let task = server.documents.lock().unwrap()[0].clone();
     let restored = folder.path().join("restored");
     for input in task["inputs"].as_array().unwrap() {
-        let Some(relative) = input["path"]
-            .as_str()
-            .unwrap()
-            .strip_prefix("/iunctus/work/")
-        else {
+        let Some(relative) = input["path"].as_str().unwrap().strip_prefix("/uwe/work/") else {
             continue;
         };
         let path = restored.join(relative);
@@ -483,7 +479,7 @@ async fn restores_object_outputs() {
     let task = server.documents.lock().unwrap()[0].clone();
     assert_eq!(
         task["inputs"][1]["path"],
-        "/iunctus/work/directory/nested/b.txt"
+        "/uwe/work/directory/nested/b.txt"
     );
     for (index, bytes) in [(0, b"alpha".as_slice()), (1, b"beta".as_slice())] {
         let key = objects

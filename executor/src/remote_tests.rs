@@ -180,7 +180,7 @@ async fn cleans_attempts() {
 
 /// A binary for the jobs in the folder `folder`.
 fn binary(folder: &Path, bytes: &[u8]) -> Binary {
-    let file = folder.join("iunctus");
+    let file = folder.join("uwe");
     std::fs::write(&file, bytes).unwrap();
     Binary {
         file,
@@ -266,7 +266,7 @@ async fn refuses_unplaceable_inputs() {
 fn s3_stage(name: &str, credentials: bool) -> RemoteStage {
     let options = content_store::S3Options {
         bucket: std::env::var("UWE_S3_BUCKET").expect("UWE_S3_BUCKET is set"),
-        prefix: Some(format!("iunctus-{name}-{}", std::process::id())),
+        prefix: Some(format!("uwe-{name}-{}", std::process::id())),
         endpoint: std::env::var("UWE_S3_ENDPOINT").ok(),
         region: Some(std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".into())),
     };
@@ -283,7 +283,7 @@ fn s3_stage(name: &str, credentials: bool) -> RemoteStage {
 /// providers of `UWE_TEST_STORAGE`, as iunctus opens it.
 fn configured_stage(root: &str) -> RemoteStage {
     let root = std::env::var(root).expect("the address of the staging root");
-    let root = format!("{root}/iunctus-remote-{}", std::process::id());
+    let root = format!("{root}/uwe-remote-{}", std::process::id());
     let text = std::env::var("UWE_TEST_STORAGE").expect("UWE_TEST_STORAGE is set");
     let config = config_file::ConfigFile::parse(&text, Path::new("storage.toml")).unwrap();
     let storage = storage::Storage::from_config(&config).unwrap();

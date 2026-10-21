@@ -218,7 +218,7 @@ impl ObjectStage {
                     })
                     .collect(),
             }],
-            tags: BTreeMap::from([("iunctus-attempt".into(), job.name.into())]),
+            tags: BTreeMap::from([("uwe-attempt".into(), job.name.into())]),
             ..Task::default()
         };
         super::outputs::declare(&mut task, job, &work, &self.objects, &prefix, shell)?;

@@ -23,11 +23,11 @@ use task_model::{
 };
 use tokio_util::sync::CancellationToken;
 
-const TOKEN: &str = "iunctus-test-token";
-const NAMESPACE: &str = "iunctus-test";
-const JOBS: &str = "/apis/batch/v1/namespaces/iunctus-test/jobs";
-const PODS: &str = "/api/v1/namespaces/iunctus-test/pods";
-const EVENTS: &str = "/api/v1/namespaces/iunctus-test/events";
+const TOKEN: &str = "uwe-test-token";
+const NAMESPACE: &str = "uwe-test";
+const JOBS: &str = "/apis/batch/v1/namespaces/uwe-test/jobs";
+const PODS: &str = "/api/v1/namespaces/uwe-test/pods";
+const EVENTS: &str = "/api/v1/namespaces/uwe-test/events";
 
 /// A Job that the fake server runs.
 struct Running {
@@ -122,7 +122,7 @@ fn start(folder: &Path, job: &Value) -> Running {
             command
                 .iter()
                 .map(|word| match word.as_str().unwrap_or_default() {
-                    "/iunctus" | "/iunctus-helper/iunctus" => quote(&helper.to_string_lossy()),
+                    "/uwe" | "/uwe-helper/uwe" => quote(&helper.to_string_lossy()),
                     // This machine may have no `wget`, which the pod downloads the helper with.
                     word if word.starts_with("wget ") => {
                         quote(&word.replacen("wget -q -O", "curl -fsSL -o", 1))
@@ -753,7 +753,7 @@ async fn returns_job_outputs() {
         calls.first().map(String::as_str),
         Some(&*format!("POST {JOBS}"))
     );
-    let deleted = format!("DELETE {JOBS}/iunctus-run-p-1-1");
+    let deleted = format!("DELETE {JOBS}/uwe-run-p-1-1");
     assert!(calls.contains(&deleted), "{calls:?}");
     assert!(
         calls
@@ -777,11 +777,11 @@ async fn waits_for_quota() {
     backend.start_grace = Duration::from_millis(500);
     let server = root.path().join("server");
     std::fs::write(server.join("quota"), "").expect("takes the quota");
-    let quota = "pods \"iunctus-run-p-20-1-x\" is forbidden: exceeded quota: compute";
-    let refused = "pods \"iunctus-run-p-21-1-x\" is forbidden: violates PodSecurity";
+    let quota = "pods \"uwe-run-p-20-1-x\" is forbidden: exceeded quota: compute";
+    let refused = "pods \"uwe-run-p-21-1-x\" is forbidden: violates PodSecurity";
     let events = json!([
-        event("Job", "iunctus-run-p-20-1", "FailedCreate", quota),
-        event("Job", "iunctus-run-p-21-1", "FailedCreate", refused),
+        event("Job", "uwe-run-p-20-1", "FailedCreate", quota),
+        event("Job", "uwe-run-p-21-1", "FailedCreate", refused),
     ]);
     std::fs::write(server.join("events.json"), events.to_string()).expect("writes");
     let spec = spec("debian:stable-slim", "echo done > out.txt");
@@ -865,7 +865,7 @@ async fn fails_unschedulable_pods() {
     let scaled = "pod triggered scale-up: [{pool 1->2 (max: 3)}]";
     let events = json!([event(
         "Pod",
-        "iunctus-run-p-22-1-pod",
+        "uwe-run-p-22-1-pod",
         "TriggeredScaleUp",
         scaled
     )]);
@@ -1167,7 +1167,7 @@ async fn cancelled_jobs_stop() {
         "{result:?}"
     );
     let state = state.lock().expect("the state");
-    assert!(state.jobs["iunctus-run-p-4-1"].deleted);
+    assert!(state.jobs["uwe-run-p-4-1"].deleted);
     assert!(!root.path().join("scratch/run-P-4-1").exists());
 }
 
@@ -1211,12 +1211,12 @@ async fn recovers_lost_submissions() {
     assert_eq!(finished.expect("the job ends").exit_code, Some(0));
     assert!(!journal.exists());
     assert_eq!(state.lock().unwrap().submitted.len(), 2);
-    assert!(state.lock().unwrap().jobs["iunctus-ambiguous"].deleted);
+    assert!(state.lock().unwrap().jobs["uwe-ambiguous"].deleted);
     // A Job that the cluster never took is lost, and blocks nothing.
     let never = backend.scratch.join("never");
     std::fs::create_dir_all(&never).unwrap();
     std::fs::write(never.join("remote.lock"), "").unwrap();
-    record["name"] = json!("iunctus-never");
+    record["name"] = json!("uwe-never");
     std::fs::write(never.join("remote.json"), record.to_string()).unwrap();
     age(&never.join("remote.json"));
     backend.reconcile().await.unwrap();
@@ -1255,14 +1255,14 @@ async fn recovers_dropped_attempts() {
     // A process that another test starts may hold a copy of the lock for a moment, and then
     // the orphan looks alive; a later admission recovers it.
     for _ in 0..100 {
-        if state.lock().unwrap().jobs["iunctus-orphan"].deleted {
+        if state.lock().unwrap().jobs["uwe-orphan"].deleted {
             break;
         }
         backend.reconcile().await.unwrap();
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     let state = state.lock().unwrap();
-    assert!(state.jobs["iunctus-orphan"].deleted);
+    assert!(state.jobs["uwe-orphan"].deleted);
     assert_eq!(state.submitted.len(), 2);
 }
 
@@ -1295,7 +1295,7 @@ async fn preserves_active_siblings() {
             placement: &placement,
         };
         let result = backend.run(next, &cancel).await;
-        assert!(!state.lock().unwrap().jobs["iunctus-active"].deleted);
+        assert!(!state.lock().unwrap().jobs["uwe-active"].deleted);
         std::fs::write(&go, "").unwrap();
         result
     };
@@ -1354,7 +1354,7 @@ async fn recovery_waits_removal() {
     let error = recovered.reconcile().await.unwrap_err();
     assert!(error.to_string().contains("identity changed"));
     assert!(journal.is_file());
-    assert!(!state.lock().unwrap().jobs["iunctus-recover"].deleted);
+    assert!(!state.lock().unwrap().jobs["uwe-recover"].deleted);
     state.lock().unwrap().submitted[0]["metadata"]["uid"] = uid;
     std::fs::write(root.path().join("server/delay-delete"), "").unwrap();
     assert!(
@@ -1363,11 +1363,11 @@ async fn recovery_waits_removal() {
             .is_err()
     );
     assert!(journal.is_file());
-    assert!(!state.lock().unwrap().jobs["iunctus-recover"].deleted);
+    assert!(!state.lock().unwrap().jobs["uwe-recover"].deleted);
     std::fs::remove_file(root.path().join("server/delay-delete")).unwrap();
     recovered.reconcile().await.unwrap();
     assert!(!journal.exists());
-    assert!(state.lock().unwrap().jobs["iunctus-recover"].deleted);
+    assert!(state.lock().unwrap().jobs["uwe-recover"].deleted);
 }
 
 #[tokio::test]
@@ -1409,13 +1409,13 @@ async fn failure_retains_scratch() {
         until(|| (state.lock().unwrap().calls.iter()).any(|call| call.starts_with("DELETE"))).await;
         assert!(backend.scratch.join("siblings/remote.json").is_file());
         assert!(backend.scratch.join("siblings/control").is_dir());
-        assert!(!state.lock().unwrap().jobs["iunctus-siblings"].deleted);
+        assert!(!state.lock().unwrap().jobs["uwe-siblings"].deleted);
         std::fs::remove_file(&delay).unwrap();
     };
     let (result, ()) = tokio::join!(run, confirm);
     assert!(result.is_err());
     assert!(!backend.scratch.join("siblings").exists());
-    assert!(state.lock().unwrap().jobs["iunctus-siblings"].deleted);
+    assert!(state.lock().unwrap().jobs["uwe-siblings"].deleted);
 }
 
 #[tokio::test]
@@ -1538,7 +1538,7 @@ async fn stages_through_objects() {
             },
             via: Via::Helper(Helper {
                 image: match upload {
-                    false => "iunctus-helper:test".into(),
+                    false => "uwe-helper:test".into(),
                     true => kubernetes_executor::DOWNLOAD_IMAGE.into(),
                 },
                 image_volume,
@@ -1592,7 +1592,7 @@ async fn stages_through_objects() {
         match image_volume {
             true => {
                 assert_eq!(names, ["stage-in"]);
-                assert_eq!(helper["image"]["reference"], "iunctus-helper:test");
+                assert_eq!(helper["image"]["reference"], "uwe-helper:test");
             }
             false => {
                 assert_eq!(names, ["helper", "stage-in"]);
@@ -1609,7 +1609,7 @@ async fn stages_through_objects() {
                 init[0]["securityContext"],
                 pod["containers"][0]["securityContext"]
             );
-            assert_eq!(init[1]["command"][0], "/iunctus-helper/iunctus");
+            assert_eq!(init[1]["command"][0], "/uwe-helper/uwe");
             assert_eq!(init[0]["command"][6].as_str(), Some(digest.hex()));
         }
         // The Job names the Secret, but holds none of it.
@@ -1666,7 +1666,7 @@ async fn staged_backend(root: &Path) -> KubernetesBackend {
             cleanup: true,
         },
         via: Via::Helper(Helper {
-            image: "iunctus-helper:test".into(),
+            image: "uwe-helper:test".into(),
             image_volume: true,
             secret: None,
             binary: None,
@@ -1760,7 +1760,7 @@ async fn reports_stage_failures() {
             cleanup: true,
         },
         via: Via::Helper(Helper {
-            image: "iunctus-helper:test".into(),
+            image: "uwe-helper:test".into(),
             image_volume: true,
             secret: None,
             binary: None,

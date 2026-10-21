@@ -259,7 +259,7 @@ async fn local(
         filters: Some(HashMap::from([(
             "label".into(),
             vec![format!(
-                "org.iunctus.conda.preparation={}",
+                "org.uwe.conda.preparation={}",
                 preparation.digest()
             )],
         )])),

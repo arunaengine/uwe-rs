@@ -65,11 +65,11 @@ pub fn notes(graph: &ExecutionGraph, measured: &Measures, simulated: bool) -> Ve
     }
     let first = match simulated {
         true => {
-            "iunctus: a real run would ask for less than the workflow, from what earlier \
+            "uwe: a real run would ask for less than the workflow, from what earlier \
                  runs used (-no-right-sizing keeps what the workflow asks for):"
         }
         false => {
-            "iunctus: tasks asked for less than the workflow, from what earlier runs used \
+            "uwe: tasks asked for less than the workflow, from what earlier runs used \
                   (-no-right-sizing keeps what the workflow asks for):"
         }
     };
@@ -94,10 +94,7 @@ pub fn notes(graph: &ExecutionGraph, measured: &Measures, simulated: bool) -> Ve
             1 => "1 task".to_owned(),
             count => format!("{count} tasks"),
         };
-        lines.push(format!(
-            "iunctus:   {name} ({tasks}): {}",
-            changes.join(", ")
-        ));
+        lines.push(format!("uwe:   {name} ({tasks}): {}", changes.join(", ")));
     }
     lines
 }
@@ -160,7 +157,7 @@ mod tests {
         assert_eq!(lines.len(), 2, "{lines:?}");
         assert_eq!(
             lines[1],
-            "iunctus:   ALIGN (2 tasks): 2 CPUs instead of 4 CPUs, 1.0 GB of memory instead \
+            "uwe:   ALIGN (2 tasks): 2 CPUs instead of 4 CPUs, 1.0 GB of memory instead \
              of 8.0 GB"
         );
         assert!(notes(&graph, &Measures::default(), true).is_empty());

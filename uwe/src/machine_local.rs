@@ -59,7 +59,7 @@ pub(super) fn engine(
     }
 }
 
-/// The store: a folder that iunctus can write, with its free space, or an address of a storage
+/// The store: a folder that uwe can write, with its free space, or an address of a storage
 /// provider, asked once whether it answers.
 pub(super) fn store(
     runtime: &tokio::runtime::Runtime,
@@ -118,7 +118,7 @@ impl Report {
                 State::Missing,
                 part,
                 format!(
-                    "{}: only {} free; free some with `iunctus clean`, or give {what} another \
+                    "{}: only {} free; free some with `uwe clean`, or give {what} another \
                      place",
                     folder.display(),
                     bytes(free)
@@ -161,7 +161,7 @@ fn cache_folder(store: Option<&Path>, report: &mut Report) {
     );
 }
 
-/// Whether iunctus can make the folder and write into it.
+/// Whether uwe can make the folder and write into it.
 fn writable(folder: &Path) -> Result<(), String> {
     std::fs::create_dir_all(folder).map_err(|error| error.to_string())?;
     let probe = folder.join(format!(".uwe-check-{}", std::process::id()));
@@ -207,7 +207,7 @@ pub(super) fn database(arguments: &Arguments, report: &mut Report) {
         Err(failure) => report.add(
             State::Missing,
             part,
-            failure.message.trim_start_matches("iunctus: "),
+            failure.message.trim_start_matches("uwe: "),
         ),
     }
 }

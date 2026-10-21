@@ -80,7 +80,7 @@ impl Header<'_> {
             Language::Argo => "Argo",
         };
         format!(
-            "iunctus {}: running {} ({language}) on {}, run {}",
+            "uwe {}: running {} ({language}) on {}, run {}",
             env!("CARGO_PKG_VERSION"),
             self.target.display(),
             self.executor,
@@ -346,7 +346,7 @@ impl Board {
             lines.push(format!("Report: {}", shown.display()));
         }
         lines.push(format!(
-            "More: `iunctus runs`, `iunctus page {run}`, `iunctus time {run}`"
+            "More: `uwe runs`, `uwe page {run}`, `uwe time {run}`"
         ));
         lines
     }
@@ -515,7 +515,7 @@ mod tests {
                 "  s3://bucket/ report.html",
                 "Files of every task: /vol/cache/store",
                 "Report: report.html",
-                "More: `iunctus runs`, `iunctus page r1`, `iunctus time r1`",
+                "More: `uwe runs`, `uwe page r1`, `uwe time r1`",
             ]
         );
     }

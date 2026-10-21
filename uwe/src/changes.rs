@@ -69,7 +69,7 @@ impl Changes {
 /// How an image is found now: the image that its tag names at its registry, pinned to a digest.
 pub type Resolve<'a> = &'a dyn Fn(&str) -> Result<Option<String>, String>;
 
-/// `iunctus changes <run>`: what changed since the run.
+/// `uwe changes <run>`: what changed since the run.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let database = runs::open(arguments)?;
     let run = named_run(&database, arguments, "changes")?;
@@ -91,27 +91,27 @@ pub fn named_run(
         .map(|id| id.to_string_lossy().into_owned())
     else {
         return Err(Failure::usage(format!(
-            "iunctus: name the run, like `iunctus {command} <run>`; `iunctus runs` lists the runs"
+            "uwe: name the run, like `uwe {command} <run>`; `uwe runs` lists the runs"
         )));
     };
     let run = database
         .run(&id)
-        .map_err(|error| failure(format!("iunctus: {error}")))?;
+        .map_err(|error| failure(format!("uwe: {error}")))?;
     run.ok_or_else(|| {
         failure(format!(
-            "iunctus: the run database has no run `{id}`; `iunctus runs` lists the runs"
+            "uwe: the run database has no run `{id}`; `uwe runs` lists the runs"
         ))
     })
 }
 
 /// An error of the run database, which the machine must fix.
 pub fn broken(error: run_database::DatabaseError) -> Failure {
-    Failure::setup(format!("iunctus: {error}"))
+    Failure::setup(format!("uwe: {error}"))
 }
 
 /// The runtime of the engine, for the requests that the commands make.
 pub fn runtime() -> Result<&'static tokio::runtime::Runtime, Failure> {
-    workflow_graph::runtime().map_err(|error| Failure::setup(format!("iunctus: {error}")))
+    workflow_graph::runtime().map_err(|error| Failure::setup(format!("uwe: {error}")))
 }
 
 /// The image that a tag names now at its registry.
@@ -178,19 +178,19 @@ pub fn recorded_arguments(database: &Database, run: &Run) -> Result<Arguments, F
         let current = ancestry.last().unwrap();
         let parent = current.repeats.as_ref().ok_or_else(|| {
             failure(format!(
-                "iunctus: run {} recorded no repeat parent; its original options are unavailable",
+                "uwe: run {} recorded no repeat parent; its original options are unavailable",
                 current.id
             ))
         })?;
         if !seen.insert(parent.clone()) {
             return Err(failure(format!(
-                "iunctus: repeat ancestry of run {} contains a cycle",
+                "uwe: repeat ancestry of run {} contains a cycle",
                 run.id
             )));
         }
         let parent = database.run(parent).map_err(broken)?.ok_or_else(|| {
             failure(format!(
-                "iunctus: repeat parent {parent} is missing; its original options are unavailable"
+                "uwe: repeat parent {parent} is missing; its original options are unavailable"
             ))
         })?;
         ancestry.push(parent);
@@ -236,7 +236,7 @@ fn parsed_arguments(run: &Run) -> Result<Arguments, Failure> {
     let mut parsed = match run.arguments.split_first() {
         Some((_, rest)) => arguments::parse(rest).map_err(|message| {
             failure(format!(
-                "iunctus: the command line of run {} is not valid: {message}",
+                "uwe: the command line of run {} is not valid: {message}",
                 run.id
             ))
         })?,

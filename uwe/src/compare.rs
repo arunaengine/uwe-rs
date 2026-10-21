@@ -1,4 +1,4 @@
-//! `iunctus compare <run> [<run>]`: what differs between two runs, of the same workflow or of
+//! `uwe compare <run> [<run>]`: what differs between two runs, of the same workflow or of
 //! two versions of it. With one run, it is compared with the run of its workflow before it.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -18,8 +18,8 @@ const LISTED: usize = 50;
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let Some(first) = arguments.target.as_ref().map(|id| id.to_string_lossy()) else {
         return Err(Failure::usage(
-            "iunctus: name two runs to compare, like `iunctus compare 1a0f1cc4c10-3a2487 \
-             1a0f1d02e11-3b0001`, or one to compare with the run before it; `iunctus runs` \
+            "uwe: name two runs to compare, like `uwe compare 1a0f1cc4c10-3a2487 \
+             1a0f1d02e11-3b0001`, or one to compare with the run before it; `uwe runs` \
              lists the runs",
         ));
     };
@@ -32,7 +32,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             let before = database.run_before(&first).map_err(broken)?;
             let Some(before) = before else {
                 return Err(failure(format!(
-                    "iunctus: no run of the same workflow came before run {first}; name the \
+                    "uwe: no run of the same workflow came before run {first}; name the \
                      second run"
                 )));
             };
@@ -42,7 +42,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     super::run(&database, &first)?;
     super::run(&database, &second)?;
     let comparison = (database.compare(&first, &second).map_err(broken)?)
-        .ok_or_else(|| failure(format!("iunctus: cannot compare runs {first} and {second}")))?;
+        .ok_or_else(|| failure(format!("uwe: cannot compare runs {first} and {second}")))?;
     if json {
         return print_json(serde_json::to_value(&comparison));
     }

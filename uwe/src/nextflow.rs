@@ -1,5 +1,5 @@
 //! The Nextflow side of the command: the driver with a host that reads remote files through
-//! the storage providers and keeps them in the cache, and `iunctus config`.
+//! the storage providers and keeps them in the cache, and `uwe config`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -275,7 +275,7 @@ pub fn driver(
     Ok(Box::new(Nextflow::new(launch, settings)?))
 }
 
-/// `iunctus config`: the config of a project in the flat form of `nextflow config -flat`.
+/// `uwe config`: the config of a project in the flat form of `nextflow config -flat`.
 pub fn print_config(launch: &Launch, setup: &Setup) -> Result<(), DriverError> {
     let mut console = console(false, setup);
     let config = nextflow_runtime::driver::config(&launch.target, launch, &mut console)?;

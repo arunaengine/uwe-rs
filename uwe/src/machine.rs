@@ -80,7 +80,7 @@ impl Report {
     }
 }
 
-/// `iunctus check-machine`: prints what is ready and what is missing, and exits with 3 when
+/// `uwe check-machine`: prints what is ready and what is missing, and exits with 3 when
 /// something is missing.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let mut report = Report::default();
@@ -157,7 +157,7 @@ mod config {
         let setup = match Setup::load(arguments) {
             Ok(setup) => setup,
             Err(failure) => {
-                let message = failure.message.trim_start_matches("iunctus: ");
+                let message = failure.message.trim_start_matches("uwe: ");
                 report.add(State::Missing, part, format!("{message}; fix it"));
                 return Setup::default();
             }
@@ -320,7 +320,7 @@ mod executors {
     }
 
     /// The tools of SLURM, which the SLURM executor runs on this machine, and the container
-    /// runtime of its jobs, which the nodes run. iunctus cannot look at the nodes, so it looks for
+    /// runtime of its jobs, which the nodes run. uwe cannot look at the nodes, so it looks for
     /// the runtime here, and names the folders that the nodes must see at the same paths.
     pub(super) fn slurm(setup: &Setup, arguments: &Arguments, report: &mut Report) {
         let executors = &setup.executors;
@@ -373,7 +373,7 @@ mod executors {
                 State::Missing,
                 part,
                 format!(
-                    "{} not on the PATH; run iunctus on a node of the SLURM cluster, like its login \
+                    "{} not on the PATH; run uwe on a node of the SLURM cluster, like its login \
                      node",
                     tools(&needed)
                 ),
@@ -410,7 +410,7 @@ mod executors {
                 State::NotSetUp,
                 part,
                 "no kubeconfig named; name one with -kubeconfig or `kubeconfig` in \
-                 [executor.kubernetes]; iunctus never takes the default one",
+                 [executor.kubernetes]; uwe never takes the default one",
             );
             return;
         };

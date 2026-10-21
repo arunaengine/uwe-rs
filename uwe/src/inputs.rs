@@ -44,12 +44,12 @@ fn checked(
         false => println!("{text}"),
     };
     for warning in warnings(&inputs, &problems) {
-        say(format!("iunctus: warning: {warning}"));
+        say(format!("uwe: warning: {warning}"));
     }
     let errors: Vec<String> = problems
         .iter()
         .filter(|problem| problem.severity == Severity::Error)
-        .map(|problem| format!("iunctus: {problem}"))
+        .map(|problem| format!("uwe: {problem}"))
         .collect();
     if !errors.is_empty() {
         return Err(failure(errors.join("\n")));
@@ -94,7 +94,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             let inputs = driver.inputs()?;
             if let Some(inputs) = &inputs {
                 for warning in warnings(inputs, &[]) {
-                    tracing::warn!("iunctus: {warning}");
+                    tracing::warn!("uwe: {warning}");
                 }
             }
             inputs
@@ -102,7 +102,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     };
     let Some(inputs) = inputs else {
         return Err(failure(format!(
-            "iunctus: the {language} driver does not describe the inputs of its workflows yet"
+            "uwe: the {language} driver does not describe the inputs of its workflows yet"
         )));
     };
     if form {
@@ -115,13 +115,13 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             },
             Policy::Relaxed,
         )
-        .map_err(|error| failure(format!("iunctus: {error}")))?;
+        .map_err(|error| failure(format!("uwe: {error}")))?;
         return print(&form.json(), None);
     }
     print(&inputs.schema, text.then_some(input_schema::text))
 }
 
-/// `iunctus outputs`: prints the JSON Schema of the outputs of a workflow, the results of a run,
+/// `uwe outputs`: prints the JSON Schema of the outputs of a workflow, the results of a run,
 /// or with `-format text` the outputs as text. The workflow runs no task.
 pub fn outputs(arguments: &Arguments) -> Result<(), Failure> {
     let text = text_format(arguments, "outputs")?;
@@ -130,7 +130,7 @@ pub fn outputs(arguments: &Arguments) -> Result<(), Failure> {
     let (mut driver, language, _) = describing(arguments, &cancel)?;
     let Some(schema) = driver.outputs()? else {
         return Err(failure(format!(
-            "iunctus: the {language} driver does not describe the outputs of its workflows yet"
+            "uwe: the {language} driver does not describe the outputs of its workflows yet"
         )));
     };
     print(&schema, text.then_some(input_schema::outputs_text))
@@ -142,7 +142,7 @@ fn text_format(arguments: &Arguments, command: &str) -> Result<bool, Failure> {
         None | Some("json") => Ok(false),
         Some("text") => Ok(true),
         Some(other) => Err(Failure::usage(format!(
-            "iunctus: `-format {other}` is a format of `iunctus graph`; `iunctus {command}` \
+            "uwe: `-format {other}` is a format of `uwe graph`; `uwe {command}` \
              writes json or text"
         ))),
     }
@@ -171,7 +171,7 @@ fn print(
         Some(text) => print!("{}", text(schema)),
         None => {
             let json = serde_json::to_string_pretty(schema)
-                .map_err(|error| failure(format!("iunctus: {error}")))?;
+                .map_err(|error| failure(format!("uwe: {error}")))?;
             println!("{json}");
         }
     }

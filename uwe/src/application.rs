@@ -1,4 +1,4 @@
-//! Structured workflow description, admission and execution for embedding iunctus.
+//! Structured workflow description, admission and execution for embedding uwe.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

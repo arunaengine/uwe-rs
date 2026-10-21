@@ -49,17 +49,17 @@ fn rules(arguments: &Arguments) -> Option<Vec<String>> {
     Some(rules)
 }
 
-/// `iunctus clean`.
+/// `uwe clean`.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let Some(mut rules) = rules(arguments) else {
         return Err(Failure::usage(
-            "iunctus: say what `iunctus clean` keeps: -keep-days <n> keeps what runs made or \
+            "uwe: say what `uwe clean` keeps: -keep-days <n> keeps what runs made or \
              used in the last n days, -keep-run <run> what a run needs, -keep-slower-than \
              <time> the results of tasks that ran that long, like 10m; -keep-days 0 keeps only \
              what runs that go on need",
         ));
     };
-    let broken = |error: &dyn std::fmt::Display| failure(format!("iunctus: {error}"));
+    let broken = |error: &dyn std::fmt::Display| failure(format!("uwe: {error}"));
     let setup = Setup::load(arguments)?;
     let location = setup.store_location(arguments);
     let store = setup.store(arguments)?;
@@ -67,7 +67,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     for run in &arguments.keep_runs {
         if database.run(run).map_err(|error| broken(&error))?.is_none() {
             return Err(failure(format!(
-                "iunctus: the run database has no run `{run}` to keep; `iunctus runs` lists \
+                "uwe: the run database has no run `{run}` to keep; `uwe runs` lists \
                  the runs"
             )));
         }
@@ -75,7 +75,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let runtime = workflow_graph::runtime().map_err(|error| broken(&error))?;
     let waiting = || {
         eprintln!(
-            "iunctus: waiting up to {} for tasks that prepare their inputs; new tasks wait \
+            "uwe: waiting up to {} for tasks that prepare their inputs; new tasks wait \
              meanwhile",
             duration(WAIT)
         );
@@ -182,7 +182,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             )
             .map_err(|error| broken(&error))?;
         std::fs::remove_dir_all(&folder.path)
-            .map_err(|error| failure(format!("iunctus: {}: {error}", folder.path.display())))?;
+            .map_err(|error| failure(format!("uwe: {}: {error}", folder.path.display())))?;
         runtime
             .block_on(
                 maintenance
@@ -204,8 +204,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             true => std::fs::remove_dir_all(&download.path),
             false => std::fs::remove_file(&download.path),
         };
-        removed
-            .map_err(|error| failure(format!("iunctus: {}: {error}", download.path.display())))?;
+        removed.map_err(|error| failure(format!("uwe: {}: {error}", download.path.display())))?;
     }
     if !downloads.is_empty() {
         let size = downloads.iter().map(|download| download.size).sum();
@@ -225,7 +224,7 @@ fn linked_results(
     store: &content_store::Store,
 ) -> Result<BTreeSet<String>, Failure> {
     let deliveries =
-        (database.all_deliveries()).map_err(|error| failure(format!("iunctus: {error}")))?;
+        (database.all_deliveries()).map_err(|error| failure(format!("uwe: {error}")))?;
     let mut linked = BTreeSet::new();
     for delivery in deliveries {
         let target = Path::new(&delivery.target);
@@ -249,7 +248,7 @@ fn old_downloads(
     folder: &Path,
     used_since: Option<SystemTime>,
 ) -> Result<(Option<std::fs::File>, Vec<Scratch>), Failure> {
-    let broken = |error: std::io::Error| failure(format!("iunctus: {}: {error}", folder.display()));
+    let broken = |error: std::io::Error| failure(format!("uwe: {}: {error}", folder.display()));
     let Some(reading) = storage::hold_downloads(folder).map_err(broken)? else {
         return Ok((None, Vec::new()));
     };
@@ -291,7 +290,7 @@ fn needed_images(
     for run in kept {
         let images = database
             .images(run)
-            .map_err(|error| failure(format!("iunctus: {error}")))?;
+            .map_err(|error| failure(format!("uwe: {error}")))?;
         needed.extend(
             images
                 .into_iter()
@@ -309,7 +308,7 @@ fn old_archives(
     used_since: Option<SystemTime>,
     needed: &BTreeSet<String>,
 ) -> Result<(Option<std::fs::File>, Vec<Scratch>), Failure> {
-    let broken = |error: std::io::Error| failure(format!("iunctus: {}: {error}", folder.display()));
+    let broken = |error: std::io::Error| failure(format!("uwe: {}: {error}", folder.display()));
     let Some(saving) = storage::hold_downloads(folder).map_err(broken)? else {
         return Ok((None, Vec::new()));
     };
@@ -346,15 +345,15 @@ fn remote_attempts_finished(scratch: &Path) -> Result<(), Failure> {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(error) => {
-                return Err(failure(format!("iunctus: {}: {error}", folder.display())));
+                return Err(failure(format!("uwe: {}: {error}", folder.display())));
             }
         };
         for entry in entries {
-            let entry = entry
-                .map_err(|error| failure(format!("iunctus: {}: {error}", folder.display())))?;
+            let entry =
+                entry.map_err(|error| failure(format!("uwe: {}: {error}", folder.display())))?;
             if !entry
                 .file_type()
-                .map_err(|error| failure(format!("iunctus: {}: {error}", entry.path().display())))?
+                .map_err(|error| failure(format!("uwe: {}: {error}", entry.path().display())))?
                 .is_dir()
             {
                 continue;
@@ -362,10 +361,10 @@ fn remote_attempts_finished(scratch: &Path) -> Result<(), Failure> {
             let record = entry.path().join("remote.json");
             if record
                 .try_exists()
-                .map_err(|error| failure(format!("iunctus: {}: {error}", record.display())))?
+                .map_err(|error| failure(format!("uwe: {}: {error}", record.display())))?
             {
                 return Err(failure(format!(
-                    "iunctus: the remote attempt recorded in {} may still use its inputs; \
+                    "uwe: the remote attempt recorded in {} may still use its inputs; \
                      reconcile it with its original executor settings before removing data",
                     record.display()
                 )));
@@ -440,7 +439,7 @@ fn scratch_folders(
 }
 
 /// The private copies of inputs that runs which ended left behind, one folder per run, and
-/// the nameless ones of older versions of iunctus while no run goes on.
+/// the nameless ones of older versions of uwe while no run goes on.
 fn ended_snapshots(
     folder: &Path,
     running: &BTreeSet<String>,

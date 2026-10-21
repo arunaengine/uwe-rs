@@ -31,7 +31,7 @@ pub fn language(target: &Path) -> Result<Language, String> {
                 "{shown} holds a Nextflow and a Snakemake workflow; choose one with `-lang`"
             )),
             (false, false) => Err(format!(
-                "{shown} holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile \
+                "{shown} holds no workflow uwe knows: no main.nf, nextflow.config, Snakefile \
                  or .smk file; name the workflow file"
             )),
         };

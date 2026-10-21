@@ -22,7 +22,7 @@ fn json_format(arguments: &Arguments, command: &str) -> Result<bool, Failure> {
         None | Some("text") => Ok(false),
         Some("json") => Ok(true),
         Some(other) => Err(Failure::usage(format!(
-            "iunctus: `iunctus {command}` writes text or json, not `{other}`"
+            "uwe: `uwe {command}` writes text or json, not `{other}`"
         ))),
     }
 }
@@ -42,7 +42,7 @@ fn run(database: &Database, id: &str) -> Result<Run, Failure> {
         .map_err(|error| failure(error.to_string()))?
         .ok_or_else(|| {
             failure(format!(
-                "iunctus: the run database has no run `{id}`; `iunctus runs` lists the runs"
+                "uwe: the run database has no run `{id}`; `uwe runs` lists the runs"
             ))
         })
 }

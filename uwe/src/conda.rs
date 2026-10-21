@@ -1,4 +1,4 @@
-//! `iunctus lock-environment <file>`: offline locks or configured cached HTTPS acquisition
+//! `uwe lock-environment <file>`: offline locks or configured cached HTTPS acquisition
 //! for an explicit container target.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -293,13 +293,13 @@ fn bounded_bytes(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let Some(file) = &arguments.target else {
         return Err(Failure::usage(
-            "iunctus: name the environment file, like `iunctus lock-environment envs/qc.yaml`",
+            "uwe: name the environment file, like `uwe lock-environment envs/qc.yaml`",
         ));
     };
     let text = std::fs::read_to_string(file)
-        .map_err(|error| failure(format!("iunctus: cannot read {}: {error}", file.display())))?;
+        .map_err(|error| failure(format!("uwe: cannot read {}: {error}", file.display())))?;
     let mut environment = Environment::parse(&text)
-        .map_err(|error| failure(format!("iunctus: {}: {error}", file.display())))?;
+        .map_err(|error| failure(format!("uwe: {}: {error}", file.display())))?;
     if environment.channels.is_empty() {
         environment.channels.push(DEFAULT_CHANNEL.into());
     }
@@ -432,14 +432,10 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         true => lock.explicit(),
         false => format!("{}\n", json(&lock)),
     };
-    std::fs::write(output, written).map_err(|error| {
-        failure(format!(
-            "iunctus: cannot write {}: {error}",
-            output.display()
-        ))
-    })?;
+    std::fs::write(output, written)
+        .map_err(|error| failure(format!("uwe: cannot write {}: {error}", output.display())))?;
     println!(
-        "iunctus: locked {} packages for {platform} in {}; the environment is {}",
+        "uwe: locked {} packages for {platform} in {}; the environment is {}",
         lock.packages.len(),
         output.display(),
         lock.digest()
@@ -459,7 +455,7 @@ fn json(lock: &Lock) -> String {
 
 /// Missing repodata is for the machine to fix; the rest is the environment's.
 fn locked(file: &Path, error: LockError) -> Failure {
-    let message = format!("iunctus: {}: {error}", file.display());
+    let message = format!("uwe: {}: {error}", file.display());
     match error {
         LockError::Pip(conda_environment::PipError::Unsupported(_)) => Failure {
             message,

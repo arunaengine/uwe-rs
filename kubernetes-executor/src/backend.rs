@@ -298,10 +298,10 @@ impl KubernetesBackend {
             Some(remote) => *prepared = Some(remote.prepare(job, &run, &spec).await?),
             None => {}
         }
-        let prepared = &*prepared;
-        let run = match prepared {
-            Some(prepared) => ContainerRun {
-                mounts: &prepared.mounts,
+        let staged = &*prepared;
+        let run = match staged {
+            Some(staged) => ContainerRun {
+                mounts: &staged.mounts,
                 ..run
             },
             None => run,
@@ -311,7 +311,7 @@ impl KubernetesBackend {
         let mut groups: Vec<(task_model::Image, PathBuf)> = Vec::new();
         match spec.containers.is_empty() {
             // With a staging root the pod gets its wrapper from there.
-            true if prepared.is_some() => {}
+            true if staged.is_some() => {}
             true => tokio::fs::write(run.script(), run.wrapper(&spec)).await?,
             false => {
                 let (control, home) = (root.join(CONTROL), text(&root.join(executor::HOME)));
@@ -352,11 +352,11 @@ impl KubernetesBackend {
                 "Kubernetes GPU sharing across several image groups is not supported".into(),
             ));
         }
-        let volumes = (prepared.as_ref()).map_or(&self.volumes, |prepared| &prepared.volumes);
+        let volumes = (staged.as_ref()).map_or(&self.volumes, |staged| &staged.volumes);
         let mut manifest = crate::manifest::job(&name, &self.label, &runs, &limits, volumes)
             .map_err(ExecutorError::Unsupported)?;
-        if let (Some(remote), Some(prepared)) = (&self.remote, prepared) {
-            remote.complete(&mut manifest, prepared, root, limits.seconds);
+        if let (Some(remote), Some(staged)) = (&self.remote, staged) {
+            remote.complete(&mut manifest, staged, root, limits.seconds);
         }
         if let Some(probe) = daemon.as_ref().and_then(crate::daemons::readiness) {
             manifest["spec"]["template"]["spec"]["containers"][0]["readinessProbe"] = probe;
@@ -383,9 +383,8 @@ impl KubernetesBackend {
             "namespace": self.cluster.namespace(), "name": name, "label": self.label, "uid": null,
             "owner": std::process::id(), "host": host, "started": started, "locked": true});
         // The recovery of the attempt removes its objects from the staging root.
-        if let Some(prepared) = prepared {
-            journal["staging"] =
-                serde_json::json!({"prefix": prepared.prefix, "plan": prepared.plan});
+        if let Some(staged) = staged {
+            journal["staging"] = serde_json::json!({"prefix": staged.prefix, "plan": staged.plan});
         }
         journal_at(root, &journal)?;
         let uid = tokio::select! {
@@ -417,8 +416,13 @@ impl KubernetesBackend {
         let stopped = Self::stop(&self.cluster, self.poll, root, &journal, grace).await;
         self.pods.remove(&name).await;
         stopped?;
-        if let (Some(remote), Some(prepared), Ok(_)) = (&self.remote, prepared, &ended) {
-            remote.collect(prepared, root).await?;
+        if let (Some(remote), Some(kept), Ok(_)) = (&self.remote, prepared.as_ref(), &ended)
+            && let Err(error) = executor::remote::patiently(|| remote.collect(kept, root)).await
+        {
+            // The objects stay, as they are the only copy of the results.
+            tracing::warn!(prefix = kept.prefix, %error, "cannot collect the results of an attempt; they stay in the staging root");
+            *prepared = None;
+            return Err(error);
         }
         let finished = finish(ended?, root.to_owned(), limits.seconds, &spec).await;
         match (finished, log) {

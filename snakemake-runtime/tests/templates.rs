@@ -144,3 +144,34 @@ fn runs_grouped_cwl() {
         "{commands:?}"
     );
 }
+
+/// A `cwl:` job that runs again because its params changed runs its CWL tool, not the empty
+/// task that stands for it.
+#[test]
+fn reruns_changed_cwl() {
+    let folder = tempfile::tempdir().expect("a folder");
+    std::fs::write(folder.path().join("sort.cwl"), TOOL).expect("a tool");
+    std::fs::write(folder.path().join("test.txt"), "b 2\na 1\n").expect("an input");
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        "rule all:\n    input: 'sorted.txt'\nrule a:\n    input: input=['test.txt']\n    output: output='sorted.txt'\n    params: key=['2']\n    cwl: 'sort.cwl'\n",
+    )
+    .expect("a Snakefile");
+    std::fs::write(folder.path().join("sorted.txt"), "old\n").expect("an old output");
+    // The record of an earlier run, whose params differ.
+    let records = folder.path().join(".snakemake/iunctus-signatures");
+    std::fs::create_dir_all(&records).unwrap();
+    std::fs::write(records.join("c29ydGVkLnR4dA=="), "{}").unwrap();
+    let launch = Launch {
+        target: folder.path().to_path_buf(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    let tasks = driver.start().expect("starts");
+    let commands: Vec<String> = (tasks.iter()).map(|task| task.command.join(" ")).collect();
+    assert!(
+        commands.iter().any(|command| command.contains("sort")),
+        "{commands:?}"
+    );
+}

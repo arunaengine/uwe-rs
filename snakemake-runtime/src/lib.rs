@@ -50,6 +50,7 @@ pub use driver::{
     RunSettings, Session, Settings, driver, driver_with, driver_with_options, find_snakefile,
 };
 pub use gitfile::{Checkout, GitClient};
+pub use locks::release_locks;
 
 /// The variable of a task that names, as a JSON list, the variables of the environment of
 /// iunctus that the job gets, from `envvars`; the executor puts their values in its place.

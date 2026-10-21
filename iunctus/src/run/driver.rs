@@ -198,14 +198,15 @@ fn snakemake(
 fn snakemake_git(setup: &Setup) -> snakemake_runtime::GitClient {
     let storage = setup.storage.clone();
     let checkout = move |url: &str, reference: &str, folder: &Path| {
-        let account = storage.account(url).map_err(|error| error.to_string())?;
+        let storage = storage.clone();
+        let lookup = move |url: &str| storage.account(url).map_err(|error| error.to_string());
         // A shallow fetch cannot reach a commit by its ID.
         let commit = reference.len() == 40 && reference.bytes().all(|b| b.is_ascii_hexdigit());
         let fetch = crate::git::Fetch {
             url: url.to_owned(),
             reference: Some(reference.to_owned()),
             depth: (!commit).then_some(1),
-            account,
+            accounts: Some(crate::git::Accounts(std::sync::Arc::new(lookup))),
             ..crate::git::Fetch::default()
         };
         let stop = std::sync::atomic::AtomicBool::new(false);

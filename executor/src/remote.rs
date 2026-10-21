@@ -389,6 +389,30 @@ fn folder_path(path: &str) -> Result<String, ExecutorError> {
     Ok(format!("{base}/{}", parts.join("/")))
 }
 
+/// How often the results of an attempt are collected before it fails.
+const COLLECT_TRIES: u32 = 4;
+
+/// Runs `collect` again after a growing pause while it fails, as a staging root fails for a
+/// moment now and then and the results of a long task have no other copy.
+pub async fn patiently<T, F, R>(mut collect: F) -> Result<T, ExecutorError>
+where
+    F: FnMut() -> R,
+    R: std::future::Future<Output = Result<T, ExecutorError>>,
+{
+    let mut pause = Duration::from_secs(1);
+    for _ in 1..COLLECT_TRIES {
+        match collect().await {
+            Err(error) if !matches!(error, ExecutorError::Cancelled) => {
+                tracing::debug!(%error, "collecting the results again");
+                tokio::time::sleep(pause).await;
+                pause *= 2;
+            }
+            result => return result,
+        }
+    }
+    collect().await
+}
+
 fn failed(error: impl std::fmt::Display) -> ExecutorError {
     std::io::Error::other(format!("object staging failed: {error}")).into()
 }

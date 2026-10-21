@@ -402,3 +402,24 @@ async fn sends_large_outputs() {
     let tag = metadata.version.unwrap();
     assert!(tag.trim_matches('"').ends_with("-38"), "{tag}");
 }
+
+#[tokio::test]
+async fn collects_patiently() {
+    let tries = std::sync::atomic::AtomicU32::new(0);
+    let collected = patiently(|| async {
+        match tries.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+            0 | 1 => Err(failed("the staging root is down")),
+            _ => Ok(7),
+        }
+    })
+    .await;
+    assert_eq!(collected.unwrap(), 7);
+    let tries = std::sync::atomic::AtomicU32::new(0);
+    let cancelled = patiently(|| async {
+        tries.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Err::<(), _>(ExecutorError::Cancelled)
+    })
+    .await;
+    assert!(matches!(cancelled, Err(ExecutorError::Cancelled)));
+    assert_eq!(tries.into_inner(), 1, "a cancel ends at once");
+}

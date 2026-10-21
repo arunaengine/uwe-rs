@@ -568,8 +568,15 @@ impl SlurmBackend {
                 (ended, _) => break ended,
             }
         };
-        if let (Some(remote), Some(prefix)) = (&self.remote, prefix) {
-            remote.stage.collect(prefix, root, &records()).await?;
+        let names = records();
+        if let (Some(remote), Some(prefix)) = (&self.remote, prefix)
+            && let Err(error) =
+                executor::remote::patiently(|| remote.stage.collect(prefix, root, &names)).await
+        {
+            // The objects stay, as they are the only copy of the results.
+            tracing::warn!(prefix, %error, "cannot collect the results of an attempt; they stay in the staging root");
+            *staged = None;
+            return Err(error);
         }
         // A job that left no log at all ran on a node that does not see the scratch folder.
         let lost = self.remote.is_none()

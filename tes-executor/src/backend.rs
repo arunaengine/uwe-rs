@@ -262,6 +262,12 @@ impl TesBackend {
         let log = status.logs.last().and_then(|log| log.logs.last());
         let ran_out = timer && log.and_then(|log| log.exit_code) == Some(wrapper::TIMED_OUT);
         let finished = self.finish(job, &task, &status, root).await;
+        let ended = matches!(status.state, State::Complete | State::ExecutorError);
+        if let (Err(error), Some(_), true) = (&finished, &self.staging, ended) {
+            // The objects stay, as they are the only copy of the results.
+            tracing::warn!(prefix, %error, "cannot collect the results of an attempt; they stay in the staging root");
+            *prefix = None;
+        }
         match finished {
             Ok(mut finished) if ran_out => {
                 use tokio::io::AsyncWriteExt;
@@ -296,7 +302,7 @@ impl TesBackend {
         if let Some(staging) = &self.staging {
             return match status.state {
                 State::Complete | State::ExecutorError => {
-                    staging.collect(job, task, status, root).await
+                    executor::remote::patiently(|| staging.collect(job, task, status, root)).await
                 }
                 State::Canceled => Err(ExecutorError::Cancelled),
                 _ => Err(failure(status, "the TES server could not run the task")),

@@ -317,6 +317,24 @@ fn pod(folder: &Path, name: &str, running: &Running) -> Value {
     })
 }
 
+/// Makes the files below `folder` unreadable.
+fn unreadable(folder: &Path) {
+    set_modes(folder, 0o000);
+}
+
+fn set_modes(folder: &Path, mode: u32) {
+    for entry in std::fs::read_dir(folder).into_iter().flatten().flatten() {
+        let path = entry.path();
+        match path.is_dir() {
+            true => set_modes(&path, mode),
+            false => {
+                let mode = std::os::unix::fs::PermissionsExt::from_mode(mode);
+                std::fs::set_permissions(&path, mode).expect("sets the mode");
+            }
+        }
+    }
+}
+
 /// The value of a query parameter, decoded.
 fn parameter(target: &str, name: &str) -> Option<String> {
     let query = target.split_once('?')?.1;
@@ -499,6 +517,10 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
             );
         }
         ("DELETE", job) if job.starts_with(JOBS) => {
+            // A file `break-staging` names a folder whose files cannot be read from then on.
+            if let Ok(broken) = std::fs::read_to_string(folder.join("break-staging")) {
+                unreadable(Path::new(&broken));
+            }
             let name = job.rsplit('/').next().unwrap_or_default().to_owned();
             if let Some(running) = state.jobs.get_mut(&name) {
                 running.deleted = !folder.join("delay-delete").exists();
@@ -1606,22 +1628,20 @@ async fn stages_through_objects() {
     }
 }
 
-/// A daemon with a staging root removes its objects and its journal once it stopped.
-#[tokio::test]
-async fn daemons_clean_staging() {
-    let root = tempfile::tempdir().expect("a folder");
-    let (mut backend, _) = backend(root.path()).await;
+/// A backend whose pods get their files through a staging root in a folder, which cleans up.
+async fn staged_backend(root: &Path) -> KubernetesBackend {
+    let (mut backend, _) = backend(root).await;
     let program = std::env::current_exe().expect("this program");
     let script = format!(
         "#!/bin/sh\nIFS=$(printf '\\037')\nIUNCTUS_TEST_STAGE=\"$*\" exec {} --exact \
          stage_helper --nocapture --test-threads=1\n",
         quote(&program.to_string_lossy())
     );
-    let helper = root.path().join("server/helper");
+    let helper = root.join("server/helper");
     std::fs::write(&helper, &script).expect("writes the helper");
     let mode = std::os::unix::fs::PermissionsExt::from_mode(0o755);
     std::fs::set_permissions(&helper, mode).expect("runs");
-    let objects = content_store::Store::local(&root.path().join("staging")).expect("a store");
+    let objects = content_store::Store::local(&root.join("staging")).expect("a store");
     backend.remote = Some(PodStaging {
         stage: RemoteStage {
             objects,
@@ -1637,6 +1657,14 @@ async fn daemons_clean_staging() {
             binary: None,
         }),
     });
+    backend
+}
+
+/// A daemon with a staging root removes its objects and its journal once it stopped.
+#[tokio::test]
+async fn daemons_clean_staging() {
+    let root = tempfile::tempdir().expect("a folder");
+    let backend = staged_backend(root.path()).await;
     let mut spec = spec("debian:stable-slim", "sleep 30");
     spec.outputs.clear();
     let daemon = EnvironmentValue::Literal("{}".into());
@@ -1664,6 +1692,36 @@ async fn daemons_clean_staging() {
     let left = objects.objects(&plan).await.expect("the plan");
     assert!(left.is_empty(), "{left:?}");
     assert!(!served.root.exists());
+}
+
+/// Results that cannot be collected stay in the staging root, as they have no other copy.
+#[tokio::test]
+async fn keeps_uncollected_results() {
+    let root = tempfile::tempdir().expect("a folder");
+    let backend = staged_backend(root.path()).await;
+    let attempts = root.path().join("staging/attempts");
+    let broken = root.path().join("server/break-staging");
+    std::fs::write(&broken, attempts.to_string_lossy().as_bytes()).expect("breaks the staging");
+    let spec = spec("debian:stable-slim", "echo done > out.txt");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-K-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = backend
+        .run(job, &CancellationToken::new())
+        .await
+        .unwrap_err();
+    set_modes(&attempts, 0o644);
+    assert!(
+        error.to_string().contains("object staging failed"),
+        "{error}"
+    );
+    let objects = &backend.remote.as_ref().expect("the staging").stage.objects;
+    let left = objects.objects("attempts/").await.expect("the attempts");
+    assert!(!left.is_empty(), "the results are gone");
 }
 
 /// A stage-in that fails ends the attempt with the end of its log, instead of a bare failure,

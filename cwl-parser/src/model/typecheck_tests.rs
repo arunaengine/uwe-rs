@@ -1,6 +1,6 @@
 //! Tests of the type check of workflow links, with the results of `cwltool --validate`
 //! 3.3.20260925135507 for the same documents.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use crate::Loader;

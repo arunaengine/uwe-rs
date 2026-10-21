@@ -1,5 +1,5 @@
 //! Checks native Docker build, load and import using tiny scratch images with cleanup.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeSet;

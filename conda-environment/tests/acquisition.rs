@@ -1,5 +1,5 @@
 //! Cached acquisition, offline cache guidance, and opt-in HTTPS verification.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use conda_environment::{

@@ -1,6 +1,6 @@
 //! Conda environment files, like `environment.yaml` of a Snakemake rule or of an nf-core
 //! module: a name, the channels, the packages as match specs, and packages of `pip`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use saphyr::{LoadableYamlNode, MarkedYaml as Node, Scalar, YamlData as Value};

@@ -1,5 +1,5 @@
 //! Reads records of the typed model from resolved nodes, with errors at the right location.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use crate::error::Error;

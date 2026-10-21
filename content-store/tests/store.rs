@@ -1,5 +1,5 @@
 //! Tests the store contract on a local directory, in memory and, when configured, on S3.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::os::unix::fs::PermissionsExt;

@@ -1,6 +1,6 @@
 //! How the pods of a backend get their files when the nodes share no folders with this machine:
 //! through the iunctus helper and a plan, or through kubedal volumes.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;

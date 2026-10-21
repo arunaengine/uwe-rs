@@ -1,5 +1,5 @@
 //! Evaluates the ShmSize extension and parses Docker shared-memory size units.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use cwl_parser::model::{Expression, RequirementClass, Version};

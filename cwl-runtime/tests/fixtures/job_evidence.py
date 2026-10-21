@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run -q --with cwltool==3.3.20260925135507 python3
 """Refresh cwltool input-check evidence for failing example jobs."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 import json

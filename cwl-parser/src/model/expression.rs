@@ -1,5 +1,5 @@
 //! CWL expressions and parameter references, kept as text and split into their parts.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 /// A string that may contain `$(...)` or `${...}`, with the parts an evaluator needs.

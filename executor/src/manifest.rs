@@ -1,6 +1,6 @@
 //! The result manifest that the wrapper writes: each collected file, and each collected
 //! directory as one entry.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 /// A collected output: its path as the task named it (relative to the work directory, or

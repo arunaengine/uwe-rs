@@ -1,5 +1,5 @@
 //! The typed CWL v1.2 model, and how it is read from documents after Salad preprocessing.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod binding;

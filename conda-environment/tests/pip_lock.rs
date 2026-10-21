@@ -1,5 +1,5 @@
 //! Checks historical lock bytes and versioned pip artifact identities.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use conda_environment::{Lock, PipLock, PipPackage};

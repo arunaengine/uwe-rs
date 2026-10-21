@@ -1,6 +1,6 @@
 //! The inputs at the top of a schema, whether they sit in its `properties` or in groups under
 //! `$defs` that `allOf` joins, as nf-schema lays out the parameters of nf-core pipelines.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use serde_json::Value as Json;

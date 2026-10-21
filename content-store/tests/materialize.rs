@@ -1,5 +1,5 @@
 //! Checks streaming restoration of verified content without partial target publication.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::os::unix::fs::PermissionsExt;

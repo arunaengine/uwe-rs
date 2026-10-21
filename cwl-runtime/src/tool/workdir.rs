@@ -1,6 +1,6 @@
 //! `InitialWorkDirRequirement`: its listing, evaluated into files, directories and Dirents,
 //! which are staged in the output directory, as cwltool's `_initialworkdir` does.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use cwl_parser::model::{Dirent, Listing, ListingEntry, Process, RequirementClass, Version};

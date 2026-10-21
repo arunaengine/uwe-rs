@@ -1,6 +1,6 @@
 //! The values of a run as the check sees them: the texts of the command line read as the
 //! numbers and booleans that the schema asks for.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use serde_json::Value as Json;

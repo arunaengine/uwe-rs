@@ -1,5 +1,5 @@
 //! Upgrades processes of v1.0 documents to the v1.2 model, following the rules of cwl-upgrader.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use crate::model::binding::LoadListing;

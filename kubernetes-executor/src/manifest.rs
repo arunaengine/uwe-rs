@@ -1,6 +1,6 @@
 //! The Kubernetes Job of an attempt: one pod with one container, which runs the wrapper of the
 //! task as the user, with the folders of the task at the same paths.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::PathBuf;

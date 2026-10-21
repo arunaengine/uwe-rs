@@ -1,6 +1,6 @@
 //! The check of the values of a run against its schema: required inputs, types, enums, texts
 //! of the command line, files and directories, and the groups of nf-schema.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;

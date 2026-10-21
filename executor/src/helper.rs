@@ -1,6 +1,6 @@
 //! The helper that a node runs around a task without shared folders: it downloads the inputs of
 //! a plan into the folder of the attempt and uploads the captured outputs and control records.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::io::{Read, Write};

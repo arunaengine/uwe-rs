@@ -527,7 +527,7 @@ fn typed_value(text: &str, class: &str) -> Option<Value> {
 
 fn set_globals(interpreter: &mut Interpreter, options: &Options, workflow: &Value) {
     interpreter.set_global("params", options.config.params());
-    // The command-line arguments after the script; iunctus takes none.
+    // The command-line arguments after the script; uwe takes none.
     interpreter.set_global("args", Value::list(Vec::new()));
     interpreter.set_global("channel", Value::Namespace("channel".into()));
     interpreter.set_global("log", Value::Namespace("log".into()));

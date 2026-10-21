@@ -9,7 +9,7 @@ trap 'rm -rf "$run"' EXIT
 cp -r "$here/Snakefile" "$here/config.yaml" "$here/in.txt" "$here/in2.txt" "$here/scripts" "$run/"
 cd "$run"
 # Snakemake orders the default resources memory and disk by a set, whose order depends on
-# Python's hash seed; seed 0 gives memory first, as iunctus orders them.
+# Python's hash seed; seed 0 gives memory first, as uwe orders them.
 PYTHONHASHSEED=0 uvx --from snakemake==9.27.0 snakemake --cores 2 --default-resources --keep-going \
     --skip-script-cleanup --quiet > /dev/null 2>&1 || true
 mkdir -p "$here/snakemake-9.27.0"

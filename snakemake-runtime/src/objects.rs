@@ -700,7 +700,7 @@ impl Native for WorkflowObject {
                 matches!(name, "run_local" | "is_main_process" | "local_exec"),
             ),
             "remote_exec" | "dryrun" | "touch" | "immediate_submit" => Value::Bool(false),
-            // The settings of storage plugins by their name; a run of iunctus has none.
+            // The settings of storage plugins by their name; a run of uwe has none.
             "storage_provider_settings" => Value::dict(python_evaluator::Dict::default()),
             "default_remote_prefix"
             | "default_remote_provider"

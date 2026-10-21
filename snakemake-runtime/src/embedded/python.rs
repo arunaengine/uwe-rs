@@ -87,7 +87,7 @@ fn literal_with(
         Data::Opaque { repr, .. } => format!(
             "{MODULE}.Unavailable({})",
             quote(&format!(
-                "{repr} is no plain data (a number, text, list, dict or path), so iunctus \
+                "{repr} is no plain data (a number, text, list, dict or path), so uwe \
                  cannot hand it to the code of the job in its container"
             ))
         ),

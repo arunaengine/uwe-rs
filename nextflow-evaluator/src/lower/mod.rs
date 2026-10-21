@@ -157,7 +157,7 @@ pub fn lower_template_value(
     }
 }
 
-/// The error for a DSL1 script, which iunctus does not run.
+/// The error for a DSL1 script, which uwe does not run.
 pub const DSL1: &str = "DSL1 scripts are not supported (decision 14): this script has processes \
                         that read `from` channels and write `into` channels, which only DSL1 \
                         has, and Nextflow 22.12 and later do not run it either";
@@ -439,7 +439,7 @@ impl<'a> Lowering<'a> {
         self.errors.push(Diagnostic::new(message, span));
     }
 
-    /// Records legacy syntax, which iunctus accepts with the meaning of the legacy parser
+    /// Records legacy syntax, which uwe accepts with the meaning of the legacy parser
     /// (decision 14), with the error of strict syntax.
     fn legacy(&mut self, message: impl Into<String>, span: Span) {
         self.legacy.push(Diagnostic::new(message, span));

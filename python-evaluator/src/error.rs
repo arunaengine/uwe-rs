@@ -28,7 +28,7 @@ impl std::fmt::Display for Location {
 pub enum ErrorKind {
     /// A raised Python exception object.
     Exception(Value),
-    /// A feature of Python or of a library that iunctus does not support; `except` does
+    /// A feature of Python or of a library that uwe does not support; `except` does
     /// not catch it.
     Unsupported(String),
     /// A condition that stops the run, like a Python package that needs a container when no

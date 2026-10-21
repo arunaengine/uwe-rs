@@ -1,6 +1,6 @@
 # nf-core module and subworkflow files that lowering rejects on purpose, relative to the modules
 # checkout of the test workflows, with the first error. All other files must lower. A file leaves this list
-# when iunctus supports what it uses.
+# when uwe supports what it uses.
 modules/nf-core/elprep/fastatoelfasta/main.nf The class `java.time.OffsetDateTime` is not supported yet
 modules/nf-core/elprep/filter/main.nf The class `java.time.OffsetDateTime` is not supported yet
 subworkflows/nf-core/utils_nfschema_plugin/main.nf Plugins are not supported yet: plugin/nf-schema

@@ -34,7 +34,7 @@ pub(crate) fn mark_incomplete(workdir: &Path, output: &str) -> std::io::Result<(
 }
 
 /// Marks an output of a job that runs in place as Snakemake's `started` does, so that a run
-/// that stops meanwhile, of iunctus or of Snakemake, finds it incomplete.
+/// that stops meanwhile, of uwe or of Snakemake, finds it incomplete.
 pub(crate) fn mark_running(workdir: &Path, output: &str) -> std::io::Result<()> {
     let record = br#"{"external_jobid": null}"#;
     write_mark(workdir, &snakemake_incomplete(workdir, output), record)

@@ -1,5 +1,5 @@
 //! Lowers every nf-core module of the test workflows from `just test-workflows`: all must lower, except the
-//! files that use features iunctus does not support yet.
+//! files that use features uwe does not support yet.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

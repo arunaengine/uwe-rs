@@ -40,7 +40,7 @@ def directory(path):
 # files are made empty); `collect` loads a tool with cwltool and collects one output from an
 # empty output directory, as after a run that made nothing; `evaluate` evaluates one expression
 # of a document with cwltool's evaluator, for steps of workflows that cwltool will not run.
-# `validate` checks a document whose feature iunctus intentionally leaves unsupported.
+# `validate` checks a document whose feature uwe intentionally leaves unsupported.
 # The kind of a case is `invalid` (the documents are broken) unless it gives `kind`: `missing` or
 # `unsupported (decision N)`.
 CASES = [

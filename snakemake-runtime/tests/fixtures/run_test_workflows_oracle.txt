@@ -1,6 +1,6 @@
 # What `snakemake --dry-run --printshellcmds` of Snakemake 9.27.0 does with the Snakemake
 # test workflows that it cannot evaluate with their preferred launch, and with those that
-# iunctus cannot run, for each launch launches.py considers; written by oracle.py.
+# uwe cannot run, for each launch launches.py considers; written by oracle.py.
 # Workflows not listed evaluate with their preferred launch. Columns, separated by tabs:
 # the workflow, the launch (plain, ci, catalog or tests.py), the exit code, `evaluated`
 # when Snakemake evaluated the Snakefile and began to plan the jobs, else `failed`, and

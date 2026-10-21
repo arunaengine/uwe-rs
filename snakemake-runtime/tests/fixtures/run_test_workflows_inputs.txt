@@ -6,7 +6,7 @@
 # 892 workflows, 675 with a schema.
 (outputs) outputs: 596 of 674 workflows have outputs, 646 outputs, 646 files
 catalog/3d-omics__hg_genotype ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-catalog/AToL-Bioinformatics__genome-launcher-workflow 1 workflow/Snakefile:8: the workflow imports the Python package giturlparse, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/AToL-Bioinformatics__genome-launcher-workflow 1 workflow/Snakefile:8: the workflow imports the Python package giturlparse, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/Addimator__compare_meth 1 workflow/rules/common.smk:7: FileNotFoundError: [Errno 2] No such file or directory: '/projects/koesterlab/benchmark-methylation/data_analysis_jochen/compare_meth/config/sample.tsv'
 catalog/Addimator__varlociraptor-copy-number-variants ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/Albinam1__bioinformatics_school 1 workflow/rules/mapping.smk:34: WorkflowError: Not all output, log and benchmark files of rule map_reads_with_minimap contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
@@ -38,8 +38,8 @@ catalog/FilippoGas__HapScorer ok: 3 inputs, 3 required, 1 files, 1 tables; 0 err
 catalog/GArcho44__snvs-annotation-pipeline 1 workflow/Snakefile:5: WorkflowError: Workflow defines configfile ../config/config.yml but it is not present or accessible (full checked path: /home/beavis/.cache/uwe/test-workflows/snakemake/catalog/config/config.yml).
 catalog/GaspardR__snakemake-github-module-keyerror ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/Gmidtg21__bt7-9gmidtg ok: 6 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-catalog/GooglingTheCancerGenome__sv-callers 1 workflow/validator/__init__.py:6: the workflow imports the Python package ruamel, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
-catalog/GooglingTheCancerGenome__sv-gen 1 workflow/helper_functions.py:5: the workflow imports the Python package pyfaidx, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/GooglingTheCancerGenome__sv-callers 1 workflow/validator/__init__.py:6: the workflow imports the Python package ruamel, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/GooglingTheCancerGenome__sv-gen 1 workflow/helper_functions.py:5: the workflow imports the Python package pyfaidx, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/GuttmanLab__chipdip-pipeline ok: 24 inputs, 0 required, 9 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/IHGGM-Aachen__CNVand ok: 4 inputs, 4 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/IKIM-Essen__QC_pre_NextSeq ok: 10 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -85,7 +85,7 @@ catalog/Phlya__C-integration-mapping ok: 0 inputs, 0 required, 0 files, 0 tables
 catalog/Phlya__distill-reorder-C 1 https://raw.githubusercontent.com/open2c/distiller-sm/master/workflow/Snakefile:18: KeyError: 'output'
 catalog/Phlya__tagmap ok: 60 inputs, 3 required, 5 files, 2 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 catalog/Princeton-LSI-ResearchComputing__hifi-assembly ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-catalog/PyPSA__grid-builder 1 workflow/scripts/_schema.py:14: the workflow imports the Python package earth_osm, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/PyPSA__grid-builder 1 workflow/scripts/_schema.py:14: the workflow imports the Python package earth_osm, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/RaphaelAngerbauer__snakemake_template ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/Sadia12345__Thesis-BMI-Prediction-Snakemake ok: 9 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/SamBryce-Smith__LAPA_snakemake 1 workflow/Snakefile:4: KeyError: 'lapa_disable_internal_priming_filter'
@@ -108,7 +108,7 @@ catalog/SveTho__base ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 wa
 catalog/SveTho__bcl2fastq2_workflow ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/SveTho__merge_fastqs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/TLenfers__multispecies_mitochondrial_variant_analysis ok: 4 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-catalog/TRON-Bioinformatics__neorasp 1 workflow/rules/common.smk:2: the workflow imports the Python package magic, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/TRON-Bioinformatics__neorasp 1 workflow/rules/common.smk:2: the workflow imports the Python package magic, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/TRON-Bioinformatics__oblx ok: 20 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
 catalog/TidballLab__SNP-Cas13d-Selector ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/UpalabdhaD__snakemake_wf_skeleton ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -249,10 +249,10 @@ catalog/kevinrue__snakemake-cellranger-count ok: 5 inputs, 5 required, 1 files, 
 catalog/kevinrue__snakemake-cncb-2024 ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/kevinrue__snakemake-cncb-3 ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
 catalog/kevinrue__snakemake-cncb-ensembl-2024 ok: 10 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
-catalog/khanlab__SPIMprep 1 workflow/Snakefile:2: the workflow imports the Python package upath, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/khanlab__SPIMprep 1 workflow/Snakefile:2: the workflow imports the Python package upath, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/khersameesh24__snakemake-workflow-template ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/kircherlab__MPRAsnakeflow ok: 4 inputs, 2 required, 1 files, 0 tables; 0 errors, 0 warnings; 10 read not declared, 0 declared not read
-catalog/knutdrand__bionumpy-benchmarks 1 workflow/Snakefile:5: the workflow imports the Python package bionumpy, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/knutdrand__bionumpy-benchmarks 1 workflow/Snakefile:5: the workflow imports the Python package bionumpy, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/koesterlab__ngs-fastq-to-cram ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/koesterlab__rossi-ips-dmr 1 workflow/Snakefile:68: FileNotFoundError: [Errno 2] No such file or directory: '/home/beavis/.cache/uwe/test-workflows/snakemake/catalog/rna-seq-kallisto-sleuth/workflow/Snakefile'
 catalog/kpalin__ONT_hg_somatic ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -261,7 +261,7 @@ catalog/kvntrc__snakemake_template ok: 0 inputs, 0 required, 0 files, 0 tables; 
 catalog/lacklab__MuSTARRd ok: 5 inputs, 0 required, 3 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/lacklab__epens-snakemake ok: 3 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/lasyaa418__control-of-latent-dynamics 1 workflow/Snakefile:7: ModuleNotFoundError: No module named 'src'
-catalog/liezeltamon__single-cell-preprocess 1 workflow/Snakefile:12: the workflow imports the Python package utils, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/liezeltamon__single-cell-preprocess 1 workflow/Snakefile:12: the workflow imports the Python package utils, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/loganylchen__NanoInsight ok: 8 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/loganylchen__NanoRNAMod ok: 6 inputs, 6 required, 1 files, 1 tables; 0 errors, 0 warnings; 6 read not declared, 0 declared not read
 catalog/loganylchen__RNA-seq-analysis-pipeline ok: 3 inputs, 0 required, 1 files, 1 tables; 0 errors, 0 warnings; 9 read not declared, 0 declared not read
@@ -311,9 +311,9 @@ catalog/moiexpositoalonsolab__grenepipe 1 workflow/rules/initialize.smk:24: Attr
 catalog/monagrland__MB_Pipeline 1 workflow/Snakefile:12: KeyError: 'reads_table'
 catalog/mpitz123__RNA_seq_alignment ok: 2 inputs, 0 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/mrvollger__sd-divergence 1 workflow/Snakefile:10: NameError: name 'srcdir' is not defined
-catalog/mukherjeelab__CLIPs4U 1 workflow/scripts/genomic_files_and_indexes.py:9: the workflow imports the Python package wget, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/mukherjeelab__CLIPs4U 1 workflow/scripts/genomic_files_and_indexes.py:9: the workflow imports the Python package wget, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/mushu-bytes__scelect ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-catalog/mynameisdidit__UTS_Bioinformatika_SV-Callers 1 workflow/validator/__init__.py:6: the workflow imports the Python package ruamel, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/mynameisdidit__UTS_Bioinformatika_SV-Callers 1 workflow/validator/__init__.py:6: the workflow imports the Python package ruamel, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/nate-d-olson__adotto-smk ok: 3 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/nate-d-olson__defrabb ok: 17 inputs, 16 required, 2 files, 1 tables; 0 errors, 0 warnings; 4 read not declared, 2 declared not read
 catalog/nate-d-olson__giab-stvar-curation-table 1 workflow/Snakefile:244: KeyError: 'liftover'
@@ -335,7 +335,7 @@ catalog/niekwit__rna-seq-star-tetranscripts 1 workflow/scripts/general_functions
 catalog/niekwit__smallRNA-seq ok: 9 inputs, 9 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/nikostr__dna-seq-deepvariant-glnexus-variant-calling ok: 2 inputs, 2 required, 2 files, 2 tables; 0 errors, 0 warnings; 12 read not declared, 0 declared not read
 catalog/nikostr__read-mapping ok: 2 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-catalog/nismod__open-gira 1 workflow/Snakefile:20: the workflow imports the Python package open_gira, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/nismod__open-gira 1 workflow/Snakefile:20: the workflow imports the Python package open_gira, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/nixonlab__HERV_um_mets 1 workflow/rules/common.smk:6: FileNotFoundError: [Errno 2] No such file or directory: 'resources/mskruns.txt'
 catalog/nixonlab__snakemake_rule_library 1 workflow/Snakefile:8: FileNotFoundError: [Errno 2] No such file or directory: 'workflow/rules/common.smk'
 catalog/nodrogluap__tamor none: the workflow runs a command while it is loaded
@@ -354,7 +354,7 @@ catalog/plycrsk__rna-seq-star-deseq2 1 workflow/rules/common.smk:7: NotImplement
 catalog/poloarol__snakemake-methylseq 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/uwe/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/r1cheu__gnnotator ok: 4 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/r1cheu__imputation ok: 8 inputs, 6 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-catalog/rabiafidan__pure-faf 1 workflow/rules/common.smk:5: the workflow imports the Python package cyvcf2, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/rabiafidan__pure-faf 1 workflow/rules/common.smk:5: the workflow imports the Python package cyvcf2, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/rcavalcante__test_snakemake_pipeline ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/recervictory__rna-seq-test ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/regevs__tadpoles ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -414,7 +414,7 @@ catalog/sneuensc__mapache 1 workflow/scripts/utils.py:9: ImportError: cannot imp
 catalog/solida-core__astra 1 workflow/rules/common.smk:13: EmptyDataError: No columns to parse from file
 catalog/solida-core__dima 1 workflow/rules/picard.smk:129: AttributeError: 'NoneType' object has no attribute 'get'
 catalog/solida-core__musta ok: 4 inputs, 4 required, 1 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 0 declared not read
-catalog/spjuhel__BoARIO-MRIOT-Tools 1 workflow/Snakefile:6: the workflow imports the Python package boario_tools, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/spjuhel__BoARIO-MRIOT-Tools 1 workflow/Snakefile:6: the workflow imports the Python package boario_tools, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/spjuhel__BoARIO-Sensitivity 1 workflow/Snakefile:34: FileNotFoundError: [Errno 2] No such file or directory: '/home/sjuhel/Repos/BoARIO-MRIOT-Tools/workflow/Snakefile'
 catalog/spjuhel__Climada_TC_TCSurge_Generation 1 workflow/Snakefile:27: KeyError: 'start'
 catalog/spraeger__mutational-patterns-analysis ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -456,7 +456,7 @@ catalog/watronfire__Gloucester ok: 0 inputs, 0 required, 0 files, 0 tables; 0 er
 catalog/weizhu365__snakemake_template_test ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/westerdijk-wm__smkwf-bwa-gatk-snpeff ok: 7 inputs, 6 required, 3 files, 3 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 catalog/westerdijk-wm__snakemake-mlsa-ani ok: 6 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
-catalog/wharvey31__denovo_sv_validation 1 workflow/Snakefile:3: the workflow imports the Python package Bio, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/wharvey31__denovo_sv_validation 1 workflow/Snakefile:3: the workflow imports the Python package Bio, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/xiayh17__benchmark_scomatic ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/xin-huang__selscape ok: 6 inputs, 5 required, 4 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
 catalog/yeyuan98__rna_fish_analysis ok: 8 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -517,7 +517,7 @@ tests/test_conda ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnin
 tests/test_conda_cmd_exe ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_conda_custom_prefix ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_conda_function ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-tests/test_conda_global 1 Snakefile:10: the workflow imports the Python package PIL, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+tests/test_conda_global 1 Snakefile:10: the workflow imports the Python package PIL, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 tests/test_conda_named none: the workflow runs a command while it is loaded
 tests/test_conda_pin_file ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_conda_python_3_7_script ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -636,7 +636,7 @@ tests/test_group_with_pipe ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors
 tests/test_groupid_expand ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_groupid_expand_cluster ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_groups_out_of_jobs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-tests/test_gs_requester_pays 1 Snakefile:2: the workflow imports the Python package google, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+tests/test_gs_requester_pays 1 Snakefile:2: the workflow imports the Python package google, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 tests/test_handle_storage_multi_consumers ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_handover ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_immediate_submit ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -787,7 +787,7 @@ tests/test_queue_input ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 
 tests/test_r_wrapper ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_remote_auto 1 Snakefile:4: ImportError: cannot import name 'AUTO' from 'snakemake.remote'
 tests/test_remote_azure 1 Snakefile:9: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
-tests/test_remote_gs 1 Snakefile:2: the workflow imports the Python package google, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+tests/test_remote_gs 1 Snakefile:2: the workflow imports the Python package google, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime
 tests/test_remote_irods 1 Snakefile:3: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_remote_log none: the workflow runs a command while it is loaded
 tests/test_remote_ncbi 1 Snakefile:2: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).

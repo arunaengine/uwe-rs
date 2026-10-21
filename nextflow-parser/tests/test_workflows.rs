@@ -32,7 +32,7 @@ fn matches_nextflow_lint() {
         let relative = path.strip_prefix(&root).unwrap_or(path);
         let relative = relative.to_string_lossy().replace('\\', "/");
         let source = std::fs::read_to_string(path).expect("test workflows files are text");
-        // Legacy syntax that iunctus accepts is still an error of strict syntax.
+        // Legacy syntax that uwe accepts is still an error of strict syntax.
         let (mut errors, legacy) = if relative.ends_with(".config") {
             let parsed = parse_config(&source);
             (parsed.errors, parsed.legacy)

@@ -1,4 +1,4 @@
-//! Objects of Java classes that iunctus stands in for, like `groovy.json.JsonSlurper`.
+//! Objects of Java classes that uwe stands in for, like `groovy.json.JsonSlurper`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

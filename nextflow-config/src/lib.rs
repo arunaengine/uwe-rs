@@ -75,7 +75,7 @@ pub enum ConfigError {
 }
 
 impl ConfigError {
-    /// Whether the cause is a feature that iunctus does not support yet.
+    /// Whether the cause is a feature that uwe does not support yet.
     pub fn unsupported(&self) -> bool {
         match self {
             ConfigError::Invalid { messages } => messages

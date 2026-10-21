@@ -456,7 +456,7 @@ fn page(title: &str, workflow: &str, body: &str) -> String {
         "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>{title}: {workflow}</title>\n\
          <style>body {{ font-family: sans-serif; margin: 2em; }} table {{ border-collapse: collapse; }} \
          td, th {{ border: 1px solid #ccc; padding: 2px 6px; text-align: left; }}</style>\n\
-         </head>\n<body>\n<h1>{title}</h1>\n<p>{workflow}, run by iunctus.</p>\n{body}</body>\n</html>\n",
+         </head>\n<body>\n<h1>{title}</h1>\n<p>{workflow}, run by uwe.</p>\n{body}</body>\n</html>\n",
         workflow = escape(workflow),
     )
 }

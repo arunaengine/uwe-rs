@@ -1,7 +1,7 @@
 # The test workflows that cannot run, and why: the workflow, a tab, the reason, a tab, and one
 # plain sentence. The reason is `invalid` when the workflow itself is broken, `missing` when it
 # needs something that is not in its repository or not public, or `unsupported (decision N)`
-# for a feature that iunctus leaves out on purpose, as decision N says.
+# for a feature that uwe leaves out on purpose, as decision N says.
 # `runtime` records a native runtime failure; `timeout` records the harness time limit.
 # For `invalid` and `missing`, run_test_workflows_oracle.txt holds the evidence: the error of
 # `snakemake --dry-run` (Snakemake 9.27.0) with the same launch, which oracle.py records.

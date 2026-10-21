@@ -59,7 +59,7 @@ fn unavailable(name: &str, repr: &str) -> String {
     format!(
         "{name} = __uwe.Unavailable({})\n",
         quote(&format!(
-            "{name} is {repr}, an object that only the native interpreter of iunctus has, so \
+            "{name} is {repr}, an object that only the native interpreter of uwe has, so \
              the run: block cannot use it in the container of its task"
         ))
     )

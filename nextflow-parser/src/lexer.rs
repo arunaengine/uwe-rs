@@ -9,7 +9,7 @@ use crate::{Diagnostic, Span};
 pub struct Lexed {
     pub tokens: Vec<Token>,
     pub errors: Vec<Diagnostic>,
-    /// Legacy syntax that strict syntax rejects but iunctus accepts, like `node.@name`.
+    /// Legacy syntax that strict syntax rejects but uwe accepts, like `node.@name`.
     pub legacy: Vec<Diagnostic>,
 }
 

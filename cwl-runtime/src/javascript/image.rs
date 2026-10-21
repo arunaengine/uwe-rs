@@ -1,4 +1,4 @@
-//! Builds the image of the JavaScript helper from the running iunctus binary when it is missing.
+//! Builds the image of the JavaScript helper from the running uwe binary when it is missing.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -17,12 +17,12 @@ const DOCKERFILE: &str = include_str!("../../../containers/cwl-js/Dockerfile");
 /// The repository of the helper images; each tag is the digest of the binary inside.
 const REPOSITORY: &str = "uwe-cwl-js";
 
-/// Names a static Linux binary of iunctus to make the helper image from, instead of the
+/// Names a static Linux binary of uwe to make the helper image from, instead of the
 /// running binary, for example on macOS.
 const BINARY_VARIABLE: &str = "UWE_CWL_JS_BINARY";
 
 /// `uwe-cwl-js:<digest>` of the running binary, made with the engine when it lacks it, so
-/// that a new iunctus never uses the helper of an old one.
+/// that a new uwe never uses the helper of an old one.
 pub(crate) fn own_image(engine: &str, cancel: &CancellationToken) -> Result<String, String> {
     remember(engine, cancel, || make_image(engine, cancel))
 }
@@ -76,7 +76,7 @@ fn linux_machine(binary: &Path, configured: bool) -> Result<u16, String> {
     let machine = elf_machine(binary).map_err(|error| format!("cannot read {shown}: {error}"))?;
     let Some(machine) = machine else {
         return Err(format!(
-            "the JavaScript helper of CWL runs iunctus in a Linux container, but {shown} is not \
+            "the JavaScript helper of CWL runs uwe in a Linux container, but {shown} is not \
              a Linux binary. {}",
             linux_help()
         ));
@@ -84,7 +84,7 @@ fn linux_machine(binary: &Path, configured: bool) -> Result<u16, String> {
     let dynamic = interpreter(binary).map_err(|error| error.to_string())?;
     if configured && dynamic.is_some() {
         return Err(format!(
-            "{BINARY_VARIABLE} must name a static Linux binary of iunctus, but {shown} needs \
+            "{BINARY_VARIABLE} must name a static Linux binary of uwe, but {shown} needs \
              the libraries of {}",
             dynamic.unwrap_or_default()
         ));
@@ -95,7 +95,7 @@ fn linux_machine(binary: &Path, configured: bool) -> Result<u16, String> {
 /// How to give the helper a Linux binary or image.
 fn linux_help() -> String {
     format!(
-        "Set {BINARY_VARIABLE} to a static Linux binary of iunctus for the architecture of the \
+        "Set {BINARY_VARIABLE} to a static Linux binary of uwe for the architecture of the \
          container engine (`just release-binary` makes one), or UWE_CWL_JS_IMAGE to a \
          helper image built with `scripts/cwl-js-image.py`."
     )

@@ -201,7 +201,7 @@ pub fn build(
     let module = format!(
         "# The run: block of rule {rule}, as Snakemake runs it: a function with the values of the\n\
          # job as arguments, in a module with the globals of the Snakefile that it uses. Written\n\
-         # by iunctus.\n\
+         # by uwe.\n\
          {path}\n\
          {header}\n\
          config = {config}\n\

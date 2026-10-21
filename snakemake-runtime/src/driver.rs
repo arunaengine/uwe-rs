@@ -528,7 +528,7 @@ impl Session {
             }
         }
         // Snakemake's `check_incomplete` when it first plans: outputs that are there with an
-        // incomplete record of a job that ran in place, of iunctus or of Snakemake, stop the
+        // incomplete record of a job that ran in place, of uwe or of Snakemake, stop the
         // run unless the profile sets `rerun-incomplete`, which makes them again.
         if self.tasks.is_empty() && self.done.is_empty() {
             let mut incomplete = Vec::new();
@@ -2784,7 +2784,7 @@ impl Session {
 /// Why a `cwl:` job cannot run in a pipe or service group: its CWL run has tasks of its own.
 fn cwl_grouped() -> DriverError {
     DriverError::unsupported(
-        "a cwl rule in a pipe or service: iunctus runs the CWL document of a cwl rule as tasks of their own",
+        "a cwl rule in a pipe or service: uwe runs the CWL document of a cwl rule as tasks of their own",
     )
 }
 

@@ -26,7 +26,7 @@ impl Host for Launch {
     }
 }
 
-/// The oracle script up to the block that captures `eval` outputs, which iunctus writes itself.
+/// The oracle script up to the block that captures `eval` outputs, which uwe writes itself.
 fn before_capture(command: &str) -> &str {
     let end = command
         .find("\n# capture process environment")

@@ -34,7 +34,7 @@ pub struct PythonContainers {
     /// image are kept by their packages (`environments`).
     pub cache: PathBuf,
     /// Passes what the process writes to standard error, like what packages print, on to the
-    /// standard error of iunctus.
+    /// standard error of uwe.
     pub show_output: bool,
 }
 
@@ -134,7 +134,7 @@ rm -rf "$environment"
 mv "$environment.part" "$environment"
 "#;
 
-/// The FNV-1a hash of texts, which stays the same between versions of iunctus.
+/// The FNV-1a hash of texts, which stays the same between versions of uwe.
 fn fingerprint(texts: &[&str]) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for text in texts {
@@ -223,7 +223,7 @@ impl ContainerStarter {
         if !environment.is_dir() {
             if self.settings.show_output {
                 eprintln!(
-                    "iunctus: installing {} for the Python container",
+                    "uwe: installing {} for the Python container",
                     if packages.is_empty() {
                         "Python".to_owned()
                     } else {

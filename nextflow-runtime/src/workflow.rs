@@ -13,7 +13,7 @@ use nextflow_evaluator::value::{Key, Object, PathValue, State, Value, Workflow};
 
 use crate::Options;
 
-/// The Nextflow version that iunctus follows, as `nextflow.version` shows it.
+/// The Nextflow version that uwe follows, as `nextflow.version` shows it.
 pub const NEXTFLOW_VERSION: &str = "26.04.6";
 
 /// The containers of the `process` scope, as Nextflow's `fetchContainers` gives them. A closure
@@ -190,7 +190,7 @@ fn manifest(options: &Options) -> Value {
     Value::map(entries)
 }
 
-/// `nextflow`: the version of Nextflow that iunctus follows.
+/// `nextflow`: the version of Nextflow that uwe follows.
 pub(crate) fn nextflow() -> Value {
     Value::map([
         (Value::string("version"), Value::string(NEXTFLOW_VERSION)),

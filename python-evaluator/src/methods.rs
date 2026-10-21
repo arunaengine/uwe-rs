@@ -183,7 +183,7 @@ const FLOAT_METHODS: &[&str] = &[
     "__float__",
 ];
 
-/// Whether iunctus implements a method of a builtin value.
+/// Whether uwe implements a method of a builtin value.
 pub fn has_method(value: &Value, name: &str) -> bool {
     let table: &[&[&str]] = match value.plain() {
         Value::Str(_) => &[STR_METHODS],
@@ -213,7 +213,7 @@ pub fn has_method(value: &Value, name: &str) -> bool {
     table.iter().any(|names| names.contains(&name))
 }
 
-/// Whether Python has an attribute that iunctus does not implement, so that using it is
+/// Whether Python has an attribute that uwe does not implement, so that using it is
 /// unsupported rather than an `AttributeError`.
 pub fn python_has(value: &Value, name: &str) -> bool {
     const MORE: &[&str] = &[

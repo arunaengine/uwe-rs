@@ -202,7 +202,7 @@ def named(kind, values, names):
 
 
 class Unavailable:
-    """A value that iunctus could not hand to the code of a job, like a function in the params
+    """A value that uwe could not hand to the code of a job, like a function in the params
     of a rule. Using it raises the error that says why."""
 
     def __init__(self, message):

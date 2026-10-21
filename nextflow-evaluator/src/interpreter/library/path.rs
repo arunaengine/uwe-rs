@@ -395,7 +395,7 @@ impl Interpreter<'_> {
                     "lastModified" => {
                         Value::Number(Number::Long(metadata.map_or(0, |file| file.modified)))
                     }
-                    // The permission bits of the owner, as the owner runs iunctus.
+                    // The permission bits of the owner, as the owner runs uwe.
                     _ => {
                         let bit = match name {
                             "canRead" => 0o400,

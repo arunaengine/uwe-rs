@@ -58,7 +58,7 @@ pub enum Value {
     Exception(Rc<Exception>),
     /// `java.lang.Class`, by the fully qualified name of the class.
     Class(Rc<str>),
-    /// An object of a Java class that iunctus stands in for.
+    /// An object of a Java class that uwe stands in for.
     Object(Rc<RefCell<Object>>),
     /// `java.util.regex.Pattern`, from `~'text'`.
     Pattern(Rc<crate::regex::Pattern>),

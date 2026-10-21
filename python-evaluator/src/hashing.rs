@@ -55,7 +55,7 @@ pub fn stable_hash(value: &Value) -> Option<i64> {
 }
 
 /// `hash()` of a key: the hash of an object's `__hash__`, CPython's hash of a number, or else
-/// one of iunctus, as CPython hashes text with a random seed.
+/// one of uwe, as CPython hashes text with a random seed.
 pub fn python_hash(value: &Value) -> i64 {
     use std::hash::{Hash, Hasher};
     if let Value::Instance(instance) = value.plain()

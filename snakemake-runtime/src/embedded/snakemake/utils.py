@@ -139,7 +139,7 @@ def available_cpu_count():
 
 
 def min_version(version):
-    """Snakemake 9.27 is what iunctus follows; a later minimum is an error."""
+    """Snakemake 9.27 is what uwe follows; a later minimum is an error."""
     from snakemake import __version__
 
     def parts(text):

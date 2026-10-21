@@ -43,7 +43,7 @@ const PACKAGE: &[(&str, &str)] = &[
     ("utils.py", include_str!("snakemake/utils.py")),
 ];
 
-/// A key of the stand-in's modules that stays the same between versions of iunctus with the
+/// A key of the stand-in's modules that stays the same between versions of uwe with the
 /// same modules: the FNV-1a hash of their names and texts.
 fn package_key() -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
@@ -169,7 +169,7 @@ pub struct Context {
     pub log: Named,
     pub config: Data,
     pub rule: String,
-    /// The iteration of a benchmark; iunctus runs a job once.
+    /// The iteration of a benchmark; uwe runs a job once.
     pub bench_iteration: Option<i64>,
     /// The folder of the script, or its web address.
     pub scriptdir: String,

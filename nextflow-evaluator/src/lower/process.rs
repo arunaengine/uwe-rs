@@ -364,7 +364,7 @@ impl Lowering<'_> {
         }
         // Legacy syntax: `path "*.pdf" optional true` calls a method on the output, which
         // strict syntax gives as the option `optional: true`. Nextflow 23.04 reads it so, and
-        // 26.04.6 fails on it; iunctus keeps the meaning of the pipelines' releases.
+        // 26.04.6 fails on it; uwe keeps the meaning of the pipelines' releases.
         let folded;
         let statement = match &statement.kind {
             StatementKind::Expression(

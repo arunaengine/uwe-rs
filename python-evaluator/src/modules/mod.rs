@@ -366,7 +366,7 @@ const STANDARD_LIBRARY: &[&str] = &[
     "zoneinfo",
 ];
 
-/// Whether a module belongs to Python's standard library, which iunctus may lack a stand-in
+/// Whether a module belongs to Python's standard library, which uwe may lack a stand-in
 /// of, unlike packages that workflows install.
 pub fn is_standard_library(name: &str) -> bool {
     let top = name.split('.').next().unwrap_or(name);

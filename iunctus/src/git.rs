@@ -123,12 +123,14 @@ fn checkout_nested(
         .map_err(|_| format!("{} does not hold commit {commit}", fetch.url))?;
     std::fs::create_dir_all(target).map_err(|error| error.to_string())?;
     let mut links = Vec::new();
+    let mut symlinks = Vec::new();
     write_tree(
         &repository,
         tree.detach(),
         target,
         Path::new(""),
         &mut links,
+        &mut symlinks,
     )?;
     if fetch.submodules && !links.is_empty() {
         if depth >= NESTING {
@@ -136,6 +138,7 @@ fn checkout_nested(
         }
         let modules = std::fs::read(target.join(".gitmodules")).unwrap_or_default();
         for (path, commit) in links {
+            real_folder(target, Path::new(&path))?;
             let url = submodule_url(&modules, &path, &fetch.url)
                 .ok_or_else(|| format!("{} names no URL for submodule {path}", fetch.url))?;
             let module = Fetch {
@@ -151,7 +154,37 @@ fn checkout_nested(
             checkout_nested(&module, &place, stop, depth + 1)?;
         }
     }
+    // Links come last, so that no file or submodule above is written through one.
+    write_links(target, symlinks)?;
     Ok(commit)
+}
+
+/// Makes the noted links, each in a real folder of the checkout and never over a path.
+fn write_links(target: &Path, symlinks: Vec<(std::path::PathBuf, String)>) -> Result<(), String> {
+    for (relative, link) in symlinks {
+        if let Some(parent) = relative.parent() {
+            real_folder(target, parent)?;
+        }
+        std::os::unix::fs::symlink(link, target.join(&relative))
+            .map_err(|error| format!("{}: {error}", relative.display()))?;
+    }
+    Ok(())
+}
+
+/// Fails unless each part of `relative` is a real folder in `root`, not a link or a file.
+fn real_folder(root: &Path, relative: &Path) -> Result<(), String> {
+    let mut place = root.to_path_buf();
+    for part in relative.components() {
+        place.push(part);
+        let meta = std::fs::symlink_metadata(&place).map_err(|error| error.to_string())?;
+        if !meta.is_dir() {
+            return Err(format!(
+                "{} is no folder of the checkout",
+                relative.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// An empty bare repository that reads no configuration of this machine or the user, so that
@@ -271,18 +304,21 @@ fn commit_of(fetch: &Fetch, map: &gix::remote::fetch::RefMap) -> Result<String, 
     ))
 }
 
-/// Writes the files of a tree, as a checkout does; submodules are noted for later.
+/// Writes the files of a tree, as a checkout does; submodules and symbolic links are noted
+/// for later. Nothing is written over an existing path, so a name given twice fails.
 fn write_tree(
     repository: &gix::Repository,
     tree: gix::ObjectId,
     target: &Path,
     inside: &Path,
     links: &mut Vec<(String, String)>,
+    symlinks: &mut Vec<(std::path::PathBuf, String)>,
 ) -> Result<(), String> {
     let failed = |error: std::io::Error| error.to_string();
     let tree = repository
         .find_tree(tree)
         .map_err(|error| error.to_string())?;
+    let mut names = std::collections::HashSet::new();
     for entry in tree.iter() {
         let entry = entry.map_err(|error| error.to_string())?;
         let name = entry
@@ -295,15 +331,18 @@ fn write_tree(
             ));
         }
         let relative = inside.join(name);
+        if !names.insert(name.to_owned()) {
+            return Err(format!("the repository holds {} twice", relative.display()));
+        }
         let path = target.join(&relative);
         let id = entry.oid().to_owned();
         match entry.mode().kind() {
             EntryKind::Tree => {
-                std::fs::create_dir_all(&path).map_err(failed)?;
-                write_tree(repository, id, target, &relative, links)?;
+                std::fs::create_dir(&path).map_err(failed)?;
+                write_tree(repository, id, target, &relative, links, symlinks)?;
             }
             EntryKind::Commit => {
-                std::fs::create_dir_all(&path).map_err(failed)?;
+                std::fs::create_dir(&path).map_err(failed)?;
                 links.push((
                     relative.to_string_lossy().into_owned(),
                     id.to_hex().to_string(),
@@ -315,14 +354,15 @@ fn write_tree(
                     .map_err(|error| error.to_string())?;
                 if kind == EntryKind::Link {
                     let link = blob.data.to_str().map_err(|_| "a link is no UTF-8")?;
-                    std::os::unix::fs::symlink(link, &path).map_err(failed)?;
+                    symlinks.push((relative, link.to_owned()));
                     continue;
                 }
-                std::fs::write(&path, &blob.data).map_err(failed)?;
+                let mut file = std::fs::File::create_new(&path).map_err(failed)?;
+                std::io::Write::write_all(&mut file, &blob.data).map_err(failed)?;
                 if kind == EntryKind::BlobExecutable {
                     use std::os::unix::fs::PermissionsExt;
                     let mode = std::fs::Permissions::from_mode(0o755);
-                    std::fs::set_permissions(&path, mode).map_err(failed)?;
+                    file.set_permissions(mode).map_err(failed)?;
                 }
             }
         }
@@ -450,6 +490,63 @@ mod tests {
             asked,
             ["https://git.example.org/x.git", "https://other-host/x.git"]
         );
+    }
+
+    #[test]
+    fn never_writes_outside() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = root.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        let repository = bare(&root.path().join("repository")).unwrap();
+        let entry = |kind: EntryKind, name: &str, oid| gix::objs::tree::Entry {
+            mode: kind.into(),
+            filename: name.into(),
+            oid,
+        };
+        let file = repository.write_blob("evil").unwrap().detach();
+        let inner = gix::objs::Tree {
+            entries: vec![entry(EntryKind::Blob, ".bashrc", file)],
+        };
+        let inner = repository.write_object(&inner).unwrap().detach();
+        let link = repository.write_blob(outside.to_str().unwrap()).unwrap();
+        let write = |entries| {
+            let tree = repository
+                .write_object(&gix::objs::Tree { entries })
+                .unwrap();
+            let checkout = tempfile::tempdir_in(root.path()).unwrap();
+            let mut symlinks = Vec::new();
+            write_tree(
+                &repository,
+                tree.detach(),
+                checkout.path(),
+                Path::new(""),
+                &mut Vec::new(),
+                &mut symlinks,
+            )
+            .and_then(|()| write_links(checkout.path(), symlinks))
+            .map(|()| checkout)
+        };
+        // A link `a` to a folder outside, then `a/.bashrc` through it.
+        let twice = vec![
+            entry(EntryKind::Link, "a", link.detach()),
+            entry(EntryKind::Tree, "a", inner),
+        ];
+        assert!(write(twice).unwrap_err().contains("twice"));
+        assert!(!outside.join(".bashrc").exists());
+        let apart = vec![
+            entry(EntryKind::Link, "a", link.detach()),
+            entry(EntryKind::Tree, "b", inner),
+        ];
+        let checkout = write(apart).unwrap();
+        assert!(checkout.path().join("a").is_symlink());
+        assert_eq!(
+            std::fs::read(checkout.path().join("b/.bashrc")).unwrap(),
+            b"evil"
+        );
+        assert!(!outside.join(".bashrc").exists());
+        let nested = vec![("a/z".into(), "y".to_owned())];
+        assert!(write_links(checkout.path(), nested).is_err());
+        assert!(!outside.join("z").exists());
     }
 
     #[test]

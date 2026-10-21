@@ -43,7 +43,44 @@ pub fn resolve(fetch: &Fetch) -> Result<String, String> {
 /// Fetches the commit that the reference names and writes its files into `target`, which
 /// must not exist yet. Gives the full commit ID.
 pub fn checkout(fetch: &Fetch, target: &Path, stop: &AtomicBool) -> Result<String, String> {
-    checkout_nested(fetch, target, stop, 0)
+    let commit = checkout_nested(fetch, target, stop, 0)?;
+    contain_links(target).map_err(|error| error.to_string())?;
+    Ok(commit)
+}
+
+/// Writes links that lead out of the checkout as plain files that hold their target, as Git
+/// does without `core.symlinks`, so that nothing reads through them; later links count too.
+fn contain_links(root: &Path) -> std::io::Result<()> {
+    let mut links = Vec::new();
+    let mut pending = vec![std::path::PathBuf::new()];
+    while let Some(folder) = pending.pop() {
+        for entry in std::fs::read_dir(root.join(&folder))? {
+            let entry = entry?;
+            let kind = entry.file_type()?;
+            let path = folder.join(entry.file_name());
+            if kind.is_symlink() {
+                links.push(path);
+            } else if kind.is_dir() {
+                pending.push(path);
+            }
+        }
+    }
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for link in &links {
+            let place = root.join(link);
+            let linked = std::fs::symlink_metadata(&place).is_ok_and(|meta| meta.is_symlink());
+            if !linked || task_runner::resolved(root, link).is_some() {
+                continue;
+            }
+            let target = std::fs::read_link(&place)?;
+            std::fs::remove_file(&place)?;
+            std::fs::write(&place, target.as_os_str().as_encoded_bytes())?;
+            changed = true;
+        }
+    }
+    Ok(())
 }
 
 fn checkout_nested(
@@ -325,5 +362,36 @@ mod tests {
             Some("https://example.org/data.git")
         );
         assert_eq!(submodule_url(modules, "other", parent), None);
+    }
+
+    #[test]
+    fn contains_outward_links() {
+        let root = tempfile::tempdir().unwrap();
+        let secret = root.path().join("secret");
+        std::fs::write(&secret, "host").unwrap();
+        let checkout = root.path().join("checkout");
+        std::fs::create_dir_all(checkout.join("sub")).unwrap();
+        std::fs::write(checkout.join("data"), "data").unwrap();
+        std::os::unix::fs::symlink(&secret, checkout.join("leak")).unwrap();
+        std::os::unix::fs::symlink(".", checkout.join("a")).unwrap();
+        std::os::unix::fs::symlink("../secret", checkout.join("a/up")).unwrap();
+        std::os::unix::fs::symlink("../data", checkout.join("sub/near")).unwrap();
+        // `b` looks inside by name, but `c` leads to the top first.
+        std::os::unix::fs::symlink("c/../secret", checkout.join("b")).unwrap();
+        std::os::unix::fs::symlink("sub/..", checkout.join("c")).unwrap();
+        contain_links(&checkout).unwrap();
+        for (name, target) in [("leak", secret.to_str().unwrap()), ("up", "../secret")] {
+            let place = checkout.join(name);
+            assert!(!place.is_symlink(), "{name}");
+            assert_eq!(std::fs::read_to_string(place).unwrap(), target);
+        }
+        assert!(checkout.join("sub/near").is_symlink());
+        assert_eq!(
+            std::fs::read_to_string(checkout.join("sub/near")).unwrap(),
+            "data"
+        );
+        assert!(checkout.join("a").is_symlink());
+        assert!(checkout.join("c").is_symlink());
+        assert!(!checkout.join("b").is_symlink());
     }
 }

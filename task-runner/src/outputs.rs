@@ -498,7 +498,7 @@ fn walk_now(root: &Path, reach: Reach) -> Result<Vec<Found>, RunnerError> {
 
 /// Where a path below `root` leads with its links followed, relative to `root`: `None` when
 /// it leaves `root`, is absolute or loops. Missing parts count by name.
-fn resolved(root: &Path, relative: &Path) -> Option<PathBuf> {
+pub fn resolved(root: &Path, relative: &Path) -> Option<PathBuf> {
     let parts = |path: &Path| -> Vec<PathBuf> {
         (path.components().rev())
             .map(|part| PathBuf::from(part.as_os_str()))

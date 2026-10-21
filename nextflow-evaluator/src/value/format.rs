@@ -39,6 +39,10 @@ impl Value {
     }
 
     fn write_groovy(&self, out: &mut String) {
+        super::deep(|| self.write_groovy_body(out));
+    }
+
+    fn write_groovy_body(&self, out: &mut String) {
         match self {
             Value::List(list) if list.borrow().range.is_some() => self.write_java(out),
             Value::List(list) => write_items(out, list, |item, out| item.write_groovy(out)),
@@ -75,6 +79,10 @@ impl Value {
     }
 
     fn write_java(&self, out: &mut String) {
+        super::deep(|| self.write_java_body(out));
+    }
+
+    fn write_java_body(&self, out: &mut String) {
         match self {
             Value::Null => out.push_str("null"),
             Value::Boolean(value) => out.push_str(if *value { "true" } else { "false" }),

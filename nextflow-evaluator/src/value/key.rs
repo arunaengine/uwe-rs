@@ -48,6 +48,10 @@ impl Value {
     /// Java's `equals`: the same class and the same content. Lists of any kind but arrays are
     /// equal when their elements are; maps and sets ignore order.
     pub fn java_equals(&self, other: &Value) -> bool {
+        super::deep(|| self.java_equals_body(other))
+    }
+
+    fn java_equals_body(&self, other: &Value) -> bool {
         // A group key equals its key. Nextflow's equality is one-sided; here it is not.
         if let Some(target) = self.group_target() {
             return target.java_equals(&other.group_target().unwrap_or_else(|| other.clone()));
@@ -128,6 +132,10 @@ impl Value {
     /// Java's `hashCode`. It must agree with `java_equals`, and it decides the iteration order
     /// of a `HashSet`.
     pub fn java_hash(&self) -> i32 {
+        super::deep(|| self.java_hash_body())
+    }
+
+    fn java_hash_body(&self) -> i32 {
         if let Some(target) = self.group_target() {
             return target.java_hash();
         }

@@ -428,6 +428,20 @@ fn delegates_with_object() {
     assert_eq!(value(code), "[3, 1, ABC, 3, null, [a:1]]");
 }
 
+/// Lists and maps nested far deeper than the stack of a thread format, compare, hash, give
+/// JSON and are freed without overflowing it.
+#[test]
+fn formats_deep_nesting() {
+    let code = "def x = []\ndef y = []\ndef m = [:]\n\
+                for (i in 0..<100000) { x = [x]; y = [y]; m = [a: m] }\n\
+                [x.toString().size(), \"${x}\".size(), m.toString().size(), x == y, x.equals(y),\n\
+                 x.hashCode() == y.hashCode(), groovy.json.JsonOutput.toJson(x).size()]";
+    assert_eq!(
+        value(code),
+        "[200002, 200002, 400003, true, true, true, 200002]"
+    );
+}
+
 /// Rarer text, character, encoding and random helpers, as Nextflow 26.04.6 prints them.
 #[test]
 fn rare_text_helpers() {

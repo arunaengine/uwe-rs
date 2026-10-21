@@ -34,6 +34,16 @@ impl Interpreter<'_> {
         out: &mut String,
         span: Span,
     ) -> Result<(), Error> {
+        crate::value::deep(|| self.write_json_body(value, options, out, span))
+    }
+
+    fn write_json_body(
+        &mut self,
+        value: &Value,
+        options: &JsonOptions,
+        out: &mut String,
+        span: Span,
+    ) -> Result<(), Error> {
         for (class, closure) in &options.converters {
             if instance_of(value, simple_class_name(class)) {
                 let converted = self.call_closure_value(closure, vec![value.clone()], span)?;

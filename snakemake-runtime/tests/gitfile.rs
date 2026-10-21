@@ -110,3 +110,83 @@ fn fetches_web_repositories() {
     let refused = script(folder.path(), snakefile, Default::default());
     assert!(refused.contains("no Git client"), "{refused}");
 }
+
+/// A crafted tree that holds a link `a` to a folder outside and a folder `a` with a file
+/// writes nothing outside: it is refused. Links that lead out become plain files.
+#[test]
+fn contains_crafted_trees() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let outside = folder.path().join("outside");
+    std::fs::create_dir(&outside).unwrap();
+    let repository = gix::init(folder.path().join("repo")).expect("a repository");
+    let blob = |text: &str| repository.write_blob(text).expect("a blob").detach();
+    let entry = |name: &str, kind: EntryKind, oid| Entry {
+        mode: kind.into(),
+        filename: name.into(),
+        oid,
+    };
+    let write = |entries| {
+        repository
+            .write_object(&gix::objs::Tree { entries })
+            .unwrap()
+    };
+    let rule = "rule a:\n    output: 'a.txt'\n    shell: 'echo safe > {output}'\n";
+    let rules = write(vec![entry("main.smk", EntryKind::Blob, blob(rule))]).detach();
+    let inner = write(vec![entry(".bashrc", EntryKind::Blob, blob("evil"))]).detach();
+    let target = outside.to_string_lossy().into_owned();
+    let person = gix::actor::SignatureRef {
+        name: "test".into(),
+        email: "test@example.org".into(),
+        time: "0 +0000",
+    };
+    let crafted = write(vec![
+        entry("a", EntryKind::Link, blob(&target)),
+        entry("a", EntryKind::Tree, inner),
+        entry("rules", EntryKind::Tree, rules),
+    ]);
+    let commit = repository.commit_as(
+        person,
+        person,
+        "refs/heads/bad",
+        "bad",
+        crafted,
+        Vec::<gix::ObjectId>::new(),
+    );
+    commit.expect("a commit");
+    let links = write(vec![
+        entry("leak", EntryKind::Link, blob(&target)),
+        entry("near", EntryKind::Link, blob("rules/main.smk")),
+        entry("rules", EntryKind::Tree, rules),
+    ]);
+    let commit = repository.commit_as(
+        person,
+        person,
+        "refs/heads/good",
+        "good",
+        links,
+        Vec::<gix::ObjectId>::new(),
+    );
+    commit.expect("a commit");
+    let read = |branch: &str| {
+        let snakefile = format!("include: gitfile('repo', 'rules/main.smk', tag='{branch}')\n");
+        script(folder.path(), &snakefile, Default::default())
+    };
+    let refused = read("bad");
+    assert!(refused.contains("twice"), "{refused}");
+    assert!(
+        !outside.join(".bashrc").exists(),
+        "nothing is written outside"
+    );
+    let text = read("good");
+    assert!(text.contains("echo safe > a.txt"), "{text}");
+    let checkout = std::fs::read_dir(folder.path().join("scratch/downloads/snakemake/git"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.join("leak").exists())
+        .expect("the checkout");
+    assert!(
+        !checkout.join("leak").is_symlink(),
+        "an outward link is a file"
+    );
+    assert!(checkout.join("near").is_symlink(), "an inward link stays");
+}

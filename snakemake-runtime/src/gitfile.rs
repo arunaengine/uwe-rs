@@ -112,15 +112,34 @@ fn commit_of(repository: &gix::Repository, reference: &str) -> Result<gix::Objec
     Err(missing())
 }
 
-/// Writes the files and links of a tree; submodules stay empty folders.
+/// Writes the files and links of a tree; submodules stay empty folders. Links come last and
+/// never lead out, so that no file is written through one.
 fn write_tree(
     repository: &gix::Repository,
     tree: gix::ObjectId,
     target: &Path,
 ) -> Result<(), String> {
+    std::fs::create_dir_all(target).map_err(|error| error.to_string())?;
+    let mut links = Vec::new();
+    write_files(repository, tree, target, Path::new(""), &mut links)?;
+    for (relative, link) in &links {
+        let path = real_parent(target, relative)?;
+        std::os::unix::fs::symlink(link, path).map_err(|error| error.to_string())?;
+    }
+    contain_links(target, &links).map_err(|error| error.to_string())
+}
+
+/// Writes the folders and files of a tree below `inside`, and notes its links.
+fn write_files(
+    repository: &gix::Repository,
+    tree: gix::ObjectId,
+    target: &Path,
+    inside: &Path,
+    links: &mut Vec<(PathBuf, String)>,
+) -> Result<(), String> {
     let failed = |error: std::io::Error| error.to_string();
-    std::fs::create_dir_all(target).map_err(failed)?;
     let tree = (repository.find_tree(tree)).map_err(|error| error.to_string())?;
+    let mut names = std::collections::HashSet::new();
     for entry in tree.iter() {
         let entry = entry.map_err(|error| error.to_string())?;
         let name = (entry.filename().to_str()).map_err(|_| "a file name is no UTF-8")?;
@@ -129,26 +148,116 @@ fn write_tree(
                 "the repository holds an invalid file name {name:?}"
             ));
         }
-        let path = target.join(name);
+        if !names.insert(name.to_owned()) {
+            return Err(format!("the repository holds {name:?} twice in one folder"));
+        }
+        let relative = inside.join(name);
         let id = entry.oid().to_owned();
         match entry.mode().kind() {
-            EntryKind::Tree => write_tree(repository, id, &path)?,
-            EntryKind::Commit => std::fs::create_dir_all(&path).map_err(failed)?,
+            EntryKind::Tree => {
+                std::fs::create_dir(real_parent(target, &relative)?).map_err(failed)?;
+                write_files(repository, id, target, &relative, links)?;
+            }
+            EntryKind::Commit => {
+                std::fs::create_dir(real_parent(target, &relative)?).map_err(failed)?
+            }
             kind => {
                 let blob = (repository.find_blob(id)).map_err(|error| error.to_string())?;
                 if kind == EntryKind::Link {
                     let link = blob.data.to_str().map_err(|_| "a link is no UTF-8")?;
-                    std::os::unix::fs::symlink(link, &path).map_err(failed)?;
+                    links.push((relative, link.to_owned()));
                     continue;
                 }
-                std::fs::write(&path, &blob.data).map_err(failed)?;
-                if kind == EntryKind::BlobExecutable {
-                    use std::os::unix::fs::PermissionsExt;
-                    let mode = std::fs::Permissions::from_mode(0o755);
-                    std::fs::set_permissions(&path, mode).map_err(failed)?;
-                }
+                use std::io::Write;
+                use std::os::unix::fs::OpenOptionsExt;
+                let mode = match kind == EntryKind::BlobExecutable {
+                    true => 0o755,
+                    false => 0o644,
+                };
+                // `create_new` never follows a link that is there already.
+                (std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(mode))
+                .open(real_parent(target, &relative)?)
+                .and_then(|mut file| file.write_all(&blob.data))
+                .map_err(failed)?;
             }
         }
     }
     Ok(())
+}
+
+/// The path of `relative` below `target`, once each folder above it is a real folder there.
+fn real_parent(target: &Path, relative: &Path) -> Result<PathBuf, String> {
+    let mut folder = target.to_path_buf();
+    let parents = relative.parent().into_iter().flat_map(Path::components);
+    for part in parents {
+        folder.push(part);
+        let real = std::fs::symlink_metadata(&folder).is_ok_and(|meta| meta.is_dir());
+        if !real {
+            return Err(format!(
+                "the repository writes {} below a link or a file",
+                relative.display()
+            ));
+        }
+    }
+    Ok(target.join(relative))
+}
+
+/// Makes each link that leads out of the checkout a plain file that holds its target, as Git
+/// does without `core.symlinks`; a link that leads out through another counts too.
+fn contain_links(root: &Path, links: &[(PathBuf, String)]) -> std::io::Result<()> {
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (link, target) in links {
+            let place = root.join(link);
+            let linked = std::fs::symlink_metadata(&place).is_ok_and(|meta| meta.is_symlink());
+            if !linked || resolved(root, link).is_some() {
+                continue;
+            }
+            std::fs::remove_file(&place)?;
+            std::fs::write(&place, target)?;
+            changed = true;
+        }
+    }
+    Ok(())
+}
+
+/// Where `relative` leads below `root` once its links are followed, or `None` when it leads
+/// out of `root` or through too many links.
+fn resolved(root: &Path, relative: &Path) -> Option<PathBuf> {
+    let parts = |path: &Path| -> Vec<PathBuf> {
+        (path.components().rev())
+            .map(|part| PathBuf::from(part.as_os_str()))
+            .collect()
+    };
+    let mut pending = parts(relative);
+    let (mut current, mut hops) = (PathBuf::new(), 0);
+    while let Some(part) = pending.pop() {
+        match part.components().next()? {
+            std::path::Component::Normal(name) => {
+                let next = current.join(name);
+                let place = root.join(&next);
+                if !std::fs::symlink_metadata(&place).is_ok_and(|meta| meta.is_symlink()) {
+                    current = next;
+                    continue;
+                }
+                hops += 1;
+                if hops > 40 {
+                    return None;
+                }
+                pending.extend(parts(&std::fs::read_link(&place).ok()?));
+            }
+            std::path::Component::ParentDir => {
+                if !current.pop() {
+                    return None;
+                }
+            }
+            std::path::Component::CurDir => {}
+            _ => return None,
+        }
+    }
+    Some(current)
 }

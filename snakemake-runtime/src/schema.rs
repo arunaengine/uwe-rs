@@ -387,16 +387,109 @@ pub fn validate_record(
         return Ok(Ok(()));
     };
     let instance = to_json(interpreter, record)?;
-    let first = validator.iter_errors(&instance).next().map(|error| {
-        let path = error.instance_path().to_string();
-        if path.is_empty() {
-            error.to_string()
-        } else {
-            format!("{error} (at {path})")
-        }
-    });
+    let first = validator
+        .iter_errors(&instance)
+        .next()
+        .map(|error| python_message(&error));
     Ok(match first {
-        Some(message) => Err(message),
+        Some(message) => Err(format!("ValidationError: {message}")),
         None => Ok(()),
     })
+}
+
+/// The message of a validation error in the words of Python's `jsonschema`, with values as
+/// Python writes them, like `'x' is a required property`.
+fn python_message(error: &jsonschema::ValidationError<'_>) -> String {
+    use jsonschema::error::{TypeKind, ValidationErrorKind as Kind};
+    let instance = python_repr(error.instance());
+    match error.kind() {
+        Kind::Required { property } => format!("{} is a required property", python_repr(property)),
+        Kind::Type { kind } => {
+            let names: Vec<String> = match kind {
+                TypeKind::Single(kind) => vec![format!("'{kind}'")],
+                TypeKind::Multiple(kinds) => kinds.iter().map(|kind| format!("'{kind}'")).collect(),
+            };
+            format!("{instance} is not of type {}", names.join(", "))
+        }
+        Kind::Enum { options } => format!("{instance} is not one of {}", python_repr(options)),
+        Kind::Constant { expected_value } => {
+            format!("{} was expected", python_repr(expected_value))
+        }
+        Kind::Minimum { limit } => {
+            format!(
+                "{instance} is less than the minimum of {}",
+                python_repr(limit)
+            )
+        }
+        Kind::Maximum { limit } => {
+            format!(
+                "{instance} is greater than the maximum of {}",
+                python_repr(limit)
+            )
+        }
+        Kind::ExclusiveMinimum { limit } => format!(
+            "{instance} is less than or equal to the minimum of {}",
+            python_repr(limit)
+        ),
+        Kind::ExclusiveMaximum { limit } => format!(
+            "{instance} is greater than or equal to the maximum of {}",
+            python_repr(limit)
+        ),
+        Kind::Pattern { pattern } => {
+            format!(
+                "{instance} does not match {}",
+                python_repr(&Json::from(pattern.as_str()))
+            )
+        }
+        Kind::MinLength { limit } | Kind::MinItems { limit } => match limit {
+            1 => format!("{instance} should be non-empty"),
+            _ => format!("{instance} is too short"),
+        },
+        Kind::MaxLength { limit } | Kind::MaxItems { limit } => match limit {
+            0 => format!("{instance} is expected to be empty"),
+            _ => format!("{instance} is too long"),
+        },
+        Kind::UniqueItems => format!("{instance} has non-unique elements"),
+        Kind::AdditionalProperties { unexpected } => {
+            let mut names: Vec<String> = (unexpected.iter())
+                .map(|name| python_repr(&Json::from(name.as_str())))
+                .collect();
+            names.sort();
+            let verb = if names.len() == 1 { "was" } else { "were" };
+            format!(
+                "Additional properties are not allowed ({} {verb} unexpected)",
+                names.join(", ")
+            )
+        }
+        _ => error.to_string(),
+    }
+}
+
+/// `repr()` of the Python value of a JSON value.
+pub(crate) fn python_repr(value: &Json) -> String {
+    match value {
+        Json::Null => "None".to_owned(),
+        Json::Bool(true) => "True".to_owned(),
+        Json::Bool(false) => "False".to_owned(),
+        Json::Number(number) => match (number.as_i64(), number.as_u64(), number.as_f64()) {
+            (Some(whole), ..) => whole.to_string(),
+            (_, Some(whole), _) => whole.to_string(),
+            (.., Some(float)) => python_evaluator::format::plain_repr(&Value::Float(float)),
+            _ => number.to_string(),
+        },
+        Json::String(text) => python_evaluator::format::quote(text),
+        Json::Array(items) => {
+            let items: Vec<String> = items.iter().map(python_repr).collect();
+            format!("[{}]", items.join(", "))
+        }
+        Json::Object(entries) => {
+            let entries: Vec<String> = (entries.iter())
+                .map(|(key, value)| {
+                    let key = python_evaluator::format::quote(key);
+                    format!("{key}: {}", python_repr(value))
+                })
+                .collect();
+            format!("{{{}}}", entries.join(", "))
+        }
+    }
 }

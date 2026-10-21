@@ -28,25 +28,56 @@ pub(crate) struct Web {
 /// timeouts.
 pub fn http_client() -> Result<&'static reqwest::Client, String> {
     static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
+    let client = CLIENT.get_or_init(|| builder()?.build().map_err(|error| error.to_string()));
+    client.as_ref().map_err(Clone::clone)
+}
+
+/// The client for requests with headers of a provider. It follows no redirect to another
+/// origin, so that the request can go there again without those headers, which may hold
+/// secrets; reqwest drops only `Authorization` and cookies on its own.
+fn origin_client() -> Result<&'static reqwest::Client, String> {
+    static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
     let client = CLIENT.get_or_init(|| {
-        let mut builder = reqwest::Client::builder()
-            .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
-            .connect_timeout(Duration::from_secs(30))
-            .read_timeout(Duration::from_secs(300));
-        if MOZILLA_ROOTS.get().is_some() {
-            let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
-                .iter()
-                .filter_map(|root| reqwest::Certificate::from_der(root.as_ref()).ok());
-            builder = builder.tls_certs_merge(roots);
-        }
-        if let Some(address) = PROXY.get().filter(|_| !proxy_in_environment()) {
-            let proxy = reqwest::Proxy::all(address)
-                .map_err(|error| format!("the proxy {address} of the config file: {error}"))?;
-            builder = builder.proxy(proxy.no_proxy(reqwest::NoProxy::from_env()));
-        }
-        builder.build().map_err(|error| error.to_string())
+        let policy = reqwest::redirect::Policy::custom(|attempt| {
+            let first = attempt.previous().first().map(origin);
+            match attempt.previous().len() {
+                10.. => attempt.error("too many redirects"),
+                _ if first != Some(origin(attempt.url())) => attempt.stop(),
+                _ => attempt.follow(),
+            }
+        });
+        builder()?
+            .redirect(policy)
+            .build()
+            .map_err(|error| error.to_string())
     });
     client.as_ref().map_err(Clone::clone)
+}
+
+/// The scheme, host and port of an address.
+fn origin(url: &reqwest::Url) -> (String, Option<String>, Option<u16>) {
+    let host = url.host_str().map(str::to_owned);
+    (url.scheme().to_owned(), host, url.port_or_known_default())
+}
+
+/// The settings that the clients of iunctus share.
+fn builder() -> Result<reqwest::ClientBuilder, String> {
+    let mut builder = reqwest::Client::builder()
+        .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(Duration::from_secs(30))
+        .read_timeout(Duration::from_secs(300));
+    if MOZILLA_ROOTS.get().is_some() {
+        let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
+            .iter()
+            .filter_map(|root| reqwest::Certificate::from_der(root.as_ref()).ok());
+        builder = builder.tls_certs_merge(roots);
+    }
+    if let Some(address) = PROXY.get().filter(|_| !proxy_in_environment()) {
+        let proxy = reqwest::Proxy::all(address)
+            .map_err(|error| format!("the proxy {address} of the config file: {error}"))?;
+        builder = builder.proxy(proxy.no_proxy(reqwest::NoProxy::from_env()));
+    }
+    Ok(builder)
 }
 
 /// The web proxy of `[network] proxy` of the config file.
@@ -106,7 +137,7 @@ impl Web {
     /// A client that sends these headers with every request, which hold secrets.
     pub fn with_headers(headers: HeaderMap) -> Result<Web, Problem> {
         Ok(Web {
-            client: shared_client()?,
+            client: origin_client().cloned().map_err(Problem::fixed)?,
             headers,
             strict: true,
         })
@@ -210,16 +241,27 @@ impl Web {
         Ok(Downloaded { version })
     }
 
-    /// Sends a request with the headers of the provider.
+    /// Sends a request with the headers of the provider. A redirect to another origin goes
+    /// there again without them.
     async fn request(
         &self,
         request: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, Problem> {
-        request
-            .headers(self.headers.clone())
-            .send()
+        let again = request.try_clone();
+        let response = (request.headers(self.headers.clone()).send())
             .await
-            .map_err(network)
+            .map_err(network)?;
+        let location = (response.headers().get(reqwest::header::LOCATION))
+            .and_then(|location| location.to_str().ok())
+            .and_then(|location| response.url().join(location).ok());
+        match (response.status().is_redirection(), location, again) {
+            (true, Some(next), Some(again)) if !self.headers.is_empty() => {
+                let mut request = again.build().map_err(network)?;
+                *request.url_mut() = next;
+                shared_client()?.execute(request).await.map_err(network)
+            }
+            _ => Ok(response),
+        }
     }
 
     /// An answer that is not a success; errors of the server may go away.

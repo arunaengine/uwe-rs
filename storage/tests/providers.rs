@@ -1277,3 +1277,82 @@ async fn preserves_folder_addresses() {
     assert_ne!(copies[0], copies[1]);
     assert_eq!(std::fs::read_to_string(&copies[0]).unwrap(), "first");
 }
+
+/// A web server that answers each request with `answer` of its path and keeps the headers of
+/// each request, in lower case.
+fn header_server(answer: fn(&str) -> String) -> (String, Arc<Mutex<Vec<String>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let address = format!("http://{}", listener.local_addr().expect("an address"));
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let kept = seen.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let mut reader = BufReader::new(stream.try_clone().expect("a stream"));
+            let mut first = String::new();
+            reader.read_line(&mut first).expect("a request line");
+            let path = first.split(' ').nth(1).unwrap_or_default().to_owned();
+            let mut line = String::new();
+            while reader.read_line(&mut line).is_ok_and(|count| count > 2) {
+                kept.lock()
+                    .unwrap()
+                    .push(format!("{path} {}", line.trim().to_lowercase()));
+                line.clear();
+            }
+            let mut stream = stream;
+            let _ = stream.write_all(answer(&path).as_bytes());
+        }
+    });
+    (address, seen)
+}
+
+#[tokio::test]
+async fn redirects_drop_headers() {
+    let (other, elsewhere) = header_server(|_| {
+        "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nthere".to_owned()
+    });
+    static OTHER: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    OTHER.set(other).unwrap();
+    // The server of the provider sends `/moved` on within itself, and `/away` to another one.
+    let (server, here) = header_server(|path| {
+        let (status, location) = match path {
+            "/moved" => ("302 Found", "/file".to_owned()),
+            "/away" => ("302 Found", format!("{}/file", OTHER.get().unwrap())),
+            _ => {
+                return "HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\nhere"
+                    .into();
+            }
+        };
+        format!(
+            "HTTP/1.1 {status}\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        )
+    });
+    let storage = storage(&format!(
+        "[storage.keyed]\ntype = \"https\"\nprefixes = [\"{server}/\"]\nheaders = {{ X-Api-Key = \"key-1\" }}\n"
+    ));
+    let folder = tempfile::tempdir().unwrap();
+    let file = folder.path().join("moved");
+    storage
+        .download(&format!("{server}/moved"), &file)
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(&file).unwrap(), b"here");
+    let keyed = |seen: &Mutex<Vec<String>>, path: &str| {
+        let line = format!("{path} x-api-key: key-1");
+        seen.lock().unwrap().contains(&line)
+    };
+    assert!(keyed(&here, "/file"), "the same server gets the header");
+    let file = folder.path().join("away");
+    storage
+        .download(&format!("{server}/away"), &file)
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(&file).unwrap(), b"there");
+    assert!(
+        !elsewhere.lock().unwrap().is_empty(),
+        "the other server was asked"
+    );
+    assert!(
+        !keyed(&elsewhere, "/file"),
+        "another server never gets the header"
+    );
+}

@@ -1085,6 +1085,22 @@ impl SlurmBackend {
     /// id, or else by its name and script, which only this attempt has, among the jobs of the
     /// owner of its folder. The job must have the name and script of the journal.
     async fn identify(&self, root: &Path, journal: &serde_json::Value) -> Submitted {
+        let age = self.poll * 4 + self.query_grace + self.submit_grace;
+        if !executor::poll::old_enough(&root.join("remote.json"), age) {
+            return Submitted::Unclear("the submission is too recent to tell");
+        }
+        // A job counts as absent only when two answers in a row lack it.
+        match self.look_up(root, journal).await {
+            Submitted::Absent => {
+                tokio::time::sleep(self.poll).await;
+                self.look_up(root, journal).await
+            }
+            found => found,
+        }
+    }
+
+    /// One answer of the queue about the job of a journal.
+    async fn look_up(&self, root: &Path, journal: &serde_json::Value) -> Submitted {
         let squeue = self.command("squeue");
         let options = journal["options"].as_array().into_iter().flatten();
         let name = (options.filter_map(|option| option.as_str()))

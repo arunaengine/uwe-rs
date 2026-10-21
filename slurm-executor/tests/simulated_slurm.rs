@@ -252,6 +252,16 @@ fn cluster(root: &Path, apptainer: &str) -> PathBuf {
     bin
 }
 
+/// Makes a journal look an hour old, as recovery takes only a submission that old as lost.
+fn age(journal: &Path) {
+    let file = std::fs::File::options()
+        .write(true)
+        .open(journal)
+        .expect("the journal");
+    let time = std::time::SystemTime::now() - Duration::from_secs(3600);
+    file.set_modified(time).expect("sets the time");
+}
+
 fn backend(root: &Path, bin: &Path, container: Container) -> SlurmBackend {
     let mut backend = SlurmBackend::new(root.join("scratch"), container);
     backend.commands = Some(bin.to_owned());
@@ -936,7 +946,11 @@ async fn recovers_lost_submissions() {
             .trim(),
         "101"
     );
+    // A submission this young may still come; recovery leaves it for now.
+    backend.reconcile().await.unwrap();
+    assert!(path.exists(), "a young submission stays");
     // Recovery finds the job by its name and script, and cancels it.
+    age(&path);
     backend.reconcile().await.unwrap();
     assert!(!path.exists());
     assert!(bin.join("state/101.cancelled").exists());
@@ -952,6 +966,7 @@ async fn recovers_lost_submissions() {
     };
     assert!(backend.run(job, &CancellationToken::new()).await.is_err());
     assert!(backend.scratch.join("unsent/remote.json").is_file());
+    age(&backend.scratch.join("unsent/remote.json"));
     backend.reconcile().await.unwrap();
     assert!(!backend.scratch.join("unsent/remote.json").exists());
 }
@@ -1005,6 +1020,7 @@ async fn recovery_cleans_staging() {
     );
     // Recovery finds the job, and then removes the plan and what the job sent back.
     until(|| bin.join("state/101.exit").exists()).await;
+    age(&path);
     backend.reconcile().await.unwrap();
     assert!(!path.exists());
     let contents = stage.objects.objects("cas/").await.unwrap();
@@ -1254,6 +1270,7 @@ async fn recovers_unresolved_pulls() {
             .starts_with("image-")
     );
     assert!(attempts[0].join("control/job.sh").is_file());
+    age(&attempts[0].join("remote.json"));
     backend.reconcile().await.unwrap();
     assert!(!attempts[0].join("remote.json").exists());
 }

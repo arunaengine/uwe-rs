@@ -79,7 +79,8 @@ pub fn prepare(
             Some(folder) if Some(plain) != benchmark => folder,
             _ => workdir,
         };
-        let mut collected = base.join(plain).to_string_lossy().into_owned();
+        // Without `..`, which the collection of outputs refuses.
+        let mut collected = normal(&base.join(plain)).to_string_lossy().into_owned();
         if declared.ends_with('/') {
             collected.push('/');
         }
@@ -96,6 +97,7 @@ pub fn place(
     placed: &mut Placed,
     run: &str,
 ) -> std::io::Result<()> {
+    let mut folders: Vec<PathBuf> = Vec::new();
     for output in &mut task.outputs {
         let found = placed
             .outputs
@@ -103,8 +105,26 @@ pub fn place(
             .find(|(_, declared)| declared == output);
         *output = match found {
             Some((collected, _)) => collected.clone(),
-            None => workdir.join(&*output).to_string_lossy().into_owned(),
+            None => normal(&workdir.join(&*output))
+                .to_string_lossy()
+                .into_owned(),
         };
+        // The job writes an output outside the working directory in its folder, which it
+        // gets as well, and no other folder there.
+        let path = Path::new(output.trim_end_matches('/'));
+        if path.starts_with(normal(workdir)) {
+            continue;
+        }
+        let folder = path.parent().unwrap_or(path).to_path_buf();
+        if folder.parent().is_none() {
+            return Err(std::io::Error::other(format!(
+                "the output {output} lies in the root folder, which iunctus does not give a job"
+            )));
+        }
+        if !folders.iter().any(|other| folder.starts_with(other)) {
+            folders.retain(|other| !other.starts_with(&folder));
+            folders.push(folder);
+        }
     }
     let mut kept = Vec::new();
     for input in std::mem::take(&mut task.inputs) {
@@ -152,6 +172,16 @@ pub fn place(
         ));
     }
     kept.extend(local_time());
+    for folder in folders {
+        let folder = folder.to_string_lossy().into_owned();
+        kept.push(Input {
+            path: folder.clone(),
+            source: folder,
+            directory: true,
+            writable: Writable::Shared,
+            ..Input::default()
+        });
+    }
     let folder = workdir.to_string_lossy().into_owned();
     kept.push(Input {
         path: folder.clone(),

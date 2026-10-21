@@ -1,5 +1,5 @@
 //! Checks number literals and Java number text against Nextflow 26.04.6 (Groovy spec, 4.1 and 6.2).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_evaluator::number::Number;

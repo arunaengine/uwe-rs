@@ -1,6 +1,6 @@
 //! Lowering of typed processes, which `nextflow.enable.types = true` turns on: typed inputs,
 //! records and tuples, the `stage:` section, and outputs computed after the task.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

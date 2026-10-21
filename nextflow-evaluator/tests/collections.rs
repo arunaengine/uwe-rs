@@ -1,5 +1,5 @@
 //! Checks list and set methods against Nextflow 26.04.6 (Groovy spec, sections 8.12 and 10.2 to 10.4).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

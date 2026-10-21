@@ -1,5 +1,5 @@
 //! Checks Groovy truth, class names and Java equality of values (Groovy spec, sections 3, 7 and 8.11).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_evaluator::number::Number;

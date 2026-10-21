@@ -1,6 +1,6 @@
 //! Operators that group or pair values by a key: `groupTuple`, `join`, `combine` and `cross`
 //! (channels spec, sections 5.7, 5.11, 5.18 and 5.20).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

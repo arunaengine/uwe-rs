@@ -1,6 +1,6 @@
 //! Renders the nf-core GUNZIP module for one task and compares the task script with the
 //! `.command.sh` that Nextflow 26.04.6 wrote (`tests/fixtures/oracle/gunzip/record.sh`).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

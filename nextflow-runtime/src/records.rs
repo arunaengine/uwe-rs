@@ -1,6 +1,6 @@
 //! Operators of typed workflows that Nextflow 26.04.6 changes: `groupBy`, `join` of records by
 //! a field, and `combine` that only spreads tuples or adds fields to records.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;

@@ -1,5 +1,5 @@
 //! Checks `==`, `<` and `<=>` against Nextflow 26.04.6 (Groovy spec, sections 8.2 to 8.4).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;

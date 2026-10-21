@@ -1,6 +1,6 @@
 //! The `process` scope for one process: the settings of the matching selectors and the plain
 //! defaults (config spec, section 6).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

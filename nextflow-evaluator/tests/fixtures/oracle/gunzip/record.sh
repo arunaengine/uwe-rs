@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Records real and stub GUNZIP commands with Nextflow 26.04.6; see the crate README for usage.
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 set -euo pipefail
 modules=$1

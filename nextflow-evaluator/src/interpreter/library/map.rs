@@ -1,6 +1,6 @@
 //! Methods of maps and map entries. A closure with two parameters gets the key and the value,
 //! any other closure gets the `Map.Entry` (Groovy spec, section 9.3).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;

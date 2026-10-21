@@ -1,7 +1,7 @@
 // Prints the names of the methods that Groovy 4 finds for values of some Java classes, with
 // the methods that Groovy adds (DefaultGroovyMethods and the like): one line per class, the
 // class, a colon and the names in order.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 def values = [

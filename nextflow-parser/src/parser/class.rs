@@ -1,6 +1,6 @@
 //! Parses Groovy classes and imports, which only the legacy parser accepts. Older nf-core
 //! pipelines keep helper classes like `WorkflowMain` in `lib/*.groovy`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use super::{Parse, Parser, is_name};

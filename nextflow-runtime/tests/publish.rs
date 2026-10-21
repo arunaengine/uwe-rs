@@ -1,6 +1,6 @@
 //! Nextflow's `publishDir`: which outputs of a finished task the driver asks the engine to
 //! deliver, where, and how, from the process and from the config.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use workflow_graph::{DeliveryMode, Engine, Event, Launch, Observer, Simulator};

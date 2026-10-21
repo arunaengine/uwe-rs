@@ -1,6 +1,6 @@
 //! The standard library: methods of values by their Java class. It grows with what the
 //! nf-core test workflows uses; a method it lacks is an error that says so.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub(super) mod builder;

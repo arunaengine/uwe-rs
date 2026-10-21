@@ -1,5 +1,5 @@
 //! Lowers labelled branch and multiMap criteria into returned labels or value maps.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_parser::Span;

@@ -1,6 +1,6 @@
 //! Runs small workflows with factories and operators and checks what `view` prints against
 //! the experiments of the channels spec.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

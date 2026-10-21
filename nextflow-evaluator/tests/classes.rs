@@ -1,6 +1,6 @@
 //! Runs Groovy classes like those of the `lib/` directory of older nf-core pipelines, and legacy
 //! loops, against the results of Groovy 4.0.31, which Nextflow 26.04.6 bundles.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;

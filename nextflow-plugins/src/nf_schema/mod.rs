@@ -1,6 +1,6 @@
 //! nf-schema: parameter validation and summaries, and samplesheets as lists, from JSON
 //! schemas (JSON Schema 2020-12, through the `jsonschema` crate).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod params;

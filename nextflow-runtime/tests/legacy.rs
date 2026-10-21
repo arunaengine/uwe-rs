@@ -1,6 +1,6 @@
 //! Scripts of legacy syntax, which strict syntax rejects and iunctus runs with the meaning of
 //! the legacy parser (decision 14).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;

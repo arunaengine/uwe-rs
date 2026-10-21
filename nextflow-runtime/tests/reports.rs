@@ -1,6 +1,6 @@
 //! Nextflow's own reports of a real run: the trace, the timeline, the report and the graph of
 //! the processes, which the driver writes at the end and asks the engine to deliver.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use workflow_graph::{Delivery, Engine, Event, Launch, Observer, Simulator};

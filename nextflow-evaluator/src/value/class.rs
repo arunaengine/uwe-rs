@@ -1,5 +1,5 @@
 //! Class values, like `Path` in `addConverter(Path) { ... }` or the result of `getClass()`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 /// The fully qualified names of the classes that scripts may name without a package.

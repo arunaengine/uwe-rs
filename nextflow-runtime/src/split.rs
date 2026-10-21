@@ -1,5 +1,5 @@
 //! Emits CSV, text, FASTA, FASTQ, and JSON splitter records, singly or in by groups.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

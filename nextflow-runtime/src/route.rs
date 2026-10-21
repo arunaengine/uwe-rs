@@ -1,6 +1,6 @@
 //! Operators with several outputs or ordered inputs: `branch`, `multiMap`, `concat` and
 //! `merge` (channels spec, sections 5.2, 5.8, 5.25 and 5.27).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

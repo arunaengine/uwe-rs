@@ -1,5 +1,5 @@
 //! Checks regular expressions against Java's `String` methods (Groovy spec, section 8.6).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_evaluator::regex::Pattern;

@@ -1,5 +1,5 @@
 //! Checks `file()` and path methods against Nextflow 26.04.6 (Groovy spec, sections 6.4 and 10.7).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

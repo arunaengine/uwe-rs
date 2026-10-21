@@ -1,5 +1,5 @@
 //! Checks `=~`, `==~`, patterns and matchers against Nextflow 26.04.6 (Groovy spec, section 8.6).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

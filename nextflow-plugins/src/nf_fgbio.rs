@@ -1,5 +1,5 @@
 //! nf-fgbio 1.0.0: `readStructure` parses an fgbio read structure, like `8M+T`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;

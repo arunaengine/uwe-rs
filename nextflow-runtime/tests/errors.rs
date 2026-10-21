@@ -1,6 +1,6 @@
 //! What a Nextflow run does when a task fails, by its `errorStrategy`: retry it with its
 //! attempt counted up, ignore it, finish the running tasks first, or stop at once.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;

@@ -1,6 +1,6 @@
 //! Checks the lowering of workflows, includes and script-level statements against the rules
 //! of `nextflow lint`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_evaluator::lower::{Imports, lower_module, lower_script};

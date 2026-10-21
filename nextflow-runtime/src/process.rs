@@ -1,6 +1,6 @@
 //! Processes in the network: each round of input values becomes a task, and each task outcome
 //! becomes output values (channels spec, section 7).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;

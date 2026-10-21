@@ -1,5 +1,5 @@
 //! Checks map methods against Nextflow 26.04.6 (Groovy spec, sections 9.3 and 10.5).
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

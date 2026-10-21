@@ -1,6 +1,6 @@
 //! nf-schema functions against the plugin nf-schema 2.5.1 with Nextflow 26.04.6; the fixtures
 //! have the script that recorded the expected values.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;

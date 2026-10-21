@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Records Nextflow 26.04.6 exec results and printed output locally without containers or network.
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"

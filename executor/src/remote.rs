@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use content_store::{Store, hash_file, layout};
 use task_model::Digest;
@@ -159,7 +159,18 @@ impl RemoteStage {
             pending.push((stdin.clone(), format!("{CONTROL}/stdin"), false));
         }
         for (path, file) in files {
-            pending.push((file.to_path_buf(), (*path).to_owned(), false));
+            let (digest, size) = remembered(file).await?;
+            if !self.objects.has_content(&digest).await.map_err(failed)? {
+                (self.objects.put_file_as(file, &digest))
+                    .await
+                    .map_err(failed)?;
+            }
+            layout.files.push(Placed {
+                path: (*path).to_owned(),
+                digest,
+                size,
+                executable: false,
+            });
         }
         while let Some((source, path, executable)) = pending.pop() {
             let metadata = std::fs::metadata(&source).map_err(|_| {
@@ -378,6 +389,23 @@ impl RemoteStage {
             headers: signed.headers,
         })
     }
+}
+
+/// The digest and size of a local file that attempts stage again and again, like an image
+/// archive: hashed once while its size and time of change stay the same.
+async fn remembered(file: &Path) -> Result<(Digest, u64), ExecutorError> {
+    type Known = std::collections::BTreeMap<std::path::PathBuf, (u64, SystemTime, Digest)>;
+    static KNOWN: std::sync::Mutex<Known> = std::sync::Mutex::new(Known::new());
+    let known = || KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
+    let metadata = tokio::fs::metadata(file).await?;
+    let (size, modified) = (metadata.len(), metadata.modified()?);
+    let same = |(was, then, _): &&(u64, SystemTime, Digest)| *was == size && *then == modified;
+    if let Some((_, _, digest)) = known().get(file).filter(same) {
+        return Ok((digest.clone(), size));
+    }
+    let (digest, hashed) = hash_file(file).await.map_err(failed)?;
+    known().insert(file.to_owned(), (hashed, modified, digest.clone()));
+    Ok((digest, hashed))
 }
 
 /// The path of an input in the folder of an attempt: in the work directory, or below `mounts`

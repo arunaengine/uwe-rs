@@ -1340,6 +1340,7 @@ impl Session {
     }
 
     fn failure_hook(&mut self, error: &str) -> Result<(), DriverError> {
+        self.abandon();
         let result = if self.hooks_started && !self.hooks_finished {
             self.hooks_finished = true;
             if self
@@ -1719,6 +1720,28 @@ impl Session {
             }
         }
         Ok(())
+    }
+
+    /// Cleans up after the tasks that the run stopped, as Snakemake does for the jobs it
+    /// terminates: their shadow directories go, `update()` outputs get their content back,
+    /// and the other outputs are removed.
+    fn abandon(&mut self) {
+        let placed: Vec<(TaskId, crate::shared::Placed)> = self.placed.drain().collect();
+        for (id, placed) in placed {
+            let written = placed.written.clone();
+            let mut outcome = Outcome::default();
+            if let Err(error) = crate::shared::finish(placed, &mut outcome, false) {
+                eprintln!("cannot clean up task {id}: {error}");
+            }
+            self.release_written(&written);
+            let jobs: Vec<usize> = match self.groups.get(&id) {
+                Some(members) => members.iter().map(|(job, _)| *job).collect(),
+                None => self.jobs_of_tasks.get(&id).copied().into_iter().collect(),
+            };
+            if let Err(error) = self.remove_failed(&jobs) {
+                eprintln!("cannot clean up task {id}: {}", error.message);
+            }
+        }
     }
 
     /// Gives the `update()` outputs of failed jobs in the shared directory their content from

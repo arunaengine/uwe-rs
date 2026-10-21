@@ -7,7 +7,7 @@
 ## src/file.rs:370
 
 Runs the first `catch` clause that takes the exception of a failed `try` body. Only a
-thrown exception can be caught, never a feature that iunctus does not support.
+thrown exception can be caught, never a feature that uwe does not support.
 `path = value`, which gives the value. Legacy syntax sets each setting of a chain like
 `a = b = 5` to the value of the last one.
 

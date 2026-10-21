@@ -29,10 +29,10 @@ and directories use the keywords of nf-schema, which nf-core pipelines use:
 - `exists`: `true` when the file or directory must exist before the run;
 - `mimetype`: the media type of a file, like `text/csv`;
 - `schema`: the schema of the content of a file, like the rows of a sample sheet: an array of
-  objects with typed columns. nf-schema names a schema file there; iunctus puts the schema
+  objects with typed columns. nf-schema names a schema file there; uwe puts the schema
   itself there, so that the schema of a workflow needs no other files.
 
-Two keywords are iunctus's own, for what CWL declares and JSON Schema has no word for:
+Two keywords are uwe's own, for what CWL declares and JSON Schema has no word for:
 
 - `fileFormat`: the format of a file as the IRI of a concept, like
   `http://edamontology.org/format_1930`, or a list of such IRIs;

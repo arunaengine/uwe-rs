@@ -16,7 +16,7 @@ the lock, the base image, the platform and the recipe.
 Reads every conda environment file of the Snakemake test workflows, the files in their
 `envs` folders, and checks their accepted and rejected outcomes. Run it with
 `cargo test -p conda-environment --test test_workflows -- --ignored --nocapture`; the
-folder is `SNAKEMAKE_TEST_WORKFLOWS`, else `~/.cache/iunctus/test-workflows/snakemake`.
+folder is `SNAKEMAKE_TEST_WORKFLOWS`, else `~/.cache/uwe/test-workflows/snakemake`.
 
 ## src/image.rs:187
 

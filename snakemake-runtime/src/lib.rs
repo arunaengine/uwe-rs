@@ -18,6 +18,7 @@ mod hooks;
 mod inputs;
 mod iofile;
 mod ioutils;
+mod locks;
 mod metadata;
 mod namespace;
 mod objects;

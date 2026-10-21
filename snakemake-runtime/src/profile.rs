@@ -54,6 +54,8 @@ pub struct Profile {
     pub allowed_rules: Option<Vec<String>>,
     /// `batch:` as rule, batch and number of batches.
     pub batch: Option<(String, usize, usize)>,
+    /// `nolock:`, which leaves the working directory unlocked.
+    pub nolock: bool,
 }
 
 pub const RERUN_TRIGGERS: [&str; 5] = ["mtime", "params", "input", "software-env", "code"];
@@ -291,6 +293,7 @@ impl Profile {
         }
         self.all_temp = self.all_temp || other.all_temp;
         self.notemp = self.notemp || other.notemp;
+        self.nolock = self.nolock || other.nolock;
         if other.wrapper_prefix.is_some() {
             self.wrapper_prefix = other.wrapper_prefix;
         }
@@ -412,6 +415,7 @@ impl Profile {
                 "executor" => profile.executor = Some(interpreter.to_str(&value)?),
                 "all-temp" => profile.all_temp = interpreter.truthy(&value)?,
                 "notemp" | "nt" | "no-temp" => profile.notemp = interpreter.truthy(&value)?,
+                "nolock" => profile.nolock = interpreter.truthy(&value)?,
                 "wrapper-prefix" => profile.wrapper_prefix = Some(interpreter.to_str(&value)?),
                 "groups" => profile.groups = pairs(interpreter, &value)?,
                 "group-components" => {
@@ -522,7 +526,6 @@ impl Profile {
                 | "keep-going"
                 | "rerun-incomplete"
                 | "keep-incomplete"
-                | "nolock"
                 | "jobname"
                 | "jn"
                 | "seconds-between-status-checks"

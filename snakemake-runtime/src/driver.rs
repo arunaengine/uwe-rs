@@ -140,6 +140,8 @@ pub struct Session {
     local: bool,
     /// The files written into the shared directory for running tasks, with how many need them.
     written: HashMap<PathBuf, usize>,
+    /// The lock of the working directory while jobs run, as Snakemake takes it.
+    lock: Option<crate::locks::Lock>,
 }
 
 struct SignaturePublication {
@@ -253,6 +255,7 @@ impl Session {
             deferred: Vec::new(),
             local: false,
             written: HashMap::new(),
+            lock: None,
         })
     }
 
@@ -528,10 +531,15 @@ impl Session {
                     .filter(|value| value.tag("service").is_none())
                     .filter_map(Value::as_str)
                     .collect();
+                // The incomplete records of iunctus, and those of Snakemake for outputs that
+                // are there, as `--rerun-incomplete` takes them.
                 if outputs.iter().any(|output| {
+                    let snakemake = crate::metadata::snakemake_incomplete(&self.workdir, output);
+                    let path = self.interpreter.host.resolve(output);
                     crate::metadata::incomplete_path(&self.workdir, output)
                         .try_exists()
                         .unwrap_or(true)
+                        || (snakemake.is_file() && std::fs::symlink_metadata(path).is_ok())
                 }) {
                     self.needrun.insert(*job, true);
                     continue;
@@ -1193,6 +1201,7 @@ impl Session {
         self.sources = Rc::new(crate::sources::Sources::find(&self.state.borrow()));
         self.plan()?;
         self.report_assumed();
+        self.take_lock()?;
         if self.needrun.values().any(|needed| *needed) {
             if !self.state.borrow().lifecycle.is_empty() {
                 std::fs::create_dir_all(&self.launch.scratch)
@@ -1208,6 +1217,33 @@ impl Session {
             self.hooks_started = true;
         }
         self.ready_tasks(None)
+    }
+
+    /// Locks the working directory for the files of the planned jobs, as Snakemake does
+    /// before it runs them: the inputs of all jobs, and the outputs of those that run.
+    fn take_lock(&mut self) -> Result<(), DriverError> {
+        let Some(planner) = &self.planner else {
+            return Ok(());
+        };
+        if self.launch.simulated || self.state.borrow().profile.nolock {
+            return Ok(());
+        }
+        let mut inputs = Vec::new();
+        let mut outputs = Vec::new();
+        for job in &self.order {
+            inputs.extend(planner.jobs[*job].input_files());
+            if self.needrun.get(job).copied().unwrap_or(false) {
+                let values = planner.jobs[*job].output.values.iter();
+                outputs.extend(values.filter_map(Value::as_str).map(str::to_owned));
+            }
+        }
+        for files in [&mut inputs, &mut outputs] {
+            let mut seen = HashSet::new();
+            files.retain(|file| seen.insert(file.clone()));
+        }
+        let lock = crate::locks::Lock::take(&self.workdir, &inputs, &outputs);
+        self.lock = Some(lock.map_err(DriverError::new)?);
+        Ok(())
     }
 
     fn run_hook(&mut self, keyword: GlobalKeyword) -> Result<(), DriverError> {

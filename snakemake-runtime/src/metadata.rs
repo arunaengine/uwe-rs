@@ -24,6 +24,11 @@ pub(crate) fn incomplete_path(workdir: &Path, output: &str) -> PathBuf {
     workdir.join(record_path(output).replacen(FOLDER, ".snakemake/iunctus-incomplete", 1))
 }
 
+/// The incomplete record of an output that Snakemake itself writes while its job runs.
+pub(crate) fn snakemake_incomplete(workdir: &Path, output: &str) -> PathBuf {
+    workdir.join(record_path(output).replacen(FOLDER, ".snakemake/incomplete", 1))
+}
+
 pub(crate) fn mark_incomplete(workdir: &Path, output: &str) -> std::io::Result<()> {
     let path = incomplete_path(workdir, output);
     let parent = path.parent().unwrap_or(workdir);

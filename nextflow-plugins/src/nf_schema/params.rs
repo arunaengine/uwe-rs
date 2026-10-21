@@ -108,11 +108,13 @@ fn help_names(context: &Context) -> Vec<String> {
 
 /// Whether the check reads command-line texts as numbers and booleans: the `cast_cli_params`
 /// option, else from nf-schema 2.7.2 on, which does so because Nextflow keeps them as text.
+/// With `NXF_SYNTAX_PARSER=v1` it does not, as Nextflow reads them as types itself there.
 fn casts(options: Option<&Value>, context: &Context) -> bool {
     if let Some(cast) = options.and_then(|options| get(options, "cast_cli_params")) {
         return cast.truth();
     }
-    version(context).is_none_or(|parts| parts.as_slice() >= [2, 7, 2].as_slice())
+    let legacy = context.host.environment("NXF_SYNTAX_PARSER").as_deref() == Some("v1");
+    !legacy && version(context).is_none_or(|parts| parts.as_slice() >= [2, 7, 2].as_slice())
 }
 
 /// A value in an error line as nf-schema shows it: Groovy's `value ?: ''`, so `false`, zero

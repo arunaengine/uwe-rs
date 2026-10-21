@@ -24,6 +24,21 @@ impl Host for Fixtures {
     }
 }
 
+/// A host of the fixture directory whose environment sets `NXF_SYNTAX_PARSER=v1`.
+struct Legacy(String);
+
+impl Host for Legacy {
+    fn print(&mut self, _: &str) {}
+
+    fn launch_dir(&self) -> String {
+        self.0.clone()
+    }
+
+    fn environment(&self, name: &str) -> Option<String> {
+        (name == "NXF_SYNTAX_PARSER").then(|| "v1".to_owned())
+    }
+}
+
 /// A config that loads this text.
 fn loaded(text: &str) -> Config {
     let folder = tempfile::tempdir().expect("a temporary directory");
@@ -411,7 +426,8 @@ fn coerces_lenient_strings() {
 }
 
 /// Nextflow 26.04.6 keeps command-line params as text. nf-schema 2.7.2 and later read them as
-/// numbers and booleans for the check; 2.5.1 and `cast_cli_params: false` do not.
+/// numbers and booleans for the check; 2.5.1, `cast_cli_params: false` and 2.8.0 with
+/// `NXF_SYNTAX_PARSER=v1 NXF_DISABLE_PARAMS_TYPE_DETECTION=1` do not.
 #[test]
 fn casts_command_line() {
     let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -419,7 +435,7 @@ fn casts_command_line() {
         .to_string_lossy()
         .into_owned();
     let names = ["outdir".to_owned(), "n".to_owned(), "flag".to_owned()];
-    let check = |plugin: &str, arguments: Vec<Value>| {
+    let check = |plugin: &str, arguments: Vec<Value>, legacy: bool| {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let file = folder.path().join("nextflow.config");
         std::fs::write(&file, format!("plugins {{ id '{plugin}' }}\n")).expect("writes");
@@ -432,8 +448,12 @@ fn casts_command_line() {
         let mut host = Fixtures(directory.clone());
         let config = nextflow_config::load(&[file], &options, &mut host).expect("loads");
         let text = |name: &str, value: &str| (Value::string(name), Value::string(value));
+        let mut parser = Legacy(directory.clone());
         let mut context = Context {
-            host: &mut host,
+            host: match legacy {
+                true => &mut parser,
+                false => &mut host,
+            },
             config: &config,
             params: Value::map([text("outdir", "res"), text("n", "5"), text("flag", "false")]),
             project_dir: &directory,
@@ -442,14 +462,16 @@ fn casts_command_line() {
         call("nf-schema", "validateParameters", arguments, &mut context)
             .map_err(|error| error.to_string())
     };
-    assert!(check("nf-schema@2.8.0", vec![]).is_ok());
-    assert!(check("nf-schema@2.7.2", vec![]).is_ok());
+    assert!(check("nf-schema@2.8.0", vec![], false).is_ok());
+    assert!(check("nf-schema@2.7.2", vec![], false).is_ok());
     let expected = "* --flag (false): Value is [string] but should be [boolean]\n\
                     * --n (5): Value is [string] but should be [integer]\n\n";
-    let error = check("nf-schema@2.5.1", vec![]).unwrap_err();
+    let error = check("nf-schema@2.5.1", vec![], false).unwrap_err();
     assert!(error.ends_with(expected), "{error}");
     let options = Value::map([(Value::string("cast_cli_params"), Value::Boolean(false))]);
-    let error = check("nf-schema@2.8.0", vec![options]).unwrap_err();
+    let error = check("nf-schema@2.8.0", vec![options], false).unwrap_err();
+    assert!(error.ends_with(expected), "{error}");
+    let error = check("nf-schema@2.8.0", vec![], true).unwrap_err();
     assert!(error.ends_with(expected), "{error}");
 }
 

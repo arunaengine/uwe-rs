@@ -521,14 +521,25 @@ pub fn build(
         });
     }
     // An `update()` output that exists is a copy that the job changes, as Snakemake leaves the
-    // file in place for the job instead of removing it.
-    for value in (job.output.values.iter())
-        .filter(|value| value.tag("update").is_some() && !setting.embedded.shared)
-    {
+    // file in place for the job instead of removing it. In the shared directory the job
+    // changes it in place, and its content counts for the cache key like an input.
+    for value in (job.output.values.iter()).filter(|value| value.tag("update").is_some()) {
         let Some(file) = value.as_str() else {
             continue;
         };
         let path = interpreter.host.resolve(file);
+        if setting.embedded.shared {
+            if let Some(stat) = interpreter.host.stat(&path) {
+                inputs.retain(|input| input.path != file);
+                inputs.push(Input {
+                    path: file.to_owned(),
+                    source: path.to_string_lossy().into_owned(),
+                    directory: stat.kind == python_evaluator::FileKind::Directory,
+                    ..Default::default()
+                });
+            }
+            continue;
+        }
         let source = match setting.files.location(&path) {
             Some((location, _)) => location,
             None if interpreter.host.stat(&path).is_some() => path,

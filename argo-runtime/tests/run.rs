@@ -1815,6 +1815,36 @@ spec:
 }
 
 #[test]
+fn patches_set_main() {
+    let ran = run(&workflow(
+        r#"
+  - name: main
+    podSpecPatch: '{"containers": [{"name": "main", "env": [{"name": "GREETING", "value": "hi"}]}]}'
+    containerSet:
+      containers:
+      - {name: first, image: alpine, command: [echo, a]}
+      - {name: main, image: alpine, command: [echo, b], dependencies: [first]}
+"#,
+    ));
+    ran.succeeded();
+    let task = ran.tasks()[0];
+    let main = (task.containers.iter())
+        .find(|container| container.name == "main")
+        .expect("the main container");
+    assert_eq!(
+        main.environment.get("GREETING").map(String::as_str),
+        Some("hi")
+    );
+    assert!(
+        !ran.warnings
+            .iter()
+            .any(|warning| warning.contains("left out")),
+        "{:?}",
+        ran.warnings
+    );
+}
+
+#[test]
 fn unresolved_when_fails() {
     // `a` is skipped, so it has no outputs; Argo cannot parse the `when` of `b` and fails it.
     let dag = r#"

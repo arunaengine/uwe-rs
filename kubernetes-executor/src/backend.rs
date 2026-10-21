@@ -1014,6 +1014,8 @@ fn outcome(
                 "iunctus: the container ended with exit code {status}, maybe for lack of memory\n"
             )),
         )),
+        // A captured wrapper ends with the code of its task, which it recorded first.
+        Ended::Exited(status, _) if recorded == Some(*status) => Ok((*status, None)),
         Ended::Exited(status, reason) => Err(format!(
             "the container could not run the task (exit code {status}, {reason})"
         )),
@@ -1081,6 +1083,8 @@ mod tests {
         assert_eq!(memory.0, 137);
         assert!(memory.1.expect("a note").contains("lack of memory"));
         assert!(outcome(None, &exited(127, "Error"), None).is_err());
+        assert_eq!(outcome(Some(1), &exited(1, "Error"), None), Ok((1, None)));
+        assert!(outcome(Some(0), &exited(1, "Error"), None).is_err());
         let late = Ended::Stopped("DeadlineExceeded".into());
         assert_eq!(outcome(None, &late, Some(9)).map(|(code, _)| code), Ok(143));
         // The wrapper of a task that ran out of its time ends with the code of `timeout`.

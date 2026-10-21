@@ -9,7 +9,9 @@ use indexmap::IndexSet;
 
 use crate::builtins::{sort_values, update_dict};
 use crate::error::Error;
+use crate::hashing::register;
 use crate::interpreter::Interpreter;
+use crate::set_table::{Operand, derived, updated};
 use crate::types;
 use crate::value::{Args, Dict, DictKind, Key, Method, MethodFunction, Value};
 
@@ -1261,6 +1263,14 @@ fn set_method(
     } else {
         Vec::new()
     };
+    // The operands as CPython's set code walks them, which decides the order of the result.
+    let operands = || -> Option<(Operand, Vec<Operand>)> {
+        let this = Operand::of(set_value, &members)?;
+        let others = (args.positional.iter().zip(&others))
+            .map(|(value, members)| Operand::of(value, members))
+            .collect::<Option<Vec<_>>>()?;
+        Some((this, others))
+    };
     match name {
         "add" => {
             args.expect("add", 1, 1)?;
@@ -1304,6 +1314,7 @@ fn set_method(
         }
         "update" | "intersection_update" | "difference_update" | "symmetric_difference_update" => {
             let set = mutable()?;
+            let table = (operands()).and_then(|(this, others)| updated(&this, name, &others));
             let mut result = members;
             for other in others {
                 result = match name {
@@ -1314,9 +1325,13 @@ fn set_method(
                 };
             }
             *set.borrow_mut() = result;
+            if let Some(table) = table {
+                register(set_value, table);
+            }
             Ok(Value::None)
         }
         "union" | "intersection" | "difference" | "symmetric_difference" => {
+            let table = (operands()).and_then(|(this, others)| derived(name, &this, &others));
             let mut result = members;
             for other in others {
                 result = match name {
@@ -1326,7 +1341,11 @@ fn set_method(
                     _ => result.symmetric_difference(&other).cloned().collect(),
                 };
             }
-            Ok(make(result))
+            let value = make(result);
+            if let Some(table) = table {
+                register(&value, table);
+            }
+            Ok(value)
         }
         "issubset" => Ok(Value::Bool(
             others.first().is_some_and(|other| members.is_subset(other)),
@@ -1341,7 +1360,14 @@ fn set_method(
                 .first()
                 .is_some_and(|other| members.is_disjoint(other)),
         )),
-        "copy" => Ok(make(members)),
+        "copy" => {
+            let table = (operands()).and_then(|(this, _)| derived("copy", &this, &[]));
+            let value = make(members);
+            if let Some(table) = table {
+                register(&value, table);
+            }
+            Ok(value)
+        }
         "__len__" => Ok(Value::Int(members.len() as i64)),
         "__contains__" => Ok(Value::Bool(
             interpreter.contains(set_value, &args.positional[0])?,

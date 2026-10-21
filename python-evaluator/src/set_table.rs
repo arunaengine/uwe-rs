@@ -1,14 +1,144 @@
 //! The hash table of a CPython set (`setobject.c`), whose layout decides the order in which
-//! a set of numbers or tuples is iterated.
+//! a set of numbers or tuples is iterated, and the set operations that fill it.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use indexmap::IndexSet;
+
 use crate::hashing::stable_hash;
-use crate::value::Key;
+use crate::value::{Key, Value};
 
 /// The probing constants of CPython's `setobject.c`.
 const PERTURB_SHIFT: u32 = 5;
 const LINEAR_PROBES: usize = 9;
+
+/// An operand of a set operation: a set with its table, or the keys of a dict or the items
+/// of another iterable, in their order.
+pub enum Operand {
+    Table(Table, usize),
+    Dict(Vec<Key>),
+    Items(Vec<Key>),
+}
+
+impl Operand {
+    /// The operand of a value whose members, as the operation collected them, are `members`;
+    /// `None` when one has no hash that is the same in every process.
+    pub fn of(value: &Value, members: &IndexSet<Key>) -> Option<Operand> {
+        let keys = || members.iter().cloned().collect::<Vec<_>>();
+        let operand = match value.plain() {
+            Value::Set(_) | Value::FrozenSet(_) => Operand::Table(
+                crate::hashing::synced(value)?,
+                crate::hashing::address(value),
+            ),
+            Value::Dict(_) => Operand::Dict(keys()),
+            _ => Operand::Items(keys()),
+        };
+        let stable = match &operand {
+            Operand::Table(..) => true,
+            Operand::Dict(keys) | Operand::Items(keys) => {
+                keys.iter().all(|key| stable_hash(&key.0).is_some())
+            }
+        };
+        stable.then_some(operand)
+    }
+
+    fn contains(&self, key: &Key) -> bool {
+        match self {
+            Operand::Table(table, _) => table.find(key).is_some(),
+            Operand::Dict(keys) | Operand::Items(keys) => keys.contains(key),
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            Operand::Table(table, _) => table.used,
+            Operand::Dict(keys) | Operand::Items(keys) => keys.len(),
+        }
+    }
+}
+
+/// The table of the new set that a method or an operator of `this` makes with `others`, as
+/// `setobject.c` makes it: `copy`, `union`, `intersection`, `difference` or
+/// `symmetric_difference`.
+pub fn derived(name: &str, this: &Operand, others: &[Operand]) -> Option<Table> {
+    let Operand::Table(table, address) = this else {
+        return None;
+    };
+    let mut result = table.copied();
+    match name {
+        "intersection" if !others.is_empty() => result = intersected(table, *address, others),
+        "copy" | "intersection" => {}
+        "union" => {
+            for other in others {
+                if !matches!(other, Operand::Table(_, other) if other == address) {
+                    result.update(other);
+                }
+            }
+        }
+        "difference" => {
+            if let Some((first, rest)) = others.split_first() {
+                result = table.difference(first, *address);
+                for other in rest {
+                    result.discard_all(other, usize::MAX);
+                }
+            }
+        }
+        "symmetric_difference" => {
+            let other = others.first()?;
+            result = Table::new();
+            result.update(other);
+            result.toggle_all(this, usize::MAX);
+        }
+        _ => return None,
+    }
+    Some(result)
+}
+
+/// The table of `target` after an in-place method with `others`: `update`,
+/// `intersection_update`, `difference_update` or `symmetric_difference_update`.
+pub fn updated(target: &Operand, name: &str, others: &[Operand]) -> Option<Table> {
+    let Operand::Table(table, address) = target else {
+        return None;
+    };
+    let mut result = table.clone();
+    match name {
+        "update" => (others.iter())
+            .filter(|other| !matches!(other, Operand::Table(_, other) if other == address))
+            .for_each(|other| result.update(other)),
+        "intersection_update" => {
+            result = intersected(table, *address, others);
+            result.finger = table.finger;
+        }
+        "difference_update" => others
+            .iter()
+            .for_each(|other| result.discard_all(other, *address)),
+        "symmetric_difference_update" => others
+            .iter()
+            .for_each(|other| result.toggle_all(other, *address)),
+        _ => return None,
+    }
+    Some(result)
+}
+
+/// `set_intersection_multi`: each operand in turn with what is left, from the set itself.
+fn intersected(table: &Table, address: usize, others: &[Operand]) -> Table {
+    if others.is_empty() {
+        return table.copied();
+    }
+    let (mut result, mut address) = (table.clone(), address);
+    for other in others {
+        result = result.intersection(other, address);
+        address = usize::MAX;
+    }
+    result
+}
+
+/// The table of a new set made of an operand, as `set(...)` and `frozenset(...)` make it.
+pub fn made(from: &Operand) -> Table {
+    let mut table = Table::new();
+    table.update(from);
+    table
+}
 
 #[derive(Clone)]
 enum Slot {
@@ -231,6 +361,133 @@ impl Table {
         }
         for (key, hash) in other.entries() {
             self.add(key.clone(), hash);
+        }
+    }
+
+    /// `set_copy`: a new set with the members of this one.
+    fn copied(&self) -> Table {
+        let mut table = Table::new();
+        table.merge(self);
+        table
+    }
+
+    /// `set_update_internal`.
+    fn update(&mut self, other: &Operand) {
+        match other {
+            Operand::Table(table, _) => self.merge(table),
+            Operand::Dict(keys) => {
+                if (self.fill + keys.len()) * 5 >= self.mask() * 3 {
+                    self.resize((self.used + keys.len()) * 2);
+                }
+                self.add_all(keys);
+            }
+            Operand::Items(keys) => self.add_all(keys),
+        }
+    }
+
+    fn add_all(&mut self, keys: &[Key]) {
+        for key in keys {
+            if let Some(hash) = stable_hash(&key.0) {
+                self.add(key.clone(), hash);
+            }
+        }
+    }
+
+    /// The keys of an operand in the order that `setobject.c` walks them.
+    fn walked(other: &Operand) -> Vec<(Key, i64)> {
+        match other {
+            Operand::Table(table, _) => (table.entries())
+                .map(|(key, hash)| (key.clone(), hash))
+                .collect(),
+            Operand::Dict(keys) | Operand::Items(keys) => (keys.iter())
+                .filter_map(|key| Some((key.clone(), stable_hash(&key.0)?)))
+                .collect(),
+        }
+    }
+
+    /// `set_intersection`: a new set that walks the smaller set and keeps what the other has.
+    fn intersection(&self, other: &Operand, address: usize) -> Table {
+        if matches!(other, Operand::Table(_, other) if *other == address) {
+            return self.copied();
+        }
+        let mut result = Table::new();
+        let this = Operand::Table(self.clone(), address);
+        let (walked, kept) = match other {
+            Operand::Table(table, _) if table.used > self.used => (&this, other),
+            Operand::Table(..) => (other, &this),
+            _ => (other, &this),
+        };
+        for (key, hash) in Table::walked(walked) {
+            if kept.contains(&key) {
+                result.add(key, hash);
+            }
+        }
+        result
+    }
+
+    /// `set_difference`: a copy without the other's members when this set is much larger,
+    /// else a new set of the members of this one, in table order, that the other lacks.
+    fn difference(&self, other: &Operand, address: usize) -> Table {
+        let small = matches!(other, Operand::Table(..) | Operand::Dict(_))
+            && (self.used >> 2) <= other.len();
+        if !small {
+            let mut result = self.copied();
+            result.discard_all(other, address);
+            return result;
+        }
+        let mut result = Table::new();
+        for (key, hash) in self.entries() {
+            if !other.contains(key) {
+                result.add(key.clone(), hash);
+            }
+        }
+        result
+    }
+
+    /// `set_difference_update_internal`, which also drops the dummies once they are more
+    /// than a quarter of the table.
+    fn discard_all(&mut self, other: &Operand, address: usize) {
+        if matches!(other, Operand::Table(_, other) if *other == address) {
+            self.clear();
+            return;
+        }
+        let walked = match other {
+            Operand::Table(table, _) if (table.used >> 3) > self.used => {
+                let this = Operand::Table(self.clone(), address);
+                Table::walked(&Operand::Table(table.intersection(&this, usize::MAX), 0))
+            }
+            other => Table::walked(other),
+        };
+        for (key, hash) in walked {
+            self.discard(&key, hash);
+        }
+        if self.fill - self.used > self.mask() / 4 {
+            self.resize(match self.used > 50_000 {
+                true => self.used * 2,
+                false => self.used * 4,
+            });
+        }
+    }
+
+    /// `set_symmetric_difference_update`: walks the other as a set, and takes out what this
+    /// one has and adds what it lacks.
+    fn toggle_all(&mut self, other: &Operand, address: usize) {
+        if matches!(other, Operand::Table(_, other) if *other == address) {
+            self.clear();
+            return;
+        }
+        let walked = match other {
+            Operand::Items(_) => {
+                let mut table = Table::new();
+                table.update(other);
+                Table::walked(&Operand::Table(table, 0))
+            }
+            other => Table::walked(other),
+        };
+        for (key, hash) in walked {
+            if !self.discard(&key, hash) {
+                self.add(key, hash);
+            }
         }
     }
 }

@@ -280,18 +280,30 @@ impl Interpreter {
             return Ok(builtin);
         }
         if let (Some(x), Some(y)) = (set_items(a), set_items(b)) {
-            let result: Option<IndexSet<Key>> = match operator {
-                Operator::BitOr => Some(x.union(&y).cloned().collect()),
-                Operator::BitAnd => Some(x.intersection(&y).cloned().collect()),
-                Operator::Sub => Some(x.difference(&y).cloned().collect()),
-                Operator::BitXor => Some(x.symmetric_difference(&y).cloned().collect()),
-                _ => None,
+            let (result, name): (Option<IndexSet<Key>>, &str) = match operator {
+                Operator::BitOr => (Some(x.union(&y).cloned().collect()), "union"),
+                Operator::BitAnd => (Some(x.intersection(&y).cloned().collect()), "intersection"),
+                Operator::Sub => (Some(x.difference(&y).cloned().collect()), "difference"),
+                Operator::BitXor => (
+                    Some(x.symmetric_difference(&y).cloned().collect()),
+                    "symmetric_difference",
+                ),
+                _ => (None, ""),
             };
             if let Some(result) = result {
-                return Ok(Some(match a {
+                let value = match a {
                     Value::FrozenSet(_) => Value::FrozenSet(Rc::new(result)),
                     _ => Value::set(result),
-                }));
+                };
+                // The order of the result follows CPython's set code for these operands.
+                let operands = (crate::set_table::Operand::of(a, &x))
+                    .zip(crate::set_table::Operand::of(b, &y));
+                if let Some((this, other)) = operands
+                    && let Some(table) = crate::set_table::derived(name, &this, &[other])
+                {
+                    crate::hashing::register(&value, table);
+                }
+                return Ok(Some(value));
             }
         }
         // Objects of Python classes and native objects.

@@ -37,18 +37,18 @@ JOBS = 4
 # one before that matches. The kind is `invalid` (the stub run of the test profile fails on its
 # own, and the sentence says whether the pipeline, its stubs or its test profile are the
 # cause) unless the case gives `kind`: `missing` (it needs something that is not public or not
-# in its repository) or `unsupported (decision N)` (iunctus leaves the feature out on purpose,
+# in its repository) or `unsupported (decision N)` (uwe leaves the feature out on purpose,
 # as decision N says). A case may give `release` for the Nextflow release
-# that the pipeline names, whose meaning iunctus keeps (decision 14), `parser: "v2"` for the
-# strict parser (the legacy parser is the default, as iunctus accepts legacy syntax), `jars:
+# that the pipeline names, whose meaning uwe keeps (decision 14), `parser: "v2"` for the
+# strict parser (the legacy parser is the default, as uwe accepts legacy syntax), `jars:
 # True` to put the old Java libraries into `lib/`, `args` for more arguments of the run, where
 # `{launch}` and `{pipeline}` name the folders of the run, `profile: False` to run a workflow
 # that has no `test` profile without one, `config` for settings of an extra config file
 # (`-c extra.config`), `tools` for commands that print a given text, like a version that a
 # stub reads, and `stubs` for stand-in stub scripts, so that Nextflow reaches the point where
-# iunctus fails: for processes that have no stub, which a stub run of Nextflow runs for real,
+# uwe fails: for processes that have no stub, which a stub run of Nextflow runs for real,
 # and for stubs that fail before that point. A stand-in makes the files that the simulator
-# of iunctus makes for the process, or the files that the process makes. A case whose failure
+# of uwe makes for the process, or the files that the process makes. A case whose failure
 # Nextflow does not reach, because it stops earlier at a tool that this machine lacks, gives
 # `reproduce`: the files of a small script with the failing part of the pipeline, which
 # Nextflow runs instead.
@@ -527,7 +527,7 @@ workflow {
     },
 ]
 
-# DSL1 pipelines, whose processes read `from` and write `into` channels. iunctus leaves DSL1
+# DSL1 pipelines, whose processes read `from` and write `into` channels. uwe leaves DSL1
 # out (decision 14), and Nextflow 26.04.6 does not run it either: each record shows how it
 # fails on the pipeline.
 DSL1 = {
@@ -594,7 +594,7 @@ CASES += [
         "pipelines": [name],
         "kind": "unsupported (decision 14)",
         "why": "the pipeline is a DSL1 script, whose processes read `from` and write `into` "
-        "channels, which iunctus leaves out and Nextflow 26.04.6 does not run either",
+        "channels, which uwe leaves out and Nextflow 26.04.6 does not run either",
         "expect": [r"ERROR ~"],
         **extra,
     }
@@ -1076,7 +1076,7 @@ CASES += [
     workflowhub(
         [2037],
         "SAMPLESHEET_CHECK has no stub, so it needs its script to write the sample sheet that "
-        "the workflow reads, and the simulator only makes up an empty file, which iunctus "
+        "the workflow reads, and the simulator only makes up an empty file, which uwe "
         "reads as no samples, where Nextflow stops at the missing header; with no samples, "
         "MULTIQC gets a null path, as in Nextflow with stand-ins that write a sample sheet of "
         "only its header",
@@ -1164,7 +1164,7 @@ CASES += [
         [2217],
         "the closures of COMPLETENESS_ASM put their bodies in a second pair of braces: the "
         "legacy parser runs those as blocks, and the strict parser, which decision 14 makes the "
-        "reference of iunctus for code that both parsers take, reads them as closures that the "
+        "reference of uwe for code that both parsers take, reads them as closures that the "
         "map returns, so the next map fails (shown with a small script, as the strict parser "
         "rejects the config and the scripts of the workflow)",
         [r"Invalid method invocation `call` with arguments: \[.*closure\d+@<address>, "
@@ -1317,7 +1317,7 @@ workflow {
         "results, and VISUALIZE_RESULTS then gets 2 of its 4 files, so it fails; a real run is "
         "not affected (Nextflow first stops at HPAM_SPLIT, which has no stub, and fails in the "
         "same way with a stand-in for it and the strict parser, whose check of input tuples "
-        "iunctus has)",
+        "uwe has)",
         [r"Input tuple does not match tuple declaration in process .*VISUALIZE_RESULTS"],
         parser="v2",
         stubs={"HPAM_SPLIT": "touch simulated.yaml; " + VERSIONS},
@@ -1341,7 +1341,7 @@ def stand_ins(directory, case):
 
 def add_stubs(copy, stubs):
     """Gives each process that `stubs` names the stub script there, in the copy of the pipeline,
-    so that a stub run passes a process without a stub, as the simulator of iunctus does, or one
+    so that a stub run passes a process without a stub, as the simulator of uwe does, or one
     whose stub is broken. A stub with `\"\"\"` is the whole stub section, with the statements
     before its script."""
     for name, script in stubs.items():

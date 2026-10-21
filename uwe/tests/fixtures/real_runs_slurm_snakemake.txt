@@ -1,9 +1,9 @@
 # The tests of Snakemake run for real on a SLURM cluster with Apptainer, checked against their expected-results; written by real_runs_slurm_snakemake.py. A tab ends the name.
-# 60 tests: 1 differs, 1 iunctus fails, 58 same.
+# 60 tests: 1 differs, 1 uwe fails, 58 same.
 test (with parenthese's)	same
-test05	iunctus fails (exit 3): iunctus: task other: SLURM could not run the task: sbatch did not take the job: sbatch: error: Batch job submission failed: Requested node configuration is not  (known: a rule asks for a GPU (`gpu=1`), which Snakemake's SLURM plugin asks SLURM for too, and the nodes of this cluster have none)
+test05	uwe fails (exit 3): uwe: task other: SLURM could not run the task: sbatch did not take the job: sbatch: error: Batch job submission failed: Requested node configuration is not  (known: a rule asks for a GPU (`gpu=1`), which Snakemake's SLURM plugin asks SLURM for too, and the nodes of this cluster have none)
 test10	same
-test_access_patterns	differs: fs-storage/test1.out is not as in expected-results (known: a job reads where its input links point; iunctus gives inputs as links into its store)
+test_access_patterns	differs: fs-storage/test1.out is not as in expected-results (known: a job reads where its input links point; uwe gives inputs as links into its store)
 test_azure_batch	same
 test_benchmark_jsonl	same: fails, as Snakemake does
 test_checkpoint_omit_from	same

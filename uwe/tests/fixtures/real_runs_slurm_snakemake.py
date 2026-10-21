@@ -54,7 +54,7 @@ def skipped(source, fields):
 
 
 def command(fields):
-    """The command of iunctus for the fields of a launch."""
+    """The command of uwe for the fields of a launch."""
     words = [UWE, "run", "Snakefile", "-lang", "snakemake", "-executor", "slurm",
              "-no-cache", "-default-image", IMAGE, "-python-image", IMAGE, "-max-pending", "3"]
     for field in fields:
@@ -71,8 +71,8 @@ def command(fields):
 
 
 def run_stopped(command, cwd):
-    """Runs iunctus; the exit code and its standard output and error. After TIMEOUT it stops
-    iunctus with SIGTERM, so that it cancels its SLURM jobs, and the code is `timeout`."""
+    """Runs uwe; the exit code and its standard output and error. After TIMEOUT it stops
+    uwe with SIGTERM, so that it cancels its SLURM jobs, and the code is `timeout`."""
     process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True)
     try:
@@ -89,7 +89,7 @@ def run_stopped(command, cwd):
 
 
 def native_records():
-    """How each test ran in Snakemake and iunctus on a machine with Docker, by name."""
+    """How each test ran in Snakemake and uwe on a machine with Docker, by name."""
     found = {}
     record = Path(__file__).with_name("real_runs_snakemake.txt")
     for line in record.read_text().splitlines() if record.exists() else []:
@@ -117,12 +117,12 @@ def compare(name, fields, tests, work):
     errors = stderr.splitlines()
     if "shouldfail" in fields:
         return "same: fails as the test expects" if code != 0 else \
-            "differs: iunctus succeeds where the test expects a failure"
+            "differs: uwe succeeds where the test expects a failure"
     native = NATIVE.get(name, "")
     if code != 0:
         if native.startswith("same: both fail"):
             return "same: fails, as Snakemake does"
-        return f"iunctus fails (exit {code}): {local.error_line(errors)}"
+        return f"uwe fails (exit {code}): {local.error_line(errors)}"
     wrong = local.expected(source, place)
     local.remove(place)
     if wrong and native == f"same: both differ from expected-results in {wrong[0]}":

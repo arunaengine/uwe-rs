@@ -1,7 +1,7 @@
-# The tests of Snakemake run for real by iunctus and by Snakemake 9.27.0, compared by the files each run made; written by real_runs_snakemake.py. A tab ends the name.
-# 422 tests: 3 differs, 3 iunctus fails, 325 same, 85 skipped, 6 snakemake fails.
+# The tests of Snakemake run for real by uwe and by Snakemake 9.27.0, compared by the files each run made; written by real_runs_snakemake.py. A tab ends the name.
+# 422 tests: 3 differs, 3 uwe fails, 325 same, 85 skipped, 6 snakemake fails.
 knapsack	same (4 files)
-profile	iunctus fails (exit timeout): timeout (known: 4000 jobs of one container each take longer than the time limit of this script)
+profile	uwe fails (exit timeout): timeout (known: 4000 jobs of one container each take longer than the time limit of this script)
 test (with parenthese's)	same (1 files)
 test01	same (3 files)
 test02	same (3 files)
@@ -251,7 +251,7 @@ test_module_onstart_onsuccess	skipped: reads remote files
 test_module_report	skipped: reads remote files
 test_module_wildcard_constraints	same (2 files)
 test_module_with_script	skipped: reads remote files
-test_module_workflow_snakefile_usage	iunctus fails (exit 1): iunctus: Error in rule a: the task ended with exit code 1 (known: a job reads a file of the workflow at its absolute path on this machine, which its container does not see)
+test_module_workflow_snakefile_usage	uwe fails (exit 1): uwe: Error in rule a: the task ended with exit code 1 (known: a job reads a file of the workflow at its absolute path on this machine, which its container does not see)
 test_modules_all	same (3 files)
 test_modules_all_exclude	skipped: runs from another folder than its own
 test_modules_dynamic	same (6 files)
@@ -394,7 +394,7 @@ test_temp	same (1 files)
 test_temp_and_all_input	same (1 files)
 test_temp_checkpoint	same (3 files)
 test_temp_expand	same (1 files)
-test_template_engine	iunctus fails (exit 1): iunctus: WorkflowError: Error rendering template in rule render_jinja2_template: ModuleNotFoundError: No module named 'jinja2' (known: these runs are offline, and jinja2 comes from PyPI into the Python container; with the network iunctus renders the same files)
+test_template_engine	uwe fails (exit 1): uwe: WorkflowError: Error rendering template in rule render_jinja2_template: ModuleNotFoundError: No module named 'jinja2' (known: these runs are offline, and jinja2 comes from PyPI into the Python container; with the network uwe renders the same files)
 test_tes	same: both fail
 test_threads	same (1 files)
 test_threads0	same (1 files)

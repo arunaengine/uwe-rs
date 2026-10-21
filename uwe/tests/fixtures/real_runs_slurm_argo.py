@@ -42,8 +42,8 @@ def images(path):
 
 
 def run_stopped(command, cwd):
-    """Runs iunctus; the exit code and its standard output and error. After TIMEOUT it stops
-    iunctus with SIGTERM, so that it cancels its SLURM jobs, and the code is `timeout`."""
+    """Runs uwe; the exit code and its standard output and error. After TIMEOUT it stops
+    uwe with SIGTERM, so that it cancels its SLURM jobs, and the code is `timeout`."""
     process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True)
     try:
@@ -66,11 +66,11 @@ def compare(name, succeeds, tests, work):
                "-no-network", "-no-cache", "-max-pending", "3",
                "-output-dir", str(folder / "out")]
     code, _, stderr = run_stopped(command, folder)
-    lines = [line for line in stderr.splitlines() if line.startswith("iunctus: ")] or [stderr]
+    lines = [line for line in stderr.splitlines() if line.startswith("uwe: ")] or [stderr]
     if succeeds:
         if code == 0:
             return "same: succeeds"
-        return f"iunctus fails (exit {code}): {(lines[0] if lines else '')[:160]}"
+        return f"uwe fails (exit {code}): {(lines[0] if lines else '')[:160]}"
     if code != 0:
         return "same: fails as Argo's tests expect"
     return "differs: succeeds where Argo's tests expect a failure"

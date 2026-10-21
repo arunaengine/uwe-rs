@@ -209,6 +209,25 @@ fn provider(table: &Table<'_>) -> Result<ProviderSettings, ConfigError> {
             ));
         }
     }
+    // An account for a prefix without a host would go to every server, for files and Git alike.
+    let signs_in =
+        |https: &Https| https.token.is_some() || https.user.is_some() || !https.headers.is_empty();
+    let hostless = |prefix: &&String| {
+        let rest = prefix.split_once("://").map_or("", |(_, rest)| rest);
+        rest.split('/').next().unwrap_or_default().is_empty()
+    };
+    if let Kind::Https(https) = &kind
+        && signs_in(https)
+        && let Some(prefix) = prefixes.iter().find(hostless)
+    {
+        return Err(table.invalid(
+            "prefixes",
+            format!(
+                "holds \"{prefix}\", which serves every server, so its account would go to all \
+                 of them; name the server, like \"https://git.example.org/\""
+            ),
+        ));
+    }
     Ok(ProviderSettings {
         name,
         prefixes,

@@ -211,6 +211,17 @@ fn locates_settings_errors() {
         )
     );
     assert_eq!(
+        settings_error("[storage.a]\ntype = \"https\"\nprefixes = [\"https://\"]\ntoken = \"t\"\n"),
+        format!(
+            "{file}:3: `storage.a.prefixes` holds \"https://\", which serves every server, so \
+             its account would go to all of them; name the server, like \
+             \"https://git.example.org/\""
+        )
+    );
+    // Without an account, a provider may serve every server.
+    let open = "[storage.a]\ntype = \"https\"\nprefixes = [\"https://\"]\n";
+    assert!(Settings::from_config(&config(open)).is_ok());
+    assert_eq!(
         settings_error("[store]\nplace = \"/x\"\n"),
         format!("{file}:2: `[store]` has no setting `place`; it knows `location` and `local`")
     );

@@ -20,7 +20,7 @@ HEADER = """\
 # command (`$`) and the output (`>`) of `argo lint` of Argo v4.1.4, which rejects the document
 # the same way, or accepts a workflow that would wait forever in Argo. The kind is `invalid`
 # (the workflow itself is broken), `missing` (it needs a WorkflowTemplate that is in no
-# repository of the test workflows), or `unsupported (decision N)` (iunctus leaves the feature
+# repository of the test workflows), or `unsupported (decision N)` (uwe leaves the feature
 # out on purpose, as decision N says).
 # argo lint ran on a copy of the document and of the WorkflowTemplates it calls, without
 # namespaces, the called templates only, and with values for the inputs of a Workflow's

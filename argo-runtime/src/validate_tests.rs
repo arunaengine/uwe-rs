@@ -211,7 +211,7 @@ fn rejects_cluster_templates() {
     assert!(rejection.unsupported);
     assert_eq!(
         rejection.message,
-        "templates.main.steps[0].make template make is a resource template that manages Kubernetes objects of kind Deployment; iunctus runs workflows without Kubernetes and does not support this (decision 18)"
+        "templates.main.steps[0].make template make is a resource template that manages Kubernetes objects of kind Deployment; uwe runs workflows without Kubernetes and does not support this (decision 18)"
     );
     // A claim becomes a volume of the run.
     assert_eq!(check_document(&resource("PersistentVolumeClaim")), Ok(()));

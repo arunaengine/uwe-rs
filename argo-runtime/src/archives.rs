@@ -81,7 +81,7 @@ fn strategy(artifact: &Artifact) -> Result<Strategy> {
         0..=9 => Compression::new(level as u32),
         -2 => {
             return Err(Failure::unsupported(
-                "archive compressionLevel -2 requires Huffman-only gzip, which iunctus does not support",
+                "archive compressionLevel -2 requires Huffman-only gzip, which uwe does not support",
             ));
         }
         _ => {
@@ -107,7 +107,7 @@ pub(crate) fn check(artifact: &Artifact) -> Result<()> {
             .is_none_or(|key| key.is_empty())
     {
         return Err(Failure::unsupported(format!(
-            "artifact {}: an S3 bucket without a key needs the key format of an artifact repository, which iunctus does not have; supply a key",
+            "artifact {}: an S3 bucket without a key needs the key format of an artifact repository, which uwe does not have; supply a key",
             artifact.name
         )));
     }
@@ -192,7 +192,7 @@ impl Run {
                 return Ok(None);
             }
             return Err(Failure::error(format!(
-                "artifact {}: no step of this run wrote key {key} of the artifact repository, which iunctus keeps inside the run",
+                "artifact {}: no step of this run wrote key {key} of the artifact repository, which uwe keeps inside the run",
                 value.name
             )));
         }

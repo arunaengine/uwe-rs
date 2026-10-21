@@ -214,9 +214,9 @@ pub(crate) struct Run {
     pub stopped: bool,
     /// The Git checkouts that artifacts ask for, by their address.
     pub git_sources: HashMap<String, crate::GitSource>,
-    /// The requests of `iunctus resume` that arrived since the run last went on.
+    /// The requests of `uwe resume` that arrived since the run last went on.
     pub requests: Vec<crate::resume::Request>,
-    /// Whether the workflow waits for `iunctus resume` before it starts (`spec.suspend`).
+    /// Whether the workflow waits for `uwe resume` before it starts (`spec.suspend`).
     pub held: bool,
     pub expired: HashMap<usize, String>,
     pub cancel_tasks: Vec<TaskId>,
@@ -430,19 +430,19 @@ impl Run {
             }
         }
         run.spec.hooks = hooks;
-        // A suspended workflow starts on `iunctus resume`, as on `argo resume`.
+        // A suspended workflow starts on `uwe resume`, as on `argo resume`.
         let suspended =
             (spec_node.get("suspend")).is_some_and(|node| node.value == Yaml::Bool(true));
         if suspended && !run.options.assume_inputs {
             if run.options.resume.is_none() {
                 return Err(Failure::unsupported(
-                    "spec.suspend needs `iunctus resume`, which this run cannot hear",
+                    "spec.suspend needs `uwe resume`, which this run cannot hear",
                 ));
             }
             run.held = true;
             let name = run.run_name();
             run.warn(format!(
-                "the workflow is suspended until `iunctus resume {name}`"
+                "the workflow is suspended until `uwe resume {name}`"
             ));
         }
         Ok(run)
@@ -825,18 +825,18 @@ impl Run {
             }
         } else if self.options.assume_inputs {
             self.warn(format!(
-                "step {} waits for `iunctus resume` in a real run",
+                "step {} waits for `uwe resume` in a real run",
                 display_name(&self.nodes[index].name)
             ));
         } else if self.options.resume.is_none() {
             return Err(Failure::unsupported(
-                "suspend without duration needs `iunctus resume`, which this run cannot hear",
+                "suspend without duration needs `uwe resume`, which this run cannot hear",
             ));
         } else {
             let Some(request) = self.request_for(index) else {
                 if !self.waits.contains_key(&index) {
                     self.warn(format!(
-                        "step {} is suspended until `iunctus resume {} {}`",
+                        "step {} is suspended until `uwe resume {} {}`",
                         display_name(&self.nodes[index].name),
                         self.run_name(),
                         self.resume_name(index)

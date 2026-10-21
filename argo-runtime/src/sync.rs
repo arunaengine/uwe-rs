@@ -125,7 +125,7 @@ fn limits(
             .unwrap_or_else(|| namespace.into())
     };
     for mutex in entries(node, "mutexes", "mutex")? {
-        // Argo keeps database mutexes apart from the others of the same name. One iunctus
+        // Argo keeps database mutexes apart from the others of the same name. One uwe
         // process holds all locks of its runs, as one controller would.
         let database = (mutex.get("database")).is_some_and(|value| value.value == Yaml::Bool(true));
         let kind = if database { "database" } else { "mutex" };

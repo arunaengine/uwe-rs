@@ -68,7 +68,7 @@ impl Run {
                 .is_some_and(|value| value.value != Yaml::Null)
             {
                 self.warn(format!(
-                    "{field} is left out: outputs stay in the store of iunctus, and keys of the \
+                    "{field} is left out: outputs stay in the store of uwe, and keys of the \
                      artifact repository pass between the steps of the run"
                 ));
             }

@@ -95,12 +95,12 @@ pub(crate) fn missing_config_map(
 
 impl Run {
     /// What stands for a key of a Secret: a placeholder in a simulated run, with a warning. A real
-    /// run stops, because iunctus has no secret store yet and secret values never enter a task.
+    /// run stops, because uwe has no secret store yet and secret values never enter a task.
     pub(crate) fn secret(&mut self, what: &str, reference: &KeyRef) -> Result<String> {
         let place = format!("key {} of Secret {}", reference.key, reference.name);
         if !self.options.assume_inputs {
             return Err(Failure::error(format!(
-                "{what} reads {place}; iunctus has no secret store yet, so a real run cannot give it to a task"
+                "{what} reads {place}; uwe has no secret store yet, so a real run cannot give it to a task"
             )));
         }
         let placeholder = format!(

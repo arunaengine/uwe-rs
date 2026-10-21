@@ -98,7 +98,7 @@ impl Run {
             ("get" | "apply", Some(child)) => child,
             ("get", None) => {
                 return Err(Failure::unsupported(format!(
-                    "template {} gets Workflow {name}, which this run did not start; iunctus runs workflows without Kubernetes and does not support this (decision 18)",
+                    "template {} gets Workflow {name}, which this run did not start; uwe runs workflows without Kubernetes and does not support this (decision 18)",
                     template.name
                 )));
             }
@@ -157,7 +157,7 @@ impl Run {
                 if run.held {
                     run.warnings.pop();
                     let message = format!(
-                        "the workflow is suspended until `iunctus resume {} {name}`",
+                        "the workflow is suspended until `uwe resume {} {name}`",
                         run.run_name()
                     );
                     run.warn(message);

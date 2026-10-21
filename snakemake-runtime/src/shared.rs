@@ -659,6 +659,30 @@ fn same_content(source: &Path, target: &Path) -> std::io::Result<bool> {
     }
 }
 
+/// Copies a stored output into the working directory as the job left it: links stay links
+/// where they lead into the working directory, and others become copies of what they name.
+pub fn copy_restored(source: &Path, target: &Path, workdir: &Path) -> std::io::Result<()> {
+    if let Ok(link) = std::fs::read_link(source) {
+        let place = target.parent().unwrap_or(target).join(&link);
+        if normal(&place).starts_with(normal(workdir)) {
+            std::fs::create_dir_all(target.parent().unwrap_or(workdir))?;
+            return std::os::unix::fs::symlink(link, target);
+        }
+        if std::fs::metadata(source).is_err() {
+            return Ok(());
+        }
+    }
+    if !source.is_dir() {
+        return copy_into(source, target);
+    }
+    std::fs::create_dir_all(target)?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        copy_restored(&entry.path(), &target.join(entry.file_name()), workdir)?;
+    }
+    Ok(())
+}
+
 /// A path of its own for a file that the task writes below `.snakemake`, where tasks that run
 /// at once would otherwise write the same file.
 fn own_path(path: &str, content: &str) -> String {

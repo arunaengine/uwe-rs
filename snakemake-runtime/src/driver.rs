@@ -1551,7 +1551,7 @@ impl Session {
                 .local_location(Path::new(&file.location))
                 .and_then(|local| {
                     crate::shared::remove(&target)?;
-                    crate::shared::copy_into(&local, &target)?;
+                    crate::shared::copy_restored(&local, &target, &self.workdir)?;
                     // The store keeps its files read-only; the job's own outputs are not.
                     crate::shared::make_writable(&target)
                 });

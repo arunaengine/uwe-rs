@@ -46,8 +46,29 @@ pub struct Probe {
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Check {
     Command(Vec<String>),
-    Http { port: u16, path: String },
-    Tcp { port: u16 },
+    Http {
+        port: u16,
+        path: String,
+        /// `HTTP` or `HTTPS`, as Kubernetes names them; `HTTP` without it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        scheme: Option<String>,
+        /// The host to ask instead of the address of the task.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        host: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        headers: Vec<Header>,
+    },
+    Tcp {
+        port: u16,
+    },
+}
+
+/// A header that an HTTP probe sends, like `httpHeaders` of Kubernetes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Header {
+    pub name: String,
+    pub value: String,
 }
 
 fn period() -> u64 {
@@ -184,7 +205,7 @@ impl LocalContainer {
     async fn check(&self, id: &str, address: &str, check: &Check) -> bool {
         match check {
             Check::Command(command) => self.run_inside(id, command).await,
-            Check::Http { port, path } => {
+            Check::Http { port, path, .. } => {
                 let url = format!("http://{address}:{port}/{}", path.trim_start_matches('/'));
                 let Ok(client) = reqwest::Client::builder().no_proxy().build() else {
                     return false;

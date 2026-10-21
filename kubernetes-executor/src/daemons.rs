@@ -18,7 +18,25 @@ pub fn readiness(daemon: &Daemon) -> Option<Value> {
     let probe = daemon.probe.as_ref()?;
     let mut value = match &probe.check {
         Check::Command(command) => json!({"exec": {"command": command}}),
-        Check::Http { port, path } => json!({"httpGet": {"port": port, "path": path}}),
+        Check::Http {
+            port,
+            path,
+            scheme,
+            host,
+            headers,
+        } => {
+            let mut get = json!({"port": port, "path": path});
+            if let Some(scheme) = scheme {
+                get["scheme"] = json!(scheme);
+            }
+            if let Some(host) = host {
+                get["host"] = json!(host);
+            }
+            if !headers.is_empty() {
+                get["httpHeaders"] = json!(headers);
+            }
+            json!({ "httpGet": get })
+        }
         Check::Tcp { port } => json!({"tcpSocket": {"port": port}}),
     };
     value["initialDelaySeconds"] = json!(probe.delay_seconds);
@@ -131,6 +149,15 @@ mod tests {
         .unwrap();
         let probe = readiness(&daemon).unwrap();
         assert_eq!(probe["httpGet"]["port"], 8080);
+        assert!(probe["httpGet"].get("scheme").is_none());
+        let daemon: Daemon = serde_json::from_str(
+            r#"{"probe": {"check": {"http": {"port": 8443, "path": "/", "scheme": "HTTPS", "host": "local", "headers": [{"name": "X", "value": "y"}]}}}}"#,
+        )
+        .unwrap();
+        let get = &readiness(&daemon).unwrap()["httpGet"];
+        assert_eq!(get["scheme"], "HTTPS");
+        assert_eq!(get["host"], "local");
+        assert_eq!(get["httpHeaders"], json!([{"name": "X", "value": "y"}]));
         assert_eq!(probe["initialDelaySeconds"], 2);
         assert_eq!(probe["periodSeconds"], 10);
     }

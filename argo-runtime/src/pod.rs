@@ -775,11 +775,36 @@ fn readiness(node: &Node) -> std::result::Result<Value, String> {
             .get("path")
             .map(scalar_text)
             .unwrap_or_else(|| "/".into());
-        let fields = [
+        let mut fields: BTreeMap<String, Value> = [
             ("port".to_owned(), port(http)?),
             ("path".to_owned(), Value::String(path)),
-        ];
-        Value::Map([("http".to_owned(), Value::Map(fields.into()))].into())
+        ]
+        .into();
+        // The scheme, host and headers go on unchanged, as Kubernetes reads them.
+        for key in ["scheme", "host"] {
+            let text = http.get(key).map(scalar_text).unwrap_or_default();
+            if !text.is_empty() {
+                fields.insert(key.to_owned(), Value::String(text));
+            }
+        }
+        if let Some(Yaml::Sequence(items)) = http.get("httpHeaders").map(|node| &node.value) {
+            let header = |item: &Node| {
+                let text =
+                    |key: &str| Value::String(item.get(key).map(scalar_text).unwrap_or_default());
+                Value::Map(
+                    [
+                        ("name".to_owned(), text("name")),
+                        ("value".to_owned(), text("value")),
+                    ]
+                    .into(),
+                )
+            };
+            fields.insert(
+                "headers".to_owned(),
+                Value::Array(items.iter().map(header).collect()),
+            );
+        }
+        Value::Map([("http".to_owned(), Value::Map(fields))].into())
     } else if let Some(tcp) = node.get("tcpSocket") {
         Value::Map(
             [(

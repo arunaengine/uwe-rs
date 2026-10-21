@@ -12,6 +12,7 @@ mod embedded;
 mod files;
 mod functions;
 mod git;
+mod gitfile;
 mod groups;
 mod hooks;
 mod inputs;
@@ -47,5 +48,6 @@ mod workflow;
 pub use driver::{
     RunSettings, Session, Settings, driver, driver_with, driver_with_options, find_snakefile,
 };
+pub use gitfile::{Checkout, GitClient};
 pub use pattern::{Matcher, Wildcards, apply as apply_wildcards, regex_text, wildcard_names};
 pub use python::{ContainerStarter, DEFAULT_IMAGE, PythonContainers};

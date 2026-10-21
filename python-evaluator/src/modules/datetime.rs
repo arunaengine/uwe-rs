@@ -263,7 +263,9 @@ impl Native for DateTime {
                     .first()
                     .and_then(|format| format.as_str().map(str::to_owned))
                     .unwrap_or_default();
-                Ok(Value::str(this.time.strftime(&format).to_string()))
+                Ok(Value::str(
+                    this.time.strftime(&c_locale(&format)).to_string(),
+                ))
             }),
             "isoformat" => Value::builtin("isoformat", move |_, _| {
                 Ok(Value::str(if this.date_only {
@@ -667,16 +669,8 @@ pub fn time() -> Vec<(&'static str, Value)> {
                     .first()
                     .and_then(|format| format.as_str().map(str::to_owned))
                     .unwrap_or_default();
-                // The time to format, as `localtime()` gives it; else now.
-                let time = match args
-                    .positional
-                    .get(1)
-                    .and_then(|time| time.as_native::<DateTime>())
-                {
-                    Some(time) => time.time.clone(),
-                    None => jiff::Zoned::now(),
-                };
-                Ok(Value::str(time.strftime(&format).to_string()))
+                let time = time_of(args.positional.get(1), "strftime")?;
+                Ok(Value::str(time.strftime(&c_locale(&format)).to_string()))
             }),
         ),
         (
@@ -700,11 +694,7 @@ pub fn time() -> Vec<(&'static str, Value)> {
         (
             "asctime",
             function("asctime", |_, args| {
-                let given = args.positional.first();
-                let time = match given.and_then(|time| time.as_native::<DateTime>()) {
-                    Some(time) => time.time.clone(),
-                    None => jiff::Zoned::now(),
-                };
+                let time = time_of(args.positional.first(), "asctime")?;
                 Ok(Value::str(time.strftime(ASCTIME).to_string()))
             }),
         ),
@@ -720,6 +710,70 @@ pub fn time() -> Vec<(&'static str, Value)> {
 
 /// The form of `time.asctime`, like `Sun Jan  4 00:00:05 1970`.
 const ASCTIME: &str = "%a %b %e %H:%M:%S %Y";
+
+/// A format with the date and time forms of the C locale, in which Python formats them:
+/// `%c` as `asctime`, `%x` as `07/14/24` and `%X` as `17:31:05`.
+fn c_locale(format: &str) -> String {
+    let mut result = String::with_capacity(format.len());
+    let mut chars = format.chars();
+    while let Some(next) = chars.next() {
+        if next != '%' {
+            result.push(next);
+            continue;
+        }
+        match chars.next() {
+            Some('c') => result.push_str(ASCTIME),
+            Some('x') => result.push_str("%m/%d/%y"),
+            Some('X') => result.push_str("%H:%M:%S"),
+            Some(other) => {
+                result.push('%');
+                result.push(other);
+            }
+            None => result.push('%'),
+        }
+    }
+    result
+}
+
+/// The time of a `struct_time` or of a plain tuple of its nine numbers, as `time.strftime`
+/// and `time.asctime` take it, in the zone of this machine; now without one.
+fn time_of(value: Option<&Value>, function: &str) -> Result<jiff::Zoned, Error> {
+    let items = match value.map(Value::plain) {
+        None => return Ok(jiff::Zoned::now()),
+        Some(Value::Tuple(items)) => items,
+        Some(other) => {
+            return match other.as_native::<DateTime>() {
+                Some(time) => Ok(time.time.clone()),
+                None => Err(Error::type_error("Tuple or struct_time argument required")),
+            };
+        }
+    };
+    let illegal = || Error::type_error(format!("{function}(): illegal time tuple argument"));
+    let numbers: Vec<i64> = (items.iter())
+        .map(|item| item.as_int().ok_or_else(illegal))
+        .collect::<Result<_, _>>()?;
+    let [year, month, day, hour, minute, second, ..] = numbers[..] else {
+        return Err(illegal());
+    };
+    if numbers.len() != 9 {
+        return Err(illegal());
+    }
+    let part = |value: i64| i8::try_from(value).map_err(|_| illegal());
+    let year = i16::try_from(year).map_err(|_| illegal())?;
+    let civil = jiff::civil::DateTime::new(
+        year,
+        part(month)?,
+        part(day)?,
+        part(hour)?,
+        part(minute)?,
+        part(second)?,
+        0,
+    )
+    .map_err(|error| Error::value_error(error.to_string()))?;
+    civil
+        .to_zoned(jiff::tz::TimeZone::system())
+        .map_err(|error| Error::value_error(error.to_string()))
+}
 
 /// The time of seconds since the epoch in a zone, as `time.localtime(secs)` takes them; now
 /// without seconds.

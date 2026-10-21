@@ -1,0 +1,6 @@
+2024-07-14 17:31:05 Sun 196
+Sun Jul 14 17:31:05 2024 Mon Jan  1 00:00:00 2024
+Sun Jul 14 17:31:05 2024|07/14/24|17:31:05|%c
+Thu Jul  4 09:05:01 2024|07/04/24|09:05:01
+TypeError strftime(): illegal time tuple argument
+TypeError Tuple or struct_time argument required

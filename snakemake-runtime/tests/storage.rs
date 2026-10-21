@@ -184,6 +184,28 @@ fn transfers_s3_objects() {
         .fetch(&tasks[0].inputs[0].source, &folder.path().join("downloads"))
         .unwrap();
     assert_eq!(std::fs::read(&input).unwrap(), b"input bytes");
+    let output = folder.path().join("result");
+    std::fs::write(&output, b"output bytes").unwrap();
+    session
+        .complete(Outcome {
+            id: tasks[0].id,
+            files: vec![OutputFile {
+                path: tasks[0].outputs[0].clone(),
+                location: output.to_string_lossy().into_owned(),
+                ..OutputFile::default()
+            }],
+            ..Outcome::default()
+        })
+        .unwrap();
+    let deliveries = session.deliveries.lock().unwrap().clone();
+    assert_eq!(deliveries[0].target, "s3://bucket/out");
+    storage
+        .blocking()
+        .upload(&output, &deliveries[0].target)
+        .unwrap();
+    assert_eq!(server.files.lock().unwrap()["/bucket/out"], b"output bytes");
+    // The run ended; another run of the folder may take its lock now.
+    drop(session);
     server
         .files
         .lock()
@@ -201,26 +223,6 @@ fn transfers_s3_objects() {
     assert_ne!(input, fresh);
     assert_eq!(std::fs::read(fresh).unwrap(), b"fresh bytes");
     assert_eq!(std::fs::read(input).unwrap(), b"input bytes");
-    let output = folder.path().join("result");
-    std::fs::write(&output, b"output bytes").unwrap();
-    session
-        .complete(Outcome {
-            id: tasks[0].id,
-            files: vec![OutputFile {
-                path: tasks[0].outputs[0].clone(),
-                location: output.to_string_lossy().into_owned(),
-                ..OutputFile::default()
-            }],
-            ..Outcome::default()
-        })
-        .unwrap();
-    let deliveries = session.deliveries.lock().unwrap();
-    assert_eq!(deliveries[0].target, "s3://bucket/out");
-    storage
-        .blocking()
-        .upload(&output, &deliveries[0].target)
-        .unwrap();
-    assert_eq!(server.files.lock().unwrap()["/bucket/out"], b"output bytes");
 }
 
 #[test]
@@ -250,6 +252,7 @@ fn maps_default_storage() {
     assert!(tasks[0].outputs[0].starts_with(".snakemake/storage/fs/"));
     let workflow = "rule make:\n    input: storage(['in'])\n    output: local('out')\n    shell: 'cat {input} > {output}'\n";
     std::fs::write(folder.path().join("Snakefile"), workflow).unwrap();
+    drop(session);
     let mut session = Session::new(&launch, &Storage::default()).unwrap();
     let tasks = session.start().unwrap();
     assert_eq!(
@@ -264,6 +267,7 @@ fn maps_default_storage() {
         profiles.join("config.yaml").to_string_lossy().into_owned(),
         override_file.to_string_lossy().into_owned(),
     ];
+    drop(session);
     let mut session = Session::new(&overridden, &Storage::default()).unwrap();
     assert_eq!(
         session.start().unwrap()[0].inputs[0].path,

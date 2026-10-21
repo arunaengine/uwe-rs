@@ -29,6 +29,8 @@ struct Fake {
     delay: std::time::Duration,
     /// Whether each run writes other bytes, like a tool that writes the time.
     varies: bool,
+    /// Whether each task is a daemon, which runs on after its result.
+    daemon: std::sync::atomic::AtomicBool,
 }
 
 impl Backend for Fake {
@@ -49,7 +51,8 @@ impl Backend for Fake {
             .push((job.spec.replaces_entrypoint, job.placement.time_seconds));
         tokio::time::sleep(self.delay).await;
         let mut finished = Finished {
-            address: None,
+            address: (self.daemon.load(std::sync::atomic::Ordering::SeqCst))
+                .then(|| "10.0.0.7".to_owned()),
             exit_code: Some(self.exit_code),
             files: Vec::new(),
             root: self.scratch.join(job.name),
@@ -129,6 +132,7 @@ fn runner_with(
         exit_code,
         delay,
         varies,
+        daemon: Default::default(),
     };
     let settings = Settings {
         downloads: root.join("downloads"),
@@ -289,6 +293,28 @@ fn request(runner: &Runner<Fake>, task: &Task) -> Prepared {
 
 fn execute(runner: &Runner<Fake>, prepared: &Prepared) -> TaskResult {
     block_on(runner.execute(prepared, &CancellationToken::new())).expect("runs")
+}
+
+#[tokio::test]
+async fn daemons_keep_inputs() {
+    use workflow_graph::Executor;
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let runner = runner(root.path(), 0);
+    (runner.backend().daemon).store(true, std::sync::atomic::Ordering::SeqCst);
+    let task = task(root.path(), "serve");
+    let prepared = runner.request(&task, Some("debian@sha256:00".into()));
+    let prepared = prepared.await.expect("a request");
+    runner
+        .execute(&prepared, &CancellationToken::new())
+        .await
+        .expect("runs");
+    drop(prepared);
+    let staged = runner.backend().staged.lock().unwrap().clone();
+    let snapshot = staged[0].inputs[0].source.clone();
+    assert!(snapshot.is_file(), "the daemon still reads its input");
+    let mut executor = task_runner::RunnerExecutor::new(runner, None);
+    executor.release().await;
+    assert!(!snapshot.exists(), "the input goes once the daemon stopped");
 }
 
 #[test]
@@ -521,6 +547,7 @@ fn reads_stored_inputs() {
         exit_code: 0,
         delay: std::time::Duration::ZERO,
         varies: false,
+        daemon: Default::default(),
     };
     let settings = Settings {
         downloads: root.path().join("downloads"),

@@ -208,7 +208,14 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
 
     fn release(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         let backend = self.runner.backend.clone();
-        Box::pin(async move { backend.release().await })
+        let kept = self.runner.daemon_inputs.clone();
+        Box::pin(async move {
+            backend.release().await;
+            // The daemons stopped, so nothing reads their input snapshots any more.
+            let snapshots =
+                std::mem::take(&mut *kept.lock().unwrap_or_else(|poison| poison.into_inner()));
+            drop(snapshots);
+        })
     }
 }
 

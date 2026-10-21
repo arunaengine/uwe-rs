@@ -216,6 +216,9 @@ pub struct Runner<B> {
     /// The runs of the lineage that a resumed run continues, whose results answer tasks of
     /// images without a digest too.
     lineage: Arc<BTreeSet<String>>,
+    /// The input snapshots of daemons, which run on after their result until the run
+    /// releases them.
+    pub(crate) daemon_inputs: Arc<Mutex<Vec<Snapshots>>>,
 }
 
 /// Whose turn it is to run a task whose key another run may run at the same moment.
@@ -241,6 +244,7 @@ impl<B> Clone for Runner<B> {
             slots: self.slots,
             verbose_groups: self.verbose_groups,
             lineage: self.lineage.clone(),
+            daemon_inputs: self.daemon_inputs.clone(),
         }
     }
 }
@@ -261,6 +265,7 @@ impl<B: Backend> Runner<B> {
             slots: std::thread::available_parallelism().map_or(1, usize::from),
             verbose_groups: false,
             lineage: Arc::default(),
+            daemon_inputs: Arc::default(),
         }
     }
 
@@ -531,7 +536,8 @@ impl<B: Backend> Runner<B> {
             Err(error) => Err(error),
         };
         let result = stored?;
-        // A daemon still runs in its scratch directory; its backend removes it when it stops.
+        // A daemon still runs in its scratch directory; its backend removes it when it stops,
+        // and its input snapshots stay until the run releases its daemons.
         if finished.address.is_none() {
             self.phase(_turn.as_ref(), None, Some(cancel), async {
                 tokio::fs::remove_dir_all(&finished.root)
@@ -539,6 +545,9 @@ impl<B: Backend> Runner<B> {
                     .map_err(at(&finished.root))
             })
             .await?;
+        } else {
+            let mut kept = (self.daemon_inputs.lock()).unwrap_or_else(|poison| poison.into_inner());
+            kept.push(prepared.snapshots.clone());
         }
         if let Some(earlier) = earlier {
             let result = self

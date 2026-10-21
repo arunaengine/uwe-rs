@@ -1265,22 +1265,30 @@ fn set_method(
         "add" => {
             args.expect("add", 1, 1)?;
             let key = interpreter.key(&args.positional[0])?;
-            mutable()?.borrow_mut().insert(key);
+            let set = mutable()?;
+            if !set.borrow().contains(&key) {
+                crate::hashing::change(&set, Some(&key), true);
+                set.borrow_mut().insert(key);
+            }
             Ok(Value::None)
         }
         "remove" | "discard" => {
             args.expect(name, 1, 1)?;
             let key = interpreter.key(&args.positional[0])?;
-            let removed = mutable()?.borrow_mut().shift_remove(&key);
-            if !removed && name == "remove" {
-                return Err(Error::key_error(args.positional[0].clone()));
+            let set = mutable()?;
+            if !set.borrow().contains(&key) {
+                return match name {
+                    "remove" => Err(Error::key_error(args.positional[0].clone())),
+                    _ => Ok(Value::None),
+                };
             }
+            crate::hashing::change(&set, Some(&key), false);
+            set.borrow_mut().shift_remove(&key);
             Ok(Value::None)
         }
         "pop" => {
             let set = mutable()?;
-            let first = set.borrow().first().cloned();
-            match first {
+            match crate::hashing::pop(&set) {
                 Some(key) => {
                     set.borrow_mut().shift_remove(&key);
                     Ok(key.0)
@@ -1289,7 +1297,9 @@ fn set_method(
             }
         }
         "clear" => {
-            mutable()?.borrow_mut().clear();
+            let set = mutable()?;
+            crate::hashing::change(&set, None, false);
+            set.borrow_mut().clear();
             Ok(Value::None)
         }
         "update" | "intersection_update" | "difference_update" | "symmetric_difference_update" => {

@@ -47,6 +47,15 @@ fn evaluate(code: &str) -> Result<String, python_evaluator::Error> {
     Ok(output)
 }
 
+/// As CPython 3.13, `set.pop()` takes the first member of the table from where the last pop
+/// stopped, and a new member takes the slot that a removed one left.
+#[test]
+fn pops_like_cpython() {
+    let code = "s = {16, 32, 1, 0, 48}\nprint(s.pop(), s.pop(), list(s))\nt = {0, 8}\nt.discard(0)\nt.add(16)\nprint(list(t))\n";
+    let output = evaluate(code).expect("runs");
+    assert_eq!(output, "32 1 [0, 48, 16]\n[16, 8]\n");
+}
+
 #[test]
 fn reports_exception_lines() {
     let error = evaluate("x = 1\ny = {}\ny['missing']\n").expect_err("a KeyError");

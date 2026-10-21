@@ -17,13 +17,24 @@ use crate::value::{Key, Value};
 /// CPython reduces numbers modulo the prime 2**61 - 1 (`_PyHASH_MODULUS`).
 const BITS: u32 = 61;
 const MODULUS: u64 = (1 << BITS) - 1;
-
 type Members = Rc<RefCell<IndexSet<Key>>>;
-/// A set made by a literal, with the hashes of its members at that time.
-type Literal = (Weak<RefCell<IndexSet<Key>>>, Vec<i64>);
+
+/// The set or frozenset that a table belongs to, while it lives.
+enum Holder {
+    Set(Weak<RefCell<IndexSet<Key>>>),
+    Frozen(Weak<IndexSet<Key>>),
+}
 
 thread_local! {
-    static LITERALS: RefCell<HashMap<usize, Literal>> = RefCell::new(HashMap::new());
+    /// The tables of the sets whose layout is known, by the address of their members.
+    static TABLES: RefCell<Registry> = RefCell::new(Registry::default());
+}
+
+#[derive(Default)]
+struct Registry {
+    tables: HashMap<usize, (Holder, Table)>,
+    /// How many tables there may be before the ones of gone sets are dropped.
+    limit: usize,
 }
 
 /// CPython's `hash()` of a value whose hash is the same in every process: numbers, `None`
@@ -119,53 +130,175 @@ fn tuple_hash(items: &[Value]) -> Option<i64> {
 /// Notes a set made by a literal of three or more constants: CPython builds a frozenset of
 /// them when it compiles the code and copies that into a new set, which orders it otherwise.
 pub fn note_literal(set: &Members) {
-    let Some(hashes) = hashes(&set.borrow()) else {
+    let Some(first) = incremental(set.borrow().iter()) else {
         return;
     };
-    LITERALS.with(|literals| {
-        let mut literals = literals.borrow_mut();
-        if literals.len() > 1024 {
-            literals.retain(|_, (weak, _)| weak.strong_count() > 0);
-        }
-        literals.insert(Rc::as_ptr(set) as usize, (Rc::downgrade(set), hashes));
-    });
+    // The constant is made of the members in the order of a first set of them.
+    let Some(constant) = incremental(first.keys()) else {
+        return;
+    };
+    let mut table = Table::new();
+    table.merge(&constant);
+    register(&Value::Set(set.clone()), table);
 }
 
 /// The members of a set in the order CPython iterates them. That order depends on random
 /// text hashes in CPython, so sets with text or other objects keep their insertion order.
 pub fn set_order(set: &Members) -> Vec<Value> {
-    let members = set.borrow();
-    let Some(hashes) = hashes(&members) else {
-        return members.iter().map(|key| key.0.clone()).collect();
-    };
-    let literal = LITERALS.with(|literals| {
-        literals
-            .borrow()
-            .get(&(Rc::as_ptr(set) as usize))
-            .is_some_and(|(weak, noted)| {
-                weak.upgrade().is_some_and(|live| Rc::ptr_eq(&live, set)) && *noted == hashes
-            })
-    });
-    let Some(mut table) = incremental(members.iter()) else {
-        return members.iter().map(|key| key.0.clone()).collect();
-    };
-    if literal && let Some(constant) = incremental(table.keys()) {
-        table = Table::new();
-        table.merge(&constant);
+    match synced(&Value::Set(set.clone())) {
+        Some(table) => table.keys().map(|key| key.0.clone()).collect(),
+        None => set.borrow().iter().map(|key| key.0.clone()).collect(),
     }
-    table.keys().map(|key| key.0.clone()).collect()
 }
 
 /// The members of a frozenset in the order CPython iterates them.
-pub fn frozen_order(set: &IndexSet<Key>) -> Vec<Value> {
-    match incremental(set.iter()) {
+pub fn frozen_order(set: &Rc<IndexSet<Key>>) -> Vec<Value> {
+    match synced(&Value::FrozenSet(set.clone())) {
         Some(table) => table.keys().map(|key| key.0.clone()).collect(),
         None => set.iter().map(|key| key.0.clone()).collect(),
     }
 }
 
-fn hashes(set: &IndexSet<Key>) -> Option<Vec<i64>> {
-    set.iter().map(|key| stable_hash(&key.0)).collect()
+/// The address of the members of a set or frozenset, which names its table.
+pub(crate) fn address(value: &Value) -> usize {
+    match value.plain() {
+        Value::Set(set) => Rc::as_ptr(set) as *const u8 as usize,
+        Value::FrozenSet(set) => Rc::as_ptr(set) as *const u8 as usize,
+        _ => 0,
+    }
+}
+
+/// Keeps the table of a set or frozenset, which its iteration follows from now on.
+pub fn register(value: &Value, table: Table) {
+    let holder = match value.plain() {
+        Value::Set(set) => Holder::Set(Rc::downgrade(set)),
+        Value::FrozenSet(set) => Holder::Frozen(Rc::downgrade(set)),
+        _ => return,
+    };
+    TABLES.with(|registry| {
+        let mut registry = registry.borrow_mut();
+        if registry.tables.len() >= registry.limit.max(1024) {
+            registry.tables.retain(|_, (holder, _)| holder.alive());
+            registry.limit = registry.tables.len() * 2;
+        }
+        registry.tables.insert(address(value), (holder, table));
+    });
+}
+
+/// Changes the table of a set as `set.add`, `set.discard` (`added` false) or `set.clear`
+/// (no key) do, before its members change.
+pub fn change(set: &Members, key: Option<&Key>, added: bool) {
+    let hash = key.map(|key| stable_hash(&key.0));
+    if let Some(None) = hash {
+        let address = address(&Value::Set(set.clone()));
+        TABLES.with(|registry| registry.borrow_mut().tables.remove(&address));
+        return;
+    }
+    in_place(set, |table| match (key, hash.flatten()) {
+        (Some(key), Some(hash)) if added => table.add(key.clone(), hash),
+        (Some(key), Some(hash)) => {
+            table.discard(key, hash);
+        }
+        _ => table.clear(),
+    });
+}
+
+/// The member that `set.pop()` takes: the first one of the table from where the last pop
+/// stopped; the first one inserted when the set has no table.
+pub fn pop(set: &Members) -> Option<Key> {
+    let popped = in_place(set, Table::pop).flatten();
+    match popped {
+        Some(key) if set.borrow().contains(&key) => Some(key),
+        // A table that is not the set's anymore is built again.
+        Some(_) => {
+            let value = Value::Set(set.clone());
+            TABLES.with(|registry| registry.borrow_mut().tables.remove(&address(&value)));
+            in_place(set, Table::pop).flatten()
+        }
+        None if set.borrow().is_empty() => None,
+        None => set.borrow().first().cloned(),
+    }
+}
+
+/// Applies a change to the kept table of a set where it is, which a run of many changes
+/// needs to stay fast; a set without a table, or with one of another size, gets one first.
+fn in_place<R>(set: &Members, apply: impl FnOnce(&mut Table) -> R) -> Option<R> {
+    let value = Value::Set(set.clone());
+    let address = address(&value);
+    let length = set.borrow().len();
+    let mut apply = Some(apply);
+    let done = TABLES.with(|registry| {
+        let mut registry = registry.borrow_mut();
+        let (holder, table) = registry.tables.get_mut(&address)?;
+        let current = holder.owns(address) && table.used == length;
+        current.then(|| apply.take().map(|apply| apply(table)))?
+    });
+    if done.is_some() {
+        return done;
+    }
+    let mut table = synced(&value)?;
+    let result = (apply.take()?)(&mut table);
+    register(&value, table);
+    Some(result)
+}
+
+impl Holder {
+    fn alive(&self) -> bool {
+        match self {
+            Holder::Set(weak) => weak.strong_count() > 0,
+            Holder::Frozen(weak) => weak.strong_count() > 0,
+        }
+    }
+
+    /// Whether the set at `address` is the one that the table was kept for.
+    fn owns(&self, address: usize) -> bool {
+        match self {
+            Holder::Set(weak) => {
+                (weak.upgrade()).is_some_and(|set| self::address(&Value::Set(set)) == address)
+            }
+            Holder::Frozen(weak) => {
+                (weak.upgrade()).is_some_and(|set| self::address(&Value::FrozenSet(set)) == address)
+            }
+        }
+    }
+}
+
+/// The table of a set as it is now: the kept one with the members that came or went since,
+/// or one built by adding the members in their order. `None` for members without a hash
+/// that is the same in every process.
+pub(crate) fn synced(value: &Value) -> Option<Table> {
+    let members = match value.plain() {
+        Value::Set(set) => set.borrow().clone(),
+        Value::FrozenSet(set) => (**set).clone(),
+        _ => return None,
+    };
+    let address = address(value);
+    let kept = TABLES.with(|registry| {
+        let registry = registry.borrow();
+        let (holder, table) = registry.tables.get(&address)?;
+        holder.owns(address).then(|| table.clone())
+    });
+    let table = match kept {
+        Some(mut table) => {
+            let gone: Vec<(Key, i64)> = table
+                .entries()
+                .filter(|(key, _)| !members.contains(*key))
+                .map(|(key, hash)| (key.clone(), hash))
+                .collect();
+            for (key, hash) in gone {
+                table.discard(&key, hash);
+            }
+            for key in &members {
+                if table.find(key).is_none() {
+                    table.add(key.clone(), stable_hash(&key.0)?);
+                }
+            }
+            table
+        }
+        None => incremental(members.iter())?,
+    };
+    register(value, table.clone());
+    Some(table)
 }
 
 /// The table of a set that starts empty and gets the members one by one.

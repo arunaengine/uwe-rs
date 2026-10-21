@@ -1324,6 +1324,7 @@ impl Session {
             self.remove_failed(&[job])?;
             return self.failed(error.message);
         }
+        self.drop_backups(&[job])?;
         let delivery_start = self
             .deliveries
             .lock()
@@ -1396,6 +1397,7 @@ impl Session {
             }
             outcomes.push((*job, own));
         }
+        self.drop_backups(&jobs)?;
         let delivery_start = self
             .deliveries
             .lock()
@@ -1599,12 +1601,38 @@ impl Session {
     /// Removes the outputs of failed jobs in the shared directory, as Snakemake does since
     /// they might be corrupted.
     fn remove_failed(&self, jobs: &[usize]) -> Result<(), DriverError> {
+        self.restore_updates(jobs)?;
         let Some(planner) = self.planner.as_ref().filter(|_| self.shared) else {
             return Ok(());
         };
         for job in jobs {
             crate::shared::remove_outputs(&self.workdir, &planner.jobs[*job], false)
                 .map_err(|error| DriverError::new(format!("cannot remove outputs: {error}")))?;
+        }
+        Ok(())
+    }
+
+    /// Gives the `update()` outputs of failed jobs in the shared directory their content from
+    /// before the jobs, as Snakemake does before it removes the other outputs or retries.
+    fn restore_updates(&self, jobs: &[usize]) -> Result<(), DriverError> {
+        let Some(planner) = self.planner.as_ref().filter(|_| self.shared) else {
+            return Ok(());
+        };
+        for job in jobs {
+            crate::shared::restore_updates(&self.workdir, &planner.jobs[*job])
+                .map_err(|error| DriverError::new(format!("cannot restore outputs: {error}")))?;
+        }
+        Ok(())
+    }
+
+    /// Removes the backups of the `update()` outputs of jobs that ended well.
+    fn drop_backups(&self, jobs: &[usize]) -> Result<(), DriverError> {
+        let Some(planner) = self.planner.as_ref().filter(|_| self.shared) else {
+            return Ok(());
+        };
+        for job in jobs {
+            crate::shared::drop_backups(&self.workdir, &planner.jobs[*job])
+                .map_err(|error| DriverError::new(format!("cannot remove a backup: {error}")))?;
         }
         Ok(())
     }
@@ -2108,8 +2136,13 @@ impl Session {
         if self.attempts.get(job).copied().unwrap_or(1) > retries {
             return Ok(None);
         }
-        let services = crate::services::service_files(&planner.jobs[*job]);
         let jobs = members.iter().map(|(job, _)| *job).collect::<Vec<_>>();
+        self.restore_updates(&jobs)?;
+        let planner = self
+            .planner
+            .as_ref()
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
+        let services = crate::services::service_files(&planner.jobs[*job]);
         if services.is_empty() || !crate::pipes::files(planner, &jobs).is_empty() {
             return self.rule_group(&jobs, Some(id));
         }
@@ -2533,6 +2566,7 @@ impl Session {
         if attempt > retries || matches!(rule.action, crate::rule::Action::Cwl(_)) {
             return Ok(None);
         }
+        self.restore_updates(&[job])?;
         eprintln!(
             "Trying to restart job of rule {} (attempt {}).",
             rule.name,

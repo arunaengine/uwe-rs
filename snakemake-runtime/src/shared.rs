@@ -40,6 +40,7 @@ pub fn prepare(
     placed: &mut Placed,
 ) -> std::io::Result<()> {
     remove_outputs(workdir, job, true)?;
+    back_up(workdir, job)?;
     let logs = texts(&job.log.values);
     let benchmark = job.benchmark.as_ref().and_then(Value::as_str);
     let mut files = texts(&job.output.values);
@@ -219,6 +220,74 @@ pub fn remove_outputs(workdir: &Path, job: &Job, logs: bool) -> std::io::Result<
         }
     }
     Ok(())
+}
+
+/// Copies the `update()` outputs of a job that are there to `.snakemake/backups`, as
+/// Snakemake's `backup_output`, so that a failed job gives them back.
+fn back_up(workdir: &Path, job: &Job) -> std::io::Result<()> {
+    for output in updated(job) {
+        let path = workdir.join(output.trim_end_matches('/'));
+        if std::fs::symlink_metadata(&path).is_err() {
+            continue;
+        }
+        let backup = backup_path(workdir, output);
+        remove(&backup)?;
+        copy_into(&path, &backup)?;
+    }
+    Ok(())
+}
+
+/// Gives the `update()` outputs of a failed job their content from before the job, as
+/// Snakemake's `restore_output`; one without a backup was not there, and goes.
+pub fn restore_updates(workdir: &Path, job: &Job) -> std::io::Result<()> {
+    for value in job
+        .output
+        .values
+        .iter()
+        .filter(|value| value.tag("update").is_some())
+    {
+        let Some(output) = value.as_str() else {
+            continue;
+        };
+        let path = workdir.join(output.trim_end_matches('/'));
+        let backup = backup_path(workdir, output);
+        if std::fs::symlink_metadata(&backup).is_err() {
+            match value.tag("directory") {
+                Some(_) => remove(&path)?,
+                None => remove_output(&path, output)?,
+            }
+            continue;
+        }
+        remove(&path)?;
+        copy_into(&backup, &path)?;
+        remove(&backup)?;
+        eprintln!("Restored previous version of {output} (updating job failed).");
+    }
+    Ok(())
+}
+
+/// Removes the backups of the `update()` outputs of a job that ended well.
+pub fn drop_backups(workdir: &Path, job: &Job) -> std::io::Result<()> {
+    for output in updated(job) {
+        remove(&backup_path(workdir, output))?;
+    }
+    Ok(())
+}
+
+fn updated(job: &Job) -> impl Iterator<Item = &str> {
+    (job.output.values.iter())
+        .filter(|value| value.tag("update").is_some())
+        .filter_map(Value::as_str)
+}
+
+/// Where Snakemake keeps the backup of an output: below `.snakemake/backups`, an absolute
+/// path without its root.
+fn backup_path(workdir: &Path, output: &str) -> PathBuf {
+    let output = output.trim_end_matches('/');
+    let relative = Path::new(output)
+        .strip_prefix("/")
+        .unwrap_or(Path::new(output));
+    workdir.join(".snakemake").join("backups").join(relative)
 }
 
 /// Removes an output that is not flagged `directory()`: a file, a link, or a folder only

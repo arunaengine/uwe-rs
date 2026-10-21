@@ -299,6 +299,7 @@ rule add:
     assert!(keyed, "{:?}", task.inputs);
     let text = std::fs::read_to_string(work.join("acc.txt")).unwrap();
     assert_eq!(text, "first\nmore\n");
+    assert!(!work.join(".snakemake/backups/acc.txt").exists());
 }
 
 /// As Snakemake 9.27 does, an output without `directory()` that is a folder with files stays
@@ -346,6 +347,31 @@ fn refuses_readonly_outputs() {
     assert!(host.tasks.is_empty());
     let out = folder.path().join("work/out.txt");
     assert_eq!(std::fs::read_to_string(out).unwrap(), "old");
+}
+
+/// As Snakemake 9.27 does, a failed job gives its `update()` output the content from before
+/// the job, from the backup in `.snakemake/backups`, which then goes.
+#[test]
+fn restores_failed_updates() {
+    let snakefile =
+        "rule add:\n    input: 'in.txt'\n    output: update('acc.txt')\n    shell: 'unused'\n";
+    let steps: [(&str, Step); 1] = [("add", |folder| {
+        std::fs::write(folder.join("acc.txt"), "half").unwrap();
+        1
+    })];
+    let folder = folder();
+    let acc = folder.path().join("work/acc.txt");
+    std::fs::write(&acc, "first\n").unwrap();
+    let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    let opened = std::fs::File::open(&acc).unwrap();
+    opened.set_modified(hour_ago).unwrap();
+    std::fs::write(folder.path().join("work/in.txt"), "new").unwrap();
+    let (folder, _host, error) = run(folder, snakefile, &steps);
+    assert!(error.is_some());
+    let work = folder.path().join("work");
+    let text = std::fs::read_to_string(work.join("acc.txt")).unwrap();
+    assert_eq!(text, "first\n");
+    assert!(!work.join(".snakemake/backups/acc.txt").exists());
 }
 
 #[test]

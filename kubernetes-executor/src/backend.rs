@@ -396,7 +396,7 @@ impl KubernetesBackend {
         journal_at(root, &journal)?;
         if daemon.is_some() {
             return self
-                .serve(&name, &uid, root.to_owned(), ownership, cancel)
+                .serve(&name, journal, root.to_owned(), ownership, cancel)
                 .await;
         }
         self.pods.add(&name).await;
@@ -413,9 +413,8 @@ impl KubernetesBackend {
         };
         // Kubernetes removes the pod of a kubedal volume once kubedal uploaded its outputs.
         let grace = (self.remote.as_ref()).and_then(PodStaging::grace);
-        let stopped = self
-            .stop(root, &journal, grace.unwrap_or(CANCEL_GRACE))
-            .await;
+        let grace = grace.unwrap_or(CANCEL_GRACE);
+        let stopped = Self::stop(&self.cluster, self.poll, root, &journal, grace).await;
         self.pods.remove(&name).await;
         stopped?;
         if let (Some(remote), Some(prepared), Ok(_)) = (&self.remote, prepared, &ended) {
@@ -570,7 +569,7 @@ impl KubernetesBackend {
                         tracing::warn!(attempt = %root.display(),
                             "the Job of an unclear submission is not in the cluster; the attempt is lost");
                         std::fs::remove_file(&path)?;
-                        self.clean_staging(&journal).await;
+                        Self::clean_staging(self.remote.as_ref(), &journal).await;
                         continue;
                     }
                     Submitted::Unclear(reason) => {
@@ -580,17 +579,17 @@ impl KubernetesBackend {
                     }
                 }
             }
-            self.stop(&root, &journal, CANCEL_GRACE).await?;
-            self.clean_staging(&journal).await;
+            Self::stop(&self.cluster, self.poll, &root, &journal, CANCEL_GRACE).await?;
+            Self::clean_staging(self.remote.as_ref(), &journal).await;
         }
         Ok(())
     }
 
     /// Removes the objects in the staging root that the journal of an attempt names.
-    async fn clean_staging(&self, journal: &serde_json::Value) {
+    pub(crate) async fn clean_staging(remote: Option<&PodStaging>, journal: &serde_json::Value) {
         let staging = &journal["staging"];
         let (prefix, plan) = (staging["prefix"].as_str(), staging["plan"].as_str());
-        if let (Some(remote), Some(prefix), Some(plan)) = (&self.remote, prefix, plan) {
+        if let (Some(remote), Some(prefix), Some(plan)) = (remote, prefix, plan) {
             remote.stage.clean(prefix, plan).await;
         }
     }
@@ -815,8 +814,9 @@ impl KubernetesBackend {
     }
 
     /// Releases ownership only after the accepted Job and all its pods disappear.
-    async fn stop(
-        &self,
+    pub(crate) async fn stop(
+        cluster: &Cluster,
+        poll: Duration,
         root: &Path,
         journal: &serde_json::Value,
         grace: Duration,
@@ -834,10 +834,10 @@ impl KubernetesBackend {
                     "the accepted UID was not recorded; resolve the submission on the cluster",
                 )
             })?;
-        let jobs = self.cluster.jobs();
-        let pods = self.cluster.pods();
+        let jobs = cluster.jobs();
+        let pods = cluster.pods();
         let selector = ListParams::default().labels(&format!("job-name={name}"));
-        executor::poll::until_stopped(grace, self.poll.min(Duration::from_secs(1)), || async {
+        executor::poll::until_stopped(grace, poll.min(Duration::from_secs(1)), || async {
             match tokio::time::timeout(REQUEST_GRACE, jobs.get_opt(name)).await {
                 Ok(Ok(Some(job))) => {
                     if job.metadata.uid.as_deref() != Some(uid)
@@ -1055,10 +1055,15 @@ mod tests {
         let backend = KubernetesBackend::new(cluster, folder.path().to_owned());
         let journal = serde_json::json!({"name": "accepted", "uid": "original", "label": "test"});
         journal_at(folder.path(), &journal).unwrap();
-        let error = backend
-            .stop(folder.path(), &journal, Duration::from_millis(10))
-            .await
-            .unwrap_err();
+        let grace = Duration::from_millis(10);
+        let stopped = KubernetesBackend::stop(
+            &backend.cluster,
+            backend.poll,
+            folder.path(),
+            &journal,
+            grace,
+        );
+        let error = stopped.await.unwrap_err();
         assert!(!error.retryable());
         assert!(error.to_string().contains("termination was not confirmed"));
         assert!(folder.path().join("remote.json").is_file());

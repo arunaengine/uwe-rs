@@ -1,5 +1,5 @@
 //! Syntax tree of a Snakefile: Python code from ruff plus the Snakemake statements.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use ruff_python_ast::{Arguments, Expr, Suite};

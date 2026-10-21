@@ -1,6 +1,6 @@
 //! A small web server for tests: it serves files from memory on 127.0.0.1, may ask for one
 //! header, like a token, and counts the requests it answers.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod ftp;

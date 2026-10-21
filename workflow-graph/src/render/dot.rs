@@ -1,6 +1,6 @@
 //! A drawing as Graphviz DOT, with the title as the graph's label, the colours of the states,
 //! and the direction of the layout.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::fmt::Write as _;

@@ -1,6 +1,6 @@
 //! The conditions of `if` statements that the simulation can decide: `[ ... ]`, `[[ ... ]]`
 //! and `test ...` with known words, like `[ "false" == true ]` in a stub script.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 /// What a path of the working directory is, as far as the simulation knows.

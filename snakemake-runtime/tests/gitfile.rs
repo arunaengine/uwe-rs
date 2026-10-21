@@ -1,6 +1,6 @@
 //! Reads Snakefiles of `gitfile(...)` from git repositories of this machine with gix and from
 //! repositories on the web with the Git client of the run.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;

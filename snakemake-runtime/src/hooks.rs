@@ -1,5 +1,5 @@
 //! Runs lifecycle shell commands through the local container executor without task caching.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;

@@ -1,5 +1,5 @@
 //! Tests external Python packages in containers when IUNCTUS_CONTAINER_TESTS=1; requires network.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;

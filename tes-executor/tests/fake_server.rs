@@ -1,6 +1,6 @@
 //! The TES backend against a small fake server on this machine, which answers as Funnel does
 //! and writes the files that the task would give back.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::io::{BufRead, BufReader, Read, Write};

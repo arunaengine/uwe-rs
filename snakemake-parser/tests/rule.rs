@@ -1,5 +1,5 @@
 //! Tests how rules and checkpoints parse: names, directives, values, bodies and layout.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use snakemake_parser::ast::{Directive, Rule, Value};

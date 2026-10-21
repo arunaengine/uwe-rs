@@ -1,5 +1,5 @@
 //! What happens in a run, as the engine reports it to an observer, like the run database.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use crate::{Delivery, Edge, ExecuteError, Marker, Outcome, Task, TaskId};

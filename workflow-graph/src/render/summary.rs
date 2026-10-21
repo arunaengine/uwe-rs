@@ -1,6 +1,6 @@
 //! Short texts of the graphs: the note of a simulation, counts, then one line per task or step
 //! with what comes before it, and the markers under it.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;

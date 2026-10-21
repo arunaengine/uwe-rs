@@ -1,6 +1,6 @@
 //! A toy driver runs through the engine and the simulator, and the graph links tasks by
 //! the files they pass. The simulator makes the files that a task's script names.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use workflow_graph::render::{Options, View};

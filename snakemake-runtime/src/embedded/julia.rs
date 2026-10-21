@@ -1,6 +1,6 @@
 //! Julia: the `snakemake` struct of Julia scripts, as Snakemake's `JuliaEncoder` and
 //! `JuliaScript.get_preamble` write it.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use super::data::{Data, Named};

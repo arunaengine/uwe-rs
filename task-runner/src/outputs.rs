@@ -1,6 +1,6 @@
 //! Stores what a finished task made: each output under the attempt and by its content, and the
 //! captured streams. A local store takes the files over from the scratch directory.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;

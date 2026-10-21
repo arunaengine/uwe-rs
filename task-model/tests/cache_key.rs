@@ -1,5 +1,5 @@
 //! Tests the cache key contract: golden keys, what changes a key and what must not.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;

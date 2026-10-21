@@ -1,5 +1,5 @@
 //! Finds the Snakemake statements in the tokens, following the keyword state machine of parser.py.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use ruff_python_ast::{Arguments, Expr};

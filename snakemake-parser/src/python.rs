@@ -1,5 +1,5 @@
 //! Parses the Python parts of a Snakefile with ruff, keeping their offsets in the Snakefile.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use ruff_python_ast::token::TokenKind;

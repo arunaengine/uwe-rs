@@ -1,6 +1,6 @@
 //! Turns a job into a task: the formatted shell command or the script, wrapper or `run:`
 //! block, the container image, the files it reads and writes, and its resources.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeMap, HashSet};

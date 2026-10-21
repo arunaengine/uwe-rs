@@ -1,6 +1,6 @@
 //! The programs that the simulator follows in a script, like `touch`, `echo`,
 //! `cat`, `cp` and `gzip`; any other program makes the simulation incomplete.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use super::words::{escapes, normal, printf};

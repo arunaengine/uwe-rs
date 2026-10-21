@@ -1,6 +1,6 @@
 //! Runs a Snakemake workflow with the simulator and prints the execution graph:
 //! `run <workflow folder or Snakefile> [target...]`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use workflow_graph::{Launch, Simulator, execute};

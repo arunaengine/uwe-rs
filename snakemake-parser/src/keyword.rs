@@ -1,5 +1,5 @@
 //! The keywords of Snakemake 9.27.0: global statements, rule directives and module settings.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 /// Defines a keyword enum with the exact spelling that Snakefiles use for each variant.

@@ -1,0 +1,4 @@
+{2} {Same(1)} {Same(2)}
+{1: 'b'} {1: None} {Same(8), 6}
+{Same(3)} {Same(4): 0} {5}
+3 True {1, 2} frozenset({Same(7)})

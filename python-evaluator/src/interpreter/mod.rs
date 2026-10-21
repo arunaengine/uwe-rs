@@ -499,6 +499,22 @@ impl Interpreter {
                     crate::value::DictKind::Counter => format!("Counter({body})"),
                 })
             }
+            Value::Set(_) | Value::FrozenSet(_) => {
+                let (members, frozen) = match value {
+                    Value::Set(set) => (crate::hashing::set_order(set), false),
+                    Value::FrozenSet(set) => (crate::hashing::frozen_order(set), true),
+                    _ => (Vec::new(), false),
+                };
+                let parts = (members.iter())
+                    .map(|item| self.repr(item))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(match (frozen, parts.is_empty()) {
+                    (false, true) => "set()".to_owned(),
+                    (false, false) => format!("{{{}}}", parts.join(", ")),
+                    (true, true) => "frozenset()".to_owned(),
+                    (true, false) => format!("frozenset({{{}}})", parts.join(", ")),
+                })
+            }
             Value::Instance(_) => {
                 if let Some(method) = self.lookup_special(value, "__repr__") {
                     let text = self.call(&method, crate::value::Args::default())?;

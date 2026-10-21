@@ -57,6 +57,9 @@ pub struct LocalContainer {
     pub(crate) network: OnceCell<String>,
     /// The tasks that stop the daemons of the run when it asks them to.
     pub(crate) daemons: Mutex<Vec<JoinHandle<()>>>,
+    /// Whether HTTP and TCP probes of daemons go through ports published on this machine, also
+    /// when the engine is neither rootless nor in a VM, which always do so.
+    pub probe_ports: bool,
 }
 
 /// How a container ended.
@@ -438,6 +441,7 @@ impl LocalContainer {
             commands: Mutex::default(),
             network: OnceCell::new(),
             daemons: Mutex::default(),
+            probe_ports: false,
         }
     }
 
@@ -514,13 +518,14 @@ impl LocalContainer {
         };
         tokio::fs::write(run.script(), run.wrapper(&spec)).await?;
         if let Some(daemon) = daemon {
+            let time = job.placement.time_seconds.map(Duration::from_secs);
             let mut body = run.create_with_cpus(i64::from(share.cpus) * 1_000_000_000);
             if let Some(config) = &mut body.host_config {
                 flags.apply(config);
                 config.auto_remove = Some(false);
             }
             return self
-                .serve(&container, body, daemon, root.to_owned(), cancel)
+                .serve(&container, body, daemon, root.to_owned(), time, cancel)
                 .await;
         }
         let time = job.placement.time_seconds.map(Duration::from_secs);

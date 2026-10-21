@@ -779,3 +779,92 @@ fn releases_failed_daemons() {
     );
     assert!(found.is_err(), "the container of the daemon is gone");
 }
+
+/// A daemon task of `image` that runs `script`, with the daemon settings `daemon`.
+fn daemon_spec(image: &str, script: &str, daemon: &str) -> TaskSpec {
+    let mut spec = spec(Some(image), &[]);
+    spec.arguments = vec!["sh".into(), "-c".into(), script.into()];
+    spec.replaces_entrypoint = true;
+    spec.environment.insert(
+        executor::daemon::DAEMON_ENV.into(),
+        task_model::EnvironmentValue::Literal(daemon.into()),
+    );
+    spec
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn daemons_keep_time() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let executor = executor(root.path());
+    let placement = Placement {
+        time_seconds: Some(2),
+        ..Placement::default()
+    };
+    let stamp = std::process::id();
+    let spec = daemon_spec("debian:stable-slim", "sleep 300", "{}");
+    let name = format!("timed-daemon-{stamp}");
+    let served = run_with(&executor, &name, &spec, &Staging::default(), &placement);
+    assert!(served.expect("a running daemon").address.is_some());
+    let engine = runtime()
+        .block_on(ContainerEngine::find())
+        .expect("an engine");
+    let container = format!("iunctus-{name}");
+    let running = || {
+        let found = runtime().block_on(engine.client().inspect_container(&container, None));
+        found.ok().and_then(|found| found.state?.running) == Some(true)
+    };
+    let begun = std::time::Instant::now();
+    while running() && begun.elapsed() < std::time::Duration::from_secs(30) {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    assert!(!running(), "the daemon stops at the end of its time");
+    // A daemon that never gets ready fails at the end of its time.
+    let probe = r#"{"probe":{"check":{"command":["false"]},"period_seconds":1}}"#;
+    let spec = daemon_spec("debian:stable-slim", "sleep 300", probe);
+    let begun = std::time::Instant::now();
+    let name = format!("unready-daemon-{stamp}");
+    let error = run_with(&executor, &name, &spec, &Staging::default(), &placement).unwrap_err();
+    assert!(error.to_string().contains("not ready within"), "{error}");
+    assert!(begun.elapsed() < std::time::Duration::from_secs(30));
+    let release = Backend::release(&executor);
+    let limit = std::time::Duration::from_secs(60);
+    runtime()
+        .block_on(async { tokio::time::timeout(limit, release).await })
+        .expect("released");
+}
+
+#[test]
+#[ignore = "needs Docker and the python:3.13-slim image"]
+fn probes_through_ports() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let mut executor = executor(root.path());
+    // As with a rootless engine, whose container addresses this machine cannot reach.
+    executor.probe_ports = true;
+    let stamp = std::process::id();
+    let server = "python3 -m http.server 8080";
+    let placement = Placement {
+        time_seconds: Some(20),
+        ..Placement::default()
+    };
+    let probes = [
+        (
+            r#"{"http":{"port":8080,"path":"/","headers":[{"name":"X-Probe","value":"yes"}]}}"#,
+            true,
+        ),
+        (r#"{"tcp":{"port":8080}}"#, true),
+        (r#"{"tcp":{"port":9999}}"#, false),
+    ];
+    for (index, (check, ready)) in probes.into_iter().enumerate() {
+        let daemon = format!(r#"{{"probe":{{"check":{check},"period_seconds":1}}}}"#);
+        let spec = daemon_spec("python:3.13-slim", server, &daemon);
+        let name = format!("probed-daemon-{stamp}-{index}");
+        let served = run_with(&executor, &name, &spec, &Staging::default(), &placement);
+        assert_eq!(served.is_ok(), ready, "{check}: {served:?}");
+    }
+    let release = Backend::release(&executor);
+    let limit = std::time::Duration::from_secs(60);
+    runtime()
+        .block_on(async { tokio::time::timeout(limit, release).await })
+        .expect("released");
+}

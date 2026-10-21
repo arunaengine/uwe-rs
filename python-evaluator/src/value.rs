@@ -228,7 +228,7 @@ impl Value {
 /// A dict, in insertion order. `defaultdict` and `Counter` are dicts with a default.
 #[derive(Clone, Default)]
 pub struct Dict {
-    pub entries: IndexMap<Key, Value>,
+    pub entries: crate::entries::Entries,
     pub kind: DictKind,
 }
 

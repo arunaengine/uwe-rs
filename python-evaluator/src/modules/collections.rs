@@ -1411,7 +1411,7 @@ pub fn copy_value(
         Value::Dict(dict) => {
             let original = dict.borrow().clone();
             let mut copied = Dict {
-                entries: IndexMap::new(),
+                entries: Default::default(),
                 kind: original.kind.clone(),
             };
             for (key, item) in original.entries {

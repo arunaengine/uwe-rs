@@ -699,7 +699,7 @@ impl Interpreter {
     /// by `__eq__` keeps its place and object, as CPython keeps the first key.
     pub fn set_entry(
         &mut self,
-        entries: &mut indexmap::IndexMap<Key, Value>,
+        entries: &mut crate::entries::Entries,
         key: Key,
         value: Value,
     ) -> Result<(), Error> {

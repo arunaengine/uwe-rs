@@ -215,6 +215,9 @@ const ENDED: [&str; 10] = [
 /// The states of a held job that SLURM will not run unless someone releases it.
 const HELD: [&str; 3] = ["REQUEUE_HOLD", "RESV_DEL_HOLD", "SPECIAL_EXIT"];
 
+/// The reason of a pending job whose time is longer than its partition allows.
+const OVER_TIME: &str = "PartitionTimeLimit";
+
 /// What `squeue` says about one job: its state, and why it waits, when it does.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Seen {
@@ -249,6 +252,8 @@ pub enum Look {
     Gone,
     /// SLURM holds the job and will not run it on its own, for this reason.
     Held(String),
+    /// The job asks for more time than its partition allows, so it waits for ever.
+    OverTime,
     /// Nothing is known yet: the job is new, or `squeue` failed.
     Unknown,
 }
@@ -332,6 +337,9 @@ impl Queue {
                 Some(seen) if ENDED.contains(&seen.state.as_str()) => {
                     Look::Ended(seen.state.clone())
                 }
+                Some(seen) if seen.state == "PENDING" && seen.reason.contains(OVER_TIME) => {
+                    Look::OverTime
+                }
                 Some(seen) => seen.held().map_or(Look::Active, Look::Held),
             },
         }
@@ -401,9 +409,12 @@ fn json_states(answer: &Value) -> Option<HashMap<String, Seen>> {
                 Value::String(text) => text.clone(),
                 _ => return None,
             };
-            let reason = [&job["state_description"], &job["state_reason"]]
-                .into_iter()
-                .filter_map(Value::as_str)
+            // The code of a job over the time of its partition decides; a description may hide it.
+            let codes = match job["state_reason"].as_str() == Some(OVER_TIME) {
+                true => [&job["state_reason"], &job["state_description"]],
+                false => [&job["state_description"], &job["state_reason"]],
+            };
+            let reason = (codes.into_iter().filter_map(Value::as_str))
                 .find(|reason| !reason.is_empty() && *reason != "None");
             let state = first_word(&job["job_state"])?;
             let reason = reason.unwrap_or_default().to_owned();

@@ -134,6 +134,16 @@ enum Ended {
     Stopped(Option<String>),
     /// SLURM held the job for this reason and would not run it on its own; iunctus cancels it.
     Held(String),
+    /// The job asked for more time than its partition allows; iunctus cancels it.
+    OverTime,
+}
+
+/// What `sbatch` did with a job.
+enum Submission {
+    /// It took the job, which got this id.
+    Taken(String),
+    /// It refused the time of the job, as more than the partition allows.
+    OverTime,
 }
 
 impl SlurmBackend {
@@ -514,38 +524,50 @@ impl SlurmBackend {
         tokio::task::spawn_blocking(move || sync_files(&synced))
             .await
             .map_err(|error| std::io::Error::other(error.to_string()))??;
-        let margin = self.staging_time.as_secs();
-        let mut options = sbatch_options(job, root, margin, &self.options);
-        if self.remote.is_some() {
-            // The node has no scratch folder; the job keeps its log in the folder of the node.
-            for option in &mut options {
-                if option.starts_with("--chdir=") {
-                    *option = "--chdir=/tmp".into();
-                } else if option.starts_with("--output=") {
-                    *option = "--output=/dev/null".into();
-                }
-            }
-        }
-        let options = self.with_excluded(options).await;
-        let id = self
-            .submit(
-                options,
-                &control.join(SCRIPT),
-                root,
-                staged.as_ref(),
-                cancel,
-            )
-            .await?;
-        self.queue.add(&id).await;
         let prefix = staged.as_ref().map(|staged| staged.prefix.as_str());
-        let ended = self.wait(&id, &control, prefix, cancel).await;
-        let held = matches!(ended, Ok(Ended::Held(_)));
-        let stopped = self
-            .stop(&id, root, self.settle(), ended.is_err() || held)
-            .await;
-        self.queue.remove(&id).await;
-        stopped?;
-        let ended = ended?;
+        let script = control.join(SCRIPT);
+        // A partition whose time limit leaves no room for the margin of staging gets the job
+        // once more without it; the task keeps its own time.
+        let mut margin = self.staging_time.as_secs();
+        let mut last = None;
+        let ended = loop {
+            let options = self.job_options(job, root, margin).await;
+            let submitted = self.submit(options, &script, root, staged.as_ref(), cancel);
+            let ended = match submitted.await? {
+                Submission::Taken(id) => {
+                    self.queue.add(&id).await;
+                    let ended = self.wait(&id, &control, prefix, cancel).await;
+                    last = Some(id.clone());
+                    let held = matches!(ended, Ok(Ended::Held(_) | Ended::OverTime));
+                    let stopped = self
+                        .stop(&id, root, self.settle(), ended.is_err() || held)
+                        .await;
+                    self.queue.remove(&id).await;
+                    stopped?;
+                    ended?
+                }
+                Submission::OverTime => Ended::OverTime,
+            };
+            let time = job.placement.time_seconds;
+            match (ended, time) {
+                (Ended::OverTime, Some(time)) if margin > 0 => {
+                    tracing::warn!(
+                        job = job.name,
+                        time,
+                        "the SLURM partition allows no time for staging beyond the time of the task, so the job runs without it and may end before the task does"
+                    );
+                    margin = 0;
+                }
+                (Ended::OverTime, _) => {
+                    let time =
+                        time.map_or("its default time".into(), |time| format!("{time} seconds"));
+                    return Err(ExecutorError::Unsupported(format!(
+                        "the task asks for {time}, more than its SLURM partition allows"
+                    )));
+                }
+                (ended, _) => break ended,
+            }
+        };
         if let (Some(remote), Some(prefix)) = (&self.remote, prefix) {
             remote.stage.collect(prefix, root, &records()).await?;
         }
@@ -554,9 +576,9 @@ impl SlurmBackend {
             && !tokio::fs::try_exists(control.join(LOG))
                 .await
                 .unwrap_or(true);
-        let node = match lost {
-            true => self.leave_out(&id).await,
-            false => None,
+        let node = match (lost, &last) {
+            (true, Some(id)) => self.leave_out(id).await,
+            _ => None,
         };
         let time = job.placement.time_seconds;
         finish(
@@ -577,6 +599,22 @@ impl SlurmBackend {
             },
             (error, _) => error,
         })
+    }
+
+    /// The options of the job of an attempt, whose time is that of its task plus `margin`.
+    async fn job_options(&self, job: Job<'_>, root: &Path, margin: u64) -> Vec<String> {
+        let mut options = sbatch_options(job, root, margin, &self.options);
+        if self.remote.is_some() {
+            // The node has no scratch folder; the job keeps its log in the folder of the node.
+            for option in &mut options {
+                if option.starts_with("--chdir=") {
+                    *option = "--chdir=/tmp".into();
+                } else if option.starts_with("--output=") {
+                    *option = "--output=/dev/null".into();
+                }
+            }
+        }
+        self.with_excluded(options).await
     }
 
     /// Asks SLURM for the node of a job, and leaves that node out of the later jobs.
@@ -713,17 +751,21 @@ impl SlurmBackend {
         let options = self
             .with_excluded(pull_options(&name, &root, &self.pull, &self.options))
             .await;
-        let id = self
-            .submit(options, &control.join(SCRIPT), &root, None, cancel)
-            .await?;
-        self.queue.add(&id).await;
-        let ended = self.wait(&id, &control, None, cancel).await;
-        let held = matches!(ended, Ok(Ended::Held(_)));
-        let stopped = self
-            .stop(&id, &root, self.settle(), ended.is_err() || held)
-            .await;
-        self.queue.remove(&id).await;
-        stopped?;
+        let script = control.join(SCRIPT);
+        let ended = match self.submit(options, &script, &root, None, cancel).await? {
+            Submission::Taken(id) => {
+                self.queue.add(&id).await;
+                let ended = self.wait(&id, &control, None, cancel).await;
+                let held = matches!(ended, Ok(Ended::Held(_) | Ended::OverTime));
+                let stopped = self
+                    .stop(&id, &root, self.settle(), ended.is_err() || held)
+                    .await;
+                self.queue.remove(&id).await;
+                stopped?;
+                ended
+            }
+            Submission::OverTime => Ok(Ended::OverTime),
+        };
         let pulled = match ended? {
             Ended::Done(0) if tokio::fs::try_exists(path).await.unwrap_or(false) => {
                 Ok(path.to_owned())
@@ -738,6 +780,10 @@ impl SlurmBackend {
             Ended::Held(reason) => Err(format!(
                 "SLURM held the job that pulls the image {reference} ({reason}), so iunctus \
                  cancelled it"
+            )),
+            Ended::OverTime => Err(format!(
+                "the job that pulls the image {reference} asks for more time than its SLURM \
+                 partition allows; lower the time of [executor.slurm.pull]"
             )),
         };
         let pulled = match pulled {
@@ -757,7 +803,7 @@ impl SlurmBackend {
         root: &Path,
         staged: Option<&Staged>,
         cancel: &CancellationToken,
-    ) -> Result<String, ExecutorError> {
+    ) -> Result<Submission, ExecutorError> {
         if cancel.is_cancelled() {
             return Err(ExecutorError::Cancelled);
         }
@@ -803,6 +849,11 @@ impl SlurmBackend {
             || !id.bytes().all(|byte| byte.is_ascii_digit())
         {
             let error = String::from_utf8_lossy(&output.stderr);
+            // With EnforcePartLimits sbatch refuses such a job at once, so none is left.
+            if !output.status.success() && error.contains("Requested time limit is invalid") {
+                std::fs::remove_file(root.join("remote.json"))?;
+                return Ok(Submission::OverTime);
+            }
             return Err(unresolved(
                 root,
                 format!("sbatch did not take the job: {}", error.trim()),
@@ -831,7 +882,7 @@ impl SlurmBackend {
             journal["identity"] = identity;
             journal_at(root, &journal).map_err(|error| unresolved(root, error))?;
         }
-        Ok(id.to_owned())
+        Ok(Submission::Taken(id.to_owned()))
     }
 
     /// How long the end of a job may take to confirm: a few queries, which a slow controller
@@ -1103,6 +1154,7 @@ impl SlurmBackend {
             let state = match look {
                 Look::Active | Look::Unknown => continue,
                 Look::Held(reason) => return Ok(Ended::Held(reason)),
+                Look::OverTime => return Ok(Ended::OverTime),
                 Look::Ended(state) => Some(state),
                 Look::Gone => tokio::select! {
                     state = self.queue.accounted(&sacct, id, self.query_grace) => state,
@@ -1357,6 +1409,7 @@ fn outcome(
         Ended::Held(reason) => Err(format!(
             "SLURM held the job ({reason}), so iunctus cancelled it"
         )),
+        Ended::OverTime => Err("the job asks for more time than its partition allows".into()),
         Ended::Stopped(None) => Err("the job ended without a record of its container".into()),
     }
 }

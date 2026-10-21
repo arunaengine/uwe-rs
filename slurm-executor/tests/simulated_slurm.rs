@@ -37,6 +37,19 @@ printf '%s\n' "$@" > "$state/$id.options"
 printf '%s\n' "$name" > "$state/$id.name"
 printf '%s\n' "$script" > "$state/$id.command"
 echo 2026-10-03T00:00:00 > "$state/$id.submitted"
+# A file `partition-limit` holds the longest time of the partition. SLURM keeps a job that asks
+# for more pending for ever, or refuses it at once when a file `enforce-limits` is there.
+limit="$(dirname "$0")/partition-limit"
+if [ -e "$limit" ] && ! grep -qx -- "--time=$(cat "$limit")" "$state/$id.options"; then
+    if [ -e "$(dirname "$0")/enforce-limits" ]; then
+        rm "$state/$id.options"
+        echo 'sbatch: error: Batch job submission failed: Requested time limit is invalid (missing or exceeds some limit)' >&2
+        exit 1
+    fi
+    echo 'sleep 300' > "$state/$id.waiting"
+    script="$state/$id.waiting"
+    touch "$state/$id.over"
+fi
 # A node of a shared file system may first see a wrapper that another machine has just
 # written as empty: the wrapper is empty for two seconds.
 if [ -e "$(dirname "$0")/late-wrapper" ]; then
@@ -105,6 +118,9 @@ for id in ${jobs//,/ }; do
     reason=None
     if [ -e "$(dirname "$0")/held" ] && [ ! -e "$state/$id.cancelled" ]; then
         job_state=PENDING reason=$(cat "$(dirname "$0")/held")
+    fi
+    if [ -e "$state/$id.over" ] && [ ! -e "$state/$id.cancelled" ]; then
+        job_state=PENDING reason=PartitionTimeLimit
     fi
     if [ -n "$commands" ]; then
         printf '%s|%s\n' "$id" "$(cat "$state/$id.command")"
@@ -834,6 +850,54 @@ async fn cancels_held_jobs() {
     assert!(begun.elapsed() < Duration::from_secs(20));
     let calls = std::fs::read_to_string(bin.join("state/scancel.calls")).expect("a cancel");
     assert!(calls.starts_with("101 "), "{calls}");
+}
+
+#[tokio::test]
+async fn fits_partition_time() {
+    for enforced in [false, true] {
+        let root = tempfile::tempdir().expect("a folder");
+        let bin = cluster(root.path(), APPTAINER);
+        std::fs::write(bin.join("partition-limit"), "0-00:01:00").expect("limits the time");
+        if enforced {
+            std::fs::write(bin.join("enforce-limits"), "").expect("enforces the limits");
+        }
+        let backend = backend(
+            root.path(),
+            &bin,
+            Container::Apptainer(text(&bin.join("apptainer"))),
+        );
+        let mut spec = spec("echo done > out.txt");
+        spec.image.as_mut().unwrap().reference = "/images/tool.sif".into();
+        let staging = Staging::default();
+        // A task that asks for the whole time of its partition runs without the margin.
+        let whole = Placement {
+            time_seconds: Some(60),
+            ..placement()
+        };
+        let longer = Placement {
+            time_seconds: Some(120),
+            ..placement()
+        };
+        let job = |name, placement| Job {
+            name,
+            spec: &spec,
+            staging: &staging,
+            placement,
+        };
+        let (limit, cancel) = (Duration::from_secs(60), CancellationToken::new());
+        let running = backend.run(job("run-P-30-1", &whole), &cancel);
+        let finished = tokio::time::timeout(limit, running)
+            .await
+            .expect("no wait for ever");
+        assert_eq!(finished.expect("the job ends").exit_code, Some(0));
+        // A task that asks for more than the partition allows cannot run there.
+        let running = backend.run(job("run-P-31-1", &longer), &cancel);
+        let error = tokio::time::timeout(limit, running)
+            .await
+            .expect("no wait for ever");
+        let error = error.unwrap_err();
+        assert!(matches!(error, ExecutorError::Unsupported(_)), "{error}");
+    }
 }
 
 #[tokio::test]

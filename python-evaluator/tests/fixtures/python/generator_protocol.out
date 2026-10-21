@@ -1,0 +1,14 @@
+0 5 12
+stopped
+TypeError can't send non-None value to a just-started generator
+caught x 1 caught y
+KeyError 'k'
+[]
+cleaned
+None []
+RuntimeError generator ignored GeneratorExit
+inner got 1
+inner got 2
+a b end
+IndexError deep
+False True True

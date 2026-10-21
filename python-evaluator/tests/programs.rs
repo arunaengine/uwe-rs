@@ -550,14 +550,10 @@ fn rejects_suspension_shapes() {
     for code in [
         "def source():\n    yield 1\n    x = 1 < 2 < (yield 2)\ng = source()\nnext(g)\nnext(g)\n",
         "def source():\n    while (yield 1):\n        pass\nnext(source())\n",
-        "def source():\n    yield 1\nsource().send(None)\n",
     ] {
         let error = evaluate(code).expect_err("unsupported suspension");
         assert!(error.is_unsupported(), "{error}");
-        assert!(
-            error.to_string().contains("suspension") || error.to_string().contains("send"),
-            "{error}"
-        );
+        assert!(error.to_string().contains("suspension"), "{error}");
     }
     let output = evaluate("def source():\n    next(g)\n    yield 1\ng = source()\ntry:\n    next(g)\nexcept ValueError as error:\n    print(error)\n").expect("reentrant advancement is an exception");
     assert_eq!(output, "generator already executing\n");

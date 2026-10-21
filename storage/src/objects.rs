@@ -10,14 +10,14 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 use opendal::layers::RetryLayer;
 use opendal::services::S3;
-use opendal::{ErrorKind, HttpTransporter, OperationContext, Operator};
+use opendal::{ErrorKind, HttpTransport, HttpTransporter, OperationContext, Operator};
 use opendal_http_transport_reqwest::ReqwestTransport;
 use opendal_service_azblob::Azblob;
 use opendal_service_gcs::Gcs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::error::Problem;
-use crate::web::{open, shared_client};
+use crate::web::{open, shared_client, upload_client};
 use crate::{Downloaded, Entry, Metadata, Written, address};
 
 /// Files are downloaded and uploaded in parts of this size, so they never sit in memory whole.
@@ -56,7 +56,10 @@ pub(crate) struct Objects {
 
 impl Objects {
     pub fn new(service: Service) -> Result<Objects, Problem> {
-        let transport = HttpTransporter::new(ReqwestTransport::new(shared_client()?));
+        let transport = HttpTransporter::new(Transport {
+            reads: ReqwestTransport::new(shared_client()?),
+            sends: ReqwestTransport::new(upload_client().cloned().map_err(Problem::fixed)?),
+        });
         Ok(Objects {
             service,
             transport,
@@ -382,6 +385,25 @@ impl Objects {
     }
 }
 
+/// Sends requests with a body, the uploads and their parts, through the upload client, which
+/// limits how long they make no progress rather than how long they take.
+struct Transport {
+    reads: ReqwestTransport,
+    sends: ReqwestTransport,
+}
+
+impl HttpTransport for Transport {
+    async fn fetch(
+        &self,
+        request: http::Request<opendal::Buffer>,
+    ) -> opendal::Result<http::Response<opendal::HttpBody>> {
+        match request.body().is_empty() {
+            true => self.reads.fetch(request).await,
+            false => self.sends.fetch(request).await,
+        }
+    }
+}
+
 fn location(target: &str) -> Result<address::ObjectLocation<'_>, Problem> {
     address::object_location(target)
         .map_err(Problem::fixed)?
@@ -422,5 +444,73 @@ fn problem(error: opendal::Error) -> Problem {
     match error.is_temporary() {
         true => Problem::passing(message),
         false => Problem::fixed(message),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::time::Duration;
+
+    /// Serves one S3 upload, reads its body in parts of 64 KiB every 100 ms and then answers.
+    /// Gives the number of bytes it read.
+    fn slow_server() -> (String, std::thread::JoinHandle<usize>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let thread = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut length = 0;
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line.trim().is_empty() {
+                    break;
+                }
+                if let Some((name, value)) = line.split_once(':')
+                    && name.eq_ignore_ascii_case("content-length")
+                {
+                    length = value.trim().parse().unwrap();
+                }
+            }
+            let mut received = 0;
+            let mut buffer = vec![0; 64 * 1024];
+            while received < length {
+                std::thread::sleep(Duration::from_millis(100));
+                let wanted = buffer.len().min(length - received);
+                reader.read_exact(&mut buffer[..wanted]).unwrap();
+                received += wanted;
+            }
+            let answer = "HTTP/1.1 200 OK\r\nETag: \"e\"\r\nContent-Length: 0\r\n\r\n";
+            stream.write_all(answer.as_bytes()).unwrap();
+            received
+        });
+        (address, thread)
+    }
+
+    #[test]
+    fn slow_upload_succeeds() {
+        let (endpoint, server) = slow_server();
+        let folder = tempfile::tempdir().unwrap();
+        let file = folder.path().join("part");
+        // 32 parts of 64 KiB take the server three times the idle limit of one second.
+        let size = 32 * 64 * 1024;
+        std::fs::write(&file, vec![7; size]).unwrap();
+        let objects = Objects::new(Service::S3 {
+            endpoint: Some(endpoint),
+            region: "us-east-1".into(),
+            virtual_host: false,
+            keys: Some(("id".into(), "secret".into(), None)),
+            anonymous: false,
+        })
+        .unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let written = runtime.block_on(objects.upload(&file, "s3://bucket/key"));
+        assert_eq!(written.unwrap().size, size as u64);
+        assert_eq!(server.join().unwrap(), size);
     }
 }

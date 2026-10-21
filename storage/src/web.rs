@@ -24,11 +24,33 @@ pub(crate) struct Web {
     strict: bool,
 }
 
+/// How long a request may make no progress: for a download no answer or read, for an upload
+/// no data that the server acknowledges.
+const IDLE: Duration = match cfg!(test) {
+    true => Duration::from_secs(1),
+    false => Duration::from_secs(300),
+};
+
 /// Shares one lazy HTTP client across storage and executors; bounded requests supply their own
 /// timeouts.
 pub fn http_client() -> Result<&'static reqwest::Client, String> {
     static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
-    let client = CLIENT.get_or_init(|| builder()?.build().map_err(|error| error.to_string()));
+    let client = CLIENT
+        .get_or_init(|| (builder()?.read_timeout(IDLE).build()).map_err(|error| error.to_string()));
+    client.as_ref().map_err(Clone::clone)
+}
+
+/// The client for requests with a body. The read timeout of reqwest runs from the start of a
+/// request to its answer, so it would end slow uploads; instead the kernel ends a connection
+/// whose data stays unacknowledged, or unsent behind a closed window, for `IDLE`.
+pub(crate) fn upload_client() -> Result<&'static reqwest::Client, String> {
+    static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
+    let client = CLIENT.get_or_init(|| {
+        let builder = builder()?.tcp_keepalive(Duration::from_secs(30));
+        #[cfg(any(target_os = "android", target_os = "fuchsia", target_os = "linux"))]
+        let builder = builder.tcp_user_timeout(IDLE);
+        builder.build().map_err(|error| error.to_string())
+    });
     client.as_ref().map_err(Clone::clone)
 }
 
@@ -47,6 +69,7 @@ fn origin_client() -> Result<&'static reqwest::Client, String> {
             }
         });
         builder()?
+            .read_timeout(IDLE)
             .redirect(policy)
             .build()
             .map_err(|error| error.to_string())
@@ -64,8 +87,7 @@ fn origin(url: &reqwest::Url) -> (String, Option<String>, Option<u16>) {
 fn builder() -> Result<reqwest::ClientBuilder, String> {
     let mut builder = reqwest::Client::builder()
         .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
-        .connect_timeout(Duration::from_secs(30))
-        .read_timeout(Duration::from_secs(300));
+        .connect_timeout(Duration::from_secs(30));
     if MOZILLA_ROOTS.get().is_some() {
         let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
             .iter()

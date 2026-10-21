@@ -21,7 +21,7 @@ import urllib.request
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", type=Path, default=Path("target/debug/iunctus"))
+    parser.add_argument("--binary", type=Path, default=Path("target/debug/uwe"))
     parser.add_argument("--funnel", type=Path)
     parser.add_argument("--minio", type=Path)
     parser.add_argument("--report", type=Path)
@@ -31,9 +31,9 @@ def main():
     report = {"versions": {}, "checks": []}
     report["versions"]["revision"] = command(["git", "-C", repository, "rev-parse", "HEAD"]).stdout.strip()
     report["versions"]["docker"] = command(["docker", "version", "--format", "{{.Server.Version}}"]).stdout.strip()
-    with tempfile.TemporaryDirectory(prefix="iunctus-tes-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="uwe-tes-") as temporary:
         root = Path(temporary)
-        binary = root / "iunctus"
+        binary = root / "uwe"
         shutil.copy2(selected, binary)
         with binary.open("rb") as stream:
             report["versions"]["binary_sha256"] = hashlib.file_digest(stream, "sha256").hexdigest()
@@ -84,7 +84,7 @@ Worker:
   WorkDir: {root}/workers
   Container:
     DriverCommand: docker
-    RunCommand: run -i --pull never --memory 1g --network none --label iunctus.qualification={root.name} {{{{if .RemoveContainer}}}}--rm{{{{end}}}} {{{{.GetEnvArgs}}}} {{{{if .Name}}}}--name {{{{.Name}}}}{{{{end}}}} {{{{if .Workdir}}}}--workdir {{{{.Workdir}}}}{{{{end}}}} {{{{range .Volumes}}}}--volume {{{{.HostPath}}}}:{{{{.ContainerPath}}}}:{{{{if .Readonly}}}}ro{{{{else}}}}rw{{{{end}}}} {{{{end}}}} {{{{.Image}}}} {{{{.Command}}}}
+    RunCommand: run -i --pull never --memory 1g --network none --label uwe.qualification={root.name} {{{{if .RemoveContainer}}}}--rm{{{{end}}}} {{{{.GetEnvArgs}}}} {{{{if .Name}}}}--name {{{{.Name}}}}{{{{end}}}} {{{{if .Workdir}}}}--workdir {{{{.Workdir}}}}{{{{end}}}} {{{{range .Volumes}}}}--volume {{{{.HostPath}}}}:{{{{.ContainerPath}}}}:{{{{if .Readonly}}}}ro{{{{else}}}}rw{{{{end}}}} {{{{end}}}} {{{{.Image}}}} {{{{.Command}}}}
     PullCommand: image inspect {{{{.Image}}}}
 """)
             start_service([funnel, "server", "run", "--config", config], root / "funnel.log", environment, services)
@@ -99,7 +99,7 @@ Worker:
                     process.kill()
                     process.wait()
                 stream.close()
-            containers = command(["docker", "ps", "-aq", "--filter", f"label=iunctus.qualification={root.name}"]).stdout.split()
+            containers = command(["docker", "ps", "-aq", "--filter", f"label=uwe.qualification={root.name}"]).stdout.split()
             if containers:
                 command(["docker", "rm", "-f", *containers])
             if arguments.report:
@@ -213,7 +213,7 @@ outputs:
       glob: out/*.txt
 """)
         (folder / "job.json").write_text(json.dumps({"source": {"class": "Directory", "path": str(folder / "directory")}}))
-        config = folder / "iunctus.toml"
+        config = folder / "uwe.toml"
         config.write_text(f"""[cache]
 folder = "{folder}/cache"
 [executor.tes]
@@ -232,7 +232,7 @@ secret_access_key = "qualification-secret"
         for name, workflow, extra in (("snakemake", "snake/hello.smk", []), ("nextflow", "nextflow/main.nf", []),
                                       ("cwl", "tool.cwl", ["-inputs", str(folder / "job.json"), "-output-dir", str(folder / "outputs")])):
             invocation = ["nice", "-n", "19", binary, "run", folder / workflow, "-executor", executor,
-                          "-iunctus-config", config, *extra]
+                          "-uwe-config", config, *extra]
             known = {task["id"] for task in tasks(server)}
             result = command(invocation, cwd=folder, env=environment, timeout=240)
             (folder / f"{name}.log").write_text(result.stdout + result.stderr)
@@ -274,8 +274,8 @@ def record(report, check, result, notes):
 
 def lifecycle_checks(binary, folder, environment, server, report):
     workflow = folder / "lifecycle.nf"
-    config = folder / "iunctus.toml"
-    base = ["nice", "-n", "19", str(binary), "run", str(workflow), "-executor", "tes", "-iunctus-config", str(config)]
+    config = folder / "uwe.toml"
+    base = ["nice", "-n", "19", str(binary), "run", str(workflow), "-executor", "tes", "-uwe-config", str(config)]
     workflow.write_text("process FAIL {\n container 'debian:stable-slim'\n script:\n 'exit 17'\n}\nworkflow { FAIL() }\n")
     known = {task["id"] for task in tasks(server)}
     failure = subprocess.run(base, cwd=folder, env=environment, capture_output=True, text=True, timeout=240)
@@ -329,7 +329,7 @@ def wait_running(server, known, process):
             if task["id"] not in known and task["state"] == "RUNNING":
                 return task
         if process.poll() is not None:
-            raise RuntimeError("iunctus exited before a TES task was running")
+            raise RuntimeError("uwe exited before a TES task was running")
         time.sleep(0.25)
     raise RuntimeError("TES task did not reach RUNNING")
 

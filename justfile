@@ -25,18 +25,18 @@ check:
 release-binary:
 	rustup target add x86_64-unknown-linux-musl
 	CC_x86_64_unknown_linux_musl=musl-gcc CARGO_INCREMENTAL=0 nice -n 19 cargo build --release --locked --target x86_64-unknown-linux-musl -p uwe -j 8
-	strip --strip-debug target/x86_64-unknown-linux-musl/release/iunctus
-	file target/x86_64-unknown-linux-musl/release/iunctus
+	strip --strip-debug target/x86_64-unknown-linux-musl/release/uwe
+	file target/x86_64-unknown-linux-musl/release/uwe
 
-# Builds the image of Kubernetes object-store staging, which holds only the static iunctus
-# binary, at /iunctus.
-helper-image tag="iunctus-helper:dev": release-binary
+# Builds the image of Kubernetes object-store staging, which holds only the static uwe
+# binary, at /uwe.
+helper-image tag="uwe-helper:dev": release-binary
 	#!/usr/bin/env bash
 	set -euo pipefail
 	context="$(mktemp -d)"
 	trap 'rm -rf "$context"' EXIT
-	cp target/x86_64-unknown-linux-musl/release/iunctus "$context/iunctus"
-	printf 'FROM scratch\nCOPY iunctus /iunctus\n' > "$context/Dockerfile"
+	cp target/x86_64-unknown-linux-musl/release/uwe "$context/uwe"
+	printf 'FROM scratch\nCOPY uwe /uwe\n' > "$context/Dockerfile"
 	docker build -t "{{tag}}" "$context"
 
 # Runs a workflow on a kind cluster with object-store staging (the uploaded binary, image volume,
@@ -48,13 +48,13 @@ kind-staging-test: release-binary
 # Runs four demos and checks failure, resume, cancellation and simulation with local Docker.
 container-runs:
 	nice -n 19 cargo build --offline --locked -p uwe -j 8
-	nice -n 19 python3 -I scripts/container-runs.py target/debug/iunctus
+	nice -n 19 python3 -I scripts/container-runs.py target/debug/uwe
 
 # Fetches the text-only nf-core test workflows at the commits the test-workflows tests expect.
 test-workflows:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	root="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}"
+	root="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}"
 	grep -v '^#' nextflow-parser/tests/fixtures/nf_core_revisions.txt | while read -r name branch commit; do
 		if [ "$name" = modules ]; then target="$root/modules"; else target="$root/pipelines/$name"; fi
 		[ -d "$target" ] && continue
@@ -85,7 +85,7 @@ test-workflows:
 workflowhub-test-workflows:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	root="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nextflow-workflowhub}"
+	root="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nextflow-workflowhub}"
 	mkdir -p "$root"
 	# The paths of the files below a folder of the git tree of a WorkflowHub entry version.
 	workflowhub_tree() {
@@ -133,31 +133,31 @@ workflowhub-test-workflows:
 # Parses the nf-core test workflows, compares the result with `nextflow lint`, and lowers every
 # module.
 test-workflows-test:
-	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" cargo test --release --locked -p nextflow-parser --test test_workflows -- --ignored
-	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" cargo test --release --locked -p nextflow-evaluator --test test_workflows -- --ignored
+	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}" cargo test --release --locked -p nextflow-parser --test test_workflows -- --ignored
+	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}" cargo test --release --locked -p nextflow-evaluator --test test_workflows -- --ignored
 
 # Records `nextflow config -flat -profile test` of every nf-core pipeline for the config test, four
 # pipelines at a time.
 config-oracle:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	test_workflows="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}/pipelines"
-	oracle="${UWE_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}"
+	test_workflows="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}/pipelines"
+	oracle="${UWE_CONFIG_ORACLE:-$HOME/.cache/uwe/oracle/config}"
 	mkdir -p "$oracle"
 	find "$test_workflows" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | xargs -P 4 -I{} sh -c \
 		"cd '$test_workflows/{}' && nextflow config -flat -profile test . > '$oracle/{}.txt' 2> '$oracle/{}.err'; echo \$? > '$oracle/{}.exit'"
 
-# Compares `iunctus config` with the recorded `nextflow config` of every nf-core pipeline.
+# Compares `uwe config` with the recorded `nextflow config` of every nf-core pipeline.
 config-test-workflows-test:
-	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
-	UWE_CONFIG_ORACLE="${UWE_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}" \
+	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}" \
+	UWE_CONFIG_ORACLE="${UWE_CONFIG_ORACLE:-$HOME/.cache/uwe/oracle/config}" \
 	cargo test --release --locked -p uwe --test config_test_workflows -- --ignored
 
 # Runs every nf-core pipeline and every Nextflow workflow of WorkflowHub of the test workflows
 # with the simulator and compares the outcomes.
 run-test-workflows-test:
-	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
-	WORKFLOWHUB_TEST_WORKFLOWS="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nextflow-workflowhub}" \
+	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}" \
+	WORKFLOWHUB_TEST_WORKFLOWS="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nextflow-workflowhub}" \
 	cargo test --release --locked -p uwe --test run_test_workflows -- --ignored
 
 # Describes the inputs of every Nextflow workflow and CWL document of the test workflows as a run
@@ -165,26 +165,26 @@ run-test-workflows-test:
 # compares the counts with their fixtures. The Argo and Snakemake test-workflows tests record the
 # inputs of their workflows too.
 inputs-test-workflows-test:
-	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
-	WORKFLOWHUB_TEST_WORKFLOWS="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nextflow-workflowhub}" \
+	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}" \
+	WORKFLOWHUB_TEST_WORKFLOWS="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nextflow-workflowhub}" \
 	cargo test --release --locked -p uwe --test inputs_test_workflows -- --ignored --exact describes_workflow_inputs
-	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test inputs_test_workflows -- --ignored
+	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test inputs_test_workflows -- --ignored
 
 # Records the stub scripts of the pipelines in uwe/tests/fixtures/oracle/stub with Nextflow
 # and Docker; give the pipelines as arguments, like `just stub-oracle demo`.
 stub-oracle +pipelines:
-	uwe/tests/fixtures/oracle/stub/record.sh "${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}/pipelines" {{pipelines}}
+	uwe/tests/fixtures/oracle/stub/record.sh "${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}/pipelines" {{pipelines}}
 
 # Runs the recorded pipelines with -stub and the simulator and compares the task scripts.
 stub-test-workflows-test:
-	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
+	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}" \
 	cargo test --release --locked -p uwe --test stub_test_workflows -- --ignored
 
 # Fetches the text-only CWL test workflows at the revisions the CWL test-workflows test expects.
 cwl-test-workflows:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	root="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}"
+	root="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}"
 	fixtures="$PWD/cwl-parser/tests/fixtures/test-workflows"
 	paths="$(grep -v '^#' "$fixtures/revisions.txt" | cut -d' ' -f1)"
 	mkdir -p "$root"
@@ -262,7 +262,7 @@ cwl-test-workflows:
 
 # Loads all CWL test workflows and compares the result with `cwltool --validate`.
 cwl-test-workflows-test:
-	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" cargo test --release --locked -p cwl-parser --test test_workflows -- --ignored
+	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-parser --test test_workflows -- --ignored
 
 # Fetches the data files of the CWL conformance tests (inputs like `whale.txt`), which the
 # text-only test workflows leave out, into a folder of their own, so that the test workflows stay
@@ -273,7 +273,7 @@ cwl-conformance-data:
 	import os, subprocess, urllib.parse
 	from dulwich.object_store import iter_tree_contents
 	from dulwich.repo import Repo
-	home = os.path.expanduser("~/.cache/iunctus/test-workflows")
+	home = os.path.expanduser("~/.cache/uwe/test-workflows")
 	test_workflows = os.environ.get("CWL_TEST_WORKFLOWS") or f"{home}/cwl"
 	data = os.environ.get("CWL_CONFORMANCE_DATA") or f"{home}/cwl-conformance-data"
 	for line in open("cwl-parser/tests/fixtures/test-workflows/revisions.txt"):
@@ -307,25 +307,25 @@ cwl-conformance-data:
 # Runs every CWL conformance test through the driver and the simulator and compares the
 # outcomes with the recorded ones; `just cwl-conformance-data` fetches the test data first.
 cwl-conformance-test:
-	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" \
-	CWL_CONFORMANCE_DATA="${CWL_CONFORMANCE_DATA:-$HOME/.cache/iunctus/test-workflows/cwl-conformance-data}" \
+	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" \
+	CWL_CONFORMANCE_DATA="${CWL_CONFORMANCE_DATA:-$HOME/.cache/uwe/test-workflows/cwl-conformance-data}" \
 	cargo test --release --locked -p cwl-runtime --test conformance -- --ignored
 
 # Builds the execution graph of every CWL test workflow that cwltool validates, with
 # placeholder inputs, and compares the outcomes with the recorded ones.
 cwl-graph-test-workflows-test:
-	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test graph_test_workflows -- --ignored
+	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test graph_test_workflows -- --ignored
 
 # Runs the real-world CWL test workflows with their example job files, with the
 # simulator, and compares the outcomes with cwl-runtime/tests/fixtures/job_test_workflows.txt.
 cwl-job-test-workflows-test:
-	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test job_test_workflows -- --ignored
+	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test job_test_workflows -- --ignored
 
 # Fetches the text-only Snakemake test workflows at the commits their test expects.
 snakemake-test-workflows:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	root="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/snakemake}"
+	root="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/snakemake}"
 	grep -v '^#' snakemake-parser/tests/fixtures/test_workflows_revisions.txt | while read -r repository branch commit; do
 		if [ "$repository" = snakemake/snakemake ]; then
 			target="$root/snakemake-tests"
@@ -350,11 +350,11 @@ snakemake-test-workflows:
 # text files up to 1 MiB of each workflow (config files, sample sheets, schemas, helper modules,
 # and files without an extension, like Snakefiles and sample maps)
 # and every file up to 1 MiB of the Snakemake tests (inputs and expected results). Other files
-# are made empty, so that they exist. A folder is done once it holds `.iunctus-data`.
+# are made empty, so that they exist. A folder is done once it holds `.uwe-data`.
 snakemake-test-workflows-data:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	root="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/snakemake}"
+	root="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/snakemake}"
 	grep -v '^#' snakemake-parser/tests/fixtures/test_workflows_revisions.txt | while read -r repository branch commit; do
 		if [ "$repository" = snakemake/snakemake ]; then
 			target="$root/snakemake-tests"
@@ -365,7 +365,7 @@ snakemake-test-workflows-data:
 			scope='.'
 			text='\.(ya?ml|json|tsv|csv|txt|py|cfg|ini|toml|tab|list|fai|bed|smk|snakefile)$|(^|/)[^/.]+$'
 		fi
-		[ -d "$target" ] && [ ! -e "$target/.iunctus-data" ] || continue
+		[ -d "$target" ] && [ ! -e "$target/.uwe-data" ] || continue
 		work="$(mktemp -d)"
 		git -C "$work" init -q
 		git -C "$work" config gc.auto 0
@@ -398,17 +398,17 @@ snakemake-test-workflows-data:
 		rm -rf "$work/.git" "$listing"
 		cp -r --update=none "$work/." "$target/"
 		rm -rf "$work"
-		touch "$target/.iunctus-data"
+		touch "$target/.uwe-data"
 	done
 
 # Parses all Snakemake test workflows and compares the result with Snakemake's parser.py.
 snakemake-test-workflows-test:
-	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/snakemake}" cargo test --release --locked -p snakemake-parser --test test_workflows -- --ignored --nocapture
+	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/snakemake}" cargo test --release --locked -p snakemake-parser --test test_workflows -- --ignored --nocapture
 
 # Runs every Snakemake test workflow with the simulator and compares the outcomes
 # with snakemake-runtime/tests/fixtures/run_test_workflows.txt; `UPDATE_FIXTURE=1` rewrites the fixture.
 snakemake-run-test-workflows-test:
-	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/snakemake}" cargo test --release --locked -p snakemake-runtime --test run_test_workflows -- --ignored --exact matches_recorded_workflows
+	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/snakemake}" cargo test --release --locked -p snakemake-runtime --test run_test_workflows -- --ignored --exact matches_recorded_workflows
 
 # Fetches the text-only Argo test workflows at the commits the Argo test-workflows test
 # expects. The checkouts keep their `.git`, which marks the repository whose templates a workflow
@@ -416,7 +416,7 @@ snakemake-run-test-workflows-test:
 argo-test-workflows:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	root="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/argo}"
+	root="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/argo}"
 	mkdir -p "$root"
 	grep -v '^#' argo-parser/tests/fixtures/test-workflows/revisions.txt | while read -r repository branch commit patterns; do
 		target="$root/${repository#*/}"
@@ -447,17 +447,17 @@ argo-test-workflows:
 # the others as Argo does when they are created, and compares the outcomes with
 # argo-runtime/tests/fixtures/test-workflows/outcomes.txt.
 argo-test-workflows-test:
-	ARGO_TEST_WORKFLOWS="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/argo}" cargo test --release --locked -p argo-runtime --test test_workflows -- --ignored --nocapture
+	ARGO_TEST_WORKFLOWS="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/argo}" cargo test --release --locked -p argo-runtime --test test_workflows -- --ignored --nocapture
 
-# Runs Funnel (a GA4GH TES server) from ~/.cache/iunctus/tools/funnel in the foreground, at
+# Runs Funnel (a GA4GH TES server) from ~/.cache/uwe/tools/funnel in the foreground, at
 # http://localhost:18000, with the config of the TES tests: tasks get a memory limit and no
-# network, and images are never pulled. It may read and write /tmp and the cache of iunctus.
+# network, and images are never pulled. It may read and write /tmp and the cache of uwe.
 funnel-server:
-	mkdir -p /tmp/iunctus-funnel
-	cd /tmp/iunctus-funnel && ~/.cache/iunctus/tools/funnel/funnel server run \
+	mkdir -p /tmp/uwe-funnel
+	cd /tmp/uwe-funnel && ~/.cache/uwe/tools/funnel/funnel server run \
 		--config {{justfile_directory()}}/tes-executor/tests/fixtures/funnel.yaml \
-		--BoltDB.Path /tmp/iunctus-funnel/funnel.db --Worker.WorkDir /tmp/iunctus-funnel/work \
-		--LocalStorage.AllowedDirs /tmp --LocalStorage.AllowedDirs "$HOME/.cache/iunctus"
+		--BoltDB.Path /tmp/uwe-funnel/funnel.db --Worker.WorkDir /tmp/uwe-funnel/work \
+		--LocalStorage.AllowedDirs /tmp --LocalStorage.AllowedDirs "$HOME/.cache/uwe"
 
 # Runs the TES tests against the server from `just funnel-server`.
 tes-test:
@@ -467,27 +467,27 @@ tes-test:
 tes-qualification *arguments:
 	python3 -I scripts/tes-qualification.py {{arguments}}
 
-# Starts a local RustFS (S3-compatible) with the bucket `iunctus-test` for the S3 tests.
-# `docker stop iunctus-s3` ends it.
+# Starts a local RustFS (S3-compatible) with the bucket `uwe-test` for the S3 tests.
+# `docker stop uwe-s3` ends it.
 s3-server:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	docker run -d --rm --name iunctus-s3 -p 127.0.0.1:9000:9000 \
+	docker run -d --rm --name uwe-s3 -p 127.0.0.1:9000:9000 \
 		-e RUSTFS_ALLOW_INSECURE_DEFAULT_CREDENTIALS=true rustfs/rustfs:latest >/dev/null
 	until curl -sf http://127.0.0.1:9000/health >/dev/null; do sleep 1; done
 	uv run -q --with boto3 python -c "import boto3; boto3.client('s3', \
 		endpoint_url='http://127.0.0.1:9000', aws_access_key_id='rustfsadmin', \
-		aws_secret_access_key='rustfsadmin', region_name='us-east-1').create_bucket(Bucket='iunctus-test')"
+		aws_secret_access_key='rustfsadmin', region_name='us-east-1').create_bucket(Bucket='uwe-test')"
 
 # Runs the S3 tests of content-store and of object-store staging against the server from
 # `just s3-server`.
 s3-test:
 	AWS_ACCESS_KEY_ID=rustfsadmin AWS_SECRET_ACCESS_KEY=rustfsadmin AWS_REGION=us-east-1 \
-	UWE_S3_BUCKET=iunctus-test UWE_S3_ENDPOINT=http://127.0.0.1:9000 \
+	UWE_S3_BUCKET=uwe-test UWE_S3_ENDPOINT=http://127.0.0.1:9000 \
 	cargo test -p content-store --test store -- --ignored
 	AWS_ACCESS_KEY_ID=rustfsadmin AWS_SECRET_ACCESS_KEY=rustfsadmin AWS_REGION=us-east-1 \
-	UWE_S3_BUCKET=iunctus-test UWE_S3_ENDPOINT=http://127.0.0.1:9000 \
-	UWE_STAGING_STORAGE='storage.test = { type = "s3", prefixes = ["s3://iunctus-test/"], endpoint = "http://127.0.0.1:9000", region = "us-east-1", access_key_id = "rustfsadmin", secret_access_key = "rustfsadmin" }' \
+	UWE_S3_BUCKET=uwe-test UWE_S3_ENDPOINT=http://127.0.0.1:9000 \
+	UWE_STAGING_STORAGE='storage.test = { type = "s3", prefixes = ["s3://uwe-test/"], endpoint = "http://127.0.0.1:9000", region = "us-east-1", access_key_id = "rustfsadmin", secret_access_key = "rustfsadmin" }' \
 	cargo test -p executor --lib -- --ignored presigned_round_trip credentials_round_trip sends_large_outputs \
 		presigns_binary_download
 
@@ -497,13 +497,13 @@ emulator-test:
 	#!/usr/bin/env bash
 	set -euo pipefail
 	work="$(mktemp -d)"
-	trap 'docker stop iunctus-gcs iunctus-azurite > /dev/null 2>&1 || true; rm -rf "$work"' EXIT
-	docker run -d --rm --name iunctus-gcs -p 127.0.0.1:4443:4443 fsouza/fake-gcs-server:1.56.1 \
+	trap 'docker stop uwe-gcs uwe-azurite > /dev/null 2>&1 || true; rm -rf "$work"' EXIT
+	docker run -d --rm --name uwe-gcs -p 127.0.0.1:4443:4443 fsouza/fake-gcs-server:1.56.1 \
 		-scheme http -port 4443 -public-host 127.0.0.1:4443 > /dev/null
-	docker run -d --rm --name iunctus-azurite -p 127.0.0.1:10000:10000 \
+	docker run -d --rm --name uwe-azurite -p 127.0.0.1:10000:10000 \
 		mcr.microsoft.com/azure-storage/azurite azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck \
 		> /dev/null
-	until curl -sf -X POST -H 'Content-Type: application/json' -d '{"name": "iunctus-test"}' \
+	until curl -sf -X POST -H 'Content-Type: application/json' -d '{"name": "uwe-test"}' \
 		'http://127.0.0.1:4443/storage/v1/b?project=test' > /dev/null; do sleep 1; done
 	until curl -s http://127.0.0.1:10000/ > /dev/null; do sleep 1; done
 	# A made-up service account signs the requests to Google Cloud Storage, which the emulator
@@ -511,16 +511,16 @@ emulator-test:
 	openssl genrsa -out "$work/key.pem" 2048 2> /dev/null
 	python3 -I -c 'import json, sys; json.dump({"type": "service_account", "project_id": "test", "private_key_id": "1", "private_key": open(sys.argv[1] + "/key.pem").read(), "client_email": "test@test.iam.gserviceaccount.com", "client_id": "1", "token_uri": "http://127.0.0.1:4443/token"}, open(sys.argv[1] + "/account.json", "w"))' "$work"
 	key="Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
-	uv run -q --with azure-storage-blob python -I -c 'import sys; from azure.storage.blob import BlobServiceClient; BlobServiceClient("http://127.0.0.1:10000/devstoreaccount1", {"account_name": "devstoreaccount1", "account_key": sys.argv[1]}).create_container("iunctus-test")' "$key"
-	export UWE_GCS_ROOT=gs://iunctus-test/staging UWE_AZURE_ROOT=az://iunctus-test/staging
+	uv run -q --with azure-storage-blob python -I -c 'import sys; from azure.storage.blob import BlobServiceClient; BlobServiceClient("http://127.0.0.1:10000/devstoreaccount1", {"account_name": "devstoreaccount1", "account_key": sys.argv[1]}).create_container("uwe-test")' "$key"
+	export UWE_GCS_ROOT=gs://uwe-test/staging UWE_AZURE_ROOT=az://uwe-test/staging
 	export UWE_TEST_STORAGE="[storage.gcs]
 	type = \"google-cloud-storage\"
-	prefixes = [\"gs://iunctus-test/\"]
+	prefixes = [\"gs://uwe-test/\"]
 	endpoint = \"http://127.0.0.1:4443\"
 	credential_file = \"$work/account.json\"
 	[storage.azure]
 	type = \"azure-blob-storage\"
-	prefixes = [\"az://iunctus-test/\"]
+	prefixes = [\"az://uwe-test/\"]
 	account = \"devstoreaccount1\"
 	endpoint = \"http://127.0.0.1:10000/devstoreaccount1\"
 	key = \"$key\""
@@ -536,9 +536,9 @@ storage-test:
 	export UWE_TEST_INPUTS_ENDPOINT=http://127.0.0.1:9100 UWE_TEST_INPUTS_KEY=inputs-user \
 		UWE_TEST_INPUTS_SECRET=inputs-secret-5031 UWE_TEST_STORE_ENDPOINT=http://127.0.0.1:9101 \
 		UWE_TEST_STORE_KEY=store-user UWE_TEST_STORE_SECRET=store-secret-8264
-	trap 'docker stop iunctus-storage-inputs iunctus-storage-store >/dev/null 2>&1 || true' EXIT
+	trap 'docker stop uwe-storage-inputs uwe-storage-store >/dev/null 2>&1 || true' EXIT
 	serve() {
-		docker run -d --rm --pull=never --name "iunctus-storage-$1" --memory 1g -p "127.0.0.1:$2:9000" \
+		docker run -d --rm --pull=never --name "uwe-storage-$1" --memory 1g -p "127.0.0.1:$2:9000" \
 			-e RUSTFS_ACCESS_KEY="$3" -e RUSTFS_SECRET_KEY="$4" rustfs/rustfs:latest >/dev/null
 		# The server answers its health check before it takes requests, so the bucket is made
 		# once it can be.

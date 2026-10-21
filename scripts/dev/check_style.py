@@ -1378,7 +1378,7 @@ def external_without_reason():
 
 
 def main(argv):
-    parser = argparse.ArgumentParser(description="iunctus development style checks")
+    parser = argparse.ArgumentParser(description="uwe development style checks")
     parser.add_argument("--root", default=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     parser.add_argument("--limit", type=int, default=0, help="max entries per category (0 = all)")
     args = parser.parse_args(argv)

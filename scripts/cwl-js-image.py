@@ -16,9 +16,9 @@ import tempfile
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("binary", type=Path, help="trusted compiled iunctus binary")
+    parser.add_argument("binary", type=Path, help="trusted compiled uwe binary")
     parser.add_argument("--engine", default=os.environ.get("UWE_ENGINE", "docker"))
-    parser.add_argument("--image", default=os.environ.get("UWE_CWL_JS_IMAGE", "iunctus-cwl-js:0.1.0"))
+    parser.add_argument("--image", default=os.environ.get("UWE_CWL_JS_IMAGE", "uwe-cwl-js:0.1.0"))
     arguments = parser.parse_args()
     binary = arguments.binary.resolve(strict=True)
     resolved = subprocess.run(["ldd", "--", str(binary)], capture_output=True, text=True,
@@ -27,7 +27,7 @@ def main():
         "statically linked", "not a dynamic executable")
     if not static:
         resolved.check_returncode()
-    files = {"/usr/local/bin/iunctus": binary}
+    files = {"/usr/local/bin/uwe": binary}
     for line in ([] if static else resolved.stdout.splitlines()):
         if "=> not found" in line:
             raise RuntimeError("a required runtime library was not found")
@@ -60,7 +60,7 @@ def main():
                 data = source.read_bytes()
                 identities.append(f"{hashlib.sha256(data).hexdigest()}  {location}\n")
                 add_bytes("rootfs" + location, data, 0o755)
-            add_bytes("rootfs/usr/share/iunctus/cwl-js.sha256", "".join(identities).encode())
+            add_bytes("rootfs/usr/share/uwe/cwl-js.sha256", "".join(identities).encode())
         context.seek(0)
         pull = "--pull=never" if Path(arguments.engine).name == "podman" else "--pull=false"
         subprocess.run([arguments.engine, "build", "--network=none", pull, "--tag", arguments.image, "-"], stdin=context, check=True)

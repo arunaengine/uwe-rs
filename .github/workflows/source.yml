@@ -48,7 +48,7 @@ jobs:
         run: |
           docker info
           cargo +1.97.1 build --offline --locked -p uwe -j 2
-          python3 scripts/cwl-js-image.py target/debug/iunctus
+          python3 scripts/cwl-js-image.py target/debug/uwe
       - name: Workspace tests
         if: matrix.check == 'tests'
         run: cargo +1.97.1 test --offline --locked --workspace --all-targets --all-features -j 2
@@ -56,8 +56,8 @@ jobs:
         if: matrix.check == 'tests'
         run: |
           mkdir -p target/container-runs
-          cp target/debug/iunctus target/container-runs/iunctus
-          strip target/container-runs/iunctus
+          cp target/debug/uwe target/container-runs/uwe
+          strip target/container-runs/uwe
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: matrix.check == 'tests'
         with:
@@ -88,5 +88,5 @@ jobs:
           docker pull "$image"
       - name: Container runs
         run: |
-          chmod +x target/container-runs/iunctus
-          nice -n 19 python3 -I scripts/container-runs.py target/container-runs/iunctus
+          chmod +x target/container-runs/uwe
+          nice -n 19 python3 -I scripts/container-runs.py target/container-runs/uwe

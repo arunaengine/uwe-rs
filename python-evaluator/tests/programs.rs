@@ -89,6 +89,16 @@ fn combines_sets_quickly() {
     assert!(seconds < 20, "took {seconds} s");
 }
 
+/// As CPython 3.13, a set literal of expressions that its compiler folds, like `-1` or
+/// `2**62`, is ordered as one of constants; `2**200` is too large to fold.
+#[test]
+fn folds_set_literals() {
+    let code = "print({-1, -2, 2**62, 2**64, 7, 0.5}, {-5, 3, 11, -13, 1+18})\nprint({2**200, 3, 9, 17}, {3*2**63, ~5, 9, 1})\n";
+    let output = evaluate(code).expect("runs");
+    let expected = "{0.5, 4611686018427387904, -2, 7, 18446744073709551616, -1} {3, 19, -13, -5, 11}\n{1606938044258990275541962092341162602522202993782792835301376, 9, 3, 17} {9, -6, 27670116110564327424, 1}\n";
+    assert_eq!(output, expected);
+}
+
 #[test]
 fn reports_exception_lines() {
     let error = evaluate("x = 1\ny = {}\ny['missing']\n").expect_err("a KeyError");

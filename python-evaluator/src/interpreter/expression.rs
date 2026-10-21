@@ -132,7 +132,7 @@ impl Interpreter {
                 }
                 let value = Value::set(items);
                 if set.elts.len() >= 3
-                    && set.elts.iter().all(is_constant)
+                    && self.all_folded(frame, &set.elts)
                     && let Value::Set(members) = &value
                 {
                     crate::hashing::note_literal(members);
@@ -662,18 +662,88 @@ fn globals_dict(globals: &Rc<Scope>) -> Value {
 }
 
 /// Whether CPython folds an expression into a constant when it compiles it.
-fn is_constant(expr: &Expr) -> bool {
-    match expr {
-        Expr::NumberLiteral(_)
-        | Expr::StringLiteral(_)
-        | Expr::BytesLiteral(_)
-        | Expr::BooleanLiteral(_)
-        | Expr::NoneLiteral(_)
-        | Expr::EllipsisLiteral(_) => true,
-        Expr::UnaryOp(unary) => {
-            matches!(unary.op, UnaryOp::USub | UnaryOp::UAdd) && is_constant(&unary.operand)
+/// CPython's limits of the constants its compiler folds (`MAX_INT_SIZE` bits, and the
+/// lengths of texts and other sequences).
+const FOLDED_BITS: u64 = 128;
+const FOLDED_TEXT: usize = 4096;
+const FOLDED_ITEMS: usize = 256;
+
+impl Interpreter {
+    fn all_folded(&mut self, frame: &Frame, items: &[Expr]) -> bool {
+        items.iter().all(|item| self.folded(frame, item))
+    }
+
+    /// Whether CPython's compiler folds an expression into a constant, as its AST optimizer
+    /// does for literals and for operators on constants within its limits.
+    fn folded(&mut self, frame: &Frame, expr: &Expr) -> bool {
+        match expr {
+            Expr::NumberLiteral(_)
+            | Expr::StringLiteral(_)
+            | Expr::BytesLiteral(_)
+            | Expr::BooleanLiteral(_)
+            | Expr::NoneLiteral(_)
+            | Expr::EllipsisLiteral(_) => true,
+            Expr::UnaryOp(unary) => {
+                self.folded(frame, &unary.operand) && self.eval(frame, expr).is_ok()
+            }
+            Expr::Tuple(tuple) => self.all_folded(frame, &tuple.elts),
+            Expr::BinOp(binary) => {
+                if !self.folded(frame, &binary.left) || !self.folded(frame, &binary.right) {
+                    return false;
+                }
+                let (Ok(left), Ok(right)) = (
+                    self.eval(frame, &binary.left),
+                    self.eval(frame, &binary.right),
+                ) else {
+                    return false;
+                };
+                within_limits(binary.op, &left, &right) && self.eval(frame, expr).is_ok()
+            }
+            _ => false,
         }
-        Expr::Tuple(tuple) => tuple.elts.iter().all(is_constant),
-        _ => false,
+    }
+}
+
+/// CPython's `safe_power`, `safe_multiply`, `safe_lshift` and `safe_mod`: whether a folded
+/// result stays within the limits.
+fn within_limits(op: ruff_python_ast::Operator, left: &Value, right: &Value) -> bool {
+    use ruff_python_ast::Operator as Op;
+    let bits = |value: &Value| match value.plain() {
+        Value::Bool(flag) => Some(u64::from(*flag)),
+        Value::Int(number) => Some(u64::from(64 - number.unsigned_abs().leading_zeros())),
+        Value::BigInt(number) => Some(number.bits()),
+        _ => None,
+    };
+    let length = |value: &Value| match value.plain() {
+        Value::Str(text) => Some((text.chars().count(), FOLDED_TEXT)),
+        Value::Bytes(bytes) => Some((bytes.len(), FOLDED_TEXT)),
+        Value::Tuple(items) => Some((items.len(), FOLDED_ITEMS)),
+        _ => None,
+    };
+    let count = |value: &Value| value.as_int().filter(|count| *count >= 0);
+    match op {
+        Op::Pow => match (bits(left), right.as_int()) {
+            (Some(base), Some(exponent)) if base > 0 && exponent > 0 => {
+                base <= FOLDED_BITS / exponent as u64
+            }
+            _ => true,
+        },
+        Op::Mult => match (bits(left), bits(right)) {
+            (Some(a), Some(b)) => a == 0 || b == 0 || a + b <= FOLDED_BITS,
+            _ => match (length(left), count(right), length(right), count(left)) {
+                (Some((size, limit)), Some(times), ..) | (.., Some((size, limit)), Some(times)) => {
+                    size == 0 || times as usize <= limit / size
+                }
+                _ => true,
+            },
+        },
+        Op::LShift => match (bits(left), right.as_int()) {
+            (Some(base), Some(shift)) if shift >= 0 => {
+                base == 0 || (shift as u64 <= FOLDED_BITS && base <= FOLDED_BITS - shift as u64)
+            }
+            _ => true,
+        },
+        Op::Mod => !matches!(left.plain(), Value::Str(_) | Value::Bytes(_)),
+        _ => true,
     }
 }

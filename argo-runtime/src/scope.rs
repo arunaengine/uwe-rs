@@ -116,7 +116,7 @@ impl Run {
         if node.kind == NodeKind::Pod {
             let ip = (node.outputs.ip.clone()).unwrap_or_else(|| crate::run::pod_ip(&node.name));
             values.insert(format!("{prefix}.ip"), ip);
-            values.insert(format!("{prefix}.hostNodeName"), "iunctus".to_owned());
+            values.insert(format!("{prefix}.hostNodeName"), "uwe".to_owned());
         }
         add_outputs(scope, prefix, &node.outputs);
     }

@@ -36,7 +36,7 @@ impl Live {
         let (done, completed) = mpsc::channel();
         let dispatch = tracing::dispatcher::get_default(Clone::clone);
         let thread = std::thread::Builder::new()
-            .name("iunctus-telemetry".into())
+            .name("uwe-telemetry".into())
             .spawn(move || {
                 let result = tracing::dispatcher::with_default(&dispatch, || {
                     export(path, &run, committed, client, endpoint, headers)

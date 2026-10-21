@@ -211,12 +211,12 @@ pub fn place(
 fn hold(workdir: &Path, target: &Path, content: &str, run: &str) -> std::io::Result<()> {
     let _guard = guard(workdir)?;
     if std::fs::read(target).ok().as_deref() != Some(content.as_bytes()) {
-        let temporary = suffixed(target, &format!("iunctus-{run}.part"));
+        let temporary = suffixed(target, &format!("uwe-{run}.part"));
         std::fs::write(&temporary, content)?;
         std::fs::rename(&temporary, target)?;
     }
     // Without hard links the file is this run's alone, as before.
-    let _ = std::fs::hard_link(target, suffixed(target, &format!("iunctus-{run}")));
+    let _ = std::fs::hard_link(target, suffixed(target, &format!("uwe-{run}")));
     Ok(())
 }
 
@@ -224,7 +224,7 @@ fn hold(workdir: &Path, target: &Path, content: &str, run: &str) -> std::io::Res
 pub fn release(workdir: &Path, target: &Path, run: &str) -> std::io::Result<()> {
     use std::os::unix::fs::MetadataExt;
     let _guard = guard(workdir)?;
-    let _ = std::fs::remove_file(suffixed(target, &format!("iunctus-{run}")));
+    let _ = std::fs::remove_file(suffixed(target, &format!("uwe-{run}")));
     match std::fs::symlink_metadata(target) {
         Ok(metadata) if metadata.nlink() <= 1 => std::fs::remove_file(target),
         _ => Ok(()),
@@ -236,7 +236,7 @@ fn guard(workdir: &Path) -> std::io::Result<std::fs::File> {
     let folder = workdir.join(".snakemake");
     std::fs::create_dir_all(&folder)?;
     let file = (std::fs::OpenOptions::new().create(true).append(true))
-        .open(folder.join("iunctus-written.lock"))?;
+        .open(folder.join("uwe-written.lock"))?;
     rustix::fs::flock(&file, rustix::fs::FlockOperation::LockExclusive)?;
     Ok(file)
 }
@@ -521,7 +521,7 @@ fn shadow_folder(workdir: &Path, task: &Task) -> std::io::Result<PathBuf> {
     let parent = workdir.join(".snakemake").join("shadow");
     std::fs::create_dir_all(&parent)?;
     for number in 0.. {
-        let folder = parent.join(format!("iunctus-{}-{number}", task.id.0));
+        let folder = parent.join(format!("uwe-{}-{number}", task.id.0));
         match std::fs::create_dir(&folder) {
             Ok(()) => return Ok(folder),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -756,7 +756,7 @@ fn own_path(path: &str, content: &str) -> String {
         .collect();
     let (folder, name) = path.rsplit_once('/').unwrap_or(("", path));
     // Named by the content, so that a job gets the same command in every run.
-    format!("{folder}/iunctus-{short}-{name}")
+    format!("{folder}/uwe-{short}-{name}")
 }
 
 /// An input that lies in the working directory already.
@@ -825,7 +825,7 @@ mod tests {
         );
         assert_eq!(
             own_path(".snakemake/scripts/x.py", "a"),
-            ".snakemake/scripts/iunctus-ca978112ca1b-x.py"
+            ".snakemake/scripts/uwe-ca978112ca1b-x.py"
         );
         assert_eq!(own_path("x.py", "a"), "x.py");
     }

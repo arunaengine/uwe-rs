@@ -134,13 +134,13 @@ def decode(value):
 
 
 # Where packages that later imports need are installed, in the running container.
-EXTRA = "/tmp/iunctus-packages"
+EXTRA = "/tmp/uwe-packages"
 CONSTRAINTS = json.loads(os.environ.get("UWE_PYTHON_CONSTRAINTS", "[]"))
 
 
 def failures():
     """The packages that could not be installed into the environment, with uv's error."""
-    folder = os.path.join(sys.prefix, "iunctus-failed")
+    folder = os.path.join(sys.prefix, "uwe-failed")
     found = {}
     for package in os.listdir(folder) if os.path.isdir(folder) else []:
         with open(os.path.join(folder, package)) as file:

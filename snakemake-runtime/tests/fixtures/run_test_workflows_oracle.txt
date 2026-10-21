@@ -8,9 +8,9 @@
 catalog/AToL-Bioinformatics__genome-launcher-workflow	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 11: No module named 'yaml_manifest'
 catalog/Addimator__compare_meth	plain	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 7: [Errno 2] No such file or directory: '/projects/koesterlab/benchmark-methylation/data_analysis_jochen/compare_meth/config/sample.tsv'
 catalog/Albinam1__bioinformatics_school	plain	1	failed	RuleException in file "workflow/rules/mapping.smk", line 34: Not all output, log and benchmark files of rule map_reads_with_minimap contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
-catalog/AllenInstitute__Bulk-RNA-Snakeline	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 11: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-upv2hemq/config/config.yaml).
+catalog/AllenInstitute__Bulk-RNA-Snakeline	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 11: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/uwe-oracle-upv2hemq/config/config.yaml).
 catalog/AllenInstitute__Bulk-RNA-Snakeline	catalog	1	evaluated	MissingInputException in rule cutadapt in file "workflow/rules/trim.smk", line 1: Missing input files for rule cutadapt:
-catalog/AmberFu__snakemake_BAMmetrics_mosdepth	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 8: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-ynp5ak7j/config/config.yaml).
+catalog/AmberFu__snakemake_BAMmetrics_mosdepth	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 8: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/uwe-oracle-ynp5ak7j/config/config.yaml).
 catalog/BesenbacherLab__bbq_pipeline	plain	2	failed	__main__.py: error: Couldn't parse config file: Error processing template in section /__definitions__: KeyError: 'ACCOUNT_NAME'
 catalog/BesenbacherLab__bbq_pipeline	ci	2	failed	__main__.py: error: Couldn't parse config file: Error processing template in section /__definitions__: KeyError: 'ACCOUNT_NAME'
 catalog/Bioinflows-Bioversity-CIAT__ont-target-dna-variant-calling	plain	1	failed	KeyError in file "workflow/rules/common.smk", line 103: 'sample_units_path'
@@ -27,7 +27,7 @@ catalog/DavideBrex__SpikeFlow	ci	0	evaluated
 catalog/ETH-NEXUS__gExcite_pipeline	plain	1	evaluated	MissingInputException in rule create_library_file_adt in file "workflow/rules/adt_cellranger.smk", line 10: Missing input files for rule create_library_file_adt:
 catalog/EichlerLab__ONT_pipelines	plain	1	failed	NameError in file "workflow/Snakefile", line 11: name 'srcdir' is not defined
 catalog/EichlerLab__ONT_pipelines	ci	1	failed	NameError in file "workflow/Snakefile", line 11: name 'srcdir' is not defined
-catalog/GArcho44__snvs-annotation-pipeline	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 5: Workflow defines configfile ../config/config.yml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-a6rrdl0u/config/config.yml).
+catalog/GArcho44__snvs-annotation-pipeline	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 5: Workflow defines configfile ../config/config.yml but it is not present or accessible (full checked path: /tmp/uwe-oracle-a6rrdl0u/config/config.yml).
 catalog/GArcho44__snvs-annotation-pipeline	ci	1	failed	RuleException in file "workflow/Snakefile", line 22: Input and output files have to be specified as strings or lists of strings.
 catalog/GooglingTheCancerGenome__sv-callers	plain	1	failed	AttributeError in file "workflow/Snakefile", line 7: module 'yatiml' has no attribute 'Loader'
 catalog/GooglingTheCancerGenome__sv-gen	plain	1	failed	FileNotFoundError in file "workflow/Snakefile", line 1: [Errno 2] No such file or directory: '../config/analysis.yaml'
@@ -74,7 +74,7 @@ catalog/Zilong-Li__array-imputation-workflow	plain	1	failed	FileNotFoundError in
 catalog/abbyevewilliams__map-pipeline	plain	1	failed	FileNotFoundError in file "workflow/Snakefile", line 13: [Errno 2] No such file or directory: '/data/biol-silvereye/ball6625/map-pipeline/config/zborb-samples.txt'
 catalog/adrisede__Isoseq_smk_min	plain	1	failed	RuleException in file "workflow/Snakefile", line 273: Not all output, log and benchmark files of rule collapse contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
 catalog/adrisede__Isoseq_smk_min	ci	1	failed	RuleException in file "workflow/Snakefile", line 273: Not all output, log and benchmark files of rule collapse contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
-catalog/aekrylova__scPASU	plain	1	failed	WorkflowError in file "workflow/rules/1_data_preprocessing.smk", line 1: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-jhjnc25d/config/config.yaml).
+catalog/aekrylova__scPASU	plain	1	failed	WorkflowError in file "workflow/rules/1_data_preprocessing.smk", line 1: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/uwe-oracle-jhjnc25d/config/config.yaml).
 catalog/akcorut__kGWASflow	plain	1	failed	logger.info("     kGWASflow: A Snakemake Workflow for k-mers Based GWAS                            ")
 catalog/akcorut__kGWASflow	ci	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 29: [Errno 2] No such file or directory: 'test/config_ecoli/samples.tsv'
 catalog/ammaraziz__voi	plain	1	failed	KeyError in file "workflow/Snakefile", line 6: 'output'
@@ -129,7 +129,7 @@ catalog/fcaretti__SNPs_from_RNA	ci	1	failed	WorkflowError in file "workflow/Snak
 catalog/fiberseq__fiberseq-smk	plain	1	failed	RuleException in file "workflow/rules/fiberseq-bam.smk", line 143: Input and output files have to be specified as strings or lists of strings.
 catalog/fiberseq__fiberseq-smk	ci	0	evaluated
 catalog/fischuu__Snakebite-Holoruminant-MetaG	plain	1	failed	KeyError in file "workflow/Snakefile", line 53: 'params-file'
-catalog/franciscozorrilla__metaGEM	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 1: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-g_5qoi_o/config/config.yaml).
+catalog/franciscozorrilla__metaGEM	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 1: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/uwe-oracle-g_5qoi_o/config/config.yaml).
 catalog/frattalab__QAPA_snakemake	plain	1	failed	KeyError in file "workflow/Snakefile", line 6: 'sample_sheet'
 catalog/friendsofstrandseq__ashleys-qc-pipeline	plain	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 309: [Errno 2] No such file or directory: '.tests/data_CHR17'
 catalog/friendsofstrandseq__ashleys-qc-pipeline	ci	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 309: [Errno 2] No such file or directory: '.tests/data_CHR17'
@@ -174,8 +174,8 @@ catalog/mdondrup__yeast_variantcalling	plain	1	failed	FileNotFoundError in file 
 catalog/merfre__Adaptive_Sequencing_Analysis_Workflow	plain	1	failed	FileNotFoundError in file "workflow/Snakefile", line 120: [Errno 2] No such file or directory: './resources/ONT_skin1_adap/LF1A_adap.fastq'
 catalog/merfre__MMCAW	plain	1	failed	FileNotFoundError in file "workflow/Snakefile", line 65: [Errno 2] No such file or directory: './resources/ONT_mockecoli1_cont1/CN3.1_cont.fastq'
 catalog/merfre__MMCAW	ci	1	failed	KeyError in file "workflow/Snakefile", line 55: 'Barcode'
-catalog/milesroberts-123__poolseq-kmers	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 11: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-b9l2k4oy/config/config.yaml).
-catalog/milesroberts-123__slim-sweep-cnn	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 9: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-kpr784xg/config/config.yaml).
+catalog/milesroberts-123__poolseq-kmers	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 11: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/uwe-oracle-b9l2k4oy/config/config.yaml).
+catalog/milesroberts-123__slim-sweep-cnn	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 9: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/uwe-oracle-kpr784xg/config/config.yaml).
 catalog/modelblocks-org__module_demand_electricity	plain	1	evaluated	WorkflowError: Error running conda info. Is conda installed and accessible? Error: Command 'conda info --json' returned non-zero exit status 127.
 catalog/moiexpositoalonsolab__grenepipe	plain	1	failed	AttributeError in file "workflow/rules/initialize.smk", line 24: 'Logger' object has no attribute 'mode'
 catalog/monagrland__MB_Pipeline	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 4: Error validating config file.
@@ -226,7 +226,7 @@ catalog/open2c__distiller-sm	plain	1	failed	KeyError in file "workflow/Snakefile
 catalog/panguangze__trio_call_phase_pipeline	plain	1	failed	KeyError in file "workflow/Snakefile", line 10: 'joint_calling_groups'
 catalog/plycrsk__rna-seq-star-deseq2	plain	1	failed	NotImplementedError in file "workflow/rules/common.smk", line 7: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 catalog/plycrsk__rna-seq-star-deseq2	ci	1	failed	NotImplementedError in file "workflow/rules/common.smk", line 7: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
-catalog/poloarol__snakemake-methylseq	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 11: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-ra699a3q/config/config.yaml).
+catalog/poloarol__snakemake-methylseq	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 11: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/uwe-oracle-ra699a3q/config/config.yaml).
 catalog/rabiafidan__pure-faf	plain	1	failed	OSError in file "workflow/rules/common.smk", line 63: Error opening /nemo/project/proj-tracerX/working/CRENAL/fidanr/Mutect2/temp/or_flagged_K1058_HB005_D02.vcf.gz
 catalog/rabiafidan__pure-faf	ci	1	failed	WorkflowError in file "workflow/Snakefile", line 6: Workflow defines configfile config/config.yaml but it is not present or accessible (full checked path: .test/config/config.yaml).
 catalog/regulatory-genomics__hic_sm	plain	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 38: [Errno 2] No such file or directory: 'pep/../config/20260119_hic_sample_2.csv'
@@ -288,7 +288,7 @@ catalog/tdayris__fair_rnaseq_salmon_quant	ci	1	failed	AttributeError in file "wo
 catalog/thomasbtf__sars-cov-2-wbe	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 7: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
 catalog/tmweiskittel__tmw_align_emseq	plain	0	evaluated
 catalog/tmweiskittel__tmw_align_emseq	ci	1	failed	KeyError in file "workflow/Snakefile", line 13: 'meta'
-catalog/trickovicmatija__kingfisher_workflow	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 3: Workflow defines configfile ../config/default_config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-702vyyin/config/default_config.yaml).
+catalog/trickovicmatija__kingfisher_workflow	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 3: Workflow defines configfile ../config/default_config.yaml but it is not present or accessible (full checked path: /tmp/uwe-oracle-702vyyin/config/default_config.yaml).
 catalog/tucca-cellag__tucca-rna-seq	plain	0	evaluated
 catalog/vkpat__short-read-mapping-and-QC-snakemake-pipeline	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 1: Workflow defines configfile config.yaml but it is not present or accessible (full checked path: config.yaml).
 catalog/vollgerlab__DSA-phasing	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 15: Error validating config file.

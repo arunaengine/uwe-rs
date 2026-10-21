@@ -415,7 +415,7 @@ rule keep:
     assert!(work.join("flag").is_file());
     let kept = std::fs::metadata(work.join("kept.txt")).unwrap();
     assert!(kept.permissions().readonly(), "protected");
-    let records = std::fs::read_dir(work.join(".snakemake/iunctus-signatures")).unwrap();
+    let records = std::fs::read_dir(work.join(".snakemake/uwe-signatures")).unwrap();
     assert_eq!(records.count(), 2, "both outputs are recorded");
 }
 
@@ -743,7 +743,7 @@ fn restores_cached_outputs() {
         !plain.permissions().readonly(),
         "a restored output may change"
     );
-    let records = std::fs::read_dir(work.join(".snakemake/iunctus-signatures")).unwrap();
+    let records = std::fs::read_dir(work.join(".snakemake/uwe-signatures")).unwrap();
     assert_eq!(records.count(), 2, "the outputs are recorded");
 }
 
@@ -877,9 +877,9 @@ fn keeps_held_scripts() {
         for entry in std::fs::read_dir(folder.join(".snakemake/scripts")).unwrap() {
             let path = entry.unwrap().path();
             let name = path.file_name().unwrap().to_string_lossy().into_owned();
-            if name.starts_with("iunctus-") && !name.contains(".iunctus-") {
+            if name.starts_with("uwe-") && !name.contains(".uwe-") {
                 let mut other = path.clone().into_os_string();
-                other.push(".iunctus-other");
+                other.push(".uwe-other");
                 std::fs::hard_link(&path, other).unwrap();
             }
         }
@@ -903,7 +903,7 @@ fn keeps_held_scripts() {
     assert!(
         names
             .iter()
-            .all(|name| !name.contains(".iunctus-") || name.ends_with("-other"))
+            .all(|name| !name.contains(".uwe-") || name.ends_with("-other"))
     );
 }
 

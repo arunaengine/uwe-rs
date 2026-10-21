@@ -608,7 +608,7 @@ pub fn build(
             // Snakemake writes a command too long for one argument into a script and runs it
             // with the shell.
             if command[2].replace('\'', "'\\''").len() + 2 > MAX_ARG_LEN {
-                let path = ".snakemake/shell_tmp.iunctus/script.sh";
+                let path = ".snakemake/shell_tmp.uwe/script.sh";
                 inputs.push(embedded::literal(path, &format!("{}\n", command[2])));
                 command.truncate(1);
                 command.push(path.into());

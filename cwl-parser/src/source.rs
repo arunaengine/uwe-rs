@@ -74,13 +74,11 @@ impl Remote {
             Downloads::Private(private) => private,
         };
         let (folder, _) = private.get_or_init(|| {
-            let made = tempfile::Builder::new()
-                .prefix("iunctus-downloads-")
-                .tempdir();
+            let made = tempfile::Builder::new().prefix("uwe-downloads-").tempdir();
             // Without a temporary folder, `fetch` reports the error once it needs the folder.
             match made {
                 Ok(folder) => (folder.path().to_owned(), Some(folder)),
-                Err(_) => (std::env::temp_dir().join("iunctus-downloads"), None),
+                Err(_) => (std::env::temp_dir().join("uwe-downloads"), None),
             }
         });
         folder.clone()

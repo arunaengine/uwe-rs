@@ -14,7 +14,7 @@ pub const START: &str =
 pub const END: &str = "######## snakemake preamble end #########";
 
 /// The name under which the preamble refers to the stand-in's `iocontainers` module.
-const MODULE: &str = "__iunctus";
+const MODULE: &str = "__uwe";
 
 /// A float as a Python literal.
 fn float(value: f64) -> String {
@@ -143,7 +143,7 @@ fn params(named: &Named) -> (String, Vec<(usize, &'static str)>) {
 }
 
 /// Code that makes the object of a job under a name, with the kinds of its tables in params,
-/// on one line. It needs the stand-in's `iocontainers` module as `__iunctus`.
+/// on one line. It needs the stand-in's `iocontainers` module as `__uwe`.
 pub fn object(context: &Context, name: &str) -> String {
     let (params, types) = params(&context.params);
     let mut code = format!(
@@ -173,7 +173,7 @@ pub fn object(context: &Context, name: &str) -> String {
 }
 
 /// Code that puts the stand-in of the snakemake package first on the module path, and the
-/// given folders last, and imports its `iocontainers` module as `__iunctus`.
+/// given folders last, and imports its `iocontainers` module as `__uwe`.
 pub fn module_path(searchpaths: &[String]) -> String {
     format!(
         "import sys; sys.path.insert(0, __import__('os').path.abspath({})); \
@@ -263,12 +263,12 @@ mod tests {
         };
         assert_eq!(
             literal(&Data::Named(named)),
-            "__iunctus.named(__iunctus.Params, ['x'], [('a', 0, None)])"
+            "__uwe.named(__uwe.Params, ['x'], [('a', 0, None)])"
         );
         let function = Data::Opaque {
             repr: "<function f>".into(),
             text: "<function f>".into(),
         };
-        assert!(literal(&function).starts_with("__iunctus.Unavailable('<function f> is no plain"));
+        assert!(literal(&function).starts_with("__uwe.Unavailable('<function f> is no plain"));
     }
 }

@@ -25,7 +25,7 @@ pub fn run(
                 format!("Lifecycle hook requires a local Docker or Podman engine: {error}")
             })?;
         let backend = LocalContainer::new(engine, scratch.join("hooks"), Pool::new(1, 1 << 30));
-        let name = format!("iunctus-hook-{}-{}", std::process::id(), task.id);
+        let name = format!("uwe-hook-{}-{}", std::process::id(), task.id);
         let image = task
             .image
             .as_deref()

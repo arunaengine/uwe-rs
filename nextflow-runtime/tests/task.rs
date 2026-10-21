@@ -473,11 +473,11 @@ fn records_secret_names() {
         .content
         .as_ref()
         .unwrap();
-    assert!(launcher.contains("source /run/iunctus/secrets"));
+    assert!(launcher.contains("source /run/uwe/secrets"));
     assert!(
         task.inputs
             .iter()
-            .all(|input| input.path != "/run/iunctus/secrets")
+            .all(|input| input.path != "/run/uwe/secrets")
     );
 }
 

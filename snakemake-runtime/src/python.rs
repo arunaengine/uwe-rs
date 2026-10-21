@@ -71,7 +71,7 @@ fn container_name(kind: &str) -> String {
         .unwrap_or_default()
         .as_nanos();
     format!(
-        "iunctus-python-{kind}-{}-{nanos}-{}",
+        "uwe-python-{kind}-{}-{nanos}-{}",
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     )
@@ -119,15 +119,15 @@ constraints="$2"
 shift 2
 rm -rf "$environment.part"
 uv venv --quiet --relocatable --python /usr/local/bin/python3 "$environment.part" || exit 1
-mkdir -p "$environment.part/iunctus-failed"
-printf '%s\n' "$constraints" > "$environment.part/iunctus-constraints.txt"
+mkdir -p "$environment.part/uwe-failed"
+printf '%s\n' "$constraints" > "$environment.part/uwe-constraints.txt"
 install() {
-  uv pip install --quiet --python "$environment.part/bin/python" --constraint "$environment.part/iunctus-constraints.txt" "$@"
+  uv pip install --quiet --python "$environment.part/bin/python" --constraint "$environment.part/uwe-constraints.txt" "$@"
 }
 install packaging || exit 1
 if [ "$#" -gt 0 ] && ! install "$@" 2> /dev/null; then
   for package in "$@"; do
-    install "$package" 2> "$environment.part/iunctus-failed/$package" && rm "$environment.part/iunctus-failed/$package"
+    install "$package" 2> "$environment.part/uwe-failed/$package" && rm "$environment.part/uwe-failed/$package"
   done
 fi
 rm -rf "$environment"
@@ -234,7 +234,7 @@ impl ContainerStarter {
             let mut command = vec![
                 "-c".to_owned(),
                 PREPARE.to_owned(),
-                "iunctus".to_owned(),
+                "uwe".to_owned(),
                 environment.to_string_lossy().into_owned(),
                 constraints.join("\n"),
             ];

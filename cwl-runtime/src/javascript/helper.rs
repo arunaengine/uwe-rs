@@ -42,8 +42,7 @@ impl Default for JavaScriptSettings {
     fn default() -> Self {
         Self {
             engine: std::env::var("UWE_ENGINE").unwrap_or_default(),
-            image: std::env::var("UWE_CWL_JS_IMAGE")
-                .unwrap_or_else(|_| "iunctus-cwl-js:0.1.0".into()),
+            image: std::env::var("UWE_CWL_JS_IMAGE").unwrap_or_else(|_| "uwe-cwl-js:0.1.0".into()),
             cancel: CancellationToken::new(),
             helper: Arc::default(),
             own: false,
@@ -359,11 +358,11 @@ impl JavaScriptSettings {
                 engine: self.engine.clone(),
                 image: image.to_owned(),
                 name: format!(
-                    "iunctus-cwl-js-{}-{}",
+                    "uwe-cwl-js-{}-{}",
                     std::process::id(),
                     NEXT.fetch_add(1, Ordering::Relaxed)
                 ),
-                entrypoint: Some("/usr/local/bin/iunctus".into()),
+                entrypoint: Some("/usr/local/bin/uwe".into()),
                 command: vec!["__cwl-js-worker".into()],
                 environment: vec![("UWE_CWL_WORKER".into(), "1".into())],
                 memory: Some(256 << 20),

@@ -177,5 +177,5 @@ fn append(builder: &mut tar::Builder<impl Write>, root: &Path, path: &Path) -> s
 
 fn image_tag(source: ImageSource, hash: &[u8]) -> String {
     let hex: String = hash.iter().map(|byte| format!("{byte:02x}")).collect();
-    format!("iunctus-cwl:{source:?}-{hex}").to_lowercase()
+    format!("uwe-cwl:{source:?}-{hex}").to_lowercase()
 }

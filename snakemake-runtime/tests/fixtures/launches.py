@@ -13,7 +13,7 @@ import sys
 import yaml
 from snakemake.cli import get_argument_parser
 
-TEST_WORKFLOWS = os.environ.get("SNAKEMAKE_TEST_WORKFLOWS") or os.path.expanduser("~/.cache/iunctus/test-workflows/snakemake")
+TEST_WORKFLOWS = os.environ.get("SNAKEMAKE_TEST_WORKFLOWS") or os.path.expanduser("~/.cache/uwe/test-workflows/snakemake")
 FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_test_workflows_launches.txt")
 ORACLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_test_workflows_oracle.txt")
 

@@ -12,7 +12,7 @@ use workflow_graph::{
 
 fn record(folder: &Path, output: &str) -> PathBuf {
     folder
-        .join(".snakemake/iunctus-signatures")
+        .join(".snakemake/uwe-signatures")
         .join(base64::engine::general_purpose::URL_SAFE.encode(output))
 }
 
@@ -173,7 +173,7 @@ fn preserves_prior_records() {
     let mut restored = driver(folder.path(), SINGLE);
     assert_eq!(restored.start().unwrap().len(), 1);
     drop(restored);
-    std::fs::remove_dir_all(folder.path().join(".snakemake/iunctus-signatures")).unwrap();
+    std::fs::remove_dir_all(folder.path().join(".snakemake/uwe-signatures")).unwrap();
     let mut missing_records = driver(folder.path(), SINGLE);
     assert_eq!(missing_records.start().unwrap().len(), 1);
     drop(missing_records);
@@ -187,12 +187,12 @@ fn preserves_prior_records() {
             .is_none()
     );
     assert!(
-        std::fs::read_dir(folder.path().join(".snakemake/iunctus-incomplete"))
+        std::fs::read_dir(folder.path().join(".snakemake/uwe-incomplete"))
             .unwrap()
             .next()
             .is_none()
     );
-    std::fs::remove_dir_all(folder.path().join(".snakemake/iunctus-signatures")).unwrap();
+    std::fs::remove_dir_all(folder.path().join(".snakemake/uwe-signatures")).unwrap();
     let mut legacy = driver(folder.path(), SINGLE);
     assert!(legacy.start().unwrap().is_empty());
     legacy.finish().unwrap();

@@ -159,7 +159,7 @@ fn reruns_changed_cwl() {
     .expect("a Snakefile");
     std::fs::write(folder.path().join("sorted.txt"), "old\n").expect("an old output");
     // The record of an earlier run, whose params differ.
-    let records = folder.path().join(".snakemake/iunctus-signatures");
+    let records = folder.path().join(".snakemake/uwe-signatures");
     std::fs::create_dir_all(&records).unwrap();
     std::fs::write(records.join("c29ydGVkLnR4dA=="), "{}").unwrap();
     let launch = Launch {

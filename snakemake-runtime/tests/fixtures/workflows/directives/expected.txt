@@ -16,15 +16,15 @@ task 2: continuumio/miniconda3:4.4.10
   outputs: trimmed/S2.1.fq.gz trimmed/S2.2.fq.gz logs/trim/S2.log benchmarks/trim/S2.tsv
 task 3: continuumio/miniconda3:4.4.10
   command: python .snakemake/scripts/call.py
-  inputs: trimmed/S1.1.fq.gz trimmed/S1.2.fq.gz .snakemake/scripts/call.py .snakemake/iunctus {folder}/scripts results config/config.yaml
+  inputs: trimmed/S1.1.fq.gz trimmed/S1.2.fq.gz .snakemake/scripts/call.py .snakemake/uwe {folder}/scripts results config/config.yaml
   outputs: results/S1.vcf
 task 4: continuumio/miniconda3:4.4.10
   command: python .snakemake/scripts/call.py
-  inputs: trimmed/S2.1.fq.gz trimmed/S2.2.fq.gz .snakemake/scripts/call.py .snakemake/iunctus {folder}/scripts results config/config.yaml
+  inputs: trimmed/S2.1.fq.gz trimmed/S2.2.fq.gz .snakemake/scripts/call.py .snakemake/uwe {folder}/scripts results config/config.yaml
   outputs: results/S2.vcf
 task 5: continuumio/miniconda3:4.4.10
   command: python .snakemake/scripts/wrapper.py
-  inputs: trimmed/S1.1.fq.gz trimmed/S2.1.fq.gz .snakemake/scripts/wrapper.py .snakemake/iunctus results config/config.yaml
+  inputs: trimmed/S1.1.fq.gz trimmed/S2.1.fq.gz .snakemake/scripts/wrapper.py .snakemake/uwe results config/config.yaml
   outputs: results/stats.txt results/stats.json
 task 6: continuumio/miniconda3:4.4.10
   command: bash -c set -euo pipefail;  multiqc results/stats.txt results/stats.json -o results/multiqc_data && echo  > results/multiqc.html

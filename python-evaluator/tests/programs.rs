@@ -164,13 +164,13 @@ fn propagates_unsupported_features() {
 #[test]
 fn buffers_file_writes() {
     let output = evaluate(
-        "with open('iunctus-test-never-written.txt', 'w') as f:\n    f.write('hi')\nprint(open('iunctus-test-never-written.txt').read())\n",
+        "with open('uwe-test-never-written.txt', 'w') as f:\n    f.write('hi')\nprint(open('uwe-test-never-written.txt').read())\n",
     )
     .expect("runs");
     assert_eq!(output, "hi\n");
     assert!(
         !std::env::temp_dir()
-            .join("iunctus-test-never-written.txt")
+            .join("uwe-test-never-written.txt")
             .exists()
     );
 }

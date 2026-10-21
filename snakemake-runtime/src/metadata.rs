@@ -17,11 +17,11 @@ const LARGEST: u64 = 1_000_000;
 const NAME_MAX: usize = 255;
 
 pub(crate) fn signature_path(workdir: &Path, output: &str) -> PathBuf {
-    workdir.join(record_path(output).replacen(FOLDER, ".snakemake/iunctus-signatures", 1))
+    workdir.join(record_path(output).replacen(FOLDER, ".snakemake/uwe-signatures", 1))
 }
 
 pub(crate) fn incomplete_path(workdir: &Path, output: &str) -> PathBuf {
-    workdir.join(record_path(output).replacen(FOLDER, ".snakemake/iunctus-incomplete", 1))
+    workdir.join(record_path(output).replacen(FOLDER, ".snakemake/uwe-incomplete", 1))
 }
 
 /// The incomplete record of an output that Snakemake itself writes while its job runs.

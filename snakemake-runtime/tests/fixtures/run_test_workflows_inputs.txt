@@ -11,7 +11,7 @@ catalog/Addimator__compare_meth 1 workflow/rules/common.smk:7: FileNotFoundError
 catalog/Addimator__varlociraptor-copy-number-variants ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/Albinam1__bioinformatics_school 1 workflow/rules/mapping.smk:34: WorkflowError: Not all output, log and benchmark files of rule map_reads_with_minimap contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
 catalog/AllenInstitute__Bulk-RNA-Snakeline ok: 6 inputs, 6 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-catalog/AmberFu__snakemake_BAMmetrics_mosdepth 1 workflow/Snakefile:8: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
+catalog/AmberFu__snakemake_BAMmetrics_mosdepth 1 workflow/Snakefile:8: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/uwe/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/ArsenaultResearch__RNAseq_Pipeline ok: 4 inputs, 4 required, 1 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
 catalog/ArsenaultResearch__windowRAxMLng ok: 4 inputs, 4 required, 1 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
 catalog/BesenbacherLab__bbq_pipeline 1 <yte definitions>:1: KeyError: 'ACCOUNT_NAME'
@@ -35,7 +35,7 @@ catalog/EloiseIsobelPearce__snakemake-example ok: 3 inputs, 3 required, 1 files,
 catalog/FeelLiao__rna-seq-std ok: 4 inputs, 4 required, 1 files, 0 tables; 0 errors, 0 warnings; 5 read not declared, 0 declared not read
 catalog/FilippoGas__GeneProgramsProfiler ok: 12 inputs, 5 required, 2 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 1 declared not read
 catalog/FilippoGas__HapScorer ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-catalog/GArcho44__snvs-annotation-pipeline 1 workflow/Snakefile:5: WorkflowError: Workflow defines configfile ../config/config.yml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yml).
+catalog/GArcho44__snvs-annotation-pipeline 1 workflow/Snakefile:5: WorkflowError: Workflow defines configfile ../config/config.yml but it is not present or accessible (full checked path: /home/beavis/.cache/uwe/test-workflows/snakemake/catalog/config/config.yml).
 catalog/GaspardR__snakemake-github-module-keyerror ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/Gmidtg21__bt7-9gmidtg ok: 6 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/GooglingTheCancerGenome__sv-callers 1 workflow/validator/__init__.py:6: the workflow imports the Python package ruamel, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
@@ -128,7 +128,7 @@ catalog/Zilong-Li__lcWGS-imputation-workflow ok: 13 inputs, 0 required, 2 files,
 catalog/abbyevewilliams__map-pipeline 1 workflow/Snakefile:13: FileNotFoundError: [Errno 2] No such file or directory: '/data/biol-silvereye/ball6625/map-pipeline/config/zborb-samples.txt'
 catalog/abrahanhernandez__scWGA ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/adrisede__Isoseq_smk_min 1 workflow/Snakefile:273: WorkflowError: Not all output, log and benchmark files of rule collapse contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
-catalog/aekrylova__scPASU 1 workflow/rules/1_data_preprocessing.smk:1: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
+catalog/aekrylova__scPASU 1 workflow/rules/1_data_preprocessing.smk:1: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/uwe/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/akcorut__kGWASflow 1 workflow/rules/common.smk:255: SystemExit: 1
 catalog/alexhbnr__contig_simulation ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/alzel__refseq_pipeline none: the workflow runs a command while it is loaded
@@ -206,7 +206,7 @@ catalog/fiberseq__fiberseq-smk ok: 3 inputs, 0 required, 2 files, 0 tables; 0 er
 catalog/fischuu__Snakebite-Holoruminant-MetaG 1 workflow/Snakefile:53: KeyError: 'params-file'
 catalog/flo-schu__pymob-workflow ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
 catalog/fmi-basel__ggiorget_ms2analysis ok: 9 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-catalog/franciscozorrilla__metaGEM 1 workflow/Snakefile:1: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
+catalog/franciscozorrilla__metaGEM 1 workflow/Snakefile:1: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/uwe/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/frattalab__QAPA_snakemake 1 workflow/Snakefile:6: KeyError: 'sample_sheet'
 catalog/friendsofstrandseq__ashleys-qc-pipeline 1 workflow/rules/common.smk:309: FileNotFoundError: [Errno 2] No such file or directory: '.tests/data_CHR17'
 catalog/friendsofstrandseq__mosaicatcher-pipeline 1 workflow/rules/common.smk:583: FileNotFoundError: [Errno 2] No such file or directory: '.tests/data_CHR17'
@@ -254,7 +254,7 @@ catalog/khersameesh24__snakemake-workflow-template ok: 0 inputs, 0 required, 0 f
 catalog/kircherlab__MPRAsnakeflow ok: 4 inputs, 2 required, 1 files, 0 tables; 0 errors, 0 warnings; 10 read not declared, 0 declared not read
 catalog/knutdrand__bionumpy-benchmarks 1 workflow/Snakefile:5: the workflow imports the Python package bionumpy, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/koesterlab__ngs-fastq-to-cram ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-catalog/koesterlab__rossi-ips-dmr 1 workflow/Snakefile:68: FileNotFoundError: [Errno 2] No such file or directory: '/home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/rna-seq-kallisto-sleuth/workflow/Snakefile'
+catalog/koesterlab__rossi-ips-dmr 1 workflow/Snakefile:68: FileNotFoundError: [Errno 2] No such file or directory: '/home/beavis/.cache/uwe/test-workflows/snakemake/catalog/rna-seq-kallisto-sleuth/workflow/Snakefile'
 catalog/kpalin__ONT_hg_somatic ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/kreczko__cms-public-tutorial-snakemake ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/kvntrc__snakemake_template ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -295,8 +295,8 @@ catalog/merfre__Hull_Microbiome_Cluster_Workflow ok: 27 inputs, 0 required, 3 fi
 catalog/merfre__MMCAW 1 workflow/Snakefile:63: TypeError: sequence item 31: expected str instance, float found
 catalog/metagenome-atlas__metagenome-assembly ok: 47 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
 catalog/metagenome-atlas__metagenome_instrain ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-catalog/milesroberts-123__poolseq-kmers 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
-catalog/milesroberts-123__slim-sweep-cnn 1 workflow/Snakefile:9: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
+catalog/milesroberts-123__poolseq-kmers 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/uwe/test-workflows/snakemake/catalog/config/config.yaml).
+catalog/milesroberts-123__slim-sweep-cnn 1 workflow/Snakefile:9: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/uwe/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/mkrg01__genome_assembly_pipeline ok: 32 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 12 read not declared, 1 declared not read
 catalog/modelblocks-org__geospatial_shapes_test_bench ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 1 declared not read
 catalog/modelblocks-org__module_area_potentials ok: 5 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 0 declared not read
@@ -351,7 +351,7 @@ catalog/panta-123__moller-prompt-workflow ok: 5 inputs, 0 required, 0 files, 0 t
 catalog/percyfal__tswf-smk ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/petroskilp__clustromics ok: 8 inputs, 7 required, 2 files, 2 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
 catalog/plycrsk__rna-seq-star-deseq2 1 workflow/rules/common.smk:7: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
-catalog/poloarol__snakemake-methylseq 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
+catalog/poloarol__snakemake-methylseq 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/uwe/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/r1cheu__gnnotator ok: 4 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/r1cheu__imputation ok: 8 inputs, 6 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/rabiafidan__pure-faf 1 workflow/rules/common.smk:5: the workflow imports the Python package cyvcf2, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
@@ -434,7 +434,7 @@ catalog/thomasmulvaney__snakemake-gromacs-workflow ok: 3 inputs, 3 required, 1 f
 catalog/tmweiskittel__serpent-methylation-pipeline-cloud ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
 catalog/tmweiskittel__tmw_align_emseq ok: 4 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 2 declared not read
 catalog/tmweiskittel__tmw_analysis_emseq ok: 14 inputs, 0 required, 3 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 1 declared not read
-catalog/trickovicmatija__kingfisher_workflow 1 workflow/Snakefile:3: WorkflowError: Workflow defines configfile ../config/default_config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/default_config.yaml).
+catalog/trickovicmatija__kingfisher_workflow 1 workflow/Snakefile:3: WorkflowError: Workflow defines configfile ../config/default_config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/uwe/test-workflows/snakemake/catalog/config/default_config.yaml).
 catalog/tucca-cellag__tucca-rna-seq ok: 7 inputs, 7 required, 2 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/tud-mchen6__module_gh2_prod ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/ubercomrade__cut_and_run_analysis ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read

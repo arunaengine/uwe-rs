@@ -9,7 +9,7 @@ import sys
 from ruamel.yaml import YAML
 
 yaml = YAML(typ='safe', pure=True)
-test_workflows = os.environ.get('CWL_TEST_WORKFLOWS') or os.path.expanduser('~/.cache/iunctus/test-workflows/cwl')
+test_workflows = os.environ.get('CWL_TEST_WORKFLOWS') or os.path.expanduser('~/.cache/uwe/test-workflows/cwl')
 root = os.path.join(test_workflows, 'realworld')
 docs = {}   # path -> (class, inputs{name: (required)})
 jobs = []

@@ -42,7 +42,7 @@ try:
 except FileNotFoundError:
     print('missing')
 try:
-    import surely_no_such_package_of_iunctus
+    import surely_no_such_package_of_uwe
 except ImportError:
     print('fallback')
 ";

@@ -11,7 +11,7 @@ fn main() {
         eprintln!("usage: run <workflow> [target...]");
         std::process::exit(2);
     };
-    let scratch = std::env::temp_dir().join(format!("iunctus-snakemake-{}", std::process::id()));
+    let scratch = std::env::temp_dir().join(format!("uwe-snakemake-{}", std::process::id()));
     let launch = Launch {
         target: target.clone().into(),
         targets: args.collect(),

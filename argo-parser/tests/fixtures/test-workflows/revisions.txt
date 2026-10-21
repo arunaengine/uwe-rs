@@ -2,7 +2,7 @@
 # GitHub repository, branch or tag, commit, and sparse patterns. A pattern ending in `/` takes
 # the YAML and JSON files below that folder, a pattern starting with `!` leaves files out, and
 # without patterns the YAML and JSON files of the whole repository are taken. `just argo-test-workflows`
-# fetches exactly these commits into ~/.cache/iunctus/test-workflows/argo/<repository name>.
+# fetches exactly these commits into ~/.cache/uwe/test-workflows/argo/<repository name>.
 # GenivaInformatics/gennext-workflows has no license file: it is fetched for local research only,
 # and none of its files may be copied into this repository. The last repository is not part of
 # the research test workflows: it holds the executor plugin that the talk-demos examples install.

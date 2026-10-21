@@ -50,7 +50,7 @@ fn hashes_build_context() {
     std::fs::create_dir(root.path().join("context")).unwrap();
     std::fs::write(root.path().join("context/seed"), "one").unwrap();
     let first = image(root.path(), fields, Options::default()).unwrap();
-    assert!(first.starts_with("iunctus-cwl:build-"));
+    assert!(first.starts_with("uwe-cwl:build-"));
     assert_eq!(
         image(root.path(), fields, Options::default()).unwrap(),
         first
@@ -70,7 +70,7 @@ fn hashes_image_archives() {
         std::fs::write(&archive, "one").unwrap();
         let fields = format!("    {field}: image.tar\n    dockerImageId: declared:tag");
         let first = image(root.path(), &fields, Options::default()).unwrap();
-        assert!(first.starts_with("iunctus-cwl:"));
+        assert!(first.starts_with("uwe-cwl:"));
         assert_eq!(
             image(root.path(), &fields, Options::default()).unwrap(),
             first
@@ -233,7 +233,7 @@ fn pushes_remote_images() {
         registry: Some(registry.clone()),
         ..Options::default()
     };
-    let fields = "    dockerFile: \"FROM scratch\\nLABEL org.iunctus.test=push\"";
+    let fields = "    dockerFile: \"FROM scratch\\nLABEL org.uwe.test=push\"";
     let pushed = image_in(root.path(), "hints", fields, remote).unwrap();
     assert!(
         pushed.starts_with(&format!("{registry}@sha256:")),

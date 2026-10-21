@@ -1301,7 +1301,7 @@ pub fn tempfile() -> Vec<(&'static str, Value)> {
         (
             "mkdtemp",
             function("mkdtemp", |interpreter, _| {
-                let path = "/tmp/iunctus-temporary";
+                let path = "/tmp/uwe-temporary";
                 interpreter
                     .host
                     .make_dir(std::path::Path::new(path))

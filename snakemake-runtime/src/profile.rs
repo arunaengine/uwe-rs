@@ -506,7 +506,7 @@ impl Profile {
                     }
                 }
                 "quiet" | "printshellcmds" | "verbose" | "nocolor" | "show-failed-logs" => {}
-                // How and where jobs run, not what they compute: iunctus chooses its own
+                // How and where jobs run, not what they compute: uwe chooses its own
                 // executor, containers, environments and limits.
                 "use-conda"
                 | "use-singularity"
@@ -566,7 +566,7 @@ impl Profile {
                 | "preemptible-rules"
                 | "preemptible-retries" => {}
                 // The settings of Snakemake's executor plugins configure an executor that
-                // iunctus replaces with its own.
+                // uwe replaces with its own.
                 key if EXECUTOR_PLUGINS.iter().any(|plugin| {
                     key.strip_prefix(plugin)
                         .is_some_and(|rest| rest.starts_with('-'))

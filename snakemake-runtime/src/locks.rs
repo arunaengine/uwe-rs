@@ -134,7 +134,7 @@ fn held(folder: &Path) -> std::io::Result<Vec<(Kind, String, PathBuf)>> {
     Ok(held)
 }
 
-/// Snakemake's `LockException`, which names the lock files in the way: iunctus has no
+/// Snakemake's `LockException`, which names the lock files in the way: uwe has no
 /// `--unlock`, and a stale lock goes when its files are removed.
 fn refusal(workdir: &Path, stale: &[PathBuf]) -> String {
     let files: Vec<String> = (stale.iter())

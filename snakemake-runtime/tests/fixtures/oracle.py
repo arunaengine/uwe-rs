@@ -191,7 +191,7 @@ def main():
     with open(ORACLE, "w", encoding="utf-8") as output:
         output.write("# What `snakemake --dry-run --printshellcmds` of Snakemake 9.27.0 does with the Snakemake\n")
         output.write("# test workflows that it cannot evaluate with their preferred launch, and with those that\n")
-        output.write("# iunctus cannot run, for each launch launches.py considers; written by oracle.py.\n")
+        output.write("# uwe cannot run, for each launch launches.py considers; written by oracle.py.\n")
         output.write("# Workflows not listed evaluate with their preferred launch. Columns, separated by tabs:\n")
         output.write("# the workflow, the launch (plain, ci, catalog or tests.py), the exit code, `evaluated`\n")
         output.write("# when Snakemake evaluated the Snakefile and began to plan the jobs, else `failed`, and\n")

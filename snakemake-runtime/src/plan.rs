@@ -1035,7 +1035,7 @@ impl Planner {
 }
 
 /// The group id that input functions with a `groupid` parameter get. Snakemake gives every
-/// job `local` in a local run, where it forms no group jobs; iunctus runs each job as a task
+/// job `local` in a local run, where it forms no group jobs; uwe runs each job as a task
 /// of its own, so every job gets `local` too (Snakemake 9.27, test_groupid_expand).
 const GROUP_ID: &str = "local";
 

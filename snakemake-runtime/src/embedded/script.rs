@@ -111,7 +111,7 @@ pub fn build(
     context.scriptdir = source.folder();
     let text = source.text.clone().unwrap_or_else(|| {
         format!(
-            "# iunctus reads {} when the job runs for real\n",
+            "# uwe reads {} when the job runs for real\n",
             source.location
         )
     });

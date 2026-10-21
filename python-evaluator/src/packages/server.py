@@ -17,7 +17,7 @@ import sys
 import tempfile
 
 # The working directory is not on the module path, as it is not when Snakemake runs; the
-# workflow's own modules are run by iunctus.
+# workflow's own modules are run by uwe.
 if sys.path and sys.path[0] in ("", os.getcwd()):
     del sys.path[0]
 
@@ -108,7 +108,7 @@ def decode(value):
         tag, inner = next(iter(value.items()))
         if tag == "handle":
             if inner not in objects:
-                raise ValueError(f"iunctus sent the unknown handle {inner}")
+                raise ValueError(f"uwe sent the unknown handle {inner}")
             return objects[inner]
         if tag == "int":
             return int(inner)
@@ -129,7 +129,7 @@ def decode(value):
         if tag == "record":
             items, names = inner
             return Namedlist([decode(item) for item in items], {name: decode(item) for name, item in names})
-        raise ValueError(f"iunctus sent a value of the unknown kind {tag}")
+        raise ValueError(f"uwe sent a value of the unknown kind {tag}")
     return value
 
 
@@ -267,7 +267,7 @@ def answer(request):
         return getattr(operator, request["operator"])(target)
     if op == "isinstance":
         return isinstance(target, decode(request["class"]))
-    raise ValueError(f"iunctus sent the unknown request {op}")
+    raise ValueError(f"uwe sent the unknown request {op}")
 
 
 def describe(error):

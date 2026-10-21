@@ -510,7 +510,7 @@ impl StatementHook for Hook {
                     .transpose()?
                     .or_else(|| storage.tag.as_ref().map(|tag| tag.text.clone()));
                 // Settings that only pace or retry requests, or keep local copies, change no
-                // file; credentials and addresses come from the storage settings of iunctus.
+                // file; credentials and addresses come from the storage settings of uwe.
                 let pacing = [
                     "retries",
                     "max_requests_per_second",
@@ -828,7 +828,7 @@ impl Hook {
                     schema: None,
                 });
             }
-            // iunctus does not check the project against its schema, as eido does; the schema
+            // uwe does not check the project against its schema, as eido does; the schema
             // describes the input `pepfile` (decision 24).
             GlobalKeyword::PepSchema => {
                 if self.state.borrow().modifier().globals.get("pep").is_none() {

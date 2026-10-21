@@ -9,7 +9,7 @@ use super::{List, ListKind, Operator, Value};
 use crate::exception::Exception;
 use crate::number::Number;
 
-/// The most elements a range may have; iunctus builds the elements when the range is made.
+/// The most elements a range may have; uwe builds the elements when the range is made.
 const LARGEST: usize = 10_000_000;
 
 /// The bounds of a range as written. Its elements live in the list that holds it.

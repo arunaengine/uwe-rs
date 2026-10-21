@@ -212,7 +212,7 @@ impl<'a> Parser<'a> {
         Failed
     }
 
-    /// Records legacy syntax that strict syntax rejects with `message` but iunctus accepts.
+    /// Records legacy syntax that strict syntax rejects with `message` but uwe accepts.
     fn legacy_at(&mut self, message: impl Into<String>, span: Span) {
         self.legacy.push(Diagnostic::new(message, span));
     }

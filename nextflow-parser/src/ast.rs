@@ -651,7 +651,7 @@ pub enum ConfigStatement {
         body: Vec<ConfigStatement>,
         span: Span,
     },
-    // The statements below are legacy syntax: strict syntax rejects them, and iunctus runs
+    // The statements below are legacy syntax: strict syntax rejects them, and uwe runs
     // them with the meaning of the legacy parser (decision 14).
     /// `if (condition) { ... } else { ... }` around config statements.
     If {

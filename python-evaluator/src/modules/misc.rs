@@ -120,7 +120,7 @@ pub fn sys(interpreter: &mut Interpreter) -> Vec<(&'static str, Value)> {
         ),
         ("path", interpreter.sys_path.clone()),
         ("modules", modules),
-        ("version", Value::str("3.12.0 (iunctus)")),
+        ("version", Value::str("3.12.0 (uwe)")),
         ("version_info", Value::native(VersionInfo(version))),
         ("hexversion", Value::Int(0x030c00f0)),
         ("platform", Value::str("linux")),

@@ -118,7 +118,7 @@ pub fn place(
         let folder = path.parent().unwrap_or(path).to_path_buf();
         if folder.parent().is_none() {
             return Err(std::io::Error::other(format!(
-                "the output {output} lies in the root folder, which iunctus does not give a job"
+                "the output {output} lies in the root folder, which uwe does not give a job"
             )));
         }
         if !folders.iter().any(|other| folder.starts_with(other)) {

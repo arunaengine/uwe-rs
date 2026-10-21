@@ -331,7 +331,7 @@ fn retains_storage_times() {
 }
 
 /// Snakemake's test_storage registers S3 with `retries=5`, a setting that changes no file;
-/// settings with credentials or addresses stay with the storage settings of iunctus, which
+/// settings with credentials or addresses stay with the storage settings of uwe, which
 /// the refusal names.
 #[test]
 fn accepts_pacing_settings() {
@@ -350,7 +350,7 @@ fn accepts_pacing_settings() {
             Ok(tasks) => assert!(accepted && tasks.len() == 1, "{setting}"),
             Err(error) => {
                 assert!(!accepted && error.unsupported, "{setting}: {error}");
-                // It names the setting of the iunctus config file that replaces it.
+                // It names the setting of the uwe config file that replaces it.
                 let key = setting.split('=').next().unwrap();
                 let replaced = if key == "endpoint_url" {
                     "`endpoint`"

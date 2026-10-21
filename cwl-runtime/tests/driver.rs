@@ -1,5 +1,5 @@
 //! Runs small CWL documents through the driver and the simulator without a job file,
-//! so on placeholder inputs, as `iunctus run` and the graph test-workflows test do.
+//! so on placeholder inputs, as `uwe run` and the graph test-workflows test do.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

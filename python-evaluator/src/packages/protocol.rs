@@ -198,7 +198,7 @@ pub fn decode(packages: &Rc<Packages>, json: &Json) -> Result<Value, Error> {
 
 fn malformed(json: &Json) -> Error {
     Error::stop(format!(
-        "the Python process of the packages sent a value that iunctus does not know: {json}"
+        "the Python process of the packages sent a value that uwe does not know: {json}"
     ))
 }
 

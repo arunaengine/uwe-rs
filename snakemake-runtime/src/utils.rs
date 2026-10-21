@@ -14,7 +14,7 @@ use crate::functions;
 use crate::inputs::{Validated, Validation};
 use crate::workflow::{State, workflow_error};
 
-/// The Snakemake version that iunctus follows.
+/// The Snakemake version that uwe follows.
 pub const VERSION: &str = "9.27.0";
 
 fn version_parts(text: &str) -> Vec<i64> {

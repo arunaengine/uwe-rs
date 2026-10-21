@@ -480,7 +480,7 @@ fn probe_workflow(container: Value) -> Value {
     let text = |name: &str, value: &str| (Value::string(name), Value::string(value));
     let properties = Value::map([
         text("runName", "magical_mahavira"),
-        // iunctus gives its own engine, which the summary leaves out unless the config
+        // uwe gives its own engine, which the summary leaves out unless the config
         // enables one.
         text("containerEngine", "docker"),
         (Value::string("container"), container),

@@ -38,7 +38,7 @@ pub(crate) fn select(docker: Option<(&Docker, bool)>, options: &Options) -> Resu
         let message = format!(
             "a DockerRequirement {} with dockerFile, dockerLoad or dockerImport needs an image \
              that remote executors can pull. Set `registry` in the `[cwl]` section of the config \
-             file to a registry that iunctus can push to and the nodes can pull from; iunctus \
+             file to a registry that uwe can push to and the nodes can pull from; uwe \
              then makes the image here and pushes it there. SLURM with Apptainer or Singularity \
              needs no registry. Otherwise push the image yourself and name it in dockerPull, or \
              run the tool with the local executor",
@@ -118,7 +118,7 @@ fn prepare(docker: &Docker, source: ImageSource, options: &Options) -> Result<St
     if options.simulated {
         return Ok(tag);
     }
-    // Held until the run ends, so that `iunctus clean` removes no archive that it uses.
+    // Held until the run ends, so that `uwe clean` removes no archive that it uses.
     if let (None, None, Some(folder)) =
         (&options.local_engine, &options.registry, &options.archives)
     {

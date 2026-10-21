@@ -129,7 +129,7 @@ impl Scope {
         .map(|(listing, _)| listing)
     }
 
-    /// Fails for requirements that iunctus cannot satisfy: unknown classes, and software
+    /// Fails for requirements that uwe cannot satisfy: unknown classes, and software
     /// packages, which need a package resolver. Hints may always be ignored.
     pub fn check_supported(&self) -> Result<(), DriverError> {
         for entry in self.requirements.iter().chain(self.overrides.iter()) {
@@ -137,7 +137,7 @@ impl Scope {
                 RequirementClass::Software { .. } => {
                     return Err(DriverError::unsupported(format!(
                         "{}: SoftwareRequirement as a requirement needs a package resolver, \
-                         which iunctus does not have; give it as a hint",
+                         which uwe does not have; give it as a hint",
                         entry.location
                     )));
                 }

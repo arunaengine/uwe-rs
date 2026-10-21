@@ -1,4 +1,4 @@
-//! Runs the CWL document of a `cwl:` rule with the CWL runtime of iunctus, with the input
+//! Runs the CWL document of a `cwl:` rule with the CWL runtime of uwe, with the input
 //! object that Snakemake writes for cwltool.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0

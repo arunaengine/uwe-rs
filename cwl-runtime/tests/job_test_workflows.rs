@@ -39,7 +39,7 @@ fn outcome(root: &Path, document: &str, job: &str) -> String {
     }
 }
 
-/// Runs a document with a job file through the driver that `iunctus run` uses.
+/// Runs a document with a job file through the driver that `uwe run` uses.
 fn run(target: PathBuf, inputs: PathBuf) -> Result<usize, String> {
     let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
     let launch = Launch {

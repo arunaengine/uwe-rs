@@ -1,4 +1,4 @@
-// Processes with `exec:` sections, which Nextflow runs in its own process and iunctus in its
+// Processes with `exec:` sections, which Nextflow runs in its own process and uwe in its
 // interpreter (tests/exec.rs). `record.sh` recorded what Nextflow 26.04.6 publishes in
 // nextflow-26.04.6/.
 

@@ -56,7 +56,7 @@ pub fn secrets(
     Ok(names.into_iter().collect())
 }
 
-/// The task script, followed by iunctus's own code that captures `env` and `eval` outputs into
+/// The task script, followed by uwe's own code that captures `env` and `eval` outputs into
 /// `.command.env` in Nextflow's format. The script alone equals Nextflow's up to that code.
 pub fn command_script(request: &TaskRequest) -> String {
     if request.env.is_empty() && request.eval.is_empty() {

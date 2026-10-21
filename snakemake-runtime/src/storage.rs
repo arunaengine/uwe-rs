@@ -33,8 +33,8 @@ pub fn check_provider(provider: Option<&str>) -> Result<(), Error> {
     }
 }
 
-/// Why a setting of a Snakemake storage plugin is refused, naming the setting of the iunctus
-/// config file that takes its place, since iunctus reads providers from there.
+/// Why a setting of a Snakemake storage plugin is refused, naming the setting of the uwe
+/// config file that takes its place, since uwe reads providers from there.
 pub fn plugin_setting(provider: &str, key: &str) -> String {
     let kind = match provider {
         "gcs" => "google-cloud-storage",
@@ -60,7 +60,7 @@ pub fn plugin_setting(provider: &str, key: &str) -> String {
         _ => None,
     };
     let table = format!(
-        "a [storage.<name>] table of the iunctus config file with type = \"{kind}\" and the prefixes it serves"
+        "a [storage.<name>] table of the uwe config file with type = \"{kind}\" and the prefixes it serves"
     );
     match setting {
         Some(setting) => format!(

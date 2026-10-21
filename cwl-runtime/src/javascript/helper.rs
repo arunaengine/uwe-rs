@@ -268,7 +268,7 @@ impl JavaScriptSettings {
         }
     }
 
-    /// Settings whose helper runs the running iunctus binary, in an image that is made from
+    /// Settings whose helper runs the running uwe binary, in an image that is made from
     /// it when the engine lacks it; `UWE_CWL_JS_IMAGE` names another image instead.
     pub fn from_binary(engine: String, cancel: CancellationToken) -> Self {
         let own = std::env::var_os("UWE_CWL_JS_IMAGE").is_none();

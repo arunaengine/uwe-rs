@@ -473,7 +473,7 @@ impl ProcessNode {
                 {
                     interpreter.print(&format!(
                         "INFO: process directive `{}` is ignored for process `{}`; \
-                         iunctus settings select the backend and placement\n",
+                         uwe settings select the backend and placement\n",
                         directive.name, self.name
                     ));
                 }

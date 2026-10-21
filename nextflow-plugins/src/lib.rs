@@ -63,7 +63,7 @@ const NF_CORE_UTILS: &[&str] = &[
     "workflowVersionToChannel",
 ];
 
-/// The functions of a plugin, or `None` for a plugin iunctus does not have.
+/// The functions of a plugin, or `None` for a plugin uwe does not have.
 pub fn functions(plugin: &str) -> Option<&'static [&'static str]> {
     match plugin {
         "nf-anndata" => Some(&["anndata"]),

@@ -76,7 +76,7 @@ pub trait Host {
 
     fn environment(&self) -> Vec<(String, String)>;
 
-    /// Runs a command that code asks for. Commands never run on the machine of iunctus
+    /// Runs a command that code asks for. Commands never run on the machine of uwe
     /// itself (decision 11); a host that can run them in a container overrides this.
     fn run_command(&self, command: &Command) -> Result<CommandOutcome, crate::error::Error> {
         let _ = command;

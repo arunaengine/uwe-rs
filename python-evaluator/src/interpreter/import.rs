@@ -229,7 +229,7 @@ impl Interpreter {
                 return Ok(module);
             }
         }
-        // A module of the standard library without a stand-in is a gap of iunctus; another
+        // A module of the standard library without a stand-in is a gap of uwe; another
         // module comes from a package, which runs in the Python container (decision 19).
         if crate::modules::is_standard_library(name) {
             return Err(Error::unsupported(format!(

@@ -317,7 +317,7 @@ pub enum Error {
         exception: Rc<Exception>,
         span: Span,
     },
-    /// A feature that Nextflow supports but iunctus does not yet. Scripts cannot catch it.
+    /// A feature that Nextflow supports but uwe does not yet. Scripts cannot catch it.
     Unsupported { message: String, span: Span },
     /// An error with the file and position where it happened, like `main.nf:3:5`, once it
     /// leaves the scripts.
@@ -335,7 +335,7 @@ impl Error {
         }
     }
 
-    /// Whether the cause is a feature that iunctus does not support yet.
+    /// Whether the cause is a feature that uwe does not support yet.
     pub fn unsupported(&self) -> bool {
         match self {
             Error::Unsupported { .. } => true,

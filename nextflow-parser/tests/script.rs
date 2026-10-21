@@ -811,7 +811,7 @@ fn declaration_statements() {
 
 #[test]
 fn legacy_mixed_statements() {
-    // Strict syntax rejects the statements; iunctus runs them when the script loads.
+    // Strict syntax rejects the statements; uwe runs them when the script loads.
     let source = "println 'Hello world!'\n\nworkflow {\n}\n";
     let parsed = parse_script(source);
     assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);

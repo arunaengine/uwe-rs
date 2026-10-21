@@ -178,7 +178,7 @@ impl Packages {
             let top = module.split('.').next().unwrap_or(module);
             let Some(starter) = starter else {
                 return Err(Error::stop(format!(
-                    "the workflow imports the Python package {top}, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime"
+                    "the workflow imports the Python package {top}, which has no stand-in in uwe; it runs in a Python container (decision 19), but this run has no container runtime"
                 )));
             };
             let start = PythonStart {
@@ -189,7 +189,7 @@ impl Packages {
             };
             let process = starter.start(&start).map_err(|reason| {
                 Error::stop(format!(
-                    "the workflow imports the Python package {top}, which has no stand-in in iunctus; it runs in a Python container (decision 19), but the container cannot start: {reason}"
+                    "the workflow imports the Python package {top}, which has no stand-in in uwe; it runs in a Python container (decision 19), but the container cannot start: {reason}"
                 ))
             })?;
             *self.process.borrow_mut() = Some(process);

@@ -1006,7 +1006,7 @@ fn task_outcome_as(
                 }
             };
             variables = read_environment(&String::from_utf8_lossy(&bytes));
-            // The file is iunctus's own, unless an output asks for it.
+            // The file is uwe's own, unless an output asks for it.
             if !request.output_patterns.contains(&file.path) {
                 continue;
             }

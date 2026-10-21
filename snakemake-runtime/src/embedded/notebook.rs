@@ -135,10 +135,7 @@ pub fn build(mut context: Context, source: &Source, setting: &Setting) -> Result
             inputs: vec![
                 literal(
                     &path,
-                    &format!(
-                        "iunctus reads {} when the job runs for real",
-                        source.location
-                    ),
+                    &format!("uwe reads {} when the job runs for real", source.location),
                 ),
                 setting.package()?,
             ],

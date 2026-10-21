@@ -644,7 +644,7 @@ impl Host for Builder<'_> {
                 self.network.add(name, &[source], Box::new(node));
                 return Ok(Some(Value::Channel(output)));
             }
-            // `dump` prints only with `-dump-channels`, which iunctus does not have, so it is
+            // `dump` prints only with `-dump-channels`, which uwe does not have, so it is
             // the source itself.
             ("dump", _) => return Ok(Some(Value::Channel(source))),
             ("toSortedList", rest) => {

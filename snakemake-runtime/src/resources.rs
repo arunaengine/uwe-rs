@@ -12,7 +12,7 @@ use crate::task::evaluate as evaluate_value;
 use crate::workflow::State;
 use crate::workflow::workflow_error;
 
-/// Snakemake's default resources for remote execution (`Resources.DEFAULTS["full"]`). iunctus
+/// Snakemake's default resources for remote execution (`Resources.DEFAULTS["full"]`). uwe
 /// sends tasks to executors like TES, so its jobs get them.
 const DEFAULTS: &[(&str, &str)] = &[
     ("mem", "min(max(2*input.size_mb, 1000), 8000)"),

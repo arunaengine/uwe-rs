@@ -622,7 +622,7 @@ pub(crate) fn unsupported(message: &str) -> String {
     format!("{UNSUPPORTED}{message}")
 }
 
-/// Marks error messages of features iunctus does not support, so the driver reports them
+/// Marks error messages of features uwe does not support, so the driver reports them
 /// with exit code 33.
 pub const UNSUPPORTED: &str = "unsupported: ";
 

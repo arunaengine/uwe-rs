@@ -11,7 +11,7 @@ On the BCF cluster (binary and config are already in place):
 ```sh
 ssh worm.intra                       # from outside: ssh -J uni-jump worm.intra
 export PATH=$HOME/.local/bin:$PATH
-cd /vol/cb/projects/iunctus/no_backup/demo/nextflow/hello
+cd /vol/cb/projects/uwe/no_backup/demo/nextflow/hello
 uwe run main.nf                      # each task is a SLURM job with Apptainer, unless it ran before
 uwe run main.nf                      # again: all tasks come from the cache
 ```
@@ -22,7 +22,7 @@ dag-diamond.yaml` in `argo/examples`. Each run writes `report.html`; copy it to 
 and open it in a browser:
 
 ```sh
-scp worm.intra:/vol/cb/projects/iunctus/no_backup/demo/nextflow/hello/report.html .
+scp worm.intra:/vol/cb/projects/uwe/no_backup/demo/nextflow/hello/report.html .
 ```
 
 On a laptop with Docker:
@@ -58,7 +58,7 @@ container. On a laptop or workstation every task is a Docker container: see
 
 The files are copies of the originals. The few changes are listed below, with the reason.
 
-The copy on the cluster, `/vol/cb/projects/iunctus/no_backup/demo`, still has the earlier
+The copy on the cluster, `/vol/cb/projects/uwe/no_backup/demo`, still has the earlier
 folders: `nextflow/hello`, `nextflow/nf-core-demo`, `snakemake/tutorial`, `cwl/quick-start`,
 `cwl/workflows` and `argo/examples`. The commands for the cluster below use them.
 
@@ -70,7 +70,7 @@ only waits; every task goes to SLURM with `sbatch`.
 
 ## Once: the binary and the config file
 
-The binary is `/vol/cb/projects/iunctus/no_backup/bin/uwe`, and
+The binary is `/vol/cb/projects/uwe/no_backup/bin/uwe`, and
 `~/.local/bin/uwe` points to it. `~/.local/bin` is not on the PATH of a login shell on
 worm.intra, so add it once (or add this line to `~/.bashrc`):
 
@@ -82,11 +82,11 @@ The config file `~/.config/uwe/config.toml` is a copy of [`bcf-config.toml`](bcf
 
 ```sh
 mkdir -p ~/.config/uwe
-cp /vol/cb/projects/iunctus/no_backup/demo/bcf-config.toml ~/.config/uwe/config.toml
+cp /vol/cb/projects/uwe/no_backup/demo/bcf-config.toml ~/.config/uwe/config.toml
 ```
 
 It says: run tasks on SLURM with Apptainer, leave out the node `rs700-bcf-3` (it does not
-see `/vol`), keep the cache under `/vol/cb/projects/iunctus/no_backup/cache`, and reach the
+see `/vol`), keep the cache under `/vol/cb/projects/uwe/no_backup/cache`, and reach the
 internet through `proxy.intra:3128` (the nodes cannot reach the image registries without it).
 With it, `uwe run` needs no options. Check the setup with `uwe check-machine`.
 It also makes every run write its report, `report.html`, into the folder it ran in (see
@@ -94,11 +94,11 @@ It also makes every run write its report, `report.html`, into the folder it ran 
 
 ## Run the examples
 
-All folders are under `/vol/cb/projects/iunctus/no_backup/demo`. The options after the file
+All folders are under `/vol/cb/projects/uwe/no_backup/demo`. The options after the file
 are the ones that the example itself documents.
 
 ```sh
-cd /vol/cb/projects/iunctus/no_backup/demo
+cd /vol/cb/projects/uwe/no_backup/demo
 
 cd nextflow/hello && uwe run main.nf; cd -
 cd nextflow/nf-core-demo && uwe run . -profile test,apptainer --outdir results; cd -
@@ -197,7 +197,7 @@ write the report of a run: one HTML file that shows what the page shows, and nee
 and no network. Copy it to your computer and open it there:
 
 ```sh
-scp worm.intra:/vol/cb/projects/iunctus/no_backup/demo/nextflow/hello/report.html .
+scp worm.intra:/vol/cb/projects/uwe/no_backup/demo/nextflow/hello/report.html .
 ```
 
 It shows the summary of the run (workflow, language, executor, start, end, time, how many

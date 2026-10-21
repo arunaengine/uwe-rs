@@ -14,7 +14,7 @@ options = ["--exclude=rs700-bcf-3.intra"]
 # of running jobs and the SIF images. It must be on a file system that all nodes see at the same
 # path, and it should not fill the home folder.
 [cache]
-folder = "/vol/cb/projects/iunctus/no_backup/cache"
+folder = "/vol/cb/projects/uwe/no_backup/cache"
 
 # worm.intra, the login nodes and the compute nodes reach the internet only through this proxy.
 # uwe asks the image registries through it, and its SLURM jobs get it too (as HTTPS_PROXY),

@@ -232,7 +232,7 @@ build: locally, CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=<repository>/target/cluster
 native-build: the requested GNU release build passed locally; SHA-256 4358d3002157ffb988b874563ce5a34181544e13b329a0ca4977bf9cdd377085; cluster startup failed before submission because its cosh/sinh imports require GLIBC_2.44 while Debian 13 provides glibc 2.41
 execution: drivers, direct Apptainer references, Snakemake references and downloads on worm.intra; task jobs on partition bcf, excluding rs700-bcf-3.intra as in demo/bcf-config.toml; cli.intra used only for the initial squeue query
 reference: Apptainer 1.3.6 for the four demos; Snakemake 9.27.0 with test.out --cores 3 --sdm apptainer for three upstream shell workflows
-isolation: private config, store, database, scratch, temporary folders and Apptainer cache under /vol/cb/projects/iunctus/no_backup/beta-20261008-2129/; existing SIFs reused through task-local hard links
+isolation: private config, store, database, scratch, temporary folders and Apptainer cache under the no_backup folder of the BCF project, in beta-20261008-2129/; existing SIFs reused through task-local hard links
 evidence: cluster beta-20261008-2129/evidence/ and locally excluded .claude/production-readiness-evidence/cluster-20261008/evidence/ retain commands, logs, manifests, database rows, job scripts, accounting and checksums; all 152 copied evidence files verified by SHA-256
 setup: invalid initial harness runs copied old demo outputs or failed before submission at a wrapper quoting error; native Snakemake initially consumed test.out as a --sdm value. Corrected runs use committed demo inputs and valid arguments; initial logs are retained and excluded from verdicts.
 

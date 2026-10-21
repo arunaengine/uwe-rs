@@ -110,6 +110,35 @@ pub fn archive_file(reference: &str) -> Option<(String, bool)> {
 /// The entrypoint, command and user of the image in a docker-archive tar, from its
 /// `manifest.json` and the config that it names.
 pub fn archive_config(path: &Path) -> Result<ImageConfig, String> {
+    let config: serde_json::Value = serde_json::from_slice(&archive_parts(path)?)
+        .map_err(|error| format!("the image config of {}: {error}", path.display()))?;
+    let words = |key: &str| -> Vec<String> {
+        let list = config["config"][key]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        list.iter()
+            .filter_map(|word| word.as_str().map(str::to_owned))
+            .collect()
+    };
+    Ok(ImageConfig {
+        entrypoint: words("Entrypoint"),
+        cmd: words("Cmd"),
+        user: config["config"]["User"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned(),
+    })
+}
+
+/// The image ID of the image in a docker-archive tar, like `sha256:<hex>`: the digest of its
+/// config.
+pub fn archive_id(path: &Path) -> Result<String, String> {
+    Ok(task_model::Digest::sha256(&archive_parts(path)?).to_string())
+}
+
+/// The config of the image in a docker-archive tar, as the bytes that its `manifest.json` names.
+fn archive_parts(path: &Path) -> Result<Vec<u8>, String> {
     let failed = |error: std::io::Error| format!("cannot read {}: {error}", path.display());
     let mut archive = tar::Archive::new(std::fs::File::open(path).map_err(failed)?);
     // Configs and manifests are small; layers are skipped by seeking past them.
@@ -133,24 +162,9 @@ pub fn archive_config(path: &Path) -> Result<ImageConfig, String> {
     let manifest = read("manifest.json")?;
     let config = (manifest[0]["Config"].as_str())
         .ok_or_else(|| format!("{} names no image config", path.display()))?;
-    let config = read(config)?;
-    let words = |key: &str| -> Vec<String> {
-        let list = config["config"][key]
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
-        list.iter()
-            .filter_map(|word| word.as_str().map(str::to_owned))
-            .collect()
-    };
-    Ok(ImageConfig {
-        entrypoint: words("Entrypoint"),
-        cmd: words("Cmd"),
-        user: config["config"]["User"]
-            .as_str()
-            .unwrap_or_default()
-            .to_owned(),
-    })
+    small
+        .remove(config)
+        .ok_or_else(|| format!("{} has no {config}", path.display()))
 }
 
 #[cfg(test)]

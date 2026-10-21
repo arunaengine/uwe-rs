@@ -36,8 +36,14 @@ impl Interpreter {
     /// Executes one statement; errors get the statement's line if they have none yet.
     pub fn exec(&mut self, frame: &Frame, statement: &Stmt) -> Result<Flow, Error> {
         self.count_step()?;
-        self.exec_inner(frame, statement)
-            .map_err(|error| error.with_location(frame.source.location(statement.start())))
+        let flow = self
+            .exec_inner(frame, statement)
+            .map_err(|error| error.with_location(frame.source.location(statement.start())));
+        // A file that nothing refers to anymore is written, as CPython frees it at once.
+        if !self.open_files.is_empty() {
+            self.close_files(false)?;
+        }
+        flow
     }
 
     fn exec_inner(&mut self, frame: &Frame, statement: &Stmt) -> Result<Flow, Error> {

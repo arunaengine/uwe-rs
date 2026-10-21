@@ -1359,6 +1359,8 @@ impl Session {
         } else {
             Ok(())
         };
+        // The files of the workflow that it never closed are written, as at CPython's exit.
+        let _ = self.interpreter.close_files(true);
         self.interpreter.packages.stop();
         result
     }
@@ -2770,6 +2772,10 @@ impl Session {
             self.hooks_finished = true;
             self.run_hook(GlobalKeyword::OnSuccess)?;
         }
+        // The files of the workflow that it never closed are written, as at CPython's exit.
+        self.interpreter
+            .close_files(true)
+            .map_err(|error| self.error(&error))?;
         self.interpreter.packages.stop();
         Ok(())
     }

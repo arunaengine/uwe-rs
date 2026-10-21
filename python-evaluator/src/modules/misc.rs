@@ -1297,6 +1297,8 @@ struct FieldSpec {
     /// when it compares, as `field(hash=None)`.
     compare: bool,
     hash: Option<bool>,
+    /// Whether `__repr__` shows the field.
+    repr: bool,
 }
 
 impl Native for FieldSpec {
@@ -1346,6 +1348,8 @@ fn dataclass_decorate(
     let mut fields: Vec<(String, Option<Value>, Option<Value>)> = Vec::new();
     // The fields that `__eq__` compares and that `__hash__` takes.
     let mut compared: Vec<(String, bool, bool)> = Vec::new();
+    // The fields that `__repr__` shows.
+    let mut shown: Vec<String> = Vec::new();
     for ancestor in class_ref.mro.borrow().iter().rev() {
         let dict = ancestor.dict.borrow();
         let Some(Value::Dict(annotations)) = dict.get("__annotations__") else {
@@ -1353,23 +1357,23 @@ fn dataclass_decorate(
         };
         for key in annotations.borrow().entries.keys() {
             let Some(name) = key.0.as_str() else { continue };
-            let (default, factory, compare, hash) = match dict.get(name) {
+            let (default, factory, compare, hash, repr) = match dict.get(name) {
                 Some(Value::Native(object)) if object.type_name() == "dataclasses.Field" => {
                     let spec = object
                         .as_any()
                         .downcast_ref::<FieldSpec>()
                         .expect("a field");
                     let hash = spec.hash.unwrap_or(spec.compare);
-                    (
-                        spec.default.clone(),
-                        spec.factory.clone(),
-                        spec.compare,
-                        hash,
-                    )
+                    let (default, factory) = (spec.default.clone(), spec.factory.clone());
+                    (default, factory, spec.compare, hash, spec.repr)
                 }
-                Some(value) => (Some(value.clone()), None, true, true),
-                None => (None, None, true, true),
+                Some(value) => (Some(value.clone()), None, true, true, true),
+                None => (None, None, true, true, true),
             };
+            shown.retain(|existing| existing != name);
+            if repr {
+                shown.push(name.to_owned());
+            }
             fields.retain(|(existing, _, _)| existing != name);
             fields.push((name.to_owned(), default, factory));
             compared.retain(|(existing, _, _)| existing != name);
@@ -1413,11 +1417,10 @@ fn dataclass_decorate(
         }
         Ok(Value::None)
     });
-    let repr_fields = fields.clone();
     let repr = Value::builtin("__repr__", move |interpreter, args| {
         let this = &args.positional[0];
         let mut parts = Vec::new();
-        for (name, _, _) in repr_fields.iter() {
+        for name in shown.iter() {
             let value = interpreter.get_attribute(this, name)?;
             parts.push(format!("{name}={}", interpreter.repr(&value)?));
         }
@@ -1514,11 +1517,16 @@ pub fn dataclasses() -> Vec<(&'static str, Value)> {
                     Some(value) if !value.is_none() => Some(interpreter.truthy(&value)?),
                     _ => None,
                 };
+                let repr = match args.take_keyword("repr") {
+                    Some(value) => interpreter.truthy(&value)?,
+                    None => true,
+                };
                 Ok(Value::native(FieldSpec {
                     default: args.take_keyword("default"),
                     factory: args.take_keyword("default_factory"),
                     compare,
                     hash,
+                    repr,
                 }))
             }),
         ),

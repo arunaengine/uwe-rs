@@ -1077,20 +1077,18 @@ fn dict_method(
         unreachable!("a dict");
     };
     match name {
-        "keys" => {
-            let keys: IndexSet<Key> = dict.borrow().entries.keys().cloned().collect();
-            Ok(Value::FrozenSet(Rc::new(keys)))
+        // Views that read the dict as it is when they are used.
+        "keys" | "values" | "items" => {
+            let part = match name {
+                "keys" => crate::views::Part::Keys,
+                "values" => crate::views::Part::Values,
+                _ => crate::views::Part::Items,
+            };
+            Ok(Value::native(crate::views::View {
+                dict: dict.clone(),
+                part,
+            }))
         }
-        "values" => Ok(Value::list(
-            dict.borrow().entries.values().cloned().collect(),
-        )),
-        "items" => Ok(Value::list(
-            dict.borrow()
-                .entries
-                .iter()
-                .map(|(key, value)| Value::tuple(vec![key.0.clone(), value.clone()]))
-                .collect(),
-        )),
         "get" => {
             args.expect("get", 1, 2)?;
             let key = interpreter.dict_key(dict, &args.positional[0])?;

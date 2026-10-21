@@ -19,6 +19,7 @@ pub mod pandas;
 mod set_table;
 pub mod types;
 pub mod value;
+pub mod views;
 
 pub use error::{Error, ErrorKind, Location};
 pub use host::{Command, CommandOutcome, FileKind, Host, LocalHost, Stat};

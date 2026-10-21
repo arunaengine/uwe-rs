@@ -851,3 +851,43 @@ fn reruns_snakemake_incomplete() {
     let text = std::fs::read_to_string(folder.path().join("work/out.txt")).unwrap();
     assert_eq!(text, "made");
 }
+
+/// A script that this run wrote below `.snakemake` stays while another run of the folder
+/// holds the same file, and goes with the last run that holds it.
+#[test]
+fn keeps_held_scripts() {
+    let snakefile = "rule a:\n    output: 'out.txt'\n    script: 'make.py'\n";
+    let steps: [(&str, Step); 1] = [("a", |folder| {
+        // Another run holds each written script as `hold` does: by a link of its own.
+        for entry in std::fs::read_dir(folder.join(".snakemake/scripts")).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            if name.starts_with("iunctus-") && !name.contains(".iunctus-") {
+                let mut other = path.clone().into_os_string();
+                other.push(".iunctus-other");
+                std::fs::hard_link(&path, other).unwrap();
+            }
+        }
+        std::fs::write(folder.join("out.txt"), "made").unwrap();
+        0
+    })];
+    let folder = folder();
+    std::fs::write(folder.path().join("work/make.py"), "print(1)\n").unwrap();
+    let (folder, _host, error) = run(folder, snakefile, &steps);
+    assert_eq!(error, None);
+    let scripts = folder.path().join("work/.snakemake/scripts");
+    let names: Vec<String> = std::fs::read_dir(&scripts)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    let script = names.iter().find(|name| name.ends_with("make.py"));
+    assert!(
+        script.is_some(),
+        "the script of the other run stays: {names:?}"
+    );
+    assert!(
+        names
+            .iter()
+            .all(|name| !name.contains(".iunctus-") || name.ends_with("-other"))
+    );
+}

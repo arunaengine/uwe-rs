@@ -142,6 +142,8 @@ pub struct Session {
     written: HashMap<PathBuf, usize>,
     /// The lock of the working directory while jobs run, as Snakemake takes it.
     lock: Option<crate::locks::Lock>,
+    /// A name of this run among others in the folder, for the files that it holds there.
+    run: String,
 }
 
 struct SignaturePublication {
@@ -256,6 +258,12 @@ impl Session {
             local: false,
             written: HashMap::new(),
             lock: None,
+            run: {
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |time| time.as_nanos());
+                format!("{}-{nanos}", std::process::id())
+            },
         })
     }
 
@@ -1503,7 +1511,7 @@ impl Session {
             }
         }
         let mut task = combine(&mut members)?;
-        crate::shared::place(&self.workdir, &mut task, &mut placed)
+        crate::shared::place(&self.workdir, &mut task, &mut placed, &self.run)
             .map_err(|error| DriverError::new(format!("cannot place a job: {error}")))?;
         for file in &placed.written {
             *self.written.entry(file.clone()).or_default() += 1;
@@ -1521,7 +1529,7 @@ impl Session {
             *count -= 1;
             if *count == 0 {
                 self.written.remove(file);
-                let _ = std::fs::remove_file(file);
+                let _ = crate::shared::release(&self.workdir, file, &self.run);
             }
         }
     }

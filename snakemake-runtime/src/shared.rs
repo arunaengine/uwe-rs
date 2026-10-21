@@ -90,7 +90,12 @@ pub fn prepare(
 
 /// Makes a task run in the working directory itself: it sees the directory in place, gets
 /// only the inputs from elsewhere, and collects its outputs where the job writes them.
-pub fn place(workdir: &Path, task: &mut Task, placed: &mut Placed) -> std::io::Result<()> {
+pub fn place(
+    workdir: &Path,
+    task: &mut Task,
+    placed: &mut Placed,
+    run: &str,
+) -> std::io::Result<()> {
     for output in &mut task.outputs {
         let found = placed
             .outputs
@@ -121,7 +126,7 @@ pub fn place(workdir: &Path, task: &mut Task, placed: &mut Placed) -> std::io::R
             if let Some(parent) = target.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            std::fs::write(&target, content)?;
+            hold(workdir, &target, content, run)?;
             let path = target.to_string_lossy().into_owned();
             placed.written.push(target);
             kept.push(present(path, false));
@@ -158,6 +163,48 @@ pub fn place(workdir: &Path, task: &mut Task, placed: &mut Placed) -> std::io::R
     task.inputs = kept;
     task.workdir = Some(folder);
     Ok(())
+}
+
+/// Writes a file of a task below the working directory and notes that this run uses it, by
+/// a hard link of its own beside it, so that other runs in the folder keep it meanwhile.
+fn hold(workdir: &Path, target: &Path, content: &str, run: &str) -> std::io::Result<()> {
+    let _guard = guard(workdir)?;
+    if std::fs::read(target).ok().as_deref() != Some(content.as_bytes()) {
+        let temporary = suffixed(target, &format!("iunctus-{run}.part"));
+        std::fs::write(&temporary, content)?;
+        std::fs::rename(&temporary, target)?;
+    }
+    // Without hard links the file is this run's alone, as before.
+    let _ = std::fs::hard_link(target, suffixed(target, &format!("iunctus-{run}")));
+    Ok(())
+}
+
+/// Lets go of a file that `hold` wrote for this run; it goes once no other run holds it.
+pub fn release(workdir: &Path, target: &Path, run: &str) -> std::io::Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    let _guard = guard(workdir)?;
+    let _ = std::fs::remove_file(suffixed(target, &format!("iunctus-{run}")));
+    match std::fs::symlink_metadata(target) {
+        Ok(metadata) if metadata.nlink() <= 1 => std::fs::remove_file(target),
+        _ => Ok(()),
+    }
+}
+
+/// An exclusive lock of the files that runs hold in the folder, while it is kept.
+fn guard(workdir: &Path) -> std::io::Result<std::fs::File> {
+    let folder = workdir.join(".snakemake");
+    std::fs::create_dir_all(&folder)?;
+    let file = (std::fs::OpenOptions::new().create(true).append(true))
+        .open(folder.join("iunctus-written.lock"))?;
+    rustix::fs::flock(&file, rustix::fs::FlockOperation::LockExclusive)?;
+    Ok(file)
+}
+
+fn suffixed(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(".");
+    name.push(suffix);
+    PathBuf::from(name)
 }
 
 /// The time zone of this machine for the container, as Snakemake runs commands here: its

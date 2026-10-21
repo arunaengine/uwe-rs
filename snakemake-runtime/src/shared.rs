@@ -304,11 +304,18 @@ pub fn remove_outputs(workdir: &Path, job: &Job, logs: bool) -> std::io::Result<
 fn back_up(workdir: &Path, job: &Job) -> std::io::Result<()> {
     for output in updated(job) {
         let path = workdir.join(output.trim_end_matches('/'));
+        let backup = backup_path(workdir, output);
+        // A backup that is there already is of a job that was stopped before it ended: the
+        // output may be half written, so it gets the content of the backup back first.
+        if std::fs::symlink_metadata(&backup).is_ok() {
+            eprintln!("Restored previous version of {output} (an earlier job was stopped).");
+            remove(&path)?;
+            copy_into(&backup, &path)?;
+            continue;
+        }
         if std::fs::symlink_metadata(&path).is_err() {
             continue;
         }
-        let backup = backup_path(workdir, output);
-        remove(&backup)?;
         copy_into(&path, &backup)?;
     }
     Ok(())

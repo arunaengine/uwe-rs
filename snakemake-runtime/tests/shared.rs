@@ -1029,3 +1029,70 @@ fn writes_outside_outputs() {
         assert_eq!(task.outputs, [folder.path().join(output).to_string_lossy()]);
     }
 }
+
+/// A launch of `snakefile` in the working directory of `folder`, whose jobs share it.
+fn shared_driver(folder: &Path, snakefile: &str) -> Box<dyn workflow_graph::Driver> {
+    let work = folder.join("work");
+    std::fs::write(work.join("Snakefile"), snakefile).unwrap();
+    let launch = Launch {
+        target: work,
+        scratch: folder.join("scratch"),
+        ..Launch::default()
+    };
+    let options = snakemake_runtime::RunSettings {
+        shared_workdir: true,
+        ..Default::default()
+    };
+    snakemake_runtime::driver_with_options(&launch, Default::default(), options).unwrap()
+}
+
+/// A run that stops while an `update()` job runs gives the output its content back, as
+/// Snakemake does for the jobs it terminates; nothing is left incomplete.
+#[test]
+fn restores_stopped_updates() {
+    let snakefile =
+        "rule add:\n    input: 'in.txt'\n    output: update('acc.txt')\n    shell: 'unused'\n";
+    let folder = folder();
+    let work = folder.path().join("work");
+    std::fs::write(work.join("acc.txt"), "first\n").unwrap();
+    let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    let opened = std::fs::File::open(work.join("acc.txt")).unwrap();
+    opened.set_modified(hour_ago).unwrap();
+    std::fs::write(work.join("in.txt"), "new").unwrap();
+    let mut driver = shared_driver(folder.path(), snakefile);
+    assert_eq!(driver.start().unwrap().len(), 1);
+    std::fs::write(work.join("acc.txt"), "half").unwrap();
+    let _ = driver.failed(&workflow_graph::ExecuteError::Cancelled);
+    drop(driver);
+    let text = std::fs::read_to_string(work.join("acc.txt")).unwrap();
+    assert_eq!(text, "first\n");
+    assert!(!work.join(".snakemake/backups/acc.txt").exists());
+    let marks = std::fs::read_dir(work.join(".snakemake/incomplete")).unwrap();
+    assert_eq!(marks.count(), 0);
+}
+
+/// The backup of an `update()` job that a killed run left is not overwritten by the half
+/// written output: the next job starts from the content of the backup.
+#[test]
+fn keeps_left_backups() {
+    let snakefile =
+        "rule add:\n    input: 'in.txt'\n    output: update('acc.txt')\n    shell: 'unused'\n";
+    let steps: [(&str, Step); 1] = [("add", |folder| {
+        let old = std::fs::read_to_string(folder.join("acc.txt")).unwrap();
+        std::fs::write(folder.join("acc.txt"), old + "more\n").unwrap();
+        0
+    })];
+    let folder = folder();
+    let work = folder.path().join("work");
+    std::fs::create_dir_all(work.join(".snakemake/backups")).unwrap();
+    std::fs::write(work.join(".snakemake/backups/acc.txt"), "first\n").unwrap();
+    std::fs::write(work.join("acc.txt"), "half").unwrap();
+    let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    let opened = std::fs::File::open(work.join("acc.txt")).unwrap();
+    opened.set_modified(hour_ago).unwrap();
+    std::fs::write(work.join("in.txt"), "new").unwrap();
+    let (folder, _host, error) = run(folder, snakefile, &steps);
+    assert_eq!(error, None);
+    let text = std::fs::read_to_string(folder.path().join("work/acc.txt")).unwrap();
+    assert_eq!(text, "first\nmore\n");
+}

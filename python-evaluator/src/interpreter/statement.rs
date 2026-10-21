@@ -243,9 +243,34 @@ impl Interpreter {
                 Operator::BitOr | Operator::BitAnd | Operator::Sub | Operator::BitXor,
                 Value::Set(set),
             ) => {
+                // `|=` and the others change the set in place, as its update methods do.
+                let name = match operator {
+                    Operator::BitOr => "update",
+                    Operator::BitAnd => "intersection_update",
+                    Operator::Sub => "difference_update",
+                    _ => "symmetric_difference_update",
+                };
+                let members = set.borrow().clone();
+                let table = match value.plain() {
+                    Value::Set(other) => {
+                        let theirs = other.borrow().clone();
+                        (crate::set_table::Operand::of(current, &members))
+                            .zip(crate::set_table::Operand::of(value, &theirs))
+                            .and_then(|(this, other)| {
+                                crate::set_table::updated(&this, name, &[other])
+                            })
+                    }
+                    Value::FrozenSet(other) => (crate::set_table::Operand::of(current, &members))
+                        .zip(crate::set_table::Operand::of(value, other))
+                        .and_then(|(this, other)| crate::set_table::updated(&this, name, &[other])),
+                    _ => None,
+                };
                 let result = self.binary(operator, current, value)?;
                 if let Value::Set(result) = result.plain() {
                     *set.borrow_mut() = result.borrow().clone();
+                }
+                if let Some(table) = table {
+                    crate::hashing::register(current, table);
                 }
                 Ok(current.plain().clone())
             }

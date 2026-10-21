@@ -263,16 +263,24 @@ pub fn construct(
         },
         TypeTag::Set | TypeTag::FrozenSet => {
             let mut items = IndexSet::new();
-            if let Some(value) = first {
-                for item in interpreter.iterate(&value)? {
+            if let Some(value) = &first {
+                for item in interpreter.iterate(value)? {
                     items.insert(interpreter.key(&item)?);
                 }
             }
-            Ok(if tag == TypeTag::Set {
+            let made = (first.as_ref())
+                .and_then(|value| crate::set_table::Operand::of(value, &items))
+                .map(|operand| crate::set_table::made(&operand));
+            let value = if tag == TypeTag::Set {
                 Value::set(items)
             } else {
                 Value::FrozenSet(Rc::new(items))
-            })
+            };
+            // A copy of a set takes its layout, as CPython's `set_merge` copies it.
+            if let Some(table) = made {
+                crate::hashing::register(&value, table);
+            }
+            Ok(value)
         }
         TypeTag::Dict | TypeTag::OrderedDict | TypeTag::DefaultDict | TypeTag::Counter => {
             let mut dict = Dict::default();

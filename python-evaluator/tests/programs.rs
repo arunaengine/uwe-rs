@@ -56,6 +56,16 @@ fn pops_like_cpython() {
     assert_eq!(output, "32 1 [0, 48, 16]\n[16, 8]\n");
 }
 
+/// As CPython 3.13, a set made from another set takes its layout, and the operators merge
+/// sets in the order of their tables.
+#[test]
+fn merges_like_cpython() {
+    let code = "print(list({16, 32, 1, 0, 48} | {64}))\na = {16, 32, 1, 0, 48}\nprint(list(a.union([64])), list(set(a)), list(a.copy()))\nb = set([8, 16, 24, 0])\nb.discard(16)\nprint(list(set(b)), list(b - {24}), list(b ^ {7, 15}))\n";
+    let output = evaluate(code).expect("runs");
+    let expected = "[32, 1, 0, 48, 16, 64]\n[32, 1, 0, 48, 16, 64] [32, 1, 0, 48, 16] [32, 1, 0, 48, 16]\n[8, 24, 0] [8, 0] [0, 7, 8, 15, 24]\n";
+    assert_eq!(output, expected);
+}
+
 #[test]
 fn reports_exception_lines() {
     let error = evaluate("x = 1\ny = {}\ny['missing']\n").expect_err("a KeyError");

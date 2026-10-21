@@ -11,14 +11,12 @@ use indexmap::IndexSet;
 use num_bigint::{BigUint, Sign};
 use num_traits::ToPrimitive;
 
+use crate::set_table::Table;
 use crate::value::{Key, Value};
 
 /// CPython reduces numbers modulo the prime 2**61 - 1 (`_PyHASH_MODULUS`).
 const BITS: u32 = 61;
 const MODULUS: u64 = (1 << BITS) - 1;
-/// The probing constants of CPython's `setobject.c`.
-const PERTURB_SHIFT: u32 = 5;
-const LINEAR_PROBES: usize = 9;
 
 type Members = Rc<RefCell<IndexSet<Key>>>;
 /// A set made by a literal, with the hashes of its members at that time.
@@ -148,27 +146,20 @@ pub fn set_order(set: &Members) -> Vec<Value> {
                 weak.upgrade().is_some_and(|live| Rc::ptr_eq(&live, set)) && *noted == hashes
             })
     });
-    let mut table = incremental(&hashes, hashes.iter().copied().enumerate());
-    if literal {
-        let source: Vec<usize> = table.iter().flatten().copied().collect();
-        let constant = incremental(&hashes, source.iter().map(|index| (*index, hashes[*index])));
-        table = merged(&hashes, &constant);
+    let Some(mut table) = incremental(members.iter()) else {
+        return members.iter().map(|key| key.0.clone()).collect();
+    };
+    if literal && let Some(constant) = incremental(table.keys()) {
+        table = Table::new();
+        table.merge(&constant);
     }
-    table
-        .iter()
-        .flatten()
-        .map(|index| members[*index].0.clone())
-        .collect()
+    table.keys().map(|key| key.0.clone()).collect()
 }
 
 /// The members of a frozenset in the order CPython iterates them.
 pub fn frozen_order(set: &IndexSet<Key>) -> Vec<Value> {
-    match hashes(set) {
-        Some(hashes) => incremental(&hashes, hashes.iter().copied().enumerate())
-            .iter()
-            .flatten()
-            .map(|index| set[*index].0.clone())
-            .collect(),
+    match incremental(set.iter()) {
+        Some(table) => table.keys().map(|key| key.0.clone()).collect(),
         None => set.iter().map(|key| key.0.clone()).collect(),
     }
 }
@@ -177,81 +168,11 @@ fn hashes(set: &IndexSet<Key>) -> Option<Vec<i64>> {
     set.iter().map(|key| stable_hash(&key.0)).collect()
 }
 
-/// The table of a set that starts empty and gets the members one by one, as `set_add_entry`
-/// fills it and `set_table_resize` grows it.
-fn incremental(hashes: &[i64], members: impl Iterator<Item = (usize, i64)>) -> Vec<Option<usize>> {
-    let mut table = vec![None; 8];
-    let mut fill = 0;
-    for (index, hash) in members {
-        insert(&mut table, hash, index);
-        fill += 1;
-        if fill * 5 >= (table.len() - 1) * 3 {
-            let wanted = if fill > 50_000 { fill * 2 } else { fill * 4 };
-            table = resized(hashes, &table, wanted);
-        }
+/// The table of a set that starts empty and gets the members one by one.
+fn incremental<'a>(members: impl Iterator<Item = &'a Key>) -> Option<Table> {
+    let mut table = Table::new();
+    for key in members {
+        table.add(key.clone(), stable_hash(&key.0)?);
     }
-    table
-}
-
-/// The table of a new set that `set_merge` copies another set into: one of the same size
-/// takes the layout as it is, a different size gets the members in table order.
-fn merged(hashes: &[i64], other: &[Option<usize>]) -> Vec<Option<usize>> {
-    let used = other.iter().flatten().count();
-    let size = if used * 5 >= 7 * 3 {
-        table_size(used * 2)
-    } else {
-        8
-    };
-    if size == other.len() {
-        return other.to_vec();
-    }
-    let mut table = vec![None; size];
-    for index in other.iter().flatten() {
-        insert(&mut table, hashes[*index], *index);
-    }
-    table
-}
-
-/// A new table for at least `wanted` members with the members of `table` in its order.
-fn resized(hashes: &[i64], table: &[Option<usize>], wanted: usize) -> Vec<Option<usize>> {
-    let mut new = vec![None; table_size(wanted)];
-    for index in table.iter().flatten() {
-        insert(&mut new, hashes[*index], *index);
-    }
-    new
-}
-
-/// The smallest power of two above `wanted`, at least 8, as `set_table_resize` picks it.
-fn table_size(wanted: usize) -> usize {
-    let mut size = 8;
-    while size <= wanted {
-        size <<= 1;
-    }
-    size
-}
-
-/// Puts a member into the first free slot of its probe sequence.
-fn insert(table: &mut [Option<usize>], hash: i64, member: usize) {
-    let mask = table.len() - 1;
-    let mut perturb = hash as u64;
-    let mut slot = (hash as u64 as usize) & mask;
-    loop {
-        let probes = if slot + LINEAR_PROBES <= mask {
-            LINEAR_PROBES
-        } else {
-            0
-        };
-        for offset in 0..=probes {
-            if table[slot + offset].is_none() {
-                table[slot + offset] = Some(member);
-                return;
-            }
-        }
-        perturb >>= PERTURB_SHIFT;
-        slot = (slot
-            .wrapping_mul(5)
-            .wrapping_add(1)
-            .wrapping_add(perturb as usize))
-            & mask;
-    }
+    Some(table)
 }

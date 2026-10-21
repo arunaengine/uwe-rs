@@ -15,8 +15,8 @@ pub struct StorageFiles {
     storage: Blocking,
     /// Where copies of remote files go.
     downloads: PathBuf,
-    /// Whether this process copied each directory, by its download name.
-    copied: Mutex<HashMap<String, Arc<Mutex<bool>>>>,
+    /// The copy of each directory that this process made, by its download name.
+    copied: Mutex<HashMap<String, Arc<Mutex<Option<PathBuf>>>>>,
 }
 
 impl StorageFiles {
@@ -43,41 +43,31 @@ impl StorageFiles {
                 .or_default()
                 .clone();
                 let mut done = turn.lock().unwrap_or_else(|poison| poison.into_inner());
-                let bundle = self.downloads.join(name);
-                if !*done {
-                    self.replace_directory(location, &bundle)?;
-                    *done = true;
+                if let Some(bundle) = &*done {
+                    return Ok(bundle.join("content"));
                 }
+                let bundle = self.copy_directory(location, &name)?;
+                *done = Some(bundle.clone());
                 Ok(bundle.join("content"))
             }
             _ => self.storage.fetch(location, &self.downloads).map_err(other),
         }
     }
 
-    /// Downloads a directory whole into a temporary folder and only then renames it to
-    /// `bundle`. A crash leaves a `.tmp` folder, which nothing reads and `iunctus clean`
-    /// removes. A directory may change under its name, so copies of earlier runs go.
-    fn replace_directory(&self, location: &str, bundle: &Path) -> io::Result<()> {
+    /// Downloads a directory whole into a temporary folder and only then renames it to a
+    /// bundle of this process, as tasks of other runs may read their own copy while it changes.
+    /// A crash leaves a `.tmp` folder; `iunctus clean` removes it and old bundles.
+    fn copy_directory(&self, location: &str, name: &str) -> io::Result<PathBuf> {
         std::fs::create_dir_all(&self.downloads)?;
         let ready = tempfile::tempdir_in(&self.downloads)?;
         self.download_directory(location, &ready.path().join("content"))?;
-        let old = tempfile::tempdir_in(&self.downloads)?;
-        match std::fs::rename(bundle, old.path().join("bundle")) {
-            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
-            _ => {}
-        }
-        match std::fs::rename(ready.path(), bundle) {
-            // Another process just put a whole copy there.
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    io::ErrorKind::AlreadyExists | io::ErrorKind::DirectoryNotEmpty
-                ) && bundle.join("content").is_dir() =>
-            {
-                Ok(())
-            }
-            result => result,
-        }
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let bundle = (self.downloads).join(format!("{name}-{}-{stamp}", std::process::id()));
+        std::fs::rename(ready.path(), &bundle)?;
+        Ok(bundle)
     }
 
     /// Downloads each file below an address into a folder.
@@ -246,14 +236,10 @@ mod tests {
         let files = StorageFiles::new(&storage, downloads.clone());
         let server = start_ftp();
         let safe = format!("{server}/safe");
-        let name = storage
-            .blocking()
-            .download_name(&safe)
-            .expect("a download name");
-
-        files.local(&safe).expect("a safe directory");
+        let copy = files.local(&safe).expect("a safe directory");
+        assert!(copy.starts_with(&downloads));
         assert_eq!(
-            std::fs::read_to_string(downloads.join(name).join("content/safe.txt")).unwrap(),
+            std::fs::read_to_string(copy.join("safe.txt")).unwrap(),
             "safe"
         );
 
@@ -334,19 +320,40 @@ mod tests {
         std::fs::set_permissions(&broken, std::fs::Permissions::from_mode(0o644)).unwrap();
         let files = StorageFiles::new(&storage, downloads.clone());
         let copy = files.local(location).expect("a copy");
-        assert_eq!(copy, bundle.join("content"));
+        assert_ne!(copy, bundle.join("content"), "the next run downloads again");
         assert_eq!(std::fs::read_to_string(copy.join("a.txt")).unwrap(), "a\n");
         assert_eq!(std::fs::read_to_string(copy.join("b.txt")).unwrap(), "b\n");
-        assert!(
-            !copy.join("old.txt").exists(),
-            "the next run downloads again"
-        );
-        let mut left: Vec<String> = (std::fs::read_dir(&downloads).unwrap())
+        assert!(!copy.join("old.txt").exists());
+        let left = (std::fs::read_dir(&downloads).unwrap())
             .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
-        left.sort();
-        let name = bundle.file_name().unwrap().to_string_lossy().into_owned();
-        assert_eq!(left, ["in-use.lock".to_owned(), name]);
+            .filter(|name| name.starts_with(".tmp"))
+            .count();
+        assert_eq!(left, 0, "no partial copy stays");
+    }
+
+    #[test]
+    fn copies_stay_readable() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let downloads = root.path().join("downloads");
+        let stored = root.path().join("store/runs/3/tree");
+        std::fs::create_dir_all(&stored).unwrap();
+        std::fs::write(stored.join("a.txt"), "first\n").unwrap();
+        let location = "s3://store/runs/3/tree";
+        // Two runs at once: the second copies a newer version while the first reads its own.
+        let first = StorageFiles::new(&folders(root.path()), downloads.clone());
+        let read = first.local(location).expect("a copy");
+        std::fs::write(stored.join("a.txt"), "second\n").unwrap();
+        let second = StorageFiles::new(&folders(root.path()), downloads.clone());
+        let newer = second.local(location).expect("a copy");
+        assert_eq!(
+            std::fs::read_to_string(read.join("a.txt")).unwrap(),
+            "first\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(newer.join("a.txt")).unwrap(),
+            "second\n"
+        );
+        assert_eq!(first.local(location).unwrap(), read, "one copy per run");
     }
 
     #[test]

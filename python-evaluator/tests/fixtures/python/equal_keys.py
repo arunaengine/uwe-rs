@@ -34,3 +34,13 @@ class Point:
 
 print(Point(1, "a") == Point(1, "b"), hash(Point(1, "a", 5)) == hash(Point(1, "b", 6)))
 print(Point(1, tag=1) == Point(1, tag=2), len({Point(1, "a"), Point(1, "b")}), Point(2) == Point(1))
+
+
+@dataclass
+class Shown:
+    x: int
+    secret: str = field(default="s", repr=False)
+    y: int = 2
+
+
+print(Shown(1), repr(Shown(3, "k", 4)))

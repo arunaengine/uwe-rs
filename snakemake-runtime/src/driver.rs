@@ -582,7 +582,7 @@ impl Session {
                     task,
                     signature,
                     usage,
-                    ..
+                    cwl,
                 } = crate::task::build(
                     &mut self.interpreter,
                     &setting,
@@ -604,6 +604,10 @@ impl Session {
                     self.needrun.insert(*job, true);
                     self.signatures.insert(*job, signature);
                     self.prepared.insert(*job, task);
+                    // The task of a `cwl:` job is a placeholder; its CWL run does the work.
+                    if let Some(cwl) = cwl {
+                        self.cwl_jobs.insert(*job, cwl);
+                    }
                 }
             }
         }

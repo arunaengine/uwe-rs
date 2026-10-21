@@ -553,6 +553,16 @@ fn stops_daemons_after() {
         r#"{"probe":{"check":{"http":{"path":"/health","port":8000}},"delay_seconds":0,"period_seconds":2,"timeout_seconds":1}}"#
     );
     assert_eq!(server.reuse, workflow_graph::Reuse::Denied);
+    // An HTTPS probe keeps its scheme, host and headers.
+    let secure = spec.replace(
+        "httpGet: {path: /health, port: 8000}",
+        "httpGet: {path: /health, port: 8443, scheme: HTTPS, host: localhost, httpHeaders: [{name: X-Probe, value: probe}]}",
+    );
+    let probe = driver(folder.path(), &secure).start().unwrap().remove(0);
+    assert_eq!(
+        probe.environment["IUNCTUS_DAEMON"],
+        r#"{"probe":{"check":{"http":{"headers":[{"name":"X-Probe","value":"probe"}],"host":"localhost","path":"/health","port":8443,"scheme":"HTTPS"}},"delay_seconds":0,"period_seconds":2,"timeout_seconds":1}}"#
+    );
     // The daemon is ready at an address, which the next step reads as its `ip`.
     let ready = Outcome {
         id: server.id,

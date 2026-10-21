@@ -214,6 +214,18 @@ pub struct Built {
     pub usage: crate::scheduling::Usage,
     /// The CWL document of a `cwl:` rule with its input object, which runs instead of the task.
     pub cwl: Option<crate::cwl::Job>,
+    /// The `priority` of the job, by which Snakemake's scheduler picks among ready jobs.
+    pub priority: f64,
+}
+
+/// A number of Python as a float, like a priority; 0 for other values.
+fn number(value: &Value) -> f64 {
+    match value.plain() {
+        Value::Int(number) => *number as f64,
+        Value::Float(number) => *number,
+        Value::Bool(flag) => f64::from(u8::from(*flag)),
+        _ => 0.0,
+    }
 }
 
 /// Builds the task of a job.
@@ -310,8 +322,8 @@ pub fn build(
         (true, Some(cores)) => cores,
         _ => threads,
     };
-    // Snakemake's `expand_priority`: a priority function must give a number. iunctus leaves
-    // the order of tasks to the executor.
+    // Snakemake's `expand_priority`: a priority function must give a number.
+    let mut priority_value = rule.priority.as_ref().map_or(0.0, number);
     if let Some(priority) = &rule.priority
         && is_callable(interpreter, priority)
     {
@@ -332,6 +344,7 @@ pub fn build(
                 python_evaluator::types::type_name(&value)
             )));
         }
+        priority_value = number(&value);
     }
     let job_values = crate::resources::JobValues {
         wildcards: &wildcards,
@@ -925,6 +938,7 @@ pub fn build(
         signature,
         usage,
         cwl,
+        priority: priority_value,
     })
 }
 

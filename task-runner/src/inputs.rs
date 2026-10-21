@@ -36,7 +36,7 @@ pub(crate) struct Inputs<'a> {
 }
 
 /// The private copies of the inputs of a request, in `input-snapshots/<run>/` of the
-/// downloads. They go with the last clone of the request; `iunctus clean` removes the copies
+/// downloads. They go with the last clone of the request; `uwe clean` removes the copies
 /// of runs that ended without removing them.
 #[derive(Clone, Debug)]
 pub(crate) struct Snapshots {

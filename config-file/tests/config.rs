@@ -178,7 +178,7 @@ fn errors_include_locations() {
     );
     assert_eq!(
         message(config.root().only(&["store"]).unwrap_err()),
-        "/site/config.toml:1: iunctus has no section `storage`; it knows `store`"
+        "/site/config.toml:1: uwe has no section `storage`; it knows `store`"
     );
     let table = parse("storage = 3").unwrap();
     assert_eq!(

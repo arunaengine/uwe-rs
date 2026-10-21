@@ -1,5 +1,5 @@
 //! The job script of an attempt on a node that shares no folders with this machine, which stages
-//! the files of the task with the iunctus helper.
+//! the files of the task with the uwe helper.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -40,14 +40,14 @@ pub fn secret_text(file: &Path) -> Result<String, String> {
     std::fs::read_to_string(file).map_err(unreadable)
 }
 
-/// Where a job finds the static iunctus binary that stages the files.
+/// Where a job finds the static uwe binary that stages the files.
 #[derive(Clone, Debug)]
 pub enum Helper {
     /// A path that exists on every node.
     Path(String),
     /// An address that the job downloads with `curl` or `wget`, and the SHA-256 of the file.
     Download { url: String, sha256: String },
-    /// A binary of this machine, which iunctus uploads to the staging root, and which the job
+    /// A binary of this machine, which uwe uploads to the staging root, and which the job
     /// downloads from there like [`Helper::Download`].
     Upload(Binary),
 }
@@ -101,9 +101,9 @@ pub fn job_script(
     // sends the reason alone. A signal ends the script through its exit trap, which ignores
     // more of them and removes the data of the task first, as a SIGKILL may cut it short.
     let mut script = format!(
-        "#!/bin/bash\n# The iunctus job of one attempt of a task, on a node without the shared \
+        "#!/bin/bash\n# The uwe job of one attempt of a task, on a node without the shared \
          folders.\numask 077\nif ! node=$(mkdir -p {base} 2>&1 && mktemp -d {base}/{} 2>&1); \
-         then\n    early=\"iunctus: cannot make a private folder in \"{base}\" on $(hostname): \
+         then\n    early=\"uwe: cannot make a private folder in \"{base}\" on $(hostname): \
          $node\"\n{early}    exit 1\nfi\n\
          exec >> \"$node/{LOG}\" 2>&1\nsent=\nfinish() {{\n    trap '' TERM INT HUP\n    \
          rm -rf \"$node/data\"\n    [ -n \"$sent\" ] || {send}\n    rm -rf \"$node\"\n}}\n\
@@ -120,7 +120,7 @@ pub fn job_script(
             // The nodes may differ from this machine, and the binary runs only on its own.
             let machine = uploaded.machine.uname();
             script.push_str(&format!(
-                "[ \"$(uname -m)\" = {machine} ] || {{ echo \"iunctus: the helper runs on \
+                "[ \"$(uname -m)\" = {machine} ] || {{ echo \"uwe: the helper runs on \
                  {machine}, but $(hostname) is $(uname -m); name a binary for it with \
                  helper_file\" >&2; exit 1; }}\n"
             ));
@@ -133,7 +133,7 @@ pub fn job_script(
             "helper=\"$node/uwe\"\n\
              {{ curl -fsSL -o \"$helper\" {url} || wget -q -O \"$helper\" {url}; }} && \
              echo {sha256}'  '\"$helper\" | sha256sum -c --status - && chmod +x \"$helper\" || \
-             {{ echo \"iunctus: cannot get the helper from {address} on $(hostname)\" >&2; \
+             {{ echo \"uwe: cannot get the helper from {address} on $(hostname)\" >&2; \
              exit 1; }}\n",
             url = quote(url),
             sha256 = quote(sha256),
@@ -274,7 +274,7 @@ mod tests {
         let script = job_script(&apptainer, &run, &staging, false, Some(60), links);
         let expected = "umask 077\nif ! node=$(mkdir -p \"${TMPDIR:-/tmp}\" 2>&1 && \
             mktemp -d \"${TMPDIR:-/tmp}\"/'uwe-run-P-1-1.XXXXXXXX' 2>&1); then\n    \
-            early=\"iunctus: cannot make a private folder in \"\"${TMPDIR:-/tmp}\"\" on \
+            early=\"uwe: cannot make a private folder in \"\"${TMPDIR:-/tmp}\"\" on \
             $(hostname): $node\"\n    exit 1\nfi\n\
             exec >> \"$node/slurm.log\" 2>&1\nsent=\nfinish() {\n    trap '' TERM INT HUP\n    \
             rm -rf \"$node/data\"\n    \
@@ -342,7 +342,7 @@ mod tests {
             ..links
         };
         let script = job_script(&docker, &run, &staging, false, None, links);
-        let expected = "[ \"$(uname -m)\" = aarch64 ] || { echo \"iunctus: the helper runs on \
+        let expected = "[ \"$(uname -m)\" = aarch64 ] || { echo \"uwe: the helper runs on \
             aarch64, but $(hostname) is $(uname -m); name a binary for it with helper_file\" \
             >&2; exit 1; }\nhelper=\"$node/uwe\"\n{ curl -fsSL -o \"$helper\" \
             'https://staging/cas/x?signature' || wget";

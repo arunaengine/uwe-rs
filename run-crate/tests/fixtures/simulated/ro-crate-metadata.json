@@ -40,7 +40,7 @@
         }
       ],
       "datePublished": "2026-09-30T17:26:29.455+00:00",
-      "description": "Simulated run: iunctus did not run the tasks. Its simulator made up their output files, so the files, digests and times in this crate are not results of the tools. A run with real data gives the real results. Simulated run fixture-run of the nextflow workflow /work/main.nf by iunctus, with the provenance of each task.",
+      "description": "Simulated run: uwe did not run the tasks. Its simulator made up their output files, so the files, digests and times in this crate are not results of the tools. A run with real data gives the real results. Simulated run fixture-run of the nextflow workflow /work/main.nf by uwe, with the provenance of each task.",
       "hasPart": [
         {
           "@id": "main.nf"
@@ -134,7 +134,7 @@
     {
       "@id": "#simulated",
       "@type": "PropertyValue",
-      "description": "Simulated run: iunctus did not run the tasks. Its simulator made up their output files, so the files, digests and times in this crate are not results of the tools. A run with real data gives the real results.",
+      "description": "Simulated run: uwe did not run the tasks. Its simulator made up their output files, so the files, digests and times in this crate are not results of the tools. A run with real data gives the real results.",
       "name": "simulated",
       "value": "true"
     },
@@ -277,12 +277,12 @@
       "@id": "#engine/fixture-run",
       "@type": "OrganizeAction",
       "actionStatus": "http://schema.org/CompletedActionStatus",
-      "description": "iunctus run main.nf --greeting hello",
+      "description": "uwe run main.nf --greeting hello",
       "endTime": "2026-09-30T17:26:29.449+00:00",
       "instrument": {
         "@id": "https://github.com/arunaengine/uwe-rs"
       },
-      "name": "Run of iunctus 0.1.0",
+      "name": "Run of uwe 0.1.0",
       "object": [
         {
           "@id": "#control/UPPER"
@@ -300,7 +300,7 @@
       "@id": "#run/fixture-run",
       "@type": "CreateAction",
       "actionStatus": "http://schema.org/CompletedActionStatus",
-      "description": "Simulated run: iunctus did not run the tasks. Its simulator made up their output files, so the files, digests and times in this crate are not results of the tools. A run with real data gives the real results.",
+      "description": "Simulated run: uwe did not run the tasks. Its simulator made up their output files, so the files, digests and times in this crate are not results of the tools. A run with real data gives the real results.",
       "endTime": "2026-09-30T17:26:29.449+00:00",
       "instrument": {
         "@id": "main.nf"

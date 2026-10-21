@@ -83,7 +83,7 @@ fn origin(url: &reqwest::Url) -> (String, Option<String>, Option<u16>) {
     (url.scheme().to_owned(), host, url.port_or_known_default())
 }
 
-/// The settings that the clients of iunctus share.
+/// The settings that the clients of uwe share.
 fn builder() -> Result<reqwest::ClientBuilder, String> {
     let mut builder = reqwest::Client::builder()
         .user_agent(concat!("uwe/", env!("CARGO_PKG_VERSION")))
@@ -114,15 +114,15 @@ pub fn trust_mozilla_roots() {
     let _ = MOZILLA_ROOTS.set(());
 }
 
-/// Sends the requests of iunctus through this web proxy, like `http://proxy.example.org:3128`,
+/// Sends the requests of uwe through this web proxy, like `http://proxy.example.org:3128`,
 /// unless the environment names one (`HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, in either
 /// case), which wins. Takes effect only before the first request.
 pub fn use_proxy(address: &str) {
     let _ = PROXY.set(address.to_owned());
 }
 
-/// The web proxy of the config file, unless the environment names one. Programs that iunctus
-/// starts on other machines, like the jobs of SLURM, need it to reach the web as iunctus does.
+/// The web proxy of the config file, unless the environment names one. Programs that uwe
+/// starts on other machines, like the jobs of SLURM, need it to reach the web as uwe does.
 pub fn config_proxy() -> Option<&'static str> {
     PROXY
         .get()

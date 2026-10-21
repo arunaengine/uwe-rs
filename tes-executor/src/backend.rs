@@ -249,7 +249,7 @@ impl TesBackend {
             tokio::fs::write(
                 root.join("control/stderr"),
                 format!(
-                    "iunctus: TES stopped the task after its time of {} seconds\n",
+                    "uwe: TES stopped the task after its time of {} seconds\n",
                     job.placement.time_seconds.unwrap_or_default()
                 ),
             )
@@ -279,7 +279,7 @@ impl TesBackend {
             Ok(mut finished) if ran_out => {
                 use tokio::io::AsyncWriteExt;
                 let note = format!(
-                    "iunctus: the task ran longer than its time of {} seconds\n",
+                    "uwe: the task ran longer than its time of {} seconds\n",
                     time.unwrap_or_default()
                 );
                 tokio::fs::create_dir_all(root.join("control")).await?;

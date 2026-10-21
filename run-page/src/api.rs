@@ -267,7 +267,7 @@ struct GraphView {
     fold: Option<usize>,
 }
 
-/// The graph of a run as SVG, drawn by the same renderer as `iunctus graph`: one box per task
+/// The graph of a run as SVG, drawn by the same renderer as `uwe graph`: one box per task
 /// with large steps folded, or one per step, down or to the right, with the states of the
 /// tasks as the database knows them and the markers of a simulated run.
 async fn graph(

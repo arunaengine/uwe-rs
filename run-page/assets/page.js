@@ -1,4 +1,4 @@
-// The script of the page of iunctus: the helpers that both views share, the navigation, and
+// The script of the page of uwe: the helpers that both views share, the navigation, and
 // the list of runs. `run.js` shows one run.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -158,7 +158,7 @@ function leave() {
 async function showRuns() {
   leave();
   trail.textContent = "runs";
-  document.title = "iunctus: runs";
+  document.title = "uwe: runs";
   let runs;
   try {
     runs = await json("/api/runs");
@@ -170,7 +170,7 @@ async function showRuns() {
   if (!runs.length) {
     main.replaceChildren(el("div", { class: "card" },
       el("h2", {}, "No runs yet"),
-      el("p", { class: "quiet" }, "Every `iunctus run` records itself here.")));
+      el("p", { class: "quiet" }, "Every `uwe run` records itself here.")));
     return;
   }
   const rows = runs.map((run) => {

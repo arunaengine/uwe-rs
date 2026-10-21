@@ -1767,7 +1767,7 @@ async fn reports_folder_failures() {
     assert!(error.to_string().contains("Not a directory"), "{error}");
 }
 
-/// An image archive in `root` whose image has `entrypoint`, saved by its image ID as iunctus
+/// An image archive in `root` whose image has `entrypoint`, saved by its image ID as uwe
 /// saves them, as the reference of a task.
 fn image_archive(root: &Path, entrypoint: &[&str]) -> String {
     let folder = root.join("archives");
@@ -1892,7 +1892,7 @@ async fn runs_image_archives() {
 fn stage_helper() {
     if let Ok(arguments) = std::env::var("UWE_TEST_STAGE") {
         let arguments: Vec<String> = arguments.split('\u{1f}').map(str::to_owned).collect();
-        // The first argument is `__stage`, as the iunctus program takes it.
+        // The first argument is `__stage`, as the uwe program takes it.
         executor::helper::main(&arguments[1..]).expect("the helper stages");
     }
 }

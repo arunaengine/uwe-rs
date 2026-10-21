@@ -124,7 +124,7 @@ impl ImagePreparation {
         }
         let base = format!("{name}@sha256:{}", base_digest.to_ascii_lowercase());
         let mut recipe = format!(
-            "# iunctus Conda image recipe 1\nFROM --platform={platform} {base}\n\
+            "# uwe Conda image recipe 1\nFROM --platform={platform} {base}\n\
              USER root\nCOPY packages /tmp/uwe-conda-packages\n\
              COPY explicit.txt /tmp/uwe-conda-explicit.txt\n\
              RUN micromamba create --yes --offline --prefix /opt/uwe --file /tmp/uwe-conda-explicit.txt \

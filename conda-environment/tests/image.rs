@@ -120,7 +120,7 @@ fn verifies_deterministic_context() {
             .contains("micromamba create --yes --offline")
     );
     assert!(preparation.recipe().starts_with(&format!(
-        "# iunctus Conda image recipe 1\nFROM --platform=linux/amd64 {}\n",
+        "# uwe Conda image recipe 1\nFROM --platform=linux/amd64 {}\n",
         base()
     )));
     assert_eq!(

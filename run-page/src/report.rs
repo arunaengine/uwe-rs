@@ -25,7 +25,7 @@ struct Data {
     run: String,
     /// When the report was written, in milliseconds since the Unix epoch.
     written: i64,
-    /// The iunctus that wrote it.
+    /// The uwe that wrote it.
     program: String,
     /// The answers to the requests of the page, by their address.
     answers: BTreeMap<String, serde_json::Value>,
@@ -86,7 +86,7 @@ pub fn report(database: &Database, run: &str) -> Result<Option<String>, Database
     let data = Data {
         run: run.to_owned(),
         written: run_database::now(),
-        program: format!("iunctus {}", env!("CARGO_PKG_VERSION")),
+        program: format!("uwe {}", env!("CARGO_PKG_VERSION")),
         answers,
         pictures,
         deliveries: database.deliveries(run)?,
@@ -126,14 +126,14 @@ fn page(data: &Data) -> Result<String, serde_json::Error> {
         REPORT_SCRIPT,
     ];
     let mut html = String::from(
-        "<!doctype html>\n<!-- The report of a run of iunctus: one file, without a server. -->\n\
+        "<!doctype html>\n<!-- The report of a run of uwe: one file, without a server. -->\n\
          <html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
-         <title>iunctus report</title>\n<style>\n",
+         <title>uwe report</title>\n<style>\n",
     );
     html.push_str(assets::STYLE);
     html.push_str(
-        "</style>\n</head>\n<body>\n<header class=\"bar\">\n  <span class=\"brand\">iunctus</span>\n  \
+        "</style>\n</head>\n<body>\n<header class=\"bar\">\n  <span class=\"brand\">uwe</span>\n  \
          <nav id=\"trail\"></nav>\n  <span id=\"live\" class=\"live\" hidden>live</span>\n  \
          <span id=\"written\" class=\"written\"></span>\n</header>\n\
          <main id=\"main\"><p class=\"quiet\">Loading...</p></main>\n\

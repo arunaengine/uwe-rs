@@ -32,7 +32,7 @@ pub struct Run {
     pub error: Option<String>,
     /// The number of tasks in each state, like `succeeded: 12`.
     pub tasks: BTreeMap<String, u64>,
-    /// The iunctus that ran it, like `iunctus 0.1.0`; unknown for runs of older versions.
+    /// The uwe that ran it, like `uwe 0.1.0`; unknown for runs of older versions.
     pub program: Option<String>,
     /// The folder the run started in, where relative paths of its command line start.
     pub launch: Option<String>,

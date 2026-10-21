@@ -57,7 +57,7 @@ pub enum DatabaseError {
     #[error("run database: {0}")]
     Json(#[from] serde_json::Error),
     #[error(
-        "the run database has schema version {found}, which a newer iunctus wrote; this one knows \
+        "the run database has schema version {found}, which a newer uwe wrote; this one knows \
          versions up to {known}"
     )]
     Newer { found: u32, known: u32 },

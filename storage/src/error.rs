@@ -11,7 +11,7 @@ const HIDDEN: &str = "[secret]";
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
-    /// No provider of the config file serves the address, and iunctus has none built in.
+    /// No provider of the config file serves the address, and uwe has none built in.
     #[error(
         "no storage provider serves {address}; name one in the config file, like \
          [storage.<name>] with its type and prefixes = [\"{prefix}\"]"
@@ -56,7 +56,7 @@ impl StorageError {
         )
     }
 
-    /// Whether iunctus cannot do this at all, rather than failed to.
+    /// Whether uwe cannot do this at all, rather than failed to.
     pub fn unsupported(&self) -> bool {
         matches!(
             self,

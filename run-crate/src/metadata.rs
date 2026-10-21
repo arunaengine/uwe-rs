@@ -36,14 +36,14 @@ const PROFILES: [(&str, &str, &str); 4] = [
     ),
 ];
 
-/// The home of iunctus, which ran the workflow.
+/// The home of uwe, which ran the workflow.
 const ENGINE: &str = "https://github.com/arunaengine/uwe-rs";
 
 /// The file that tells a reader what the crate holds.
 pub(crate) const README: &str = "README.md";
 
 /// What a simulated run says wherever a reader could take its files for results.
-pub(crate) const SIMULATED: &str = "Simulated run: iunctus did not run the tasks. Its simulator made up \
+pub(crate) const SIMULATED: &str = "Simulated run: uwe did not run the tasks. Its simulator made up \
     their output files, so the files, digests and times in this crate are not results of the \
     tools. A run with real data gives the real results.";
 
@@ -218,7 +218,7 @@ impl Record<'_> {
             "Run"
         };
         let mut description = format!(
-            "{kind} {} of the {} workflow {} by iunctus, with the provenance of each task.",
+            "{kind} {} of the {} workflow {} by uwe, with the provenance of each task.",
             run.id, run.language, run.workflow
         );
         if run.simulated {
@@ -318,8 +318,8 @@ impl Record<'_> {
         let mut action = json!({
             "@id": format!("#engine/{}", run.id),
             "@type": "OrganizeAction",
-            "name": format!("Run of iunctus {}", env!("CARGO_PKG_VERSION")),
-            "description": format!("iunctus {}", run.arguments.join(" ")),
+            "name": format!("Run of uwe {}", env!("CARGO_PKG_VERSION")),
+            "description": format!("uwe {}", run.arguments.join(" ")),
             "instrument": {"@id": ENGINE},
             "object": one_or_many(controls),
             "result": {"@id": run_id(&run.id)},
@@ -374,7 +374,7 @@ impl Record<'_> {
         });
         action["description"] = match run.simulated {
             true => json!(SIMULATED),
-            false => json!(format!("iunctus {}", run.arguments.join(" "))),
+            false => json!(format!("uwe {}", run.arguments.join(" "))),
         };
         status(&mut action, run.ended, &run.state, run.error.as_deref());
         action

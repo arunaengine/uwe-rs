@@ -16,7 +16,7 @@ const MIGRATIONS: [&str; VERSION as usize] = [
 ];
 
 /// Version 1. Times are milliseconds since the Unix epoch (UTC). Text in JSON is marked as such.
-/// A run is one `iunctus run`; its tasks are the tasks that the driver asked for; an attempt is
+/// A run is one `uwe run`; its tasks are the tasks that the driver asked for; an attempt is
 /// one execution of a task (retries add attempts).
 const VERSION_1: &str = "
 CREATE TABLE runs (
@@ -30,7 +30,7 @@ CREATE TABLE runs (
     language    TEXT NOT NULL,
     -- The Git commit of the workflow's repository, when it is in one.
     revision    TEXT,
-    -- The command line after `iunctus`, as a JSON array of strings.
+    -- The command line after `uwe`, as a JSON array of strings.
     arguments   TEXT NOT NULL,
     -- The workflow parameters, as a JSON array of [name, value] pairs in the order given.
     parameters  TEXT NOT NULL,

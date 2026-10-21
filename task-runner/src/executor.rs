@@ -260,7 +260,7 @@ fn checked(
         }))),
         (None, None) => Err(ExecuteError::Executor {
             task: task.name.clone(),
-            message: "the task names no container image; iunctus runs every task in a \
+            message: "the task names no container image; uwe runs every task in a \
                       container, so name an image in the workflow or give one with \
                       `-default-image <image>`"
                 .into(),

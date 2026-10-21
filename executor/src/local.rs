@@ -716,7 +716,7 @@ impl LocalContainer {
     }
 
     /// How the containers of a task run, and its scratch directory `root` open to every user
-    /// when they may run as another user than `owner`, the user who runs iunctus.
+    /// when they may run as another user than `owner`, the user who runs uwe.
     async fn access(
         &self,
         root: &Path,
@@ -1011,12 +1011,12 @@ impl LocalContainer {
         };
         let note = match (ending.timed_out, out_of_memory) {
             (Some(time), _) => Some(format!(
-                "iunctus: the task ran longer than its time of {} seconds\n",
+                "uwe: the task ran longer than its time of {} seconds\n",
                 time.as_secs()
             )),
-            (None, true) => Some("iunctus: the container ran out of memory\n".to_owned()),
+            (None, true) => Some("uwe: the container ran out of memory\n".to_owned()),
             (None, false) if exit_code != 0 && recorded.is_none() => Some(format!(
-                "iunctus: the container ended with exit code {exit_code}, maybe for lack of \
+                "uwe: the container ended with exit code {exit_code}, maybe for lack of \
                  memory\n"
             )),
             (None, false) => None,

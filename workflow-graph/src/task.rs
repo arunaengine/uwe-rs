@@ -86,7 +86,7 @@ pub struct Task {
     #[serde(default, skip_serializing_if = "Reuse::is_allowed")]
     pub reuse: Reuse,
     /// Selects Kubernetes image or explicit identity and starting directory; `None` uses the
-    /// iunctus user.
+    /// uwe user.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_as: Option<RunAs>,
 }

@@ -144,9 +144,9 @@ enum Ended {
     Done(i32),
     /// The job ended without that record, in this state when SLURM tells it.
     Stopped(Option<String>),
-    /// SLURM held the job for this reason and would not run it on its own; iunctus cancels it.
+    /// SLURM held the job for this reason and would not run it on its own; uwe cancels it.
     Held(String),
-    /// The job asked for more time than its partition allows; iunctus cancels it.
+    /// The job asked for more time than its partition allows; uwe cancels it.
     OverTime,
 }
 
@@ -447,7 +447,7 @@ impl SlurmBackend {
         let control = root.join(CONTROL);
         let owner = tokio::fs::metadata(root).await?;
         let access = match &self.container {
-            // Apptainer runs every container as the user who runs iunctus.
+            // Apptainer runs every container as the user who runs uwe.
             Container::Apptainer(_) => Access {
                 run_as: spec.run_as,
                 ..Access::default()
@@ -874,7 +874,7 @@ impl SlurmBackend {
                 state.as_deref().unwrap_or("unknown")
             )),
             Ended::Held(reason) => Err(format!(
-                "SLURM held the job that pulls the image {reference} ({reason}), so iunctus \
+                "SLURM held the job that pulls the image {reference} ({reason}), so uwe \
                  cancelled it"
             )),
             Ended::OverTime => Err(format!(
@@ -1506,7 +1506,7 @@ fn outcome(
         Ended::Done(status @ 129..=192) => Ok((
             *status,
             Some(format!(
-                "iunctus: the container ended with exit code {status}, maybe for lack of memory\n"
+                "uwe: the container ended with exit code {status}, maybe for lack of memory\n"
             )),
         )),
         // A captured wrapper ends with the code of its task, which it recorded first.
@@ -1517,11 +1517,11 @@ fn outcome(
         Ended::Stopped(Some(state)) if state == "TIMEOUT" => Ok((143, Some(too_long(time)))),
         Ended::Stopped(Some(state)) if state == "OUT_OF_MEMORY" => Ok((
             137,
-            Some("iunctus: SLURM stopped the task for lack of memory\n".to_owned()),
+            Some("uwe: SLURM stopped the task for lack of memory\n".to_owned()),
         )),
         Ended::Stopped(Some(state)) => Err(format!("the job ended as {state}")),
         Ended::Held(reason) => Err(format!(
-            "SLURM held the job ({reason}), so iunctus cancelled it"
+            "SLURM held the job ({reason}), so uwe cancelled it"
         )),
         Ended::OverTime => Err("the job asks for more time than its partition allows".into()),
         Ended::Stopped(None) => Err("the job ended without a record of its container".into()),
@@ -1531,8 +1531,8 @@ fn outcome(
 /// The note of a task that ran longer than its time, or than SLURM allows.
 fn too_long(time: Option<u64>) -> String {
     match time {
-        Some(time) => format!("iunctus: the task ran longer than its time of {time} seconds\n"),
-        None => "iunctus: the task ran longer than SLURM allows\n".to_owned(),
+        Some(time) => format!("uwe: the task ran longer than its time of {time} seconds\n"),
+        None => "uwe: the task ran longer than SLURM allows\n".to_owned(),
     }
 }
 

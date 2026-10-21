@@ -25,11 +25,11 @@ pub struct TimeSpent {
     /// How long at least one task ran. For the rest of the run, no task ran.
     pub busy: i64,
     /// From the start of the run until the workflow asked for the first task of the path:
-    /// iunctus loaded the workflow and checked its inputs, and the workflow planned.
+    /// uwe loaded the workflow and checked its inputs, and the workflow planned.
     pub before: i64,
     /// The chain of tasks that set the length of the run, from the first to the last.
     pub critical_path: Vec<PathTask>,
-    /// From the end of the last task of the path until the end of the run: iunctus delivered
+    /// From the end of the last task of the path until the end of the run: uwe delivered
     /// the results and wrote the reports.
     pub after: i64,
     /// Every step, in the order of its first task.
@@ -42,7 +42,7 @@ pub struct PathTask {
     pub task: u64,
     pub name: String,
     pub step: String,
-    /// From the end of the task before it until the workflow asked for this one: iunctus
+    /// From the end of the task before it until the workflow asked for this one: uwe
     /// stored the outputs of that task, and the workflow planned the next tasks.
     pub gap: i64,
     /// From the moment it could start until it started.

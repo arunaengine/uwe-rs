@@ -155,6 +155,6 @@ fn lists_task_replays() {
     assert_eq!(run["run"]["replays_task"], 2);
     let (status, script) = get(&format!("{url}/run.js"));
     assert_eq!(status, 200);
-    assert!(script.contains("iunctus replay ${id} ${task}"), "{script}");
+    assert!(script.contains("uwe replay ${id} ${task}"), "{script}");
     server.stop();
 }

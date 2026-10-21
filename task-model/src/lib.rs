@@ -17,7 +17,7 @@ pub use spec::{
 };
 pub use tree::{Tree, TreeEntry};
 
-/// Whether an image names a Conda environment that iunctus prepares, not a registry image.
+/// Whether an image names a Conda environment that uwe prepares, not a registry image.
 pub fn conda_image(image: &str) -> bool {
     image.starts_with("conda-env:") || image.starts_with("conda-container:")
 }

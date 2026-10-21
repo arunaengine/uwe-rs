@@ -1,4 +1,4 @@
-//! Resolves registry secrets from iunctus, Docker and Podman without running helpers.
+//! Resolves registry secrets from uwe, Docker and Podman without running helpers.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -28,9 +28,9 @@ impl Found {
         if self.credential.is_some() {
             "; configured registry credentials were rejected"
         } else if self.helper {
-            "; credentials are configured only through a credential helper (credsStore or credHelpers); iunctus cannot run external helpers, configure registry credentials directly"
+            "; credentials are configured only through a credential helper (credsStore or credHelpers); uwe cannot run external helpers, configure registry credentials directly"
         } else {
-            "; no registry credentials were found in iunctus, Docker or Podman settings"
+            "; no registry credentials were found in uwe, Docker or Podman settings"
         }
     }
 }

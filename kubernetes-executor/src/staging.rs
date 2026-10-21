@@ -1,5 +1,5 @@
 //! How the pods of a backend get their files when the nodes share no folders with this machine:
-//! through the iunctus helper and a plan, or through kubedal volumes.
+//! through the uwe helper and a plan, or through kubedal volumes.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -26,7 +26,7 @@ pub struct PodStaging {
 /// How the pods reach the staging root.
 #[derive(Clone, Debug)]
 pub enum Via {
-    /// The iunctus helper, from an image that holds only the binary, with presigned requests.
+    /// The uwe helper, from an image that holds only the binary, with presigned requests.
     Helper(Helper),
     /// The kubedal CSI driver, which places the inputs and uploads the outputs after the pod.
     Kubedal(Kubedal),

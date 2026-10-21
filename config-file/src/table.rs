@@ -53,7 +53,7 @@ impl<'a> Table<'a> {
             return Ok(());
         };
         let message = match self.name.is_empty() {
-            true => format!("iunctus has no section `{key}`; it knows {}", list(known)),
+            true => format!("uwe has no section `{key}`; it knows {}", list(known)),
             false => format!(
                 "`[{}]` has no setting `{key}`; it knows {}",
                 self.name,

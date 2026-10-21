@@ -22,7 +22,7 @@ pub enum TesError {
     Answer(String),
 }
 
-/// A task as iunctus sends it.
+/// A task as uwe sends it.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Task {
     pub name: String,

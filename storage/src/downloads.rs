@@ -48,7 +48,7 @@ fn lock_file(path: &Path) -> std::io::Result<std::fs::File> {
 }
 
 impl Storage {
-    /// Locks a folder of downloads shared until this process ends, so that `iunctus clean`
+    /// Locks a folder of downloads shared until this process ends, so that `uwe clean`
     /// removes nothing that it reads; waits while clean-up holds it alone.
     pub async fn hold(&self, downloads: &Path) -> Result<(), StorageError> {
         let known = |held: &HashMap<PathBuf, std::fs::File>| held.contains_key(downloads);

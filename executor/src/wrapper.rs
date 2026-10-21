@@ -19,7 +19,7 @@ pub const STDIN: &str = "stdin";
 pub const ROOT: &str = "root";
 /// The last line that the wrapper writes to its own standard output, which the container's
 /// output shows, when it got to its end: it recorded the tool's exit code and its outputs.
-pub const ENDED: &str = "iunctus: the wrapper ended";
+pub const ENDED: &str = "uwe: the wrapper ended";
 /// Writes the time in seconds since the Unix epoch: with microseconds from Bash 5 on, whose
 /// `EPOCHREALTIME` needs no program, else whole seconds from `date`.
 pub(crate) const NOW: &str = "echo \"${EPOCHREALTIME:-$(date +%s)}\"";
@@ -28,7 +28,7 @@ pub(crate) const NOW: &str = "echo \"${EPOCHREALTIME:-$(date +%s)}\"";
 pub const USAGE: &str = "usage";
 
 pub(crate) fn invalid_specification() -> String {
-    "#!/bin/sh\necho 'iunctus: invalid task specification' >&2\nexit 1\n".to_owned()
+    "#!/bin/sh\necho 'uwe: invalid task specification' >&2\nexit 1\n".to_owned()
 }
 
 /// Where the wrapper of a task finds its folders, as absolute paths inside the container.
@@ -65,7 +65,7 @@ pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
     // A task that runs as Kubernetes runs it starts where its image or its `workdir` says,
     // with the `HOME` of its user.
     let as_image = spec.run_as.is_some();
-    let mut script = String::from("#!/bin/sh\n# The iunctus task wrapper.\nset -u\n");
+    let mut script = String::from("#!/bin/sh\n# The uwe task wrapper.\nset -u\n");
     script.push_str(BASH);
     script.push_str(&format!(
         "work={}\ncontrol={}\noutbox={}\n",

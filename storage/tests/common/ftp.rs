@@ -1,5 +1,5 @@
 //! A small FTP server for tests: one user, files from memory, passive mode, and the commands
-//! that iunctus sends: USER, PASS, TYPE, SIZE, CWD, PASV, REST, RETR, LIST and QUIT.
+//! that uwe sends: USER, PASS, TYPE, SIZE, CWD, PASV, REST, RETR, LIST and QUIT.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -36,7 +36,7 @@ fn session(stream: TcpStream, files: &BTreeMap<String, Vec<u8>>, login: &(String
     let mut reader = BufReader::new(stream.try_clone().expect("a stream"));
     let mut writer = stream;
     let mut say = |text: &str| writer.write_all(format!("{text}\r\n").as_bytes());
-    let _ = say("220 iunctus test server");
+    let _ = say("220 uwe test server");
     let (mut user, mut data, mut offset) = (String::new(), None::<TcpListener>, 0);
     let is_directory = |path: &str| {
         let folder = format!("{}/", path.trim_end_matches('/'));

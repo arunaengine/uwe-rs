@@ -90,7 +90,7 @@ pub fn pull_options(
     options
 }
 
-/// The options that every job of iunctus gets: its name, its folder and its log.
+/// The options that every job of uwe gets: its name, its folder and its log.
 fn head(name: &str, root: &Path) -> Vec<String> {
     vec![
         "--parsable".to_owned(),
@@ -132,8 +132,8 @@ pub fn job_script(
     let exit = quote(&control.join(CONTAINER_EXIT).to_string_lossy());
     let record = quote(&control.join(executor::wrapper::EXIT).to_string_lossy());
     format!(
-        "#!/bin/bash\n# The iunctus job of one attempt of a task.\n{}{}{}{}\nstatus=$?\n{}{}\
-         [ \"$status\" -ne 0 ] || [ -s {record} ] || echo \"iunctus: the container ended, but \
+        "#!/bin/bash\n# The uwe job of one attempt of a task.\n{}{}{}{}\nstatus=$?\n{}{}\
+         [ \"$status\" -ne 0 ] || [ -s {record} ] || echo \"uwe: the container ended, but \
          the wrapper of the task recorded no exit code on $(hostname)\" >&2\n\
          echo $status > {exit}\n",
         wait_for(&[(PathBuf::from(run.script()), size)], &exit),
@@ -155,7 +155,7 @@ pub fn container_script(
     time: Option<u64>,
     sizes: &[u64],
 ) -> String {
-    let mut script = String::from("#!/bin/bash\n# The iunctus job of one attempt of a task.\n");
+    let mut script = String::from("#!/bin/bash\n# The uwe job of one attempt of a task.\n");
     let exit = runs[0].root.join(CONTROL).join(CONTAINER_EXIT);
     let wrappers: Vec<(PathBuf, u64)> = (runs.iter().zip(sizes))
         .map(|(run, size)| (PathBuf::from(run.script()), *size))
@@ -200,7 +200,7 @@ fn wait_for(files: &[(PathBuf, u64)], exit: &str) -> String {
          waited=0\n\
          until {}; do\n    \
          if [ $waited -ge {SEEN_GRACE} ]; then\n        \
-         echo \"iunctus: after {SEEN_GRACE} s, the node $(hostname) still does not see the whole \
+         echo \"uwe: after {SEEN_GRACE} s, the node $(hostname) still does not see the whole \
          wrapper of the task\" >&2\n        \
          echo {NOT_SEEN} > {exit}\n        \
          exit 0\n    \
@@ -213,7 +213,7 @@ fn wait_for(files: &[(PathBuf, u64)], exit: &str) -> String {
 }
 
 /// The line that makes every file in the folder of an attempt durable before the job records
-/// its end, so that the machine of iunctus, which reads the records and outputs next, sees
+/// its end, so that the machine of uwe, which reads the records and outputs next, sees
 /// them whole on a shared file system. `sync` with files syncs only those files.
 fn durable(root: &Path) -> String {
     format!(
@@ -365,7 +365,7 @@ mod tests {
         }
     }
 
-    /// How a container of a task runs that runs as the user who runs iunctus.
+    /// How a container of a task runs that runs as the user who runs uwe.
     static CALLER: Access = Access {
         run_as: None,
         user: None,

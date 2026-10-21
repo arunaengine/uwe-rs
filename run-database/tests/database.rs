@@ -20,7 +20,7 @@ fn start(id: &str, resumes: Option<&str>) -> RunStart {
         executor: "simulator".into(),
         simulated: true,
         store: None,
-        program: Some("iunctus 0.1.0".into()),
+        program: Some("uwe 0.1.0".into()),
         launch: Some("/work".into()),
         workflow_folder: Some("/work".into()),
         repeats: None,
@@ -802,7 +802,7 @@ fn rejects_newer_versions() {
         .expect("sets a newer version");
     drop(connection);
     let error = Database::open(&path).err().expect("refused");
-    assert!(error.to_string().contains("newer iunctus"), "{error}");
+    assert!(error.to_string().contains("newer uwe"), "{error}");
 }
 
 #[test]

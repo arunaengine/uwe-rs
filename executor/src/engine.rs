@@ -49,7 +49,7 @@ pub(crate) async fn remove(client: &Docker, id: &str) {
         Ok(Err(reason)) => reason,
         Err(_) => "removal was not confirmed within 10 seconds".into(),
     };
-    eprintln!("iunctus: warning: could not remove container {id}: {reason}");
+    eprintln!("uwe: warning: could not remove container {id}: {reason}");
 }
 
 /// A created container that is removed when the guard goes, so that a run whose future is
@@ -116,7 +116,7 @@ impl fmt::Debug for ContainerEngine {
     }
 }
 
-/// No container engine answers: where iunctus looked, and how to turn one on.
+/// No container engine answers: where uwe looked, and how to turn one on.
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct NoEngine(String);
@@ -228,7 +228,7 @@ fn missing(name: Option<&str>, sockets: &[String], failed: &[String]) -> String 
         None => String::new(),
     };
     let mut message = format!(
-        "no container engine answers at {at}; iunctus runs every task in a container, so {how}"
+        "no container engine answers at {at}; uwe runs every task in a container, so {how}"
     );
     if !failed.is_empty() {
         message.push_str(&format!(" ({})", failed.join("; ")));
@@ -400,7 +400,7 @@ mod tests {
         let text = missing(Some("docker"), &sockets, &[]);
         assert_eq!(
             text,
-            "no container engine answers at /var/run/docker.sock; iunctus runs every task in a \
+            "no container engine answers at /var/run/docker.sock; uwe runs every task in a \
              container, so start Docker"
         );
     }

@@ -1,4 +1,4 @@
-// Where the time of a run went, on the page of iunctus: the numbers of the run, the critical
+// Where the time of a run went, on the page of uwe: the numbers of the run, the critical
 // path (the chain of tasks that set the length of the run) as one bar and as a table, and the
 // steps that ran the longest or used the most CPU time, memory and I/O. A switch shows the path
 // in the graph view. It uses the helpers of `page.js`, the view of `run.js` and the graph of

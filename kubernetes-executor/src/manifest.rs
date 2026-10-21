@@ -43,7 +43,7 @@ pub fn job_name(name: &str) -> String {
 
 /// The `securityContext` of a container: the least permissions (decision 28), no
 /// capabilities but those that its task needs and no way to gain privileges, as the user who
-/// runs iunctus, or as Kubernetes runs it for a task that runs as its image says.
+/// runs uwe, or as Kubernetes runs it for a task that runs as its image says.
 fn security(run: &ContainerRun<'_>) -> Value {
     let access = run.access;
     let mut context = json!({
@@ -91,7 +91,7 @@ pub enum Volumes {
 /// The name of the volume of [`Volumes::Under`].
 pub const FOLDERS: &str = "folders";
 
-/// How the pods of object-store staging get the static iunctus binary: from an image that holds
+/// How the pods of object-store staging get the static uwe binary: from an image that holds
 /// only the binary, at `/uwe`.
 #[derive(Clone, Debug)]
 pub struct Helper {

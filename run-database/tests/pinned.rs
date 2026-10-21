@@ -21,7 +21,7 @@ fn start(id: &str) -> RunStart {
         executor: "local".into(),
         simulated: false,
         store: Some("/cache/store".into()),
-        program: Some("iunctus 0.1.0".into()),
+        program: Some("uwe 0.1.0".into()),
         launch: Some("/work".into()),
         workflow_folder: Some("/work/pipeline".into()),
         repeats: Some("run-0".into()),
@@ -115,7 +115,7 @@ fn retains_run_pins() {
     record(&path);
     let database = Database::open(&path).expect("opens");
     let run = database.run("run-1").expect("reads").expect("the run");
-    assert_eq!(run.program.as_deref(), Some("iunctus 0.1.0"));
+    assert_eq!(run.program.as_deref(), Some("uwe 0.1.0"));
     assert_eq!(run.launch.as_deref(), Some("/work"));
     assert_eq!(run.workflow_folder.as_deref(), Some("/work/pipeline"));
     assert_eq!(run.repeats.as_deref(), Some("run-0"));

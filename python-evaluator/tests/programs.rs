@@ -78,6 +78,17 @@ fn changes_sets_quickly() {
     assert!(seconds < 60, "took {seconds} s");
 }
 
+/// Set operations with a dict or a list find its keys at once: 60,000 members take seconds.
+#[test]
+fn combines_sets_quickly() {
+    let code = "s = set(range(60000))\nd = dict.fromkeys(range(30000, 90000))\nprint(len(s.difference(d)), len(s.intersection(list(d))), len(s.symmetric_difference(d)))\n";
+    let start = std::time::Instant::now();
+    let output = evaluate(code).expect("runs");
+    assert_eq!(output, "30000 30000 60000\n");
+    let seconds = start.elapsed().as_secs();
+    assert!(seconds < 20, "took {seconds} s");
+}
+
 #[test]
 fn reports_exception_lines() {
     let error = evaluate("x = 1\ny = {}\ny['missing']\n").expect_err("a KeyError");

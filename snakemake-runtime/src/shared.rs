@@ -560,7 +560,40 @@ fn unshadow(folder: &Path, file: &str) -> std::io::Result<()> {
     if let Some(parent) = real.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::rename(&shadowed, &real)
+    move_path(&shadowed, &real)
+}
+
+/// Moves a file, link or folder as `shutil.move`: renames it, or copies it, links kept as
+/// links, and removes it when the target is on another file system.
+fn move_path(source: &Path, target: &Path) -> std::io::Result<()> {
+    match std::fs::rename(source, target) {
+        Err(error) if error.kind() == std::io::ErrorKind::CrossesDevices => {}
+        other => return other,
+    }
+    copy_tree(source, target)?;
+    remove(source)
+}
+
+/// Copies a file, a link or a folder with its links as links and the times of its files.
+fn copy_tree(source: &Path, target: &Path) -> std::io::Result<()> {
+    let metadata = std::fs::symlink_metadata(source)?;
+    if metadata.is_symlink() {
+        return std::os::unix::fs::symlink(std::fs::read_link(source)?, target);
+    }
+    if metadata.is_dir() {
+        std::fs::create_dir(target)?;
+        for entry in std::fs::read_dir(source)? {
+            let entry = entry?;
+            copy_tree(&entry.path(), &target.join(entry.file_name()))?;
+        }
+        return std::fs::set_permissions(target, metadata.permissions());
+    }
+    std::fs::copy(source, target)?;
+    // The time is kept where the file may be written, as `shutil.copy2` keeps it.
+    let modified = metadata.modified()?;
+    let written = std::fs::File::options().write(true).open(target);
+    let _ = written.and_then(|file| file.set_modified(modified));
+    Ok(())
 }
 
 /// Lets the owner write a file, or the files and folders below a folder.

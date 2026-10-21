@@ -46,35 +46,35 @@ jobs:
           rustup target add --toolchain 1.97.1 x86_64-unknown-linux-musl
           cargo +1.97.1 fetch --locked --target x86_64-unknown-linux-musl
           nice -n 19 cargo +1.97.1 build --release --offline --locked --target x86_64-unknown-linux-musl -p uwe -j 8
-          strip --strip-debug target/x86_64-unknown-linux-musl/release/iunctus
-          target/x86_64-unknown-linux-musl/release/iunctus help
+          strip --strip-debug target/x86_64-unknown-linux-musl/release/uwe
+          target/x86_64-unknown-linux-musl/release/uwe help
       - name: Build and export native CWL JavaScript helper
         run: |
-          python3 scripts/cwl-js-image.py target/x86_64-unknown-linux-musl/release/iunctus
+          python3 scripts/cwl-js-image.py target/x86_64-unknown-linux-musl/release/uwe
           mkdir -p dist
-          docker image inspect --format '{{.Id}}' iunctus-cwl-js:0.1.0 > dist/CWL_JS_IMAGE_ID
-          docker image save iunctus-cwl-js:0.1.0 | gzip > dist/iunctus-cwl-js-0.1.0-linux-amd64.tar.gz
+          docker image inspect --format '{{.Id}}' uwe-cwl-js:0.1.0 > dist/CWL_JS_IMAGE_ID
+          docker image save uwe-cwl-js:0.1.0 | gzip > dist/uwe-cwl-js-0.1.0-linux-amd64.tar.gz
       - name: Package binary and build identities
         run: |
-          package="iunctus-${GITHUB_SHA}-x86_64-unknown-linux-musl"
+          package="uwe-${GITHUB_SHA}-x86_64-unknown-linux-musl"
           mkdir -p "dist/$package"
-          cp target/x86_64-unknown-linux-musl/release/iunctus README.md LICENSE-MIT LICENSE-APACHE Cargo.lock rust-toolchain.toml "dist/$package/"
+          cp target/x86_64-unknown-linux-musl/release/uwe README.md LICENSE-MIT LICENSE-APACHE Cargo.lock rust-toolchain.toml "dist/$package/"
           cp -r docs "dist/$package/"
           cp -r scripts containers "dist/$package/"
           cp dist/CWL_JS_IMAGE_ID "dist/$package/"
           printf '%s\n' "$GITHUB_SHA" > "dist/$package/SOURCE_REVISION"
           rustc +1.97.1 -vV > "dist/$package/TOOLCHAIN"
           sha256sum Cargo.lock > "dist/$package/DEPENDENCIES.sha256"
-          file "dist/$package/iunctus" > "dist/$package/BINARY.file"
+          file "dist/$package/uwe" > "dist/$package/BINARY.file"
           grep -Eq 'static(-pie)? linked' "dist/$package/BINARY.file"
-          ldd "dist/$package/iunctus" > "dist/$package/BINARY.ldd" 2>&1 || true
+          ldd "dist/$package/uwe" > "dist/$package/BINARY.ldd" 2>&1 || true
           grep -Eq 'statically linked|not a dynamic executable' "dist/$package/BINARY.ldd"
-          (cd "dist/$package" && sha256sum iunctus > BINARY.sha256)
+          (cd "dist/$package" && sha256sum uwe > BINARY.sha256)
           tar -czf "dist/$package.tar.gz" -C dist "$package"
-          (cd dist && sha256sum "$package.tar.gz" iunctus-cwl-js-0.1.0-linux-amd64.tar.gz > SHA256SUMS)
+          (cd dist && sha256sum "$package.tar.gz" uwe-cwl-js-0.1.0-linux-amd64.tar.gz > SHA256SUMS)
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: iunctus-${{ github.sha }}-x86_64-unknown-linux-musl
+          name: uwe-${{ github.sha }}-x86_64-unknown-linux-musl
           path: |
             dist/*.tar.gz
             dist/SHA256SUMS

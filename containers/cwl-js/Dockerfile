@@ -6,5 +6,5 @@ COPY rootfs/ /
 ENV UWE_CWL_WORKER=1
 USER 65534:65534
 WORKDIR /tmp
-ENTRYPOINT ["/usr/local/bin/iunctus"]
+ENTRYPOINT ["/usr/local/bin/uwe"]
 CMD ["__cwl-js-worker"]

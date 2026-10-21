@@ -27,12 +27,12 @@ TIMEOUT = 60
 
 def main():
     started = time.monotonic()
-    binary = Path(sys.argv[1] if len(sys.argv) > 1 else "target/debug/iunctus").resolve(strict=True)
+    binary = Path(sys.argv[1] if len(sys.argv) > 1 else "target/debug/uwe").resolve(strict=True)
     docker("image", "inspect", IMAGE)
     print(f"Image: {IMAGE} (local only)", flush=True)
     failures = []
     proxy = runpy.run_path(str(FIXTURES / "docker_no_pull.py"))["NoPull"]
-    with tempfile.TemporaryDirectory(prefix="iunctus-container-runs-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="uwe-container-runs-") as temporary:
         root = Path(temporary)
         try:
             with proxy(root) as socket:
@@ -179,7 +179,7 @@ def execute(command, folder, environment, cancel):
 
 
 def recorded(folder):
-    with sqlite3.connect(folder / "cache/iunctus/runs.sqlite") as database:
+    with sqlite3.connect(folder / "cache/uwe/runs.sqlite") as database:
         run = database.execute("SELECT id, state, executor, simulated, resumes FROM runs "
                                "ORDER BY started DESC, rowid DESC LIMIT 1").fetchone()
         assert run, "no run was recorded"
@@ -217,7 +217,7 @@ def docker(*arguments):
 
 
 def owned(folder):
-    names = docker("ps", "--filter", "name=iunctus-", "--format", "{{.Names}}").split()
+    names = docker("ps", "--filter", "name=uwe-", "--format", "{{.Names}}").split()
     found = []
     for name in names:
         inspected = subprocess.run(["docker", "inspect", name], capture_output=True,
@@ -233,7 +233,7 @@ def starts(since, run):
     events = docker("events", "--since", str(since), "--until", str(time.time()),
                     "--filter", "type=container", "--filter", "event=start", "--format", "{{json .}}")
     return [event for line in events.splitlines() if (event := json.loads(line))
-            ["Actor"]["Attributes"].get("name", "").startswith(f"iunctus-{run}-")]
+            ["Actor"]["Attributes"].get("name", "").startswith(f"uwe-{run}-")]
 
 
 def tes_failure(command, folder, environment):
@@ -265,7 +265,7 @@ secret_access_key = "container-runs-secret"
         thread.start()
         try:
             invocation = [value for value in command if value != "-no-network"]
-            code, output = execute(invocation + ["-executor", "tes", "-iunctus-config", str(config)],
+            code, output = execute(invocation + ["-executor", "tes", "-uwe-config", str(config)],
                                    folder, environment, False)
             run, tasks, attempts, _ = recorded(folder)
             assert code != 0 and run[1:3] == ("failed", "tes"), (run, output)
@@ -303,7 +303,7 @@ class TesHandler(BaseHTTPRequestHandler):
         elif self.path.startswith("/ga4gh/tes/v1/tasks/"):
             outputs = []
             for item in self.server.task["outputs"]:
-                if item["path"].startswith("/iunctus/control/"):
+                if item["path"].startswith("/uwe/control/"):
                     content = b"17\n" if item["path"].endswith("/exit") else b""
                     self.server.objects[self.key(item["url"])] = content
                     outputs.append({"url": item["url"], "path": item["path"],

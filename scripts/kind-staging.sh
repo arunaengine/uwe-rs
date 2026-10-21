@@ -8,15 +8,15 @@
 # a checkout of kubedal (KUBEDAL, default ../kubedal) and its image (KUBEDAL_IMAGE, default
 # kubedal:e2e). MODES picks some of self, image-volume, init-container, kubedal, credentials and
 # shared-claim;
-# KIND_CLUSTER names the cluster (default iunctus-staging); KEEP_CLUSTER=1 keeps the cluster
+# KIND_CLUSTER names the cluster (default uwe-staging); KEEP_CLUSTER=1 keeps the cluster
 # and the S3 server after the run.
 set -euo pipefail
 
 repository="$(cd "$(dirname "$0")/.." && pwd)"
-binary="$(realpath "${UWE:-$repository/target/x86_64-unknown-linux-musl/release/iunctus}")"
+binary="$(realpath "${UWE:-$repository/target/x86_64-unknown-linux-musl/release/uwe}")"
 kubedal="${KUBEDAL:-$repository/../kubedal}"
 kubedal_image="${KUBEDAL_IMAGE:-kubedal:e2e}"
-cluster="${KIND_CLUSTER:-iunctus-staging}"
+cluster="${KIND_CLUSTER:-uwe-staging}"
 server="$cluster-s3"
 work="$(mktemp -d)"
 # The folder that this machine and the node share, for the cache of shared paths.
@@ -53,25 +53,25 @@ done
 
 echo "=== helper image and kubedal"
 mkdir "$work/helper"
-cp "$binary" "$work/helper/iunctus"
-printf 'FROM scratch\nCOPY iunctus /iunctus\n' > "$work/helper/Dockerfile"
+cp "$binary" "$work/helper/uwe"
+printf 'FROM scratch\nCOPY uwe /uwe\n' > "$work/helper/Dockerfile"
 # Another run may build its own helper image at the same time.
-helper="iunctus-helper:$cluster"
+helper="uwe-helper:$cluster"
 docker build -q -t "$helper" "$work/helper" > /dev/null
 kind load docker-image --name "$cluster" "$helper" debian:stable-slim "$kubedal_image"
 helm upgrade --install kubedal "$kubedal/charts/kubedal" --namespace kube-system \
     --set image.repository="${kubedal_image%%:*}" --set image.tag="${kubedal_image##*:}" \
     --set image.pullPolicy=Never --wait --timeout 180s > /dev/null
-kubectl create namespace iunctus > /dev/null
+kubectl create namespace uwe > /dev/null
 kubectl apply -f - > /dev/null <<EOF
 apiVersion: v1
 kind: Secret
-metadata: {name: staging-credentials, namespace: iunctus}
+metadata: {name: staging-credentials, namespace: uwe}
 stringData: {access_key_id: staging-user, secret_access_key: staging-secret-4410}
 ---
 apiVersion: v1
 kind: Secret
-metadata: {name: staging-storage, namespace: iunctus}
+metadata: {name: staging-storage, namespace: uwe}
 stringData:
   UWE_STAGING_STORAGE: |
     [storage.staging]
@@ -84,7 +84,7 @@ stringData:
 ---
 apiVersion: kubedal.arunaengine.org/v1alpha1
 kind: DataNode
-metadata: {name: staging, namespace: iunctus}
+metadata: {name: staging, namespace: uwe}
 spec:
   backend: S3
   read_only: false
@@ -94,7 +94,7 @@ spec:
 ---
 apiVersion: v1
 kind: PersistentVolume
-metadata: {name: iunctus-cache}
+metadata: {name: uwe-cache}
 spec:
   capacity: {storage: 1Gi}
   accessModes: [ReadWriteMany]
@@ -103,11 +103,11 @@ spec:
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
-metadata: {name: iunctus-cache, namespace: iunctus}
+metadata: {name: uwe-cache, namespace: uwe}
 spec:
   accessModes: [ReadWriteMany]
   storageClassName: ""
-  volumeName: iunctus-cache
+  volumeName: uwe-cache
   resources: {requests: {storage: 1Gi}}
 EOF
 
@@ -141,10 +141,10 @@ staging_secret = "staging-storage"
 staging_cleanup = true
 helper_image = "'"$helper"'"'
     elif [ "$mode" = shared-claim ]; then
-        # The cache of iunctus is on the claim, which the pods mount at the same path.
+        # The cache of uwe is on the claim, which the pods mount at the same path.
         export XDG_CACHE_HOME="$shared/cache"
         staging="[executor.kubernetes.shared_volume]
-claim = \"iunctus-cache\"
+claim = \"uwe-cache\"
 path = \"$shared\""
     fi
     cat > "$work/$mode.toml" <<EOF
@@ -157,14 +157,14 @@ access_key_id = { environment = "STAGING_KEY" }
 secret_access_key = { environment = "STAGING_SECRET" }
 
 [executor.kubernetes]
-namespace = "iunctus"
+namespace = "uwe"
 $staging
 EOF
     rm -rf "$XDG_CACHE_HOME" "$work/run"
     mkdir "$work/run"
     cp "$repository/demo/snakemake/hello.smk" "$work/run/"
     if (cd "$work/run" && "$binary" run hello.smk -executor kubernetes -kubeconfig "$work/kubeconfig" \
-        -iunctus-config "$work/$mode.toml") \
+        -uwe-config "$work/$mode.toml") \
         && [ "$(cat "$work/run/hello/all.txt")" = "$(printf '%s world!\n' Hello Hola Bonjour Ciao)" ] \
         && { [ "$mode" != credentials ] || { keys credentials/cas/ | grep -q '<Key>' \
             && ! keys credentials/attempts/ | grep -q '<Key>'; }; } \
@@ -172,7 +172,7 @@ EOF
         echo "=== $mode: passed"
     else
         echo "=== $mode: FAILED"
-        kubectl -n iunctus get pods,events 2>&1 | tail -20
+        kubectl -n uwe get pods,events 2>&1 | tail -20
         status=1
     fi
 done

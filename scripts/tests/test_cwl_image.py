@@ -19,7 +19,7 @@ class ImageContext(unittest.TestCase):
                                      (1, "not a dynamic executable\n", ""),
                                      (0, "\tstatically linked\n", "")]:
             with self.subTest(code=code, stdout=stdout, stderr=stderr), tempfile.TemporaryDirectory() as directory:
-                binary = Path(directory) / "iunctus"
+                binary = Path(directory) / "uwe"
                 binary.write_bytes(b"trusted static binary fixture")
 
                 def command(arguments, **options):
@@ -30,12 +30,12 @@ class ImageContext(unittest.TestCase):
                     self.assertEqual(arguments, ["mock-engine", "build", "--network=none", "--pull=false", "--tag", "fixture:1", "-"])
                     with tarfile.open(fileobj=options["stdin"], mode="r:") as context:
                         self.assertEqual(context.getnames(), ["Dockerfile", "rootfs/tmp",
-                                         "rootfs/usr/local/bin/iunctus", "rootfs/usr/share/iunctus/cwl-js.sha256"])
-                        self.assertEqual(context.extractfile("rootfs/usr/local/bin/iunctus").read(), binary.read_bytes())
+                                         "rootfs/usr/local/bin/uwe", "rootfs/usr/share/uwe/cwl-js.sha256"])
+                        self.assertEqual(context.extractfile("rootfs/usr/local/bin/uwe").read(), binary.read_bytes())
                         self.assertTrue(context.getmember("rootfs/tmp").isdir())
                         self.assertEqual(context.getmember("rootfs/tmp").mode, 0o1777)
-                        identities = context.extractfile("rootfs/usr/share/iunctus/cwl-js.sha256").read().decode()
-                        self.assertEqual(identities, f"{hashlib.sha256(binary.read_bytes()).hexdigest()}  /usr/local/bin/iunctus\n")
+                        identities = context.extractfile("rootfs/usr/share/uwe/cwl-js.sha256").read().decode()
+                        self.assertEqual(identities, f"{hashlib.sha256(binary.read_bytes()).hexdigest()}  /usr/local/bin/uwe\n")
                     return subprocess.CompletedProcess(arguments, 0)
 
                 with patch("subprocess.run", side_effect=command), patch("sys.argv", [str(script), str(binary), "--engine", "mock-engine", "--image", "fixture:1"]):
@@ -44,7 +44,7 @@ class ImageContext(unittest.TestCase):
     def test_rejects_ldd(self):
         script = Path(__file__).resolve().parents[1] / "cwl-js-image.py"
         with tempfile.TemporaryDirectory() as directory:
-            binary = Path(directory) / "iunctus"
+            binary = Path(directory) / "uwe"
             binary.write_bytes(b"trusted binary fixture")
             for code, output, error in [(1, "ldd failed", subprocess.CalledProcessError),
                                         (0, "libc.so => not found", RuntimeError),
@@ -58,7 +58,7 @@ class ImageContext(unittest.TestCase):
     def test_preserves_loader(self):
         script = Path(__file__).resolve().parents[1] / "cwl-js-image.py"
         with tempfile.TemporaryDirectory() as directory:
-            binary = Path(directory) / "iunctus"
+            binary = Path(directory) / "uwe"
             loader = Path(directory) / "ld-linux-x86-64.so.2"
             binary.write_bytes(b"trusted binary fixture")
             loader.write_bytes(b"trusted loader fixture")
@@ -72,7 +72,7 @@ class ImageContext(unittest.TestCase):
                 with tarfile.open(fileobj=options["stdin"], mode="r:") as context:
                     for location in [alias, str(loader)]:
                         self.assertEqual(context.extractfile("rootfs" + location).read(), loader.read_bytes())
-                    identities = context.extractfile("rootfs/usr/share/iunctus/cwl-js.sha256").read().decode()
+                    identities = context.extractfile("rootfs/usr/share/uwe/cwl-js.sha256").read().decode()
                     self.assertIn(f"{hashlib.sha256(loader.read_bytes()).hexdigest()}  {alias}\n", identities)
                 return subprocess.CompletedProcess(arguments, 0)
 

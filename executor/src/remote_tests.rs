@@ -102,7 +102,7 @@ async fn round_trip(stage: &RemoteStage) -> Planned {
     let script = crate::capture::capture(&script, &text(root.join("transfer"))).unwrap();
     let extra = [("control/wrapper.sh", script)];
     let planned = stage
-        .plan(job, &root, &extra, RECORDS, false)
+        .plan(job, &root, &extra, &[], RECORDS, false)
         .await
         .unwrap();
     assert_eq!(planned.mounts.len(), 1);
@@ -254,7 +254,10 @@ async fn refuses_unplaceable_inputs() {
             staging: &staging,
             placement: &placement,
         };
-        let error = stage.upload(job, folder.path(), &[]).await.unwrap_err();
+        let error = stage
+            .upload(job, folder.path(), &[], &[])
+            .await
+            .unwrap_err();
         assert!(matches!(error, ExecutorError::Unsupported(_)), "{error}");
     }
 }

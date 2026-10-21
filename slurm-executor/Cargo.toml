@@ -15,6 +15,7 @@ publish.workspace = true
 tracing.workspace = true
 executor.workspace = true
 serde_json.workspace = true
+tar.workspace = true
 task-model.workspace = true
 tokio = { workspace = true, features = ["fs", "process", "sync", "time"] }
 tokio-util.workspace = true

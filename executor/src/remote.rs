@@ -65,19 +65,20 @@ pub struct Planned {
 }
 
 impl RemoteStage {
-    /// Uploads the inputs of `job` and the `extra` files, like the wrapper, as the folder `root`
-    /// of the attempt shows them, and writes the plan that sends back `records`. An `open` plan
-    /// lets every user change what stage-in makes.
+    /// Uploads the inputs of `job`, the `extra` texts, like the wrapper, and the local `files`
+    /// as the folder `root` of the attempt shows them, and writes the plan that sends back
+    /// `records`. An `open` plan lets every user change what stage-in makes.
     pub async fn plan(
         &self,
         job: Job<'_>,
         root: &Path,
         extra: &[(&str, String)],
+        files: &[(&str, &Path)],
         records: &[&str],
         open: bool,
     ) -> Result<Planned, ExecutorError> {
         let prefix = crate::capture::attempt_prefix(job)?;
-        let layout = self.upload(job, root, extra).await?;
+        let layout = self.upload(job, root, extra, files).await?;
         let mut plan = Plan {
             directories: layout.directories,
             open,
@@ -119,13 +120,15 @@ impl RemoteStage {
         })
     }
 
-    /// Uploads the input files of `job` and the `extra` files to `cas/...` in the staging root,
-    /// where they are not yet, and lays them out as `place` does with copies.
+    /// Uploads the input files of `job`, the `extra` texts and the local `files` to `cas/...`
+    /// in the staging root, where they are not yet, and lays them out as `place` does with
+    /// copies. The paths of `extra` and `files` are in the folder of the attempt.
     pub async fn upload(
         &self,
         job: Job<'_>,
         root: &Path,
         extra: &[(&str, String)],
+        files: &[(&str, &Path)],
     ) -> Result<Layout, ExecutorError> {
         let staging = job.staging;
         let mut layout = Layout {
@@ -154,6 +157,9 @@ impl RemoteStage {
         }
         if let Some(stdin) = &staging.stdin {
             pending.push((stdin.clone(), format!("{CONTROL}/stdin"), false));
+        }
+        for (path, file) in files {
+            pending.push((file.to_path_buf(), (*path).to_owned(), false));
         }
         while let Some((source, path, executable)) = pending.pop() {
             let metadata = std::fs::metadata(&source).map_err(|_| {

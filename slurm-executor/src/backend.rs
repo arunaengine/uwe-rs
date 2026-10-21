@@ -20,7 +20,9 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::images::{Images, file_name, pull_script, tag_file_name};
+use crate::images::{
+    Images, archive_config, archive_file, archive_path, file_name, pull_script, tag_file_name,
+};
 use crate::queue::{Look, Queue};
 use crate::remote::{NodeStaging, records};
 use crate::script::{
@@ -47,6 +49,12 @@ const PULL_PAUSE: Duration = Duration::from_secs(20);
 
 /// How often the job that pulls an image is tried before the tasks of the image fail.
 const PULL_TRIES: u32 = 3;
+
+/// The image archive of a pull job, in its folder.
+const ARCHIVE: &str = "image.tar";
+
+/// The image archive of an attempt on a node without shared folders, in its folder.
+const ARCHIVE_PATH: &str = "control/image.tar";
 
 /// The tools of SLURM that the backend runs.
 pub const TOOLS: [&str; 4] = ["sbatch", "squeue", "sacct", "scancel"];
@@ -191,6 +199,10 @@ impl SlurmBackend {
 
 impl Backend for SlurmBackend {
     async fn pin(&self, image: &str) -> Result<Option<String>, ExecutorError> {
+        // An image archive has no registry to ask.
+        if archive_path(image).is_some() {
+            return Ok(None);
+        }
         registry::pin(image).await
     }
 
@@ -271,11 +283,13 @@ impl SlurmBackend {
         arguments: &[String],
     ) -> Result<Vec<String>, ExecutorError> {
         let file = image.reference.starts_with('/') || image.reference.ends_with(".sif");
-        let registry = !file && !image.reference.contains("://");
+        let archive = archive_path(&image.reference).map(Path::to_owned);
+        let registry = !file && !image.reference.contains("://") && archive.is_none();
         let selected = if let Some(platform) = image.platform.as_deref() {
             if !registry {
                 return Err(ExecutorError::Unsupported(
-                    "SLURM cannot select a platform for a SIF file or image address".into(),
+                    "SLURM cannot select a platform for a SIF file, image archive or image address"
+                        .into(),
                 ));
             }
             let resolved = self
@@ -288,10 +302,19 @@ impl SlurmBackend {
             None
         };
         let reference = image.reference.as_str();
-        let command = match registry && !(replaces_entrypoint && !arguments.is_empty()) {
-            true => match selected {
-                Some(config) => config,
-                None => self.image_config(reference).await?,
+        let configured = registry || archive.is_some();
+        let command = match configured && !(replaces_entrypoint && !arguments.is_empty()) {
+            true => match (selected, archive) {
+                (Some(config), _) => config,
+                // The archive is on this machine, also when the nodes get it through staging.
+                (None, Some(path)) => tokio::task::spawn_blocking(move || archive_config(&path))
+                    .await
+                    .map_err(|error| std::io::Error::other(error.to_string()))?
+                    .map_err(|reason| ExecutorError::MissingImage {
+                        image: reference.to_owned(),
+                        reason,
+                    })?,
+                (None, None) => self.image_config(reference).await?,
             }
             .command(arguments),
             false => arguments.to_vec(),
@@ -372,10 +395,28 @@ impl SlurmBackend {
             ));
         }
         let image = spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
-        // Without shared folders each node pulls the image itself.
-        let image = &match self.remote {
-            Some(_) => image.clone(),
-            None => self.runnable(image, cancel).await?,
+        let images =
+            std::iter::once(Some(image)).chain(spec.containers.iter().map(|c| c.image.as_ref()));
+        let archives = images
+            .flatten()
+            .any(|image| archive_path(&image.reference).is_some());
+        if archives && matches!(&self.container, Container::Engine(_)) {
+            return Err(ExecutorError::Unsupported(
+                "SLURM runs an image archive only with Apptainer or Singularity; set `registry` in \
+                 the `[cwl]` section of the config file for Podman or Docker on the nodes"
+                    .into(),
+            ));
+        }
+        // Without shared folders each node pulls the image itself, and an archive comes with
+        // the files of the task, into its control folder.
+        let archive = archive_path(&image.reference).filter(|_| self.remote.is_some());
+        let image = &match (&self.remote, archive) {
+            (Some(_), Some(_)) => task_model::Image {
+                reference: format!("docker-archive:{}", root.join(ARCHIVE_PATH).display()),
+                platform: image.platform.clone(),
+            },
+            (Some(_), None) => image.clone(),
+            (None, _) => self.runnable(image, cancel).await?,
         };
         let control = root.join(CONTROL);
         let owner = tokio::fs::metadata(root).await?;
@@ -429,9 +470,19 @@ impl SlurmBackend {
                     crate::Helper::Upload(binary) => Some(remote.stage.binary(binary).await?),
                     _ => None,
                 };
-                let planned = remote
-                    .stage
-                    .plan(job, root, &extra, &records(), access.hand_back.is_some())
+                let files: Vec<(&str, &Path)> = archive
+                    .map(|path| (ARCHIVE_PATH, path))
+                    .into_iter()
+                    .collect();
+                let planned = (remote.stage)
+                    .plan(
+                        job,
+                        root,
+                        &extra,
+                        &files,
+                        &records(),
+                        access.hand_back.is_some(),
+                    )
                     .await?;
                 *staged = Some(Staged {
                     prefix: planned.prefix.clone(),
@@ -665,7 +716,7 @@ impl SlurmBackend {
         let file = match (file_name(reference), tag_file_name(reference)) {
             (Some(file), _) => Some((file, true)),
             (None, Some(file)) => Some((file, false)),
-            (None, None) => None,
+            (None, None) => archive_file(reference),
         };
         match file {
             Some((file, lasting)) => {
@@ -753,7 +804,19 @@ impl SlurmBackend {
         tokio::fs::create_dir(&root).await?;
         let _ownership = ownership(&root)?;
         tokio::fs::create_dir_all(&control).await?;
-        let script = pull_script(program, reference, path, &control.join(CONTAINER_EXIT));
+        // The nodes may not see an archive of this machine, so the job reads a copy of it.
+        let source = match archive_path(reference) {
+            Some(archive) => {
+                let copy = root.join(ARCHIVE);
+                if let Err(error) = tokio::fs::copy(archive, &copy).await {
+                    let _ = tokio::fs::remove_dir_all(&root).await;
+                    return Err(error.into());
+                }
+                format!("docker-archive:{}", copy.display())
+            }
+            None => reference.to_owned(),
+        };
+        let script = pull_script(program, &source, path, &control.join(CONTAINER_EXIT));
         tokio::fs::write(control.join(SCRIPT), script).await?;
         let options = self
             .with_excluded(pull_options(&name, &root, &self.pull, &self.options))

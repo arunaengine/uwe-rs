@@ -1213,7 +1213,8 @@ fn set_members(interpreter: &mut Interpreter, value: &Value) -> Result<IndexSet<
         other => {
             let mut members = IndexSet::new();
             for item in interpreter.iterate(other)? {
-                members.insert(interpreter.key(&item)?);
+                let key = interpreter.key(&item)?;
+                interpreter.add_member(&mut members, key)?;
             }
             Ok(members)
         }
@@ -1285,12 +1286,8 @@ fn set_method(
             let table = (operands()).and_then(|(this, others)| updated(&this, name, &others));
             let mut result = members;
             for other in others {
-                result = match name {
-                    "update" => result.union(&other).cloned().collect(),
-                    "intersection_update" => result.intersection(&other).cloned().collect(),
-                    "difference_update" => result.difference(&other).cloned().collect(),
-                    _ => result.symmetric_difference(&other).cloned().collect(),
-                };
+                let operation = name.trim_end_matches("_update").replace("update", "union");
+                result = interpreter.combine(&operation, &result, &other)?;
             }
             *set.borrow_mut() = result;
             if let Some(table) = table {
@@ -1302,12 +1299,7 @@ fn set_method(
             let table = (operands()).and_then(|(this, others)| derived(name, &this, &others));
             let mut result = members;
             for other in others {
-                result = match name {
-                    "union" => result.union(&other).cloned().collect(),
-                    "intersection" => result.intersection(&other).cloned().collect(),
-                    "difference" => result.difference(&other).cloned().collect(),
-                    _ => result.symmetric_difference(&other).cloned().collect(),
-                };
+                result = interpreter.combine(name, &result, &other)?;
             }
             let value = make(result);
             if let Some(table) = table {
@@ -1412,12 +1404,15 @@ fn changed_in_place(
                 .map(|(value, members)| Operand::of(value, members))
                 .collect::<Option<Vec<_>>>();
             crate::hashing::apply(set, name, operands.as_deref());
-            let mut members = set.borrow_mut();
             for (_, other) in &others {
                 for key in other {
-                    match name {
-                        "update" => members.insert(key.clone()),
-                        _ => members.swap_remove(key),
+                    // A member of another kind that is equal by `__eq__` counts as this one.
+                    let found = interpreter.member_key(set, &key.0)?;
+                    let mut members = set.borrow_mut();
+                    match (name, members.contains(&found)) {
+                        ("update", false) => members.insert(found),
+                        ("update", true) => false,
+                        _ => members.swap_remove(&found),
                     };
                 }
             }

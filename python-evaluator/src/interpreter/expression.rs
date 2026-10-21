@@ -128,7 +128,8 @@ impl Interpreter {
             Expr::Set(set) => {
                 let mut items = IndexSet::new();
                 for item in self.eval_elements(frame, &set.elts)? {
-                    items.insert(self.key(&item)?);
+                    let key = self.key(&item)?;
+                    self.add_member(&mut items, key)?;
                 }
                 let value = Value::set(items);
                 if set.elts.len() >= 3
@@ -146,12 +147,18 @@ impl Interpreter {
                         Some(key) => {
                             let key = self.eval(frame, key)?;
                             let value = self.eval(frame, &item.value)?;
-                            result.entries.insert(self.key(&key)?, value);
+                            {
+                                let key = self.key(&key)?;
+                                self.set_entry(&mut result.entries, key, value)?;
+                            }
                         }
                         None => {
                             let mapping = self.eval(frame, &item.value)?;
                             for (key, value) in self.mapping_items(&mapping)? {
-                                result.entries.insert(self.key(&key)?, value);
+                                {
+                                    let key = self.key(&key)?;
+                                    self.set_entry(&mut result.entries, key, value)?;
+                                }
                             }
                         }
                     }
@@ -194,7 +201,8 @@ impl Interpreter {
                 let mut items = IndexSet::new();
                 self.comprehension(frame, &comprehension.generators, &mut |this, inner| {
                     let item = this.eval(inner, &comprehension.elt)?;
-                    items.insert(this.key(&item)?);
+                    let key = this.key(&item)?;
+                    this.add_member(&mut items, key)?;
                     Ok(())
                 })?;
                 Value::set(items)
@@ -206,12 +214,18 @@ impl Interpreter {
                         Some(key) => {
                             let key = this.eval(inner, key)?;
                             let value = this.eval(inner, &comprehension.value)?;
-                            result.entries.insert(this.key(&key)?, value);
+                            {
+                                let key = this.key(&key)?;
+                                this.set_entry(&mut result.entries, key, value)?;
+                            }
                         }
                         None => {
                             let mapping = this.eval(inner, &comprehension.value)?;
                             for (key, value) in this.mapping_items(&mapping)? {
-                                result.entries.insert(this.key(&key)?, value);
+                                {
+                                    let key = this.key(&key)?;
+                                    this.set_entry(&mut result.entries, key, value)?;
+                                }
                             }
                         }
                     }

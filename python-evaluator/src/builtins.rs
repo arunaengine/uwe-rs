@@ -265,7 +265,8 @@ pub fn construct(
             let mut items = IndexSet::new();
             if let Some(value) = &first {
                 for item in interpreter.iterate(value)? {
-                    items.insert(interpreter.key(&item)?);
+                    let key = interpreter.key(&item)?;
+                    interpreter.add_member(&mut items, key)?;
                 }
             }
             let made = (first.as_ref())
@@ -366,7 +367,8 @@ pub fn update_dict(
             && !matches!(source.plain(), Value::List(_) | Value::Tuple(_));
     if is_mapping {
         for (key, value) in interpreter.mapping_items(source)? {
-            dict.entries.insert(interpreter.key(&key)?, value);
+            let key = interpreter.key(&key)?;
+            interpreter.set_entry(&mut dict.entries, key, value)?;
         }
         return Ok(());
     }
@@ -378,8 +380,8 @@ pub fn update_dict(
                 items.len()
             )));
         }
-        dict.entries
-            .insert(interpreter.key(&items[0])?, items[1].clone());
+        let key = interpreter.key(&items[0])?;
+        interpreter.set_entry(&mut dict.entries, key, items[1].clone())?;
     }
     Ok(())
 }
@@ -1242,7 +1244,8 @@ pub fn class_attribute(
                 let value = args.positional.get(1).cloned().unwrap_or(Value::None);
                 let mut dict = Dict::default();
                 for key in interpreter.iterate(&args.positional[0])? {
-                    dict.entries.insert(interpreter.key(&key)?, value.clone());
+                    let key = interpreter.key(&key)?;
+                    interpreter.set_entry(&mut dict.entries, key, value.clone())?;
                 }
                 Ok(Value::dict(dict))
             },

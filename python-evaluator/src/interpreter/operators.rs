@@ -280,16 +280,18 @@ impl Interpreter {
             return Ok(builtin);
         }
         if let (Some(x), Some(y)) = (set_items(a), set_items(b)) {
-            let (result, name): (Option<IndexSet<Key>>, &str) = match operator {
-                Operator::BitOr => (Some(x.union(&y).cloned().collect()), "union"),
-                Operator::BitAnd => (Some(x.intersection(&y).cloned().collect()), "intersection"),
-                Operator::Sub => (Some(x.difference(&y).cloned().collect()), "difference"),
-                Operator::BitXor => (
-                    Some(x.symmetric_difference(&y).cloned().collect()),
-                    "symmetric_difference",
-                ),
-                _ => (None, ""),
+            let name = match operator {
+                Operator::BitOr => Some("union"),
+                Operator::BitAnd => Some("intersection"),
+                Operator::Sub => Some("difference"),
+                Operator::BitXor => Some("symmetric_difference"),
+                _ => None,
             };
+            let result = match name {
+                Some(name) => Some(self.combine(name, &x, &y)?),
+                None => None,
+            };
+            let name = name.unwrap_or_default();
             if let Some(result) = result {
                 let value = match a {
                     Value::FrozenSet(_) => Value::FrozenSet(Rc::new(result)),
@@ -681,6 +683,80 @@ impl Interpreter {
         Ok(found.unwrap_or(key))
     }
 
+    /// Adds a member to a set that is being made, unless a member of another kind equals it
+    /// by `__eq__`: the set keeps the member it has, as CPython does.
+    pub fn add_member(&mut self, members: &mut IndexSet<Key>, key: Key) -> Result<(), Error> {
+        if members.contains(&key)
+            || (self.equal_key(&key, || members.iter().cloned().collect())?).is_some()
+        {
+            return Ok(());
+        }
+        members.insert(key);
+        Ok(())
+    }
+
+    /// Sets an entry of a dict that is being made; a key of another kind that equals the key
+    /// by `__eq__` keeps its place and object, as CPython keeps the first key.
+    pub fn set_entry(
+        &mut self,
+        entries: &mut indexmap::IndexMap<Key, Value>,
+        key: Key,
+        value: Value,
+    ) -> Result<(), Error> {
+        let found = match entries.contains_key(&key) {
+            true => None,
+            false => self.equal_key(&key, || entries.keys().cloned().collect())?,
+        };
+        entries.insert(found.unwrap_or(key), value);
+        Ok(())
+    }
+
+    /// `union`, `intersection`, `difference` or `symmetric_difference` of two sets, where
+    /// members of other kinds that are equal by `__eq__` count as one.
+    pub fn combine(
+        &mut self,
+        name: &str,
+        x: &IndexSet<Key>,
+        y: &IndexSet<Key>,
+    ) -> Result<IndexSet<Key>, Error> {
+        let mut result = IndexSet::new();
+        match name {
+            "union" => {
+                result = x.clone();
+                for key in y {
+                    self.add_member(&mut result, key.clone())?;
+                }
+            }
+            // CPython's `set_intersection` walks the smaller set and keeps its members.
+            "intersection" => {
+                let (walked, other) = if y.len() <= x.len() { (y, x) } else { (x, y) };
+                for key in walked {
+                    let found = other.contains(key)
+                        || (self.equal_key(key, || other.iter().cloned().collect())?).is_some();
+                    if found {
+                        result.insert(key.clone());
+                    }
+                }
+            }
+            "difference" => {
+                for key in x {
+                    let found = y.contains(key)
+                        || (self.equal_key(key, || y.iter().cloned().collect())?).is_some();
+                    if !found {
+                        result.insert(key.clone());
+                    }
+                }
+            }
+            _ => {
+                result = self.combine("difference", x, y)?;
+                for key in self.combine("difference", y, x)? {
+                    result.insert(key);
+                }
+            }
+        }
+        Ok(result)
+    }
+
     /// The member of a set for a value, found as `dict_key` finds a key.
     pub fn set_key(&mut self, members: &IndexSet<Key>, value: &Value) -> Result<Key, Error> {
         let key = self.key(value)?;
@@ -699,11 +775,15 @@ impl Interpreter {
         key: &Key,
         candidates: impl FnOnce() -> Vec<Key>,
     ) -> Result<Option<Key>, Error> {
-        let hash = crate::hashing::python_hash(&key.0);
         let instance = match key.0.plain() {
             Value::Instance(instance) => Some(instance),
             _ => None,
         };
+        // Without objects of classes with `__hash__`, keys of one kind never meet another.
+        if instance.is_none() && self.hashed.is_empty() {
+            return Ok(None);
+        }
+        let hash = crate::hashing::python_hash(&key.0);
         let applies = match instance {
             Some(instance) => {
                 instance.hashed.get().is_some()

@@ -34,16 +34,45 @@ fn is_version(reference: &str) -> bool {
 }
 
 /// The wrapper `name` under the `wrapper-prefix` of a profile, as Snakemake's `get_path`; a
-/// `git+file` prefix takes the first part of the name as the ref.
+/// `git+file` prefix takes the first part of the name as the ref, and a prefix without a
+/// scheme is a local folder.
 pub fn prefixed(name: &str, prefix: Option<&str>) -> String {
     match prefix.filter(|_| !is_address(name)) {
         Some(prefix) if prefix.starts_with("git+file") => {
             let (reference, path) = name.split_once('/').unwrap_or((name, ""));
             format!("{prefix}/{path}@{reference}")
         }
+        Some(prefix) if scheme(prefix).is_none() => format!("file:{prefix}{name}"),
         Some(prefix) => format!("{prefix}{name}"),
         None => name.to_owned(),
     }
+}
+
+/// The scheme of an address, as `urlsplit` finds it: letters, digits, `+`, `-` and `.`
+/// before a colon, starting with a letter.
+fn scheme(address: &str) -> Option<&str> {
+    let (scheme, _) = address.split_once(':')?;
+    let mut chars = scheme.chars();
+    let valid = chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic())
+        && chars.all(|next| next.is_ascii_alphanumeric() || matches!(next, '+' | '-' | '.'));
+    valid.then_some(scheme)
+}
+
+/// The local path of a `git+file:` address `<path>@<ref>`, in the checkout of the git
+/// repository that holds the path, as Snakemake's `split_git_path` finds it.
+fn git_path(address: &str, mirrors: &Mirrors) -> Option<Result<String, String>> {
+    let rest = address.strip_prefix("git+file:")?;
+    let (path, reference) = rest.rsplit_once('@').unwrap_or((rest, ""));
+    let path = format!("/{}", path.trim_start_matches('/'));
+    let path = python_evaluator::host::normalize(Path::new(&path));
+    let Some(root) = path.ancestors().find(|folder| folder.join(".git").exists()) else {
+        return Some(Err(format!("{} is in no git repository", path.display())));
+    };
+    let relative = path.strip_prefix(root).unwrap_or(Path::new(""));
+    let checkout = mirrors.git_folder(&root.to_string_lossy(), reference);
+    Some(checkout.map(|folder| folder.join(relative).to_string_lossy().into_owned()))
 }
 
 /// The folder or script of a wrapper: a local path or a web address.
@@ -93,7 +122,10 @@ pub fn source(
     mirrors: &Mirrors,
     simulated: bool,
 ) -> Result<Source, String> {
-    let location = location(name, workdir);
+    let location = match git_path(name, mirrors) {
+        Some(found) => found?,
+        None => location(name, workdir),
+    };
     let candidates: Vec<String> = if SCRIPTS.iter().any(|script| location.ends_with(script)) {
         vec![location.clone()]
     } else {
@@ -154,7 +186,7 @@ fn file_name(location: &str) -> &str {
 mod tests {
     use std::path::Path;
 
-    use super::{folder, location};
+    use super::{folder, location, prefixed};
 
     #[test]
     fn resolves_wrapper_paths() {
@@ -171,5 +203,11 @@ mod tests {
         assert_eq!(location("file:///opt/x/", workdir), "/opt/x");
         assert_eq!(folder("/opt/x/wrapper.py"), "/opt/x");
         assert_eq!(folder("/opt/x"), "/opt/x");
+        assert_eq!(prefixed("x", Some("/opt/w/")), "file:/opt/w/x");
+        assert_eq!(prefixed("x", Some("https://h/")), "https://h/x");
+        assert_eq!(
+            prefixed("v1/x", Some("git+file:///r")),
+            "git+file:///r/x@v1"
+        );
     }
 }

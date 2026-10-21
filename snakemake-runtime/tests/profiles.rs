@@ -324,6 +324,59 @@ fn prefixes_wrapper_names() {
     assert!(format!("{task:?}").contains("from prefix"), "{task:?}");
 }
 
+/// Snakemake 9.27 also takes a `wrapper-prefix` that is a plain folder, and one of a git
+/// repository, `git+file://`, whose wrapper name starts with the tag.
+#[test]
+fn prefixes_local_wrappers() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let script = folder.path().join("wraps/demo");
+    std::fs::create_dir_all(&script).expect("a wrapper folder");
+    std::fs::write(script.join("wrapper.py"), "print('from folder')\n").expect("a wrapper");
+    let snakefile = "rule a:\n    output: 'o'\n    wrapper: 'demo'\n";
+    let launch = profile_launch(folder.path(), "wrapper-prefix: 'wraps/'\n", snakefile);
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    let task = driver.start().expect("starts").remove(0);
+    assert!(format!("{task:?}").contains("from folder"), "{task:?}");
+    let repository = gix::init(folder.path().join("repo")).expect("a repository");
+    let blob = repository
+        .write_blob("print('from git')\n")
+        .unwrap()
+        .detach();
+    let entry = |name: &str, kind: gix::objs::tree::EntryKind, oid| gix::objs::tree::Entry {
+        mode: kind.into(),
+        filename: name.into(),
+        oid,
+    };
+    let demo = gix::objs::Tree {
+        entries: vec![entry("wrapper.py", gix::objs::tree::EntryKind::Blob, blob)],
+    };
+    let demo = repository.write_object(&demo).unwrap().detach();
+    let top = gix::objs::Tree {
+        entries: vec![entry("demo", gix::objs::tree::EntryKind::Tree, demo)],
+    };
+    let top = repository.write_object(&top).unwrap().detach();
+    let person = gix::actor::SignatureRef {
+        name: "test".into(),
+        email: "test@example.org".into(),
+        time: "0 +0000",
+    };
+    let parents = Vec::<gix::ObjectId>::new();
+    let commit = repository.commit_as(person, person, "refs/heads/main", "one", top, parents);
+    let tag = gix::refs::transaction::PreviousValue::Any;
+    repository
+        .tag_reference("v1", commit.unwrap(), tag)
+        .expect("a tag");
+    let settings = format!(
+        "wrapper-prefix: 'git+file://{}'\n",
+        folder.path().join("repo").display()
+    );
+    let snakefile = "rule a:\n    output: 'o'\n    wrapper: 'v1/demo'\n";
+    let launch = profile_launch(folder.path(), &settings, snakefile);
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    let task = driver.start().expect("starts").remove(0);
+    assert!(format!("{task:?}").contains("from git"), "{task:?}");
+}
+
 /// Snakemake 9.27 with `allowed-rules: [b]` makes no file with rule `a`: `b` misses `a`
 /// until it is there, and then runs alone.
 #[test]

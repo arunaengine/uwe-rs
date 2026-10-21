@@ -63,6 +63,10 @@ impl Executor for Limited {
     fn hold(&mut self) {
         self.executor.hold();
     }
+
+    fn release(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        self.executor.release()
+    }
 }
 
 /// A real executor with the settings of the command line: its line per task, whether the cache
@@ -300,6 +304,7 @@ fn previewed(simulator: Simulator, arguments: &Arguments, setup: &Setup) -> Box<
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
     use std::sync::{Arc, Mutex};
 
     use workflow_graph::{Attempt, CancellationToken, Executor, Outcome, Resources, Running, Task};
@@ -311,6 +316,19 @@ mod tests {
             *self.0.lock().unwrap() = attempt.task.resources.clone();
             Running::ended(Ok(Outcome::default()))
         }
+
+        fn release(&mut self) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send>> {
+            self.0.lock().unwrap().cpus = Some(-1.0);
+            Box::pin(async {})
+        }
+    }
+
+    #[tokio::test]
+    async fn forwards_daemon_release() {
+        let observed = Arc::new(Mutex::new(Resources::default()));
+        let mut executor = super::limited(Box::new(Observed(observed.clone())), Some(2), None);
+        executor.release().await;
+        assert_eq!(observed.lock().unwrap().cpus, Some(-1.0), "released");
     }
 
     #[tokio::test]

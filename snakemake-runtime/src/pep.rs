@@ -10,7 +10,7 @@ mod objects;
 use std::path::Path;
 
 use indexmap::IndexMap;
-use python_evaluator::pandas::{DataFrame, is_missing};
+use python_evaluator::pandas::{DataFrame, FrameData, Labels, is_missing};
 use python_evaluator::{Args, Dict, Error, Interpreter, Value};
 
 pub use objects::{Project, Sample};
@@ -167,11 +167,7 @@ fn read_table(interpreter: &mut Interpreter, path: &str, blank: bool) -> Result<
     let separator = match extension.as_str() {
         "csv" => ",",
         "tsv" => "\t",
-        "xlsx" => {
-            return Err(Error::unsupported(
-                "PEP sample tables in Excel files (.xlsx)",
-            ));
-        }
+        "xlsx" => return read_excel(interpreter, path, blank),
         _ => {
             return Err(peppy_error(
                 "InvalidSampleTableFileException",
@@ -209,6 +205,128 @@ fn read_table(interpreter: &mut Interpreter, path: &str, blank: bool) -> Result<
         }
     }
     Ok(DataFrame::from_data(data))
+}
+
+/// The first sheet of an Excel table as pandas' `read_excel` reads it with peppy's settings:
+/// texts by column, empty cells missing (or `""` with `blank`), blank rows left out.
+fn read_excel(interpreter: &mut Interpreter, path: &str, blank: bool) -> Result<Value, Error> {
+    use calamine::Reader;
+    let resolved = interpreter.host.resolve(path);
+    if !resolved.is_file() {
+        return Err(Error::file_not_found(path));
+    }
+    let unreadable = |error: String| Error::value_error(format!("{path}: {error}"));
+    let mut book =
+        calamine::open_workbook_auto(&resolved).map_err(|error| unreadable(error.to_string()))?;
+    let sheet = (book.worksheet_range_at(0))
+        .ok_or_else(|| unreadable("the workbook has no sheet".into()))?
+        .map_err(|error| unreadable(error.to_string()))?;
+    // Columns before the first used one are empty columns of the table.
+    let skipped = sheet.start().map_or(0, |(_, column)| column as usize);
+    let missing = || match blank {
+        true => Value::str(""),
+        false => Value::Float(f64::NAN),
+    };
+    let mut rows = Vec::new();
+    for row in sheet.rows() {
+        let mut cells = vec![None; skipped];
+        for cell in row {
+            cells.push(excel_text(interpreter, cell)?);
+        }
+        if cells.iter().any(Option::is_some) {
+            rows.push(cells);
+        }
+    }
+    let width = rows.iter().map(Vec::len).max().unwrap_or(0);
+    let mut header = if rows.is_empty() {
+        Vec::new()
+    } else {
+        rows.remove(0)
+    };
+    header.resize(width, None);
+    let mut columns: Vec<Value> = Vec::new();
+    for (position, name) in header.into_iter().enumerate() {
+        let name = name.unwrap_or_else(|| format!("Unnamed: {position}"));
+        // pandas renames a repeated column name `a` to `a.1`, `a.2` and so on.
+        let mut unique = name.clone();
+        let mut count = 0;
+        while columns
+            .iter()
+            .any(|column| column.as_str() == Some(&unique))
+        {
+            count += 1;
+            unique = format!("{name}.{count}");
+        }
+        columns.push(Value::str(unique));
+    }
+    let data = (0..width)
+        .map(|column| {
+            (rows.iter())
+                .map(|row| match row.get(column) {
+                    Some(Some(text)) => Value::str(text.as_str()),
+                    _ => missing(),
+                })
+                .collect()
+        })
+        .collect();
+    let index = Labels::range(rows.len());
+    let columns = Labels::single(columns, Value::None);
+    Ok(DataFrame::from_data(FrameData::new(columns, data, index)))
+}
+
+/// The text of a cell as pandas gives it with `dtype=str`, or none for an empty one.
+fn excel_text(
+    interpreter: &mut Interpreter,
+    cell: &calamine::Data,
+) -> Result<Option<String>, Error> {
+    use calamine::Data;
+    Ok(match cell {
+        Data::Empty => None,
+        Data::String(text) if text.is_empty() => None,
+        Data::String(text) | Data::DateTimeIso(text) | Data::DurationIso(text) => {
+            Some(text.clone())
+        }
+        Data::Int(number) => Some(number.to_string()),
+        // openpyxl gives whole numbers as integers.
+        Data::Float(number) if number.fract() == 0.0 && number.abs() < 1e15 => {
+            Some(format!("{number:.0}"))
+        }
+        Data::Float(number) => Some(interpreter.to_str(&Value::Float(*number))?),
+        Data::Bool(value) => Some(if *value { "True" } else { "False" }.to_owned()),
+        Data::Error(error) => Some(error.to_string()),
+        Data::DateTime(time) => Some(excel_time(time.as_f64(), time.is_datetime())),
+    })
+}
+
+/// The text of an Excel date, `2024-01-31 00:00:00`, of a time of day without a date or of a
+/// duration, as Python prints the values of openpyxl. Days count from 1899-12-30.
+fn excel_time(serial: f64, datetime: bool) -> String {
+    let seconds = (serial * 86400.0).round() as i64;
+    let (days, time) = (seconds.div_euclid(86400), seconds.rem_euclid(86400));
+    let (hours, minutes, rest) = (time / 3600, time / 60 % 60, time % 60);
+    if !datetime {
+        let clock = format!("{hours}:{minutes:02}:{rest:02}");
+        return match days {
+            0 => clock,
+            1 | -1 => format!("{days} day, {clock}"),
+            _ => format!("{days} days, {clock}"),
+        };
+    }
+    let clock = format!("{hours:02}:{minutes:02}:{rest:02}");
+    if days == 0 {
+        return clock;
+    }
+    // Howard Hinnant's days-to-civil, shifted from 1970-01-01 to 1899-12-30.
+    let shifted = days - 25569 + 719468;
+    let era = shifted.div_euclid(146097);
+    let day = shifted - era * 146097;
+    let year = (day - day / 1460 + day / 36524 - day / 146096) / 365;
+    let day_of_year = day - (365 * year + year / 4 - year / 100);
+    let month = (5 * day_of_year + 2) / 153;
+    let date = day_of_year - (153 * month + 2) / 5 + 1;
+    let month = if month < 10 { month + 3 } else { month - 9 };
+    let year = year + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{date:02} {clock}")
 }
 
 /// The rows of a table as attributes by column.

@@ -127,6 +127,13 @@ fn finds_dict_keys() {
     assert!(seconds < 60, "took {seconds} s");
 }
 
+/// Each frozenset has an identity of its own, as `id()` and `is` tell.
+#[test]
+fn identifies_frozensets() {
+    let code = "a = frozenset([1])\nb = frozenset([2])\nprint(id(a) != id(b), id(a) == id(a), id(a) != 0)\n";
+    assert_eq!(evaluate(code).expect("runs"), "True True True\n");
+}
+
 #[test]
 fn reports_exception_lines() {
     let error = evaluate("x = 1\ny = {}\ny['missing']\n").expect_err("a KeyError");

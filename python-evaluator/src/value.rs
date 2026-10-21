@@ -208,6 +208,7 @@ impl Value {
             Value::List(value) => Rc::as_ptr(value) as *const u8 as usize,
             Value::Dict(value) => Rc::as_ptr(value) as *const u8 as usize,
             Value::Set(value) => Rc::as_ptr(value) as *const u8 as usize,
+            Value::FrozenSet(value) => Rc::as_ptr(value) as *const u8 as usize,
             Value::Tuple(value) => Rc::as_ptr(value) as *const u8 as usize,
             Value::Str(value) => Rc::as_ptr(value) as *const u8 as usize,
             Value::Function(value) => Rc::as_ptr(value) as usize,

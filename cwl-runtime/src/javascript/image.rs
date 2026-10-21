@@ -17,16 +17,42 @@ const DOCKERFILE: &str = include_str!("../../../containers/cwl-js/Dockerfile");
 /// The repository of the helper images; each tag is the digest of the binary inside.
 const REPOSITORY: &str = "iunctus-cwl-js";
 
+/// Names a static Linux binary of iunctus to make the helper image from, instead of the
+/// running binary, for example on macOS.
+const BINARY_VARIABLE: &str = "IUNCTUS_CWL_JS_BINARY";
+
 /// `iunctus-cwl-js:<digest>` of the running binary, made with the engine when it lacks it, so
 /// that a new iunctus never uses the helper of an old one.
 pub(crate) fn own_image(engine: &str, cancel: &CancellationToken) -> Result<String, String> {
-    // The images known per engine, so that each process builds or checks once.
-    static KNOWN: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());
+    remember(engine, cancel, || make_image(engine, cancel))
+}
+
+/// The image of an engine that `make` gives, made once per process. A failure is remembered
+/// too, as making it again would fail the same way, unless the run was cancelled.
+fn remember(
+    engine: &str,
+    cancel: &CancellationToken,
+    make: impl FnOnce() -> Result<String, String>,
+) -> Result<String, String> {
+    static KNOWN: Mutex<BTreeMap<String, Result<String, String>>> = Mutex::new(BTreeMap::new());
     let mut known = KNOWN.lock().map_err(|error| error.to_string())?;
-    if let Some(image) = known.get(engine) {
-        return Ok(image.clone());
+    if let Some(result) = known.get(engine) {
+        return result.clone();
     }
-    let binary = std::env::current_exe().map_err(|error| error.to_string())?;
+    let result = make();
+    if result.is_ok() || !cancel.is_cancelled() {
+        known.insert(engine.to_owned(), result.clone());
+    }
+    result
+}
+
+fn make_image(engine: &str, cancel: &CancellationToken) -> Result<String, String> {
+    let configured = std::env::var_os(BINARY_VARIABLE).map(PathBuf::from);
+    let binary = match &configured {
+        Some(binary) => binary.clone(),
+        None => std::env::current_exe().map_err(|error| error.to_string())?,
+    };
+    let machine = linux_machine(&binary, configured.is_some())?;
     let digest = file_digest(&binary).map_err(|error| error.to_string())?;
     let tag = format!("{REPOSITORY}:{digest}");
     let context = tempfile::NamedTempFile::new().map_err(|error| error.to_string())?;
@@ -36,17 +62,58 @@ pub(crate) fn own_image(engine: &str, cancel: &CancellationToken) -> Result<Stri
     let (name, cancel) = (engine.to_owned(), cancel.clone());
     let image = tag.clone();
     // The engine client needs a runtime of its own, outside the caller's.
-    std::thread::spawn(move || build(&name, context.path(), &image, &cancel))
+    std::thread::spawn(move || build(&name, context.path(), (&image, machine), &cancel))
         .join()
         .map_err(|_| "the helper image build panicked".to_owned())??;
-    known.insert(engine.to_owned(), tag.clone());
     Ok(tag)
+}
+
+/// The ELF machine of a binary that can run in a Linux helper container: a 64-bit
+/// little-endian ELF file, and static when it is not the running binary, whose loaded
+/// libraries go into the image.
+fn linux_machine(binary: &Path, configured: bool) -> Result<u16, String> {
+    let shown = binary.display();
+    let machine = elf_machine(binary).map_err(|error| format!("cannot read {shown}: {error}"))?;
+    let Some(machine) = machine else {
+        return Err(format!(
+            "the JavaScript helper of CWL runs iunctus in a Linux container, but {shown} is not \
+             a Linux binary. {}",
+            linux_help()
+        ));
+    };
+    let dynamic = interpreter(binary).map_err(|error| error.to_string())?;
+    if configured && dynamic.is_some() {
+        return Err(format!(
+            "{BINARY_VARIABLE} must name a static Linux binary of iunctus, but {shown} needs \
+             the libraries of {}",
+            dynamic.unwrap_or_default()
+        ));
+    }
+    Ok(machine)
+}
+
+/// How to give the helper a Linux binary or image.
+fn linux_help() -> String {
+    format!(
+        "Set {BINARY_VARIABLE} to a static Linux binary of iunctus for the architecture of the \
+         container engine (`just release-binary` makes one), or IUNCTUS_CWL_JS_IMAGE to a \
+         helper image built with `scripts/cwl-js-image.py`."
+    )
+}
+
+/// The ELF machine of the containers of an engine of this architecture, as Docker names it.
+fn engine_machine(architecture: &str) -> Option<u16> {
+    match architecture {
+        "x86_64" | "amd64" => Some(62),
+        "aarch64" | "arm64" => Some(183),
+        _ => None,
+    }
 }
 
 fn build(
     engine: &str,
     context: &Path,
-    tag: &str,
+    (tag, machine): (&str, u16),
     cancel: &CancellationToken,
 ) -> Result<(), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -57,6 +124,16 @@ fn build(
         let engine = ContainerEngine::named(Some(engine).filter(|name| !name.is_empty()))
             .await
             .map_err(|error| error.to_string())?;
+        // A binary of another architecture cannot start in the containers of the engine.
+        let info = engine.client().info().await.ok();
+        let architecture = info.and_then(|info| info.architecture).unwrap_or_default();
+        if engine_machine(&architecture).is_some_and(|expected| expected != machine) {
+            return Err(format!(
+                "the binary for the JavaScript helper of CWL is not for the {architecture} \
+                 containers of the engine. {}",
+                linux_help()
+            ));
+        }
         // Older helpers, tagged by the digest of their binary, go once the new one exists.
         let older = |reference: &str| {
             let digest = reference
@@ -149,6 +226,17 @@ fn file_digest(path: &Path) -> io::Result<String> {
         .collect())
 }
 
+/// The machine (`e_machine`) of a 64-bit little-endian ELF file; none for other files.
+fn elf_machine(binary: &Path) -> io::Result<Option<u16>> {
+    let mut header = [0; 20];
+    let mut file = File::open(binary)?;
+    if file.read_exact(&mut header).is_err() {
+        return Ok(None);
+    }
+    let elf = &header[..4] == b"\x7fELF" && header[4] == 2 && header[5] == 1;
+    Ok(elf.then(|| u16::from_le_bytes([header[18], header[19]])))
+}
+
 /// The program interpreter (`PT_INTERP`) of a 64-bit little-endian ELF file; none for a
 /// static binary.
 fn interpreter(binary: &Path) -> io::Result<Option<String>> {
@@ -214,6 +302,44 @@ fn libraries(binary: &Path) -> io::Result<Vec<PathBuf>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A binary that is no Linux binary, like one of macOS, gets a message on what to set.
+    #[test]
+    fn explains_foreign_binaries() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let binary = folder.path().join("iunctus");
+        std::fs::write(&binary, b"\xcf\xfa\xed\xfe\x07\x00\x00\x01 a Mach-O file").expect("writes");
+        let error = linux_machine(&binary, false).unwrap_err();
+        assert!(error.contains("is not a Linux binary"), "{error}");
+        assert!(error.contains(BINARY_VARIABLE), "{error}");
+        assert!(error.contains("IUNCTUS_CWL_JS_IMAGE"), "{error}");
+        let running = std::env::current_exe().expect("the test binary");
+        let machine = linux_machine(&running, false).expect("a Linux binary");
+        assert_eq!(engine_machine(std::env::consts::ARCH), Some(machine));
+        if interpreter(&running).expect("the ELF header").is_some() {
+            let error = linux_machine(&running, true).unwrap_err();
+            assert!(error.contains("must name a static Linux binary"), "{error}");
+        }
+    }
+
+    /// A failed build is not tried again for the next expression, unless it was cancelled.
+    #[test]
+    fn remembers_failed_builds() {
+        let cancel = CancellationToken::new();
+        let tries = std::cell::Cell::new(0);
+        let make = || {
+            tries.set(tries.get() + 1);
+            Err("no engine".to_owned())
+        };
+        let cancelled = CancellationToken::new();
+        cancelled.cancel();
+        assert!(remember("test-cancelled", &cancelled, make).is_err());
+        assert!(remember("test-cancelled", &cancelled, make).is_err());
+        assert_eq!(tries.get(), 2);
+        assert!(remember("test-failed", &cancel, make).is_err());
+        assert!(remember("test-failed", &cancel, make).is_err());
+        assert_eq!(tries.get(), 3);
+    }
 
     #[test]
     fn packs_running_binary() {

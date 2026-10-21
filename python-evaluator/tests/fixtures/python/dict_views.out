@@ -1,0 +1,7 @@
+dict_keys(['a', 'b']) dict_values([1, [2]]) dict_items([('a', 1), ('b', [2])])
+dict_keys(['b', 'c']) 2 [('b', [2]), ('c', 3)] True True True
+True ['c'] ['x']
+True None True False
+[1, 2, 3] [2, 1] dict_keys
+1 one
+True True 2 2 ['b', 'c']

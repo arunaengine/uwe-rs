@@ -201,3 +201,31 @@ fn accepts_flow_dash() {
     let words: Vec<&str> = arguments.iter().filter_map(Node::as_str).collect();
     assert_eq!(words, ["odgi", "build", "-o", "-", "-t"]);
 }
+
+/// Nested anchors around a large alias are counted once each, so reading them takes about
+/// the time of copying the alias, not that times the depth.
+#[test]
+fn counts_anchors_once() {
+    let items = vec!["x"; 1000].join(", ");
+    let mut text = format!("big: &big [{items}]\nlarge: &large [");
+    text.push_str(&vec!["*big"; 100].join(", "));
+    text.push_str("]\nnest: ");
+    for level in 0..250 {
+        text.push_str(&format!("&n{level} ["));
+    }
+    text.push_str("*large");
+    text.push_str(&"]".repeat(250));
+    text.push('\n');
+    let started = std::time::Instant::now();
+    let node = parse(&text);
+    let elapsed = started.elapsed();
+    assert!(node.get("nest").is_some());
+    assert!(elapsed.as_secs() < 2, "{elapsed:?}");
+    // Aliases of all of them copy too much, also while the anchors are kept.
+    let names: Vec<String> = (0..250).map(|level| format!("*n{level}")).collect();
+    text.push_str(&format!("copies: [{}]\n", names.join(", ")));
+    let started = std::time::Instant::now();
+    assert_eq!(failure(&text).message, "aliases expand to too many values");
+    let elapsed = started.elapsed();
+    assert!(elapsed.as_secs() < 2, "{elapsed:?}");
+}

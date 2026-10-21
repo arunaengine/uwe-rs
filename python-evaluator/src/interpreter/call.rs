@@ -831,6 +831,55 @@ impl Interpreter {
         self.evaluation(|this| state.next_value(this))
     }
 
+    /// `iterator.send(value)` of a generator; other iterators have no `send`.
+    pub fn send_item(&mut self, iterator: &Value, value: Value) -> Result<Option<Value>, Error> {
+        self.with_generator(iterator, "send", |generator, this| {
+            generator.send(this, value)
+        })
+    }
+
+    /// `iterator.throw(exception)` of a generator.
+    pub fn throw_item(&mut self, iterator: &Value, error: Error) -> Result<Option<Value>, Error> {
+        self.with_generator(iterator, "throw", |generator, this| {
+            generator.throw(this, error)
+        })
+    }
+
+    /// `iterator.close()` of a generator.
+    pub fn close_item(&mut self, iterator: &Value) -> Result<(), Error> {
+        self.with_generator(iterator, "close", |generator, this| {
+            generator.close(this).map(|()| None)
+        })
+        .map(|_| ())
+    }
+
+    fn with_generator(
+        &mut self,
+        iterator: &Value,
+        name: &str,
+        action: impl FnOnce(
+            &mut super::generator::Generator,
+            &mut Interpreter,
+        ) -> Result<Option<Value>, Error>,
+    ) -> Result<Option<Value>, Error> {
+        let Value::Iterator(state) = iterator.plain() else {
+            return Err(Error::attribute_error(format!(
+                "'{}' object has no attribute '{name}'",
+                types::type_name(iterator)
+            )));
+        };
+        let mut state = state
+            .try_borrow_mut()
+            .map_err(|_| Error::value_error("generator already executing"))?;
+        match &mut *state {
+            Iter::Generator(generator) => self.evaluation(|this| action(generator, this)),
+            _ => Err(Error::attribute_error(format!(
+                "'{}' object has no attribute '{name}'",
+                types::type_name(iterator)
+            ))),
+        }
+    }
+
     fn protocol_iterator(&mut self, value: &Value) -> Result<Value, Error> {
         let next = match value.plain() {
             Value::Iterator(_) => return Ok(value.plain().clone()),

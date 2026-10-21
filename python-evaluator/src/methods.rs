@@ -199,7 +199,15 @@ pub fn has_method(value: &Value, name: &str) -> bool {
         Value::Int(_) | Value::BigInt(_) | Value::Bool(_) => &[INT_METHODS],
         Value::Float(_) => &[FLOAT_METHODS],
         Value::Range(_) => &[&["index", "count"]],
-        Value::Iterator(_) => &[&["__next__", "__iter__"]],
+        Value::Iterator(iterator) => {
+            let generator = (iterator.try_borrow()).map_or(true, |state| {
+                matches!(&*state, crate::value::Iter::Generator(_))
+            });
+            match generator {
+                true => &[&["__next__", "__iter__", "send", "throw", "close"]],
+                false => &[&["__next__", "__iter__"]],
+            }
+        }
         _ => &[],
     };
     table.iter().any(|names| names.contains(&name))
@@ -218,12 +226,6 @@ pub fn python_has(value: &Value, name: &str) -> bool {
     match value.plain() {
         Value::Str(_) | Value::List(_) | Value::Dict(_) | Value::Set(_) | Value::Tuple(_) => {
             name.starts_with("__") || MORE.contains(&name)
-        }
-        Value::Iterator(iterator) => {
-            matches!(name, "send" | "throw" | "close")
-                && iterator
-                    .try_borrow()
-                    .is_ok_and(|state| matches!(&*state, crate::value::Iter::Generator(_)))
         }
         _ => false,
     }
@@ -305,6 +307,17 @@ pub fn call(
             "__next__" => interpreter
                 .next_item(receiver)?
                 .ok_or_else(Error::stop_iteration),
+            "send" => {
+                args.expect("send", 1, 1)?;
+                let value = args.positional[0].clone();
+                (interpreter.send_item(receiver, value)?).ok_or_else(Error::stop_iteration)
+            }
+            "throw" => {
+                args.expect("throw", 1, 3)?;
+                let error = thrown(interpreter, &args)?;
+                (interpreter.throw_item(receiver, error)?).ok_or_else(Error::stop_iteration)
+            }
+            "close" => interpreter.close_item(receiver).map(|()| Value::None),
             _ => Ok(receiver.plain().clone()),
         },
         other => Err(Error::attribute_error(format!(
@@ -312,6 +325,33 @@ pub fn call(
             types::type_name(other)
         ))),
     }
+}
+
+/// The exception of `generator.throw(type[, value])` or `generator.throw(exception)`.
+fn thrown(interpreter: &mut Interpreter, args: &Args) -> Result<Error, Error> {
+    let first = &args.positional[0];
+    let exception = match first.plain() {
+        Value::Class(_) => {
+            let value = args.positional.get(1).filter(|value| !value.is_none());
+            let arguments = match value {
+                Some(value) if crate::types::is_exception(value) => {
+                    return Ok(Error::from_value(value.clone()));
+                }
+                Some(Value::Tuple(items)) => items.to_vec(),
+                Some(value) => vec![value.clone()],
+                None => Vec::new(),
+            };
+            interpreter.call(first, Args::new(arguments))?
+        }
+        _ => first.clone(),
+    };
+    if !crate::types::is_exception(&exception) {
+        return Err(Error::type_error(
+            "exceptions must be classes or instances deriving from BaseException, not ".to_owned()
+                + &types::type_name(&exception),
+        ));
+    }
+    Ok(Error::from_value(exception))
 }
 
 fn text_arg(args: &Args, index: usize, method: &str) -> Result<String, Error> {

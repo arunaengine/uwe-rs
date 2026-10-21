@@ -36,6 +36,10 @@ enum Task {
 pub struct Generator {
     frame: Frame,
     tasks: Vec<Task>,
+    /// Whether the body ran up to a `yield`, which `send` needs before a value.
+    started: bool,
+    /// The value that `send` gives the `yield` where the body waits.
+    sent: Option<Value>,
 }
 
 impl Generator {
@@ -43,6 +47,8 @@ impl Generator {
         Self {
             frame,
             tasks: vec![Task::Suite(Rc::new(body.to_vec()), 0)],
+            started: false,
+            sent: None,
         }
     }
 
@@ -58,6 +64,8 @@ impl Generator {
                 0,
                 iterator,
             )],
+            started: false,
+            sent: None,
         }
     }
 
@@ -104,10 +112,110 @@ impl Generator {
     }
 
     pub(crate) fn next(&mut self, interpreter: &mut Interpreter) -> Result<Option<Value>, Error> {
+        self.run(interpreter, Generator::resume)
+    }
+
+    /// `generator.send(value)`: the `yield` where the body waits gives `value`.
+    pub(crate) fn send(
+        &mut self,
+        interpreter: &mut Interpreter,
+        value: Value,
+    ) -> Result<Option<Value>, Error> {
+        if !self.started && !value.is_none() && !self.tasks.is_empty() {
+            return Err(Error::type_error(
+                "can't send non-None value to a just-started generator",
+            ));
+        }
+        // A bare `yield` statement drops the value.
+        if matches!(self.tasks.last(), Some(Task::Assign(_) | Task::Delegate(_))) {
+            self.sent = Some(value);
+        }
+        self.next(interpreter)
+    }
+
+    /// `generator.throw(exception)`: the `yield` where the body waits raises it.
+    pub(crate) fn throw(
+        &mut self,
+        interpreter: &mut Interpreter,
+        error: Error,
+    ) -> Result<Option<Value>, Error> {
+        if self.tasks.is_empty() {
+            return Err(error);
+        }
+        self.run(interpreter, |generator, interpreter| {
+            generator.raise_inside(interpreter, error)
+        })
+    }
+
+    /// `generator.close()`: `GeneratorExit` at the `yield` where the body waits, which the
+    /// body must not answer with another value.
+    pub(crate) fn close(&mut self, interpreter: &mut Interpreter) -> Result<(), Error> {
+        if !self.started || self.tasks.is_empty() {
+            self.tasks.clear();
+            return Ok(());
+        }
+        let class = crate::types::exception_class("GeneratorExit").expect("GeneratorExit exists");
+        let exit = Error::from_value(crate::error::exception(&class, Vec::new()));
+        match self.throw(interpreter, exit) {
+            Ok(Some(_)) => {
+                self.tasks.clear();
+                Err(Error::runtime_error("generator ignored GeneratorExit"))
+            }
+            Ok(None) => Ok(()),
+            Err(error) if error.is("GeneratorExit") || error.is("StopIteration") => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Raises an error at the `yield` where the body waits, or in the generator that it
+    /// delegates to, and runs on from the clause that takes it.
+    fn raise_inside(
+        &mut self,
+        interpreter: &mut Interpreter,
+        mut error: Error,
+    ) -> Result<Option<Value>, Error> {
+        match self.tasks.last() {
+            Some(Task::Assign(_)) => {
+                self.tasks.pop();
+            }
+            Some(Task::Delegate(iterator)) => {
+                let iterator = iterator.clone();
+                match interpreter.throw_item(&iterator, error) {
+                    Ok(Some(value)) => return Ok(Some(value)),
+                    Ok(None) => {
+                        self.tasks.pop();
+                        return self.resume(interpreter);
+                    }
+                    Err(next) => {
+                        self.tasks.pop();
+                        error = next;
+                    }
+                }
+            }
+            _ => {}
+        }
+        loop {
+            match self.unwind(interpreter, error) {
+                Ok(()) => break,
+                Err(next) if !self.tasks.is_empty() => error = next,
+                Err(next) => return Err(next),
+            }
+        }
+        self.resume(interpreter)
+    }
+
+    /// Runs the body with `step`, with the exceptions of its clauses handled meanwhile.
+    fn run(
+        &mut self,
+        interpreter: &mut Interpreter,
+        step: impl FnOnce(&mut Self, &mut Interpreter) -> Result<Option<Value>, Error>,
+    ) -> Result<Option<Value>, Error> {
         interpreter.enter_call()?;
+        self.started = true;
         // The exceptions of the clauses that the body is in are handled while it runs.
         interpreter.handling.extend(self.handled());
-        let result = self.resume(interpreter);
+        let result = step(self, interpreter);
+        self.sent = None;
         let kept = interpreter.handling.len() - self.handled().len();
         interpreter.handling.truncate(kept);
         interpreter.leave_call();
@@ -227,7 +335,13 @@ impl Generator {
                     }
                 }
                 Task::Delegate(iterator) => {
-                    if let Some(item) = interpreter.next_item(&iterator)? {
+                    let item = match self.sent.take() {
+                        Some(value) if !value.is_none() => {
+                            interpreter.send_item(&iterator, value)?
+                        }
+                        _ => interpreter.next_item(&iterator)?,
+                    };
+                    if let Some(item) = item {
                         self.tasks.push(Task::Delegate(iterator));
                         return Ok(Some(item));
                     }
@@ -266,8 +380,9 @@ impl Generator {
                     }
                 }
                 Task::Assign(targets) => {
+                    let sent = self.sent.take().unwrap_or(Value::None);
                     for target in targets {
-                        interpreter.assign(&self.frame, &target, Value::None)?;
+                        interpreter.assign(&self.frame, &target, sent.clone())?;
                     }
                 }
                 Task::Exit(exits) => {

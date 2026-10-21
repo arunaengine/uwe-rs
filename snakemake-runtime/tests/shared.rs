@@ -1161,3 +1161,48 @@ fn backs_up_outside() {
     assert_eq!(text, "first\n");
     assert!(!folder.path().join("work/.snakemake/acc.txt").exists());
 }
+
+/// A failed job gives an `update()` output that is a link its content back through the
+/// link, as `shutil.copy` does: the link stays, and its file holds the old content.
+#[test]
+fn restores_through_links() {
+    let snakefile =
+        "rule add:\n    input: 'in.txt'\n    output: update('acc.txt')\n    shell: 'unused'\n";
+    let steps: [(&str, Step); 1] = [("add", |folder| {
+        std::fs::write(folder.join("acc.txt"), "half").unwrap();
+        1
+    })];
+    let folder = folder();
+    let work = folder.path().join("work");
+    std::fs::write(work.join("data.txt"), "first\n").unwrap();
+    std::os::unix::fs::symlink("data.txt", work.join("acc.txt")).unwrap();
+    let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    std::fs::File::open(work.join("data.txt"))
+        .unwrap()
+        .set_modified(hour_ago)
+        .unwrap();
+    // The link itself is old too, as Snakemake compares the times of links.
+    let old = rustix::fs::Timespec {
+        tv_sec: 1_000_000_000,
+        tv_nsec: 0,
+    };
+    let times = rustix::fs::Timestamps {
+        last_access: old,
+        last_modification: old,
+    };
+    let flags = rustix::fs::AtFlags::SYMLINK_NOFOLLOW;
+    rustix::fs::utimensat(rustix::fs::CWD, work.join("acc.txt"), &times, flags).unwrap();
+    std::fs::write(work.join("in.txt"), "new").unwrap();
+    let (folder, _host, error) = run(folder, snakefile, &steps);
+    assert!(error.is_some());
+    let work = folder.path().join("work");
+    assert!(
+        std::fs::symlink_metadata(work.join("acc.txt"))
+            .unwrap()
+            .is_symlink()
+    );
+    assert_eq!(
+        std::fs::read_to_string(work.join("data.txt")).unwrap(),
+        "first\n"
+    );
+}

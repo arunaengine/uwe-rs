@@ -108,7 +108,7 @@ pub fn job_script(
          exec >> \"$node/{LOG}\" 2>&1\nsent=\nfinish() {{\n    trap '' TERM INT HUP\n    \
          rm -rf \"$node/data\"\n    [ -n \"$sent\" ] || {send}\n    rm -rf \"$node\"\n}}\n\
          trap finish EXIT\ntrap 'exit 143' TERM INT HUP\n",
-        quote(&format!("iunctus-{name}.XXXXXXXX"))
+        quote(&format!("uwe-{name}.XXXXXXXX"))
     );
     let download = match &staging.helper {
         Helper::Path(path) => {
@@ -130,7 +130,7 @@ pub fn job_script(
     };
     if let Some((url, sha256, address)) = download {
         script.push_str(&format!(
-            "helper=\"$node/iunctus\"\n\
+            "helper=\"$node/uwe\"\n\
              {{ curl -fsSL -o \"$helper\" {url} || wget -q -O \"$helper\" {url}; }} && \
              echo {sha256}'  '\"$helper\" | sha256sum -c --status - && chmod +x \"$helper\" || \
              {{ echo \"iunctus: cannot get the helper from {address} on $(hostname)\" >&2; \
@@ -240,7 +240,7 @@ mod tests {
         }];
         let access = Access::default();
         let run = ContainerRun {
-            name: "iunctus-run-P-1-1",
+            name: "uwe-run-P-1-1",
             image: &image,
             root: Path::new("/shared/scratch/run-P-1-1"),
             workdir: Some("/data"),
@@ -261,7 +261,7 @@ mod tests {
         };
         let mut staging = NodeStaging {
             stage,
-            helper: Helper::Path("/opt/iunctus".into()),
+            helper: Helper::Path("/opt/uwe".into()),
             folder: None,
             secret_file: None,
         };
@@ -273,13 +273,13 @@ mod tests {
         };
         let script = job_script(&apptainer, &run, &staging, false, Some(60), links);
         let expected = "umask 077\nif ! node=$(mkdir -p \"${TMPDIR:-/tmp}\" 2>&1 && \
-            mktemp -d \"${TMPDIR:-/tmp}\"/'iunctus-run-P-1-1.XXXXXXXX' 2>&1); then\n    \
+            mktemp -d \"${TMPDIR:-/tmp}\"/'uwe-run-P-1-1.XXXXXXXX' 2>&1); then\n    \
             early=\"iunctus: cannot make a private folder in \"\"${TMPDIR:-/tmp}\"\" on \
             $(hostname): $node\"\n    exit 1\nfi\n\
             exec >> \"$node/slurm.log\" 2>&1\nsent=\nfinish() {\n    trap '' TERM INT HUP\n    \
             rm -rf \"$node/data\"\n    \
             [ -n \"$sent\" ] || mv -f \"$node/slurm.log\" \"$node.log\"\n    rm -rf \"$node\"\n}\n\
-            trap finish EXIT\ntrap 'exit 143' TERM INT HUP\nhelper='/opt/iunctus'\nstatus=125\n\
+            trap finish EXIT\ntrap 'exit 143' TERM INT HUP\nhelper='/opt/uwe'\nstatus=125\n\
             if \"$helper\" __stage in \"$node/data\" 'https://plan' \"$node\"; then\n    \
             SECONDS=0\n    timeout --kill-after=10 60 'apptainer' 'exec' '--containall' '--pwd' '/data' \
             '--bind' \"$node/data\"':/shared/scratch/run-P-1-1' \
@@ -291,7 +291,7 @@ mod tests {
             \"$helper\" __stage out \"$node/data\" \"$node\" || exit 1\nsent=1\n";
         assert!(script.ends_with(expected), "{script}");
         staging.helper = Helper::Download {
-            url: "https://example.org/iunctus".into(),
+            url: "https://example.org/uwe".into(),
             sha256: "ab".repeat(32),
         };
         staging.folder = Some("/local".into());
@@ -319,11 +319,11 @@ mod tests {
             'https://staging/log?signature'; }\n    exit 1\n";
         assert!(script.contains(expected), "{script}");
         assert!(
-            script.contains("mktemp -d '/local'/'iunctus-run-P-1-1.XXXXXXXX' 2>&1); then"),
+            script.contains("mktemp -d '/local'/'uwe-run-P-1-1.XXXXXXXX' 2>&1); then"),
             "{script}"
         );
         assert!(
-            script.contains("curl -fsSL -o \"$helper\" 'https://example.org/iunctus' || wget"),
+            script.contains("curl -fsSL -o \"$helper\" 'https://example.org/uwe' || wget"),
             "{script}"
         );
         assert!(script.contains("sha256sum -c --status -"), "{script}");
@@ -332,8 +332,8 @@ mod tests {
             "{script}"
         );
         staging.helper = Helper::Upload(Binary {
-            file: "/usr/bin/iunctus".into(),
-            digest: task_model::Digest::sha256(b"iunctus"),
+            file: "/usr/bin/uwe".into(),
+            digest: task_model::Digest::sha256(b"uwe"),
             machine: executor::binary::Machine::Arm64,
             uploaded: Default::default(),
         });
@@ -344,10 +344,10 @@ mod tests {
         let script = job_script(&docker, &run, &staging, false, None, links);
         let expected = "[ \"$(uname -m)\" = aarch64 ] || { echo \"iunctus: the helper runs on \
             aarch64, but $(hostname) is $(uname -m); name a binary for it with helper_file\" \
-            >&2; exit 1; }\nhelper=\"$node/iunctus\"\n{ curl -fsSL -o \"$helper\" \
+            >&2; exit 1; }\nhelper=\"$node/uwe\"\n{ curl -fsSL -o \"$helper\" \
             'https://staging/cas/x?signature' || wget";
         assert!(script.contains(expected), "{script}");
-        let digest = task_model::Digest::sha256(b"iunctus");
+        let digest = task_model::Digest::sha256(b"uwe");
         assert!(
             script.contains(&format!("echo '{}'", digest.hex())),
             "{script}"

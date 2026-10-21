@@ -7,7 +7,7 @@ use executor::{ExecutorError, Job, wrapper};
 use crate::backend::{CONTROL, HOME, OUTBOX};
 use crate::staging::{container_path, unsupported};
 
-pub(crate) const TRANSFER: &str = "/iunctus/transfer";
+pub(crate) const TRANSFER: &str = "/uwe/transfer";
 
 pub(crate) fn script(
     job: Job<'_>,
@@ -81,9 +81,9 @@ mod tests {
                 staging: &staging,
                 placement: &placement,
             };
-            let script = script(job, "/iunctus/work", &[], &[])
+            let script = script(job, "/uwe/work", &[], &[])
                 .unwrap()
-                .replace("/iunctus", folder.path().to_str().unwrap());
+                .replace("/uwe", folder.path().to_str().unwrap());
             let path = folder.path().join("wrapper.sh");
             std::fs::write(&path, script).unwrap();
             let output = std::process::Command::new("sh")

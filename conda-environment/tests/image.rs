@@ -60,7 +60,7 @@ fn built(preparation: &ImagePreparation) -> BuiltImage {
         image_id: format!("sha256:{}", "c".repeat(64)),
         manifest_digest: Some(manifest.clone()),
         archive_digest: Some(format!("sha256:{}", "d".repeat(64))),
-        reference: Some(format!("registry.example/iunctus/conda@{manifest}")),
+        reference: Some(format!("registry.example/uwe/conda@{manifest}")),
     }
 }
 
@@ -125,7 +125,7 @@ fn verifies_deterministic_context() {
     )));
     assert_eq!(
         decoded[1].1,
-        b"# platform: linux-64\n@EXPLICIT\nfile:///tmp/iunctus-conda-packages/0/foo-1.0-0.conda\nfile:///tmp/iunctus-conda-packages/1/bar-1.0-0.tar.bz2\n"
+        b"# platform: linux-64\n@EXPLICIT\nfile:///tmp/uwe-conda-packages/0/foo-1.0-0.conda\nfile:///tmp/uwe-conda-packages/1/bar-1.0-0.tar.bz2\n"
     );
     assert_eq!(decoded[2].1, b"fake verified package");
     assert_eq!(decoded[3].1, b"fake verified package");
@@ -190,7 +190,7 @@ fn binds_combined_bases() {
     assert!(
         first
             .recipe()
-            .contains("COPY --from=iunctus_installer /bin/micromamba")
+            .contains("COPY --from=uwe_installer /bin/micromamba")
     );
     assert!(first.recipe().contains(&base()));
     let other = format!("other@sha256:{}", "b".repeat(64));
@@ -267,12 +267,12 @@ fn requires_canonical_digests() {
     }
     let mut image = built(&preparation);
     image.reference = Some(format!(
-        "registry.example/iunctus/conda@sha256:{}",
+        "registry.example/uwe/conda@sha256:{}",
         "e".repeat(64)
     ));
     assert!(preparation.completed(image).is_err());
     let mut image = built(&preparation);
-    image.reference = Some("registry.example/iunctus/conda:latest".into());
+    image.reference = Some("registry.example/uwe/conda:latest".into());
     assert!(preparation.completed(image).is_err());
     let mut image = built(&preparation);
     image.manifest_digest = None;

@@ -21,10 +21,10 @@ async fn prepares_scratch_images() {
         .to_string_lossy()
         .replace('.', "");
     let tags = [
-        format!("iunctus-cwl-test:build-{token}"),
-        format!("iunctus-cwl-test:load-{token}"),
-        format!("iunctus-cwl-test:import-{token}"),
-        format!("iunctus-cwl-test:single-{token}"),
+        format!("uwe-cwl-test:build-{token}"),
+        format!("uwe-cwl-test:load-{token}"),
+        format!("uwe-cwl-test:import-{token}"),
+        format!("uwe-cwl-test:single-{token}"),
     ];
     let archive = root.path().join("context.tar");
     let mut builder = tar::Builder::new(std::fs::File::create(&archive).unwrap());

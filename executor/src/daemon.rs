@@ -109,7 +109,7 @@ impl LocalContainer {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_nanos();
-            let name = format!("iunctus-{}-{stamp}", std::process::id());
+            let name = format!("uwe-{}-{stamp}", std::process::id());
             let request = NetworkCreateRequest {
                 name: name.clone(),
                 ..Default::default()

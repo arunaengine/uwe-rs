@@ -35,7 +35,7 @@ fn reads_workflow_environments() {
         .map(PathBuf::from)
         .or_else(|| {
             let home = std::env::var_os("HOME")?;
-            Some(PathBuf::from(home).join(".cache/iunctus/test-workflows/snakemake"))
+            Some(PathBuf::from(home).join(".cache/uwe/test-workflows/snakemake"))
         })
         .expect("a folder of test workflows");
     let mut files = Vec::new();

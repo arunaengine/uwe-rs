@@ -502,7 +502,7 @@ impl LocalContainer {
         let access = self
             .access(root, (owner.uid(), owner.gid()), &spec, &commands)
             .await?;
-        let container = format!("iunctus-{}", job.name);
+        let container = format!("uwe-{}", job.name);
         let run = ContainerRun {
             name: &container,
             image,
@@ -614,7 +614,7 @@ impl LocalContainer {
             open(access, root).await?;
         }
         let names: Vec<String> = (0..groups.len())
-            .map(|index| format!("iunctus-{}-{index}", job.name))
+            .map(|index| format!("uwe-{}-{index}", job.name))
             .collect();
         let paths: Vec<PathBuf> = groups.iter().map(|(_, path)| path.into()).collect();
         let runs: Vec<ContainerRun<'_>> = (groups.iter().enumerate())
@@ -753,7 +753,7 @@ impl LocalContainer {
             root.file_name()
                 .map_or_else(String::new, |name| name.to_string_lossy().into_owned())
         );
-        let name = format!("iunctus-{name}");
+        let name = format!("uwe-{name}");
         let body = ContainerCreateBody {
             image: Some(image.reference.clone()),
             entrypoint: Some(access::hand_back_command(root, owner)),

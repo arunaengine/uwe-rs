@@ -21,9 +21,9 @@ use tracing::instrument::WithSubscriber;
 
 use crate::{CancellationToken, ContainerEngine};
 
-const PREPARATION: &str = "org.iunctus.conda.preparation";
-const BASE: &str = "org.iunctus.conda.base";
-const RECIPE: &str = "org.iunctus.conda.recipe";
+const PREPARATION: &str = "org.uwe.conda.preparation";
+const BASE: &str = "org.uwe.conda.base";
+const RECIPE: &str = "org.uwe.conda.recipe";
 
 /// Finite context, progress, wall-clock and classic-builder resource allowances.
 #[derive(Clone, Copy, Debug)]

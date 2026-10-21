@@ -44,7 +44,7 @@ fn leave(output: &serde_json::Value) {
     let folder = PathBuf::from(url.strip_prefix("file://").expect("a file URL"));
     std::fs::create_dir_all(&folder).expect("makes the folder");
     match output["path"].as_str() {
-        Some("/iunctus/control") => {
+        Some("/uwe/control") => {
             std::fs::write(folder.join("exit"), "0\n").expect("writes");
             std::fs::write(folder.join("manifest"), "file out.txt\n").expect("writes");
             // The other container of a task of two.
@@ -190,13 +190,13 @@ fn returns_server_outputs() {
     let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("reads");
     assert_eq!(output, "hi\n");
     let sent = task.lock().expect("the task").clone().expect("a task");
-    assert_eq!(sent["executors"][0]["command"][1], "/iunctus/wrapper.sh");
+    assert_eq!(sent["executors"][0]["command"][1], "/uwe/wrapper.sh");
     let wrapper = std::fs::read_to_string(finished.root.join("wrapper.sh")).expect("reads");
     assert!(
         wrapper.contains("'/usr/local/env-execute' 'bash' '-c' 'cp in.txt out.txt'"),
         "{wrapper}"
     );
-    assert_eq!(sent["inputs"][1]["path"], "/iunctus/work/in.txt");
+    assert_eq!(sent["inputs"][1]["path"], "/uwe/work/in.txt");
     let placement = Placement {
         offline: true,
         ..Placement::default()
@@ -444,7 +444,7 @@ fn stop_task(own: bool) {
                 for output in document["outputs"].as_array().unwrap() {
                     leave(output);
                     let url = output["url"].as_str().unwrap();
-                    if own && output["path"] == "/iunctus/control" {
+                    if own && output["path"] == "/uwe/control" {
                         let folder = PathBuf::from(url.strip_prefix("file://").unwrap());
                         std::fs::write(folder.join("exit"), "124\n").unwrap();
                     }
@@ -503,7 +503,7 @@ fn stop_task(own: bool) {
         command[2].as_str().unwrap().contains("( sleep 60 && kill"),
         "{command}"
     );
-    assert_eq!(command[4], "/iunctus/wrapper.sh");
+    assert_eq!(command[4], "/uwe/wrapper.sh");
 }
 
 /// What the server of `keep` knows: the tasks it got and which it cancelled, whether it takes
@@ -575,7 +575,7 @@ fn keep(kept: Arc<Mutex<Kept>>) -> String {
 fn recovers_lost_submissions() {
     let folder = tempfile::tempdir().unwrap();
     // A task of someone else with the same name, which must stay.
-    let foreign = serde_json::json!({"name": "lost", "tags": {"iunctus-submission": "other"}});
+    let foreign = serde_json::json!({"name": "lost", "tags": {"uwe-submission": "other"}});
     let kept = Arc::new(Mutex::new(Kept {
         tasks: vec![foreign],
         canceled: vec![false],

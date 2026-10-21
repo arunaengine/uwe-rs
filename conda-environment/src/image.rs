@@ -125,17 +125,17 @@ impl ImagePreparation {
         let base = format!("{name}@sha256:{}", base_digest.to_ascii_lowercase());
         let mut recipe = format!(
             "# iunctus Conda image recipe 1\nFROM --platform={platform} {base}\n\
-             USER root\nCOPY packages /tmp/iunctus-conda-packages\n\
-             COPY explicit.txt /tmp/iunctus-conda-explicit.txt\n\
-             RUN micromamba create --yes --offline --prefix /opt/iunctus --file /tmp/iunctus-conda-explicit.txt \
-             && micromamba clean --all --yes && rm -rf /tmp/iunctus-conda-packages /tmp/iunctus-conda-explicit.txt\n\
-             ENV PATH=/opt/iunctus/bin:$PATH\nENTRYPOINT []\n"
+             USER root\nCOPY packages /tmp/uwe-conda-packages\n\
+             COPY explicit.txt /tmp/uwe-conda-explicit.txt\n\
+             RUN micromamba create --yes --offline --prefix /opt/uwe --file /tmp/uwe-conda-explicit.txt \
+             && micromamba clean --all --yes && rm -rf /tmp/uwe-conda-packages /tmp/uwe-conda-explicit.txt\n\
+             ENV PATH=/opt/uwe/bin:$PATH\nENTRYPOINT []\n"
         );
         if !pip.is_empty() {
-            recipe.push_str("COPY pip /tmp/iunctus-pip-packages\nCOPY pip.txt /tmp/iunctus-pip.txt\n\
-                RUN /opt/iunctus/bin/python -m pip --isolated install --no-index --no-deps --no-build-isolation \
-                --require-hashes --disable-pip-version-check -r /tmp/iunctus-pip.txt \
-                && rm -rf /tmp/iunctus-pip-packages /tmp/iunctus-pip.txt\n");
+            recipe.push_str("COPY pip /tmp/uwe-pip-packages\nCOPY pip.txt /tmp/uwe-pip.txt\n\
+                RUN /opt/uwe/bin/python -m pip --isolated install --no-index --no-deps --no-build-isolation \
+                --require-hashes --disable-pip-version-check -r /tmp/uwe-pip.txt \
+                && rm -rf /tmp/uwe-pip-packages /tmp/uwe-pip.txt\n");
         }
         let identity = serde_json::to_vec(&(lock.digest(), &base, platform, &recipe))
             .map_err(io::Error::other)?;
@@ -174,8 +174,8 @@ impl ImagePreparation {
             }
         };
         preparation.recipe = format!(
-            "FROM --platform={platform} docker.io/mambaorg/micromamba:2.3.2@sha256:{digest} AS iunctus_installer\n{}",
-            preparation.recipe.replacen("USER root\n", "USER root\nCOPY --from=iunctus_installer /bin/micromamba /usr/local/bin/micromamba\n", 1)
+            "FROM --platform={platform} docker.io/mambaorg/micromamba:2.3.2@sha256:{digest} AS uwe_installer\n{}",
+            preparation.recipe.replacen("USER root\n", "USER root\nCOPY --from=uwe_installer /bin/micromamba /usr/local/bin/micromamba\n", 1)
                 .replace("RUN micromamba", "RUN /usr/local/bin/micromamba")
                 .replace("&& micromamba clean", "&& /usr/local/bin/micromamba clean")
         );
@@ -237,7 +237,7 @@ impl ImagePreparation {
         let mut explicit = format!("# platform: {}\n@EXPLICIT\n", self.lock.platform);
         for (index, package) in self.lock.packages.iter().enumerate() {
             explicit.push_str(&format!(
-                "file:///tmp/iunctus-conda-packages/{index}/{}\n",
+                "file:///tmp/uwe-conda-packages/{index}/{}\n",
                 package.file
             ));
         }
@@ -247,7 +247,7 @@ impl ImagePreparation {
             let mut requirements = String::new();
             for (index, package) in pip.iter().enumerate() {
                 requirements.push_str(&format!(
-                    "file:///tmp/iunctus-pip-packages/{index}/{} --hash=sha256:{}\n",
+                    "file:///tmp/uwe-pip-packages/{index}/{} --hash=sha256:{}\n",
                     package.file, package.sha256
                 ));
             }
@@ -451,9 +451,11 @@ mod tests {
             assert_ne!(prepared.digest(), original.digest());
             assert_ne!(prepared.recipe_digest(), original.recipe_digest());
             assert!(prepared.recipe().contains("micromamba:2.3.2@sha256:955819619f303e2aa1dc1ba89beefe7f326a378b3d0782a4a0d28b1cf11b68b6"));
-            assert!(prepared.recipe().contains(
-                "COPY --from=iunctus_installer /bin/micromamba /usr/local/bin/micromamba"
-            ));
+            assert!(
+                prepared.recipe().contains(
+                    "COPY --from=uwe_installer /bin/micromamba /usr/local/bin/micromamba"
+                )
+            );
             assert!(
                 prepared
                     .recipe()

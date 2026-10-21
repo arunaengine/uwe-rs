@@ -372,10 +372,10 @@ mod tests {
             .enable_all()
             .build()
             .expect("a runtime");
-        let missing = ContainerEngine::named(Some("/nowhere/iunctus.sock"));
+        let missing = ContainerEngine::named(Some("/nowhere/uwe.sock"));
         let error = runtime.block_on(missing).expect_err("no engine");
         let text = error.to_string();
-        assert!(text.contains("/nowhere/iunctus.sock"), "{text}");
+        assert!(text.contains("/nowhere/uwe.sock"), "{text}");
         let podman = runtime.block_on(ContainerEngine::named(Some("podman")));
         if let Err(error) = podman {
             let text = error.to_string();

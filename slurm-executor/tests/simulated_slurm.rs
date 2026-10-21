@@ -431,7 +431,7 @@ async fn pulls_pinned_once() {
     );
     let options = std::fs::read_to_string(bin.join("state/101.options")).expect("the options");
     assert!(
-        options.starts_with("--parsable\n--job-name=iunctus-image-sha256-ab12-"),
+        options.starts_with("--parsable\n--job-name=uwe-image-sha256-ab12-"),
         "{options}"
     );
     assert!(
@@ -708,7 +708,7 @@ async fn bounds_shared_pulls() {
     assert!(
         names
             .iter()
-            .all(|options| options.contains("--job-name=iunctus-image-"))
+            .all(|options| options.contains("--job-name=uwe-image-"))
     );
     // A later task of the run fails at once with the same error.
     let error = (backend.run(job("run-P-7-1"), &cancel).await).expect_err("a failure");
@@ -1116,7 +1116,7 @@ async fn recovers_dropped_attempts() {
     assert!(
         std::fs::read_to_string(bin.join("state/scancel.calls"))
             .unwrap()
-            .contains("--name=iunctus-dropped")
+            .contains("--name=uwe-dropped")
     );
 }
 
@@ -1542,7 +1542,7 @@ async fn stage_objects(credentials: bool, upload: bool, archive: bool) {
         Container::Apptainer(text(&bin.join("apptainer"))),
     );
     // The job starts this test program as the helper, which runs `stage_helper`.
-    let helper = root.path().join("iunctus");
+    let helper = root.path().join("uwe");
     let program = std::env::current_exe().expect("this program");
     let script = format!(
         "#!/bin/sh\nIFS=$(printf '\\037')\nUWE_TEST_STAGE=\"$*\" exec {} --exact stage_helper \
@@ -1595,8 +1595,7 @@ async fn stage_objects(credentials: bool, upload: bool, archive: bool) {
         folder: Some(text(&root.path().join("node"))),
         secret_file: secret_file.clone(),
     });
-    let mut spec =
-        spec("tr a-z A-Z < in.txt > out.txt && cat /opt/iunctus-test/extra.txt >> out.txt");
+    let mut spec = spec("tr a-z A-Z < in.txt > out.txt && cat /opt/uwe-test/extra.txt >> out.txt");
     let archived = archive.then(|| image_archive(root.path(), &[]));
     if let Some(reference) = &archived {
         spec.image = Some(Image {
@@ -1608,7 +1607,7 @@ async fn stage_objects(credentials: bool, upload: bool, archive: bool) {
     let extra = root.path().join("source/extra.txt");
     std::fs::write(&extra, "extra\n").expect("writes the input");
     staging.inputs.push(Staged {
-        path: "/opt/iunctus-test/extra.txt".into(),
+        path: "/opt/uwe-test/extra.txt".into(),
         source: extra,
         ..Staged::default()
     });
@@ -1702,7 +1701,7 @@ async fn reports_helper_failures() {
             cleanup: true,
         },
         helper: Helper::Download {
-            url: "file:///nonexistent/iunctus".into(),
+            url: "file:///nonexistent/uwe".into(),
             sha256: "ab".repeat(32),
         },
         folder: Some(text(&root.path().join("node"))),
@@ -1718,7 +1717,7 @@ async fn reports_helper_failures() {
     };
     let error = (backend.run(job, &CancellationToken::new()).await).unwrap_err();
     // The job sends its log back without the helper, which tells why it failed.
-    let expected = "cannot get the helper from file:///nonexistent/iunctus on ";
+    let expected = "cannot get the helper from file:///nonexistent/uwe on ";
     assert!(error.to_string().contains(expected), "{error}");
     let node = std::fs::read_dir(root.path().join("node")).expect("the node folder");
     assert_eq!(node.count(), 0, "the job removes its folder");

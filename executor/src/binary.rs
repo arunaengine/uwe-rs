@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn opens_static_file() {
         let folder = tempfile::tempdir().unwrap();
-        let file = folder.path().join("iunctus");
+        let file = folder.path().join("uwe");
         let mut bytes = header(0xb7, 1);
         bytes.extend(vec![7; 3 << 20]);
         std::fs::write(&file, &bytes).unwrap();

@@ -460,7 +460,7 @@ impl SlurmBackend {
         if access.hand_back.is_some() {
             executor::access::open(root)?;
         }
-        let name = format!("iunctus-{}", job.name);
+        let name = format!("uwe-{}", job.name);
         let run = ContainerRun {
             name: &name,
             image,
@@ -1543,7 +1543,7 @@ async fn explain(message: String, root: &Path, shared: bool) -> String {
     let log = tokio::fs::read_to_string(root.join(CONTROL).join(LOG)).await;
     if log.is_err() && !shared {
         return format!(
-            "{message}, and sent back no log; look for iunctus-{}.*.log in the node folder \
+            "{message}, and sent back no log; look for uwe-{}.*.log in the node folder \
              of the node",
             root.file_name().unwrap_or_default().to_string_lossy()
         );
@@ -1625,7 +1625,7 @@ esac"#,
         let folder = tempfile::tempdir().unwrap();
         let root = folder.path().join("run-P-1-1");
         let text = explain("the job failed".into(), &root, false).await;
-        let hint = "look for iunctus-run-P-1-1.*.log in the node folder";
+        let hint = "look for uwe-run-P-1-1.*.log in the node folder";
         assert!(text.contains(hint), "{text}");
     }
 

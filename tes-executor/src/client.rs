@@ -416,7 +416,7 @@ mod tests {
         let task = Task {
             name: "a".into(),
             inputs: vec![Input {
-                path: "/iunctus/work/in".into(),
+                path: "/uwe/work/in".into(),
                 url: "file:///s/in".into(),
                 kind: FileType::Directory,
             }],

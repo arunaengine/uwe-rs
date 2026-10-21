@@ -46,9 +46,9 @@ fn inspected(preparation: &ImagePreparation) -> Value {
         "Id": format!("sha256:{}", "b".repeat(64)), "Os": "linux", "Architecture": "amd64",
         "RepoDigests": [format!("registry/image@sha256:{}", "c".repeat(64))],
         "Config": {"Labels": {
-            "org.iunctus.conda.preparation": preparation.digest(),
-            "org.iunctus.conda.base": preparation.base(),
-            "org.iunctus.conda.recipe": preparation.recipe_digest()
+            "org.uwe.conda.preparation": preparation.digest(),
+            "org.uwe.conda.base": preparation.base(),
+            "org.uwe.conda.recipe": preparation.recipe_digest()
         }}
     })
 }
@@ -195,9 +195,9 @@ async fn verifies_bounded_builds() {
         "memswap=134217728",
         "cpuquota=100000",
         "platform=linux%2Famd64",
-        "org.iunctus.conda.preparation",
-        "org.iunctus.conda.base",
-        "org.iunctus.conda.recipe",
+        "org.uwe.conda.preparation",
+        "org.uwe.conda.base",
+        "org.uwe.conda.recipe",
     ] {
         assert!(paths[2].contains(required), "{required}: {}", paths[2]);
     }

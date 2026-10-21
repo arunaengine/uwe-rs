@@ -247,7 +247,7 @@ async fn omits_unconfigured_idempotency() {
         .unwrap();
     let tags = &server.documents.lock().unwrap()[0]["tags"];
     let keys: Vec<&String> = tags.as_object().unwrap().keys().collect();
-    assert_eq!(keys, ["iunctus-attempt", "iunctus-submission"]);
+    assert_eq!(keys, ["uwe-attempt", "uwe-submission"]);
 }
 
 #[tokio::test]
@@ -266,7 +266,7 @@ async fn preserves_encoded_paths() {
         placement: &placement,
     };
     let task = stage.prepare(job, false).await.unwrap();
-    let path = "/iunctus/work/out/a %+#?.txt";
+    let path = "/uwe/work/out/a %+#?.txt";
     let prefix = executor::capture::attempt_prefix(job).unwrap();
     operator
         .write(&format!("{prefix}/root{path}"), b"data".to_vec())

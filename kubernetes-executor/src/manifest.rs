@@ -12,7 +12,7 @@ use executor::binary::Binary;
 use executor::wrapper::timed;
 
 /// The label that marks the Jobs of one backend, so that one request lists all their pods.
-pub const LABEL: &str = "iunctus.dev/attempts";
+pub const LABEL: &str = "uwe.dev/attempts";
 
 /// How long Kubernetes keeps a Job that ended, in case the backend could not delete it.
 const KEEP_SECONDS: u64 = 600;
@@ -21,7 +21,7 @@ const KEEP_SECONDS: u64 = 600;
 /// dashes. A long name keeps its start and gets a digest of the whole name, so that names
 /// stay unique.
 pub fn job_name(name: &str) -> String {
-    let mut clean: String = format!("iunctus-{name}")
+    let mut clean: String = format!("uwe-{name}")
         .chars()
         .map(|character| match character.to_ascii_lowercase() {
             letter @ ('a'..='z' | '0'..='9') => letter,
@@ -92,7 +92,7 @@ pub enum Volumes {
 pub const FOLDERS: &str = "folders";
 
 /// How the pods of object-store staging get the static iunctus binary: from an image that holds
-/// only the binary, at `/iunctus`.
+/// only the binary, at `/uwe`.
 #[derive(Clone, Debug)]
 pub struct Helper {
     pub image: String,
@@ -117,7 +117,7 @@ const DOWNLOAD: &str = "wget -q -O \"$1\" \"$2\" && echo \"$3  $1\" | sha256sum 
                         && chmod +x \"$1\"";
 
 /// Where the task container finds the helper.
-const HELPER: &str = "/iunctus-helper";
+const HELPER: &str = "/uwe-helper";
 
 /// Runs the wrapper and then sends the outputs back, with the helper `$1` and the folder `$2`
 /// of the attempt. A failed upload is a failure of the machine.
@@ -147,9 +147,9 @@ pub fn stage(
         "securityContext": task["securityContext"],
     });
     let address = binary;
-    let binary = format!("{HELPER}/iunctus");
+    let binary = format!("{HELPER}/uwe");
     let mut init = Vec::new();
-    let mut program = "/iunctus".to_owned();
+    let mut program = "/uwe".to_owned();
     let volume = match (&helper.binary, helper.image_volume) {
         (Some(uploaded), _) => {
             let mut download = base.clone();
@@ -172,7 +172,7 @@ pub fn stage(
         (None, false) => {
             let mut copy = base.clone();
             copy["name"] = json!("helper");
-            copy["command"] = json!(["/iunctus", "__stage", "install", binary]);
+            copy["command"] = json!(["/uwe", "__stage", "install", binary]);
             copy["volumeMounts"] = json!([{"name": "helper", "mountPath": HELPER}]);
             init.push(copy);
             json!({"name": "helper", "emptyDir": {}})
@@ -199,7 +199,7 @@ pub fn stage(
         .push(volume);
     let container = &mut pod["containers"][0];
     let send = format!("{}{SEND}", timed("sh \"$2/control/wrapper.sh\"", seconds));
-    container["command"] = json!(["sh", "-c", send, "iunctus", binary, root]);
+    container["command"] = json!(["sh", "-c", send, "uwe", binary, root]);
     // The task container sends the outputs back, so it gets the Secret too.
     if let Some(secret) = secret {
         container["envFrom"] = secret;
@@ -265,7 +265,7 @@ pub fn job(
     if limits.gpus > 0 {
         limits_of_container["nvidia.com/gpu"] = json!(limits.gpus.to_string());
     }
-    let labels = json!({"app.kubernetes.io/managed-by": "iunctus", LABEL: label});
+    let labels = json!({"app.kubernetes.io/managed-by": "uwe", LABEL: label});
     let containers: Vec<Value> = (runs.iter().enumerate())
         .map(|(index, run)| {
             let (name, requests) = match (runs.len(), index) {
@@ -277,7 +277,7 @@ pub fn job(
                 None => json!(["sh", run.script()]),
                 Some(_) => {
                     let text = format!("{}exit \"$status\"\n", timed("sh \"$1\"", limits.seconds));
-                    json!(["sh", "-c", text, "iunctus", run.script()])
+                    json!(["sh", "-c", text, "uwe", run.script()])
                 }
             };
             let mut container = json!({
@@ -333,14 +333,11 @@ mod tests {
 
     #[test]
     fn names_are_labels() {
-        assert_eq!(
-            job_name("1a0f-49038-UPPER-1-1"),
-            "iunctus-1a0f-49038-upper-1-1"
-        );
+        assert_eq!(job_name("1a0f-49038-UPPER-1-1"), "uwe-1a0f-49038-upper-1-1");
         let long = job_name(&format!("run-{}-1", "NFCORE_DEMO:DEMO:FASTQC".repeat(4)));
         assert!(long.len() <= 63, "{long}");
         assert!(
-            long.starts_with("iunctus-run-nfcore-demo-demo-fastqc"),
+            long.starts_with("uwe-run-nfcore-demo-demo-fastqc"),
             "{long}"
         );
         assert_ne!(
@@ -361,7 +358,7 @@ mod tests {
             read_only: true,
         }];
         let run = ContainerRun {
-            name: "iunctus-run-P-1-1",
+            name: "uwe-run-P-1-1",
             image: &image,
             root: Path::new("/cache/scratch/run-P-1-1"),
             workdir: Some("/data"),
@@ -378,7 +375,7 @@ mod tests {
             seconds: Some(60),
             margin: 300,
         };
-        let job = job("iunctus-run-p-1-1", "7-9", &[run], &limits, &Volumes::Host).unwrap();
+        let job = job("uwe-run-p-1-1", "7-9", &[run], &limits, &Volumes::Host).unwrap();
         let spec = &job["spec"];
         assert_eq!(spec["backoffLimit"], 0);
         let pod = &spec["template"]["spec"];
@@ -421,7 +418,7 @@ mod tests {
             access: &access,
             ..run
         };
-        let changed = super::job("iunctus-run-p-1-1", "7-9", &[run], &limits, &Volumes::Host);
+        let changed = super::job("uwe-run-p-1-1", "7-9", &[run], &limits, &Volumes::Host);
         let changed = changed.unwrap();
         let container = &changed["spec"]["template"]["spec"]["containers"][0];
         assert_eq!(container["workingDir"], "/data");
@@ -442,7 +439,7 @@ mod tests {
         };
         let access = Access::of((1000, 100), false, None, "");
         let run = ContainerRun {
-            name: "iunctus-run-P-1-1",
+            name: "uwe-run-P-1-1",
             image: &image,
             root: Path::new("/cache/scratch/run-P-1-1"),
             workdir: None,
@@ -463,14 +460,14 @@ mod tests {
             seconds: None,
             margin: 0,
         };
-        let mut manifest = job("iunctus-run-p-1-1", "7-9", &[run], &limits, &place).unwrap();
-        let digest = task_model::Digest::sha256(b"iunctus");
+        let mut manifest = job("uwe-run-p-1-1", "7-9", &[run], &limits, &place).unwrap();
+        let digest = task_model::Digest::sha256(b"uwe");
         let helper = Helper {
             image: DOWNLOAD_IMAGE.into(),
             image_volume: true,
             secret: None,
             binary: Some(Binary {
-                file: PathBuf::from("/usr/bin/iunctus"),
+                file: PathBuf::from("/usr/bin/uwe"),
                 digest: digest.clone(),
                 machine: executor::binary::Machine::Amd64,
                 uploaded: Default::default(),
@@ -489,7 +486,7 @@ mod tests {
             "-c",
             DOWNLOAD,
             "sh",
-            "/iunctus-helper/iunctus",
+            "/uwe-helper/uwe",
             "https://staging/cas/x",
             digest.hex(),
         ]);
@@ -503,20 +500,14 @@ mod tests {
         assert_eq!(download["securityContext"]["runAsUser"], 1000);
         let stage_in = &pod["initContainers"][1];
         assert_eq!(stage_in["image"], DOWNLOAD_IMAGE);
-        let command = json!([
-            "/iunctus-helper/iunctus",
-            "__stage",
-            "in",
-            root,
-            "https://plan"
-        ]);
+        let command = json!(["/uwe-helper/uwe", "__stage", "in", root, "https://plan"]);
         assert_eq!(stage_in["command"], command);
-        assert_eq!(stage_in["volumeMounts"][1]["mountPath"], "/iunctus-helper");
+        assert_eq!(stage_in["volumeMounts"][1]["mountPath"], "/uwe-helper");
         let volumes = pod["volumes"].as_array().expect("volumes");
         assert_eq!(volumes[1], json!({"name": "helper", "emptyDir": {}}));
         let task = &pod["containers"][0];
         assert_eq!(task["image"], "debian@sha256:ab");
-        assert_eq!(task["command"][4], "/iunctus-helper/iunctus");
+        assert_eq!(task["command"][4], "/uwe-helper/uwe");
         let send = task["command"][2].as_str().expect("a script");
         assert!(send.contains("( sleep 30 && kill"), "{send}");
         assert!(send.ends_with("__stage out \"$2\" || exit 125\nexit \"$status\"\n"));
@@ -535,7 +526,7 @@ mod tests {
         }];
         let access = Access::of((1000, 100), false, None, "");
         let run = ContainerRun {
-            name: "iunctus-run-P-1-1",
+            name: "uwe-run-P-1-1",
             image: &image,
             root: Path::new("/cache/scratch/run-P-1-1"),
             workdir: Some("/data"),
@@ -549,15 +540,15 @@ mod tests {
         };
         let claim = Volumes::Under {
             root: PathBuf::from("/cache"),
-            source: json!({"persistentVolumeClaim": {"claimName": "iunctus"}}),
+            source: json!({"persistentVolumeClaim": {"claimName": "uwe"}}),
         };
         let limits = Limits::default();
-        let manifest = job("iunctus-run-p-1-1", "7-9", &[run], &limits, &claim).unwrap();
+        let manifest = job("uwe-run-p-1-1", "7-9", &[run], &limits, &claim).unwrap();
         let pod = &manifest["spec"]["template"]["spec"];
         let volumes = pod["volumes"].as_array().expect("volumes");
         assert_eq!(volumes.len(), 1);
         assert_eq!(volumes[0]["name"], FOLDERS);
-        assert_eq!(volumes[0]["persistentVolumeClaim"]["claimName"], "iunctus");
+        assert_eq!(volumes[0]["persistentVolumeClaim"]["claimName"], "uwe");
         let mounts: Vec<(&str, &str)> = (pod["containers"][0]["volumeMounts"].as_array())
             .expect("mounts")
             .iter()
@@ -576,7 +567,7 @@ mod tests {
             root: PathBuf::from("/shared"),
             source: json!({"emptyDir": {}}),
         };
-        let error = job("iunctus-run-p-1-1", "7-9", &[run], &limits, &elsewhere);
+        let error = job("uwe-run-p-1-1", "7-9", &[run], &limits, &elsewhere);
         assert!(error.unwrap_err().contains("is not in the folder /shared"));
     }
 }

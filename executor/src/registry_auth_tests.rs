@@ -80,7 +80,7 @@ fn registry(flow: Flow) -> (Reference, JoinHandle<()>) {
                             body.contains("refresh_token=refresh%26value%3D%20"),
                             "{body}"
                         );
-                        assert!(body.contains("client_id=iunctus"));
+                        assert!(body.contains("client_id=uwe"));
                         assert!(body.contains("service=registry"));
                         assert!(body.contains("scope=repository:tool:pull"));
                     }

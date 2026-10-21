@@ -18,11 +18,11 @@ use crate::client::{Client, ExecutorSpec, FileType, Input, Output, Resources, St
 use crate::{ObjectStage, Settings};
 
 /// The folders of a task in its container.
-pub(crate) const WORK: &str = "/iunctus/work";
-pub(crate) const CONTROL: &str = "/iunctus/control";
-pub(crate) const OUTBOX: &str = "/iunctus/outbox";
-pub(crate) const HOME: &str = "/iunctus/home";
-pub(crate) const WRAPPER: &str = "/iunctus/wrapper.sh";
+pub(crate) const WORK: &str = "/uwe/work";
+pub(crate) const CONTROL: &str = "/uwe/control";
+pub(crate) const OUTBOX: &str = "/uwe/outbox";
+pub(crate) const HOME: &str = "/uwe/home";
+pub(crate) const WRAPPER: &str = "/uwe/wrapper.sh";
 
 /// How long the backend waits between two looks at a task, at most.
 const POLL: Duration = Duration::from_secs(5);
@@ -31,7 +31,7 @@ const POLL: Duration = Duration::from_secs(5);
 const SUBMIT_TIME: Duration = Duration::from_secs(120);
 
 /// The tag whose value only one submission has, by which a lost submission is found again.
-const SUBMISSION: &str = "iunctus-submission";
+const SUBMISSION: &str = "uwe-submission";
 
 /// How long failed status reads may persist before the backend stops the task.
 const READ_GRACE: Duration = Duration::from_secs(120);
@@ -197,7 +197,7 @@ impl TesBackend {
         let timer = time.is_some() && wrapped(&task.executors[0].command);
         if timer {
             let text = format!("{}exit \"$status\"\n", wrapper::timed("sh \"$1\"", time));
-            task.executors[0].command = ["sh", "-c", &text, "iunctus", WRAPPER]
+            task.executors[0].command = ["sh", "-c", &text, "uwe", WRAPPER]
                 .map(str::to_owned)
                 .to_vec();
         }
@@ -787,7 +787,7 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
             CONTROL.into(),
             OUTBOX.into(),
         ],
-        tags: BTreeMap::from([("iunctus-attempt".to_owned(), job.name.to_owned())]),
+        tags: BTreeMap::from([("uwe-attempt".to_owned(), job.name.to_owned())]),
     })
 }
 
@@ -971,12 +971,9 @@ mod tests {
             .map(|input| (input.path.as_str(), input.url.as_str()))
             .collect();
         let expected = [
-            (
-                "/iunctus/wrapper.sh",
-                "file:///scratch/run-P-1-1/wrapper.sh",
-            ),
-            ("/iunctus/work/in dir/a.txt", "file:///store/runs/x/a.txt"),
-            ("/iunctus/work/made", "file:///scratch/run-P-1-1/empty"),
+            ("/uwe/wrapper.sh", "file:///scratch/run-P-1-1/wrapper.sh"),
+            ("/uwe/work/in dir/a.txt", "file:///store/runs/x/a.txt"),
+            ("/uwe/work/made", "file:///scratch/run-P-1-1/empty"),
         ];
         assert_eq!(paths, expected);
         assert_eq!(task.outputs[0].url, "file:///scratch/run-P-1-1/work");

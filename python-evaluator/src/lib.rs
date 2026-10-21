@@ -15,6 +15,7 @@ pub mod modules;
 pub mod number;
 pub mod packages;
 pub mod pandas;
+mod set_table;
 pub mod types;
 pub mod value;
 

@@ -1,6 +1,6 @@
 //! Errors of evaluation: Python exceptions, which code can catch, and unsupported features
 //! and conditions that stop the run, which it cannot.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;

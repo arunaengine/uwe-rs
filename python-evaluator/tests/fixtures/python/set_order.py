@@ -1,5 +1,5 @@
 """Exercises the iteration order of sets of numbers and the hashes of numbers and tuples."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 values = [10, 2, 1, 33, 17, 64, 9, 1 << 62, -5, 2**70, 3.5, True]
 print({10, 2, 1}, {3, 100, 7, 8, 5, 1}, {16, 0, 1, 2, 3, 48, 32})

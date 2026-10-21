@@ -2,7 +2,7 @@
 // wheel, the buttons or the keys, and fit it to the view. The first view shows the start of the
 // graph, and large pictures hide what lies outside the view, so that moving stays fast. A click
 // that does not move the picture goes to the box under the pointer.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 "use strict";
 

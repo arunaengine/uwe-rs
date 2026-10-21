@@ -1,6 +1,6 @@
 //! A polars `DataFrame`: named columns, each with its polars data type. It keeps the columns
 //! in the table core of the pandas stand-in, whose row labels are only positions here.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;

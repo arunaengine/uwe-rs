@@ -2,7 +2,7 @@
 // by task what each does, which outputs have other content, and which came from the cache or an
 // earlier run in one run and ran in the other. The run view offers it for the runs of the same
 // workflow. It uses the helpers of `page.js`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 "use strict";
 

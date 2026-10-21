@@ -1,6 +1,6 @@
 //! The insight of the run database: where the time of a run went, tasks that the workflow asks
 //! for again to retry them, and what differs between two runs.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;

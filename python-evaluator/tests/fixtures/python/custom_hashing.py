@@ -1,5 +1,5 @@
 """Exercises dict keys and set members whose classes define __eq__ and __hash__."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 from dataclasses import dataclass
 from enum import IntEnum

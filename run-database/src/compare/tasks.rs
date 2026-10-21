@@ -1,6 +1,6 @@
 //! What differs between a task of one run and the same task of the other: what it does, its
 //! inputs and outputs by content, and how it ended.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;

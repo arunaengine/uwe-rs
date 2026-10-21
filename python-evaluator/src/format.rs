@@ -1,6 +1,6 @@
 //! Text of values: `repr`, the format specification mini-language, `str.format` and `%`
 //! formatting, with Python's output.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use crate::error::Error;

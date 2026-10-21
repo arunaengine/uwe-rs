@@ -4,7 +4,7 @@
 // click. While a run goes on, a new picture takes the place of the old one when tasks come, and
 // the boxes glide to their new places. `camera.js` moves and zooms the picture, `boxes.js` keeps
 // the states of its boxes; both use the helpers of `page.js` and the view of `run.js`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 "use strict";
 

@@ -1,5 +1,5 @@
 //! Authentication applies to every route of a remotely bound run page.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use run_page::{PageError, Server, Settings};

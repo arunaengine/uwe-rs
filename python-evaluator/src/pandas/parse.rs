@@ -1,6 +1,6 @@
 //! Splits the text of a delimited file into columns, and infers the type of each column as
 //! pandas' C parser does.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use super::{DtypeKind, nan};

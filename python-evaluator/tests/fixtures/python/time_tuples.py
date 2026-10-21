@@ -1,5 +1,5 @@
 """Checks time.strftime and time.asctime with plain tuples, and the C locale forms of dates."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 import datetime
 import time

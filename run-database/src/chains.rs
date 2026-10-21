@@ -1,6 +1,6 @@
 //! How long the work is that follows from each step of a workflow, from the times of its earlier
 //! runs, so that a run starts the tasks on the longest remaining chain first and ends sooner.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeSet, HashMap, HashSet};

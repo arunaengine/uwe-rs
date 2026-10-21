@@ -1,6 +1,6 @@
 //! `PackageObject`: the handle of an object that lives in the Python process of the packages.
 //! Each use of it is one request to the process.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;

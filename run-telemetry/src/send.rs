@@ -1,5 +1,5 @@
 //! Posts trace export requests to configured OTLP HTTP endpoints with their headers.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};

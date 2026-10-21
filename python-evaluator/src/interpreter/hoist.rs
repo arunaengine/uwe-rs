@@ -1,6 +1,6 @@
 //! Moves the `yield` expressions inside other expressions of a generator body to statements
 //! of their own, in the order Python evaluates them, so that a generator can suspend there.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use ruff_python_ast::{self as ast, AtomicNodeIndex, Expr, ExprContext, Stmt, name::Name};

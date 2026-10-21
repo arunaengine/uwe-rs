@@ -1,5 +1,5 @@
 //! Dispatches subprocess and os commands through the host, which Snakemake runs in containers.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;

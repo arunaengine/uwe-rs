@@ -1,5 +1,5 @@
 """Checks sets and dicts whose keys of other kinds are equal by __eq__, and their reprs."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 

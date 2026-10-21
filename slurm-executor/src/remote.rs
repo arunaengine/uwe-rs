@@ -1,6 +1,6 @@
 //! The job script of an attempt on a node that shares no folders with this machine, which stages
 //! the files of the task with the iunctus helper.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::os::unix::fs::PermissionsExt;

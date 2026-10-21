@@ -1,6 +1,6 @@
 //! Arithmetic with Python's rules: integers that never overflow, floor division and modulo
 //! that round toward negative infinity, and true division that gives floats.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cmp::Ordering;

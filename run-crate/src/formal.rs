@@ -1,5 +1,5 @@
 //! Describes workflow inputs as Bioschemas formal parameters in an exported crate.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use input_schema::{DIRECTORY_PATH, FILE_PATH, FILE_PATH_PATTERN, PATH, Property};

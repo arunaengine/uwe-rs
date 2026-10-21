@@ -1,5 +1,5 @@
 //! The entities of the files of a run: copied into the crate, on the web, or gone.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashSet;

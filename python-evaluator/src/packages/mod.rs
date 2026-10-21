@@ -1,5 +1,5 @@
 //! Proxies package objects to an embedder-owned Python process using requests and handles.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod object;

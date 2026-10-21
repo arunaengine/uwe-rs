@@ -1,6 +1,6 @@
 //! Starts the page on a small recorded run and reads what the script of the page reads: the
 //! runs, one run, a task with its logs, a download, and the stream of live updates.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::io::Read;

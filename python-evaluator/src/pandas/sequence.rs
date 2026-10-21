@@ -1,5 +1,5 @@
 //! What pandas treats as a sequence of values, and the positions that keys select.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use super::{Array, IndexObject, Series};

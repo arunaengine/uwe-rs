@@ -1,6 +1,6 @@
 //! What a resumed run needs from the runs before it: the lineage it joins, and the outcomes of
 //! the tasks that already finished, by fingerprint.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;

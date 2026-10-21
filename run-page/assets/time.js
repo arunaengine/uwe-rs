@@ -3,7 +3,7 @@
 // steps that ran the longest or used the most CPU time, memory and I/O. A switch shows the path
 // in the graph view. It uses the helpers of `page.js`, the view of `run.js` and the graph of
 // `graph.js`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 "use strict";
 

@@ -1,6 +1,6 @@
 //! The views of a dict that `keys()`, `values()` and `items()` give: they read the dict as it
 //! is when they are used, without a copy.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;

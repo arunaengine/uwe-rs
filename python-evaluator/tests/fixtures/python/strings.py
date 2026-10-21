@@ -1,5 +1,5 @@
 """Exercises string methods, formatting, and f-strings."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 s = "  Hello, World  "
 print(repr(s.strip()), repr(s.lstrip()), repr(s.rstrip()), s.lower(), s.upper())

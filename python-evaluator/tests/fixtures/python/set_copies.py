@@ -1,5 +1,5 @@
 """Checks the order of sets that set operations copy, merge, change and pop."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 print(list({16, 32, 1, 0, 48} | {64}))
 s = {16, 32, 1, 0, 48}

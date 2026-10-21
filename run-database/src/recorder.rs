@@ -1,5 +1,5 @@
 //! Writes one run into the database while it goes on, one call per event of the engine.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::sync::mpsc::{self, RecvTimeoutError};

@@ -1,6 +1,6 @@
 //! CPython's hash values of numbers, `None` and tuples, and the order in which CPython
 //! iterates sets of such values.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;

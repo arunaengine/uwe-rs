@@ -1,6 +1,6 @@
 //! A polars `LazyFrame`: a table whose methods give other lazy tables until `collect()`.
 //! The stand-in holds the table itself, so it reads files when it is made.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;

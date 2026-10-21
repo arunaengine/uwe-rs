@@ -1,5 +1,5 @@
 //! Defines the OTLP JSON shapes for trace resources, spans, events and values.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use serde::Serialize;

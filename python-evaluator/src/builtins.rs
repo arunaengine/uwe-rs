@@ -1547,6 +1547,15 @@ impl Native for File {
     }
 }
 
+/// Writes what a file kept and closes it, unless it is the console.
+pub(crate) fn close_file(interpreter: &mut Interpreter, file: &File) -> Result<(), Error> {
+    file.flush(interpreter)?;
+    if !file.console {
+        *file.closed.borrow_mut() = true;
+    }
+    Ok(())
+}
+
 /// A method of a file object, bound to the file value.
 pub fn file_method(file_value: &Value, name: &str) -> Option<Value> {
     let file_value = file_value.clone();
@@ -1634,10 +1643,7 @@ pub fn file_method(file_value: &Value, name: &str) -> Option<Value> {
                 Ok(Value::None)
             }
             "close" | "__exit__" => {
-                file.flush(interpreter)?;
-                if !file.console {
-                    *file.closed.borrow_mut() = true;
-                }
+                close_file(interpreter, file)?;
                 Ok(if &*method == "__exit__" {
                     Value::Bool(false)
                 } else {
@@ -1712,7 +1718,7 @@ pub fn open_file(
     } else {
         mode.replace('t', "")
     };
-    Ok(Value::native(File {
+    let file = Value::native(File {
         path: path.to_owned(),
         mode,
         content: RefCell::new(content),
@@ -1721,5 +1727,9 @@ pub fn open_file(
         closed: RefCell::new(false),
         console: false,
         compressed,
-    }))
+    });
+    if file.as_native::<File>().is_some_and(File::writing) {
+        interpreter.open_files.push(file.clone());
+    }
+    Ok(file)
 }

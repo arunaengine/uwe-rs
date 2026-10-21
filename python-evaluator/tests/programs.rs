@@ -99,6 +99,22 @@ fn folds_set_literals() {
     assert_eq!(output, expected);
 }
 
+/// A file that the code never closes is written once nothing refers to it, or at the exit,
+/// as CPython does.
+#[test]
+fn writes_unclosed_files() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let host = Rc::new(LocalHost::new(folder.path()));
+    let mut interpreter = Interpreter::new(host.clone());
+    let code = "open('a.txt', 'w').write('hi')\nprint(open('a.txt').read())\nkept = open('b.txt', 'w')\nkept.write('kept')\n";
+    interpreter.run_text("<test>", code).expect("runs");
+    assert_eq!(*host.output.borrow(), "hi\n");
+    let kept = host
+        .read(&folder.path().join("b.txt"))
+        .expect("the file at the exit");
+    assert_eq!(kept, b"kept");
+}
+
 #[test]
 fn reports_exception_lines() {
     let error = evaluate("x = 1\ny = {}\ny['missing']\n").expect_err("a KeyError");

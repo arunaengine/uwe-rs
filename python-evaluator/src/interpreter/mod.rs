@@ -168,6 +168,9 @@ pub struct Interpreter {
     representing: Vec<usize>,
     /// Keys of classes that define `__hash__`, by hash, with their equality classes.
     hashed: HashMap<i64, Vec<(std::rc::Weak<crate::value::Instance>, u64)>>,
+    /// The files open for writing, which CPython writes once nothing refers to them anymore
+    /// or at the exit, also when the code never closes them.
+    pub(crate) open_files: Vec<Value>,
     equality_classes: u64,
     /// The `sys.argv` and similar values that code may ask for.
     pub argv: Vec<String>,
@@ -198,6 +201,7 @@ impl Interpreter {
             handling: Vec::new(),
             representing: Vec::new(),
             hashed: HashMap::new(),
+            open_files: Vec::new(),
             equality_classes: 0,
             argv: vec!["snakemake".into()],
             packages: Rc::default(),
@@ -260,7 +264,34 @@ impl Interpreter {
         let globals = self.new_globals("__main__", Some(path));
         let frame = Frame::module(globals.clone(), Source::new(path, text));
         self.run(&suite, &frame)?;
+        // The program ended, as CPython's exit, which writes the files that are still open.
+        self.close_files(true)?;
         Ok(globals)
+    }
+
+    /// Writes the files open for writing that the code never closed, as CPython does when
+    /// nothing refers to them anymore, or with `all` as at its exit.
+    pub fn close_files(&mut self, all: bool) -> Result<(), Error> {
+        let open = std::mem::take(&mut self.open_files);
+        let mut result = Ok(());
+        for value in open {
+            let unused = matches!(&value, Value::Native(object) if Rc::strong_count(object) == 1);
+            let Some(file) = value.as_native::<crate::builtins::File>() else {
+                continue;
+            };
+            if *file.closed.borrow() {
+                continue;
+            }
+            if !all && !unused {
+                self.open_files.push(value);
+                continue;
+            }
+            let closed = crate::builtins::close_file(self, file);
+            if result.is_ok() {
+                result = closed;
+            }
+        }
+        result
     }
 
     /// Runs statements given as text in the given globals, like `exec(text, globals)`.

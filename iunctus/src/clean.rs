@@ -148,7 +148,11 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         .block_on(plan(&store, &keep))
         .map_err(|error| broken(&error))?;
     let scratch = scratch_folders(&database, &kept, &running_ids(&running, &leases))?;
-    let (_reading, downloads) = old_downloads(&cache_directory().join("downloads"), used_since)?;
+    let (_reading, mut downloads) =
+        old_downloads(&cache_directory().join("downloads"), used_since)?;
+    let needed = needed_images(&database, &kept)?;
+    let (_saving, archives) = old_archives(&crate::cwl_archives(), used_since, &needed)?;
+    downloads.extend(archives);
     let active = running.len().max(leases.len());
     let listed = listing(
         &location, &rules, active, &planned, &scratch, &downloads, &database,
@@ -206,8 +210,8 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     if !downloads.is_empty() {
         let size = downloads.iter().map(|download| download.size).sum();
         println!(
-            "Removed {} ({}).",
-            count(downloads.len(), "download"),
+            "Removed {} of downloads and image archives ({}).",
+            count(downloads.len(), "file"),
             bytes(size)
         );
     }
@@ -276,6 +280,59 @@ fn old_downloads(
         }
     }
     Ok((Some(reading), old))
+}
+
+/// The images that the kept runs name or ran, like the image IDs of saved archives.
+fn needed_images(
+    database: &Database,
+    kept: &BTreeSet<String>,
+) -> Result<BTreeSet<String>, Failure> {
+    let mut needed = BTreeSet::new();
+    for run in kept {
+        let images = database
+            .images(run)
+            .map_err(|error| failure(format!("iunctus: {error}")))?;
+        needed.extend(
+            images
+                .into_iter()
+                .flat_map(|image| [image.named, image.ran]),
+        );
+    }
+    Ok(needed)
+}
+
+/// Saved archives of CWL images, `sha256-<hex>.tar`, that no kept run names by image ID and
+/// that are older than `used_since`, and parts of crashed saves; with the lock that keeps runs
+/// from using the folder meanwhile. While a run may use them, none go.
+fn old_archives(
+    folder: &Path,
+    used_since: Option<SystemTime>,
+    needed: &BTreeSet<String>,
+) -> Result<(Option<std::fs::File>, Vec<Scratch>), Failure> {
+    let broken = |error: std::io::Error| failure(format!("iunctus: {}: {error}", folder.display()));
+    let Some(saving) = storage::hold_downloads(folder).map_err(broken)? else {
+        return Ok((None, Vec::new()));
+    };
+    let mut old = Vec::new();
+    for entry in std::fs::read_dir(folder).map_err(broken)?.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Ok(found) = entry.metadata() else {
+            continue;
+        };
+        let modified = found.modified().ok();
+        let recent = used_since.is_some_and(|since| modified.is_none_or(|time| time >= since));
+        let id = (name.strip_prefix("sha256-"))
+            .and_then(|rest| rest.strip_suffix(".tar"))
+            .map(|hex| format!("sha256:{hex}"));
+        let unused = id.is_some_and(|id| !needed.contains(&id)) && !recent;
+        if name.starts_with(".tmp") || unused {
+            old.push(Scratch {
+                path: entry.path(),
+                size: found.len(),
+            });
+        }
+    }
+    Ok((Some(saving), old))
 }
 
 /// The folders in the scratch folder where the TES, Kubernetes and SLURM executors keep the
@@ -508,8 +565,8 @@ fn listing(
         let size: u64 = downloads.iter().map(|download| download.size).sum();
         let _ = writeln!(
             text,
-            "  downloads that runs fetch again when they need them: {} ({})",
-            count(downloads.len(), "download"),
+            "  downloads and image archives that runs make again when they need them: {} ({})",
+            count(downloads.len(), "file"),
             bytes(size)
         );
     }
@@ -674,6 +731,38 @@ mod tests {
         let reading = std::fs::File::open(folder.path().join("in-use.lock")).expect("the lock");
         reading.lock_shared().expect("locks");
         assert!(names(None).is_empty(), "a process reads downloads");
+    }
+
+    #[test]
+    fn removes_unneeded_archives() {
+        let folder = tempfile::tempdir().expect("archives");
+        let (used, old) = ("ab".repeat(32), "cd".repeat(32));
+        for name in [
+            format!("sha256-{used}.tar"),
+            format!("sha256-{old}.tar"),
+            ".tmpSave".to_owned(),
+            "other.txt".to_owned(),
+        ] {
+            std::fs::write(folder.path().join(name), "image").expect("writes");
+        }
+        let needed = BTreeSet::from([format!("sha256:{used}")]);
+        let names = |used_since| {
+            let (_, old) = old_archives(folder.path(), used_since, &needed).expect("lists");
+            let mut names: Vec<String> = (old.iter())
+                .map(|archive| archive.path.file_name().unwrap().to_string_lossy().into())
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(
+            names(None),
+            [".tmpSave".to_owned(), format!("sha256-{old}.tar")]
+        );
+        let day = SystemTime::now() - Duration::from_secs(24 * 60 * 60);
+        assert_eq!(names(Some(day)), [".tmpSave"], "recent archives stay");
+        let reading = std::fs::File::open(folder.path().join("in-use.lock")).expect("the lock");
+        reading.lock_shared().expect("locks");
+        assert!(names(None).is_empty(), "a run uses the archives");
     }
 
     #[test]

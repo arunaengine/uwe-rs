@@ -27,6 +27,9 @@ pub(crate) const WRAPPER: &str = "/iunctus/wrapper.sh";
 /// How long the backend waits between two looks at a task, at most.
 const POLL: Duration = Duration::from_secs(5);
 
+/// How long the request that submits a task may take, as the client allows.
+const SUBMIT_TIME: Duration = Duration::from_secs(120);
+
 /// The tag whose value only one submission has, by which a lost submission is found again.
 const SUBMISSION: &str = "iunctus-submission";
 
@@ -462,7 +465,7 @@ impl TesBackend {
             }
             // A submission without an answer must not block every later run.
             if journal["id"].as_str().is_none_or(str::is_empty) {
-                match backend.identify(&journal).await {
+                match backend.identify(&root, &journal).await {
                     Submitted::Found(id) => {
                         journal["id"] = serde_json::json!(id);
                         journal_at(&root, &journal)?;
@@ -498,7 +501,24 @@ impl TesBackend {
 
     /// Finds the task of a journal whose submission left no id, by the tag value that only
     /// that submission has, with the credentials that made it.
-    async fn identify(&self, journal: &serde_json::Value) -> Submitted {
+    async fn identify(&self, root: &Path, journal: &serde_json::Value) -> Submitted {
+        // The submission may take as long as its request may.
+        let age = POLL * 4 + SUBMIT_TIME + REQUEST_GRACE;
+        if !executor::poll::old_enough(&root.join("remote.json"), age) {
+            return Submitted::Unclear("the submission is too recent to tell");
+        }
+        // A task counts as absent only when two answers in a row lack it.
+        match self.look_up(journal).await {
+            Submitted::Absent => {
+                tokio::time::sleep(POLL).await;
+                self.look_up(journal).await
+            }
+            found => found,
+        }
+    }
+
+    /// One answer of the server about the task of a journal.
+    async fn look_up(&self, journal: &serde_json::Value) -> Submitted {
         let (Some(name), Some(value)) = (journal["name"].as_str(), journal["submission"].as_str())
         else {
             return Submitted::Unclear("the journal names no submission tag");

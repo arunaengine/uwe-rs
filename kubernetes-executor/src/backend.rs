@@ -564,7 +564,7 @@ impl KubernetesBackend {
             }
             // A submission without an answer must not block every later run.
             if journal["uid"].as_str().is_none_or(str::is_empty) {
-                match self.identify(&journal).await {
+                match self.identify(&root, &journal).await {
                     Submitted::Found(uid) => {
                         journal["uid"] = serde_json::json!(uid);
                         journal_at(&root, &journal)?;
@@ -600,7 +600,23 @@ impl KubernetesBackend {
 
     /// Finds the Job of a journal whose submission left no UID, by its name, which only this
     /// attempt has, and the label of the backend that made it.
-    async fn identify(&self, journal: &serde_json::Value) -> Submitted {
+    async fn identify(&self, root: &Path, journal: &serde_json::Value) -> Submitted {
+        let age = self.poll * 4 + SUBMIT_GRACE + REQUEST_GRACE;
+        if !executor::poll::old_enough(&root.join("remote.json"), age) {
+            return Submitted::Unclear("the submission is too recent to tell");
+        }
+        // A Job counts as absent only when two answers in a row lack it.
+        match self.look_up(journal).await {
+            Submitted::Absent => {
+                tokio::time::sleep(self.poll).await;
+                self.look_up(journal).await
+            }
+            found => found,
+        }
+    }
+
+    /// One answer of the cluster about the Job of a journal.
+    async fn look_up(&self, journal: &serde_json::Value) -> Submitted {
         let Some(name) = journal["name"].as_str().filter(|name| !name.is_empty()) else {
             return Submitted::Unclear("the journal names no Job");
         };

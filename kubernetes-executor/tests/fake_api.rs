@@ -645,6 +645,16 @@ async fn until(ready: impl Fn() -> bool) {
     panic!("the test waited too long");
 }
 
+/// Makes a journal look an hour old, as recovery takes only a submission that old as lost.
+fn age(journal: &Path) {
+    let file = std::fs::File::options()
+        .write(true)
+        .open(journal)
+        .expect("the journal");
+    let time = std::time::SystemTime::now() - Duration::from_secs(3600);
+    file.set_modified(time).expect("sets the time");
+}
+
 /// Whether the journal of an attempt names the UID of its accepted Job.
 fn accepted(journal: &Path) -> bool {
     let record = std::fs::read(journal).ok();
@@ -1191,8 +1201,12 @@ async fn recovers_lost_submissions() {
         staging: &staging,
         placement: &placement,
     };
-    // Recovery finds the Job by its name and label, removes it, and the next run goes on.
+    // A submission this young may still come; recovery leaves it for now.
     std::fs::remove_file(root.path().join("server/lose-submit")).unwrap();
+    backend.reconcile().await.unwrap();
+    assert!(journal.exists(), "a young submission stays");
+    // Recovery finds the Job by its name and label, removes it, and the next run goes on.
+    age(&journal);
     let finished = backend.run(blocked, &CancellationToken::new()).await;
     assert_eq!(finished.expect("the job ends").exit_code, Some(0));
     assert!(!journal.exists());
@@ -1204,6 +1218,7 @@ async fn recovers_lost_submissions() {
     std::fs::write(never.join("remote.lock"), "").unwrap();
     record["name"] = json!("iunctus-never");
     std::fs::write(never.join("remote.json"), record.to_string()).unwrap();
+    age(&never.join("remote.json"));
     backend.reconcile().await.unwrap();
     assert!(!never.join("remote.json").exists());
 }

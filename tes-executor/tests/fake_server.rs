@@ -56,6 +56,16 @@ fn leave(output: &serde_json::Value) {
     }
 }
 
+/// Makes a journal look an hour old, as recovery takes only a submission that old as lost.
+fn age(journal: &std::path::Path) {
+    let file = std::fs::File::options()
+        .write(true)
+        .open(journal)
+        .expect("the journal");
+    let time = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    file.set_modified(time).expect("sets the time");
+}
+
 /// A server that takes one task, gives back `out.txt` and exit code 0 when asked about it,
 /// and keeps the task it got.
 fn serve(task: Arc<Mutex<Option<serde_json::Value>>>) -> String {
@@ -604,8 +614,12 @@ fn recovers_lost_submissions() {
     kept.lock().unwrap().broken = true;
     runtime.block_on(backend.reconcile(&[&backend])).unwrap();
     assert!(journal.exists());
-    // Recovery finds the task by its submission tag, and cancels only that one.
+    // A submission this young may still come; recovery leaves it for now.
     kept.lock().unwrap().broken = false;
+    runtime.block_on(backend.reconcile(&[&backend])).unwrap();
+    assert!(journal.exists(), "a young submission stays");
+    // Recovery finds the task by its submission tag, and cancels only that one.
+    age(&journal);
     runtime.block_on(backend.reconcile(&[&backend])).unwrap();
     assert!(!journal.exists());
     assert_eq!(kept.lock().unwrap().canceled, [false, true]);
@@ -615,6 +629,7 @@ fn recovers_lost_submissions() {
     std::fs::File::create(unsent.join("remote.lock")).unwrap();
     record["submission"] = serde_json::json!("unsent");
     std::fs::write(unsent.join("remote.json"), record.to_string()).unwrap();
+    age(&unsent.join("remote.json"));
     runtime.block_on(backend.reconcile(&[&backend])).unwrap();
     assert!(!unsent.join("remote.json").exists());
     // An accepted task that already ended reconciles too.

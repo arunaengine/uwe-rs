@@ -10,6 +10,13 @@ use crate::CancellationToken;
 pub const CANCEL_GRACE: Duration = Duration::from_secs(60);
 pub const REQUEST_GRACE: Duration = Duration::from_secs(5);
 
+/// Whether the journal file of a submission is older than `age`, so that a scheduler that
+/// lists no job of it never took it, rather than not showing it yet.
+pub fn old_enough(journal: &std::path::Path, age: Duration) -> bool {
+    let modified = std::fs::metadata(journal).and_then(|found| found.modified());
+    modified.is_ok_and(|time| time.elapsed().is_ok_and(|elapsed| elapsed >= age))
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum WaitError {
     Cancelled,

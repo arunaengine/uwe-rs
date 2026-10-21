@@ -175,3 +175,63 @@ fn reruns_changed_cwl() {
         "{commands:?}"
     );
 }
+
+/// Runs each task by writing its outputs into a read-only store, as a cache does.
+struct Store(std::path::PathBuf);
+
+impl workflow_graph::Executor for Store {
+    fn run(&mut self, attempt: workflow_graph::Attempt) -> workflow_graph::Running {
+        let task = &attempt.task;
+        let mut files = Vec::new();
+        for (number, output) in task.outputs.iter().enumerate() {
+            let location = self.0.join(format!("{}-{number}", task.id));
+            std::fs::write(&location, "a 1\nb 2\n").unwrap();
+            let mut permissions = std::fs::metadata(&location).unwrap().permissions();
+            permissions.set_readonly(true);
+            std::fs::set_permissions(&location, permissions).unwrap();
+            files.push(workflow_graph::OutputFile {
+                path: output.clone(),
+                location: location.to_string_lossy().into_owned(),
+                ..Default::default()
+            });
+        }
+        workflow_graph::Running::ended(Ok(workflow_graph::Outcome {
+            id: task.id,
+            files,
+            ..Default::default()
+        }))
+    }
+}
+
+/// The outputs of a `cwl:` job in the shared directory may change, as cwltool leaves them.
+#[test]
+fn writes_cwl_outputs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let work = folder.path().join("work");
+    std::fs::create_dir(&work).unwrap();
+    std::fs::write(work.join("sort.cwl"), TOOL).expect("a tool");
+    std::fs::write(work.join("test.txt"), "b 2\na 1\n").expect("an input");
+    std::fs::write(
+        work.join("Snakefile"),
+        "rule all:\n    input: 'sorted.txt'\nrule a:\n    input: input=['test.txt']\n    output: output='sorted.txt'\n    params: key=['2']\n    cwl: 'sort.cwl'\n",
+    )
+    .expect("a Snakefile");
+    let launch = Launch {
+        target: work.clone(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let options = snakemake_runtime::RunSettings {
+        shared_workdir: true,
+        ..Default::default()
+    };
+    let mut driver = snakemake_runtime::driver_with_options(&launch, Default::default(), options)
+        .expect("a driver");
+    let store = folder.path().join("store");
+    std::fs::create_dir(&store).unwrap();
+    let mut executor = Store(store);
+    let run = workflow_graph::Engine::new(&mut executor).run("cwl", driver.as_mut());
+    assert!(run.error.is_none(), "{:?}", run.error);
+    let sorted = std::fs::metadata(work.join("sorted.txt")).expect("the output");
+    assert!(!sorted.permissions().readonly());
+}

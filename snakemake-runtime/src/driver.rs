@@ -1095,11 +1095,13 @@ impl Session {
                             ..workflow_graph::OutputFile::default()
                         });
                     }
-                    // Jobs of the shared directory read the outputs in place at once.
+                    // Jobs of the shared directory read the outputs in place at once. They may
+                    // change them, as cwltool leaves its outputs writable.
                     if self.shared {
                         let local = self.files.local_location(Path::new(&delivery.location));
                         local
                             .and_then(|local| crate::shared::copy_into(&local, &target))
+                            .and_then(|()| crate::shared::make_writable(&target))
                             .map_err(|error| {
                                 DriverError::new(format!(
                                     "cannot place {}: {error}",

@@ -94,7 +94,7 @@ pub fn executor(
         };
         return Err(format!(
             "-executor slurm needs the tools of SLURM, but {tools}{are} not on the PATH; run \
-             iunctus on a node of the SLURM cluster, like its login node"
+             uwe on a node of the SLURM cluster, like its login node"
         ));
     }
     let runtime = workflow_graph::runtime().map_err(|error| error.to_string())?;

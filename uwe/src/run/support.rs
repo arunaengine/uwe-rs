@@ -71,7 +71,7 @@ pub(crate) fn finish(execution: Execution) -> Result<(), Failure> {
     if let Some(error) = &execution.failure_hook_error {
         notes.insert(
             0,
-            format!("iunctus: error while ending the failed workflow: {error}"),
+            format!("uwe: error while ending the failed workflow: {error}"),
         );
     }
     match execution.into_result() {
@@ -96,22 +96,21 @@ fn simulation_notes(graph: &ExecutionGraph) -> Vec<String> {
     if !graph.is_simulated() || graph.nodes.is_empty() {
         return Vec::new();
     }
-    let mut notes = vec![format!("iunctus: {SIMULATION}")];
-    notes.extend(graph.cache_note().map(|note| format!("iunctus: {note}")));
+    let mut notes = vec![format!("uwe: {SIMULATION}")];
+    notes.extend(graph.cache_note().map(|note| format!("uwe: {note}")));
     match graph.marked().count() {
         0 => {}
-        1 => notes.push(
-            "iunctus: the graph marks 1 point where real data can add or remove tasks.".into(),
-        ),
+        1 => notes
+            .push("uwe: the graph marks 1 point where real data can add or remove tasks.".into()),
         count => notes.push(format!(
-            "iunctus: the graph marks {count} points where real data can add or remove tasks."
+            "uwe: the graph marks {count} points where real data can add or remove tasks."
         )),
     }
     notes
 }
 
 /// A token that fires on Ctrl-C or SIGTERM, so that the run stops its tasks cleanly, as a
-/// SLURM job or a service manager stops a program with SIGTERM. A second one ends iunctus at
+/// SLURM job or a service manager stops a program with SIGTERM. A second one ends uwe at
 /// once.
 pub(crate) fn stop_on_interrupt() -> CancellationToken {
     let token = CancellationToken::new();
@@ -139,7 +138,7 @@ pub(crate) fn stop_on_interrupt() -> CancellationToken {
                 }
             };
             if asked().await && !stop.is_cancelled() {
-                eprintln!("iunctus: stopping the running tasks; press Ctrl-C again to quit now");
+                eprintln!("uwe: stopping the running tasks; press Ctrl-C again to quit now");
                 stop.cancel();
             }
             if asked().await {

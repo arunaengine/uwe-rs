@@ -78,10 +78,10 @@ pub struct Executors {
     /// `[executor.slurm] staging` and the settings of its staging root.
     pub slurm_staging: crate::staging::Settings,
     /// `[executor.slurm] helper_path`, or `helper_url` with `helper_sha256`: where the jobs get
-    /// the static iunctus binary for object-store staging.
+    /// the static uwe binary for object-store staging.
     pub slurm_helper: Option<slurm_executor::Helper>,
     /// Without `slurm_helper`: `[executor.slurm] helper_file`, or else the running binary,
-    /// which iunctus uploads to the staging root for the jobs.
+    /// which uwe uploads to the staging root for the jobs.
     pub slurm_helper_file: Option<PathBuf>,
     /// `[executor.slurm] node_folder`: the folder of the nodes for the files of a job.
     pub slurm_node_folder: Option<String>,
@@ -97,14 +97,14 @@ pub struct Executors {
     /// `[executor.kubernetes] unschedulable_minutes`: how long a pod may find no node.
     pub kubernetes_unschedulable: Option<u64>,
     /// `[executor.kubernetes] start_grace_seconds`: how long a Job may have no pod, or a pod
-    /// that cannot start, before iunctus asks the cluster why.
+    /// that cannot start, before uwe asks the cluster why.
     pub kubernetes_start_grace: Option<u64>,
     /// `[executor.kubernetes] helper_image` and `helper_mount`: the image that holds only the
-    /// static iunctus binary, for object-store staging; or else `helper_download_image`, which
+    /// static uwe binary, for object-store staging; or else `helper_download_image`, which
     /// downloads the binary.
     pub kubernetes_helper: Option<kubernetes_executor::Helper>,
     /// Without `helper_image`: `[executor.kubernetes] helper_file`, or else the running binary,
-    /// which iunctus uploads to the staging root for the pods.
+    /// which uwe uploads to the staging root for the pods.
     pub kubernetes_helper_file: Option<PathBuf>,
     /// `[executor.kubernetes.shared_volume]`: a claim or an NFS export that holds the store and
     /// scratch folders, instead of `hostPath` volumes.
@@ -348,7 +348,7 @@ fn shared_volume(shared: &Table<'_>) -> Result<kubernetes_executor::Volumes, Con
     })
 }
 
-/// Where the SLURM jobs get the iunctus binary: `helper_path` on the nodes, or `helper_url` with
+/// Where the SLURM jobs get the uwe binary: `helper_path` on the nodes, or `helper_url` with
 /// its `helper_sha256`.
 fn helper(slurm: &Table<'_>) -> Result<Option<slurm_executor::Helper>, ConfigError> {
     let (path, url) = (slurm.text("helper_path")?, slurm.text("helper_url")?);
@@ -472,7 +472,7 @@ pub struct Defaults {
 impl Defaults {
     /// Reads the config files.
     pub fn load(arguments: &Arguments) -> Result<Defaults, Failure> {
-        let failed = |error: ConfigError| Failure::setup(format!("iunctus: {error}"));
+        let failed = |error: ConfigError| Failure::setup(format!("uwe: {error}"));
         let config = ConfigFile::load(arguments.config_file.as_deref()).map_err(failed)?;
         Defaults::read(&config).map_err(failed)
     }
@@ -528,7 +528,7 @@ impl Defaults {
     }
 
     /// Applies the defaults to a command: `-executor` wins over the file for `run` and
-    /// `check-machine`; other commands, like `iunctus graph`, keep the simulator. `-report`
+    /// `check-machine`; other commands, like `uwe graph`, keep the simulator. `-report`
     /// wins over the file for `run`.
     pub fn apply(self, command: &str, arguments: &mut Arguments) {
         if matches!(
@@ -562,7 +562,7 @@ impl Defaults {
 impl Setup {
     /// Reads the config files.
     pub fn load(arguments: &Arguments) -> Result<Setup, Failure> {
-        let failed = |error: ConfigError| Failure::setup(format!("iunctus: {error}"));
+        let failed = |error: ConfigError| Failure::setup(format!("uwe: {error}"));
         let config = ConfigFile::load(arguments.config_file.as_deref()).map_err(failed)?;
         config.root().only(SECTIONS).map_err(failed)?;
         executor::credentials::configure(&config).map_err(failed)?;
@@ -641,7 +641,7 @@ impl Setup {
     /// reads look there first, and new results go to both.
     pub fn store(&self, arguments: &Arguments) -> Result<Store, Failure> {
         let location = self.store_location(arguments);
-        let failed = |message: String| Failure::setup(format!("iunctus: {message}"));
+        let failed = |message: String| Failure::setup(format!("uwe: {message}"));
         let place = (self.storage.store(&location)).map_err(|error| failed(error.to_string()))?;
         let store = match place {
             StoreLocation::Folder(folder) => Store::local(&folder),

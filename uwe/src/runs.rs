@@ -11,7 +11,7 @@ use workflow_graph::Language;
 use crate::arguments::Arguments;
 use crate::{Failure, cache_directory, detect, failure};
 
-/// How many runs `iunctus runs` lists.
+/// How many runs `uwe runs` lists.
 const LISTED: u32 = 50;
 
 /// The run database of the command: `-database`, else `runs.sqlite` in the cache directory,
@@ -29,13 +29,13 @@ pub fn open(arguments: &Arguments) -> Result<Database, Failure> {
             error => error.to_string(),
         };
         Failure::setup(format!(
-            "iunctus: {}: cannot open the run database: {why}; name another file with -database",
+            "uwe: {}: cannot open the run database: {why}; name another file with -database",
             path.display()
         ))
     })
 }
 
-/// `iunctus runs`: the latest runs, one line each.
+/// `uwe runs`: the latest runs, one line each.
 pub fn list(arguments: &Arguments) -> Result<(), Failure> {
     let runs = open(arguments)?
         .runs(LISTED)
@@ -88,12 +88,12 @@ pub fn local_time(milliseconds: i64) -> String {
         .unwrap_or_default()
 }
 
-/// `iunctus export <run>`: writes the RO-Crate of the run to `-output`, by default to
+/// `uwe export <run>`: writes the RO-Crate of the run to `-output`, by default to
 /// `<run>-crate` in the current directory.
 pub fn export(arguments: &Arguments) -> Result<(), Failure> {
     let Some(id) = arguments.target.as_ref().map(|id| id.to_string_lossy()) else {
         return Err(Failure::usage(
-            "iunctus: name the run to export; `iunctus runs` lists them",
+            "uwe: name the run to export; `uwe runs` lists them",
         ));
     };
     let database = open(arguments)?;
@@ -102,7 +102,7 @@ pub fn export(arguments: &Arguments) -> Result<(), Failure> {
         .map_err(|error| failure(error.to_string()))?
     else {
         return Err(failure(format!(
-            "iunctus: the run database has no run `{id}`; `iunctus runs` lists the runs"
+            "uwe: the run database has no run `{id}`; `uwe runs` lists the runs"
         )));
     };
     let workflow = main_file(&run, &database)?;
@@ -301,7 +301,7 @@ async fn kept_tree(store: &content_store::Store, digest: &str, folder: &Path) ->
     result
 }
 
-/// `iunctus why <run> <task>`: what changed since the same task ran before.
+/// `uwe why <run> <task>`: what changed since the same task ran before.
 pub fn why(arguments: &Arguments) -> Result<(), Failure> {
     let run = arguments.target.as_ref().map(|run| run.to_string_lossy());
     let task = arguments
@@ -310,14 +310,14 @@ pub fn why(arguments: &Arguments) -> Result<(), Failure> {
         .and_then(|task| task.parse::<u64>().ok());
     let (Some(run), Some(task)) = (run, task) else {
         return Err(Failure::usage(
-            "iunctus: name a run and the number of one of its tasks, like `iunctus why \
-             1a0f1cc4c10-3a2487 4`; `iunctus runs` lists the runs",
+            "uwe: name a run and the number of one of its tasks, like `uwe why \
+             1a0f1cc4c10-3a2487 4`; `uwe runs` lists the runs",
         ));
     };
     let database = open(arguments)?;
     let broken = |error: run_database::DatabaseError| failure(error.to_string());
     let Some(row) = database.task_row(&run, task).map_err(broken)? else {
-        return Err(failure(format!("iunctus: run {run} has no task {task}")));
+        return Err(failure(format!("uwe: run {run} has no task {task}")));
     };
     match row.reused.as_deref() {
         Some("cache") => {
@@ -343,12 +343,12 @@ pub fn why(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
-/// `iunctus origin <file>`: the tasks that made a file, back to the data that no task made. The
+/// `uwe origin <file>`: the tasks that made a file, back to the data that no task made. The
 /// file is a path, or a digest like `sha256:<hex>`.
 pub fn origin(arguments: &Arguments) -> Result<(), Failure> {
     let Some(file) = &arguments.target else {
         return Err(Failure::usage(
-            "iunctus: name a file that a run made, or its digest as sha256:<hex>",
+            "uwe: name a file that a run made, or its digest as sha256:<hex>",
         ));
     };
     let text = file.to_string_lossy();
@@ -435,12 +435,12 @@ fn main_file(run: &Run, database: &Database) -> Result<PathBuf, Failure> {
         return Ok(live);
     }
     Err(failure(format!(
-        "iunctus: the workflow {} of the run is gone and no recorded main file is identifiable, so the crate cannot hold it",
+        "uwe: the workflow {} of the run is gone and no recorded main file is identifiable, so the crate cannot hold it",
         target.display()
     )))
 }
 
-/// `iunctus resume <run> [step] [name=value ...]`: resumes the suspended Argo steps of a
+/// `uwe resume <run> [step] [name=value ...]`: resumes the suspended Argo steps of a
 /// running run, one by its name or all, with values of their output parameters, as `argo
 /// resume` and `argo node set --output-parameter` do.
 pub fn resume(arguments: &Arguments) -> Result<(), Failure> {
@@ -450,8 +450,8 @@ pub fn resume(arguments: &Arguments) -> Result<(), Failure> {
         .map(|run| run.to_string_lossy().into_owned())
     else {
         return Err(Failure::usage(
-            "iunctus: name a running run, like `iunctus resume 1a0f1cc4c10-3a2487 approve`; \
-             `iunctus runs` lists the runs",
+            "uwe: name a running run, like `uwe resume 1a0f1cc4c10-3a2487 approve`; \
+             `uwe runs` lists the runs",
         ));
     };
     let database = open(arguments)?;
@@ -459,7 +459,7 @@ pub fn resume(arguments: &Arguments) -> Result<(), Failure> {
         .run(&run)
         .map_err(|error| failure(error.to_string()))?;
     if known.is_none() {
-        return Err(failure(format!("iunctus: there is no run {run}")));
+        return Err(failure(format!("uwe: there is no run {run}")));
     }
     let mut request = argo_runtime::resume::Request::default();
     for word in &arguments.targets {
@@ -469,16 +469,14 @@ pub fn resume(arguments: &Arguments) -> Result<(), Failure> {
             }
             None if request.step.is_none() => request.step = Some(word.clone()),
             None => {
-                return Err(Failure::usage(format!(
-                    "iunctus: `{word}` is a second step"
-                )));
+                return Err(Failure::usage(format!("uwe: `{word}` is a second step")));
             }
         }
     }
     let folder = crate::run::driver::resume_folder(&run);
     request
         .write(&folder)
-        .map_err(|error| failure(format!("iunctus: cannot leave the request: {error}")))?;
+        .map_err(|error| failure(format!("uwe: cannot leave the request: {error}")))?;
     let step = request.step.as_deref().unwrap_or("every suspended step");
     println!("asked run {run} to resume {step}");
     Ok(())

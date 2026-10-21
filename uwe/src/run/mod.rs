@@ -48,7 +48,7 @@ impl RunRequest {
         self.settings.cancel = cancel;
         tokio::task::spawn_blocking(move || self.run_blocking())
             .await
-            .map_err(|error| Failure::setup(format!("iunctus: run worker failed: {error}")))?
+            .map_err(|error| Failure::setup(format!("uwe: run worker failed: {error}")))?
     }
 
     /// Blocking equivalent of `run`. Call outside an async runtime.
@@ -86,7 +86,7 @@ impl RunRequest {
             application::describe(driver.as_mut()).map_err(|error| failure(error.to_string()))
         })
         .await
-        .map_err(|error| Failure::setup(format!("iunctus: discovery worker failed: {error}")))?
+        .map_err(|error| Failure::setup(format!("uwe: discovery worker failed: {error}")))?
     }
 }
 
@@ -146,8 +146,7 @@ fn execute_with(
     // executors print no line per task there.
     let shown = real && !quiet;
     let verbose = !quiet && !(shown && terminal::possible());
-    let runtime =
-        workflow_graph::runtime().map_err(|error| failure(format!("iunctus: {error}")))?;
+    let runtime = workflow_graph::runtime().map_err(|error| failure(format!("uwe: {error}")))?;
     let sources = runtime.block_on(sources::collect(target, arguments));
     let invocation = admission.map(|_| {
         let mut words = record::run_arguments(arguments);
@@ -254,10 +253,10 @@ fn execute_with(
     if let Some(store) = &kept
         && let Err(message) = runtime.block_on(sources::keep(store, &sources))
     {
-        tracing::warn!("iunctus: the store does not keep the files of the workflow: {message}");
+        tracing::warn!("uwe: the store does not keep the files of the workflow: {message}");
     }
     if let (true, Some(reason)) = (real, &sources.skipped) {
-        tracing::info!("iunctus: the run records no files of its workflow, as {reason}");
+        tracing::info!("uwe: the run records no files of its workflow, as {reason}");
     }
     let taken = resume::Taken::default();
     let executor = match reusable {
@@ -327,7 +326,7 @@ fn execute_with(
     if let Some(store) = &kept
         && let Err(message) = runtime.block_on(fetched::keep(store, &read))
     {
-        tracing::warn!("iunctus: the store does not keep the remote files of the run: {message}");
+        tracing::warn!("uwe: the store does not keep the remote files of the run: {message}");
     }
     close(recorder);
     // A failed run leaves its error as the first line on standard error.
@@ -345,7 +344,7 @@ fn execute_with(
         Some(progress) => progress.finish(&run, Some(&store), report.as_deref()),
         None => {
             if let Some(report) = &report {
-                eprintln!("iunctus: the report of the run is in {}", report.display());
+                eprintln!("uwe: the report of the run is in {}", report.display());
             }
         }
     }
@@ -370,6 +369,6 @@ pub(crate) type Ran = Run;
 /// Ends the record of a run. A run goes on when the database fails; it only says so.
 pub(crate) fn close(recorder: Recorder) {
     if let Err(error) = recorder.close() {
-        tracing::warn!("iunctus: the run database did not record the whole run: {error}");
+        tracing::warn!("uwe: the run database did not record the whole run: {error}");
     }
 }

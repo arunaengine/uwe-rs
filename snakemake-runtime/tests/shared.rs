@@ -269,6 +269,38 @@ rule copy:
     );
 }
 
+/// The current content of an `update()` output counts for the cache key of a shared job, so
+/// that a stored result of a run that began with other content never replaces the file.
+#[test]
+fn keys_updated_outputs() {
+    let snakefile = r#"
+rule add:
+    input: "in.txt"
+    output: update("acc.txt")
+    shell: "echo more >> {output}"
+"#;
+    let steps: [(&str, Step); 1] = [("add", |folder| {
+        let old = std::fs::read_to_string(folder.join("acc.txt")).unwrap();
+        std::fs::write(folder.join("acc.txt"), old + "more\n").unwrap();
+        0
+    })];
+    let folder = folder();
+    let acc = folder.path().join("work/acc.txt");
+    std::fs::write(&acc, "first\n").unwrap();
+    let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    let file = std::fs::File::open(&acc).unwrap();
+    file.set_modified(hour_ago).unwrap();
+    std::fs::write(folder.path().join("work/in.txt"), "new").unwrap();
+    let (folder, host, error) = run(folder, snakefile, &steps);
+    assert_eq!(error, None);
+    let work = folder.path().join("work");
+    let task = host.tasks.iter().find(|task| task.step == "add").unwrap();
+    let keyed = (task.inputs.iter()).any(|input| Path::new(&input.source) == work.join("acc.txt"));
+    assert!(keyed, "{:?}", task.inputs);
+    let text = std::fs::read_to_string(work.join("acc.txt")).unwrap();
+    assert_eq!(text, "first\nmore\n");
+}
+
 #[test]
 fn removes_failed_outputs() {
     let snakefile =

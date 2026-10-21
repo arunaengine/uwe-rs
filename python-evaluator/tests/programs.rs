@@ -115,6 +115,18 @@ fn writes_unclosed_files() {
     assert_eq!(kept, b"kept");
 }
 
+/// `key in d.keys()` looks the key up at once: 100,000 checks take seconds; objects of other
+/// classes still answer with their own `keys()`.
+#[test]
+fn finds_dict_keys() {
+    let code = "d = {i: i for i in range(100000)}\nn = sum(1 for i in range(100000) if i in d.keys())\nclass K:\n    def keys(self):\n        return ['a']\nprint(n, -1 not in d.keys(), 'a' in K().keys())\n";
+    let start = std::time::Instant::now();
+    let output = evaluate(code).expect("runs");
+    assert_eq!(output, "100000 True True\n");
+    let seconds = start.elapsed().as_secs();
+    assert!(seconds < 60, "took {seconds} s");
+}
+
 #[test]
 fn reports_exception_lines() {
     let error = evaluate("x = 1\ny = {}\ny['missing']\n").expect_err("a KeyError");

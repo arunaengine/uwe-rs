@@ -320,8 +320,7 @@ fn back_up(workdir: &Path, job: &Job) -> std::io::Result<()> {
         // output may be half written, so it gets the content of the backup back first.
         if std::fs::symlink_metadata(&backup).is_ok() {
             eprintln!("Restored previous version of {output} (an earlier job was stopped).");
-            remove(&path)?;
-            copy_into(&backup, &path)?;
+            write_back(&backup, &path)?;
             continue;
         }
         if std::fs::symlink_metadata(&path).is_err() {
@@ -353,12 +352,23 @@ pub fn restore_updates(workdir: &Path, job: &Job) -> std::io::Result<()> {
             }
             continue;
         }
-        remove(&path)?;
-        copy_into(&backup, &path)?;
+        write_back(&backup, &path)?;
         remove(&backup)?;
         eprintln!("Restored previous version of {output} (updating job failed).");
     }
     Ok(())
+}
+
+/// Gives an output the content of its backup. A link to a file stays and its file gets the
+/// content, as `shutil.copy` writes through it.
+fn write_back(backup: &Path, path: &Path) -> std::io::Result<()> {
+    let link = std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_symlink());
+    if link && std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file()) {
+        std::fs::copy(backup, path)?;
+        return Ok(());
+    }
+    remove(path)?;
+    copy_into(backup, path)
 }
 
 /// Removes the backups of the `update()` outputs of a job that ended well.

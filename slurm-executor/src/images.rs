@@ -80,6 +80,12 @@ fn source(reference: &str) -> String {
     }
 }
 
+/// The hex digits of an image ID, like `sha256:<hex>`, by which tasks name a saved archive.
+pub fn image_id(reference: &str) -> Option<&str> {
+    let hex = reference.strip_prefix("sha256:")?;
+    (hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit())).then_some(hex)
+}
+
 /// The local file of an image archive that Apptainer reads, like `docker-archive:/x/a.tar`.
 pub fn archive_path(reference: &str) -> Option<&Path> {
     reference.strip_prefix("docker-archive:").map(Path::new)

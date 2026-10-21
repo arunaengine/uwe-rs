@@ -52,7 +52,8 @@ pub(crate) use failure::failure;
 pub(crate) use run::backend::{executor, network_rule, recorded_workflow};
 pub(crate) use run::driver::{driver, launch, target_and_language};
 pub(crate) use run::support::{
-    cache_directory, finish, run_id, runner_settings, stop_on_interrupt, use_cache_folder,
+    cache_directory, cwl_archives, finish, run_id, runner_settings, stop_on_interrupt,
+    use_cache_folder,
 };
 pub(crate) use run::{Ran, close, execute};
 pub use run::{Run, RunRequest};

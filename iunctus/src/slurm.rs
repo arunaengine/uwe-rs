@@ -42,6 +42,7 @@ pub fn backend(
     backend.options = options;
     backend.pull = pull;
     backend.proxy = storage::config_proxy().map(str::to_owned);
+    backend.archives = Some(crate::cwl_archives());
     backend
 }
 

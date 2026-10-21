@@ -98,14 +98,16 @@ pub fn job_script(
         None => (keep, String::new()),
     };
     // Without its folder the job has no log yet, as SLURM writes its output nowhere, so it
-    // sends the reason alone. A signal ends the script through its exit trap.
+    // sends the reason alone. A signal ends the script through its exit trap, which ignores
+    // more of them and removes the data of the task first, as a SIGKILL may cut it short.
     let mut script = format!(
         "#!/bin/bash\n# The iunctus job of one attempt of a task, on a node without the shared \
          folders.\numask 077\nif ! node=$(mkdir -p {base} 2>&1 && mktemp -d {base}/{} 2>&1); \
          then\n    early=\"iunctus: cannot make a private folder in \"{base}\" on $(hostname): \
          $node\"\n{early}    exit 1\nfi\n\
-         exec >> \"$node/{LOG}\" 2>&1\nsent=\nfinish() {{\n    [ -n \"$sent\" ] || {send}\n    \
-         rm -rf \"$node\"\n}}\ntrap finish EXIT\ntrap 'exit 143' TERM INT HUP\n",
+         exec >> \"$node/{LOG}\" 2>&1\nsent=\nfinish() {{\n    trap '' TERM INT HUP\n    \
+         rm -rf \"$node/data\"\n    [ -n \"$sent\" ] || {send}\n    rm -rf \"$node\"\n}}\n\
+         trap finish EXIT\ntrap 'exit 143' TERM INT HUP\n",
         quote(&format!("iunctus-{name}.XXXXXXXX"))
     );
     let download = match &staging.helper {
@@ -183,8 +185,8 @@ fn send_log(request: &Request, early: bool) -> String {
     };
     let pipe = if early { "echo \"$early\" | " } else { "" };
     format!(
-        "{{ {pipe}curl -fsS --max-time 300 -X PUT -T {file}{} {url} || wget -q -O /dev/null \
-         --timeout=60 --method=PUT {body}{} {url}; }}",
+        "{{ {pipe}curl -fsS --max-time 60 -X PUT -T {file}{} {url} || wget -q -O /dev/null \
+         --timeout=30 --tries=1 --method=PUT {body}{} {url}; }}",
         headers("-H "),
         headers("--header="),
         url = quote(&request.url),
@@ -266,7 +268,8 @@ mod tests {
             mktemp -d \"${TMPDIR:-/tmp}\"/'iunctus-run-P-1-1.XXXXXXXX' 2>&1); then\n    \
             early=\"iunctus: cannot make a private folder in \"\"${TMPDIR:-/tmp}\"\" on \
             $(hostname): $node\"\n    exit 1\nfi\n\
-            exec >> \"$node/slurm.log\" 2>&1\nsent=\nfinish() {\n    \
+            exec >> \"$node/slurm.log\" 2>&1\nsent=\nfinish() {\n    trap '' TERM INT HUP\n    \
+            rm -rf \"$node/data\"\n    \
             [ -n \"$sent\" ] || mv -f \"$node/slurm.log\" \"$node.log\"\n    rm -rf \"$node\"\n}\n\
             trap finish EXIT\ntrap 'exit 143' TERM INT HUP\nhelper='/opt/iunctus'\nstatus=125\n\
             if \"$helper\" __stage in \"$node/data\" 'https://plan' \"$node\"; then\n    \
@@ -295,16 +298,16 @@ mod tests {
             ..links
         };
         let script = job_script(&docker, &run, &staging, false, None, links);
-        let expected = "[ -n \"$sent\" ] || { curl -fsS --max-time 300 -X PUT -T \
+        let expected = "[ -n \"$sent\" ] || { curl -fsS --max-time 60 -X PUT -T \
             \"$node/slurm.log\" -H 'x-ms-blob-type: BlockBlob' 'https://staging/log?signature' || \
-            wget -q -O /dev/null --timeout=60 --method=PUT --body-file=\"$node/slurm.log\" \
+            wget -q -O /dev/null --timeout=30 --tries=1 --method=PUT --body-file=\"$node/slurm.log\" \
             --header='x-ms-blob-type: BlockBlob' 'https://staging/log?signature'; } || \
             mv -f \"$node/slurm.log\" \"$node.log\"\n";
         assert!(script.contains(expected), "{script}");
         // A job without its folder sends the reason alone.
-        let expected = "    { echo \"$early\" | curl -fsS --max-time 300 -X PUT -T - \
+        let expected = "    { echo \"$early\" | curl -fsS --max-time 60 -X PUT -T - \
             -H 'x-ms-blob-type: BlockBlob' 'https://staging/log?signature' || wget -q -O /dev/null \
-            --timeout=60 --method=PUT --body-data=\"$early\" --header='x-ms-blob-type: BlockBlob' \
+            --timeout=30 --tries=1 --method=PUT --body-data=\"$early\" --header='x-ms-blob-type: BlockBlob' \
             'https://staging/log?signature'; }\n    exit 1\n";
         assert!(script.contains(expected), "{script}");
         assert!(

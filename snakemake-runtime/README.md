@@ -189,8 +189,9 @@ iunctus mirrors each repository at its reference, or each web server, into a fol
 downloads, and downloads a file the first time the workflow reads it. So paths relative to
 a remote Snakefile, like its includes, config schemas and scripts, work as local ones do.
 
-`gitfile(repo, path, tag=...)` names a Snakefile in a git repository at a tag, branch or
-commit (src/gitfile.rs). A repository of this machine is read with gix, without the git
+`gitfile(repo, path, tag=..., ref=..., commit=...)` names a Snakefile in a git repository
+at a tag, a ref or a commit (src/gitfile.rs). A ref is any revision that `git show` takes,
+like a branch, a short commit ID or `main~1`. A repository of this machine is read with gix, without the git
 program. A repository at an `https://` address is fetched by the Git client of the run,
 once per run, signed in with the account of an https storage provider of the config file.
 Either is written out at its reference into the folder of downloads.

@@ -5,7 +5,7 @@
 use std::cmp::Ordering;
 use std::rc::Rc;
 
-use super::{ListKind, Value};
+use super::{ListKind, State, Time, Value};
 use crate::exception::Exception;
 use crate::number::Number;
 use crate::units::{parse_duration, parse_memory};
@@ -165,7 +165,18 @@ fn comparable(value: &Value) -> bool {
             | Value::MemoryUnit(_)
             | Value::Duration(_)
             | Value::Path(_)
-    )
+    ) || time(value).is_some()
+}
+
+/// A `java.time` value, which compares with values of its own class.
+fn time(value: &Value) -> Option<Time> {
+    match value {
+        Value::Object(object) => match object.borrow().state {
+            State::Time(time) => Some(time),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// `compareToWithEqualityCheck`. For an equality check, classes that do not compare give
@@ -180,6 +191,11 @@ fn compare_values(left: &Value, right: &Value, equality: bool) -> Result<Orderin
             right.to_java_string()
         ))
     };
+    if let (Some(a), Some(b)) = (time(left), time(right))
+        && std::mem::discriminant(&a) == std::mem::discriminant(&b)
+    {
+        return Ok(a.cmp(&b));
+    }
     match (left, right) {
         (Value::Null, Value::Null) => Ok(Ordering::Equal),
         (Value::Null, _) => Ok(Ordering::Less),

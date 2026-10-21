@@ -7,7 +7,7 @@ use nextflow_parser::Span;
 
 use crate::number::Number;
 use crate::units::java_round;
-use crate::value::{JsonOptions, State, Value};
+use crate::value::{JsonOptions, State, Time, Value};
 
 use super::super::{AtSpan, Error, Interpreter};
 use super::{format, json};
@@ -58,12 +58,14 @@ impl Interpreter<'_> {
             ("DateTimeFormatter", "ofPattern", [pattern]) => {
                 text_object("java.time.format.DateTimeFormatter", &pattern.to_string())
             }
-            ("LocalDate" | "LocalDateTime" | "Instant" | "java.time.Duration", _, _) => {
-                match super::time::time_static(class, name, arguments) {
-                    Some(result) => result.at(span)?,
-                    None => return Ok(None),
-                }
-            }
+            (
+                "LocalDate" | "LocalDateTime" | "Instant" | "java.time.Duration" | "DayOfWeek",
+                _,
+                _,
+            ) => match super::time::time_static(class, name, arguments) {
+                Some(result) => result.at(span)?,
+                None => return Ok(None),
+            },
             // `java.util.Collections`: sorting in place, extremes, views and empty collections.
             ("Collections", "sort", [list @ Value::List(_), rest @ ..]) if rest.len() <= 1 => {
                 self.call_method(list, "sort", rest.to_vec(), span)?;
@@ -330,6 +332,10 @@ impl Interpreter<'_> {
                 "UP" | "DOWN" | "CEILING" | "FLOOR" | "HALF_UP" | "HALF_DOWN" | "HALF_EVEN"
                 | "UNNECESSARY",
             ) => Some(Value::string(name)),
+            ("DayOfWeek", day) => {
+                let day = crate::value::DAYS.iter().position(|name| *name == day)?;
+                Some(super::time::time_value(Time::Day(day as u8 + 1)))
+            }
             ("Integer", "MIN_VALUE") => number(Number::Integer(i32::MIN)),
             ("Double", "POSITIVE_INFINITY") => number(Number::Double(f64::INFINITY)),
             ("Double", "NEGATIVE_INFINITY") => number(Number::Double(f64::NEG_INFINITY)),

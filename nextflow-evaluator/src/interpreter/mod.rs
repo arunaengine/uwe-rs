@@ -403,6 +403,9 @@ pub struct Interpreter<'h> {
     publishing: Option<Vec<(Value, String)>>,
     /// How many functions and closures are running, to stop runaway recursion cleanly.
     depth: usize,
+    /// The objects of the `with` and `tap` calls that run, whose properties and methods
+    /// names that the script does not know reach, as the delegate of Groovy's closures.
+    delegates: Vec<Value>,
 }
 
 impl<'h> Interpreter<'h> {
@@ -419,6 +422,7 @@ impl<'h> Interpreter<'h> {
             error_module: None,
             publishing: None,
             depth: 0,
+            delegates: Vec::new(),
         }
     }
 

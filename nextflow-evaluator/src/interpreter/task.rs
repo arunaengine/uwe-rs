@@ -442,6 +442,9 @@ impl Interpreter<'_> {
         if let Some(value) = self.host.environment(name) {
             return Ok(Value::string(value));
         }
+        if let Some(delegate) = self.delegates.last().cloned() {
+            return self.property(&delegate, name, span);
+        }
         let message = format!("No such variable: {name}");
         Err(thrown(
             Exception::new("MissingPropertyException", message),

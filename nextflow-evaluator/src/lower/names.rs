@@ -172,6 +172,7 @@ pub(super) const CLASSES: &[&str] = &[
     "FileReader",
     "FileType",
     "Files",
+    "DayOfWeek",
     "FilesEx",
     "Float",
     "IllegalArgumentException",

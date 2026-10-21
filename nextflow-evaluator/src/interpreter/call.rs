@@ -96,6 +96,11 @@ impl Interpreter<'_> {
         span: Span,
     ) -> Result<Value, Error> {
         let candidates = module.function_names.get(name).cloned().unwrap_or_default();
+        if candidates.is_empty()
+            && let Some(delegate) = self.delegates.last().cloned()
+        {
+            return self.call_method(&delegate, name, arguments, span);
+        }
         let functions: Vec<Rc<Code>> = candidates
             .iter()
             .map(|index| module.functions[*index].clone())

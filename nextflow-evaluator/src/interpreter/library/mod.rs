@@ -164,7 +164,10 @@ impl Interpreter<'_> {
         // Groovy's `with` and `tap` of every object: the closure gets the object, and `with`
         // gives the result of the closure, `tap` the object.
         if let ("with" | "identity" | "tap", [Value::Closure(f)]) = (name, arguments) {
-            let result = self.call_closure_value(f, vec![object.clone()], span)?;
+            self.delegates.push(object.clone());
+            let result = self.call_closure_value(f, vec![object.clone()], span);
+            self.delegates.pop();
+            let result = result?;
             return Ok(Some(if name == "tap" {
                 object.clone()
             } else {

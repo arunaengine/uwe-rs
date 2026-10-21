@@ -22,8 +22,19 @@ pub(super) fn statement(statement: &Stmt) -> Result<Vec<Stmt>, Error> {
         Stmt::Assign(each) if !each.targets.iter().any(yields) => {
             hoist.replace(&mut each.value, &mut out)?
         }
-        Stmt::AugAssign(each) if !yields(&each.target) => {
-            hoist.replace(&mut each.value, &mut out)?
+        Stmt::AugAssign(each) if !yields(&each.target) && yields(&each.value) => {
+            // Python reads the target before the value, and changes what it read.
+            let (held, store) = hoist.target(&each.target, &mut out)?;
+            hoist.replace(&mut each.value, &mut out)?;
+            *each.target = hoist.name(&held, ExprContext::Store);
+            out.push(rewritten);
+            out.push(Stmt::Assign(ast::StmtAssign {
+                node_index: AtomicNodeIndex::default(),
+                range: hoist.range,
+                targets: vec![store],
+                value: Box::new(hoist.name(&held, ExprContext::Load)),
+            }));
+            return Ok(out);
         }
         Stmt::AnnAssign(ast::StmtAnnAssign {
             value: Some(value),
@@ -134,6 +145,72 @@ impl Hoist {
         self.name(&id, ExprContext::Load)
     }
 
+    /// Holds the parts of the target of `+=` and the others, and the value that it has now:
+    /// the name of that value and the target to store the result in.
+    fn target(&mut self, target: &Expr, out: &mut Vec<Stmt>) -> Result<(String, Expr), Error> {
+        let store = match target {
+            Expr::Name(each) => Expr::Name(ast::ExprName {
+                ctx: ExprContext::Store,
+                ..each.clone()
+            }),
+            Expr::Attribute(each) => Expr::Attribute(ast::ExprAttribute {
+                value: Box::new(self.hold((*each.value).clone(), out)),
+                ctx: ExprContext::Store,
+                ..each.clone()
+            }),
+            Expr::Subscript(each) => {
+                let value = self.hold((*each.value).clone(), out);
+                let slice = match each.slice.is_literal_expr() {
+                    true => (*each.slice).clone(),
+                    false => self.hold((*each.slice).clone(), out),
+                };
+                Expr::Subscript(ast::ExprSubscript {
+                    value: Box::new(value),
+                    slice: Box::new(slice),
+                    ctx: ExprContext::Store,
+                    ..each.clone()
+                })
+            }
+            _ => return Err(unsupported()),
+        };
+        let mut load = store.clone();
+        match &mut load {
+            Expr::Name(each) => each.ctx = ExprContext::Load,
+            Expr::Attribute(each) => each.ctx = ExprContext::Load,
+            Expr::Subscript(each) => each.ctx = ExprContext::Load,
+            _ => {}
+        }
+        let id = self.temporary();
+        out.push(self.assign(&id, load));
+        Ok((id, store))
+    }
+
+    /// Holds what an unpacking part gives now: `*items` as a tuple of the items, `**mapping`
+    /// as a dict, as Python unpacks them before it evaluates the parts after them.
+    fn spread(&mut self, value: Expr, spread: Spread, out: &mut Vec<Stmt>) -> Expr {
+        let held = match spread {
+            Spread::None => value,
+            Spread::Items => Expr::Tuple(ast::ExprTuple {
+                node_index: AtomicNodeIndex::default(),
+                range: self.range,
+                elts: vec![Expr::Starred(ast::ExprStarred {
+                    node_index: AtomicNodeIndex::default(),
+                    range: self.range,
+                    value: Box::new(value),
+                    ctx: ExprContext::Load,
+                })],
+                ctx: ExprContext::Load,
+                parenthesized: true,
+            }),
+            Spread::Mapping => Expr::Dict(ast::ExprDict {
+                node_index: AtomicNodeIndex::default(),
+                range: self.range,
+                items: vec![ast::DictItem { key: None, value }],
+            }),
+        };
+        self.hold(held, out)
+    }
+
     /// Replaces an expression that yields with one that does not, after `out`.
     fn replace(&mut self, expression: &mut Expr, out: &mut Vec<Stmt>) -> Result<(), Error> {
         if yields(expression) {
@@ -145,18 +222,31 @@ impl Hoist {
     /// The parts of an expression in the order Python evaluates them: those before the last
     /// that yields are held in temporary names, that one is rewritten, the rest stay.
     fn children(&mut self, parts: &mut [&mut Expr], out: &mut Vec<Stmt>) -> Result<(), Error> {
-        let Some(last) = parts.iter().rposition(|part| yields(part)) else {
+        let mut parts: Vec<(&mut Expr, Spread)> = (parts.iter_mut())
+            .map(|part| (&mut **part, Spread::None))
+            .collect();
+        self.spread_children(&mut parts, out)
+    }
+
+    /// `children` of parts that may unpack, like the items of a list or the arguments of a
+    /// call.
+    fn spread_children(
+        &mut self,
+        parts: &mut [(&mut Expr, Spread)],
+        out: &mut Vec<Stmt>,
+    ) -> Result<(), Error> {
+        let Some(last) = parts.iter().rposition(|(part, _)| yields(part)) else {
             return Ok(());
         };
-        for part in parts[..last].iter_mut() {
+        for (part, spread) in parts[..last].iter_mut() {
             if yields(part) {
                 **part = self.expression(part, out)?;
             }
-            if !part.is_literal_expr() {
-                **part = self.hold(part.clone(), out);
+            if !part.is_literal_expr() || *spread != Spread::None {
+                **part = self.spread(part.clone(), *spread, out);
             }
         }
-        self.replace(parts[last], out)
+        self.replace(parts[last].0, out)
     }
 
     fn expression(&mut self, expression: &Expr, out: &mut Vec<Stmt>) -> Result<Expr, Error> {
@@ -195,27 +285,32 @@ impl Hoist {
             Expr::Tuple(ast::ExprTuple { elts, .. })
             | Expr::List(ast::ExprList { elts, .. })
             | Expr::Set(ast::ExprSet { elts, .. }) => {
-                let mut parts: Vec<&mut Expr> = elts.iter_mut().map(unstarred).collect();
-                self.children(&mut parts, out)?
+                let mut parts: Vec<(&mut Expr, Spread)> = elts.iter_mut().map(unstarred).collect();
+                self.spread_children(&mut parts, out)?
             }
             Expr::Dict(each) => {
-                let mut parts: Vec<&mut Expr> = Vec::new();
+                let mut parts: Vec<(&mut Expr, Spread)> = Vec::new();
                 for item in &mut each.items {
-                    parts.extend(item.key.as_mut());
-                    parts.push(&mut item.value);
+                    let spread = match item.key {
+                        Some(_) => Spread::None,
+                        None => Spread::Mapping,
+                    };
+                    parts.extend(item.key.as_mut().map(|key| (key, Spread::None)));
+                    parts.push((&mut item.value, spread));
                 }
-                self.children(&mut parts, out)?
+                self.spread_children(&mut parts, out)?
             }
             Expr::Call(each) => {
-                let mut parts: Vec<&mut Expr> = vec![&mut each.func];
+                let mut parts: Vec<(&mut Expr, Spread)> = vec![(&mut each.func, Spread::None)];
                 parts.extend(each.arguments.args.iter_mut().map(unstarred));
-                parts.extend(
-                    each.arguments
-                        .keywords
-                        .iter_mut()
-                        .map(|word| &mut word.value),
-                );
-                self.children(&mut parts, out)?
+                for word in &mut each.arguments.keywords {
+                    let spread = match word.arg {
+                        Some(_) => Spread::None,
+                        None => Spread::Mapping,
+                    };
+                    parts.push((&mut word.value, spread));
+                }
+                self.spread_children(&mut parts, out)?
             }
             _ => return Err(unsupported()),
         }
@@ -296,10 +391,18 @@ impl Hoist {
     }
 }
 
-/// The value of a starred part, which is what Python evaluates.
-fn unstarred(part: &mut Expr) -> &mut Expr {
+/// How a part of a display or a call unpacks: not, as `*items`, or as `**mapping`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Spread {
+    None,
+    Items,
+    Mapping,
+}
+
+/// The value of a starred part, which is what Python evaluates, and how it unpacks.
+fn unstarred(part: &mut Expr) -> (&mut Expr, Spread) {
     match part {
-        Expr::Starred(each) => &mut each.value,
-        other => other,
+        Expr::Starred(each) => (&mut each.value, Spread::Items),
+        other => (other, Spread::None),
     }
 }

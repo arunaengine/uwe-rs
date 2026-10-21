@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compares real workflow outputs from iunctus and native tools."""
+"""Compares real workflow outputs from uwe and native tools."""
 # Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -26,13 +26,13 @@ NEXTFLOW_LIMITS = """executor {
 """
 
 # Each case names its workflow, how to fetch it (`repository` at `revision` into
-# `<ROOT>/sources/<name>`), and the commands of the native tool and of iunctus, where
+# `<ROOT>/sources/<name>`), and the commands of the native tool and of uwe, where
 # `{workflow}` is the fetched folder, `{out}` the folder of the results, and `{limits}` the
 # config of the native Nextflow runs. `results` is the folder to compare, `{out}` unless
 # given. `notes` says in plain words what differs on purpose.
 # The config of the native Nextflow runs on SLURM: at most 4 jobs at once, named so that they
 # can be told from other jobs of the user. Containers get the proxy of the cluster, which
-# Nextflow does not pass on by itself (the jobs of iunctus inherit it).
+# Nextflow does not pass on by itself (the jobs of uwe inherit it).
 NEXTFLOW_SLURM = """process.executor = 'slurm'
 executor {
     queueSize = 4
@@ -49,11 +49,11 @@ CASES = [
         "revision": "555d145",
         "native": ["nextflow", "run", "{workflow}", "-profile", "test,docker",
                    "--outdir", "{out}", "-c", "{limits}"],
-        "uwe": ["{iunctus}", "run", "{workflow}", "-profile", "test,docker",
+        "uwe": ["{uwe}", "run", "{workflow}", "-profile", "test,docker",
                     "--outdir", "{out}", "-executor", "local", "-max-pending", "4"],
         "notes": "The FastQC reports differ only in the date of the run (the native runs were a "
-                 "day earlier); pipeline_dag is the graph page of iunctus, not the Mermaid page "
-                 "of Nextflow. Recorded without network: iunctus took the test data from its "
+                 "day earlier); pipeline_dag is the graph page of uwe, not the Mermaid page "
+                 "of Nextflow. Recorded without network: uwe took the test data from its "
                  "downloads, with NXF_OFFLINE=true.",
     },
     {
@@ -64,9 +64,9 @@ CASES = [
         "limits": NEXTFLOW_SLURM,
         "native": ["nextflow", "run", "{workflow}", "-profile", "test,apptainer",
                    "--outdir", "{out}", "-c", "{limits}"],
-        "uwe": ["{iunctus}", "run", "{workflow}", "-profile", "test,apptainer",
+        "uwe": ["{uwe}", "run", "{workflow}", "-profile", "test,apptainer",
                     "--outdir", "{out}", "-executor", "slurm", "-max-pending", "4"],
-        "notes": "pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.",
+        "notes": "pipeline_dag is the graph page of uwe, not the Mermaid page of Nextflow.",
     },
     {
         "name": "nf-core-bamtofastq-slurm",
@@ -76,10 +76,10 @@ CASES = [
         "limits": NEXTFLOW_SLURM,
         "native": ["nextflow", "run", "{workflow}", "-profile", "test,apptainer",
                    "--outdir", "{out}", "-c", "{limits}"],
-        "uwe": ["{iunctus}", "run", "{workflow}", "-profile", "test,apptainer",
+        "uwe": ["{uwe}", "run", "{workflow}", "-profile", "test,apptainer",
                     "--outdir", "{out}", "-executor", "slurm", "-max-pending", "4"],
         "notes": "invalid: at daf99df the pipeline fails its own test profile in Nextflow "
-                 "26.04.6 too: SAMTOOLS_FAIDX gets no FASTA and ends with exit 1, and iunctus "
+                 "26.04.6 too: SAMTOOLS_FAIDX gets no FASTA and ends with exit 1, and uwe "
                  "fails at the same task; the files differ by what each delivered before it "
                  "stopped.",
     },
@@ -91,15 +91,15 @@ CASES = [
         "limits": NEXTFLOW_SLURM,
         "native": ["nextflow", "run", "{workflow}", "-profile", "test,apptainer",
                    "--outdir", "{out}", "-c", "{limits}"],
-        "uwe": ["{iunctus}", "run", "{workflow}", "-profile", "test,apptainer",
+        "uwe": ["{uwe}", "run", "{workflow}", "-profile", "test,apptainer",
                     "--outdir", "{out}", "-executor", "slurm", "-max-pending", "4"],
-        "notes": "pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.",
+        "notes": "pipeline_dag is the graph page of uwe, not the Mermaid page of Nextflow.",
     },
 ]
 
 
 
-def slurm_case(pipeline, revision, notes="pipeline_dag is the graph page of iunctus, not the "
+def slurm_case(pipeline, revision, notes="pipeline_dag is the graph page of uwe, not the "
                "Mermaid page of Nextflow."):
     """A case of an nf-core pipeline with -profile test,apptainer on SLURM."""
     command = ["run", "{workflow}", "-profile", "test,apptainer", "--outdir", "{out}"]
@@ -111,7 +111,7 @@ def slurm_case(pipeline, revision, notes="pipeline_dag is the graph page of iunc
         "limits": NEXTFLOW_SLURM,
         "native": ["nextflow", *command, "-c", "{limits}"],
         # Without the cache, so that a run after a fix runs every task and takes its time.
-        "uwe": ["{iunctus}", *command, "-executor", "slurm", "-max-pending", "4",
+        "uwe": ["{uwe}", *command, "-executor", "slurm", "-max-pending", "4",
                     "-no-cache"],
         "notes": notes,
     }
@@ -120,11 +120,11 @@ def slurm_case(pipeline, revision, notes="pipeline_dag is the graph page of iunc
 CASES += [
     slurm_case("datasync", "d25e58a"),
     slurm_case("phyloplace", "68db179",
-               "pipeline_dag is the graph page of iunctus. The placements of epa-ng "
+               "pipeline_dag is the graph page of uwe. The placements of epa-ng "
                "and the tables of gappa made from them hold the same lines as Nextflow's, in "
                "another order; an earlier run with the cache gave the same digests."),
     slurm_case("isoseq", "6c94483",
-               "pipeline_dag is the graph page of iunctus. MultiQC's table of the lima filters "
+               "pipeline_dag is the graph page of uwe. MultiQC's table of the lima filters "
                "has the same rows and values as Nextflow's, with its columns in another "
                "order."),
     slurm_case("viralintegration", "fed5fa8"),
@@ -237,7 +237,7 @@ def compare(case):
         f"## {case['name']}: {case['title']}",
         f"native: exit {first['exit']} and {second['exit']}{took(first, second)}, "
         f"{len(native)} files, {len(varying)} of them differ between two native runs",
-        f"iunctus: exit {code} in {seconds} s, {len(ours)} files: {len(matching)} with the "
+        f"uwe: exit {code} in {seconds} s, {len(ours)} files: {len(matching)} with the "
         f"same digest, "
         f"{len(named)} of the varying ones by name, {len(differing)} differ, "
         f"{len(missing)} missing, {len(extra)} extra",
@@ -262,7 +262,7 @@ def main():
         if not wanted or case["name"] in wanted:
             records[case["name"]] = compare(case)
             print(records[case["name"]], end="", flush=True)
-    header = ("# Real runs of iunctus against the native tool, by the names and digests of the "
+    header = ("# Real runs of uwe against the native tool, by the names and digests of the "
               "delivered files; written by real_runs.py.\n")
     text = header + "".join("\n" + records[case["name"]] for case in CASES
                             if case["name"] in records)

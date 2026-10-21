@@ -1,4 +1,4 @@
-//! Runs `iunctus check` on small workflows of every language: it reports every problem that
+//! Runs `uwe check` on small workflows of every language: it reports every problem that
 //! would stop a real run at once, runs no task and records no run.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -18,7 +18,7 @@ fn folder(files: &[(&str, &str)]) -> tempfile::TempDir {
     directory
 }
 
-/// Runs `iunctus check` in `directory` and gives the exit code and standard output.
+/// Runs `uwe check` in `directory` and gives the exit code and standard output.
 fn check(directory: &Path, arguments: &[&str]) -> (i32, String) {
     let output = common::command()
         .arg("check")
@@ -26,7 +26,7 @@ fn check(directory: &Path, arguments: &[&str]) -> (i32, String) {
         .env("XDG_CACHE_HOME", directory.join("cache"))
         .current_dir(directory)
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     (output.status.code().unwrap_or(-1), stdout)
 }
@@ -65,7 +65,7 @@ fn reports_planning_problems() {
     assert_eq!(
         stdout,
         "error: step COPY reads data/samples.csv, which does not exist\nerror: step COPY: 1 task \
-         names no container image; iunctus runs every task in a container, so name an image in \
+         names no container image; uwe runs every task in a container, so name an image in \
          the workflow or give one with `-default-image <image>`\nmain.nf (Nextflow): 2 errors \
          would stop a real run.\n"
     );

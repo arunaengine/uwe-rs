@@ -65,13 +65,13 @@ workflow {
 
 /// Runs the binary in `directory` with the cache folder `cache`, and gives its exit code and
 /// what it printed.
-fn iunctus(directory: &Path, cache: &Path, arguments: &[&str]) -> (i32, String) {
+fn uwe(directory: &Path, cache: &Path, arguments: &[&str]) -> (i32, String) {
     let output = common::command()
         .args(arguments)
         .current_dir(directory)
         .env("XDG_CACHE_HOME", cache)
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     (
@@ -124,13 +124,13 @@ fn pipelines_share_cache() {
     let first = pipeline(root.path(), "first", FIRST);
     let second = pipeline(root.path(), "second", SECOND);
     let arguments = ["run", "main.nf", "-executor", "local"];
-    let (code, output) = iunctus(&first, &cache, &arguments);
+    let (code, output) = uwe(&first, &cache, &arguments);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("[done] WORDCOUNT (1)"), "{output}");
     assert!(output.contains("sample: 3 words"), "{output}");
     // The other pipeline asks for the same task: the same image, command, inputs by content
     // and environment. Its process has another name and sits elsewhere; the task is the same.
-    let (code, output) = iunctus(&second, &cache, &arguments);
+    let (code, output) = uwe(&second, &cache, &arguments);
     assert_eq!(code, 0, "{output}");
     assert!(
         output.contains("[cached] PREPARE:WORDCOUNT (1)"),
@@ -234,14 +234,14 @@ fn languages_share_cache() {
         "-output-dir",
         &output_dir,
     ];
-    let (code, output) = iunctus(folder, &cache, &cwl);
+    let (code, output) = uwe(folder, &cache, &cwl);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("[done] count"), "{output}");
     // Argo keeps its image's user, so its task has a different execution identity.
-    let (code, output) = iunctus(folder, &cache, &argo);
+    let (code, output) = uwe(folder, &cache, &argo);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("[done] count"), "{output}");
-    let (code, output) = iunctus(folder, &cache, &argo);
+    let (code, output) = uwe(folder, &cache, &argo);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("[cached] count"), "{output}");
     // The artifact was delivered from Argo's stored result.
@@ -249,7 +249,7 @@ fn languages_share_cache() {
     // The Snakemake rule does the same work, but Snakemake describes its jobs in its own way:
     // another command, no fixed working directory, other variables. So it runs.
     std::fs::remove_file(folder.join("count.txt")).expect("removes the CWL output");
-    let (code, output) = iunctus(folder, &cache, &["run", "Snakefile", "-executor", "local"]);
+    let (code, output) = uwe(folder, &cache, &["run", "Snakefile", "-executor", "local"]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("[done] count"), "{output}");
     assert_eq!(entries(&cache), 2);
@@ -298,12 +298,12 @@ fn concurrent_runs_deduplicate() {
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
                 .spawn()
-                .expect("runs iunctus")
+                .expect("runs uwe")
         })
         .collect();
     let mut lines = Vec::new();
     for child in started {
-        let output = child.wait_with_output().expect("iunctus ends");
+        let output = child.wait_with_output().expect("uwe ends");
         assert!(output.status.success(), "{output:?}");
         lines.push(common::without_display(&String::from_utf8_lossy(
             &output.stdout,
@@ -327,15 +327,12 @@ fn clean_requires_rule() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let cache = root.path().join("cache");
     let first = pipeline(root.path(), "first", FIRST);
-    let (code, output) = iunctus(root.path(), &cache, &["clean"]);
+    let (code, output) = uwe(root.path(), &cache, &["clean"]);
     // A command without what it needs is a mistake of the command line.
     assert_eq!(code, 2, "{output}");
-    assert!(
-        output.contains("say what `iunctus clean` keeps"),
-        "{output}"
-    );
+    assert!(output.contains("say what `uwe clean` keeps"), "{output}");
     for _ in 0..2 {
-        let (code, output) = iunctus(
+        let (code, output) = uwe(
             &first,
             &cache,
             &["run", "-executor", "simulator", "main.nf"],
@@ -355,7 +352,7 @@ fn clean_requires_rule() {
     for folder in attempts.iter().chain(&staying) {
         std::fs::create_dir_all(folder.join("work")).expect("makes the folder");
     }
-    let (code, output) = iunctus(root.path(), &cache, &["clean", "-keep-run", &latest]);
+    let (code, output) = uwe(root.path(), &cache, &["clean", "-keep-run", &latest]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("It keeps what run"), "{output}");
     assert!(
@@ -368,7 +365,7 @@ fn clean_requires_rule() {
     );
     assert_eq!(std::fs::read_dir(&simulated).expect("lists").count(), 2);
     let arguments = ["clean", "-keep-run", &latest, "-remove"];
-    let (code, output) = iunctus(root.path(), &cache, &arguments);
+    let (code, output) = uwe(root.path(), &cache, &arguments);
     assert_eq!(code, 0, "{output}");
     assert!(
         output.contains("Removed 0 results, 0 files and 5 scratch folders."),
@@ -397,14 +394,14 @@ fn clean_respects_retention() {
     let first = pipeline(root.path(), "first", FIRST);
     let second = pipeline(root.path(), "second", SECOND);
     let real = ["run", "main.nf", "-executor", "local"];
-    assert_eq!(iunctus(&first, &cache, &real).0, 0);
+    assert_eq!(uwe(&first, &cache, &real).0, 0);
     // The second pipeline takes the count of the first from the cache.
-    let (code, output) = iunctus(&second, &cache, &real);
+    let (code, output) = uwe(&second, &cache, &real);
     assert_eq!(code, 0, "{output}");
     let kept = run_ids(&cache).remove(0);
     // The first pipeline counts other data.
     std::fs::write(first.join("data/sample.txt"), "one two three four\n").expect("writes");
-    let (code, output) = iunctus(&first, &cache, &real);
+    let (code, output) = uwe(&first, &cache, &real);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("sample: 4 words"), "{output}");
     let dropped = run_ids(&cache).remove(0);
@@ -412,7 +409,7 @@ fn clean_respects_retention() {
     // What the second run needs stays, also the count that it took from the first run; the
     // last run's result goes.
     let arguments = ["clean", "-keep-run", &kept];
-    let (code, output) = iunctus(root.path(), &cache, &arguments);
+    let (code, output) = uwe(root.path(), &cache, &arguments);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("holds 3 results"), "{output}");
     // The files that go: the result of the last run, and the contents that only runs that no
@@ -424,7 +421,7 @@ fn clean_respects_retention() {
     assert!(output.contains(&format!("run {dropped} (")), "{output}");
     assert_eq!(entries(&cache), 3);
     let arguments = ["clean", "-keep-run", &kept, "-remove"];
-    let (code, output) = iunctus(root.path(), &cache, &arguments);
+    let (code, output) = uwe(root.path(), &cache, &arguments);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("Removed 1 result, 7 files"), "{output}");
     assert_eq!(entries(&cache), 2);
@@ -437,18 +434,18 @@ fn clean_respects_retention() {
             .join(content_store::layout::content(&digest));
         assert!(stored.exists(), "{file} of the kept run is gone");
     }
-    let (code, output) = iunctus(&second, &cache, &real);
+    let (code, output) = uwe(&second, &cache, &real);
     assert_eq!(code, 0, "{output}");
     assert!(
         output.contains("[cached] PREPARE:WORDCOUNT (1)"),
         "{output}"
     );
     assert!(output.contains("[cached] REPORT (1)"), "{output}");
-    let (code, output) = iunctus(&first, &cache, &real);
+    let (code, output) = uwe(&first, &cache, &real);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("[done] WORDCOUNT (1)"), "{output}");
     // Without a rule that keeps anything, everything goes.
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         root.path(),
         &cache,
         &["clean", "-keep-days", "0", "-remove"],
@@ -464,7 +461,7 @@ fn clean_respects_retention() {
         (objects("runs"), objects("cas"), objects("trees")),
         (0, 0, 0)
     );
-    let (code, output) = iunctus(&second, &cache, &real);
+    let (code, output) = uwe(&second, &cache, &real);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("[done] PREPARE:WORDCOUNT (1)"), "{output}");
 }
@@ -477,7 +474,7 @@ fn previews_cached_results() {
     let first = pipeline(root.path(), "first", FIRST);
     let second = pipeline(root.path(), "second", SECOND);
     // Before any real run, everything is simulated.
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         &second,
         &cache,
         &["run", "-executor", "simulator", "main.nf"],
@@ -489,12 +486,12 @@ fn previews_cached_results() {
     );
     assert!(!output.contains("from the cache"), "{output}");
     assert_eq!(
-        iunctus(&first, &cache, &["run", "main.nf", "-executor", "local"]).0,
+        uwe(&first, &cache, &["run", "main.nf", "-executor", "local"]).0,
         0
     );
     // The count of the first pipeline answers the second, which a real run would take from
     // the cache; the report after it would run.
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         &second,
         &cache,
         &["run", "-executor", "simulator", "main.nf"],
@@ -506,22 +503,22 @@ fn previews_cached_results() {
     );
     assert!(output.contains("[simulated] REPORT (1)"), "{output}");
     let note = "A real run would take 1 of 2 tasks from the cache; 1 would run.";
-    assert!(output.contains(&format!("iunctus: {note}")), "{output}");
+    assert!(output.contains(&format!("uwe: {note}")), "{output}");
     // The graph, as a summary and as a picture, says the same.
-    let (code, summary) = iunctus(&second, &cache, &["graph", "main.nf"]);
+    let (code, summary) = uwe(&second, &cache, &["graph", "main.nf"]);
     assert_eq!(code, 0, "{summary}");
     assert!(summary.contains(&format!("{note}\n")), "{summary}");
     assert!(
         summary.contains("PREPARE:WORDCOUNT (1) (from the cache) <- []"),
         "{summary}"
     );
-    let (code, steps) = iunctus(&second, &cache, &["graph", "main.nf", "-view", "steps"]);
+    let (code, steps) = uwe(&second, &cache, &["graph", "main.nf", "-view", "steps"]);
     assert_eq!(code, 0, "{steps}");
     assert!(
         steps.contains("PREPARE:WORDCOUNT: 1 task, 1 from the cache"),
         "{steps}"
     );
-    let (code, picture) = iunctus(&second, &cache, &["graph", "main.nf", "-format", "svg"]);
+    let (code, picture) = uwe(&second, &cache, &["graph", "main.nf", "-format", "svg"]);
     assert_eq!(code, 0, "{picture}");
     assert!(picture.contains(note), "{picture}");
     assert!(picture.contains("reused"), "{picture}");
@@ -533,10 +530,10 @@ fn previews_cached_results() {
     assert_eq!(graph.cache_note().as_deref(), Some(note));
     // Once the second pipeline ran for real, a preview finds all of it in the cache.
     assert_eq!(
-        iunctus(&second, &cache, &["run", "main.nf", "-executor", "local"]).0,
+        uwe(&second, &cache, &["run", "main.nf", "-executor", "local"]).0,
         0
     );
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         &second,
         &cache,
         &["run", "-executor", "simulator", "main.nf"],
@@ -545,7 +542,7 @@ fn previews_cached_results() {
     let all = "A real run would take all 2 tasks from the cache; none would run.";
     assert!(output.contains(all), "{output}");
     // Without the cache, a preview finds nothing in it, and a real run runs every task.
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         &second,
         &cache,
         &["run", "-executor", "simulator", "main.nf", "-no-cache"],
@@ -554,7 +551,7 @@ fn previews_cached_results() {
     assert!(!output.contains("[cached]"), "{output}");
     assert!(!output.contains("from the cache"), "{output}");
     let arguments = ["run", "main.nf", "-executor", "local", "-no-cache"];
-    let (code, output) = iunctus(&second, &cache, &arguments);
+    let (code, output) = uwe(&second, &cache, &arguments);
     assert_eq!(code, 0, "{output}");
     assert!(!output.contains("[cached]"), "{output}");
     assert_eq!(output.matches("[done]").count(), 2, "{output}");
@@ -628,7 +625,7 @@ fn longest_chain_first() {
     let mut starts = Vec::new();
     for round in ["1", "2"] {
         let arguments = ["run", "main.nf", "-executor", "local", "--round", round];
-        let (code, output) = iunctus(root.path(), &cache, &arguments);
+        let (code, output) = uwe(root.path(), &cache, &arguments);
         assert_eq!(code, 0, "{output}");
         let time = |line: &str| {
             line.split(' ')
@@ -697,7 +694,7 @@ fn layered_store_shares() {
         "-uwe-config",
         &config,
     ];
-    let (code, output) = iunctus(&first, &root.path().join("cache-first"), &arguments);
+    let (code, output) = uwe(&first, &root.path().join("cache-first"), &arguments);
     assert_eq!(code, 0, "{output}");
     assert_eq!(output.matches("[done]").count(), 2, "{output}");
     assert_eq!(entries(&front), 2);
@@ -714,7 +711,7 @@ fn layered_store_shares() {
         "-uwe-config",
         &config,
     ];
-    let (code, output) = iunctus(&second, &root.path().join("cache-second"), &arguments);
+    let (code, output) = uwe(&second, &root.path().join("cache-second"), &arguments);
     assert_eq!(code, 0, "{output}");
     assert_eq!(output.matches("[cached]").count(), 2, "{output}");
     assert!(output.contains("sample has 3 words"), "{output}");

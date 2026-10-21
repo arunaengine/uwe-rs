@@ -1,9 +1,9 @@
-# Real runs of iunctus against the native tool, by the names and digests of the delivered files; written by real_runs.py.
+# Real runs of uwe against the native tool, by the names and digests of the delivered files; written by real_runs.py.
 
 ## nf-core-demo: nf-core/demo 555d145, -profile test
 native: exit 0 and 0, 76 files, 34 of them differ between two native runs
-iunctus: exit 0, 76 files: 35 with the same digest, 34 of the varying ones by name, 7 differ, 0 missing, 0 extra
-notes: The FastQC reports differ only in the date of the run (the native runs were a day earlier); pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow. Recorded without network: iunctus took the test data from its downloads, with NXF_OFFLINE=true.
+uwe: exit 0, 76 files: 35 with the same digest, 34 of the varying ones by name, 7 differ, 0 missing, 0 extra
+notes: The FastQC reports differ only in the date of the run (the native runs were a day earlier); pipeline_dag is the graph page of uwe, not the Mermaid page of Nextflow. Recorded without network: uwe took the test data from its downloads, with NXF_OFFLINE=true.
 differs: fastqc/SAMPLE1_PE/SAMPLE1_PE_1_fastqc.html
 differs: fastqc/SAMPLE1_PE/SAMPLE1_PE_2_fastqc.html
 differs: fastqc/SAMPLE2_PE/SAMPLE2_PE_1_fastqc.html
@@ -14,14 +14,14 @@ differs: pipeline_info/pipeline_dag_<time>.html
 
 ## nf-core-demo-slurm: nf-core/demo 555d145, -profile test,apptainer, on SLURM
 native: exit 0 and 0, 76 files, 34 of them differ between two native runs
-iunctus: exit 0, 76 files: 41 with the same digest, 34 of the varying ones by name, 1 differ, 0 missing, 0 extra
-notes: pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.
+uwe: exit 0, 76 files: 41 with the same digest, 34 of the varying ones by name, 1 differ, 0 missing, 0 extra
+notes: pipeline_dag is the graph page of uwe, not the Mermaid page of Nextflow.
 differs: pipeline_info/pipeline_dag_<time>.html
 
 ## nf-core-bamtofastq-slurm: nf-core/bamtofastq daf99df, -profile test,apptainer, on SLURM
 native: exit 1 and 1, 13 files, 7 of them differ between two native runs
-iunctus: exit 1, 4 files: 2 with the same digest, 1 of the varying ones by name, 0 differ, 10 missing, 1 extra
-notes: invalid: at daf99df the pipeline fails its own test profile in Nextflow 26.04.6 too: SAMTOOLS_FAIDX gets no FASTA and ends with exit 1, and iunctus fails at the same task; the files differ by what each delivered before it stopped.
+uwe: exit 1, 4 files: 2 with the same digest, 1 of the varying ones by name, 0 differ, 10 missing, 1 extra
+notes: invalid: at daf99df the pipeline fails its own test profile in Nextflow 26.04.6 too: SAMTOOLS_FAIDX gets no FASTA and ends with exit 1, and uwe fails at the same task; the files differ by what each delivered before it stopped.
 missing: fastqc/test.pre_conversion_fastqc.html
 missing: fastqc/test.pre_conversion_fastqc.zip
 missing: fastqc/test2.pre_conversion_fastqc.html
@@ -36,20 +36,20 @@ extra: samtools/test.flagstat
 
 ## nf-core-fastqrepair-slurm: nf-core/fastqrepair 70a3820, -profile test,apptainer, on SLURM
 native: exit 0 and 0, 71 files, 38 of them differ between two native runs
-iunctus: exit 0, 71 files: 32 with the same digest, 38 of the varying ones by name, 1 differ, 0 missing, 0 extra
-notes: pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.
+uwe: exit 0, 71 files: 32 with the same digest, 38 of the varying ones by name, 1 differ, 0 missing, 0 extra
+notes: pipeline_dag is the graph page of uwe, not the Mermaid page of Nextflow.
 differs: pipeline_info/pipeline_dag_<time>.html
 
 ## nf-core-datasync-slurm: nf-core/datasync d25e58a, -profile test,apptainer, on SLURM
 native: exit 0 and 0 in 45 s and 46 s, 33 files, 11 of them differ between two native runs
-iunctus: exit 0 in 59 s, 33 files: 21 with the same digest, 11 of the varying ones by name, 1 differ, 0 missing, 0 extra
-notes: pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.
+uwe: exit 0 in 59 s, 33 files: 21 with the same digest, 11 of the varying ones by name, 1 differ, 0 missing, 0 extra
+notes: pipeline_dag is the graph page of uwe, not the Mermaid page of Nextflow.
 differs: pipeline_info/pipeline_dag_<time>.html
 
 ## nf-core-phyloplace-slurm: nf-core/phyloplace 68db179, -profile test,apptainer, on SLURM
 native: exit 0 and 0 in 84 s and 78 s, 33 files, 11 of them differ between two native runs
-iunctus: exit 0 in 60 s, 33 files: 16 with the same digest, 11 of the varying ones by name, 6 differ, 0 missing, 0 extra
-notes: pipeline_dag is the graph page of iunctus. The placements of epa-ng and the tables of gappa made from them hold the same lines as Nextflow's, in another order; an earlier run with the cache gave the same digests.
+uwe: exit 0 in 60 s, 33 files: 16 with the same digest, 11 of the varying ones by name, 6 differ, 0 missing, 0 extra
+notes: pipeline_dag is the graph page of uwe. The placements of epa-ng and the tables of gappa made from them hold the same lines as Nextflow's, in another order; an earlier run with the cache gave the same digests.
 differs: epang/placement.epa_result.jplace.gz
 differs: gappa/placement.taxonomy.krona.profile
 differs: gappa/placement.taxonomy.per_query.tsv
@@ -59,8 +59,8 @@ differs: pipeline_info/pipeline_dag_<time>.html
 
 ## nf-core-isoseq-slurm: nf-core/isoseq 6c94483, -profile test,apptainer, on SLURM
 native: exit 0 and 0 in 825 s and 1053 s, 243 files, 76 of them differ between two native runs
-iunctus: exit 0 in 1217 s, 243 files: 165 with the same digest, 76 of the varying ones by name, 2 differ, 0 missing, 0 extra
-notes: pipeline_dag is the graph page of iunctus. MultiQC's table of the lima filters has the same rows and values as Nextflow's, with its columns in another order.
+uwe: exit 0 in 1217 s, 243 files: 165 with the same digest, 76 of the varying ones by name, 2 differ, 0 missing, 0 extra
+notes: pipeline_dag is the graph page of uwe. MultiQC's table of the lima filters has the same rows and values as Nextflow's, with its columns in another order.
 differs: multiqc/multiqc_data/lima-filter-graph.txt
 differs: pipeline_info/pipeline_dag_<time>.html
 
@@ -68,65 +68,65 @@ differs: pipeline_info/pipeline_dag_<time>.html
 reference: Nextflow 26.04.6, Docker Engine 29.8.2, Linux amd64
 source: copies of nf-core-text/pipelines at the revisions in nf-core-text/revisions.txt; no pipeline edits
 commands: nice -n 19 nextflow run <copy> -profile test,docker --outdir out -c limits.config; nice -n 19 target/release/uwe run <copy> -profile test --outdir out -executor local -max-pending 4 -no-cache
-limits: reference executor.cpus=4, executor.memory='16 GB'; iunctus uses a fresh XDG_CACHE_HOME per pipeline
+limits: reference executor.cpus=4, executor.memory='16 GB'; uwe uses a fresh XDG_CACHE_HOME per pipeline
 comparison: SHA-256 and file lists of published outputs; only pipeline_info/** is excluded; dated names become <time>. No scientific output, FastQC report, MultiQC data or plot is excluded.
 evidence: locally excluded .claude/production-readiness-evidence/nfcore-20261008/ retains logs and complete output manifests; temporary source/run/work/cache folders are removed after recording.
 
 ## nf-core-demo-local-20261008: nf-core/demo 555d145, -profile test, local Docker
 native: exit 0, 76 published files
-iunctus: exit 33 in 26 s, 1 published file (pipeline_info/params_<time>.json)
-comparison: 70 reference files and 0 iunctus files after excluding pipeline_info/**; 70 missing, 0 extra, 0 comparable contents
+uwe: exit 33 in 26 s, 1 published file (pipeline_info/params_<time>.json)
+comparison: 70 reference files and 0 uwe files after excluding pipeline_info/**; 70 missing, 0 extra, 0 comparable contents
 verdict: unsupported, parity not established
-notes: workflows/demo.nf:91:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. This is an intentional refusal before task execution, with a clear location and reason. Data headers total 12,819,269 bytes; 50 GiB free before iunctus; four reference images total about 2.47 GB unpacked.
+notes: workflows/demo.nf:91:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. This is an intentional refusal before task execution, with a clear location and reason. Data headers total 12,819,269 bytes; 50 GiB free before uwe; four reference images total about 2.47 GB unpacked.
 
 ## nf-core-datasync-local-20261008: nf-core/datasync d25e58a, -profile test, local Docker
 native: exit 0 in 110 s, 33 published files
-iunctus: exit 33 in 4 s, 1 published file
-comparison: 27 reference files and 0 iunctus files after excluding pipeline_info/**; 0 matching digests, 27 missing, 0 extra, 0 differing contents
+uwe: exit 33 in 4 s, 1 published file
+comparison: 27 reference files and 0 uwe files after excluding pipeline_info/**; 0 matching digests, 27 missing, 0 extra, 0 differing contents
 verdict: unsupported, parity not established
-notes: iunctus: workflows/datasync.nf:209:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. Data headers total 1852 bytes.
+notes: uwe: workflows/datasync.nf:209:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. Data headers total 1852 bytes.
 
 ## nf-core-fastqrepair-local-20261008: nf-core/fastqrepair 70a3820, -profile test, local Docker
 native: exit 0 in 52 s, 71 published files
-iunctus: exit 33 in 2 s, published files=1
-comparison: 65 reference files and 0 iunctus files after excluding pipeline_info/**; 0 matching digests, 65 missing, 0 extra, 0 differing contents
+uwe: exit 33 in 2 s, published files=1
+comparison: 65 reference files and 0 uwe files after excluding pipeline_info/**; 0 matching digests, 65 missing, 0 extra, 0 differing contents
 verdict: unsupported, parity not established
-notes: iunctus: workflows/fastqrepair.nf:161:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. Data headers total 3659 bytes.
+notes: uwe: workflows/fastqrepair.nf:161:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. Data headers total 3659 bytes.
 
 ## nf-core-phyloplace-local-20261008: nf-core/phyloplace 68db179, -profile test, local Docker
 native: exit 0 in 56 s, 33 published files
-iunctus: exit 33 in 2 s, published files=1
-comparison: 27 reference files and 0 iunctus files after excluding pipeline_info/**; 0 matching digests, 27 missing, 0 extra, 0 differing contents
+uwe: exit 33 in 2 s, published files=1
+comparison: 27 reference files and 0 uwe files after excluding pipeline_info/**; 0 matching digests, 27 missing, 0 extra, 0 differing contents
 verdict: unsupported, parity not established
-notes: iunctus: workflows/../subworkflows/nf-core/fasta_hmmsearch_rank_fastas/main.nf:74:5: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. Data headers total 27274 bytes.
+notes: uwe: workflows/../subworkflows/nf-core/fasta_hmmsearch_rank_fastas/main.nf:74:5: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. Data headers total 27274 bytes.
 
 ## nf-core-bamtofastq-local-20261008: nf-core/bamtofastq daf99df, -profile test, local Docker
 native: exit 1 in 18 s, 8 published files
-iunctus: exit 33 in 2 s, published files=1
-comparison: 2 reference files and 0 iunctus files after excluding pipeline_info/**; 0 matching digests, 2 missing, 0 extra, 0 differing contents
-verdict: reference invalid; iunctus unsupported, parity not established
-notes: Nextflow fails SAMTOOLS_FAIDX: the test profile supplies no FASTA, so the command is `samtools faidx` without an input and exits 1. Iunctus stops earlier: workflows/bamtofastq.nf:220:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. The two partial material outputs are samtools idxstats files; differing abort schedules do not establish parity. Data headers total 381538 bytes.
+uwe: exit 33 in 2 s, published files=1
+comparison: 2 reference files and 0 uwe files after excluding pipeline_info/**; 0 matching digests, 2 missing, 0 extra, 0 differing contents
+verdict: reference invalid; uwe unsupported, parity not established
+notes: Nextflow fails SAMTOOLS_FAIDX: the test profile supplies no FASTA, so the command is `samtools faidx` without an input and exits 1. uwe stops earlier: workflows/bamtofastq.nf:220:45: Not supported yet: `collectFile` sort mode 'hash' (the default); native CacheHelper hashing is not implemented. The two partial material outputs are samtools idxstats files; differing abort schedules do not establish parity. Data headers total 381538 bytes.
 
 ## nf-core-rnaseq-local-20261008: nf-core/rnaseq a1fcddd, -profile test, local Docker
 native: not run, disk reserve
-iunctus: not run, disk reserve
+uwe: not run, disk reserve
 comparison: not performed
 verdict: skipped, parity not established
 notes: After removing only completed-run images, 44.38 GiB remained free. A conservative 23 GiB allowance would leave 21.38 GiB, below the required 25 GiB reserve. The CPU test-path image upper bound is 6.542 GiB in compressed layers, allowing three times that for stored/extracted images plus 3 GiB for working files and the 30,690,729 bytes of declared data. Inactive GPU, RSEM, Sentieon, HISAT2, Kallisto, UMI, rRNA-removal, contaminant-screening, RustQC, fastp and preseq image branches are excluded from that bound. No RNA-seq image or dataset payload was downloaded; small sample sheets and manifest/header metadata were inspected.
 
 ## nf-core-sarek-local-20261008: nf-core/sarek 8ccac7a, -profile test, local Docker
 native: exit 1 in 508 s after the disk watchdog sent SIGTERM, 14 partial published files
-iunctus: not run, disk reserve
+uwe: not run, disk reserve
 comparison: not performed, reference execution incomplete
 verdict: resource blocked, parity not established
 notes: Test reads and declared test-genome references total 32,892,911 bytes. Admission had 42.64 GiB free and a 17 GiB image/work allowance; GATK image extraction and concurrent checkout activity exceeded that allowance and triggered the 25 GiB free-space watchdog. The canceled task was GATK4_MARKDUPLICATES. Logs, output hashes and size metadata are retained; source/run/work folders were removed. This is not a pipeline or engine correctness verdict. Later runs stop at a 27 GiB guard to allow cancellation headroom above the 25 GiB reserve.
 
 ## Updated release, 2026-10-08
-binary: Initial five iunctus runs used SHA-256 c641ad125854c243c9e258dadc73e97cf77eb8fc7130a58a2fd6135ba2b7a26c. After the concurrently landed e869fdf2 (empty/singleton hash sorting), later runs use a frozen release copy with SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. The earlier exit-33 records are historical and do not qualify the updated binary.
+binary: Initial five uwe runs used SHA-256 c641ad125854c243c9e258dadc73e97cf77eb8fc7130a58a2fd6135ba2b7a26c. After the concurrently landed e869fdf2 (empty/singleton hash sorting), later runs use a frozen release copy with SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. The earlier exit-33 records are historical and do not qualify the updated binary.
 
 ## nf-core-demo-local-20261008-rerun: nf-core/demo 555d145, -profile test, local Docker
 native: exit 0 in 34 s, 76 published files
-iunctus: exit 0 in 42 s, 76 published files, all eight tasks executed without result reuse
+uwe: exit 0 in 42 s, 76 published files, all eight tasks executed without result reuse
 comparison: all 76 names agree; 40 material files match SHA-256, 28 agree after report normalization, 8 report/metadata contents excluded; 0 missing, 0 extra, 0 unexplained differences
 verdict: published output parity after the exclusions and normalizations below
 excluded: pipeline_info/** (6 files); multiqc/multiqc_report.html; multiqc/multiqc_data/multiqc.log
@@ -140,7 +140,7 @@ notes: Frozen updated binary SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15
 
 ## nf-core-datasync-local-20261008-rerun: nf-core/datasync d25e58a, -profile test, local Docker
 native: exit 0 in 82 s, 33 published files
-iunctus: exit 0 in 14 s, 33 published files, all seven tasks executed without result reuse
+uwe: exit 0 in 14 s, 33 published files, all seven tasks executed without result reuse
 comparison: all 33 names agree; 20 material files match SHA-256, 5 agree after report normalization, 8 report/metadata contents excluded; 0 missing, 0 extra, 0 unexplained differences
 verdict: published output parity for the pipeline's unchanged dry-run test profile
 excluded: pipeline_info/** (6 files); multiqc/multiqc_report.html; multiqc/multiqc_data/multiqc.log
@@ -150,7 +150,7 @@ notes: Frozen updated release SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f1
 
 ## nf-core-fastqrepair-local-20261008-rerun: nf-core/fastqrepair 70a3820, -profile test, local Docker
 native: exit 0 in 42 s, 71 published files
-iunctus: exit 0 in 18 s, 71 published files, all nine tasks executed without result reuse
+uwe: exit 0 in 18 s, 71 published files, all nine tasks executed without result reuse
 comparison: all 71 names agree; 31 material files match SHA-256, 32 agree after report/archive normalization, 8 report/metadata contents excluded; 0 missing, 0 extra, 0 unexplained differences
 verdict: published output parity after the stated normalization
 excluded: pipeline_info/** (6 files); QC/multiqc/multiqc_report.html; QC/multiqc/multiqc_data/multiqc.log
@@ -161,7 +161,7 @@ notes: Frozen updated release SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f1
 
 ## nf-core-phyloplace-local-20261008-rerun: nf-core/phyloplace 68db179, -profile test, local Docker
 native: exit 0 in 52 s, 33 published files
-iunctus: exit 0 in 14 s, 33 published files, all eight tasks executed without result reuse
+uwe: exit 0 in 14 s, 33 published files, all eight tasks executed without result reuse
 comparison: all 33 names agree; 20 material files match SHA-256, 5 agree after report normalization, 8 report/metadata contents excluded; 0 missing, 0 extra, 0 unexplained differences
 verdict: published output parity after the stated normalization
 excluded: pipeline_info/** (6 files); multiqc/multiqc_report.html; multiqc/multiqc_data/multiqc.log
@@ -171,15 +171,15 @@ notes: Frozen updated release SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f1
 
 ## nf-core-bamtofastq-local-20261008-rerun: nf-core/bamtofastq daf99df, -profile test, local Docker
 native: exit 1 in 26 s, SAMTOOLS_FAIDX missing FASTA, 9 partial published files
-iunctus: exit 1 in 8 s, SAMTOOLS_FAIDX missing FASTA, 7 partial published files
-comparison: after pipeline_info/** is excluded, 3 reference files and 6 iunctus files; all 3 common digests agree, 0 missing, 3 extra, 0 differing common contents
+uwe: exit 1 in 8 s, SAMTOOLS_FAIDX missing FASTA, 7 partial published files
+comparison: after pipeline_info/** is excluded, 3 reference files and 6 uwe files; all 3 common digests agree, 0 missing, 3 extra, 0 differing common contents
 verdict: reference test profile invalid; matching process failure, complete output parity not established
 extra: fastqc/test.pre_conversion_fastqc.html; fastqc/test.pre_conversion_fastqc.zip; samtools/test.flagstat
-notes: The test profile supplies no FASTA, so both engines fail PREPARE_INDICES:SAMTOOLS_FAIDX with status 1. The frozen updated binary no longer stops at collectFile before task execution. Iunctus completed three more independent publications before cancellation; differing abort schedules explain those partial-file differences. Common idxstats and test2.flagstat files match by SHA-256. Frozen updated release SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. Initial evidence is under initial/bamtofastq, updated logs/manifests under bamtofastq. Temporary source/run/work/cache folders are removed after recording.
+notes: The test profile supplies no FASTA, so both engines fail PREPARE_INDICES:SAMTOOLS_FAIDX with status 1. The frozen updated binary no longer stops at collectFile before task execution. uwe completed three more independent publications before cancellation; differing abort schedules explain those partial-file differences. Common idxstats and test2.flagstat files match by SHA-256. Frozen updated release SHA-256 23e34872896324e23975eed88afa6cef15cb4fe0f15729eac19f1ac5b7d633ff. Initial evidence is under initial/bamtofastq, updated logs/manifests under bamtofastq. Temporary source/run/work/cache folders are removed after recording.
 
 ## nf-core-methylseq-local-20261008: nf-core/methylseq cc11bd9, -profile test, local Docker
 native: default v2 parser exits 1 before execution at nextflow.config:251, an inactive AWS include whose file is absent in the pinned upstream tree; NXF_SYNTAX_PARSER=v1 exits 0 in 360 s, 216 published files
-iunctus: frozen updated release exits 0 in 84 s, 216 published files, all 36 tasks executed without result reuse
+uwe: frozen updated release exits 0 in 84 s, 216 published files, all 36 tasks executed without result reuse
 comparison: all 216 names agree; 122 material files match SHA-256, 85 agree after report/archive normalization, 9 report/metadata contents excluded; 0 missing, 0 extra, 0 unexplained differences
 verdict: published output parity against Nextflow 26.04.6's legacy parser; default v2 configuration is invalid at this upstream revision
 excluded: pipeline_info/** (7 files); multiqc/bismark/multiqc_report.html; multiqc/bismark/multiqc_data/multiqc.log
@@ -192,15 +192,15 @@ notes: All BAMs/indices, 40 methylation-call/coverage/bedGraph/mbias/splitting f
 
 ## nf-core-fetchngs-local-20261008: nf-core/fetchngs 955c892, -profile test, local Docker
 native: exit 1 after reserve-guard cancellation at 563 s, 47 partial published files totaling 538,309,125 bytes
-iunctus: not run, disk limit
+uwe: not run, disk limit
 comparison: not performed, reference execution incomplete
 verdict: resource blocked, no engine correctness verdict
-notes: ENA metadata bounded direct-accession FASTQ at 815,511 bytes and GEO-derived FASTQ at 982,925,607 bytes; three SRA-only examples have at most 431,758 bases and the other two at most 828 bases. NCBI returned one HTTP 429 during size inspection; one-request-per-second retries completed resolution. Admission had 41.66 GiB free and a 13 GiB allowance. Shared target/debug growth reduced free space to the 27 GiB guard while this case occupied only 1.5 GiB. One large FASTQ and the small FASTQs were published; the remaining large transfer was canceled before completion. Partial logs, output names/digests and all size metadata are retained under fetchngs. Temporary source/run/work folders were removed; no iunctus download was started below the reserve.
+notes: ENA metadata bounded direct-accession FASTQ at 815,511 bytes and GEO-derived FASTQ at 982,925,607 bytes; three SRA-only examples have at most 431,758 bases and the other two at most 828 bases. NCBI returned one HTTP 429 during size inspection; one-request-per-second retries completed resolution. Admission had 41.66 GiB free and a 13 GiB allowance. Shared target/debug growth reduced free space to the 27 GiB guard while this case occupied only 1.5 GiB. One large FASTQ and the small FASTQs were published; the remaining large transfer was canceled before completion. Partial logs, output names/digests and all size metadata are retained under fetchngs. Temporary source/run/work folders were removed; no uwe download was started below the reserve.
 
 ## nf-core-fetchngs-local-20261008-rerun: nf-core/fetchngs 955c892, -profile test, local Docker
 native: exit 0 in 696 s, 59 published files
-iunctus: exit 33 in 12 s after 29 tasks executed, 40 partial published files, no process failure in the final run
-comparison: after pipeline_info/** is excluded, 53 reference files and 39 iunctus files; 38 common SHA-256 matches, 1 normalized metadata-row match, 14 missing, 0 extra, 0 unexplained common-content differences
+uwe: exit 33 in 12 s after 29 tasks executed, 40 partial published files, no process failure in the final run
+comparison: after pipeline_info/** is excluded, 53 reference files and 39 uwe files; 38 common SHA-256 matches, 1 normalized metadata-row match, 14 missing, 0 extra, 0 unexplained common-content differences
 verdict: explicit unsupported UUID.randomUUID, full pipeline parity not established
 normalized: metadata/GSM4907283.runinfo_ftp.tsv: only its four run-accession rows are reordered; all column names and per-run values agree.
 missing: custom/user-settings.mkfg; five SRA-fallback FASTQ files; two GEO FASTQ files and their two MD5 files; metadata/GSE214215.runinfo_ftp.tsv; samplesheet/id_mappings.csv; samplesheet/multiqc_config.yml; samplesheet/samplesheet.csv
@@ -208,27 +208,27 @@ notes: Real execution found project bin helpers absent from task PATH (127), fix
 
 ## nf-core-nanoseq-local-20261008: nf-core/nanoseq 95ef67c, -profile test, local Docker
 native: default v2 parser exits 1 at config check_max; legacy v1 exits 1 before execution because lib/NfcoreSchema.groovy cannot resolve org.everit.json.schema and org.json classes
-iunctus: after the nested-null fix, exit 33 in 38 s after 17 tasks executed, 12 partial published files
+uwe: after the nested-null fix, exit 33 in 38 s after 17 tasks executed, 12 partial published files
 comparison: not qualified, reference cannot execute with its legacy JSON-schema dependencies absent from Nextflow 26.04.6
-verdict: reference prerequisite blocked; explicit collectFile hash-sort refusal remains in iunctus
+verdict: reference prerequisite blocked; explicit collectFile hash-sort refusal remains in uwe
 notes: Real execution exposed flatten dropping null placeholders inside lists and shifting collate(9) tuple positions until a Boolean became the FASTA path. Fix 8dcc32d preserves nested nulls while keeping top-level null filtering; flattens_null_positions failed before and passed afterward, and the exact join/cross/flatten probe now agrees with real Nextflow. All 185 runtime tests, Clippy, formatting and style passed. The rerun completes genome indexing, minimap2 alignment, BAM sorting and indexing before the clear diagnostic: Not supported yet: collectFile sort mode 'hash' (the default); native CacheHelper hashing is not implemented. No Boolean-path weakening, workflow mutation or JVM fallback was used. Partial qcat/FastQC/BAM outputs, default/v1 reference failures, pre-fix/final logs and the native operator probe are retained under nanoseq and nano-oracle. Test data headers total 3,469,280 bytes. Final release SHA-256 cb90b70dcdccc5c869a3a1ee2e612bbc82ea9ef1f0d30f83a56a8421e118c89d. Temporary source/run/work/cache and probe folders are removed after recording.
 
 ## nf-core-fetchngs-local-20261008-uuid: nf-core/fetchngs 955c892, post-fix qualification limit
 native: prior successful reference recorded above; no new run
-iunctus: UUID support fixed by e2105457; pipeline rerun not run under the user's new download limit
+uwe: UUID support fixed by e2105457; pipeline rerun not run under the user's new download limit
 verdict: full output parity remains unqualified; the last measured pipeline result predates the UUID fix
 notes: java.util.UUID.randomUUID now uses the locked uuid 1.26.1 v4 OS random source. UUID.fromString, lower-case toString, Java equality/hash and class identity are implemented. uuids_are_random checks format, version/variant bits and 64 distinct identifiers; uuid_parses_values checks parsing, equality, identity, map/set keys and Java exceptions against the bundled Groovy oracle. Both regressions failed before the fix and passed after it; all 200 non-ignored evaluator tests, Clippy, formatting and style passed. Cargo.lock adds only the evaluator's uuid dependency. The release build passed with CARGO_INCREMENTAL=0. Fetchngs inputs and its temporary cache were already removed when the prior run was recorded; another real run would download about 0.92 GiB again, so it is skipped as explicitly instructed. No new fetchngs images or data were downloaded.
 
 ## nf-core-taxprofiler-local-20261008: nf-core/taxprofiler 3ed8f1e, qualification limit
 native: not run, user's download limit
-iunctus: not run, user's download limit
+uwe: not run, user's download limit
 verdict: not qualified
 notes: The cached test configuration was inspected locally. No data/image size requests, pipeline downloads or tasks were started before the user stopped new pipeline qualification.
 
 ## Cluster Apptainer qualification, 2026-10-08 (UTC)
 source: immutable export of feat/beta-readiness revision 22daad0873ecbfe92b95e111f1277baa829d506c; later branch changes are outside these runs
 binary: static musl release SHA-256 ce8f00893912b54a8b11ea56166080d8a31e849a4aa54e01df720a621fb2270f
-build: locally, CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=<repository>/target/cluster-20261008 nice cargo build --release --locked --manifest-path <immutable-export>/Cargo.toml -p iunctus -j 8 --target x86_64-unknown-linux-musl
+build: locally, CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=<repository>/target/cluster-20261008 nice cargo build --release --locked --manifest-path <immutable-export>/Cargo.toml -p uwe -j 8 --target x86_64-unknown-linux-musl
 native-build: the requested GNU release build passed locally; SHA-256 4358d3002157ffb988b874563ce5a34181544e13b329a0ca4977bf9cdd377085; cluster startup failed before submission because its cosh/sinh imports require GLIBC_2.44 while Debian 13 provides glibc 2.41
 execution: drivers, direct Apptainer references, Snakemake references and downloads on worm.intra; task jobs on partition bcf, excluding rs700-bcf-3.intra as in demo/bcf-config.toml; cli.intra used only for the initial squeue query
 reference: Apptainer 1.3.6 for the four demos; Snakemake 9.27.0 with test.out --cores 3 --sdm apptainer for three upstream shell workflows
@@ -238,52 +238,52 @@ setup: invalid initial harness runs copied old demo outputs or failed before sub
 
 ## demo-snakemake-slurm-20261008: demo/snakemake/hello.smk
 native: direct Apptainer execution on worm.intra, exit 0, five greeting/collection files
-iunctus: exit 0 in 42 s, six logical tasks, five task jobs and one image-pull job; no result reuse
+uwe: exit 0 in 42 s, six logical tasks, five task jobs and one image-pull job; no result reuse
 jobs: 37373003 (image pull), 37373004, 37373005, 37373006, 37373007, 37373008
 comparison: all five output names and SHA-256 digests agree
 verdict: output byte parity
 
 ## demo-nextflow-slurm-20261008: demo/nextflow/main.nf
 native: four direct Apptainer echo commands on worm.intra, all exit 0
-iunctus: exit 0 in 11 s, four task jobs, no result reuse
+uwe: exit 0 in 11 s, four task jobs, no result reuse
 jobs: 37373009, 37373010, 37373011, 37373012
 comparison: all four task stdout byte strings agree; parallel arrival order is ignored
 verdict: output byte parity
 
 ## demo-cwl-slurm-20261008: demo/cwl/directory-copy.cwl
 native: direct Apptainer directory copy on worm.intra, exit 0, first.txt and second.txt
-iunctus: exit 0 in 5 s, one task job, Directory input and two wildcard File outputs; -output-dir out
+uwe: exit 0 in 5 s, one task job, Directory input and two wildcard File outputs; -output-dir out
 jobs: 37373013
 comparison: both published names and SHA-256 digests agree
 verdict: output byte parity
 
 ## demo-argo-slurm-20261008: demo/argo/dag-diamond.yaml
 native: four direct Apptainer echo commands on worm.intra, all exit 0
-iunctus: exit 0 in 13 s, four DAG task jobs
+uwe: exit 0 in 13 s, four DAG task jobs
 jobs: 37373014, 37373015, 37373016, 37373017
 comparison: all four task stdout byte strings agree; parallel arrival order is ignored
 verdict: output byte parity
 
 ## failure-slurm-20261008: Nextflow container command exit 7
-iunctus: driver exit 1 in 4 s; exactly one attempt, task exit 7, retried=0; -machine-retries 0 and default process termination policy
+uwe: driver exit 1 in 4 s; exactly one attempt, task exit 7, retried=0; -machine-retries 0 and default process termination policy
 jobs: 37373018
 verdict: task failure propagated without retry
 notes: sacct records COMPLETED and 0:0 for the batch wrapper. executor/src/wrapper.rs stores the tool exit and intentionally exits 0 after collecting the result. Scheduler accounting alone does not report task failure; the run database records exit 7 and rejected acceptance.
 
 ## cancel-slurm-20261008: Ctrl-C during a running Nextflow container task
-iunctus: driver exit 130 in 35 s after SIGINT; sacct records job 37373019 CANCELLED by 10157 and its batch step CANCELLED with 0:9
+uwe: driver exit 130 in 35 s after SIGINT; sacct records job 37373019 CANCELLED by 10157 and its batch step CANCELLED with 0:9
 jobs: 37373019
 verdict: owned job cancelled, no foreign job targeted
 notes: The guard checked squeue -u $USER before all 29 bounded scancel requests, each restricted to recorded job 37373019 and its job name. All 13 foreign queue records are identical before and after qualification.
 
 ## resume-slurm-20261008: demo/nextflow/main.nf -resume
-iunctus: exit 0 in 2 s, all four attempts reused=cache, zero new batch jobs
+uwe: exit 0 in 2 s, all four attempts reused=cache, zero new batch jobs
 verdict: all four prior results reused
 
 ## snakemake-public-slurm-20261008: snakemake/snakemake v9.27.0 tests/test02, test03, test04
 source: ca4a76228e1c2abed063e07cbe7af7c8ea3269f9; all three Snakefile digests match the pinned local sources; existing tiny inputs used
 native: Snakemake 9.27.0, exit 0 for each, 2 s each; --sdm apptainer passed, but these rules use shell commands without container directives
-iunctus: exit 0 for each, 8 s, 4 s and 6 s; -executor slurm -default-image debian:stable-slim -max-pending 3 -no-cache
+uwe: exit 0 for each, 8 s, 4 s and 6 s; -executor slurm -default-image debian:stable-slim -max-pending 3 -no-cache
 jobs: test02 37373020, 37373021; test03 37373022; test04 37373023
 comparison: test02 matches logs/test.log, test.inter and test.out; test03 and test04 each match test.out. All five generated file names and SHA-256 digests agree; zero missing, extra or differing files. Native .snakemake metadata and unchanged source/input files are outside the generated-output comparison.
 verdict: output byte parity against real Snakemake
@@ -291,7 +291,7 @@ verdict: output byte parity against real Snakemake
 ## nf-core-demo-slurm-20261008-limit: nf-core/demo 1.2.0
 source: 32893afef8076a03a2767a020b3f0cab2e0b40b2, unchanged conf/test.config
 native: Nextflow 26.04.6 installed and version verified, pipeline not run
-iunctus: pipeline not run
+uwe: pipeline not run
 verdict: not qualified, case skipped under the pathogen restriction
 notes: The pinned test profile points to nf-core/test-datasets/viralrecon. In the absence of clarification, the user's restriction was applied to these test inputs. No replacement data, pipeline edits or report normalization were used.
 

@@ -304,18 +304,21 @@ pub fn call(
             sequence_method(interpreter, &items, name, args, "range")
         }
         Value::Iterator(_) => match name {
-            "__next__" => interpreter
-                .next_item(receiver)?
-                .ok_or_else(Error::stop_iteration),
+            "__next__" => {
+                let item = interpreter.next_item(receiver)?;
+                item.ok_or_else(|| interpreter.exhausted(receiver))
+            }
             "send" => {
                 args.expect("send", 1, 1)?;
                 let value = args.positional[0].clone();
-                (interpreter.send_item(receiver, value)?).ok_or_else(Error::stop_iteration)
+                let item = interpreter.send_item(receiver, value)?;
+                item.ok_or_else(|| interpreter.exhausted(receiver))
             }
             "throw" => {
                 args.expect("throw", 1, 3)?;
                 let error = thrown(interpreter, &args)?;
-                (interpreter.throw_item(receiver, error)?).ok_or_else(Error::stop_iteration)
+                let item = interpreter.throw_item(receiver, error)?;
+                item.ok_or_else(|| interpreter.exhausted(receiver))
             }
             "close" => interpreter.close_item(receiver).map(|()| Value::None),
             _ => Ok(receiver.plain().clone()),

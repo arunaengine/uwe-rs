@@ -215,6 +215,10 @@ impl Error {
 /// A new exception object of a class with the given arguments.
 pub fn exception(class: &Rc<crate::value::Class>, args: Vec<Value>) -> Value {
     let mut dict = IndexMap::new();
+    // `StopIteration.value`, what a generator returned.
+    if class.derives_from("StopIteration") {
+        dict.insert("value".into(), args.first().cloned().unwrap_or(Value::None));
+    }
     dict.insert("args".into(), Value::tuple(args));
     Value::Instance(Rc::new(Instance {
         class: class.clone(),

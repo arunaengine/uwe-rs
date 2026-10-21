@@ -818,7 +818,7 @@ fn next(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
     match (found, args.positional.get(1)) {
         (Some(value), _) => Ok(value),
         (None, Some(default)) => Ok(default.clone()),
-        (None, None) => Err(Error::stop_iteration()),
+        (None, None) => Err(interpreter.exhausted(iterator)),
     }
 }
 

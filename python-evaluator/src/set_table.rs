@@ -16,15 +16,16 @@ const LINEAR_PROBES: usize = 9;
 /// of another iterable, in their order.
 pub enum Operand {
     Table(Table, usize),
-    Dict(Vec<Key>),
-    Items(Vec<Key>),
+    Dict(IndexSet<Key>),
+    Items(IndexSet<Key>),
 }
 
 impl Operand {
     /// The operand of a value whose members, as the operation collected them, are `members`;
     /// `None` when one has no hash that is the same in every process.
     pub fn of(value: &Value, members: &IndexSet<Key>) -> Option<Operand> {
-        let keys = || members.iter().cloned().collect::<Vec<_>>();
+        // In their order, and found at once by `contains`.
+        let keys = || members.clone();
         let operand = match value.plain() {
             Value::Set(_) | Value::FrozenSet(_) => Operand::Table(
                 crate::hashing::synced(value)?,
@@ -393,7 +394,7 @@ impl Table {
         }
     }
 
-    fn add_all(&mut self, keys: &[Key]) {
+    fn add_all(&mut self, keys: &IndexSet<Key>) {
         for key in keys {
             if let Some(hash) = stable_hash(&key.0) {
                 self.add(key.clone(), hash);

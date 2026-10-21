@@ -31,7 +31,7 @@ JOBS = "3"
 # What the runs themselves leave in the folder, which the comparison leaves out.
 OWN = (".snakemake", "expected-results", ".git")
 # The file that Snakemake leaves in each directory output to note when it was made, which
-# iunctus does not write.
+# uwe does not write.
 TIMESTAMP = ".snakemake_timestamp"
 # Where Python keeps the compiled modules that a Snakefile imports on this machine.
 PYCACHE = "__pycache__"
@@ -42,7 +42,7 @@ NEEDS = [
     (re.compile(r"^\s*envmodules\s*:", re.M), "needs environment modules"),
     (re.compile(r"storage[.:(]|https?://|\b(github|gitlab)\("), "reads remote files"),
 ]
-# Why a test differs or fails in iunctus alone, where the reason is known and by design or
+# Why a test differs or fails in uwe alone, where the reason is known and by design or
 # not done yet: the record names it after the result. Each reason is one plain sentence.
 BENCHMARK = "the benchmark file holds the time and memory that each run measured"
 KNOWN = {
@@ -58,7 +58,7 @@ KNOWN = {
     "test_shadow": BENCHMARK,
     "test_shadow_copy": BENCHMARK,
     "test_template_engine": "these runs are offline, and jinja2 comes from PyPI into the Python "
-                            "container; with the network iunctus renders the same files",
+                            "container; with the network uwe renders the same files",
 }
 IMAGES = re.compile(r"^\s*(?:container|singularity)\s*:\s*[\"']([^\"']+)[\"']", re.M)
 
@@ -112,8 +112,8 @@ def skipped(folder, fields, images):
 
 
 def commands(fields, work):
-    """The commands of Snakemake and iunctus for the fields of a launch."""
-    # Snakemake gets the CPUs of the machine as cores, which iunctus gives to
+    """The commands of Snakemake and uwe for the fields of a launch."""
+    # Snakemake gets the CPUs of the machine as cores, which uwe gives to
     # `workflow.cores` and to the threads of jobs.
     native = [SNAKEMAKE, "--cores", str(os.cpu_count()), "--jobs", JOBS, "--snakefile",
               "Snakefile"]
@@ -186,7 +186,7 @@ def run(command, source, place, environment):
     remove(place)
     shutil.copytree(source, place, symlinks=True)
     # The tests live in Snakemake's git repository, whose files its source deployment sends
-    # to jobs; iunctus sends them the same way.
+    # to jobs; uwe sends them the same way.
     for words in (["git", "init", "-q"], ["git", "add", "-A"]):
         subprocess.run(words, cwd=place, capture_output=True, check=True)
     before = state(place)
@@ -224,7 +224,7 @@ def error_line(lines):
     """The line of an error output that says the most: the first that names an error."""
     lines = [line.strip() for line in lines if line.strip()]
     for number, line in enumerate(lines):
-        if line.startswith("iunctus: ") or re.search(r"Error\b|error:|Exception", line):
+        if line.startswith("uwe: ") or re.search(r"Error\b|error:|Exception", line):
             # A line that only names the kind of error goes on in the next one.
             if line.endswith(":") and number + 1 < len(lines):
                 line = f"{line} {lines[number + 1]}"
@@ -259,9 +259,9 @@ def first_difference(native, ours, varying):
         if name not in ours:
             return f"{name}: only Snakemake changed it"
         if name not in native:
-            return f"{name}: only iunctus changed it"
+            return f"{name}: only uwe changed it"
         if ours[name] is None:
-            return f"{name}: iunctus removed it"
+            return f"{name}: uwe removed it"
         if native[name] is None:
             return f"{name}: Snakemake removed it"
         return f"{name}: other content"
@@ -286,10 +286,10 @@ def compare(name, fields, work, environment, images):
     if native_code != 0 and our_code != 0:
         return "same: fails as the test expects" if should_fail else "same: both fail"
     if our_code != 0:
-        return f"iunctus fails (exit {our_code}): {our_error}"
+        return f"uwe fails (exit {our_code}): {our_error}"
     if native_code != 0:
         if should_fail:
-            return "differs: iunctus succeeds where the test expects a failure"
+            return "differs: uwe succeeds where the test expects a failure"
         return f"snakemake fails (exit {native_code}): {native_error}"
     found = first_difference(native_changes, our_changes, set())
     if found:
@@ -340,7 +340,7 @@ def main():
         kind = record.split(":")[0].split(" (")[0]
         counts[kind] = counts.get(kind, 0) + 1
     summary = ", ".join(f"{count} {kind}" for kind, count in sorted(counts.items()))
-    header = ("# The tests of Snakemake run for real by iunctus and by Snakemake 9.27.0, compared "
+    header = ("# The tests of Snakemake run for real by uwe and by Snakemake 9.27.0, compared "
               "by the files each run made; written by real_runs_snakemake.py. A tab ends the "
               "name.\n"
               f"# {len(records)} tests: {summary}.\n")

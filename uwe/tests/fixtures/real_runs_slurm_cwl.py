@@ -84,8 +84,8 @@ def matches(expected, actual, where="output"):
 
 
 def run_stopped(command, cwd):
-    """Runs iunctus; the exit code and its standard output and error. After TIMEOUT it stops
-    iunctus with SIGTERM, so that it cancels its SLURM jobs, and the code is `timeout`."""
+    """Runs uwe; the exit code and its standard output and error. After TIMEOUT it stops
+    uwe with SIGTERM, so that it cancels its SLURM jobs, and the code is `timeout`."""
     process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True)
     try:
@@ -117,7 +117,7 @@ def compare(test, suite, work):
     command += ["-inputs", job] if job else []
     code, stdout, stderr = run_stopped(command, folder)
     if code == "timeout":
-        return "iunctus fails: timeout"
+        return "uwe fails: timeout"
     errors = [line for line in stderr.splitlines() if line.strip()]
     try:
         # The summary of the run follows the output object.
@@ -128,7 +128,7 @@ def compare(test, suite, work):
     if test.get("should_fail"):
         return "same: fails as the test expects" if not ok else "differs: runs, but should fail"
     if not ok:
-        return f"iunctus fails (exit {code}): {(errors[-1] if errors else '')[:160]}"
+        return f"uwe fails (exit {code}): {(errors[-1] if errors else '')[:160]}"
     found = matches(test.get("output", {}), output)
     return f"differs: {found}" if found else "same"
 

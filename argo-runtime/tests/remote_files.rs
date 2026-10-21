@@ -297,7 +297,6 @@ fn rejects_redirected_writeback() {
         std::fs::create_dir(path).unwrap();
     }
     std::fs::write(outside.join("x"), "untouched").unwrap();
-    std::os::unix::fs::symlink(&outside, host.join("redirect")).unwrap();
     std::fs::create_dir(output.join("redirect")).unwrap();
     std::fs::write(output.join("redirect/x"), "replacement").unwrap();
     let spec = format!(
@@ -314,6 +313,8 @@ fn rejects_redirected_writeback() {
     );
     let mut run = driver(folder.path(), &spec);
     let tasks = run.start().unwrap();
+    // The link appears while the task runs; a host path with it is refused at the start.
+    std::os::unix::fs::symlink(&outside, host.join("redirect")).unwrap();
     run.complete(outcome(&tasks[0], "s3://store/output", true))
         .unwrap();
     assert!(run.finish().unwrap_err().to_string().contains("escapes"));

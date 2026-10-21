@@ -590,13 +590,40 @@ pub fn copy_into(source: &Path, target: &Path) -> std::io::Result<()> {
         }
         return Ok(());
     }
-    if std::fs::read(target).ok() == Some(std::fs::read(source)?) {
+    if same_content(source, target)? {
         return Ok(());
     }
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)?;
     }
     std::fs::copy(source, target).map(|_| ())
+}
+
+/// Whether `target` is a file with the bytes of `source`, read piece by piece, so that a
+/// large file never sits in memory.
+fn same_content(source: &Path, target: &Path) -> std::io::Result<bool> {
+    use std::io::BufRead;
+    let size = std::fs::metadata(source)?.len();
+    if std::fs::metadata(target).map_or(true, |metadata| metadata.len() != size) {
+        return Ok(false);
+    }
+    let Ok(target) = std::fs::File::open(target) else {
+        return Ok(false);
+    };
+    let mut left = std::io::BufReader::with_capacity(1 << 16, std::fs::File::open(source)?);
+    let mut right = std::io::BufReader::with_capacity(1 << 16, target);
+    loop {
+        let (one, other) = (left.fill_buf()?, right.fill_buf()?);
+        let length = one.len().min(other.len());
+        if length == 0 {
+            return Ok(one.is_empty() && other.is_empty());
+        }
+        if one[..length] != other[..length] {
+            return Ok(false);
+        }
+        left.consume(length);
+        right.consume(length);
+    }
 }
 
 /// A path of its own for a file that the task writes below `.snakemake`, where tasks that run
@@ -685,5 +712,36 @@ mod tests {
             ".snakemake/scripts/iunctus-ca978112ca1b-x.py"
         );
         assert_eq!(own_path("x.py", "a"), "x.py");
+    }
+
+    /// The peak memory of this process, from `/proc/self/status`, in KiB.
+    fn peak_memory() -> Option<u64> {
+        let status = std::fs::read_to_string("/proc/self/status").ok()?;
+        let line = status.lines().find(|line| line.starts_with("VmHWM:"))?;
+        line.split_whitespace().nth(1)?.parse().ok()
+    }
+
+    /// Two large files of the same bytes are compared piece by piece, not read whole.
+    #[test]
+    fn compares_large_files() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let (source, target) = (folder.path().join("a"), folder.path().join("b"));
+        // Sparse files of 256 MiB, which take no disk space.
+        for path in [&source, &target] {
+            std::fs::File::create(path)
+                .unwrap()
+                .set_len(256 << 20)
+                .unwrap();
+        }
+        let Some(before) = peak_memory() else {
+            return;
+        };
+        copy_into(&source, &target).unwrap();
+        let grown = peak_memory().unwrap() - before;
+        assert!(grown < 128 << 10, "the peak grew by {grown} KiB");
+        std::fs::write(&source, "same").unwrap();
+        std::fs::write(&target, "sale").unwrap();
+        copy_into(&source, &target).unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "same");
     }
 }

@@ -1,5 +1,5 @@
 """Exercises arithmetic with Python numeric rules."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 print(7 // 2, -7 // 2, 7 % 3, -7 % 3, 7 % -3, 7.5 // 2, -7.5 % 2)
 print(2 ** 10, 2 ** 100, 2 ** -1, 10 / 4, 9 / 3, 1 / 3)

@@ -1,5 +1,5 @@
 """Checks keys that equal other kinds of keys by __eq__, and dataclass fields left out of __eq__ and __hash__."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 from dataclasses import dataclass, field
 

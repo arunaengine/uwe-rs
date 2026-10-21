@@ -1,6 +1,6 @@
 //! Downloads: the whole standard output or error of a task, and the files of a task. The page
 //! serves only files that the database lists for the task, never a path that a request names.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::{Component, Path as FilePath, PathBuf};

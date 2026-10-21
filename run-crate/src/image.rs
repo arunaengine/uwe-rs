@@ -1,5 +1,5 @@
 //! A container image reference split into the parts that a `ContainerImage` entity names.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 /// The parts of an image reference like `quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0` or

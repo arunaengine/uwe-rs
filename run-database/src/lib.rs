@@ -1,5 +1,5 @@
 //! Records and reads workflow runs, task attempts, files, events and reproducibility data.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod chains;

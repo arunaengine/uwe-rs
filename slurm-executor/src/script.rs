@@ -1,6 +1,6 @@
 //! The batch job of an attempt: the options of `sbatch`, and the job script that runs the
 //! wrapper of the task in its container on a node.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::{Path, PathBuf};

@@ -1,6 +1,6 @@
 // The boxes of the graph view on the page of iunctus: their tooltips, their states while a run
 // goes on, the chosen box, and the legend of the states the picture shows.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 "use strict";
 

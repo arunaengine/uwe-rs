@@ -1,6 +1,6 @@
 //! The PyPI packages that give a Python module, for the modules whose package has another
 //! name, like `PIL` from `pillow`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 /// Modules and the PyPI packages that give them. A dotted name is matched before its

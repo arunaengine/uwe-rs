@@ -1,5 +1,5 @@
 //! Filters table rows with expressions, row-wise Boolean operators, and list membership.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use ruff_python_ast::{BoolOp, CmpOp, Expr, UnaryOp};

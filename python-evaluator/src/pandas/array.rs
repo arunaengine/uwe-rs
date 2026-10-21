@@ -1,6 +1,6 @@
 //! A stand-in for the one-dimensional NumPy arrays that pandas returns, like `.values` and
 //! `.unique()`: a list of values with element-wise comparisons.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;

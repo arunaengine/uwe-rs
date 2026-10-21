@@ -3,7 +3,7 @@
 // is in the file; this script answers the requests of the other scripts from it, and adds the
 // parts that only the report has: the timeline of the tasks, what each task used, and where the
 // results went. It uses the helpers of `page.js` and the view of `run.js`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 "use strict";
 

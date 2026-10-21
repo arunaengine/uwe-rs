@@ -1,7 +1,7 @@
 // The view of one run on the page of iunctus: its summary, graph, steps, tasks, and one task
 // or step with its details. A running run updates live through Server-Sent Events. It uses
 // the helpers of `page.js` and the graph view of `graph.js`.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 "use strict";
 

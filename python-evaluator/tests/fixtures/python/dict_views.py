@@ -1,5 +1,5 @@
 """Checks the views of dicts: their reprs, live contents, membership and set operators."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 d = {"a": 1, "b": [2]}
 keys, values, items = d.keys(), d.values(), d.items()

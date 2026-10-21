@@ -1,6 +1,6 @@
 //! `import` and `from ... import`: modules of the host, stand-ins for library modules, and
 //! `.py` files found on the module path.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::PathBuf;

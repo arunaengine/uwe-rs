@@ -1,6 +1,6 @@
 //! The hash table of a CPython set (`setobject.c`), whose layout decides the order in which
 //! a set of numbers or tuples is iterated, and the set operations that fill it.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use indexmap::IndexSet;

@@ -1,6 +1,6 @@
 //! What clean-up of a store asks the run database: which runs go on, which runs started lately,
 //! and which files and contents runs refer to.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeSet;

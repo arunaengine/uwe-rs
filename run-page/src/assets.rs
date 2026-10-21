@@ -1,5 +1,5 @@
 //! The page itself: one HTML file, its style and its scripts, inside the binary.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use axum::http::header;

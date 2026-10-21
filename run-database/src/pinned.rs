@@ -1,5 +1,5 @@
 //! Reads retained run sources, remote files, images and reproducibility verdicts.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use rusqlite::{OptionalExtension, params};

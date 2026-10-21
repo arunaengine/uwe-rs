@@ -1,6 +1,6 @@
 //! `pandas.read_csv` and `pandas.read_table`: reads a delimited text file into a table and
 //! infers the type of each column as pandas' C parser does.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::io::Read;

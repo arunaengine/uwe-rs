@@ -1,6 +1,6 @@
 //! Writes the report of a small recorded run and reads it back: one HTML file that refers to
 //! nothing outside itself, with the data of the page and the end of each log.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use run_database::{Database, RunStart};

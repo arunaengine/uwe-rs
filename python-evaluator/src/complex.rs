@@ -1,6 +1,6 @@
 //! Complex numbers, as `complex(1, 2)` and `2j` make them: arithmetic, comparison for
 //! equality, `abs`, and the text Python writes for them.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;

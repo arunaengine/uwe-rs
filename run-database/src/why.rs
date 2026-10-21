@@ -1,6 +1,6 @@
 //! Why a task ran instead of taking its result from an earlier run: the part of its
 //! description that changed since the same task ran before, in plain words.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeMap, HashSet};

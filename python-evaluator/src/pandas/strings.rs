@@ -1,6 +1,6 @@
 //! The `.str` accessor of a series or an index: text methods applied to each value. Missing
 //! values and values that are no text stay missing.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;

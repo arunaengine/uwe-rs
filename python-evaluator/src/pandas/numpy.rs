@@ -1,6 +1,6 @@
 //! A stand-in for the part of NumPy that workflows use while they are planned: `nan`, the
 //! scalar types, and arrays made from lists.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;

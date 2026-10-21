@@ -1,5 +1,5 @@
 //! `pandas.Series`: one column of values with row labels and a name.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;

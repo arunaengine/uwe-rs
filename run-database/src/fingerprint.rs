@@ -1,6 +1,6 @@
 //! The fingerprint of a task: what makes two tasks of different runs the same task with the same
 //! inputs, so that a resumed run can take the result of a task that finished before.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::time::UNIX_EPOCH;

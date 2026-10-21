@@ -1,6 +1,6 @@
 //! Native stand-ins for the standard library modules, and for the parts of third-party
 //! libraries that workflows call while they are planned.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod collections;

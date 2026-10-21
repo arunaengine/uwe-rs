@@ -1,5 +1,5 @@
 """Checks what generators return: StopIteration.value and x = yield from g."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 

@@ -1,6 +1,6 @@
 //! The methods of polars tables that take expressions and give a new table: `with_columns`,
 //! `filter`, `sort`, `select` and `head`. A `DataFrame` and a `LazyFrame` share them.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cmp::Ordering;

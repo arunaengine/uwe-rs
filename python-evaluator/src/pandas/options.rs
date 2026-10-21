@@ -1,6 +1,6 @@
 //! `pd.options`, `pd.errors` and `pd.api.types`: settings, the exceptions pandas raises,
 //! and checks of types.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;

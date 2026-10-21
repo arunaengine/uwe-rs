@@ -1,6 +1,6 @@
 //! Stand-ins for `datetime` and `time`: points in time from the clock of the host, in local
 //! time or in a fixed time zone, and durations.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;

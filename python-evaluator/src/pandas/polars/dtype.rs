@@ -1,6 +1,6 @@
 //! The data types of the polars stand-in, like `pl.String` and `pl.Int64`, and the casts of
 //! values to them. A missing value is `None`, polars' null.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;

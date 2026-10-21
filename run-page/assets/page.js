@@ -1,6 +1,6 @@
 // The script of the page of iunctus: the helpers that both views share, the navigation, and
 // the list of runs. `run.js` shows one run.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 "use strict";
 

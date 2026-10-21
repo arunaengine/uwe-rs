@@ -1,6 +1,6 @@
 //! The entries of a dict in insertion order, removed at once by leaving a gap that a later
 //! compaction closes, as CPython's dict does.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::Cell;

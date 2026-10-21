@@ -89,7 +89,9 @@ with Python 3.7 or later, as the scripts of Snakemake 9.27 do.
 
 Wrappers: where a wrapper's script is, as Snakemake's `wrapper.get_script` finds it. A name
 like `v8.1.1/bio/bgzip` is a folder of the snakemake-wrappers repository at that tag, other
-names are below the default prefix, and `file:` or web addresses are taken as they are. The
+names are below the default prefix, and `file:` or web addresses are taken as they are. A
+`wrapper-prefix` may be a web address, a local folder, or a `git+file:` repository, whose
+names start with the tag or branch to read. The
 script is the first of `wrapper.py`, `wrapper.R`, `wrapper.Rmd` and `wrapper.jl` that
 exists. Scripts on the web are downloaded once into the folder of downloads; a simulated
 run reads none of them and takes `wrapper.py`.
@@ -172,7 +174,9 @@ The settings that change what runs work as on Snakemake's command line: `notemp`
 `temp()` outputs, `wrapper-prefix` says where wrappers are, `groups` and `group-components`
 form group jobs, `prioritize` adds targets whose jobs start first, `set-scatter` overrides
 `scattergather:`, `consider-ancient` marks inputs `ancient()`, `allowed-rules` limits the
-rules that make files, and `batch` runs one part of the inputs of a rule.
+rules that make files, and `batch` runs one part of the inputs of a rule. `envvars` gives
+the jobs the named variables of this environment, and `nolock` leaves the working directory
+unlocked.
 
 ## src/python.rs
 
@@ -191,7 +195,8 @@ a remote Snakefile, like its includes, config schemas and scripts, work as local
 
 `gitfile(repo, path, tag=..., ref=..., commit=...)` names a Snakefile in a git repository
 at a tag, a ref or a commit (src/gitfile.rs). A ref is any revision that `git show` takes,
-like a branch, a short commit ID or `main~1`. A repository of this machine is read with gix, without the git
+like a branch, a short commit ID or `main~1`. As in Snakemake, it also names a script, a
+Conda environment or the schema of `validate`, but not a `configfile:`. A repository of this machine is read with gix, without the git
 program. A repository at an `https://` address is fetched by the Git client of the run,
 once per run, signed in with the account of an https storage provider of the config file.
 Either is written out at its reference into the folder of downloads.

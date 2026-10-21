@@ -188,3 +188,38 @@ fn preserves_callback_failure() {
         assert_eq!(*text.borrow(), printed, "repeated callback invocation");
     }
 }
+
+/// An exception in an operator closure runs the `onComplete:` section with the message of the
+/// exception, and the `onError:` section fails to run, as in Nextflow 26.04.6.
+#[test]
+fn skips_error_section() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = "workflow {\n    main:\n    channel.of(1, 2).map { v -> if (v == 2) throw new Exception('boom'); v }.view()\n\n    \
+                  onComplete:\n    println \"complete ${workflow.success} ${workflow.errorMessage} ${workflow.errorReport}\"\n\n    \
+                  onError:\n    println 'section error'\n}\n";
+    std::fs::write(directory.path().join("main.nf"), source).unwrap();
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        ..Launch::default()
+    };
+    let text = Rc::new(RefCell::new(String::new()));
+    let host = Printed {
+        text: text.clone(),
+        cleaned: Arc::new(AtomicBool::new(true)),
+    };
+    let settings = Settings {
+        host: Box::new(host),
+        ..Settings::default()
+    };
+    let mut driver = Nextflow::new(&launch, settings).unwrap();
+    let mut executor = Scripted {
+        mode: 0,
+        cleaned: Arc::new(AtomicBool::new(true)),
+        cancel: CancellationToken::new(),
+    };
+    let execution = Engine::new(&mut executor).run("main.nf", &mut driver);
+    assert!(execution.error.is_some());
+    let printed = text.borrow().clone();
+    assert!(printed.contains("complete false boom boom\n"), "{printed}");
+    assert!(!printed.contains("section error"), "{printed}");
+}

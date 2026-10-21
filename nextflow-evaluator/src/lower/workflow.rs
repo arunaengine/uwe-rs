@@ -30,15 +30,14 @@ impl Lowering<'_> {
         self.implicit_declarations = true;
         let mut main = self.statements(&workflow.main.statements);
         self.implicit_declarations = false;
-        // The `onComplete:` and `onError:` sections run as the handlers that
-        // `workflow.onComplete { ... }` and `workflow.onError { ... }` at the end of the body add.
-        for (handler, block) in [
-            ("onComplete", &workflow.on_complete),
-            ("onError", &workflow.on_error),
-        ] {
-            if let Some(block) = block {
-                main.extend(self.statement(&handler_statement(handler, block)));
-            }
+        // The `onComplete:` section runs as the handler that `workflow.onComplete { ... }` at
+        // the end of the body adds. Nextflow 26.04.6 fails to call the `onError:` section, so it
+        // is checked but never runs.
+        if let Some(block) = &workflow.on_complete {
+            main.extend(self.statement(&handler_statement("onComplete", block)));
+        }
+        if let Some(block) = &workflow.on_error {
+            drop(self.statement(&handler_statement("onError", block)));
         }
         let mut emits = Vec::new();
         let mut bare_emits = Vec::new();

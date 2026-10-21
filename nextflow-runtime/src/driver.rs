@@ -88,6 +88,8 @@ pub struct Nextflow {
     reports: Option<Reports>,
     /// The deliveries of the reports, once they are written.
     report_deliveries: Vec<Delivery>,
+    /// The message of the exception that failed the run, which `workflow.errorMessage` shows.
+    cause: Option<String>,
     /// The config and the main script, once loaded; the run takes them when it starts.
     loaded: Option<Loaded>,
     /// The files of the tasks, where a real executor keeps them.
@@ -131,6 +133,7 @@ impl Nextflow {
             conda_channels: vec!["conda-forge".into(), "bioconda".into()],
             reports: None,
             report_deliveries: Vec::new(),
+            cause: None,
             loaded: None,
             files: None,
             made_by: HashMap::new(),
@@ -367,6 +370,14 @@ impl Nextflow {
             })
             .collect()
     }
+
+    /// The error of a failed run, remembering the message of its first exception.
+    fn fault(&mut self, failure: Error) -> DriverError {
+        if let Some(exception) = failure.exception() {
+            self.cause.get_or_insert_with(|| exception.message.clone());
+        }
+        error(failure)
+    }
 }
 
 impl Driver for Nextflow {
@@ -422,7 +433,8 @@ impl Driver for Nextflow {
         };
         let (run, requests) = Run::start_retained(&loaded.module, &options, &mut host);
         self.run = Some(run);
-        self.tasks(requests.map_err(error)?)
+        let requests = requests.map_err(|failure| self.fault(failure))?;
+        self.tasks(requests)
     }
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
@@ -462,7 +474,7 @@ impl Driver for Nextflow {
         let completed = run.complete(outcome, &mut host);
         self.acceptance
             .insert(identity, run.take_acceptance(request.id));
-        let requests = completed.map_err(error)?;
+        let requests = completed.map_err(|failure| self.fault(failure))?;
         self.tasks(requests)
     }
 
@@ -493,8 +505,12 @@ impl Driver for Nextflow {
             return Ok(());
         };
         let cancelled = matches!(failure, workflow_graph::ExecuteError::Cancelled);
+        let message = match (failure, &self.cause) {
+            (workflow_graph::ExecuteError::Driver(_), Some(cause)) => cause.clone(),
+            _ => failure.to_string(),
+        };
         run.failed(
-            &failure.to_string(),
+            &message,
             if cancelled { 130 } else { 1 },
             matches!(failure, workflow_graph::ExecuteError::Driver(_)),
             self.settings.host.as_mut(),

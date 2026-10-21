@@ -506,7 +506,7 @@ fn exposes_workflow_metadata() {
 }
 
 /// The `onComplete:` section of the entry workflow runs when the run ends, after its body, and
-/// the `onError:` section only when it fails, as in Nextflow 26.04.6.
+/// the `onError:` section does not run, as in Nextflow 26.04.6.
 #[test]
 fn runs_handler_sections() {
     let source = "workflow {\n    main:\n    def name = 'main'\n    println name\n\n    onComplete:\n    \

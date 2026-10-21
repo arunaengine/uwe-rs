@@ -127,6 +127,11 @@ impl Executor for Resumed {
     > {
         self.executor.settle(task, attempt, accepted)
     }
+
+    /// The daemons of the tasks that ran stop before the run ends.
+    fn release(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        self.executor.release()
+    }
 }
 
 /// Whether a real result still has every identity that this wrapper can prove. Unsupported
@@ -272,6 +277,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
+    use std::future::Future;
     use workflow_graph::{CancellationToken, Delivery, Input, OutputFile, Task};
 
     const PINNED_IMAGE: &str =
@@ -311,6 +317,11 @@ mod tests {
         fn files(&self) -> Option<Arc<dyn Files>> {
             Some(self.files.clone())
         }
+
+        fn release(&mut self) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async {})
+        }
     }
 
     fn fresh(calls: Arc<AtomicUsize>, files: Arc<dyn Files>) -> Box<dyn Executor> {
@@ -344,6 +355,23 @@ mod tests {
             },
         )]
         .into()
+    }
+
+    #[test]
+    fn forwards_daemon_release() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut resumed = Resumed::new(
+            fresh(calls.clone(), Arc::new(FakeFiles::default())),
+            HashMap::new(),
+            Taken::default(),
+            Mode::Simulated,
+            NetworkRule::default(),
+            false,
+        );
+        workflow_graph::runtime()
+            .unwrap()
+            .block_on(resumed.release());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[test]

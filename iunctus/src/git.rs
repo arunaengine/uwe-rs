@@ -4,9 +4,11 @@
 
 use std::num::NonZeroU32;
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use gix::bstr::ByteSlice;
+use gix::credentials::protocol::Outcome;
 use gix::objs::tree::EntryKind;
 use gix::remote::Direction;
 
@@ -14,7 +16,7 @@ use gix::remote::Direction;
 const NESTING: usize = 8;
 
 /// What to fetch: a repository, a branch, tag or commit of it (its default branch without
-/// one), how much history, and the account for a server that asks for one.
+/// one), how much history, and where the accounts for servers that ask for one come from.
 #[derive(Clone, Debug, Default)]
 pub struct Fetch {
     pub url: String,
@@ -25,7 +27,19 @@ pub struct Fetch {
     /// More refspecs to fetch, like `refs/pull/1/head:refs/pull/1/head`.
     pub refspecs: Vec<String>,
     pub submodules: bool,
-    pub account: Option<(String, String)>,
+    pub accounts: Option<Accounts>,
+}
+
+/// The user and password, or token, of a repository URL; each submodule looks up its own.
+#[derive(Clone)]
+pub struct Accounts(pub Arc<AccountLookup>);
+
+type AccountLookup = dyn Fn(&str) -> Result<Option<(String, String)>, String> + Send + Sync;
+
+impl std::fmt::Debug for Accounts {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Accounts")
+    }
 }
 
 /// The commit that a reference names on the server, without fetching any objects.
@@ -34,7 +48,7 @@ pub fn resolve(fetch: &Fetch) -> Result<String, String> {
     let repository = bare(folder.path())?;
     let remote = remote(&repository, fetch)?;
     let connection = remote.connect(Direction::Fetch).map_err(failed(fetch))?;
-    let connection = with_account(connection, fetch);
+    let connection = connection.with_credentials(answer(&fetch.url, account_of(fetch)?));
     let prepared = (connection.prepare_fetch(gix::progress::Discard, Default::default()))
         .map_err(failed(fetch))?;
     commit_of(fetch, prepared.ref_map())
@@ -93,7 +107,7 @@ fn checkout_nested(
     let repository = bare(folder.path())?;
     let remote = remote(&repository, fetch)?;
     let connection = remote.connect(Direction::Fetch).map_err(failed(fetch))?;
-    let connection = with_account(connection, fetch);
+    let connection = connection.with_credentials(answer(&fetch.url, account_of(fetch)?));
     let mut prepared = (connection.prepare_fetch(gix::progress::Discard, Default::default()))
         .map_err(failed(fetch))?;
     let commit = commit_of(fetch, prepared.ref_map())?;
@@ -130,7 +144,7 @@ fn checkout_nested(
                 depth: None,
                 refspecs: Vec::new(),
                 submodules: true,
-                account: fetch.account.clone(),
+                accounts: fetch.accounts.clone(),
             };
             let place = target.join(&path);
             let _ = std::fs::remove_dir(&place);
@@ -178,22 +192,34 @@ fn remote<'a>(repository: &'a gix::Repository, fetch: &Fetch) -> Result<gix::Rem
         .map_err(|error| error.to_string())
 }
 
-fn with_account<'a, T>(
-    connection: gix::remote::Connection<'a, 'static, 'a, T>,
-    fetch: &Fetch,
-) -> gix::remote::Connection<'a, 'static, 'a, T>
-where
-    T: gix::protocol::transport::client::blocking_io::Transport,
-{
-    let account = fetch.account.clone();
-    // Only the account of the settings, never a helper program or a prompt.
-    connection.with_credentials(move |action| {
+/// The account for the URL of a fetch, only over HTTPS, so that none goes in clear text.
+fn account_of(fetch: &Fetch) -> Result<Option<(String, String)>, String> {
+    match &fetch.accounts {
+        Some(accounts) if fetch.url.starts_with("https://") => (accounts.0)(&fetch.url),
+        _ => Ok(None),
+    }
+}
+
+/// Answers the questions of the server for an account: only the account of the settings, never
+/// a helper program or a prompt, and only to the scheme and host of `url`, not after a redirect.
+fn answer(
+    url: &str,
+    account: Option<(String, String)>,
+) -> impl FnMut(gix::credentials::helper::Action) -> gix::Result<Option<Outcome>> + use<> {
+    let expected = origin(gix::credentials::protocol::Context {
+        url: Some(url.into()),
+        ..Default::default()
+    });
+    move |action| {
         let gix::credentials::helper::Action::Get(context) = action else {
             return Ok(None);
         };
+        let asked = origin(context.clone());
+        let allowed = asked.is_some() && asked == expected;
         Ok(account
             .clone()
-            .map(|(username, password)| gix::credentials::protocol::Outcome {
+            .filter(|_| allowed)
+            .map(|(username, password)| Outcome {
                 identity: gix::sec::identity::Account {
                     username,
                     password,
@@ -201,7 +227,15 @@ where
                 },
                 next: context.into(),
             }))
-    })
+    }
+}
+
+/// The host of an HTTPS address in a credential question, with its port if not the default.
+fn origin(mut context: gix::credentials::protocol::Context) -> Option<String> {
+    context.destructure_url_in_place(false).ok()?;
+    (context.protocol.as_deref() == Some("https"))
+        .then_some(context.host)
+        .flatten()
 }
 
 fn failed(fetch: &Fetch) -> impl Fn(gix::Error) -> String + '_ {
@@ -362,6 +396,60 @@ mod tests {
             Some("https://example.org/data.git")
         );
         assert_eq!(submodule_url(modules, "other", parent), None);
+    }
+
+    #[test]
+    fn answers_own_host() {
+        let account = Some(("git".to_owned(), "token".to_owned()));
+        let ask = |url: &str| {
+            let context = gix::credentials::protocol::Context {
+                url: Some(url.into()),
+                ..Default::default()
+            };
+            let mut respond = answer("https://git.example.org/team/pipeline.git", account.clone());
+            respond(gix::credentials::helper::Action::Get(context)).unwrap()
+        };
+        assert!(ask("https://git.example.org/team/tools.git").is_some());
+        assert!(ask("https://other-host/x.git").is_none());
+        assert!(ask("http://git.example.org/team/tools.git").is_none());
+        assert!(ask("https://git.example.org:8443/team/tools.git").is_none());
+    }
+
+    #[test]
+    fn submodules_ask_separately() {
+        let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = asked.clone();
+        let accounts = Accounts(Arc::new(move |url: &str| {
+            seen.lock().unwrap().push(url.to_owned());
+            Ok(url
+                .starts_with("https://git.example.org/")
+                .then(|| ("git".to_owned(), "token".to_owned())))
+        }));
+        let fetch = |url: &str| Fetch {
+            url: url.into(),
+            accounts: Some(accounts.clone()),
+            ..Fetch::default()
+        };
+        assert!(
+            account_of(&fetch("https://git.example.org/x.git"))
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            account_of(&fetch("https://other-host/x.git"))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            account_of(&fetch("http://git.example.org/x.git"))
+                .unwrap()
+                .is_none()
+        );
+        let asked = asked.lock().unwrap().clone();
+        assert_eq!(
+            asked,
+            ["https://git.example.org/x.git", "https://other-host/x.git"]
+        );
     }
 
     #[test]

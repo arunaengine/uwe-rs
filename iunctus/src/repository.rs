@@ -313,7 +313,7 @@ impl Repository {
         cache: &Path,
         reference: Option<&str>,
         latest: bool,
-        account: Option<(String, String)>,
+        accounts: Option<crate::git::Accounts>,
     ) -> Result<PathBuf, Failure> {
         let parent = self.folder(cache);
         let commit = reference
@@ -326,7 +326,7 @@ impl Repository {
             depth: commit.is_none().then_some(1),
             refspecs: Vec::new(),
             submodules: true,
-            account,
+            accounts,
         };
         let commit = match commit {
             Some(commit) => commit,
@@ -382,14 +382,14 @@ pub(crate) fn prepare(
         return Ok(target.to_owned());
     };
     let cache = crate::cache_directory();
-    // Git signs in with the account of the https provider of the config file for the address.
-    let address = repository.url.clone();
-    let account = || -> Result<Option<(String, String)>, Failure> {
-        let setup = crate::setup::Setup::load(arguments)?;
-        (setup.storage.account(&address)).map_err(|error| Failure::setup(error.to_string()))
+    // Git signs in with the account of the https provider of the config file for each address.
+    let accounts = || -> Result<Option<crate::git::Accounts>, Failure> {
+        let storage = crate::setup::Setup::load(arguments)?.storage;
+        let lookup = move |url: &str| storage.account(url).map_err(|error| error.to_string());
+        Ok(Some(crate::git::Accounts(std::sync::Arc::new(lookup))))
     };
     if repository.host == Host::Git {
-        return repository.fetch_git(&cache, reference, latest, account()?);
+        return repository.fetch_git(&cache, reference, latest, accounts()?);
     }
     let runtime = workflow_graph::runtime().map_err(|error| Failure::setup(error.to_string()))?;
     let token = repository.token();
@@ -401,7 +401,7 @@ pub(crate) fn prepare(
                 host: Host::Git,
                 ..repository
             };
-            git.fetch_git(&cache, reference, latest, account()?)
+            git.fetch_git(&cache, reference, latest, accounts()?)
                 .map_err(|_| error)
         }
         fetched => fetched,

@@ -407,7 +407,13 @@ impl Session {
         let snakefile = self.snakefile.clone();
         self.hook
             .include(&mut self.interpreter, &snakefile, true)
-            .map_err(|error| self.error(&error))
+            .map_err(|error| self.error(&error))?;
+        // The variables of `envvars` in the profile reach the jobs, as `--envvars` does.
+        let names = self.state.borrow().profile.envvars.clone();
+        crate::workflow::check_envvars(&self.interpreter, &names)
+            .map_err(|error| self.error(&error))?;
+        self.state.borrow_mut().envvars.extend(names);
+        Ok(())
     }
 
     /// Plans the jobs of the targets, keeping jobs that already have tasks.

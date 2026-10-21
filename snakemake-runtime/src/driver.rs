@@ -631,21 +631,27 @@ impl Session {
         if let Some(message) = pipe_problem(planner, &self.order, &self.needrun) {
             return Err(self.error(&crate::workflow::workflow_error(message)));
         }
+        // Snakemake's `check_protected_output`: any output that is there and that this user
+        // may not write, other than a link, stops the run, whatever its flags.
         if !self.launch.simulated {
             for job in &self.order {
-                if self.needrun.get(job).copied().unwrap_or(false) {
-                    use std::os::unix::fs::PermissionsExt;
-                    for value in &planner.jobs[*job].output.values {
-                        if value.tag("protected").is_some()
-                            && let Some(output) = value.as_str()
-                            && std::fs::metadata(self.interpreter.host.resolve(output))
-                                .is_ok_and(|metadata| metadata.permissions().mode() & 0o222 == 0)
-                        {
-                            return Err(DriverError::new(format!(
-                                "ProtectedOutputException: write-protected output {output} must be made writable before rerunning"
-                            )));
-                        }
-                    }
+                if !self.needrun.get(job).copied().unwrap_or(false) {
+                    continue;
+                }
+                let protected: Vec<&str> = (planner.jobs[*job].output.values.iter())
+                    .filter_map(Value::as_str)
+                    .filter(|output| {
+                        let path = self.interpreter.host.resolve(output.trim_end_matches('/'));
+                        std::fs::symlink_metadata(&path).is_ok_and(|meta| !meta.is_symlink())
+                            && rustix::fs::access(&path, rustix::fs::Access::WRITE_OK).is_err()
+                    })
+                    .collect();
+                if !protected.is_empty() {
+                    let rule = &planner.rules[planner.jobs[*job].rule].name;
+                    return Err(DriverError::new(format!(
+                        "ProtectedOutputException in rule {rule}: Write-protected output files for rule {rule}:\n    affected files:\n        {}",
+                        protected.join("\n        ")
+                    )));
                 }
             }
         }

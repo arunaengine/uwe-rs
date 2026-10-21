@@ -63,6 +63,9 @@ pub struct Options {
     /// For remote executors: the repository, like `host/team/cwl`, that images which
     /// DockerRequirement builds, loads or imports go to, made with the JavaScript engine.
     pub registry: Option<String>,
+    /// For SLURM with Apptainer without a registry: the folder where those images are saved as
+    /// docker-archive tars by image ID, which the jobs run.
+    pub archives: Option<std::path::PathBuf>,
 }
 
 impl Default for Options {
@@ -75,6 +78,7 @@ impl Default for Options {
             javascript: JavaScriptSettings::default(),
             local_engine: None,
             registry: None,
+            archives: None,
         }
     }
 }

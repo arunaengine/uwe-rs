@@ -117,6 +117,13 @@ pub(crate) fn driver(
                 local_engine: (arguments.executor.as_deref().unwrap_or("local") == "local")
                     .then(|| setup.engine()),
                 registry: setup.cwl_registry.clone(),
+                // Apptainer on SLURM runs a saved image archive; it needs no registry.
+                archives: (arguments.executor.as_deref() == Some("slurm")
+                    && matches!(
+                        setup.slurm_container(arguments),
+                        "apptainer" | "singularity"
+                    ))
+                .then(|| cache_directory().join("cwl-images")),
                 ..cwl_runtime::Options::default()
             };
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)

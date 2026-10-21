@@ -1,6 +1,9 @@
-//! Checks CWL image selection, content-addressed recipes and explicit remote refusal.
+//! Checks CWL image selection, content-addressed recipes, saved archives and remote refusal.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::io::{BufRead, BufReader, Read, Write};
+use std::sync::{Arc, Mutex};
 
 use cwl_runtime::{CwlDriver, Options};
 use workflow_graph::{Driver, Launch};
@@ -100,10 +103,119 @@ fn refuses_remote_preparation() {
         };
         let error = image_in(root.path(), section, fields, remote).unwrap_err();
         assert!(error.contains("`[cwl]` section"), "{error}");
-        assert!(error.contains("Apptainer on SLURM"), "{error}");
+        assert!(error.contains("SLURM with Apptainer"), "{error}");
         let unsupported = error.starts_with("unsupported: ");
         assert_eq!(unsupported, section == "requirements", "{error}");
     }
+}
+
+/// The image ID that the fake engine loads.
+const LOADED: &str = "sha256:abababababababababababababababababababababababababababababababab";
+
+/// A container engine at a socket in `folder` that loads one image, [`LOADED`], and saves it as
+/// `saved image`. It notes the path of each request.
+fn fake_engine(folder: &std::path::Path) -> (String, Arc<Mutex<Vec<String>>>) {
+    let socket = folder.join("engine.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let seen = requests.clone();
+    std::thread::spawn(move || {
+        let mut loaded = false;
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let path = request(&mut reader);
+            seen.lock().unwrap().push(path.clone());
+            let (status, body) = if path.contains("/images/load") {
+                loaded = true;
+                let line = format!("{{\"stream\":\"Loaded image ID: {LOADED}\\n\"}}\n");
+                ("200 OK", line)
+            } else if path.ends_with("/get") {
+                ("200 OK", "saved image".to_owned())
+            } else if path.contains("/tag?") {
+                ("201 Created", String::new())
+            } else if path.ends_with("/json") && path.contains("/images/") && !loaded {
+                ("404 Not Found", "{\"message\":\"missing\"}".to_owned())
+            } else if path.ends_with("/json") && path.contains("/images/") {
+                ("200 OK", format!("{{\"Id\":\"{LOADED}\"}}"))
+            } else if path.ends_with("/version") {
+                (
+                    "200 OK",
+                    "{\"Version\":\"27.0.0\",\"ApiVersion\":\"1.47\"}".to_owned(),
+                )
+            } else {
+                ("200 OK", "{}".to_owned())
+            };
+            let head = format!(
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = stream.write_all(format!("{head}{body}").as_bytes());
+        }
+    });
+    (socket.to_string_lossy().into_owned(), requests)
+}
+
+/// Reads one request, with its body, and gives its path.
+fn request(reader: &mut BufReader<std::os::unix::net::UnixStream>) -> String {
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+    let path = line
+        .split_whitespace()
+        .nth(1)
+        .unwrap_or_default()
+        .to_owned();
+    let (mut length, mut chunked) = (0, false);
+    loop {
+        line.clear();
+        reader.read_line(&mut line).unwrap();
+        if line.trim().is_empty() {
+            break;
+        }
+        let (name, value) = line.split_once(':').unwrap_or_default();
+        match name.to_ascii_lowercase().as_str() {
+            "content-length" => length = value.trim().parse().unwrap(),
+            "transfer-encoding" => chunked = value.trim() == "chunked",
+            _ => {}
+        }
+    }
+    let mut body = vec![0; length];
+    reader.read_exact(&mut body).unwrap();
+    while chunked {
+        line.clear();
+        reader.read_line(&mut line).unwrap();
+        let size = usize::from_str_radix(line.trim(), 16).unwrap();
+        let mut chunk = vec![0; size + 2];
+        reader.read_exact(&mut chunk).unwrap();
+        chunked = size > 0;
+    }
+    path
+}
+
+#[test]
+fn saves_slurm_archives() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("image.tar"), "load me").unwrap();
+    let (socket, requests) = fake_engine(root.path());
+    let mut javascript = cwl_runtime::JavaScriptSettings::default();
+    javascript.engine = socket;
+    let archives = root.path().join("archives");
+    let options = || Options {
+        simulated: false,
+        javascript: javascript.clone(),
+        archives: Some(archives.clone()),
+        ..Options::default()
+    };
+    let fields = "    dockerLoad: image.tar";
+    let first = image(root.path(), fields, options()).unwrap();
+    let file = archives.join(LOADED.replace(':', "-") + ".tar");
+    assert_eq!(first, format!("docker-archive:{}", file.display()));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "saved image");
+    // The next run finds the image and its archive, and saves nothing again.
+    assert_eq!(image(root.path(), fields, options()).unwrap(), first);
+    let requests = requests.lock().unwrap();
+    let saved = requests.iter().filter(|path| path.ends_with("/get"));
+    assert_eq!(saved.count(), 1, "{requests:?}");
 }
 
 #[test]

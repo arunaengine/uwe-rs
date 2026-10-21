@@ -1,4 +1,5 @@
-//! Prepares CWL Docker recipes and archives with a local engine, and pushes them for remote executors.
+//! Prepares CWL Docker recipes and archives with a local engine, and pushes or saves them for
+//! remote executors.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -32,14 +33,15 @@ pub(crate) fn select(docker: Option<(&Docker, bool)>, options: &Options) -> Resu
     };
     // Like cwltool, a hint whose image cannot be made fails the tool instead of running it in
     // the default image; only a requirement counts as unsupported.
-    if !options.simulated && options.local_engine.is_none() && options.registry.is_none() {
+    let remote = options.local_engine.is_none() && options.archives.is_none();
+    if !options.simulated && remote && options.registry.is_none() {
         let message = format!(
             "a DockerRequirement {} with dockerFile, dockerLoad or dockerImport needs an image \
              that remote executors can pull. Set `registry` in the `[cwl]` section of the config \
-             file to a registry that iunctus can push to and the nodes can pull from (Apptainer \
-             on SLURM pulls from it too); iunctus then makes the image here and pushes it there. \
-             Otherwise push the image yourself and name it in dockerPull, or run the tool with \
-             the local executor",
+             file to a registry that iunctus can push to and the nodes can pull from; iunctus \
+             then makes the image here and pushes it there. SLURM with Apptainer or Singularity \
+             needs no registry. Otherwise push the image yourself and name it in dockerPull, or \
+             run the tool with the local executor",
             if required { "requirement" } else { "hint" }
         );
         return Err(match required {
@@ -132,9 +134,15 @@ fn prepare(docker: &Docker, source: ImageSource, options: &Options) -> Result<St
             .prepare_image(source, &path, &tag, expected, cancel)
             .await)
             .map_err(|error| error.to_string())?;
-        match (&options.local_engine, &options.registry) {
-            (None, Some(registry)) => {
+        match (&options.local_engine, &options.registry, &options.archives) {
+            (None, Some(registry), _) => {
                 (engine.push_image(&id, registry, cancel).await).map_err(|error| error.to_string())
+            }
+            // Saved once for each image, by its ID; the jobs run the archive.
+            (None, None, Some(folder)) => {
+                let file = folder.join(format!("{}.tar", id.replace(':', "-")));
+                (engine.save_image(&id, &file, cancel).await).map_err(|error| error.to_string())?;
+                Ok(format!("docker-archive:{}", file.display()))
             }
             _ => Ok(id),
         }

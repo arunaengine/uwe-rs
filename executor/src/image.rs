@@ -242,6 +242,38 @@ impl ContainerEngine {
             .ok_or_else(|| self.image_error("the push gave no manifest digest"))
     }
 
+    /// Saves a local image as a docker-archive tar at `file`, as `docker save` does, unless
+    /// the file is there. It is written aside and moved, so no reader sees half of it.
+    pub async fn save_image(
+        &self,
+        id: &str,
+        file: &std::path::Path,
+        cancel: &crate::CancellationToken,
+    ) -> Result<(), ExecutorError> {
+        if tokio::fs::try_exists(file).await? {
+            return Ok(());
+        }
+        let folder = file.parent().unwrap_or(std::path::Path::new("."));
+        tokio::fs::create_dir_all(folder).await?;
+        let partial = tempfile::NamedTempFile::new_in(folder)?;
+        let save = async {
+            let mut output = tokio::fs::File::from_std(partial.reopen()?);
+            let mut stream = self.client().export_image(id);
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|error| failed(self, error))?;
+                tokio::io::AsyncWriteExt::write_all(&mut output, &chunk).await?;
+            }
+            output.sync_all().await?;
+            Ok::<_, ExecutorError>(())
+        };
+        tokio::select! {
+            () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
+            result = save => result?,
+        }
+        partial.persist(file).map_err(|error| error.error)?;
+        Ok(())
+    }
+
     async fn tag_image(&self, id: &str, reference: &str) -> Result<(), ExecutorError> {
         let (repo, tag) = reference
             .rsplit_once(':')

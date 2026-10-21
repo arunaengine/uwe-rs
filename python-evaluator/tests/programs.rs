@@ -134,6 +134,19 @@ fn identifies_frozensets() {
     assert_eq!(evaluate(code).expect("runs"), "True True True\n");
 }
 
+/// Removing from a dict keeps the order of the rest and takes the same time wherever the
+/// key is: 200,000 removals take seconds; `popitem` takes the last entry.
+#[test]
+fn removes_dict_keys() {
+    let code = "d = {i: i for i in range(200000)}\nfor i in range(0, 200000, 2):\n    del d[i]\nfor i in range(1, 199990, 2):\n    d.pop(i)\nd[5] = 'again'\nprint(list(d.items()), d.popitem(), next(iter(d)))\n";
+    let start = std::time::Instant::now();
+    let output = evaluate(code).expect("runs");
+    let expected = "[(199991, 199991), (199993, 199993), (199995, 199995), (199997, 199997), (199999, 199999), (5, 'again')] (5, 'again') 199991\n";
+    assert_eq!(output, expected);
+    let seconds = start.elapsed().as_secs();
+    assert!(seconds < 60, "took {seconds} s");
+}
+
 #[test]
 fn reports_exception_lines() {
     let error = evaluate("x = 1\ny = {}\ny['missing']\n").expect_err("a KeyError");

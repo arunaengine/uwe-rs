@@ -5,6 +5,7 @@
 
 pub mod builtins;
 pub mod complex;
+pub mod entries;
 pub mod error;
 pub mod format;
 pub mod hashing;

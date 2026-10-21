@@ -891,3 +891,31 @@ fn keeps_held_scripts() {
             .all(|name| !name.contains(".iunctus-") || name.ends_with("-other"))
     );
 }
+
+/// An output of a shadow job whose folder is a link to another file system moves there as
+/// `shutil.move` does, by a copy, and the shadow directory goes.
+#[test]
+fn moves_across_devices() {
+    use std::os::unix::fs::MetadataExt;
+    let snakefile =
+        "rule a:\n    output: 'out/x.txt'\n    shadow: 'minimal'\n    shell: 'unused'\n";
+    let steps: [(&str, Step); 1] = [("a", |folder| {
+        std::fs::write(folder.join("out/x.txt"), "made").unwrap();
+        0
+    })];
+    let folder = folder();
+    let other = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).expect("another folder");
+    let devices = [folder.path(), other.path()].map(|path| std::fs::metadata(path).unwrap().dev());
+    if devices[0] == devices[1] {
+        return;
+    }
+    std::os::unix::fs::symlink(other.path(), folder.path().join("work/out")).unwrap();
+    let (folder, _host, error) = run(folder, snakefile, &steps);
+    assert_eq!(error, None);
+    assert_eq!(
+        std::fs::read_to_string(other.path().join("x.txt")).unwrap(),
+        "made"
+    );
+    let shadows = std::fs::read_dir(folder.path().join("work/.snakemake/shadow")).unwrap();
+    assert_eq!(shadows.count(), 0, "the shadow directory is gone");
+}

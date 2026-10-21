@@ -1223,8 +1223,8 @@ fn source_error(message: &str) -> Error {
     Error::new("SourceFileError", message)
 }
 
-/// `github(repo, path, tag=..., branch=..., commit=..., host=...)`, and the same for `gitlab`
-/// and `gitfile`, with Snakemake's checks of the arguments.
+/// `github(repo, path, tag=..., branch=..., commit=..., host=...)`, the same for `gitlab`,
+/// and `gitfile(repo_path, path, tag=..., ref=..., commit=...)`, checked as in Snakemake.
 fn hosted(provider: &'static str, state: Rc<RefCell<State>>) -> Value {
     Value::builtin(provider, move |interpreter, mut args| {
         let Some(repository) = args.take(0, "repo") else {
@@ -1235,13 +1235,22 @@ fn hosted(provider: &'static str, state: Rc<RefCell<State>>) -> Value {
             return Err(source_error("path must be given"));
         };
         let path = interpreter.to_str(&path)?;
+        // `gitfile` is Snakemake's `LocalGitFile(repo_path, path, tag, ref, commit)`; the
+        // others take a branch instead of a ref.
+        let keys = match provider {
+            "gitfile" => ["tag", "ref", "commit"],
+            _ => ["tag", "branch", "commit"],
+        };
         let mut references = Vec::new();
-        for key in ["tag", "branch", "commit"] {
-            if let Some(value) = args.take_keyword(key)
+        for (index, key) in keys.into_iter().enumerate() {
+            if let Some(value) = args.take(index + 2, key)
                 && !value.is_none()
             {
                 references.push(interpreter.to_str(&value)?);
             }
+        }
+        if provider == "gitfile" {
+            args.no_keywords("LocalGitFile.__init__")?;
         }
         let [reference] = references.as_slice() else {
             return Err(source_error(

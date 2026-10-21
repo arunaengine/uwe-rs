@@ -89,27 +89,14 @@ fn written(folder: &Path, write: impl FnOnce(&Path) -> Result<(), String>) -> Re
     result
 }
 
-/// The commit that a tag, branch or commit ID names, as `git show <reference>:<path>` finds it.
+/// The commit that a revision names, as `git show <revision>:<path>` finds it: a tag, a
+/// branch, a commit ID or a short one, or an expression like `main~1`.
 fn commit_of(repository: &gix::Repository, reference: &str) -> Result<gix::ObjectId, String> {
     let missing = || format!("no tag, branch or commit {reference}");
-    if reference.len() == 40
-        && let Ok(id) = gix::ObjectId::from_hex(reference.as_bytes())
-    {
-        return Ok(id);
-    }
-    for name in [
-        format!("refs/tags/{reference}"),
-        format!("refs/heads/{reference}"),
-        reference.to_owned(),
-    ] {
-        if let Ok(Some(mut found)) = repository.try_find_reference(name.as_str()) {
-            let id = found.peel_to_id().map_err(|error| error.to_string())?;
-            let object = id.object().map_err(|error| error.to_string())?;
-            let commit = object.peel_to_commit().map_err(|_| missing())?;
-            return Ok(commit.id);
-        }
-    }
-    Err(missing())
+    let id = (repository.rev_parse_single(reference)).map_err(|_| missing())?;
+    let object = id.object().map_err(|error| error.to_string())?;
+    let commit = object.peel_to_commit().map_err(|_| missing())?;
+    Ok(commit.id)
 }
 
 /// Writes the files and links of a tree; submodules stay empty folders. Links come last and

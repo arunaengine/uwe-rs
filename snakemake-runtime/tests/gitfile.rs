@@ -74,8 +74,23 @@ fn reads_local_repositories() {
         "{}",
         read("tag='v1'")
     );
-    assert!(read("branch='main'").contains("echo two > a.txt"));
+    assert!(read("ref='main'").contains("echo two > a.txt"));
     assert!(read(&format!("commit='{first}'")).contains("echo one > a.txt"));
+    // As `git show`, a ref may be a short commit ID or an expression.
+    let short = first.to_hex_with_len(7).to_string();
+    assert!(read(&format!("ref='{short}'")).contains("echo one > a.txt"));
+    assert!(read("ref='main~1'").contains("echo one > a.txt"));
+    assert!(read("ref='main~0'").contains("echo two > a.txt"));
+    let branch = read("branch='main'");
+    assert!(
+        branch.contains("unexpected keyword argument 'branch'"),
+        "{branch}"
+    );
+    let two = read("tag='v1', ref='main'");
+    assert!(
+        two.contains("exactly one of tag, branch, or commit"),
+        "{two}"
+    );
     let missing = read("tag='v9'");
     assert!(
         missing.contains("Failed to read source") && missing.contains("v9"),
@@ -103,7 +118,7 @@ fn fetches_web_repositories() {
         ..Default::default()
     };
     let snakefile =
-        "include: gitfile('https://example.org/repo.git', 'rules/main.smk', branch='dev')\n";
+        "include: gitfile('https://example.org/repo.git', 'rules/main.smk', ref='dev')\n";
     let text = script(folder.path(), snakefile, settings);
     assert!(text.contains("echo web > a.txt"), "{text}");
     assert_eq!(*asked.lock().unwrap(), ["https://example.org/repo.git@dev"]);
@@ -168,7 +183,7 @@ fn contains_crafted_trees() {
     );
     commit.expect("a commit");
     let read = |branch: &str| {
-        let snakefile = format!("include: gitfile('repo', 'rules/main.smk', tag='{branch}')\n");
+        let snakefile = format!("include: gitfile('repo', 'rules/main.smk', ref='{branch}')\n");
         script(folder.path(), &snakefile, Default::default())
     };
     let refused = read("bad");

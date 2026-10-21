@@ -17,7 +17,7 @@ calamine.workspace = true
 cwl-runtime.workspace = true
 executor.workspace = true
 fancy-regex.workspace = true
-gix.workspace = true
+gix = { workspace = true, features = ["revision"] }
 indexmap.workspace = true
 input-schema.workspace = true
 jsonschema.workspace = true

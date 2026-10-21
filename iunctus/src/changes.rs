@@ -410,6 +410,16 @@ fn images(images: &[ImagePin], resolve: Resolve) -> Part {
     };
     let digest = |image: &str| image.split_once('@').map(|(_, digest)| digest.to_owned());
     for image in images {
+        // An image ID names the image itself, which cannot change; no registry knows it.
+        if image.ran.parse::<task_model::Digest>().is_ok() {
+            continue;
+        }
+        if let Some(path) = image.ran.strip_prefix("docker-archive:") {
+            if let Some((kind, detail)) = archive_change(Path::new(path)) {
+                part.changes.push(change(kind, &image.named, Some(detail)));
+            }
+            continue;
+        }
         if !image.pinned() {
             let detail = "the run used an image of this machine without a digest".to_owned();
             part.changes
@@ -431,6 +441,31 @@ fn images(images: &[ImagePin], resolve: Resolve) -> Part {
         part.changes.push(change(kind, &image.named, Some(detail)));
     }
     part
+}
+
+/// How an image archive of this machine differs from the one that a run used: an archive
+/// named by its image ID, `sha256-<hex>.tar`, must still hold that image.
+fn archive_change(path: &Path) -> Option<(Kind, String)> {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    let recorded = (name.strip_prefix("sha256-"))
+        .and_then(|rest| rest.strip_suffix(".tar"))
+        .map(|hex| format!("sha256:{hex}"))
+        .filter(|id| id.parse::<task_model::Digest>().is_ok());
+    let Some(recorded) = recorded else {
+        let detail = "the run used an image archive of this machine without an image ID";
+        return Some((Kind::Unknown, detail.to_owned()));
+    };
+    match slurm_executor::archive_id(path) {
+        Ok(now) if now == recorded => None,
+        Ok(now) => Some((
+            Kind::Changed,
+            format!("its archive holds {now} now; the run used {recorded}"),
+        )),
+        Err(error) => Some((Kind::Changed, format!("its archive is gone: {error}"))),
+    }
 }
 
 fn change(kind: Kind, name: &str, detail: Option<String>) -> Change {
@@ -558,6 +593,60 @@ mod tests {
         );
         let detail = part.changes[0].detail.as_deref().unwrap_or_default();
         assert!(detail.contains("debian@sha256:33 now"), "{detail}");
+    }
+
+    #[test]
+    fn compares_archive_digests() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let config = br#"{"config":{}}"#;
+        let id = task_model::Digest::sha256(config);
+        let write = |name: &str| {
+            let path = folder.path().join(name);
+            let mut archive = tar::Builder::new(std::fs::File::create(&path).expect("a file"));
+            let manifest = br#"[{"Config":"config.json","Layers":[]}]"#;
+            for (name, bytes) in [
+                ("config.json", &config[..]),
+                ("manifest.json", &manifest[..]),
+            ] {
+                let mut header = tar::Header::new_gnu();
+                header.set_size(bytes.len() as u64);
+                header.set_cksum();
+                archive.append_data(&mut header, name, bytes).expect("adds");
+            }
+            archive.finish().expect("writes");
+            format!("docker-archive:{}", path.display())
+        };
+        let same = write(&format!("sha256-{}.tar", id.hex()));
+        let other = write(&format!("sha256-{}.tar", "ab".repeat(32)));
+        let plain = write("tool.tar");
+        let gone = format!("docker-archive:/gone/sha256-{}.tar", "cd".repeat(32));
+        let pins = [
+            id.to_string(),
+            same,
+            other.clone(),
+            plain.clone(),
+            gone.clone(),
+        ]
+        .map(|image| ImagePin {
+            named: image.clone(),
+            ran: image,
+        });
+        let resolve =
+            |image: &str| -> Result<Option<String>, String> { panic!("no registry knows {image}") };
+        let part = images(&pins, &resolve);
+        let found: Vec<(Kind, &str)> = (part.changes.iter())
+            .map(|change| (change.kind.clone(), change.name.as_str()))
+            .collect();
+        assert_eq!(
+            found,
+            [
+                (Kind::Changed, other.as_str()),
+                (Kind::Unknown, plain.as_str()),
+                (Kind::Changed, gone.as_str())
+            ]
+        );
+        let detail = part.changes[0].detail.as_deref().unwrap_or_default();
+        assert!(detail.contains(&format!("holds {id} now")), "{detail}");
     }
 
     #[test]

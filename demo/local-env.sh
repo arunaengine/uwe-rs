@@ -10,7 +10,7 @@ else
 fi
 iunctus_root=$(dirname "$iunctus_demo")
 
-if (cd "$iunctus_root" && cargo build --release -p iunctus); then
+if (cd "$iunctus_root" && cargo build --release -p uwe); then
   export PATH="$iunctus_root/target/release:$PATH"
   export IUNCTUS_SITE_CONFIG="$iunctus_demo/local-config.toml"
   cd "$iunctus_demo" || return

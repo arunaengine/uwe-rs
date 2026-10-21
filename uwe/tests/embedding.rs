@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use iunctus::{CancellationToken, Resume, RunRequest, run::Settings, setup::Setup};
+use uwe::{CancellationToken, Resume, RunRequest, run::Settings, setup::Setup};
 use serde_json::json;
 
 /// The cache folder of this test process, below the target folder and empty at its start,
@@ -130,8 +130,8 @@ async fn shares_configured_driver() {
 
 #[tokio::test]
 async fn validates_then_runs() {
-    use iunctus::application::Policy;
-    use iunctus::forms::{Form, ValidationResponse};
+    use uwe::application::Policy;
+    use uwe::forms::{Form, ValidationResponse};
 
     let root = tempfile::tempdir().unwrap();
     let form = Form::new(
@@ -206,7 +206,7 @@ async fn records_target_controls() {
     )
     .unwrap();
     let mut request = RunRequest::new(Settings::new(root.path()));
-    request.policy = iunctus::application::Policy::Relaxed;
+    request.policy = uwe::application::Policy::Relaxed;
     request.settings.executor = Some("simulator".into());
     request.settings.database = Some(root.path().join("runs.sqlite"));
     request.settings.until = vec!["out".into()];

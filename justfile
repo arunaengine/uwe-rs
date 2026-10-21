@@ -24,7 +24,7 @@ check:
 # Builds the portable Linux binary and keeps symbols for crash backtraces.
 release-binary:
 	rustup target add x86_64-unknown-linux-musl
-	CC_x86_64_unknown_linux_musl=musl-gcc CARGO_INCREMENTAL=0 nice -n 19 cargo build --release --locked --target x86_64-unknown-linux-musl -p iunctus -j 8
+	CC_x86_64_unknown_linux_musl=musl-gcc CARGO_INCREMENTAL=0 nice -n 19 cargo build --release --locked --target x86_64-unknown-linux-musl -p uwe -j 8
 	strip --strip-debug target/x86_64-unknown-linux-musl/release/iunctus
 	file target/x86_64-unknown-linux-musl/release/iunctus
 
@@ -47,7 +47,7 @@ kind-staging-test: release-binary
 
 # Runs four demos and checks failure, resume, cancellation and simulation with local Docker.
 container-runs:
-	nice -n 19 cargo build --offline --locked -p iunctus -j 8
+	nice -n 19 cargo build --offline --locked -p uwe -j 8
 	nice -n 19 python3 -I scripts/container-runs.py target/debug/iunctus
 
 # Fetches the text-only nf-core test workflows at the commits the test-workflows tests expect.
@@ -79,7 +79,7 @@ test-workflows:
 	done
 
 # Fetches the Nextflow workflows of WorkflowHub at the versions of
-# iunctus/tests/fixtures/workflowhub_revisions.txt, all their files as a clone has them, from the
+# uwe/tests/fixtures/workflowhub_revisions.txt, all their files as a clone has them, from the
 # RO-Crate of each version, else from its git repository, else from the git tree that WorkflowHub
 # keeps; files over 1 MiB stay empty.
 workflowhub-test-workflows:
@@ -94,7 +94,7 @@ workflowhub-test-workflows:
 				if [ "$type" = tree ]; then workflowhub_tree "$1" "$name"; else printf '%s\n' "$name"; fi
 			done
 	}
-	grep -v '^#' iunctus/tests/fixtures/workflowhub_revisions.txt | while read -r id version commit remote title; do
+	grep -v '^#' uwe/tests/fixtures/workflowhub_revisions.txt | while read -r id version commit remote title; do
 		target="$root/$id"
 		[ -d "$target" ] && continue
 		work="$(mktemp -d "$root/.fetch.XXXXXX")"
@@ -151,14 +151,14 @@ config-oracle:
 config-test-workflows-test:
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
 	IUNCTUS_CONFIG_ORACLE="${IUNCTUS_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}" \
-	cargo test --release --locked -p iunctus --test config_test_workflows -- --ignored
+	cargo test --release --locked -p uwe --test config_test_workflows -- --ignored
 
 # Runs every nf-core pipeline and every Nextflow workflow of WorkflowHub of the test workflows
 # with the simulator and compares the outcomes.
 run-test-workflows-test:
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
 	WORKFLOWHUB_TEST_WORKFLOWS="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nextflow-workflowhub}" \
-	cargo test --release --locked -p iunctus --test run_test_workflows -- --ignored
+	cargo test --release --locked -p uwe --test run_test_workflows -- --ignored
 
 # Describes the inputs of every Nextflow workflow and CWL document of the test workflows as a run
 # does before its first task (decision 24), without network and without running a task, and
@@ -167,18 +167,18 @@ run-test-workflows-test:
 inputs-test-workflows-test:
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
 	WORKFLOWHUB_TEST_WORKFLOWS="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nextflow-workflowhub}" \
-	cargo test --release --locked -p iunctus --test inputs_test_workflows -- --ignored --exact describes_workflow_inputs
+	cargo test --release --locked -p uwe --test inputs_test_workflows -- --ignored --exact describes_workflow_inputs
 	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test inputs_test_workflows -- --ignored
 
-# Records the stub scripts of the pipelines in iunctus/tests/fixtures/oracle/stub with Nextflow
+# Records the stub scripts of the pipelines in uwe/tests/fixtures/oracle/stub with Nextflow
 # and Docker; give the pipelines as arguments, like `just stub-oracle demo`.
 stub-oracle +pipelines:
-	iunctus/tests/fixtures/oracle/stub/record.sh "${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}/pipelines" {{pipelines}}
+	uwe/tests/fixtures/oracle/stub/record.sh "${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}/pipelines" {{pipelines}}
 
 # Runs the recorded pipelines with -stub and the simulator and compares the task scripts.
 stub-test-workflows-test:
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
-	cargo test --release --locked -p iunctus --test stub_test_workflows -- --ignored
+	cargo test --release --locked -p uwe --test stub_test_workflows -- --ignored
 
 # Fetches the text-only CWL test workflows at the revisions the CWL test-workflows test expects.
 cwl-test-workflows:
@@ -553,4 +553,4 @@ storage-test:
 	serve inputs 9100 "$IUNCTUS_TEST_INPUTS_KEY" "$IUNCTUS_TEST_INPUTS_SECRET" inputs
 	serve store 9101 "$IUNCTUS_TEST_STORE_KEY" "$IUNCTUS_TEST_STORE_SECRET" cache
 	cargo test --locked -p storage --test s3 -- --ignored
-	cargo test --locked -p iunctus --test storage -- --ignored
+	cargo test --locked -p uwe --test storage -- --ignored

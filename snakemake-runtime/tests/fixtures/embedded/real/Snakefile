@@ -1,5 +1,5 @@
 # Jobs of every kind of embedded code, each in an image that is on this machine already, for
-# real runs (iunctus/tests/snakemake_embedded.rs). The outputs of the Python and Bash jobs
+# real runs (uwe/tests/snakemake_embedded.rs). The outputs of the Python and Bash jobs
 # are the ones Snakemake 9.27.0 made (record.sh); those of R and the notebook are checked by
 # their content.
 import json

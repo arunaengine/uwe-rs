@@ -14,7 +14,7 @@ members = [
     "cwl-runtime",
     "executor",
     "input-schema",
-    "iunctus",
+    "uwe",
     "kubernetes-executor",
     "nextflow-config",
     "nextflow-evaluator",

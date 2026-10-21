@@ -20,7 +20,7 @@ import time
 from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
-FIXTURES = ROOT / "iunctus/tests/fixtures"
+FIXTURES = ROOT / "uwe/tests/fixtures"
 IMAGE = "debian:stable-slim@sha256:eb593cf2c358cacef45ca0a424bbc7d30cfa3466265fc2662b9466a0ca6ba1c5"
 TIMEOUT = 60
 

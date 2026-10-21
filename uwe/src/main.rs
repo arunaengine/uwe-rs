@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use iunctus::cli::{self, Failure, HELP};
+use uwe::cli::{self, Failure, HELP};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {

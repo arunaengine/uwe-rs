@@ -531,15 +531,16 @@ rule b:
     assert!(!work.join("results/a").exists(), "the empty folder is gone");
 }
 
-/// A job that failed leaves its outputs marked incomplete, so that the next run makes them
-/// again even when a later job left one there; one that ended well leaves no mark.
+/// The outputs of a running job are marked incomplete in Snakemake's records; once the job
+/// ended, well or not, no mark is left, as Snakemake's `finished` and `cleanup` remove them.
 #[test]
 fn marks_running_outputs() {
     let snakefile = "rule all:\n    input: 'ok.txt', 'half.txt'\nrule good:\n    output: 'ok.txt'\n    shell: 'unused'\nrule broken:\n    output: 'half.txt'\n    shell: 'unused'\n";
     let steps: [(&str, Step); 2] = [
         ("good", |folder| {
+            let marks = std::fs::read_dir(folder.join(".snakemake/incomplete"));
             std::fs::write(folder.join("ok.txt"), "ok").unwrap();
-            0
+            i32::from(marks.map_or(0, Iterator::count) == 0)
         }),
         ("broken", |folder| {
             std::fs::write(folder.join("half.txt"), "half").unwrap();
@@ -547,13 +548,14 @@ fn marks_running_outputs() {
         }),
     ];
     let (folder, _host, error) = run(folder(), snakefile, &steps);
-    assert!(error.is_some());
-    let marks = folder.path().join("work/.snakemake/iunctus-incomplete");
+    let error = error.expect("the run fails");
+    assert!(error.contains("rule broken"), "{error}");
+    let marks = folder.path().join("work/.snakemake/incomplete");
     let names: Vec<String> = std::fs::read_dir(&marks)
         .unwrap()
         .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
-    assert_eq!(names.len(), 1, "only the failed output: {names:?}");
+    assert!(names.is_empty(), "no mark is left: {names:?}");
 }
 
 /// As in Snakemake's test_github_issue988, a job may write into the directory output of a
@@ -831,10 +833,11 @@ fn nolock_skips_locks() {
     assert!(folder.path().join("work/out.txt").is_file());
 }
 
-/// An output that Snakemake's own incomplete record names is made again, as with
-/// `--rerun-incomplete`.
+/// As Snakemake 9.27 does, an output that is there with an incomplete record stops the run
+/// with an IncompleteFilesException; `rerun-incomplete: true` makes it again, and the record
+/// goes.
 #[test]
-fn reruns_snakemake_incomplete() {
+fn stops_on_incomplete() {
     let snakefile = "rule a:\n    output: 'out.txt'\n    shell: 'unused'\n";
     let steps: [(&str, Step); 1] = [("a", |folder| {
         std::fs::write(folder.join("out.txt"), "made").unwrap();
@@ -846,10 +849,22 @@ fn reruns_snakemake_incomplete() {
     let marks = folder.path().join("work/.snakemake/incomplete");
     std::fs::create_dir_all(&marks).unwrap();
     std::fs::write(marks.join("b3V0LnR4dA=="), "{}").unwrap();
+    let (folder, host, error) = run(folder, snakefile, &steps);
+    let error = error.expect("the run stops");
+    assert!(error.contains("IncompleteFilesException"), "{error}");
+    assert!(error.contains("out.txt"), "{error}");
+    assert!(host.tasks.is_empty());
+    let profile = folder.path().join("work/profiles/default");
+    std::fs::create_dir_all(&profile).unwrap();
+    std::fs::write(profile.join("config.yaml"), "rerun-incomplete: true\n").unwrap();
     let (folder, _host, error) = run(folder, snakefile, &steps);
     assert_eq!(error, None);
     let text = std::fs::read_to_string(folder.path().join("work/out.txt")).unwrap();
     assert_eq!(text, "made");
+    let record = folder
+        .path()
+        .join("work/.snakemake/incomplete/b3V0LnR4dA==");
+    assert!(!record.exists(), "the record is gone");
 }
 
 /// A script that this run wrote below `.snakemake` stays while another run of the folder

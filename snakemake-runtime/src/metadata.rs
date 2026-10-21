@@ -30,10 +30,22 @@ pub(crate) fn snakemake_incomplete(workdir: &Path, output: &str) -> PathBuf {
 }
 
 pub(crate) fn mark_incomplete(workdir: &Path, output: &str) -> std::io::Result<()> {
-    let path = incomplete_path(workdir, output);
+    write_mark(workdir, &incomplete_path(workdir, output), b"")
+}
+
+/// Marks an output of a job that runs in place as Snakemake's `started` does, so that a run
+/// that stops meanwhile, of iunctus or of Snakemake, finds it incomplete.
+pub(crate) fn mark_running(workdir: &Path, output: &str) -> std::io::Result<()> {
+    let record = br#"{"external_jobid": null}"#;
+    write_mark(workdir, &snakemake_incomplete(workdir, output), record)
+}
+
+fn write_mark(workdir: &Path, path: &Path, content: &[u8]) -> std::io::Result<()> {
     let parent = path.parent().unwrap_or(workdir);
     std::fs::create_dir_all(parent)?;
-    std::fs::File::create(&path)?.sync_all()?;
+    let mut file = std::fs::File::create(path)?;
+    file.write_all(content)?;
+    file.sync_all()?;
     let mut directory = Some(parent);
     while let Some(path) = directory {
         std::fs::File::open(path)?.sync_all()?;
@@ -46,6 +58,8 @@ pub(crate) fn mark_incomplete(workdir: &Path, output: &str) -> std::io::Result<(
 }
 
 pub(crate) fn clear_incomplete(workdir: &Path, output: &str) -> std::io::Result<()> {
+    // A record of Snakemake goes too, as Snakemake's `finished` and `cleanup` remove it.
+    let _ = std::fs::remove_file(snakemake_incomplete(workdir, output));
     let path = incomplete_path(workdir, output);
     std::fs::remove_file(&path)?;
     std::fs::File::open(path.parent().unwrap_or(workdir))?.sync_all()

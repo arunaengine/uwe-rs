@@ -95,7 +95,10 @@ impl PodStaging {
                 let extra = [("control/wrapper.sh", capture(&script, &transfer)?)];
                 // A task that runs as a user that the image names may differ from the helper.
                 let open = spec.run_as.is_some_and(|run_as| run_as.user.is_none());
-                let planned = self.stage.plan(job, root, &extra, RECORDS, open).await?;
+                let planned = self
+                    .stage
+                    .plan(job, root, &extra, &[], RECORDS, open)
+                    .await?;
                 return Ok(Prepared {
                     prefix: planned.prefix,
                     mounts: planned.mounts,
@@ -126,7 +129,7 @@ impl PodStaging {
         );
         let prefix = executor::capture::attempt_prefix(job)?;
         let layout = (self.stage)
-            .upload(job, root, &[("control/wrapper.sh", script)])
+            .upload(job, root, &[("control/wrapper.sh", script)], &[])
             .await?;
         let mut directories = layout.directories;
         directories.push(UPLOAD.into());

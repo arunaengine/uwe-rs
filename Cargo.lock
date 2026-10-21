@@ -6669,6 +6669,7 @@ dependencies = [
  "executor",
  "opendal",
  "serde_json",
+ "tar",
  "task-model",
  "tempfile",
  "tokio",

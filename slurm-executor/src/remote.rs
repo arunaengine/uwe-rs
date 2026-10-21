@@ -193,12 +193,20 @@ fn send_log(request: &Request, early: bool) -> String {
     )
 }
 
-/// The words of a command as shell words, with the folders of binds that are in the scratch
-/// directory `root` taken from the folder of the node.
+/// The words of a command as shell words, with the folders of binds and the image archive that
+/// are in the scratch directory `root` taken from the folder of the node.
 fn node_words(command: &[String], root: &str) -> Vec<String> {
     let mut words = Vec::new();
+    let archive = format!("docker-archive:{root}/");
     for (index, word) in command.iter().enumerate() {
         let bind = index > 0 && matches!(command[index - 1].as_str(), "--bind" | "--volume");
+        if let Some(rest) = word.strip_prefix(&archive) {
+            words.push(format!(
+                "docker-archive:\"$node/data\"{}",
+                quote(&format!("/{rest}"))
+            ));
+            continue;
+        }
         match word.strip_prefix(root) {
             Some(rest) if bind && (rest.starts_with('/') || rest.starts_with(':')) => {
                 words.push(format!("\"$node/data\"{}", quote(rest)))

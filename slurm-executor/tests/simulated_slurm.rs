@@ -154,9 +154,10 @@ const SACCT: &str = "#!/bin/bash\necho 'sacct: accounting storage is disabled' >
 
 /// Runs the command after the image in the folder of `--pwd`, without a container. A pull
 /// takes a second, notes itself in `state/pulls` and its web proxy in `state/proxies`, and
-/// makes an empty file.
+/// makes an empty file; the pull of an image archive fails without the archive.
 const APPTAINER: &str = r#"#!/bin/bash
 if [ "$1" = pull ]; then
+    case $4 in docker-archive:*) [ -s "${4#docker-archive:}" ] || exit 3 ;; esac
     echo "$4" >> "$(dirname "$0")/state/pulls"
     [ -z "$HTTPS_PROXY" ] || echo "$HTTPS_PROXY $http_proxy" >> "$(dirname "$0")/state/proxies"
     sleep 1
@@ -195,7 +196,7 @@ exit $status
 
 /// Runs the command after the image without a container, as `APPTAINER` does, but sees the
 /// folders of the binds at their targets: it rewrites the paths of the wrapper, which runs on a
-/// node that does not see the scratch folder.
+/// node that does not see the scratch folder. An image archive must be on the node.
 const NODE_APPTAINER: &str = r#"#!/bin/bash
 binds=()
 while [ $# -gt 0 ]; do
@@ -203,9 +204,10 @@ while [ $# -gt 0 ]; do
         --pwd) start=$2; shift 2 ;;
         --bind) rest=${2#*:}; binds+=("${rest%%:*}" "${2%%:*}"); shift 2 ;;
         exec|--*) shift ;;
-        *) shift; break ;;
+        *) image=$1; shift; break ;;
     esac
 done
+case $image in docker-archive:*) [ -s "${image#docker-archive:}" ] || exit 254 ;; esac
 place() {
     local path=$1 index
     for ((index = 0; index < ${#binds[@]}; index += 2)); do
@@ -1510,23 +1512,28 @@ async fn docker_groups_images() {
 
 #[tokio::test]
 async fn stages_through_objects() {
-    stage_objects(false, false).await;
+    stage_objects(false, false, false).await;
 }
 
 #[tokio::test]
 async fn stages_with_credentials() {
-    stage_objects(true, false).await;
+    stage_objects(true, false, false).await;
 }
 
 #[tokio::test]
 async fn stages_uploaded_helper() {
-    stage_objects(false, true).await;
+    stage_objects(false, true, false).await;
+}
+
+#[tokio::test]
+async fn stages_image_archives() {
+    stage_objects(false, false, true).await;
 }
 
 /// Runs a task through a staging root, with presigned requests, or with the credentials of the
 /// file of storage providers and a cleanup of the staging root. An `upload` job downloads the
-/// helper from the staging root.
-async fn stage_objects(credentials: bool, upload: bool) {
+/// helper from the staging root; an `archive` task runs an image archive of this machine.
+async fn stage_objects(credentials: bool, upload: bool, archive: bool) {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), NODE_APPTAINER);
     let mut backend = backend(
@@ -1588,7 +1595,15 @@ async fn stage_objects(credentials: bool, upload: bool) {
         folder: Some(text(&root.path().join("node"))),
         secret_file: secret_file.clone(),
     });
-    let spec = spec("tr a-z A-Z < in.txt > out.txt && cat /opt/iunctus-test/extra.txt >> out.txt");
+    let mut spec =
+        spec("tr a-z A-Z < in.txt > out.txt && cat /opt/iunctus-test/extra.txt >> out.txt");
+    let archived = archive.then(|| image_archive(root.path(), &[]));
+    if let Some(reference) = &archived {
+        spec.image = Some(Image {
+            reference: reference.clone(),
+            platform: None,
+        });
+    }
     let mut staging = staging(root.path(), "hello\n");
     let extra = root.path().join("source/extra.txt");
     std::fs::write(&extra, "extra\n").expect("writes the input");
@@ -1639,6 +1654,22 @@ async fn stage_objects(credentials: bool, upload: bool) {
                 .await
                 .expect("the helper")
         );
+    }
+    if let Some(reference) = archived {
+        // The node got the archive through the staging root, into the folder of the job.
+        let file = reference.trim_start_matches("docker-archive:");
+        let digest = task_model::Digest::sha256(&std::fs::read(file).expect("the archive"));
+        assert!(
+            stage
+                .objects
+                .has_content(&digest)
+                .await
+                .expect("the archive")
+        );
+        let command = std::fs::read_to_string(bin.join("state/101.command")).expect("a script");
+        let script = std::fs::read_to_string(command.trim()).expect("the script");
+        let word = "docker-archive:\"$node/data\"'/control/image.tar'";
+        assert!(script.contains(word), "{script}");
     }
     if let Some(file) = secret_file {
         // The job script names the plan, but not the providers, which come in the environment.
@@ -1735,6 +1766,105 @@ async fn reports_folder_failures() {
     let expected = "cannot make a private folder in ";
     assert!(error.to_string().contains(expected), "{error}");
     assert!(error.to_string().contains("Not a directory"), "{error}");
+}
+
+/// An image archive in `root` whose image has `entrypoint`, saved by its image ID as iunctus
+/// saves them, as the reference of a task.
+fn image_archive(root: &Path, entrypoint: &[&str]) -> String {
+    let folder = root.join("archives");
+    std::fs::create_dir_all(&folder).expect("makes the folder");
+    let file = folder.join(format!("sha256-{}.tar", "cd".repeat(32)));
+    let mut archive = tar::Builder::new(std::fs::File::create(&file).expect("the archive"));
+    let config = serde_json::json!({"config": {"Entrypoint": entrypoint, "Cmd": ["true"]}});
+    let manifest = serde_json::json!([{"Config": "config.json", "Layers": []}]);
+    for (name, value) in [("config.json", config), ("manifest.json", manifest)] {
+        let bytes = value.to_string().into_bytes();
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        (archive.append_data(&mut header, name, bytes.as_slice())).expect("adds a file");
+    }
+    archive.finish().expect("writes the archive");
+    format!("docker-archive:{}", text(&file))
+}
+
+#[tokio::test]
+async fn runs_image_archives() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let apptainer = || Container::Apptainer(text(&bin.join("apptainer")));
+    let reference = image_archive(root.path(), &["/bin/sh", "-c"]);
+    let first_run = backend(root.path(), &bin, apptainer());
+    assert_eq!(first_run.pin(&reference).await.expect("no registry"), None);
+    // The arguments go to the entrypoint of the archive.
+    let spec = TaskSpec {
+        image: Some(Image {
+            reference: reference.clone(),
+            platform: None,
+        }),
+        arguments: vec!["echo archive > out.txt".into()],
+        ..spec("")
+    };
+    let (staging, placement) = (Staging::default(), placement());
+    let job = |name| Job {
+        name,
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let (first, second) = tokio::join!(
+        first_run.run(job("run-A-1-1"), &cancel),
+        first_run.run(job("run-A-2-1"), &cancel)
+    );
+    for finished in [first, second] {
+        let finished = finished.expect("the job ends");
+        assert_eq!(finished.exit_code, Some(0));
+        let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
+        assert_eq!(output, "archive\n");
+    }
+    // One pull job read a copy of the archive in its folder, which is gone.
+    let pulls = std::fs::read_to_string(bin.join("state/pulls")).expect("a pull");
+    let scratch = text(&root.path().join("scratch"));
+    assert!(
+        pulls.starts_with(&format!("docker-archive:{scratch}/image-archive-")),
+        "{pulls}"
+    );
+    assert!(
+        pulls.ends_with("/image.tar\n") && pulls.lines().count() == 1,
+        "{pulls}"
+    );
+    let images = std::fs::read_dir(root.path().join("scratch/images")).expect("the images");
+    let names: Vec<String> = (images.flatten())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        matches!(&names[..], [name] if name.starts_with("archive-") && name.ends_with(".sif")),
+        "{names:?}"
+    );
+    let left = std::fs::read_dir(root.path().join("scratch")).expect("the scratch folder");
+    assert!(
+        left.flatten()
+            .all(|entry| !entry.file_name().to_string_lossy().starts_with("image-"))
+    );
+    // An archive named by its image ID keeps its SIF file for the next run.
+    let next_run = backend(root.path(), &bin, apptainer());
+    let finished = next_run
+        .run(job("run-A-3-1"), &cancel)
+        .await
+        .expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let pulls = std::fs::read_to_string(bin.join("state/pulls")).expect("a pull");
+    assert_eq!(pulls.lines().count(), 1, "{pulls}");
+    // Podman and Docker on the nodes cannot run it.
+    let engine = backend(
+        root.path(),
+        &bin,
+        Container::Engine(EngineCommand::docker("docker")),
+    );
+    let error = engine.run(job("run-A-4-1"), &cancel).await.unwrap_err();
+    assert!(matches!(error, ExecutorError::Unsupported(_)), "{error}");
 }
 
 /// Runs the staging helper when a job of `stage_objects` starts this program as it.

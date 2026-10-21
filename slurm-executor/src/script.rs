@@ -303,11 +303,12 @@ fn apptainer(program: &str, run: &ContainerRun<'_>, gpus: bool) -> Vec<String> {
     command
 }
 
-/// The image as Apptainer names it: images of registries get `docker://`, while a path or an
-/// address with its own scheme stays as it is.
+/// The image as Apptainer names it: images of registries get `docker://`, while a path, an
+/// image archive or an address with its own scheme stays as it is.
 fn image(reference: &str) -> String {
     let local = reference.starts_with('/') || reference.ends_with(".sif");
-    match local || reference.contains("://") {
+    let archive = crate::images::archive_path(reference).is_some();
+    match local || archive || reference.contains("://") {
         true => reference.to_owned(),
         false => format!("docker://{reference}"),
     }

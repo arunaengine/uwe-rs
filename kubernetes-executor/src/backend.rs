@@ -72,7 +72,7 @@ pub struct KubernetesBackend {
     pub unschedulable_time: Duration,
     /// The label value of the Jobs of this backend.
     label: String,
-    pods: Pods,
+    pub(crate) pods: Pods,
     /// Whether the warning that events cannot be listed was logged.
     warned: AtomicBool,
     /// The tasks that stop the daemons of the run when it asks them to.
@@ -81,11 +81,13 @@ pub struct KubernetesBackend {
 
 /// How the container of a Job ended.
 #[derive(Debug, PartialEq, Eq)]
-enum Ended {
+pub(crate) enum Ended {
     /// It exited with this code, for this reason.
     Exited(i32, String),
     /// The pod was stopped for this reason, like `DeadlineExceeded`.
     Stopped(String),
+    /// The pod of a daemon is ready at this IP.
+    Ready(String),
 }
 
 impl KubernetesBackend {
@@ -398,7 +400,7 @@ impl KubernetesBackend {
                 .await;
         }
         self.pods.add(&name).await;
-        let ended = self.wait(&name, cancel).await;
+        let ended = self.wait(&name, false, cancel).await;
         // The log of a container that failed tells why, as when it could not run the wrapper.
         let log = match &ended {
             Ok(Ended::Exited(status, _)) if *status != 0 => {
@@ -641,8 +643,14 @@ impl KubernetesBackend {
         (!lines.is_empty()).then(|| lines.join("; "))
     }
 
-    /// Waits for a container outcome or cancellation before confirming termination.
-    async fn wait(&self, name: &str, cancel: &CancellationToken) -> Result<Ended, ExecutorError> {
+    /// Waits for a container outcome or cancellation before confirming termination, or for a
+    /// `daemon` until its pod is ready.
+    pub(crate) async fn wait(
+        &self,
+        name: &str,
+        daemon: bool,
+        cancel: &CancellationToken,
+    ) -> Result<Ended, ExecutorError> {
         let mut poll = Poll::new(self.poll);
         // Since when the pod finds no node, and how many scale-ups it caused so far.
         let mut unscheduled: Option<(Instant, u64)> = None;
@@ -668,7 +676,8 @@ impl KubernetesBackend {
                 missing = None;
             }
             let problem = match look {
-                Look::Active | Look::Unknown => None,
+                Look::Ready(address) if daemon => return Ok(Ended::Ready(address)),
+                Look::Active | Look::Unknown | Look::Ready(_) => None,
                 Look::Unschedulable(reason) => {
                     let (since, scaled) = *unscheduled.get_or_insert((Instant::now(), 0));
                     if since.elapsed() >= self.unschedulable_time {
@@ -1010,6 +1019,7 @@ fn outcome(
         )),
         Ended::Stopped(reason) if reason == "DeadlineExceeded" => Ok((143, Some(too_long(time)))),
         Ended::Stopped(reason) => Err(format!("the pod was stopped: {reason}")),
+        Ended::Ready(_) => Err("the pod is ready, but the task never ended".to_owned()),
     }
 }
 
@@ -1025,7 +1035,7 @@ fn text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-fn machine(message: String) -> ExecutorError {
+pub(crate) fn machine(message: String) -> ExecutorError {
     ExecutorError::Engine {
         engine: "Kubernetes".into(),
         message,

@@ -43,6 +43,8 @@ pub enum Look {
     /// The pod was stopped without its container ending, for this reason, like
     /// `DeadlineExceeded` or `Evicted`.
     Stopped(String),
+    /// The pod runs and is ready at this IP, as a daemon waits for.
+    Ready(String),
     /// The cluster lists no pod of the Job.
     Missing,
     /// Nothing is known yet: the Job is newer than the last answer, or `kubectl` failed.
@@ -179,11 +181,15 @@ fn look(pod: &Value) -> Look {
     if let Some(condition) = unscheduled {
         return Look::Unschedulable(text(&condition["message"]));
     }
-    match status["phase"].as_str() {
-        Some("Failed") => Look::Stopped(match text(&status["reason"]) {
+    let ready = (conditions.iter())
+        .any(|condition| condition["type"] == "Ready" && condition["status"] == "True");
+    let address = (status["podIP"].as_str()).filter(|address| ready && !address.is_empty());
+    match (status["phase"].as_str(), address) {
+        (Some("Failed"), _) => Look::Stopped(match text(&status["reason"]) {
             reason if reason.is_empty() => "Failed".to_owned(),
             reason => reason,
         }),
+        (Some("Running"), Some(address)) => Look::Ready(address.to_owned()),
         _ => Look::Active,
     }
 }
@@ -212,6 +218,10 @@ mod tests {
             pod("g", json!({"phase": "Running", "containerStatuses": [
                 {"state": {"running": {}}},
                 {"state": {"terminated": {"exitCode": 137, "reason": "OOMKilled"}}}]})),
+            pod("i", json!({"phase": "Running", "podIP": "10.1.2.3",
+                "conditions": [{"type": "Ready", "status": "True"}]})),
+            pod("j", json!({"phase": "Running", "podIP": "10.1.2.3",
+                "conditions": [{"type": "Ready", "status": "False"}]})),
             pod("h", json!({"phase": "Pending", "conditions": [{"type": "PodScheduled",
                 "status": "False", "reason": "Unschedulable",
                 "message": "0/3 nodes are available: 3 Insufficient memory."}]})),
@@ -234,6 +244,8 @@ mod tests {
         assert_eq!(looks["g"], ended(137, "OOMKilled"));
         let message = "0/3 nodes are available: 3 Insufficient memory.";
         assert_eq!(looks["h"], Look::Unschedulable(message.into()));
+        assert_eq!(looks["i"], Look::Ready("10.1.2.3".into()));
+        assert_eq!(looks["j"], Look::Active);
     }
 
     #[test]

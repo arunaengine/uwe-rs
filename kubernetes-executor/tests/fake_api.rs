@@ -309,6 +309,8 @@ fn pod(folder: &Path, name: &str, running: &Running) -> Value {
         },
         "status": {
             "phase": phase,
+            "podIP": "10.0.0.7",
+            "conditions": [{"type": "Ready", "status": if running_now { "True" } else { "False" }}],
             "initContainerStatuses": init,
             "containerStatuses": statuses,
         },
@@ -853,6 +855,43 @@ async fn fails_unschedulable_pods() {
         "{:?}",
         begun.elapsed()
     );
+}
+
+#[tokio::test]
+async fn daemons_use_checks() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (mut backend, _) = backend(root.path()).await;
+    backend.unschedulable_time = Duration::from_secs(1);
+    let mut spec = spec("debian:stable-slim", "sleep 30");
+    spec.outputs.clear();
+    let daemon = EnvironmentValue::Literal("{}".into());
+    (spec.environment).insert(executor::daemon::DAEMON_ENV.into(), daemon);
+    let (staging, placement) = (Staging::default(), placement());
+    let job = |name| Job {
+        name,
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let served = backend.run(job("run-D-1-1"), &cancel).await;
+    assert_eq!(
+        served.expect("a ready daemon").address.as_deref(),
+        Some("10.0.0.7")
+    );
+    cancel.cancel();
+    let released = tokio::time::timeout(Duration::from_secs(30), backend.release()).await;
+    released.expect("the daemon stops");
+    // A daemon without a node fails as any pod does, instead of waiting for ever.
+    let server = root.path().join("server");
+    std::fs::write(server.join("unschedulable"), "").expect("fills the nodes");
+    let cancel = CancellationToken::new();
+    let running = backend.run(job("run-D-2-1"), &cancel);
+    let waited = tokio::time::timeout(Duration::from_secs(30), running).await;
+    let error = waited.expect("the daemon does not hang").unwrap_err();
+    assert!(error.to_string().contains("cannot be scheduled"), "{error}");
+    let released = tokio::time::timeout(Duration::from_secs(30), backend.release()).await;
+    released.expect("the failed daemon stops");
 }
 
 #[tokio::test]

@@ -28,6 +28,44 @@ fn graph(command: &mut Command, directory: &Path) -> (i32, String) {
 }
 
 #[test]
+fn hints_old_folders() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let (cache, config) = (
+        directory.path().join("cache"),
+        directory.path().join("config"),
+    );
+    for folder in [&cache, &config] {
+        std::fs::create_dir_all(folder.join("iunctus")).expect("makes the old folder");
+    }
+    let hints = || {
+        let output = common::command()
+            .arg("--version")
+            .env("XDG_CACHE_HOME", &cache)
+            .env("XDG_CONFIG_HOME", &config)
+            .output()
+            .expect("runs uwe");
+        let error = String::from_utf8_lossy(&output.stderr).into_owned();
+        error.lines().map(str::to_owned).collect::<Vec<_>>()
+    };
+    let hint = |folder: &Path, kept: &str| {
+        let (old, new) = (folder.join("iunctus"), folder.join("uwe"));
+        format!(
+            "uwe: found {} from iunctus; move it to {} to keep {kept}",
+            old.display(),
+            new.display()
+        )
+    };
+    let expected = [
+        hint(&config, "its config files"),
+        hint(&cache, "its runs and cache"),
+    ];
+    assert_eq!(hints(), expected);
+    // A new folder that exists already silences its hint.
+    std::fs::create_dir_all(cache.join("uwe")).expect("makes the new folder");
+    assert_eq!(hints(), expected[..1]);
+}
+
+#[test]
 fn environment_selects_config() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let site = directory.path().join("site.toml");

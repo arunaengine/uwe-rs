@@ -1005,7 +1005,10 @@ fn outcome(
         Ended::Exited(0, _) => recorded
             .map(|code| (code, None))
             .ok_or_else(|| "the container ended without the exit code of the task".to_owned()),
-        Ended::Exited(executor::wrapper::TIMED_OUT, _) if time.is_some() => {
+        // A task that ended with 124 itself recorded it; the timer ends the wrapper first.
+        Ended::Exited(executor::wrapper::TIMED_OUT, _)
+            if time.is_some() && recorded != Some(executor::wrapper::TIMED_OUT) =>
+        {
             Ok((143, Some(too_long(time))))
         }
         Ended::Exited(status, reason) if reason == "OOMKilled" => Ok((
@@ -1096,6 +1099,8 @@ mod tests {
         assert_eq!(timed.0, 143);
         assert!(timed.1.expect("a note").contains("time of 9 seconds"));
         assert!(outcome(None, &exited(124, "Error"), None).is_err());
+        let own = outcome(Some(124), &exited(124, "Error"), Some(9));
+        assert_eq!(own, Ok((124, None)), "a task that ends with 124 itself");
         assert!(outcome(None, &Ended::Stopped("Evicted".into()), None).is_err());
     }
 }

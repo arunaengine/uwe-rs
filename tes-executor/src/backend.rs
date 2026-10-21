@@ -262,6 +262,10 @@ impl TesBackend {
         let log = status.logs.last().and_then(|log| log.logs.last());
         let ran_out = timer && log.and_then(|log| log.exit_code) == Some(wrapper::TIMED_OUT);
         let finished = self.finish(job, &task, &status, root).await;
+        // A task that ended with 124 itself recorded it; the timer ends the wrapper first.
+        let recorded = Finished::from_control(root.to_owned()).ok();
+        let own = recorded.and_then(|recorded| recorded.exit_code) == Some(wrapper::TIMED_OUT);
+        let ran_out = ran_out && !own;
         let ended = matches!(status.state, State::Complete | State::ExecutorError);
         if let (Err(error), Some(_), true) = (&finished, &self.staging, ended) {
             // The objects stay, as they are the only copy of the results.

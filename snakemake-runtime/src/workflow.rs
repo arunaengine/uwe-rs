@@ -25,6 +25,37 @@ use crate::remote::Mirrors;
 use crate::rule::{Action, Items, Rule, ShellCode, retag};
 
 /// A `WorkflowError`, the error Snakemake raises for mistakes in a workflow.
+/// Checks the environment variables that jobs get, as Snakemake's `register_envvars`: valid
+/// names that are set.
+pub fn check_envvars(interpreter: &Interpreter, names: &[String]) -> Result<(), Error> {
+    let invalid: Vec<String> = names
+        .iter()
+        .filter(|name| {
+            name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        })
+        .map(|name| python_evaluator::format::quote(name))
+        .collect();
+    if !invalid.is_empty() {
+        return Err(workflow_error(format!(
+            "Invalid environment variables requested: {}. Environment variable names may only contain alphanumeric characters and the underscore. ",
+            invalid.join(", ")
+        )));
+    }
+    let environment = interpreter.host.environment();
+    let undefined: Vec<&String> = names
+        .iter()
+        .filter(|name| !environment.iter().any(|(key, _)| key == *name))
+        .collect();
+    if !undefined.is_empty() {
+        let undefined: Vec<&str> = undefined.iter().map(|name| name.as_str()).collect();
+        return Err(workflow_error(format!(
+            "The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:\n{}",
+            undefined.join("\n")
+        )));
+    }
+    Ok(())
+}
+
 pub fn workflow_error(message: impl Into<String>) -> Error {
     let class = python_evaluator::types::library_exception(
         "WorkflowError",
@@ -785,32 +816,7 @@ impl Hook {
                 for name in &args.positional {
                     names.push(interpreter.to_str(name)?);
                 }
-                let invalid: Vec<String> = names
-                    .iter()
-                    .filter(|name| {
-                        name.is_empty()
-                            || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-                    })
-                    .map(|name| python_evaluator::format::quote(name))
-                    .collect();
-                if !invalid.is_empty() {
-                    return Err(workflow_error(format!(
-                        "Invalid environment variables requested: {}. Environment variable names may only contain alphanumeric characters and the underscore. ",
-                        invalid.join(", ")
-                    )));
-                }
-                let environment = interpreter.host.environment();
-                let undefined: Vec<&String> = names
-                    .iter()
-                    .filter(|name| !environment.iter().any(|(key, _)| key == *name))
-                    .collect();
-                if !undefined.is_empty() {
-                    let undefined: Vec<&str> = undefined.iter().map(|name| name.as_str()).collect();
-                    return Err(workflow_error(format!(
-                        "The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:\n{}",
-                        undefined.join("\n")
-                    )));
-                }
+                check_envvars(interpreter, &names)?;
                 self.state.borrow_mut().envvars.extend(names);
             }
             GlobalKeyword::PepFile => {

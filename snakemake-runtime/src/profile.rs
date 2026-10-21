@@ -56,6 +56,8 @@ pub struct Profile {
     pub batch: Option<(String, usize, usize)>,
     /// `nolock:`, which leaves the working directory unlocked.
     pub nolock: bool,
+    /// `envvars:`, the variables of this environment that jobs get.
+    pub envvars: Vec<String>,
 }
 
 pub const RERUN_TRIGGERS: [&str; 5] = ["mtime", "params", "input", "software-env", "code"];
@@ -294,6 +296,9 @@ impl Profile {
         self.all_temp = self.all_temp || other.all_temp;
         self.notemp = self.notemp || other.notemp;
         self.nolock = self.nolock || other.nolock;
+        if !other.envvars.is_empty() {
+            self.envvars = other.envvars;
+        }
         if other.wrapper_prefix.is_some() {
             self.wrapper_prefix = other.wrapper_prefix;
         }
@@ -416,6 +421,7 @@ impl Profile {
                 "all-temp" => profile.all_temp = interpreter.truthy(&value)?,
                 "notemp" | "nt" | "no-temp" => profile.notemp = interpreter.truthy(&value)?,
                 "nolock" => profile.nolock = interpreter.truthy(&value)?,
+                "envvars" => profile.envvars = words(interpreter, &value)?,
                 "wrapper-prefix" => profile.wrapper_prefix = Some(interpreter.to_str(&value)?),
                 "groups" => profile.groups = pairs(interpreter, &value)?,
                 "group-components" => {
@@ -551,7 +557,6 @@ impl Profile {
                 | "skip-script-cleanup"
                 | "trust-io-cache"
                 | "output-wait"
-                | "envvars"
                 | "precommand"
                 | "preemptible-rules"
                 | "preemptible-retries" => {}

@@ -1,6 +1,6 @@
 //! Brace expansion of output patterns. Bash expands braces before it expands variables, so the
 //! wrapper cannot leave `*.{html,zip}` in a variable to Bash; the patterns are expanded here.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 /// The patterns that the shell's brace expansion makes of a pattern: `*.{html,zip}` gives

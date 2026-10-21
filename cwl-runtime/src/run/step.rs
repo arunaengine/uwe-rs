@@ -1,6 +1,6 @@
 //! Starting the steps of a workflow: the input object of a step from its sources, its scatter
 //! into one job per element, `valueFrom`, and `when`, which may skip the step.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashSet;

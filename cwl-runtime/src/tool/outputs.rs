@@ -1,6 +1,6 @@
 //! The outputs a tool asks the executor for: the globs and secondary files of its output
 //! bindings, with `/` for directories, and the files an abstract `Operation` is taken to make.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use cwl_parser::model::{OutputBinding, OutputParameter, SecondaryFile, Type, short_name};

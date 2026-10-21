@@ -1,5 +1,5 @@
 //! Lease ownership loss, expired takeover and unsupported remote service boundaries.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use content_store::{Holder, Store, StoreError, layout};

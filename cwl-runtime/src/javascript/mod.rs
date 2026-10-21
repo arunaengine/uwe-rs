@@ -1,6 +1,6 @@
 //! JavaScript for CWL expressions, run in Boa, a JavaScript engine written in Rust, so that no
 //! Node.js is needed.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod budget;

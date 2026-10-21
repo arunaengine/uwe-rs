@@ -1,5 +1,5 @@
 //! Counts schema inputs, validation problems, and output totals for workflow corpus tests.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::fmt;

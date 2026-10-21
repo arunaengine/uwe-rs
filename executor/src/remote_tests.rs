@@ -1,5 +1,5 @@
 //! Checks plans, the helper and collection together, with a staging root in a folder or in S3.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;

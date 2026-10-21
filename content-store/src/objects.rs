@@ -1,6 +1,6 @@
 //! The objects of a store as a whole, for clean-up: listing them with their sizes and times,
 //! and removing them. Also the mark of the last use of a cache entry.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::io::ErrorKind as IoErrorKind;

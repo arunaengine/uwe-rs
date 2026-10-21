@@ -1,5 +1,5 @@
 //! Streams repodata and verified packages into the preparation cache through caller transport.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::fs::{File, OpenOptions};

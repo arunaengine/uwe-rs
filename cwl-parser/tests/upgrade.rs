@@ -1,5 +1,5 @@
 //! Tests the upgrade of v1.0 and development versions to the v1.2 model, rule by rule.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::sync::Arc;

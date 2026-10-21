@@ -1,5 +1,5 @@
 //! Marks scatters and inputs whose simulated shape depends on real output data.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::PathBuf;

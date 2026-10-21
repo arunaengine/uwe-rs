@@ -1,6 +1,6 @@
 //! Prepares an attempt for a node that shares no folders with this machine: uploads its inputs
 //! to the staging root, writes the plan of the helper, and collects what the attempt sent back.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeSet;

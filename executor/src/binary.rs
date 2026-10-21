@@ -1,6 +1,6 @@
 //! The static iunctus binary that iunctus uploads to the staging root, so that the jobs on the
 //! nodes download it from there and stage their files with it.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::io::Read;

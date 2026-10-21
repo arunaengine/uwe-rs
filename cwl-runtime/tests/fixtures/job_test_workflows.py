@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run -q --with ruamel.yaml python3
 """Find example job files that match CWL workflow fixture inputs."""
-# Copyright (c) 2026 The iunctus Contributors
+# Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 import os

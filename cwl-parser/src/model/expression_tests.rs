@@ -1,5 +1,5 @@
 //! Tests how expression strings split into text, parameter references and JavaScript.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use crate::model::expression::{Expression, ExpressionKind, Part};

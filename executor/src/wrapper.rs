@@ -1,6 +1,6 @@
 //! The Bash wrapper that runs a task in its work directory and collects its outputs
 //! (design section 5.4). It only knows the neutral names of the specification.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use task_model::{EnvironmentValue, TaskSpec};

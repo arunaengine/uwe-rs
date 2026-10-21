@@ -1,5 +1,5 @@
 //! Tests the expansion rules of Schema Salad and the annotation table of CWL fields.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use crate::salad::context::{

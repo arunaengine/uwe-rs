@@ -1,6 +1,6 @@
 //! The CWL driver of the execution graph: it loads a document and its input object, starts
 //! the main process, and turns outcomes of tasks into more tasks.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashSet;

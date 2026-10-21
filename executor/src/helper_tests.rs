@@ -1,5 +1,5 @@
 //! Checks stage-in and stage-out of the helper with a staging root in a folder.
-// Copyright (c) 2026 The iunctus Contributors
+// Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use super::*;

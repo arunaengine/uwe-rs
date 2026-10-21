@@ -102,22 +102,30 @@ pub fn updated(target: &Operand, name: &str, others: &[Operand]) -> Option<Table
     };
     let mut result = table.clone();
     match name {
-        "update" => (others.iter())
-            .filter(|other| !matches!(other, Operand::Table(_, other) if other == address))
-            .for_each(|other| result.update(other)),
+        "update" | "difference_update" => apply(&mut result, *address, name, others),
         "intersection_update" => {
             result = intersected(table, *address, others);
             result.finger = table.finger;
         }
-        "difference_update" => others
-            .iter()
-            .for_each(|other| result.discard_all(other, *address)),
         "symmetric_difference_update" => others
             .iter()
             .for_each(|other| result.toggle_all(other, *address)),
         _ => return None,
     }
     Some(result)
+}
+
+/// `update` or `difference_update` on the table of the set at `address`, where it is.
+pub(crate) fn apply(table: &mut Table, address: usize, name: &str, others: &[Operand]) {
+    for other in others {
+        match name {
+            "update" if !matches!(other, Operand::Table(_, other) if *other == address) => {
+                table.update(other)
+            }
+            "difference_update" => table.discard_all(other, address),
+            _ => {}
+        }
+    }
 }
 
 /// `set_intersection_multi`: each operand in turn with what is left, from the set itself.

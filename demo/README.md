@@ -1,8 +1,8 @@
-<!-- Running the iunctus demo on a laptop and on the BCF cluster. -->
+<!-- Running the uwe demo on a laptop and on the BCF cluster. -->
 <!-- Copyright (c) 2026 The uwe Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
-# The iunctus demo on the BCF cluster and on a laptop
+# The uwe demo on the BCF cluster and on a laptop
 
 ## TL;DR
 
@@ -12,12 +12,12 @@ On the BCF cluster (binary and config are already in place):
 ssh worm.intra                       # from outside: ssh -J uni-jump worm.intra
 export PATH=$HOME/.local/bin:$PATH
 cd /vol/cb/projects/iunctus/no_backup/demo/nextflow/hello
-iunctus run main.nf                  # each task is a SLURM job with Apptainer, unless it ran before
-iunctus run main.nf                  # again: all tasks come from the cache
+uwe run main.nf                      # each task is a SLURM job with Apptainer, unless it ran before
+uwe run main.nf                      # again: all tasks come from the cache
 ```
 
-The same works in the other folders: `iunctus run Snakefile` in `snakemake/tutorial`,
-`iunctus run scatter-workflow.cwl scatter-job.yml` in `cwl/workflows`, `iunctus run
+The same works in the other folders: `uwe run Snakefile` in `snakemake/tutorial`,
+`uwe run scatter-workflow.cwl scatter-job.yml` in `cwl/workflows`, `uwe run
 dag-diamond.yaml` in `argo/examples`. Each run writes `report.html`; copy it to your computer
 and open it in a browser:
 
@@ -28,8 +28,8 @@ scp worm.intra:/vol/cb/projects/iunctus/no_backup/demo/nextflow/hello/report.htm
 On a laptop with Docker:
 
 ```sh
-source demo/local-env.sh             # builds iunctus, goes into demo/, prints the commands
-iunctus run nextflow/main.nf         # every task is a Docker container; writes report.html
+source demo/local-env.sh             # builds uwe, goes into demo/, prints the commands
+uwe run nextflow/main.nf             # every task is a Docker container; writes report.html
 ```
 
 `demo/local-env.sh` changes only the shell it is sourced in: it puts `target/release` first
@@ -39,8 +39,8 @@ on the PATH and makes [`local-config.toml`](local-config.toml) the config throug
 The rest of this file explains each example, how it compares with the native tool, and what
 was changed.
 
-The official examples of the four languages that iunctus runs, each run with plain
-`iunctus run <file>`. On the BCF cluster every task is a SLURM job with its own Apptainer
+The official examples of the four languages that uwe runs, each run with plain
+`uwe run <file>`. On the BCF cluster every task is a SLURM job with its own Apptainer
 container. On a laptop or workstation every task is a Docker container: see
 [On a laptop with Docker](#on-a-laptop-with-docker).
 
@@ -65,30 +65,30 @@ folders: `nextflow/hello`, `nextflow/nf-core-demo`, `snakemake/tutorial`, `cwl/q
 ## Where to run it
 
 Run it on `worm.intra`, not on the login node `cli.intra`: from the BCF network
-`ssh worm.intra`, from outside `ssh -J uni-jump worm.intra`. iunctus itself runs there and
+`ssh worm.intra`, from outside `ssh -J uni-jump worm.intra`. uwe itself runs there and
 only waits; every task goes to SLURM with `sbatch`.
 
 ## Once: the binary and the config file
 
-The binary is `/vol/cb/projects/iunctus/no_backup/bin/iunctus`, and
-`~/.local/bin/iunctus` points to it. `~/.local/bin` is not on the PATH of a login shell on
+The binary is `/vol/cb/projects/iunctus/no_backup/bin/uwe`, and
+`~/.local/bin/uwe` points to it. `~/.local/bin` is not on the PATH of a login shell on
 worm.intra, so add it once (or add this line to `~/.bashrc`):
 
 ```sh
 export PATH=$HOME/.local/bin:$PATH
 ```
 
-The config file `~/.config/iunctus/config.toml` is a copy of [`bcf-config.toml`](bcf-config.toml):
+The config file `~/.config/uwe/config.toml` is a copy of [`bcf-config.toml`](bcf-config.toml):
 
 ```sh
-mkdir -p ~/.config/iunctus
-cp /vol/cb/projects/iunctus/no_backup/demo/bcf-config.toml ~/.config/iunctus/config.toml
+mkdir -p ~/.config/uwe
+cp /vol/cb/projects/iunctus/no_backup/demo/bcf-config.toml ~/.config/uwe/config.toml
 ```
 
 It says: run tasks on SLURM with Apptainer, leave out the node `rs700-bcf-3` (it does not
 see `/vol`), keep the cache under `/vol/cb/projects/iunctus/no_backup/cache`, and reach the
 internet through `proxy.intra:3128` (the nodes cannot reach the image registries without it).
-With it, `iunctus run` needs no options. Check the setup with `iunctus check-machine`.
+With it, `uwe run` needs no options. Check the setup with `uwe check-machine`.
 It also makes every run write its report, `report.html`, into the folder it ran in (see
 [The report](#the-report)).
 
@@ -100,12 +100,12 @@ are the ones that the example itself documents.
 ```sh
 cd /vol/cb/projects/iunctus/no_backup/demo
 
-cd nextflow/hello && iunctus run main.nf; cd -
-cd nextflow/nf-core-demo && iunctus run . -profile test,apptainer --outdir results; cd -
-cd snakemake/tutorial && iunctus run Snakefile; cd -
-cd cwl/quick-start && iunctus run hello_world.cwl && iunctus run hello_world.cwl hello_world-job.json; cd -
-cd cwl/workflows && iunctus run scatter-workflow.cwl scatter-job.yml; cd -
-cd argo/examples && for f in hello-world dag-diamond artifact-passing loops; do iunctus run $f.yaml; done; cd -
+cd nextflow/hello && uwe run main.nf; cd -
+cd nextflow/nf-core-demo && uwe run . -profile test,apptainer --outdir results; cd -
+cd snakemake/tutorial && uwe run Snakefile; cd -
+cd cwl/quick-start && uwe run hello_world.cwl && uwe run hello_world.cwl hello_world-job.json; cd -
+cd cwl/workflows && uwe run scatter-workflow.cwl scatter-job.yml; cd -
+cd argo/examples && for f in hello-world dag-diamond artifact-passing loops; do uwe run $f.yaml; done; cd -
 ```
 
 What each one shows:
@@ -114,7 +114,7 @@ What each one shows:
   and the others. The image `quay.io/nextflow/bash` comes from its `nextflow.config`.
 - **nf-core/demo**: a real nf-core pipeline: test data from the web, FastQC, seqtk, cowpy and
   MultiQC, with their results in `results/`. nf-core documents
-  `-profile test,<docker/singularity/.../institute> --outdir <OUTDIR>`; with iunctus on
+  `-profile test,<docker/singularity/.../institute> --outdir <OUTDIR>`; with uwe on
   SLURM, `-profile test` alone works too.
 - **Snakemake tutorial**: bwa, samtools and bcftools on three small read files, then a Python
   script that plots the quality of the variant calls: `calls/all.vcf` and `plots/quals.svg`.
@@ -123,7 +123,7 @@ What each one shows:
 - **Argo**: one container; a diamond of four tasks; a file passed from one step to the next
   (`results/.../hello-art`); a loop over two items.
 
-The text that tools print goes to the logs of their tasks: `iunctus page <run>` shows them.
+The text that tools print goes to the logs of their tasks: `uwe page <run>` shows them.
 
 A second run takes about a second: every task comes from the cache. Two exceptions, as in
 the native tools:
@@ -131,7 +131,7 @@ the native tools:
 - Snakemake sees that its results are there and does nothing. Remove them to see them come
   from the cache: `rm -r mapped_reads sorted_reads calls plots`.
 - nf-core/demo takes its tasks from the cache with `-resume`, as Nextflow does. The images of
-  nf-core modules are SIF files at web addresses, which iunctus cannot pin to a digest, so
+  nf-core modules are SIF files at web addresses, which uwe cannot pin to a digest, so
   only a resumed run reuses their results. MultiQC runs again even then: its input holds the
   time of the run.
 
@@ -150,7 +150,7 @@ the native tools:
 
 - **Snakemake: one `container:` line per rule** (10 lines, see the history of the Snakefile).
   The tutorial installs bwa, samtools, bcftools, matplotlib and pysam with Conda
-  (`environment.yaml`). iunctus runs every task in a container and cannot build an image from
+  (`environment.yaml`). uwe runs every task in a container and cannot build an image from
   Conda yet. So each rule names a published BioContainers image: bwa 0.7.17 with samtools
   1.19.2, bcftools 1.19, and matplotlib 3.1.2 with pysam 0.15. The last is the only published
   image with both; its pysam is older than the tutorial's 0.22, which the script does not
@@ -158,9 +158,9 @@ the native tools:
 - **Snakemake: the index files are inputs, and `workdir: workflow.basedir`.** bwa reads
   index files next to `data/genome.fa` (`genome.fa.bwt` and others), and bcftools reads
   `genome.fa.fai`; the tutorial declares neither. Natively, a job sees the whole folder.
-  iunctus gives a job the files that its rule declares and the files that git tracks
+  uwe gives a job the files that its rule declares and the files that git tracks
   (decision 11); the downloaded `data/` is not tracked. So `bwa_map` and `bcftools_call`
-  declare these files. The `workdir:` line lets `iunctus run snakemake/Snakefile` work from
+  declare these files. The `workdir:` line lets `uwe run snakemake/Snakefile` work from
   `demo/`, as Snakemake otherwise looks for `data/` in the folder it starts in. On the
   cluster, the folder is a git checkout of the data instead, where the index files are
   tracked.
@@ -171,12 +171,12 @@ the native tools:
 - **CWL: one `hello_world.cwl`.** The guide's `workflows` folder has its own `hello_world.cwl`
   with an output that the scatter workflow does not use. Here the scatter workflow runs the
   quick start's `hello_world.cwl`, so that `cwl/` holds one file of that name.
-- **CWL: `hello_world.cwl` names no image.** cwltool runs it on the host; iunctus runs every
+- **CWL: `hello_world.cwl` names no image.** cwltool runs it on the host; uwe runs every
   task in a container, here `debian:stable-slim`.
 - **Nextflow hello: the image is used.** `nextflow run hello` without `-with-docker` or
-  `-with-apptainer` ignores `process.container`; iunctus always runs it.
+  `-with-apptainer` ignores `process.container`; uwe always runs it.
 - **nf-core/demo is not in this repository**, as it is a whole pipeline of about 50 files.
-  iunctus cannot fetch a pipeline by its name yet, so `local-env.sh` clones it, and on the
+  uwe cannot fetch a pipeline by its name yet, so `local-env.sh` clones it, and on the
   cluster it was cloned by hand:
   `git clone --branch 1.2.0 https://github.com/nf-core/demo nf-core-demo`.
 
@@ -192,7 +192,7 @@ the native tools:
 
 ## The report
 
-The cluster has no browser, and its page cannot be reached without a tunnel. So iunctus can
+The cluster has no browser, and its page cannot be reached without a tunnel. So uwe can
 write the report of a run: one HTML file that shows what the page shows, and needs no server
 and no network. Copy it to your computer and open it there:
 
@@ -209,12 +209,12 @@ output and error. The reports of the demo are 135 to 255 KB.
 
 Three ways to get it:
 
-- `[report] file = "report.html"` in the config file: every `iunctus run` writes it when the
+- `[report] file = "report.html"` in the config file: every `uwe run` writes it when the
   run ends, into the folder it ran in (`bcf-config.toml` and `local-config.toml` do this). A
   relative path starts in the folder of the run; each run replaces the file of the run before.
-- `iunctus run <workflow> -report <file>`: the same for one run; it wins over the config file.
-- `iunctus report <run> [-output <file>]`: the report of any past run, by default
-  `<run>-report.html`. `iunctus runs` lists the runs.
+- `uwe run <workflow> -report <file>`: the same for one run; it wins over the config file.
+- `uwe report <run> [-output <file>]`: the report of any past run, by default
+  `<run>-report.html`. `uwe runs` lists the runs.
 
 The summary at the end of a run names the file, like `Report: report.html`.
 
@@ -227,7 +227,7 @@ Snakemake or cwltool.
 ### Once: the binary and the config file
 
 Run the examples in this folder, `demo/`. What they write is in [`.gitignore`](.gitignore), so
-nothing lands in the repository. [`local-env.sh`](local-env.sh) builds iunctus, puts
+nothing lands in the repository. [`local-env.sh`](local-env.sh) builds uwe, puts
 `target/release` first on the PATH, makes [`local-config.toml`](local-config.toml) the config
 and goes into `demo/`:
 
@@ -236,7 +236,7 @@ source demo/local-env.sh             # or, in demo/: ./local-env.sh, which opens
 ```
 
 `local-config.toml` runs tasks on this machine (`[executor] default = "local"`) and writes
-`report.html` after each run. Without it, `iunctus run` still uses local Docker or Podman containers.
+`report.html` after each run. Without it, `uwe run` still uses local Docker or Podman containers.
 Use `-executor simulator` for made-up outputs without task containers.
 
 The first time, `local-env.sh` also downloads what is not in this repository: nf-core/demo
@@ -247,19 +247,19 @@ into `nextflow/nf-core-demo/` and the data of the Snakemake tutorial into `snake
 In `demo/`, a simple and a complex example of each language:
 
 ```sh
-iunctus run nextflow/main.nf
-iunctus run snakemake/hello.smk
-iunctus run cwl/hello_world.cwl cwl/hello_world-job.json
-iunctus run argo/hello-world.yaml
+uwe run nextflow/main.nf
+uwe run snakemake/hello.smk
+uwe run cwl/hello_world.cwl cwl/hello_world-job.json
+uwe run argo/hello-world.yaml
 
-iunctus run nextflow/nf-core-demo -profile test,docker --outdir results
-iunctus run snakemake/Snakefile
-iunctus run cwl/scatter-workflow.cwl cwl/scatter-job.yml
-iunctus run argo/dag-diamond.yaml
+uwe run nextflow/nf-core-demo -profile test,docker --outdir results
+uwe run snakemake/Snakefile
+uwe run cwl/scatter-workflow.cwl cwl/scatter-job.yml
+uwe run argo/dag-diamond.yaml
 ```
 
 Each run writes `report.html` into the folder it ran in, so `demo/` has that of the last run
-there; `iunctus report <run>` writes any other. `iunctus page <run>` serves the live page on
+there; `uwe report <run>` writes any other. `uwe page <run>` serves the live page on
 this machine.
 
 The second run of each comes from the cache, as on the cluster. Snakemake again does nothing
@@ -286,14 +286,14 @@ nf-core/demo were there from earlier work.
 
 ## More to look at
 
-- **The runs.** `iunctus runs` lists the runs, with their state, executor and number of
-  tasks. `iunctus time <run>` shows where the time went. `iunctus why <run> <task>` tells why
+- **The runs.** `uwe runs` lists the runs, with their state, executor and number of
+  tasks. `uwe time <run>` shows where the time went. `uwe why <run> <task>` tells why
   a task ran instead of coming from the cache.
-- **The page.** `iunctus page <run> -port 8080` serves the page of a run: its graph, its tasks,
+- **The page.** `uwe page <run> -port 8080` serves the page of a run: its graph, its tasks,
   their logs and files. It listens on worm.intra only, so open a tunnel from your computer,
   `ssh -L 8080:localhost:8080 worm.intra` (from outside with `-J uni-jump`), then open
   `http://localhost:8080`.
-- **The graph.** `iunctus graph main.nf -format svg > graph.svg` draws the graph of the
+- **The graph.** `uwe graph main.nf -format svg > graph.svg` draws the graph of the
   tasks. It simulates the run, so it needs no cluster and changes no results.
 
 ## Licenses
@@ -306,19 +306,19 @@ Workflow Language project, https://www.commonwl.org/). nf-core/demo is under the
 
 ## `demo/bcf-config.toml`
 
-The config file of iunctus for the BCF cluster. Copy it to ~/.config/iunctus/config.toml.
-Then `iunctus run <workflow>` runs each task as a SLURM job with Apptainer, with no options.
+The config file of uwe for the BCF cluster. Copy it to ~/.config/uwe/config.toml.
+Then `uwe run <workflow>` runs each task as a SLURM job with Apptainer, with no options.
 Options on the command line still win, like `-executor local`.
-Run real tasks on SLURM. Without this, `iunctus run` uses local Docker or Podman containers. `iunctus graph`
+Run real tasks on SLURM. Without this, `uwe run` uses local Docker or Podman containers. `uwe graph`
 simulates by default.
 
 ## `demo/local-config.toml`
 
-The config file of iunctus for a laptop or workstation with Docker. Pass it to a command with
-`-iunctus-config demo/local-config.toml`, or copy it to ~/.config/iunctus/config.toml.
-Then `iunctus run <workflow>` runs each task in a Docker container on this machine.
+The config file of uwe for a laptop or workstation with Docker. Pass it to a command with
+`-uwe-config demo/local-config.toml`, or copy it to ~/.config/uwe/config.toml.
+Then `uwe run <workflow>` runs each task in a Docker container on this machine.
 Options on the command line still win, like `-executor simulator`.
-Run real tasks with Docker (or Podman) on this machine. Local execution is also the built-in default. `iunctus graph` simulates by default.
+Run real tasks with Docker (or Podman) on this machine. Local execution is also the built-in default. `uwe graph` simulates by default.
 
 ## `demo/local-env.sh`
 
@@ -330,8 +330,8 @@ Source it, from bash or zsh, anywhere:
 Or run it, `./local-env.sh` in demo/: then it opens a new shell (your $SHELL, zsh or bash)
 with the same set-up; `exit` goes back.
 
-It builds the release binary of iunctus (cargo does nothing when it is up to date), puts it
-first on the PATH, makes demo/local-config.toml the config of iunctus for this shell only
+It builds the release binary of uwe (cargo does nothing when it is up to date), puts it
+first on the PATH, makes demo/local-config.toml the config of uwe for this shell only
 and goes into demo/. Then it prints the commands of the demo, to run from there: tasks run
 in containers on this machine, and each run writes report.html into demo/.
-A config file in ~/.config/iunctus/ still wins over it. Nothing outside this shell changes.
+A config file in ~/.config/uwe/ still wins over it. Nothing outside this shell changes.

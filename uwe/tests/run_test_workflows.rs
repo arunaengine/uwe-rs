@@ -88,7 +88,7 @@ fn outcome(target: &Path, project: &Path, cache: &Path, profile: bool) -> String
         .env("XDG_CACHE_HOME", cache)
         .current_dir(project)
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     let code = output.status.code().unwrap_or(-1);
     if code == 0 {
         let text = std::fs::read_to_string(&graph).unwrap_or_default();

@@ -1,4 +1,4 @@
-//! Runs `iunctus graph` and `iunctus run -graph` on a small Nextflow pipeline, and checks the
+//! Runs `uwe graph` and `uwe run -graph` on a small Nextflow pipeline, and checks the
 //! default executor, which writes a TES task document for each task.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -41,13 +41,13 @@ workflow {
 "#;
 
 /// Runs the binary in `directory`; the result has the exit code, standard output and error.
-fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String, String) {
+fn uwe(directory: &Path, arguments: &[&str]) -> (i32, String, String) {
     let output = common::command()
         .args(arguments)
         .current_dir(directory)
         .env("XDG_CACHE_HOME", directory.join("cache"))
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     (
         output.status.code().unwrap_or(-1),
         String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -82,20 +82,19 @@ fn check(graph: &ExecutionGraph) {
 #[test]
 fn lists_graph_files() {
     let directory = pipeline();
-    let (code, stdout, stderr) =
-        iunctus(directory.path(), &["graph", "main.nf", "-format", "json"]);
+    let (code, stdout, stderr) = uwe(directory.path(), &["graph", "main.nf", "-format", "json"]);
     assert_eq!(code, 0, "{stderr}");
     let graph: ExecutionGraph = serde_json::from_str(&stdout).expect("the graph as JSON");
     check(&graph);
     assert_eq!(graph.simulation.as_deref(), Some(SIMULATION));
     // What the workflow prints goes to standard error, so that the graph stays readable, and
     // so does the note that the run is simulated.
-    assert_eq!(stderr, format!("made shout.txt\niunctus: {SIMULATION}\n"));
-    let (code, stdout, _) = iunctus(directory.path(), &["graph", ".", "-format", "dot"]);
+    assert_eq!(stderr, format!("made shout.txt\nuwe: {SIMULATION}\n"));
+    let (code, stdout, _) = uwe(directory.path(), &["graph", ".", "-format", "dot"]);
     assert_eq!(code, 0);
     assert!(stdout.starts_with("digraph workflow {"), "{stdout}");
     assert!(stdout.contains("[label=\"world.txt\"]"), "{stdout}");
-    let (code, stdout, _) = iunctus(directory.path(), &["graph", "main.nf"]);
+    let (code, stdout, _) = uwe(directory.path(), &["graph", "main.nf"]);
     assert_eq!(code, 0);
     assert!(
         stdout.starts_with(&format!("{SIMULATION}\n2 tasks, 2 steps, 1 edges\n")),
@@ -114,11 +113,11 @@ fn writes_run_documents() {
         "-graph",
         "graph.json",
     ];
-    let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
+    let (code, stdout, stderr) = uwe(directory.path(), &arguments);
     assert_eq!(code, 0, "{stderr}");
     assert_eq!(
         stdout,
-        "iunctus: simulated run selected; outputs are made-up files, no task containers run\n\
+        "uwe: simulated run selected; outputs are made-up files, no task containers run\n\
          [simulated] GREET\n[simulated] SHOUT\nmade shout.txt\n"
     );
     let text = std::fs::read_to_string(directory.path().join("graph.json")).expect("the graph");
@@ -145,7 +144,7 @@ fn writes_run_documents() {
         "-graph",
         "graph.dot",
     ];
-    let (code, _, stderr) = iunctus(directory.path(), &arguments);
+    let (code, _, stderr) = uwe(directory.path(), &arguments);
     assert_eq!(code, 0, "{stderr}");
     let dot = std::fs::read_to_string(directory.path().join("graph.dot")).expect("the graph");
     assert!(dot.starts_with("digraph workflow {"), "{dot}");
@@ -164,7 +163,7 @@ fn scheduling_options_apply() {
         "-order",
         "shuffled:3",
     ];
-    let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
+    let (code, stdout, stderr) = uwe(directory.path(), &arguments);
     assert_eq!(code, 0, "{stderr}");
     let graph: ExecutionGraph = serde_json::from_str(&stdout).expect("the graph as JSON");
     check(&graph);
@@ -178,11 +177,11 @@ fn accepts_language_selection() {
         directory.path().join("pipeline.groovy"),
     )
     .expect("renames the script");
-    let (code, _, stderr) = iunctus(directory.path(), &["graph", "pipeline.groovy"]);
+    let (code, _, stderr) = uwe(directory.path(), &["graph", "pipeline.groovy"]);
     assert_eq!(code, 1);
     assert!(stderr.contains("cannot tell the language"), "{stderr}");
     let arguments = ["graph", "pipeline.groovy", "-lang", "nextflow"];
-    let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
+    let (code, stdout, stderr) = uwe(directory.path(), &arguments);
     assert_eq!(code, 0, "{stderr}");
     assert!(stdout.contains("\n2 tasks"), "{stdout}");
 }
@@ -190,13 +189,13 @@ fn accepts_language_selection() {
 #[test]
 fn rejects_unknown_formats() {
     let directory = pipeline();
-    let (code, _, stderr) = iunctus(directory.path(), &["run", "main.nf", "-executor", "cloud"]);
+    let (code, _, stderr) = uwe(directory.path(), &["run", "main.nf", "-executor", "cloud"]);
     assert_eq!(code, 2);
     assert!(stderr.contains("unknown executor `cloud`"), "{stderr}");
-    let (code, _, stderr) = iunctus(directory.path(), &["graph", "main.nf", "-format", "png"]);
+    let (code, _, stderr) = uwe(directory.path(), &["graph", "main.nf", "-format", "png"]);
     assert_eq!(code, 2);
     assert!(stderr.contains("unknown graph format `png`"), "{stderr}");
-    let (code, _, stderr) = iunctus(directory.path(), &["graph", "main.nf", "-view", "nodes"]);
+    let (code, _, stderr) = uwe(directory.path(), &["graph", "main.nf", "-view", "nodes"]);
     assert_eq!(code, 2);
     assert!(stderr.contains("unknown graph view `nodes`"), "{stderr}");
 }
@@ -205,7 +204,7 @@ fn rejects_unknown_formats() {
 fn renders_step_graph() {
     let directory = pipeline();
     let arguments = ["graph", "main.nf", "-view", "steps"];
-    let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
+    let (code, stdout, stderr) = uwe(directory.path(), &arguments);
     assert_eq!(code, 0, "{stderr}");
     assert_eq!(
         stdout,
@@ -214,7 +213,7 @@ fn renders_step_graph() {
         )
     );
     let arguments = ["graph", "main.nf", "-view", "steps", "-format", "json"];
-    let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
+    let (code, stdout, stderr) = uwe(directory.path(), &arguments);
     assert_eq!(code, 0, "{stderr}");
     let steps: StepGraph = serde_json::from_str(&stdout).expect("the step graph as JSON");
     assert_eq!(steps.steps.len(), 2);
@@ -222,7 +221,7 @@ fn renders_step_graph() {
         (steps.edges[0].from.as_str(), steps.edges[0].to.as_str()),
         ("GREET", "SHOUT")
     );
-    let (code, stdout, stderr) = iunctus(directory.path(), &["graph", "main.nf", "-format", "svg"]);
+    let (code, stdout, stderr) = uwe(directory.path(), &["graph", "main.nf", "-format", "svg"]);
     assert_eq!(code, 0, "{stderr}");
     assert!(stdout.starts_with("<svg"), "{stdout}");
     assert!(
@@ -231,7 +230,7 @@ fn renders_step_graph() {
     );
     assert!(stdout.contains("id=\"t1\""), "{stdout}");
     let arguments = ["graph", "main.nf", "-format", "svg", "-direction", "right"];
-    let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
+    let (code, stdout, stderr) = uwe(directory.path(), &arguments);
     assert_eq!(code, 0, "{stderr}");
     assert!(stdout.contains("data-direction=\"right\""), "{stdout}");
     let arguments = [
@@ -244,7 +243,7 @@ fn renders_step_graph() {
         "-view",
         "steps",
     ];
-    let (code, _, stderr) = iunctus(directory.path(), &arguments);
+    let (code, _, stderr) = uwe(directory.path(), &arguments);
     assert_eq!(code, 0, "{stderr}");
     let svg = std::fs::read_to_string(directory.path().join("steps.svg")).expect("the SVG");
     assert!(

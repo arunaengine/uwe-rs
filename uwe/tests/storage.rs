@@ -9,7 +9,7 @@ use std::path::Path;
 
 mod common;
 
-/// The token of the private server, which only the environment of iunctus holds.
+/// The token of the private server, which only the environment of uwe holds.
 const TOKEN: &str = "token-of-the-test-4417";
 
 /// A web server on 127.0.0.1 that serves `files` only to requests with the bearer token. In
@@ -56,7 +56,7 @@ fn private_server(files: &[(&str, &str)]) -> String {
 
 /// Runs the binary in `directory` with its own cache and config folders, and the environment
 /// `environment`; the result has the exit code and the standard output and error.
-fn iunctus(
+fn uwe(
     directory: &Path,
     cache: &str,
     environment: &[(&str, &str)],
@@ -69,7 +69,7 @@ fn iunctus(
         .env("XDG_CONFIG_HOME", directory.join("config"))
         .envs(environment.iter().copied())
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     (
@@ -146,10 +146,10 @@ fn secrets_never_show() {
         "-uwe-config",
         "uwe.toml",
     ];
-    let (code, output) = iunctus(path, "cache", &right, &run);
+    let (code, output) = uwe(path, "cache", &right, &run);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("[simulated] COUNT (1)"), "{output}");
-    let (code, listed) = iunctus(path, "cache", &[], &["runs"]);
+    let (code, listed) = uwe(path, "cache", &[], &["runs"]);
     assert_eq!(code, 0, "{listed}");
     let id = listed
         .lines()
@@ -157,12 +157,12 @@ fn secrets_never_show() {
         .and_then(|line| line.split_whitespace().next())
         .expect("a run id")
         .to_owned();
-    let (code, exported) = iunctus(path, "cache", &[], &["export", &id, "-output", "crate"]);
+    let (code, exported) = uwe(path, "cache", &[], &["export", &id, "-output", "crate"]);
     assert_eq!(code, 0, "{exported}");
 
     // A wrong token is an error that names the file, never a token.
     let wrong = "wrong-token-of-the-test-9981";
-    let (code, refused) = iunctus(path, "other", &[("UWE_TEST_TOKEN", wrong)], &run);
+    let (code, refused) = uwe(path, "other", &[("UWE_TEST_TOKEN", wrong)], &run);
     assert_eq!(code, 1, "{refused}");
     assert!(
         refused.contains(&format!(
@@ -175,7 +175,7 @@ fn secrets_never_show() {
         "{refused}"
     );
     // A config file whose variable is not set says so.
-    let (code, unset) = iunctus(path, "other", &[], &run);
+    let (code, unset) = uwe(path, "other", &[], &run);
     assert_eq!(code, 1, "{unset}");
     assert!(
         unset.contains(
@@ -229,13 +229,13 @@ fn loads_provider_documents() {
     std::fs::write(path.join("uwe.toml"), config).expect("writes the config file");
     let graph = ["graph", "wf.cwl", "-uwe-config", "uwe.toml"];
 
-    let (code, output) = iunctus(path, "cache", &[("UWE_TEST_TOKEN", TOKEN)], &graph);
+    let (code, output) = uwe(path, "cache", &[("UWE_TEST_TOKEN", TOKEN)], &graph);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("hello"), "{output}");
     // Without the token, the private server refuses the document, and the error names the
     // provider.
     let wrong = "wrong-token-of-the-test-9981";
-    let (code, refused) = iunctus(path, "other", &[("UWE_TEST_TOKEN", wrong)], &graph);
+    let (code, refused) = uwe(path, "other", &[("UWE_TEST_TOKEN", wrong)], &graph);
     assert_eq!(code, 1, "{refused}");
     assert!(
         refused.contains("the server refused access (401 Unauthorized)"),
@@ -343,7 +343,7 @@ fn separates_s3_providers() {
         "-uwe-config",
         "uwe.toml",
     ];
-    let (code, first) = iunctus(path, "cache", &environment, &run);
+    let (code, first) = uwe(path, "cache", &environment, &run);
     assert_eq!(code, 0, "{first}");
     assert!(first.contains("[done] TOTAL"), "{first}");
     // The results went to the third provider.
@@ -358,7 +358,7 @@ fn separates_s3_providers() {
     let names: Vec<&str> = stored.iter().map(|entry| entry.name.as_str()).collect();
     assert!(names.contains(&"cas") && names.contains(&"ac"), "{names:?}");
     // A second run takes every task from the store.
-    let (code, second) = iunctus(path, "cache", &environment, &run);
+    let (code, second) = uwe(path, "cache", &environment, &run);
     assert_eq!(code, 0, "{second}");
     assert!(second.contains("[cached] TOTAL"), "{second}");
     assert!(!second.contains("[done]"), "{second}");

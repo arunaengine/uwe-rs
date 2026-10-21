@@ -44,7 +44,7 @@ workflow {
 
 /// Runs the binary in `directory`; the result has the exit code and the standard output and
 /// error.
-fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String) {
+fn uwe(directory: &Path, arguments: &[&str]) -> (i32, String) {
     uwe_with(directory, arguments, &[])
 }
 
@@ -56,7 +56,7 @@ fn uwe_with(directory: &Path, arguments: &[&str], variables: &[(&str, &str)]) ->
         .env("XDG_CACHE_HOME", directory.join("cache"))
         .envs(variables.iter().copied())
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr);
     (
@@ -67,7 +67,7 @@ fn uwe_with(directory: &Path, arguments: &[&str], variables: &[(&str, &str)]) ->
 
 /// The runs of the database, the latest first.
 fn runs(directory: &Path) -> Vec<String> {
-    let (code, output) = iunctus(directory, &["runs"]);
+    let (code, output) = uwe(directory, &["runs"]);
     assert_eq!(code, 0, "{output}");
     let lines = output.lines().skip(1);
     lines
@@ -85,9 +85,9 @@ fn reports_run_insight() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     workflow(path);
-    let (code, output) = iunctus(path, &["run", "-executor", "simulator", "main.nf"]);
+    let (code, output) = uwe(path, &["run", "-executor", "simulator", "main.nf"]);
     assert_eq!(code, 0, "{output}");
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         path,
         &[
             "run",
@@ -101,7 +101,7 @@ fn reports_run_insight() {
     assert_eq!(code, 0, "{output}");
     let [second, first] = runs(path).try_into().expect("two runs");
 
-    let (code, output) = iunctus(path, &["time", &second]);
+    let (code, output) = uwe(path, &["time", &second]);
     assert_eq!(code, 0, "{output}");
     assert!(
         output.contains("the critical path, the chain of tasks"),
@@ -112,12 +112,12 @@ fn reports_run_insight() {
         output.contains("the times are those of the simulator"),
         "{output}"
     );
-    let (code, output) = iunctus(path, &["time", &second, "-format", "json"]);
+    let (code, output) = uwe(path, &["time", &second, "-format", "json"]);
     assert_eq!(code, 0, "{output}");
     let time: serde_json::Value = serde_json::from_str(&output).expect("JSON");
     assert_eq!(time["critical_path"].as_array().map(Vec::len), Some(2));
 
-    let (code, output) = iunctus(path, &["compare", &second]);
+    let (code, output) = uwe(path, &["compare", &second]);
     assert_eq!(code, 0, "{output}");
     assert!(
         output.contains(&format!("comparing run {first}")),
@@ -128,11 +128,11 @@ fn reports_run_insight() {
         "{output}"
     );
     assert!(output.contains("1 the same, 1 changed"), "{output}");
-    let (code, output) = iunctus(path, &["compare", &first, "no-run"]);
+    let (code, output) = uwe(path, &["compare", &first, "no-run"]);
     assert_eq!(code, 1, "{output}");
     assert!(output.contains("has no run `no-run`"), "{output}");
 
-    let (code, output) = iunctus(path, &["replay", &second, "2"]);
+    let (code, output) = uwe(path, &["replay", &second, "2"]);
     assert_eq!(code, 1, "{output}");
     assert!(output.contains("was simulated"), "{output}");
 }
@@ -167,7 +167,7 @@ fn replays_recorded_container() {
     ));
     std::fs::remove_file(&stored).expect("removes the stored output");
 
-    let (code, output) = iunctus(path, &["replay", &run, "2"]);
+    let (code, output) = uwe(path, &["replay", &run, "2"]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("[done] COUNT"), "{output}");
     assert!(output.contains("  exit code: 0 before, 0 now"), "{output}");
@@ -179,7 +179,7 @@ fn replays_recorded_container() {
         output.contains("standard error now:\n  counted first"),
         "{output}"
     );
-    let (code, output) = iunctus(path, &["runs"]);
+    let (code, output) = uwe(path, &["runs"]);
     assert_eq!(code, 0, "{output}");
     assert!(
         output.contains(&format!("(replays task 2 of run {run})")),
@@ -192,7 +192,7 @@ fn delivers_run_traces() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     workflow(path);
-    let (code, output) = iunctus(path, &["run", "-executor", "simulator", "main.nf"]);
+    let (code, output) = uwe(path, &["run", "-executor", "simulator", "main.nf"]);
     assert_eq!(code, 0, "{output}");
     let [run] = runs(path).try_into().expect("one run");
     let (endpoint, received) = receiver();
@@ -227,7 +227,7 @@ fn delivers_run_traces() {
     );
     assert_eq!(body, lines.trim());
     // A secret whose variable is not set stops the command before anything is sent.
-    let (code, output) = iunctus(path, &arguments);
+    let (code, output) = uwe(path, &arguments);
     assert_eq!(code, 1, "{output}");
     assert!(output.contains("UWE_TEST_OTLP"), "{output}");
 }

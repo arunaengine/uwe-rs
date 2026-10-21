@@ -37,13 +37,13 @@ workflow {
 
 /// Runs the binary in `directory`; the result has the exit code and the standard output and
 /// error.
-fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String) {
+fn uwe(directory: &Path, arguments: &[&str]) -> (i32, String) {
     let output = common::command()
         .args(arguments)
         .current_dir(directory)
         .env("XDG_CACHE_HOME", directory.join("cache"))
         .output()
-        .expect("runs iunctus");
+        .expect("runs uwe");
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr);
     (
@@ -71,13 +71,13 @@ fn preserves_run_history() {
     std::fs::write(path.join("a.txt"), "one\ntwo\n").expect("writes an input");
     std::fs::write(path.join("b.txt"), "three\n").expect("writes an input");
 
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         path,
         &["run", "-executor", "simulator", "main.nf", "-resume"],
     );
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("no earlier run"), "{output}");
-    let (code, output) = iunctus(path, &["runs"]);
+    let (code, output) = uwe(path, &["runs"]);
     assert_eq!(code, 0, "{output}");
     let lines: Vec<&str> = output.lines().collect();
     assert_eq!(lines.len(), 2, "{output}");
@@ -92,7 +92,7 @@ fn preserves_run_history() {
     );
 
     // Nothing changed, so every task comes from the first run.
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         path,
         &[
             "run",
@@ -114,7 +114,7 @@ fn preserves_run_history() {
 
     // A changed input runs its task and the task after it again.
     std::fs::write(path.join("b.txt"), "four\nfive\n").expect("changes an input");
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         path,
         &["run", "-executor", "simulator", "main.nf", "-resume"],
     );
@@ -127,7 +127,7 @@ fn preserves_run_history() {
     ];
     assert_eq!(tasks(&output), expected, "{output}");
 
-    let (code, output) = iunctus(path, &["runs"]);
+    let (code, output) = uwe(path, &["runs"]);
     assert_eq!(code, 0, "{output}");
     let last = output
         .lines()
@@ -136,7 +136,7 @@ fn preserves_run_history() {
     let last = last.expect("a run id").to_owned();
     // Why the two tasks ran again: the changed input, and the task that ran before them.
     let answers: Vec<String> = (1..=4)
-        .map(|task| iunctus(path, &["why", &last, &task.to_string()]).1)
+        .map(|task| uwe(path, &["why", &last, &task.to_string()]).1)
         .collect();
     let text = answers.join("");
     assert!(
@@ -144,7 +144,7 @@ fn preserves_run_history() {
         "{text}"
     );
     assert!(text.contains("which ran again"), "{text}");
-    let (code, output) = iunctus(path, &["export", &last, "-output", "crate"]);
+    let (code, output) = uwe(path, &["export", &last, "-output", "crate"]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("4 tasks"), "{output}");
     let metadata = std::fs::read_to_string(path.join("crate/ro-crate-metadata.json"))
@@ -159,11 +159,11 @@ fn preserves_run_history() {
     assert_eq!(actions, 5);
     assert!(path.join("crate/main.nf").is_file());
 
-    let (code, output) = iunctus(path, &["origin", "no-such-file"]);
+    let (code, output) = uwe(path, &["origin", "no-such-file"]);
     assert_eq!(code, 0, "{output}");
     assert!(output.starts_with("no run made"), "{output}");
 
-    let (code, output) = iunctus(path, &["export", "no-such-run"]);
+    let (code, output) = uwe(path, &["export", "no-such-run"]);
     assert_eq!(code, 1, "{output}");
     assert!(output.contains("no run `no-such-run`"), "{output}");
 }
@@ -184,7 +184,7 @@ fn report_location_configurable() {
     std::fs::write(path.join("main.nf"), SCRIPT).expect("writes the script");
     std::fs::write(path.join("a.txt"), "one\n").expect("writes an input");
     std::fs::write(path.join("b.txt"), "two\n").expect("writes an input");
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         path,
         &[
             "run",
@@ -211,7 +211,7 @@ fn report_location_configurable() {
     let config = path.join("uwe.toml");
     std::fs::write(&config, "[report]\nfile = \"reports/last.html\"\n").expect("writes");
     let config = config.to_string_lossy();
-    let (code, output) = iunctus(
+    let (code, output) = uwe(
         path,
         &[
             "run",
@@ -225,18 +225,18 @@ fn report_location_configurable() {
     assert_eq!(code, 0, "{output}");
     assert!(path.join("reports/last.html").is_file(), "{output}");
 
-    let (_, runs) = iunctus(path, &["runs"]);
+    let (_, runs) = uwe(path, &["runs"]);
     let id = runs
         .lines()
         .nth(1)
         .and_then(|line| line.split_whitespace().next());
     let id = id.expect("a run");
-    let (code, output) = iunctus(path, &["report", id, "-output", "again.html"]);
+    let (code, output) = uwe(path, &["report", id, "-output", "again.html"]);
     assert_eq!(code, 0, "{output}");
     assert!(output.starts_with(&format!("wrote the report of run {id} to again.html (")));
     let html = std::fs::read_to_string(path.join("again.html")).expect("reads the report");
     assert!(self_contained(&html) && html.contains(id));
-    let (code, output) = iunctus(path, &["report", "no-such-run"]);
+    let (code, output) = uwe(path, &["report", "no-such-run"]);
     assert_eq!(code, 1, "{output}");
     assert!(output.contains("no run `no-such-run`"), "{output}");
 }
@@ -248,9 +248,9 @@ fn rejects_simulated_resume() {
     std::fs::write(path.join("main.nf"), SCRIPT).expect("writes the script");
     std::fs::write(path.join("a.txt"), "one\n").expect("writes an input");
     std::fs::write(path.join("b.txt"), "two\n").expect("writes an input");
-    let (code, output) = iunctus(path, &["run", "-executor", "simulator", "main.nf"]);
+    let (code, output) = uwe(path, &["run", "-executor", "simulator", "main.nf"]);
     assert_eq!(code, 0, "{output}");
-    let (_, runs) = iunctus(path, &["runs"]);
+    let (_, runs) = uwe(path, &["runs"]);
     let id = runs
         .lines()
         .nth(1)
@@ -263,7 +263,7 @@ fn rejects_simulated_resume() {
         "-resume",
         id.expect("a run"),
     ];
-    let (code, output) = iunctus(path, &arguments);
+    let (code, output) = uwe(path, &arguments);
     assert_eq!(code, 1, "{output}");
     assert!(output.contains("was simulated"), "{output}");
 }
@@ -275,18 +275,18 @@ fn leaves_resume_requests() {
     std::fs::write(path.join("main.nf"), SCRIPT).expect("writes the script");
     std::fs::write(path.join("a.txt"), "one\n").expect("writes an input");
     std::fs::write(path.join("b.txt"), "two\n").expect("writes an input");
-    let (code, output) = iunctus(path, &["resume", "1a0f1cc4c10-3a2487"]);
+    let (code, output) = uwe(path, &["resume", "1a0f1cc4c10-3a2487"]);
     assert_eq!(code, 1, "{output}");
     assert!(output.contains("there is no run"), "{output}");
-    let (code, output) = iunctus(path, &["run", "-executor", "simulator", "main.nf"]);
+    let (code, output) = uwe(path, &["run", "-executor", "simulator", "main.nf"]);
     assert_eq!(code, 0, "{output}");
-    let (_, runs) = iunctus(path, &["runs"]);
+    let (_, runs) = uwe(path, &["runs"]);
     let id = runs
         .lines()
         .nth(1)
         .and_then(|line| line.split_whitespace().next());
     let id = id.expect("a run");
-    let (code, output) = iunctus(path, &["resume", id, "approve", "message=yes"]);
+    let (code, output) = uwe(path, &["resume", id, "approve", "message=yes"]);
     assert_eq!(code, 0, "{output}");
     let folder = path.join("cache/uwe/scratch/resume").join(id);
     let request = std::fs::read_dir(folder).expect("the requests").next();
@@ -307,10 +307,10 @@ fn resumes_container_runs() {
     std::fs::write(path.join("a.txt"), "one\ntwo\n").expect("writes an input");
     std::fs::write(path.join("b.txt"), "three\n").expect("writes an input");
     let arguments = ["run", "main.nf", "-executor", "local", "-resume"];
-    let (code, output) = iunctus(path, &arguments);
+    let (code, output) = uwe(path, &arguments);
     assert_eq!(code, 0, "{output}");
     std::fs::write(path.join("b.txt"), "four\nfive\n").expect("changes an input");
-    let (code, output) = iunctus(path, &arguments);
+    let (code, output) = uwe(path, &arguments);
     assert_eq!(code, 0, "{output}");
     // Mutable image tags defer resume to the shared cache, which verifies pinned identity.
     let kinds: Vec<String> = tasks(&common::without_display(&output))

@@ -27,6 +27,7 @@ fn input(path: &str, content: &str) -> InputFile {
 fn fastqc() -> TaskSpec {
     TaskSpec {
         run_as: None,
+        output_manifest: None,
         format: FORMAT,
         namespace: String::new(),
         image: Some(Image {
@@ -91,6 +92,28 @@ fn ignores_input_order() {
         pattern: "*.zip".into(),
     });
     assert_eq!(reordered.cache_key(), fastqc().cache_key());
+}
+
+#[test]
+fn manifest_changes_identity() {
+    let mut spec = fastqc();
+    let original = spec.cache_key().unwrap();
+    let bytes = spec.canonical().unwrap();
+    assert!(
+        !String::from_utf8(bytes.clone())
+            .unwrap()
+            .contains("output_manifest")
+    );
+    assert_eq!(
+        serde_json::from_slice::<TaskSpec>(&bytes)
+            .unwrap()
+            .output_manifest,
+        None
+    );
+    spec.output_manifest = Some("cwl.output.json".into());
+    assert_ne!(spec.cache_key().unwrap(), original);
+    spec.output_manifest = Some("../outside.json".into());
+    assert!(matches!(spec.validate(), Err(SpecError::Path(_))));
 }
 
 #[test]

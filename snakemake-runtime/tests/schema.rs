@@ -30,6 +30,78 @@ rule report:
 "#;
 
 #[test]
+fn preserves_colliding_outputs() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        r#"
+rule one:
+    output: "a.txt", targets="b.txt", targets_="c.txt"
+    shell: "true"
+rule two:
+    output: "d.txt"
+    shell: "true"
+"#,
+    )
+    .unwrap();
+    let launch = Launch {
+        target: folder.path().into(),
+        targets: vec!["one".into(), "two".into()],
+        simulated: true,
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).unwrap();
+    let outputs = driver.outputs().unwrap().unwrap();
+    assert_eq!(outputs["properties"]["targets"]["const"], "b.txt");
+    assert_eq!(outputs["properties"]["targets_"]["const"], "c.txt");
+    assert_eq!(
+        outputs["properties"]["targets__"]["const"],
+        json!(["a.txt", "d.txt"])
+    );
+    assert_eq!(input_schema::valid(&outputs), Ok(()));
+}
+
+#[test]
+fn validates_table_rows() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(folder.path().join("schema.yaml"), "type: object\nproperties:\n  n: {type: integer}\n  extra: {type: integer, default: 3}\nrequired: [n]\n").unwrap();
+    for (rows, expected) in [
+        ("[{'n': 1}, {'n': 2}]", None),
+        (
+            "[{'n': 1}, {'n': 'wrong'}]",
+            Some("Error validating row 1 of data frame."),
+        ),
+    ] {
+        std::fs::write(
+            folder.path().join("Snakefile"),
+            format!(
+                r#"
+import pandas as pd
+from snakemake.utils import validate
+samples = pd.DataFrame({rows})
+validate(samples, "schema.yaml")
+assert samples["extra"].tolist() == [3, 3]
+rule all:
+    input: []
+"#
+            ),
+        )
+        .unwrap();
+        let mut driver = snakemake_runtime::driver(&Launch {
+            target: folder.path().into(),
+            simulated: true,
+            ..Launch::default()
+        })
+        .unwrap();
+        let result = driver.inputs();
+        match expected {
+            Some(message) => assert!(result.unwrap_err().message.contains(message)),
+            None => assert!(result.is_ok(), "{:?}", result.err()),
+        }
+    }
+}
+
+#[test]
 fn describes_workflow_inputs() {
     let folder = tempfile::tempdir().expect("a folder");
     let files = [

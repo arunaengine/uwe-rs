@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use python_evaluator::modules::data::{load_yaml, parse_json};
 use python_evaluator::{Dict, Error, Interpreter, Key, Value};
@@ -111,7 +112,31 @@ fn plain_json(value: &Value) -> Result<Json, String> {
 }
 
 /// Finds files that relative `$ref`s of a schema name.
-struct FileRetriever;
+#[derive(Clone, Default)]
+struct FileRetriever {
+    schemas: Arc<Mutex<std::collections::HashMap<PathBuf, Json>>>,
+    #[cfg(test)]
+    loads: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl FileRetriever {
+    fn read(&self, path: &Path) -> Result<Json, String> {
+        let path = python_evaluator::host::normalize(path);
+        let mut schemas = self
+            .schemas
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some(schema) = schemas.get(&path) {
+            return Ok(schema.clone());
+        }
+        let schema = read_schema(&path)?;
+        #[cfg(test)]
+        self.loads
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        schemas.insert(path, schema.clone());
+        Ok(schema)
+    }
+}
 
 impl jsonschema::Retrieve for FileRetriever {
     fn retrieve(
@@ -122,7 +147,7 @@ impl jsonschema::Retrieve for FileRetriever {
             return Err(format!("cannot fetch {uri}").into());
         }
         let path = percent_decode(uri.path().as_str());
-        read_schema(Path::new(&path)).map_err(Into::into)
+        self.read(Path::new(&path)).map_err(Into::into)
     }
 }
 
@@ -153,6 +178,7 @@ fn file_uri(path: &Path) -> String {
 struct Context {
     file: PathBuf,
     root: Json,
+    files: FileRetriever,
 }
 
 fn resolve_pointer<'a>(root: &'a Json, pointer: &str) -> Option<&'a Json> {
@@ -172,6 +198,7 @@ fn resolve_ref(context: &Context, reference: &str) -> Option<(Json, Context)> {
             Context {
                 file: context.file.clone(),
                 root: context.root.clone(),
+                files: context.files.clone(),
             },
         ));
     }
@@ -183,9 +210,16 @@ fn resolve_ref(context: &Context, reference: &str) -> Option<(Json, Context)> {
         .parent()
         .unwrap_or(Path::new("."))
         .join(file_part);
-    let root = read_schema(&file).ok()?;
+    let root = context.files.read(&file).ok()?;
     let node = resolve_pointer(&root, pointer)?.clone();
-    Some((node, Context { file, root }))
+    Some((
+        node,
+        Context {
+            file,
+            root,
+            files: context.files.clone(),
+        },
+    ))
 }
 
 fn json_type_matches(interpreter: &mut Interpreter, schema: &Json, instance: &Value) -> bool {
@@ -321,15 +355,15 @@ fn set_defaults(
 }
 
 /// Builds a validator for a schema, as Draft 2020-12 like Snakemake, else by its `$schema`.
-fn validator(schema: &Json) -> Result<jsonschema::Validator, String> {
+fn validator(schema: &Json, files: FileRetriever) -> Result<jsonschema::Validator, String> {
     let strict = jsonschema::options()
         .with_draft(jsonschema::Draft::Draft202012)
-        .with_retriever(FileRetriever)
+        .with_retriever(files.clone())
         .build(schema);
     match strict {
         Ok(validator) => Ok(validator),
         Err(_) => jsonschema::options()
-            .with_retriever(FileRetriever)
+            .with_retriever(files)
             .build(schema)
             .map_err(|error| format!("SchemaError: {error}")),
     }
@@ -368,34 +402,46 @@ pub fn load_schema(
     Ok((json, file))
 }
 
-/// Validates one record, a config or a row, and sets its defaults.
-pub fn validate_record(
-    interpreter: &mut Interpreter,
-    record: &Value,
-    schema: &Json,
-    file: &Path,
-    set_default: bool,
-) -> Result<Result<(), String>, Error> {
-    if set_default {
-        let context = Context {
-            file: file.to_owned(),
-            root: schema.clone(),
-        };
-        set_defaults(interpreter, schema, &context, record, 0)?;
+pub struct Validation {
+    compiled: jsonschema::Validator,
+    context: Context,
+}
+
+impl Validation {
+    pub fn new(schema: &Json, file: &Path) -> Result<Self, String> {
+        let files = FileRetriever::default();
+        let compiled = validator(schema, files.clone())?;
+        Ok(Self {
+            compiled,
+            context: Context {
+                file: file.to_owned(),
+                root: schema.clone(),
+                files,
+            },
+        })
     }
-    let validator = match validator(schema) {
-        Ok(validator) => validator,
-        Err(message) => return Ok(Err(message)),
-    };
-    let instance = to_json(interpreter, record)?;
-    let first = validator
-        .iter_errors(&instance)
-        .next()
-        .map(|error| python_message(&error));
-    Ok(match first {
-        Some(message) => Err(format!("ValidationError: {message}")),
-        None => Ok(()),
-    })
+
+    /// Validates one config or row using the schema and references loaded for this call.
+    pub fn record(
+        &self,
+        interpreter: &mut Interpreter,
+        record: &Value,
+        set_default: bool,
+    ) -> Result<Result<(), String>, Error> {
+        if set_default {
+            set_defaults(interpreter, &self.context.root, &self.context, record, 0)?;
+        }
+        let instance = to_json(interpreter, record)?;
+        let first = self
+            .compiled
+            .iter_errors(&instance)
+            .next()
+            .map(|error| python_message(&error));
+        Ok(match first {
+            Some(message) => Err(format!("ValidationError: {message}")),
+            None => Ok(()),
+        })
+    }
 }
 
 /// The message of a validation error in the words of Python's `jsonschema`, with values as
@@ -492,5 +538,72 @@ pub(crate) fn python_repr(value: &Json) -> String {
                 .collect();
             format!("{{{}}}", entries.join(", "))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reuses_compiled_references() {
+        let folder = tempfile::tempdir().unwrap();
+        let reference = folder.path().join("record.json");
+        std::fs::write(
+            &reference,
+            r#"{"type":"object","properties":{"n":{"type":"integer","default":3}}}"#,
+        )
+        .unwrap();
+        let schema = serde_json::json!({"$id": file_uri(&folder.path().join("schema.json")), "$ref": "record.json"});
+        let validation = Validation::new(&schema, &folder.path().join("schema.json")).unwrap();
+        assert_eq!(
+            validation
+                .context
+                .files
+                .loads
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+        // Removing the reference proves rows and defaults use the already loaded document.
+        std::fs::remove_file(reference).unwrap();
+        let mut interpreter = Interpreter::new(std::rc::Rc::new(python_evaluator::LocalHost::new(
+            folder.path(),
+        )));
+        for _ in 0..3 {
+            let record = from_json(&serde_json::json!({}));
+            assert_eq!(
+                validation.record(&mut interpreter, &record, true).unwrap(),
+                Ok(())
+            );
+            assert_eq!(
+                to_json(&mut interpreter, &record).unwrap(),
+                serde_json::json!({"n":3})
+            );
+        }
+        let record = from_json(&serde_json::json!({"n":"wrong"}));
+        assert!(
+            validation
+                .record(&mut interpreter, &record, true)
+                .unwrap()
+                .unwrap_err()
+                .contains("not of type 'integer'")
+        );
+        let record = from_json(&serde_json::json!({}));
+        assert_eq!(
+            validation.record(&mut interpreter, &record, false).unwrap(),
+            Ok(())
+        );
+        assert_eq!(
+            to_json(&mut interpreter, &record).unwrap(),
+            serde_json::json!({})
+        );
+        assert_eq!(
+            validation
+                .context
+                .files
+                .loads
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
     }
 }

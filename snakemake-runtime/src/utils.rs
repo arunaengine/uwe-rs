@@ -78,9 +78,10 @@ fn validate(
     };
     let (schema, file) = crate::schema::load_schema(interpreter, &schema_path, &base)?;
     if matches!(data.plain(), Value::Dict(_)) {
-        if let Err(message) =
-            crate::schema::validate_record(interpreter, &data, &schema, &file, set_default)?
-        {
+        let validator = crate::schema::Validation::new(&schema, &file).map_err(|message| {
+            workflow_error(format!("Error validating config file.\n{message}"))
+        })?;
+        if let Err(message) = validator.record(interpreter, &data, set_default)? {
             return Err(workflow_error(format!(
                 "Error validating config file.\n{message}"
             )));
@@ -96,6 +97,7 @@ fn validate(
         return Ok(Value::None);
     }
     if let Some(records) = python_evaluator::pandas::records(interpreter, &data)? {
+        let validator = crate::schema::Validation::new(&schema, &file).map_err(workflow_error)?;
         let mut columns: Vec<String> = Vec::new();
         for record in &records {
             for (key, _) in interpreter.mapping_items(record)? {
@@ -113,9 +115,7 @@ fn validate(
         state.borrow_mut().validations.push(validation);
         let mut validated = Vec::with_capacity(records.len());
         for (index, record) in records.into_iter().enumerate() {
-            if let Err(message) =
-                crate::schema::validate_record(interpreter, &record, &schema, &file, set_default)?
-            {
+            if let Err(message) = validator.record(interpreter, &record, set_default)? {
                 return Err(workflow_error(format!(
                     "Error validating row {index} of data frame.\n{message}"
                 )));

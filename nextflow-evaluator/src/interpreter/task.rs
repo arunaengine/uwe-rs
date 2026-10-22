@@ -317,9 +317,10 @@ impl Interpreter<'_> {
             files.push(Value::Path(Rc::new(path)));
         }
         Ok(match value {
-            Value::List(_) => {
-                Value::List(Rc::new(RefCell::new(List::new(ListKind::ArrayList, files))))
-            }
+            Value::List(_) => Value::List(Rc::new(crate::value::ListCell::new(List::new(
+                ListKind::ArrayList,
+                files,
+            )))),
             _ => files.remove(0),
         })
     }
@@ -460,11 +461,116 @@ impl Interpreter<'_> {
         task_object: &Value,
         stub: bool,
     ) -> Result<RenderedTask, Error> {
+        if !self.task_guard(task, process, task_object)? {
+            return Ok(RenderedTask {
+                run: false,
+                script: String::new(),
+                outputs: Vec::new(),
+            });
+        }
+        self.render_body(task, process, task_object, stub)
+    }
+
+    /// Evaluates the guard before the body or persistent output probe runs.
+    pub fn task_guard(
+        &mut self,
+        task: &mut TaskFrame,
+        process: &Process,
+        task_object: &Value,
+    ) -> Result<bool, Error> {
+        let result = self.with_task(task.variables.clone(), task_object, |this| {
+            match &process.when {
+                Some(when) => Ok(this.expression(&mut task.frame, when)?.truth()),
+                None => Ok(true),
+            }
+        });
+        self.in_script(&task.frame, result)
+    }
+
+    /// Renders a task whose guard was already accepted.
+    pub fn render_body(
+        &mut self,
+        task: &mut TaskFrame,
+        process: &Process,
+        task_object: &Value,
+        stub: bool,
+    ) -> Result<RenderedTask, Error> {
         let variables = task.variables.clone();
         let result = self.with_task(variables, task_object, |this| {
             this.render_sections(task, process, task_object, stub)
         });
         self.in_script(&task.frame, result)
+    }
+
+    /// Resolves declared outputs without running an exec body for stored-output reuse.
+    pub fn render_probe(
+        &mut self,
+        task: &mut TaskFrame,
+        process: &Process,
+        task_object: &Value,
+    ) -> Result<Option<RenderedTask>, Error> {
+        fn safe(value: &Expression) -> bool {
+            match &value.kind {
+                ExpressionKind::Literal(_)
+                | ExpressionKind::Variable(_)
+                | ExpressionKind::Binding(_)
+                | ExpressionKind::Builtin(_) => true,
+                ExpressionKind::Interpolate { parts, .. } => parts.iter().all(|part| match part {
+                    crate::lowered::Part::Text(_) => true,
+                    crate::lowered::Part::Value(value) => safe(value),
+                }),
+                ExpressionKind::List(items) => items.iter().all(safe),
+                ExpressionKind::Map(items) => {
+                    items.iter().all(|(key, value)| safe(key) && safe(value))
+                }
+                _ => false,
+            }
+        }
+        if !process.outputs.iter().all(|output| {
+            output.optional.as_ref().is_none_or(safe)
+                && output.parts.iter().all(|part| match part {
+                    OutputPart::Value(value) | OutputPart::Eval(value) => safe(value),
+                    OutputPart::Path { pattern, options }
+                    | OutputPart::Files {
+                        pattern, options, ..
+                    } => {
+                        safe(pattern)
+                            && options.named.iter().all(|(_, value)| safe(value))
+                            && options.positional.iter().all(safe)
+                    }
+                    OutputPart::Env(_) | OutputPart::Stdout => true,
+                })
+        }) {
+            return Ok(None);
+        }
+        *task.frame.unset.borrow_mut() = process
+            .section_variables
+            .iter()
+            .map(|(name, slot)| (*slot, name.clone()))
+            .collect();
+        let result = self.with_task(task.variables.clone(), task_object, |this| {
+            for output in &process.outputs {
+                for part in &output.parts {
+                    if let OutputPart::Path { pattern, .. } | OutputPart::Files { pattern, .. } =
+                        part
+                        && matches!(
+                            this.expression(&mut task.frame, pattern)?,
+                            Value::Closure(_)
+                        )
+                    {
+                        return Ok(None);
+                    }
+                }
+            }
+            this.render_outputs(task, process).map(Some)
+        });
+        self.in_script(&task.frame, result).map(|outputs| {
+            outputs.map(|outputs| RenderedTask {
+                run: true,
+                script: String::new(),
+                outputs,
+            })
+        })
     }
 
     /// A result of task code, whose error, like one of an output, happened in the script of
@@ -517,10 +623,6 @@ impl Interpreter<'_> {
         task_object: &Value,
         stub: bool,
     ) -> Result<RenderedTask, Error> {
-        let run = match &process.when {
-            Some(when) => self.expression(&mut task.frame, when)?.truth(),
-            None => true,
-        };
         // As in Nextflow, only the section that runs sets its variables, so outputs that read
         // the variables of the other section fail.
         *task.frame.unset.borrow_mut() = process
@@ -552,6 +654,19 @@ impl Interpreter<'_> {
                 .cloned(),
             _ => None,
         };
+        let outputs = self.render_outputs(task, process)?;
+        Ok(RenderedTask {
+            run: true,
+            script: normalise_script(&script, shell.as_ref()),
+            outputs,
+        })
+    }
+
+    fn render_outputs(
+        &mut self,
+        task: &mut TaskFrame,
+        process: &Process,
+    ) -> Result<Vec<RenderedOutput>, Error> {
         let mut outputs = Vec::new();
         for output in &process.outputs {
             let mut parts = Vec::new();
@@ -599,11 +714,7 @@ impl Interpreter<'_> {
                 hidden: output.hidden,
             });
         }
-        Ok(RenderedTask {
-            run,
-            script: normalise_script(&script, shell.as_ref()),
-            outputs,
-        })
+        Ok(outputs)
     }
 }
 
@@ -652,7 +763,7 @@ fn stage(
         return Ok(staged.remove(0));
     }
     let list = List::new(ListKind::BlankSeparated, staged);
-    Ok(Value::List(Rc::new(RefCell::new(list))))
+    Ok(Value::List(Rc::new(crate::value::ListCell::new(list))))
 }
 
 /// The name of the `index`-th of `size` files for a name pattern: `*` is the index, or

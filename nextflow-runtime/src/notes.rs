@@ -74,6 +74,11 @@ impl Host for Noting<'_> {
         self.host.write(path, bytes)
     }
 
+    fn copy_file(&mut self, source: &PathValue, target: &PathValue) -> Result<(), Error> {
+        self.note(source, Note::Read);
+        self.host.copy_file(source, target)
+    }
+
     fn delete(&mut self, path: &PathValue) -> Result<bool, Error> {
         self.host.delete(path)
     }

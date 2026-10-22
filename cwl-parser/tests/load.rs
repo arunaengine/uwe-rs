@@ -209,3 +209,42 @@ fn reads_version_forms() {
     let error = failure(&[("file:///work/tool.cwl", "")], "file:///work/tool.cwl");
     assert_eq!(error.message, "the document is empty");
 }
+
+#[test]
+fn requires_feature_declarations() {
+    for (requirement, inputs, output) in [
+        (
+            "StepInputExpressionRequirement",
+            "x: {source: a, valueFrom: '$(self)'}",
+            "{type: 'int[]', outputSource: each/out}",
+        ),
+        (
+            "MultipleInputFeatureRequirement",
+            "x: {source: [a, b]}",
+            "{type: 'int[]', outputSource: each/out}",
+        ),
+        (
+            "MultipleInputFeatureRequirement",
+            "x: a",
+            "{type: 'int[]', outputSource: [a, b], linkMerge: merge_flattened}",
+        ),
+    ] {
+        for declared in [false, true] {
+            let requirements = if declared {
+                format!("requirements: {{{requirement}: {{}}}}\n")
+            } else {
+                String::new()
+            };
+            let source = format!(
+                "cwlVersion: v1.2\nclass: Workflow\n{requirements}inputs: {{a: 'int[]', b: 'int[]'}}\noutputs: {{out: {output}}}\nsteps:\n  each:\n    in: {{{inputs}}}\n    out: [out]\n    run:\n      class: CommandLineTool\n      inputs: {{x: Any}}\n      outputs: {{out: 'int[]'}}\n"
+            );
+            let result = loader(&[("file:///main.cwl", &source)]).load("file:///main.cwl");
+            if declared {
+                result.expect("declared feature accepted");
+            } else {
+                let message = result.expect_err("declaration required").message;
+                assert!(message.contains(requirement), "{message}");
+            }
+        }
+    }
+}

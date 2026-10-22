@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
@@ -24,6 +25,7 @@ impl<B: Backend> Runner<B> {
     pub(crate) async fn stage(&self, prepared: &Prepared) -> Result<Staging, RunnerError> {
         let spec = &prepared.request.spec;
         let mut staging = Staging::default();
+        let mut verified = HashMap::new();
         for (input, source) in spec.inputs.iter().zip(&prepared.sources) {
             let directory = input.kind == FileKind::Directory;
             let staged = |source: PathBuf, copy: bool| Staged {
@@ -46,7 +48,7 @@ impl<B: Backend> Runner<B> {
                     ..Staged::default()
                 }),
                 Source::Content | Source::Stored if !directory => {
-                    let content = self.local_content(&input.digest).await?;
+                    let content = self.stage_content(&input.digest, &mut verified).await?;
                     staging.inputs.push(staged(content, true));
                 }
                 Source::Content | Source::Stored => {
@@ -57,13 +59,14 @@ impl<B: Backend> Runner<B> {
                         input.writable,
                         snapshots,
                         &mut staging,
+                        &mut verified,
                     )
                     .await?;
                 }
             }
         }
         if let Some(digest) = &spec.stdin {
-            staging.stdin = Some(self.local_content(digest).await?);
+            staging.stdin = Some(self.stage_content(digest, &mut verified).await?);
         }
         Ok(staging)
     }
@@ -77,6 +80,7 @@ impl<B: Backend> Runner<B> {
         writable: bool,
         snapshots: &Snapshots,
         staging: &mut Staging,
+        verified: &mut HashMap<Digest, PathBuf>,
     ) -> Result<(), RunnerError> {
         let base = path.trim_end_matches('/');
         let tree = self.store.get_tree(digest).await?;
@@ -104,7 +108,8 @@ impl<B: Backend> Runner<B> {
                     TreeEntry::File {
                         digest, executable, ..
                     } => {
-                        tokio::fs::copy(self.local_content(&digest).await?, &target).await?;
+                        tokio::fs::copy(self.stage_content(&digest, verified).await?, &target)
+                            .await?;
                         let mode = if executable { 0o755 } else { 0o644 };
                         tokio::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode))
                             .await?;
@@ -142,7 +147,7 @@ impl<B: Backend> Runner<B> {
                     digest, executable, ..
                 } => staging.inputs.push(Staged {
                     path: inside,
-                    source: self.local_content(&digest).await?,
+                    source: self.stage_content(&digest, verified).await?,
                     directory: false,
                     copy: true,
                     executable,
@@ -163,6 +168,20 @@ impl<B: Backend> Runner<B> {
             });
         }
         Ok(())
+    }
+
+    /// Verifies repeated content once while staging an attempt; later attempts check again.
+    async fn stage_content(
+        &self,
+        digest: &Digest,
+        verified: &mut HashMap<Digest, PathBuf>,
+    ) -> Result<PathBuf, RunnerError> {
+        if let Some(path) = verified.get(digest) {
+            return Ok(path.clone());
+        }
+        let path = self.local_content(digest).await?;
+        verified.insert(digest.clone(), path.clone());
+        Ok(path)
     }
 
     /// A local file with the content of a digest: the store's own file for a local store or a

@@ -31,6 +31,7 @@ pub(crate) enum Mode {
 pub(crate) struct Inputs<'a> {
     pub(crate) store: &'a Store,
     pub(crate) settings: &'a Settings,
+    pub(crate) references: &'a crate::References,
     pub(crate) mode: Mode,
     pub(crate) snapshots: Snapshots,
 }
@@ -100,8 +101,8 @@ impl Inputs<'_> {
     /// change since a run read it, else read now.
     async fn hash(&self, file: &Path) -> Result<(Digest, u64), RunnerError> {
         match &self.settings.digests {
-            Some(digests) => Ok(digests.hash(file).await?),
-            None => Ok(content_store::hash_file(file).await?),
+            Some(digests) if self.mode == Mode::Run => Ok(digests.hash(file).await?),
+            _ => Ok(content_store::hash_file(file).await?),
         }
     }
 
@@ -201,6 +202,9 @@ impl Inputs<'_> {
                 continue;
             }
             let source = std::fs::canonicalize(&input.source)?;
+            if self.references.contains(&source) {
+                continue;
+            }
             if let Some(parent) = source.parent() {
                 groups
                     .entry(parent.to_owned())
@@ -358,7 +362,42 @@ impl Inputs<'_> {
         if let Some(local) = self.taken_into_folder(input).await? {
             return Box::pin(self.input(&local, siblings)).await;
         }
-        let source = Path::new(&input.source);
+        let decoded = input
+            .source
+            .strip_prefix("file://")
+            .map(storage::address::decode);
+        let source = Path::new(decoded.as_deref().unwrap_or(&input.source));
+        if input.content.is_none()
+            && (!input.source.contains("://") || decoded.is_some())
+            && !input.source.is_empty()
+            && let Some((source, digest, kind)) = self.references.find(source).await?
+        {
+            if matches!(input.writable, Writable::InPlace | Writable::Shared) {
+                return Err(RunnerError::NotInPlace(input.source.clone()));
+            }
+            if kind == FileKind::Directory {
+                self.tree(
+                    self.references
+                        .tree(&digest)
+                        .expect("a verified reference tree"),
+                )
+                .await?;
+            }
+            let executable = input.executable
+                || (input.writable != Writable::Copy
+                    && kind == FileKind::File
+                    && std::fs::metadata(&source)?.permissions().mode() & 0o111 != 0);
+            return Ok((
+                InputFile {
+                    path: input.path.clone(),
+                    kind,
+                    digest,
+                    executable,
+                    writable: input.writable == Writable::Copy,
+                },
+                Source::Local(source),
+            ));
+        }
         if matches!(input.writable, Writable::InPlace | Writable::Shared) {
             if input.source.contains("://") || input.content.is_some() {
                 return Err(RunnerError::NotInPlace(input.source.clone()));
@@ -512,4 +551,54 @@ pub(crate) async fn readable_snapshot(root: &Path) -> Result<(), RunnerError> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn imported_references_local() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("reference");
+        std::fs::write(&source, b"reference").unwrap();
+        std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let digest = Digest::sha256(b"reference");
+        let mut references = crate::References::default();
+        references.register(&source, digest.clone()).await.unwrap();
+        let store = Store::local(&root.path().join("store")).unwrap();
+        let settings = Settings {
+            downloads: root.path().join("downloads"),
+            import_inputs: true,
+            storage: storage::Storage::default(),
+            digests: None,
+        };
+        let inputs = Inputs {
+            store: &store,
+            settings: &settings,
+            references: &references,
+            mode: Mode::Run,
+            snapshots: Snapshots::new(&settings, "test"),
+        };
+        for named in [
+            source.to_string_lossy().into_owned(),
+            format!("file://{}", source.display()),
+        ] {
+            let (file, from) = inputs
+                .input(
+                    &Input {
+                        path: "reference".into(),
+                        source: named,
+                        ..Input::default()
+                    },
+                    &BTreeMap::new(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(file.digest, digest);
+            assert!(matches!(from, Source::Local(path) if path == source));
+        }
+        assert!(!store.has_content(&digest).await.unwrap());
+        assert!(!settings.downloads.join("input-snapshots").exists());
+    }
 }

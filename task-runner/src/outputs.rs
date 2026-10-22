@@ -16,10 +16,6 @@ use task_model::{Digest, Tree, TreeEntry};
 use crate::runner::at;
 use crate::{ContainerResult, DigestCache, RunnerError, StoredFile, TaskResult};
 
-/// Outputs from this size on get their digests kept in the cache of digests; smaller files are
-/// read again faster.
-const KEPT_FROM: u64 = 1 << 20;
-
 /// Stores the outputs of a finished attempt of `task` in the run `run`, and its captured
 /// streams by their content.
 pub(crate) async fn store_outputs(
@@ -246,7 +242,7 @@ impl Place<'_> {
     async fn remember(&self, store: &Store, output: &StoredOutput) {
         let path = store.local_path(&output.location);
         if let (Some(digests), Some(path)) = (self.digests, path)
-            && output.size >= KEPT_FROM
+            && output.size >= crate::digests::SMALLEST
         {
             digests.keep_stored(&path, &output.digest).await;
         }

@@ -17,11 +17,21 @@ use crate::{RunnerError, Settings};
 pub struct Lookup {
     store: Store,
     settings: Settings,
+    references: crate::References,
 }
 
 impl Lookup {
     pub fn new(store: Store, settings: Settings) -> Lookup {
-        Lookup { store, settings }
+        Lookup {
+            store,
+            settings,
+            references: crate::References::default(),
+        }
+    }
+
+    /// Uses the same verified references as execution without creating snapshots.
+    pub fn references(&mut self, references: crate::References) {
+        self.references = references;
     }
 
     /// The outcome that a real run would take from the cache for a task whose image is pinned
@@ -34,10 +44,11 @@ impl Lookup {
         if task.reuse != Reuse::Allowed {
             return Ok(None);
         }
-        let store = self.store.without_read_cache();
+        let store = self.store.read_only();
         let inputs = Inputs {
             store: &store,
             settings: &self.settings,
+            references: &self.references,
             mode: Mode::Look,
             snapshots: Snapshots::new(&self.settings, "lookup"),
         };

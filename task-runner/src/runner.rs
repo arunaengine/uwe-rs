@@ -200,10 +200,12 @@ pub struct Runner<B> {
     pub(crate) backend: Arc<B>,
     run: String,
     pub(crate) settings: Settings,
+    references: crate::References,
     pinned: Arc<Mutex<HashMap<String, Arc<Pinned>>>>,
     /// The lease of the run in the store, which it holds from its first task on, so that
     /// clean-up knows that the run goes on.
     lease: Arc<OnceCell<Lease>>,
+    front: Arc<OnceCell<crate::clean::Maintenance>>,
     lost: CancellationToken,
     /// The share of results from the cache that run again for the reproducibility check, from
     /// 0 (none) to 1 (all).
@@ -236,8 +238,10 @@ impl<B> Clone for Runner<B> {
             backend: self.backend.clone(),
             run: self.run.clone(),
             settings: self.settings.clone(),
+            references: self.references.clone(),
             pinned: self.pinned.clone(),
             lease: self.lease.clone(),
+            front: self.front.clone(),
             lost: self.lost.clone(),
             check: self.check,
             gathering: self.gathering.clone(),
@@ -257,8 +261,10 @@ impl<B: Backend> Runner<B> {
             backend: Arc::new(backend),
             run: run.to_owned(),
             settings,
+            references: crate::References::default(),
             pinned: Arc::default(),
             lease: Arc::default(),
+            front: Arc::default(),
             lost: CancellationToken::new(),
             check: 0.0,
             gathering: Arc::default(),
@@ -272,6 +278,11 @@ impl<B: Backend> Runner<B> {
     /// The id of the run.
     pub fn run_id(&self) -> &str {
         &self.run
+    }
+
+    /// Uses verified immutable local references for declared inputs.
+    pub fn references(&mut self, references: crate::References) {
+        self.references = references;
     }
 
     /// Lets the results of these runs answer tasks whose image has no digest, as a resumed run
@@ -355,6 +366,7 @@ impl<B: Backend> Runner<B> {
         Inputs {
             store: &self.store,
             settings: &self.settings,
+            references: &self.references,
             mode: Mode::Run,
             snapshots: Snapshots::new(&self.settings, &self.run),
         }
@@ -499,7 +511,10 @@ impl<B: Backend> Runner<B> {
         let stop = cancel.child_token();
         let work = async {
             match prepared.per_container > 1 && crate::together::joinable(&job) {
-                true => self.together(job, prepared.per_container, &stop).await,
+                true => {
+                    self.together(job, prepared.per_container, &stop, &prepared.snapshots)
+                        .await
+                }
                 false => self.backend.run(job, &stop).await,
             }
         };
@@ -739,6 +754,18 @@ impl<B: Backend> Runner<B> {
 
     /// Takes run protection under the maintenance gate before reading or storing inputs.
     pub(crate) async fn admit(&self) -> Result<crate::clean::Maintenance, RunnerError> {
+        if self.store.shared().is_some()
+            && let Some(front) = self.store.front()
+        {
+            self.phase(
+                None,
+                None,
+                None,
+                self.front
+                    .get_or_try_init(|| crate::clean::admission(&front)),
+            )
+            .await?;
+        }
         let guard = self
             .phase(None, None, None, crate::clean::admission(&self.store))
             .await?;
@@ -766,6 +793,9 @@ impl<B: Backend> Runner<B> {
             return Err(StoreError::Location("run lease authority was lost".into()).into());
         }
         let checked = tokio::time::timeout(Duration::from_secs(5), async {
+            if let Some(front) = self.front.get() {
+                front.check().await?;
+            }
             if let Some(lease) = self.lease.get() {
                 lease.check().await?;
             }
@@ -851,7 +881,7 @@ impl<B: Backend> Runner<B> {
             }
         };
         stop.cancel();
-        let _ = tokio::time::timeout(Duration::from_secs(60), &mut work).await;
+        let _ = work.await;
         Err(error)
     }
 }

@@ -120,3 +120,42 @@ fn null_ends() {
         "IllegalArgumentException: Must specify a non-null value for the 'from' index in a Range"
     );
 }
+
+#[test]
+fn large_range_bounds() {
+    assert_eq!(
+        value(
+            "def r=1..10000001; [r.size(),r.first(),r.last(),r[9999999],r.contains(7),r.take(2),r.step(10000000)]"
+        ),
+        "[10000001, 1, 10000001, 10000000, true, [1, 2], [1, 10000001]]"
+    );
+    assert_eq!(
+        value("def r=10000001..<1; [r.size(),r.first(),r.last(),r[-1],2 in r,1 in r]"),
+        "[10000000, 10000001, 2, 2, true, false]"
+    );
+}
+
+#[test]
+fn large_exact_ranges() {
+    assert_eq!(
+        value(
+            "def r=1L..10000001L; [r.size(),r.last(),r.last().getClass().getSimpleName(),r.contains(7)]"
+        ),
+        "[10000001, 10000001, Long, true]"
+    );
+    assert_eq!(
+        value("def r=1.5..10000001.5; [r.size(),r.last(),r.take(2),r.contains(2.5),r.contains(2)]"),
+        "[10000001, 10000001.5, [1.5, 2.5], true, false]"
+    );
+}
+
+#[test]
+fn oversized_range_access() {
+    assert_eq!(value("(0..Integer.MAX_VALUE).last()"), "2147483647");
+    assert!(
+        run("(0..Integer.MAX_VALUE).size()")
+            .0
+            .unwrap_err()
+            .contains("Integer.MAX_VALUE")
+    );
+}

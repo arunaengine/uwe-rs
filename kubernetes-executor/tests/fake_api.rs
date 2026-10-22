@@ -1672,6 +1672,233 @@ async fn staged_backend(root: &Path) -> KubernetesBackend {
             binary: None,
         }),
     });
+    (backend, state)
+}
+
+#[tokio::test]
+async fn references_skip_upload() {
+    let root = tempfile::tempdir().unwrap();
+    let (mut backend, state) = staged_state(root.path()).await;
+    let reference = root.path().join("database");
+    std::fs::create_dir(&reference).unwrap();
+    let source = reference.join("genome.fa");
+    let bytes = b"reference-database-bytes\n";
+    std::fs::write(&source, bytes).unwrap();
+    backend.references.push(SharedVolume {
+        path: reference.clone(),
+        source: json!({"persistentVolumeClaim": {"claimName": "database-v1"}}),
+    });
+    std::fs::write(reference.join("unrequested.fa"), "other database\n").unwrap();
+    backend.references.push(SharedVolume {
+        path: root.path().join("unused-database"),
+        source: json!({"persistentVolumeClaim": {"claimName": "missing-database"}}),
+    });
+    let mut spec = spec(
+        "debian:stable-slim",
+        r#"echo done > out.txt; echo chosen > chosen.txt; echo discarded > discarded.txt
+printf '%s' '{"out":{"class":"File","path":"chosen.txt"},"ref":{"class":"File","path":"genome.fa"}}' > cwl.output.json"#,
+    );
+    spec.output_manifest = Some("cwl.output.json".into());
+    spec.outputs.push(OutputRule {
+        pattern: "cwl.output.json".into(),
+    });
+    let staging = Staging {
+        inputs: vec![Staged {
+            source,
+            path: "genome.fa".into(),
+            ..Staged::default()
+        }],
+        ..Staging::default()
+    };
+    let placement = placement();
+    let job = Job {
+        name: "reference",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let result = backend.run(job, &CancellationToken::new()).await.unwrap();
+    assert_eq!(result.exit_code, Some(0));
+    assert_eq!(
+        std::fs::read_to_string(result.local_path("chosen.txt")).unwrap(),
+        "chosen\n"
+    );
+    assert!(!result.local_path("discarded.txt").exists());
+    assert!(!result.files.iter().any(|file| file.path == "genome.fa"));
+    let stage = &backend.remote.as_ref().unwrap().stage;
+    assert!(
+        !stage
+            .objects
+            .has_content(&task_model::Digest::sha256(bytes))
+            .await
+            .unwrap()
+    );
+    let state = state.lock().unwrap();
+    let pod = &state.submitted[0]["spec"]["template"]["spec"];
+    assert!(
+        !pod["volumes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|volume| { volume["persistentVolumeClaim"]["claimName"] == "missing-database" })
+    );
+    let mounts = pod["containers"][0]["volumeMounts"].as_array().unwrap();
+    assert!(mounts.iter().any(|mount| {
+        mount["name"] == "reference-0"
+            && mount["mountPath"]
+                == result
+                    .root
+                    .join("work/genome.fa")
+                    .to_string_lossy()
+                    .as_ref()
+            && mount["subPath"] == "genome.fa"
+            && mount["readOnly"] == true
+    }));
+    assert!(mounts.iter().any(|mount| mount["mountPath"]
+        == reference.join("genome.fa").to_string_lossy().as_ref()
+        && mount["subPath"] == "genome.fa"
+        && mount["readOnly"] == true));
+    assert!(!mounts.iter().any(|mount| {
+        mount["mountPath"] == reference.to_string_lossy().as_ref() || mount["name"] == "reference-1"
+    }));
+}
+
+#[tokio::test]
+async fn isolates_declared_references() {
+    let root = tempfile::tempdir().unwrap();
+    let (mut backend, state) = backend(root.path()).await;
+    let reference = root.path().join("references");
+    let directory = reference.join("index");
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::write(reference.join("genome.fa"), "genome\n").unwrap();
+    std::fs::write(reference.join("unrequested.fa"), "unrequested\n").unwrap();
+    std::fs::write(directory.join("genome.fa"), "indexed\n").unwrap();
+    std::fs::write(directory.join("genome.fa.fai"), "offset\n").unwrap();
+    backend.references = vec![
+        SharedVolume {
+            path: reference.clone(),
+            source: json!({"persistentVolumeClaim": {"claimName": "database-a"}}),
+        },
+        SharedVolume {
+            path: root.path().join("unused"),
+            source: json!({"persistentVolumeClaim": {"claimName": "missing-database-b"}}),
+        },
+    ];
+    let spec = spec(
+        "debian:stable-slim",
+        "cat genome.fa index/genome.fa index/genome.fa.fai > out.txt",
+    );
+    let staging = Staging {
+        inputs: vec![
+            Staged {
+                source: reference.join("genome.fa"),
+                path: "genome.fa".into(),
+                ..Staged::default()
+            },
+            Staged {
+                source: directory.clone(),
+                path: "index".into(),
+                directory: true,
+                ..Staged::default()
+            },
+        ],
+        ..Staging::default()
+    };
+    let placement = placement();
+    let job = Job {
+        name: "references",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let result = backend.run(job, &CancellationToken::new()).await.unwrap();
+    assert_eq!(
+        std::fs::read_to_string(result.local_path("out.txt")).unwrap(),
+        "genome\nindexed\noffset\n"
+    );
+    let state = state.lock().unwrap();
+    let pod = &state.submitted[0]["spec"]["template"]["spec"];
+    assert!(
+        !pod["volumes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|volume| { volume["persistentVolumeClaim"]["claimName"] == "missing-database-b" })
+    );
+    let mounts = pod["containers"][0]["volumeMounts"].as_array().unwrap();
+    let declared: Vec<_> = mounts
+        .iter()
+        .filter(|mount| mount["name"] == "reference-0")
+        .collect();
+    assert_eq!(declared.len(), 2);
+    assert!(declared.iter().any(|mount| {
+        mount["subPath"] == "genome.fa"
+            && mount["mountPath"] == reference.join("genome.fa").to_string_lossy().as_ref()
+            && mount["readOnly"] == true
+    }));
+    assert!(declared.iter().any(|mount| {
+        mount["subPath"] == "index"
+            && mount["mountPath"] == directory.to_string_lossy().as_ref()
+            && mount["readOnly"] == true
+    }));
+    assert!(!mounts.iter().any(|mount| {
+        mount["mountPath"] == reference.to_string_lossy().as_ref() || mount["name"] == "reference-1"
+    }));
+}
+
+#[tokio::test]
+async fn rejects_hosted_credentials() {
+    let root = tempfile::tempdir().unwrap();
+    let mut backend = staged_backend(root.path()).await;
+    backend.trusted = false;
+    backend.remote.as_mut().unwrap().stage.credentials = true;
+    let spec = spec("debian:stable-slim", "true");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "untrusted",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = backend
+        .run(job, &CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("presigned or CSI"));
+    assert!(!backend.scratch.join("untrusted").exists());
+    backend.remote.as_mut().unwrap().stage.credentials = false;
+    if let Via::Helper(helper) = &mut backend.remote.as_mut().unwrap().via {
+        helper.secret = Some("reusable".into());
+    }
+    assert!(backend.remote.as_ref().unwrap().credentials());
+}
+
+#[tokio::test]
+async fn rejects_helper_mismatch() {
+    let root = tempfile::tempdir().unwrap();
+    let mut backend = staged_backend(root.path()).await;
+    if let Via::Helper(helper) = &mut backend.remote.as_mut().unwrap().via {
+        helper.binary = Some(Binary {
+            file: root.path().join("not-uploaded"),
+            digest: task_model::Digest::sha256(b"helper"),
+            machine: Machine::Amd64,
+            uploaded: Default::default(),
+        });
+    }
+    let mut spec = spec("debian:stable-slim", "true");
+    spec.image.as_mut().unwrap().platform = Some("linux/arm64".into());
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "mismatch",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = backend
+        .run(job, &CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match task platform"));
     backend
 }
 
@@ -1883,4 +2110,92 @@ async fn stages_through_kubedal() {
         .map(|file| file["path"].as_str().unwrap_or_default())
         .collect();
     assert!(paths.contains(&"work/in.txt") && paths.contains(&"control/wrapper.sh"));
+}
+
+#[tokio::test]
+async fn kubedal_discovers_outputs() {
+    let root = tempfile::tempdir().unwrap();
+    let (mut backend, state) = staged_state(root.path()).await;
+    let data = root.path().join("staging");
+    std::fs::write(
+        root.path().join("server/data-node"),
+        data.to_string_lossy().as_bytes(),
+    )
+    .unwrap();
+    let file = root.path().join("server/helper");
+    let binary = Binary {
+        digest: task_model::Digest::sha256(&std::fs::read(&file).unwrap()),
+        file,
+        machine: Machine::Amd64,
+        uploaded: Default::default(),
+    };
+    let remote = backend.remote.as_mut().unwrap();
+    remote.stage.cleanup = false;
+    remote.via = Via::Kubedal(Kubedal {
+        driver: "kubedal.arunaengine.org".into(),
+        data_node: "staging".into(),
+        namespace: None,
+        upload: Duration::from_secs(60),
+        helper: None,
+    });
+    let mut spec = spec(
+        "debian:stable-slim",
+        r#"echo chosen > selected.txt; echo discarded > discarded.txt
+printf '%s' '{"out":{"class":"File","location":"selected.txt"}}' > cwl.output.json"#,
+    );
+    spec.output_manifest = Some("cwl.output.json".into());
+    spec.outputs = vec![OutputRule {
+        pattern: "cwl.output.json".into(),
+    }];
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "missing-helper",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = backend
+        .run(job, &CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("configured helper_image or helper_file")
+    );
+    assert!(state.lock().unwrap().submitted.is_empty());
+    if let Via::Kubedal(kubedal) = &mut backend.remote.as_mut().unwrap().via {
+        kubedal.helper = Some(Helper {
+            image: "uwe-helper:test".into(),
+            image_volume: false,
+            secret: None,
+            binary: Some(binary),
+        });
+    }
+    let job = Job {
+        name: "json-kubedal",
+        ..job
+    };
+    let result = backend.run(job, &CancellationToken::new()).await.unwrap();
+    assert_eq!(result.exit_code, Some(0));
+    assert_eq!(
+        std::fs::read_to_string(result.local_path("selected.txt")).unwrap(),
+        "chosen\n"
+    );
+    assert!(!result.local_path("discarded.txt").exists());
+    assert!(result.files.iter().any(|file| file.path == "selected.txt"));
+    let state = state.lock().unwrap();
+    let pod = &state.submitted[0]["spec"]["template"]["spec"];
+    assert!(pod.get("initContainers").is_none());
+    let list = pod["volumes"][0]["csi"]["volumeAttributes"]["manifest"]
+        .as_str()
+        .unwrap();
+    let list: Value = serde_json::from_slice(&std::fs::read(data.join(list)).unwrap()).unwrap();
+    assert!(
+        list["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|file| { file["path"] == "control/discover" && file["executable"] == true })
+    );
 }

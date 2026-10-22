@@ -15,7 +15,7 @@ use std::time::Duration;
 use executor::remote::RemoteStage;
 use executor::{Backend, ExecutorError, Job, Staged, Staging};
 use kubernetes_executor::{
-    Cluster, Helper, Kubedal, KubernetesBackend, LABEL, Look, PodStaging, Pods, Via,
+    Cluster, Helper, Kubedal, KubernetesBackend, LABEL, Look, PodStaging, Pods, SharedVolume, Via,
 };
 use serde_json::{Value, json};
 use task_model::{
@@ -415,13 +415,40 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
     match (method.as_str(), path.as_str()) {
         ("POST", JOBS) => {
             let mut job: Value = serde_json::from_str(&body).expect("a Job");
+            if folder.join("drop-resources").exists()
+                || (folder.join("drop-created-resources").exists()
+                    && parameter(&target, "dryRun").is_none())
+            {
+                job["spec"]["template"]["spec"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("resources");
+            }
+            if parameter(&target, "dryRun").as_deref() == Some("All") {
+                return reply(
+                    &mut stream,
+                    "201 Created",
+                    "application/json",
+                    &job.to_string(),
+                );
+            }
             job["metadata"]["uid"] = json!(format!("accepted-{}", state.submitted.len()));
             state.submitted.push(job.clone());
             let name = job["metadata"]["name"]
                 .as_str()
                 .unwrap_or_default()
                 .to_owned();
-            let running = start(&folder, &job);
+            let running = if job["spec"]["suspend"] == true {
+                Running {
+                    label: job["metadata"]["labels"][LABEL].as_str().unwrap().into(),
+                    process: 0,
+                    deleted: false,
+                    containers: 0,
+                    init: Vec::new(),
+                }
+            } else {
+                start(&folder, &job)
+            };
             state.jobs.insert(name, running);
             if folder.join("lose-submit").exists() {
                 return;
@@ -432,6 +459,21 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
                 "application/json",
                 &job.to_string(),
             );
+        }
+        ("PATCH", job) if job.starts_with(&format!("{JOBS}/")) => {
+            let name = job.rsplit('/').next().unwrap();
+            let patch: Value = serde_json::from_str(&body).unwrap();
+            let job = state
+                .submitted
+                .iter_mut()
+                .find(|job| job["metadata"]["name"] == name)
+                .unwrap();
+            assert_eq!(patch["metadata"]["uid"], job["metadata"]["uid"]);
+            job["spec"]["suspend"] = patch["spec"]["suspend"].clone();
+            let job = job.clone();
+            let running = start(&folder, &job);
+            state.jobs.insert(name.into(), running);
+            reply(&mut stream, "200 OK", "application/json", &job.to_string());
         }
         ("GET", job) if job.starts_with(&format!("{JOBS}/")) => {
             let name = job.rsplit('/').next().unwrap_or_default();
@@ -463,7 +505,10 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
                         &running.label
                     };
                     // A file `quota` keeps the Job controller from making pods.
-                    !running.deleted && label == value && !folder.join("quota").exists()
+                    !running.deleted
+                        && running.process != 0
+                        && label == value
+                        && !folder.join("quota").exists()
                 })
                 .map(|(name, running)| pod(&folder, name, running))
                 .collect();
@@ -524,10 +569,12 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
             let name = job.rsplit('/').next().unwrap_or_default().to_owned();
             if let Some(running) = state.jobs.get_mut(&name) {
                 running.deleted = !folder.join("delay-delete").exists();
-                let _ = std::process::Command::new("kill")
-                    .args(["-TERM", "--", &format!("-{}", running.process)])
-                    .stderr(std::process::Stdio::null())
-                    .status();
+                if running.process != 0 {
+                    let _ = std::process::Command::new("kill")
+                        .args(["-TERM", "--", &format!("-{}", running.process)])
+                        .stderr(std::process::Stdio::null())
+                        .status();
+                }
             }
             let status =
                 json!({"kind": "Status", "apiVersion": "v1", "status": "Success", "metadata": {}});
@@ -606,6 +653,7 @@ async fn backend(root: &Path) -> (KubernetesBackend, Arc<Mutex<State>>) {
 
 fn spec(image: &str, script: &str) -> TaskSpec {
     TaskSpec {
+        output_manifest: None,
         run_as: None,
         format: FORMAT,
         namespace: String::new(),
@@ -1218,6 +1266,7 @@ async fn recovers_lost_submissions() {
     std::fs::write(never.join("remote.lock"), "").unwrap();
     record["name"] = json!("uwe-never");
     std::fs::write(never.join("remote.json"), record.to_string()).unwrap();
+    std::fs::write(backend.scratch.join("remote-pending/never"), "").unwrap();
     age(&never.join("remote.json"));
     backend.reconcile().await.unwrap();
     assert!(!never.join("remote.json").exists());
@@ -1264,6 +1313,70 @@ async fn recovers_dropped_attempts() {
     let state = state.lock().unwrap();
     assert!(state.jobs["uwe-orphan"].deleted);
     assert_eq!(state.submitted.len(), 2);
+}
+
+#[tokio::test]
+async fn transfers_locked_ownership() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, state) = backend(root.path()).await;
+    let spec = spec("debian:stable-slim", "sleep 30");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "relocated",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let journal = backend.scratch.join("relocated/remote.json");
+    let cancel = CancellationToken::new();
+    tokio::select! {
+        result = backend.run(job, &cancel) => panic!("{result:?}"),
+        () = until(|| accepted(&journal)) => {}
+    }
+    let mut record: Value = serde_json::from_slice(&std::fs::read(&journal).unwrap()).unwrap();
+    record["host"] = json!("previous-node-boot");
+    std::fs::write(&journal, record.to_string()).unwrap();
+    let lock = std::fs::File::options()
+        .write(true)
+        .open(journal.with_file_name("remote.lock"))
+        .unwrap();
+    lock.lock().unwrap();
+    let recovered = KubernetesBackend::new(backend.cluster.clone(), backend.scratch.clone());
+    recovered.reconcile().await.unwrap();
+    assert!(journal.exists());
+    assert!(!state.lock().unwrap().jobs["uwe-relocated"].deleted);
+    lock.unlock().unwrap();
+    recovered.reconcile().await.unwrap();
+    assert!(!journal.exists());
+    assert!(state.lock().unwrap().jobs["uwe-relocated"].deleted);
+}
+
+#[tokio::test]
+async fn supplied_client_executes() {
+    let root = tempfile::tempdir().unwrap();
+    let (mut backend, _) = backend(root.path()).await;
+    let file = kube::config::Kubeconfig::read_from(root.path().join("kubeconfig")).unwrap();
+    let config = kube::Config::from_custom_kubeconfig(file, &Default::default())
+        .await
+        .unwrap();
+    let client = kube::Client::try_from(config).unwrap();
+    backend.cluster = Cluster::new(client, NAMESPACE.into(), backend.cluster.server().into());
+    let spec = spec("debian:stable-slim", "echo supplied > out.txt");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "supplied",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    assert_eq!(
+        backend
+            .run(job, &CancellationToken::new())
+            .await
+            .unwrap()
+            .exit_code,
+        Some(0)
+    );
 }
 
 #[tokio::test]
@@ -1645,7 +1758,11 @@ async fn stages_through_objects() {
 
 /// A backend whose pods get their files through a staging root in a folder, which cleans up.
 async fn staged_backend(root: &Path) -> KubernetesBackend {
-    let (mut backend, _) = backend(root).await;
+    staged_state(root).await.0
+}
+
+async fn staged_state(root: &Path) -> (KubernetesBackend, Arc<Mutex<State>>) {
+    let (mut backend, state) = backend(root).await;
     let program = std::env::current_exe().expect("this program");
     let script = format!(
         "#!/bin/sh\nIFS=$(printf '\\037')\nUWE_TEST_STAGE=\"$*\" exec {} --exact \
@@ -1900,6 +2017,171 @@ async fn rejects_helper_mismatch() {
         .unwrap_err();
     assert!(error.to_string().contains("does not match task platform"));
     backend
+        .remote
+        .as_ref()
+        .unwrap()
+        .platform("linux/amd64")
+        .unwrap();
+}
+
+#[tokio::test]
+async fn retries_pending_cleanup() {
+    let root = tempfile::tempdir().unwrap();
+    let backend = staged_backend(root.path()).await;
+    let attempt = backend.scratch.join("cleanup");
+    std::fs::create_dir_all(&attempt).unwrap();
+    std::fs::write(attempt.join("remote.lock"), "").unwrap();
+    let journal = attempt.join("remote.json");
+    let record = json!({
+        "backend": "Kubernetes", "host": "old-boot", "locked": true, "stopped": true,
+        "server": backend.cluster.server(), "namespace": backend.cluster.namespace(),
+        "staging": {"prefix": "attempts/recovery", "plan": "cas/plan", "cleanup": true,
+            "root": backend.remote.as_ref().unwrap().stage.objects.url("")},
+    });
+    std::fs::write(&journal, record.to_string()).unwrap();
+    let attempts = root.path().join("staging/attempts");
+    std::fs::write(&attempts, "not a directory").unwrap();
+    assert!(backend.reconcile().await.is_err());
+    assert!(journal.is_file());
+    assert!(backend.scratch.join("remote-pending/cleanup").exists());
+    std::fs::remove_file(&attempts).unwrap();
+    std::fs::create_dir_all(attempts.join("recovery")).unwrap();
+    std::fs::write(attempts.join("recovery/result"), "output").unwrap();
+    let plan = root.path().join("staging/cas/plan");
+    std::fs::create_dir_all(plan.parent().unwrap()).unwrap();
+    std::fs::write(&plan, "plan").unwrap();
+    backend.reconcile().await.unwrap();
+    assert!(!journal.exists());
+    assert!(!plan.exists());
+    assert!(!attempts.join("recovery/result").exists());
+    assert!(!backend.scratch.join("remote-pending/cleanup").exists());
+}
+
+#[tokio::test]
+async fn skips_completed_history() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, _) = backend(root.path()).await;
+    backend.reconcile().await.unwrap();
+    // A post-start historical folder is deliberately invalid; only indexed journals matter.
+    let old = backend.scratch.join("historical");
+    std::fs::create_dir(&old).unwrap();
+    std::fs::write(old.join("remote.json"), "unreadable history").unwrap();
+    backend.reconcile().await.unwrap();
+}
+
+#[tokio::test]
+async fn bounds_recovery_batches() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, _) = backend(root.path()).await;
+    for index in 0..130 {
+        let attempt = backend.scratch.join(index.to_string());
+        std::fs::create_dir_all(&attempt).unwrap();
+        std::fs::write(attempt.join("remote.lock"), "").unwrap();
+        let record = json!({"backend": "Kubernetes", "locked": true, "stopped": true,
+            "server": backend.cluster.server(), "namespace": backend.cluster.namespace()});
+        std::fs::write(attempt.join("remote.json"), record.to_string()).unwrap();
+    }
+    for remaining in [66, 2, 0] {
+        backend.reconcile().await.unwrap();
+        assert_eq!(
+            std::fs::read_dir(backend.scratch.join("remote-pending"))
+                .unwrap()
+                .count(),
+            remaining
+        );
+    }
+}
+
+#[tokio::test]
+async fn mounts_shared_memory() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, state) = backend(root.path()).await;
+    let mut spec = spec("debian:stable-slim", "echo shared > out.txt");
+    spec.environment.insert(
+        "UWE_CONTAINER_FLAGS".into(),
+        EnvironmentValue::Literal(r#"{"shm":1073741824}"#.into()),
+    );
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "shared-memory",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    backend.run(job, &CancellationToken::new()).await.unwrap();
+    let state = state.lock().unwrap();
+    let pod = &state.submitted[0]["spec"]["template"]["spec"];
+    assert!(
+        pod["volumes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|volume| volume["emptyDir"]["medium"] == "Memory"
+                && volume["emptyDir"]["sizeLimit"] == "1073741824")
+    );
+    assert!(
+        pod["containers"][0]["volumeMounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|mount| mount["mountPath"] == "/dev/shm")
+    );
+}
+
+#[tokio::test]
+async fn requires_aggregate_caps() {
+    let root = tempfile::tempdir().unwrap();
+    let (backend, state) = backend(root.path()).await;
+    std::fs::write(root.path().join("server/drop-resources"), "").unwrap();
+    let mut spec = spec("debian:stable-slim", "true");
+    spec.containers = ["debian:stable-slim", "with-entrypoint"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, image)| ContainerSpec {
+            name: format!("part-{index}"),
+            image: Some(Image {
+                reference: image.into(),
+                platform: None,
+            }),
+            arguments: vec!["true".into()],
+            workdir: None,
+            environment: BTreeMap::new(),
+            after: Vec::new(),
+            attempts: 1,
+            replaces_entrypoint: true,
+            service: false,
+        })
+        .collect();
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "uncapped",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = backend
+        .run(job, &CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("PodLevelResources required"));
+    assert!(state.lock().unwrap().submitted.is_empty());
+    std::fs::remove_file(root.path().join("server/drop-resources")).unwrap();
+    std::fs::write(root.path().join("server/drop-created-resources"), "").unwrap();
+    let job = Job {
+        name: "dropped-cap",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = backend
+        .run(job, &CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("admission changed"));
+    let state = state.lock().unwrap();
+    assert!(state.jobs["uwe-dropped-cap"].deleted);
+    assert_eq!(state.jobs["uwe-dropped-cap"].process, 0);
+    assert!(!state.calls.iter().any(|call| call.starts_with("PATCH")));
 }
 
 /// A daemon with a staging root removes its objects and its journal once it stopped.
@@ -1936,6 +2218,77 @@ async fn daemons_clean_staging() {
     assert!(!served.root.exists());
 }
 
+/// Recovery collects a completed capture even when its coordinator never observed completion.
+#[tokio::test]
+async fn recovers_unobserved_outputs() {
+    let root = tempfile::tempdir().unwrap();
+    let backend = staged_backend(root.path()).await;
+    let trigger = root.path().join("finish-task");
+    let spec = spec(
+        "debian:stable-slim",
+        &format!(
+            "while [ ! -f {} ]; do sleep 0.01; done; echo recovered > out.txt",
+            quote(&trigger.to_string_lossy()),
+        ),
+    );
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "crashed",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let attempt = backend.scratch.join("crashed");
+    let journal = attempt.join("remote.json");
+    let cancel = CancellationToken::new();
+    let mut running = Box::pin(backend.run(job, &cancel));
+    tokio::select! {
+        result = &mut running => panic!("{result:?}"),
+        () = until(|| accepted(&journal)) => {}
+    }
+    let record: Value = serde_json::from_slice(&std::fs::read(&journal).unwrap()).unwrap();
+    assert_eq!(record["collect"], true);
+    let prefix = root
+        .path()
+        .join("staging")
+        .join(record["staging"]["prefix"].as_str().unwrap());
+    std::fs::write(&trigger, "").unwrap();
+    // The coordinator is no longer polled while the pod completes its capture.
+    until(|| {
+        prefix.join("control/objects").exists()
+            && root.path().join("server/uwe-crashed.exit.0").exists()
+    })
+    .await;
+    drop(running);
+    let exit = prefix.join("control/exit");
+    let saved = root.path().join("saved-exit");
+    std::fs::rename(&exit, &saved).unwrap();
+    backend.reconcile().await.unwrap();
+    assert!(journal.exists());
+    assert!(prefix.join("files/1").exists());
+    let independent = self::spec("debian:stable-slim", "echo independent > out.txt");
+    let next = Job {
+        name: "independent",
+        spec: &independent,
+        ..job
+    };
+    let result = backend.run(next, &CancellationToken::new()).await.unwrap();
+    assert_eq!(
+        std::fs::read_to_string(result.local_path("out.txt")).unwrap(),
+        "independent\n"
+    );
+    assert!(journal.exists());
+    assert!(prefix.join("files/1").exists());
+    std::fs::rename(saved, exit).unwrap();
+    backend.reconcile().await.unwrap();
+    assert!(!journal.exists());
+    assert_eq!(
+        std::fs::read_to_string(attempt.join("work/out.txt")).unwrap(),
+        "recovered\n"
+    );
+    assert!(!prefix.join("files/1").exists());
+}
+
 /// Results that cannot be collected stay in the staging root, as they have no other copy.
 #[tokio::test]
 async fn keeps_uncollected_results() {
@@ -1964,10 +2317,17 @@ async fn keeps_uncollected_results() {
     let objects = &backend.remote.as_ref().expect("the staging").stage.objects;
     let left = objects.objects("attempts/").await.expect("the attempts");
     assert!(!left.is_empty(), "the results are gone");
+    let attempt = backend.scratch.join("run-K-1-1");
+    assert!(attempt.join("remote.json").exists());
+    backend.reconcile().await.unwrap();
+    assert!(!attempt.join("remote.json").exists());
+    assert_eq!(
+        std::fs::read_to_string(attempt.join("work/out.txt")).unwrap(),
+        "done\n"
+    );
 }
 
-/// A stage-in that fails ends the attempt with the end of its log, instead of a bare failure,
-/// and the cleanup removes its plan.
+/// A stage-in failure keeps its diagnostic and retains an unavailable capture obligation.
 #[tokio::test]
 async fn reports_stage_failures() {
     let root = tempfile::tempdir().expect("a folder");
@@ -2008,10 +2368,10 @@ async fn reports_stage_failures() {
         "{text}"
     );
     assert!(text.contains("cannot download the plan: refused"), "{text}");
-    // The failed attempt leaves its wrapper, but no plan.
     let stage = &backend.remote.as_ref().expect("the staging").stage;
     let contents = (stage.objects.objects("cas/").await).expect("the contents");
-    assert_eq!(contents.len(), 1, "{contents:?}");
+    assert_eq!(contents.len(), 2, "{contents:?}");
+    assert!(backend.scratch.join("run-P-9-1/remote.json").exists());
 }
 
 /// Runs the staging helper when a pod of `stages_through_objects` starts this program as it.
@@ -2049,6 +2409,7 @@ async fn stages_through_kubedal() {
             data_node: "staging".into(),
             namespace: Some("data".into()),
             upload: Duration::from_secs(60),
+            helper: None,
         }),
     });
     let source = root.path().join("source/in.txt");

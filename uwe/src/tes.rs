@@ -72,7 +72,8 @@ pub fn executor(
         .map_err(|error| error.to_string())?;
     // The server reads the inputs from the store, so they are copied there.
     let backends = crate::conda_backend::Remote::new(backends, store.clone(), &scratch, run, setup);
-    let runner = Runner::new(store, backends, run, crate::runner_settings(storage, true));
+    let mut runner = Runner::new(store, backends, run, crate::runner_settings(storage, true));
+    runner.references(setup.references.clone());
     let mut executor = RunnerExecutor::new(runner, default_image);
     executor.sites = SiteRule {
         sites: (place.sites.iter())

@@ -104,6 +104,7 @@ pub fn executor(
     // The nodes read the inputs from the store, so they are copied there.
     let scratch = backend.scratch.clone();
     let backend = crate::conda_backend::Remote::new(backend, store.clone(), &scratch, run, setup);
-    let runner = Runner::new(store, backend, run, crate::runner_settings(storage, true));
+    let mut runner = Runner::new(store, backend, run, crate::runner_settings(storage, true));
+    runner.references(setup.references.clone());
     Ok(RunnerExecutor::new(runner, default_image))
 }

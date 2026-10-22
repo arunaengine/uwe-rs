@@ -30,16 +30,24 @@ const SECTIONS: &[&str] = &[
     "page",
     "retry",
     "secrets",
+    "workflows",
+    "references",
 ];
 
 /// The executors that `-executor` and `default` of `[executor]` may name.
-const EXECUTORS: &[&str] = &["simulator", "local", "tes", "slurm", "kubernetes"];
+pub(crate) const EXECUTORS: &[&str] = &["simulator", "local", "tes", "slurm", "kubernetes"];
 
 /// What the config files set up for a command; the default is what no config file sets up.
 #[derive(Default)]
 pub struct Setup {
+    pub references: task_runner::References,
+    pub hosted: bool,
+    pub argo_policy: argo_runtime::Policy,
+    pub argo_locks: argo_runtime::SharedLocks,
+    pub cluster: Option<kubernetes_executor::Cluster>,
     /// The storage providers, one client each for the whole process.
     pub storage: Storage,
+    pub registry: executor::credentials::Registry,
     /// The settings of the executors.
     pub executors: Executors,
     /// Where the traces of runs go, from `[telemetry]`.
@@ -56,6 +64,10 @@ pub struct Setup {
 /// and environment variables win over them.
 #[derive(Clone, Debug, Default)]
 pub struct Executors {
+    pub local_cpus: Option<u32>,
+    pub local_memory: Option<u64>,
+    pub kubernetes_in_cluster: bool,
+    pub kubernetes_references: Vec<kubernetes_executor::SharedVolume>,
     /// `[executor.local] engine`: the container engine, as `UWE_ENGINE` names it.
     pub engine: Option<String>,
     /// `[executor.tes] server`, like `-tes-server`.
@@ -134,8 +146,26 @@ impl Executors {
         };
         section.only(&["default", "local", "tes", "slurm", "kubernetes"])?;
         if let Some(local) = section.table("local")? {
-            local.only(&["engine"])?;
+            local.only(&["engine", "cpus", "memory_bytes"])?;
             settings.engine = local.text("engine")?;
+            settings.local_cpus = local
+                .integer("cpus")?
+                .map(|value| {
+                    u32::try_from(value)
+                        .ok()
+                        .filter(|value| *value > 0)
+                        .ok_or_else(|| local.invalid("cpus", "must be a positive CPU capacity"))
+                })
+                .transpose()?;
+            settings.local_memory = local
+                .integer("memory_bytes")?
+                .map(|value| {
+                    u64::try_from(value)
+                        .ok()
+                        .filter(|value| *value >= 6 << 20)
+                        .ok_or_else(|| local.invalid("memory_bytes", "must be at least 6 MiB"))
+                })
+                .transpose()?;
         }
         if let Some(tes) = section.table("tes")? {
             let mut keys = vec!["server", "token", "sites"];
@@ -205,7 +235,14 @@ impl Executors {
             }
         }
         if let Some(kubernetes) = section.table("kubernetes")? {
-            let mut keys = vec!["kubeconfig", "namespace", "helper_image", "helper_mount"];
+            let mut keys = vec![
+                "kubeconfig",
+                "namespace",
+                "helper_image",
+                "helper_mount",
+                "in_cluster",
+                "references",
+            ];
             keys.extend(["staging_secret", "helper_file", "helper_download_image"]);
             keys.extend(["shared_volume", "kubedal_driver", "kubedal_data_node"]);
             keys.extend([
@@ -218,6 +255,40 @@ impl Executors {
             kubernetes.only(&keys)?;
             settings.kubeconfig = kubernetes.text("kubeconfig")?.map(PathBuf::from);
             settings.kubernetes_namespace = kubernetes.text("namespace")?;
+            settings.kubernetes_in_cluster = kubernetes.flag("in_cluster")?.unwrap_or(false);
+            if let Some(references) = kubernetes.table("references")? {
+                for reference in references.tables()? {
+                    reference.only(&["path", "claim", "nfs_server", "nfs_path"])?;
+                    let path = reference
+                        .text("path")?
+                        .ok_or_else(|| reference.missing("path", "the installed reference root"))?;
+                    let source = match (
+                        reference.text("claim")?,
+                        reference.text("nfs_server")?,
+                        reference.text("nfs_path")?,
+                    ) {
+                        (Some(claim), None, None) => {
+                            serde_json::json!({"persistentVolumeClaim": {"claimName": claim}})
+                        }
+                        (None, Some(server), Some(path)) => {
+                            serde_json::json!({"nfs": {"server": server, "path": path}})
+                        }
+                        _ => {
+                            return Err(reference.invalid(
+                                "claim",
+                                "supply either claim or both nfs_server and nfs_path",
+                            ));
+                        }
+                    };
+                    let path = PathBuf::from(path);
+                    if !path.is_absolute() {
+                        return Err(reference.invalid("path", "must be absolute"));
+                    }
+                    settings
+                        .kubernetes_references
+                        .push(kubernetes_executor::SharedVolume { path, source });
+                }
+            }
             if let Some(minutes) = kubernetes.integer("unschedulable_minutes")? {
                 if !(1..=10_080).contains(&minutes) {
                     let message = "must be between 1 and 10080";
@@ -259,7 +330,7 @@ impl Executors {
             let object_store =
                 settings.kubernetes_staging.mode == crate::staging::Mode::ObjectStore;
             settings.kubernetes_helper_file = helper_file(&kubernetes, image.is_some())?;
-            if !object_store {
+            if settings.kubernetes_staging.mode == crate::staging::Mode::SharedPath {
                 settings.kubernetes_helper_file = None;
             }
             // Without helper_image the pods download the binary with Alpine.
@@ -312,6 +383,7 @@ fn kubedal(kubernetes: &Table<'_>) -> Result<Option<kubernetes_executor::Kubedal
         data_node,
         namespace: kubernetes.text("kubedal_namespace")?,
         upload: std::time::Duration::from_secs(minutes * 60),
+        helper: None,
     }))
 }
 
@@ -527,9 +599,8 @@ impl Defaults {
         Ok(defaults)
     }
 
-    /// Applies the defaults to a command: `-executor` wins over the file for `run` and
-    /// `check-machine`; other commands, like `uwe graph`, keep the simulator. `-report`
-    /// wins over the file for `run`.
+    /// Applies executor defaults to runs and checks; graph commands keep the simulator.
+    /// Explicit executor and report options override configuration defaults.
     pub fn apply(self, command: &str, arguments: &mut Arguments) {
         if matches!(
             command,
@@ -538,12 +609,14 @@ impl Defaults {
             arguments.machine_retries = arguments.machine_retries.or(self.machine_retries);
             arguments.retry_delay_ms = arguments.retry_delay_ms.or(self.retry_delay_ms);
         }
-        if matches!(command, "run" | "check-machine") && arguments.executor.is_none() {
+        if matches!(command, "run" | "check" | "check-machine")
+            && arguments.executor.is_none()
+            && arguments.preset.is_none()
+        {
             arguments.executor = self.executor.or_else(|| Some("local".into()));
-        } else if matches!(
-            command,
-            "graph" | "check" | "check-order" | "inputs" | "outputs"
-        ) && arguments.executor.is_none()
+        } else if matches!(command, "graph" | "check-order" | "inputs" | "outputs")
+            && arguments.executor.is_none()
+            && arguments.preset.is_none()
         {
             arguments.executor = Some("simulator".into());
         }
@@ -565,7 +638,7 @@ impl Setup {
         let failed = |error: ConfigError| Failure::setup(format!("uwe: {error}"));
         let config = ConfigFile::load(arguments.config_file.as_deref()).map_err(failed)?;
         config.root().only(SECTIONS).map_err(failed)?;
-        executor::credentials::configure(&config).map_err(failed)?;
+        let registry = executor::credentials::Registry::from_config(&config).map_err(failed)?;
         let storage = Storage::from_config(&config).map_err(failed)?;
         let executors = Executors::read(&config).map_err(failed)?;
         let telemetry = Telemetry::read(&config).map_err(failed)?;
@@ -588,12 +661,14 @@ impl Setup {
         }
         Ok(Setup {
             storage,
+            registry,
             executors,
             telemetry,
             network,
             conda,
             secrets,
             cwl_registry,
+            ..Setup::default()
         })
     }
 
@@ -647,8 +722,11 @@ impl Setup {
             StoreLocation::Folder(folder) => Store::local(&folder),
             StoreLocation::Objects(operator) => Store::remote(operator, &location),
         };
-        let store = store
+        let mut store = store
             .map_err(|error| failed(format!("cannot open the store at {location}: {error}")))?;
+        if store.local_path("").is_none() {
+            store = store.with_staging(crate::cache_directory().join("imports"));
+        }
         let Some(local) = self.storage.local_store() else {
             return Ok(store);
         };

@@ -114,19 +114,6 @@ impl Pending {
         }
     }
 
-    pub(crate) fn cancel_remaining(&mut self) {
-        for (&index, slot) in self.slots.iter_mut().filter(|(_, slot)| slot.end.is_none()) {
-            self.arrivals += 1;
-            slot.end = Some(End {
-                result: Err(ExecuteError::Cancelled),
-                time: SystemTime::now(),
-                arrival: self.arrivals,
-            });
-            self.ended.insert(index);
-            self.arrived.insert((self.arrivals, index));
-        }
-    }
-
     /// Takes any attempt that has ended, whatever the order, as when the run stopped.
     pub(crate) fn take_any(&mut self) -> Take {
         match self.ended.first().copied() {
@@ -261,12 +248,12 @@ mod tests {
     }
 
     #[test]
-    fn cancels_unfinished_attempts() {
+    fn records_cancelled_attempts() {
         let mut pending = Pending::new(Order::Finished);
         pending.start(task(1), 1);
         pending.start(task(2), 1);
         pending.end(TaskId(2), 1, ok(2));
-        pending.cancel_remaining();
+        pending.end(TaskId(1), 1, Err(ExecuteError::Cancelled));
         assert!(!pending.running());
         let Take::Ended(first) = pending.take_any() else {
             panic!("terminal attempt")
@@ -426,8 +413,8 @@ mod tests {
                 assert_eq!(pending.positions.len(), pending.len());
                 assert_eq!(pending.arrived.len(), pending.ended.len());
             }
-            pending.cancel_remaining();
             for (id, attempt, _) in reference.slots.clone() {
+                pending.end(TaskId(id), attempt, Err(ExecuteError::Cancelled));
                 reference.end(id, attempt);
             }
             assert!(!pending.running());
@@ -457,7 +444,9 @@ mod tests {
         pending.start(task(2), 2);
         pending.end(TaskId(2), 1, ok(2));
         assert_eq!(pending.ended.len(), 1);
-        pending.cancel_remaining();
+        for (id, attempt) in [(1, 1), (3, 1), (2, 2)] {
+            pending.end(TaskId(id), attempt, Err(ExecuteError::Cancelled));
+        }
         let actual: Vec<_> = std::iter::from_fn(|| match probe(pending.take_any()) {
             Probe::Ended(id, attempt) => Some((id, attempt)),
             _ => None,

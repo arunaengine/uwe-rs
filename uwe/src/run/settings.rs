@@ -16,6 +16,9 @@ use crate::setup::{Defaults, Setup};
 /// Executor credentials and backend configuration belong in `setup`.
 #[non_exhaustive]
 pub struct Settings {
+    pub preset: Option<String>,
+    pub hosted: Option<crate::hosted::Hosted>,
+    pub strict_provenance: bool,
     pub target: PathBuf,
     pub language: Option<Language>,
     /// Typed input object. Use absolute paths for local file values.
@@ -57,15 +60,53 @@ pub struct Settings {
     /// Local folder or writable storage address for cached results.
     pub store: Option<String>,
     /// The folder of downloads, scratch folders and input digests, like `[cache] folder` of
-    /// the config file. It holds for the whole process, so the first run that names one sets it.
+    /// the config file. Embedded submissions retain their own cache scope.
     pub cache_folder: Option<PathBuf>,
     // The CLI retains its input syntax and presentation without exposing them to hosts.
     pub(crate) cli: Option<Arguments>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preserves_preset_defaults() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config.toml");
+        for (preset, explicit, expected) in [
+            ("", None, "slurm"),
+            ("executor='local'\n", None, "local"),
+            ("executor='local'\n", Some("simulator"), "simulator"),
+        ] {
+            std::fs::write(&config, format!(
+                "[executor]\ndefault='slurm'\n[workflows.demo]\nsource='team/pipeline'\nrevision='{}'\n{preset}",
+                "a".repeat(40)
+            )).unwrap();
+            let arguments = Arguments {
+                preset: Some("demo".into()),
+                config_file: Some(config.clone()),
+                executor: explicit.map(str::to_owned),
+                ..Arguments::default()
+            };
+            let mut embedded = Settings::default();
+            embedded.preset = arguments.preset.clone();
+            embedded.config_file = arguments.config_file.clone();
+            embedded.executor = arguments.executor.clone();
+            for settings in [arguments.run_settings(), embedded] {
+                let (resolved, _, _inputs) = settings.prepare().unwrap();
+                assert_eq!(resolved.executor.as_deref(), Some(expected));
+            }
+        }
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            preset: None,
+            hosted: None,
+            strict_provenance: false,
             target: PathBuf::new(),
             language: None,
             inputs: None,
@@ -111,12 +152,32 @@ impl Settings {
         mut self,
     ) -> Result<(Arguments, Option<Setup>, Option<tempfile::NamedTempFile>), Failure> {
         let cli = self.cli.is_some();
+        let preset = self
+            .preset
+            .take()
+            .or_else(|| self.cli.as_ref()?.preset.clone());
+        if let Some(hosted) = &self.hosted {
+            let root = hosted.check(preset.as_deref())?;
+            for (given, expected) in [
+                (&mut self.cache_folder, root.join("cache")),
+                (&mut self.database, root.join("runs.sqlite")),
+                (&mut self.output_dir, root.join("outputs")),
+            ] {
+                if given.as_ref().is_some_and(|path| path != &expected) {
+                    return Err(Failure::usage(
+                        "hosted paths must stay inside the tenant root",
+                    ));
+                }
+                *given = Some(expected);
+            }
+        }
         if self.cpus == Some(0) || self.memory_bytes.is_some_and(|bytes| bytes < 6 << 20) {
             return Err(Failure::usage(
                 "uwe: resource limits require at least one CPU and 6 MiB of memory",
             ));
         }
         let mut arguments = self.cli.take().unwrap_or_default();
+        arguments.preset = preset;
         arguments.target = (!self.target.as_os_str().is_empty()).then_some(self.target);
         arguments.language = self.language;
         arguments.profiles = (!self.profiles.is_empty()).then_some(self.profiles);
@@ -139,13 +200,7 @@ impl Settings {
         arguments.output_dir = self.output_dir;
         arguments.database = self.database;
         arguments.store = self.store;
-        if let Some(folder) = self.cache_folder {
-            crate::use_cache_folder(folder);
-        }
-        if !cli && self.setup.is_none() {
-            Defaults::load(&arguments)?.apply("run", &mut arguments);
-        }
-        let file = if !cli && (self.inputs.is_some() || !self.params.is_empty()) {
+        let mut file = if !cli && (self.inputs.is_some() || !self.params.is_empty()) {
             let mut values = self.inputs.unwrap_or_else(|| Value::Object(Map::new()));
             let object = values
                 .as_object_mut()
@@ -163,6 +218,76 @@ impl Settings {
         } else {
             None
         };
+        let prepared = if arguments.preset.is_some() {
+            crate::catalogue::Catalogue::load(arguments.config_file.as_deref())?
+                .prepare(&mut arguments)?
+        } else {
+            None
+        };
+        if let (Some(hosted), Some(prepared)) = (&self.hosted, &prepared) {
+            let bytes = std::fs::read(prepared.inputs.path())
+                .map_err(|error| Failure::setup(format!("uwe: {error}")))?;
+            let values = serde_json::from_slice(&bytes)
+                .map_err(|error| Failure::setup(format!("uwe: {error}")))?;
+            hosted.authorize_values(&values)?;
+        }
+        if (!cli || prepared.is_some()) && self.setup.is_none() {
+            Defaults::load(&arguments)?.apply("run", &mut arguments);
+        }
+        if let Some(folder) = self.cache_folder {
+            crate::use_cache_folder(folder);
+        }
+        if let Some(prepared) = prepared {
+            let setup = match self.setup.take() {
+                Some(setup) => setup,
+                None => Setup::load(&arguments)?,
+            };
+            self.setup = Some(Setup {
+                references: prepared.references,
+                ..setup
+            });
+            file = Some(prepared.inputs);
+        }
+        if let Some(hosted) = self.hosted {
+            let mut setup = match self.setup.take() {
+                Some(setup) => setup,
+                None => Setup::load(&arguments)?,
+            };
+            let backend = arguments.executor.as_deref().unwrap_or("local");
+            if (backend == "kubernetes" && setup.executors.kubernetes_staging.credentials)
+                || (backend == "slurm" && setup.executors.slurm_staging.credentials)
+            {
+                return Err(Failure::usage(
+                    "hosted tasks require attempt-scoped staging access",
+                ));
+            }
+            if backend == "local"
+                && (setup.executors.local_cpus.is_none() || setup.executors.local_memory.is_none())
+            {
+                return Err(Failure::usage(
+                    "hosted local execution requires explicit CPU and memory capacity",
+                ));
+            }
+            setup.hosted = true;
+            setup.argo_policy = argo_runtime::Policy {
+                host_roots: Some(hosted.host_roots),
+                volumes: hosted.volumes,
+            };
+            setup.argo_locks = hosted.locks;
+            if let Some(namespace) = hosted.namespace {
+                if setup
+                    .cluster
+                    .as_ref()
+                    .is_some_and(|cluster| cluster.namespace() != namespace)
+                {
+                    return Err(Failure::usage(
+                        "hosted cluster namespace differs from its tenant policy",
+                    ));
+                }
+                arguments.kubernetes_namespace = Some(namespace);
+            }
+            self.setup = Some(setup);
+        }
         Ok((arguments, self.setup, file))
     }
 }

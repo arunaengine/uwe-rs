@@ -9,7 +9,106 @@ use std::sync::RwLock;
 use base64::Engine;
 use config_file::{ConfigError, ConfigFile, RegistryAuth};
 
-static CONFIGURED: RwLock<BTreeMap<String, RegistryAuth>> = RwLock::new(BTreeMap::new());
+static CONFIGURED: RwLock<Settings> = RwLock::new(Settings {
+    configured: BTreeMap::new(),
+    active: None,
+});
+
+struct Settings {
+    configured: BTreeMap<String, RegistryAuth>,
+    active: Option<(Registry, usize)>,
+}
+
+/// Registry settings of one request, independent of legacy process defaults.
+#[derive(Clone, Debug)]
+pub struct Registry {
+    configured: BTreeMap<String, RegistryAuth>,
+    paths: Vec<PathBuf>,
+}
+
+impl Default for Registry {
+    fn default() -> Self {
+        Self {
+            configured: BTreeMap::new(),
+            paths: paths(),
+        }
+    }
+}
+
+impl Registry {
+    pub fn from_config(config: &ConfigFile) -> Result<Self, ConfigError> {
+        Ok(Self {
+            configured: config_file::registry_auth(config)?,
+            paths: paths(),
+        })
+    }
+
+    /// All overlapping requests must use the same registry settings, across worker threads.
+    /// Hold the returned scope until their asynchronous work has joined.
+    pub fn enter(&self) -> Result<Scope, String> {
+        let mut settings = CONFIGURED
+            .write()
+            .unwrap_or_else(|poison| poison.into_inner());
+        match &mut settings.active {
+            Some((active, count)) => {
+                if active.paths != self.paths || !same_auth(&active.configured, &self.configured) {
+                    return Err(
+                        "concurrent requests with different registry settings require separate worker processes"
+                            .into(),
+                    );
+                }
+                *count += 1;
+            }
+            None => settings.active = Some((self.clone(), 1)),
+        }
+        Ok(Scope { _private: () })
+    }
+}
+
+/// Keeps a request's registry settings active on every executor and helper thread.
+pub struct Scope {
+    _private: (),
+}
+
+impl Drop for Scope {
+    fn drop(&mut self) {
+        let mut settings = CONFIGURED
+            .write()
+            .unwrap_or_else(|poison| poison.into_inner());
+        if let Some((_, count)) = &mut settings.active {
+            *count -= 1;
+            if *count == 0 {
+                settings.active = None;
+            }
+        }
+    }
+}
+
+fn same_auth(
+    first: &BTreeMap<String, RegistryAuth>,
+    second: &BTreeMap<String, RegistryAuth>,
+) -> bool {
+    let same = |first: &config_file::Secret, second: &config_file::Secret| {
+        first.variable() == second.variable()
+            && (first.variable().is_some() || first.reveal().ok() == second.reveal().ok())
+    };
+    first.len() == second.len()
+        && first
+            .iter()
+            .all(|(host, auth)| match (auth, second.get(host)) {
+                (
+                    RegistryAuth::Basic { username, password },
+                    Some(RegistryAuth::Basic {
+                        username: other_user,
+                        password: other_password,
+                    }),
+                ) => same(username, other_user) && same(password, other_password),
+                (RegistryAuth::Token(token), Some(RegistryAuth::Token(other))) => {
+                    same(token, other)
+                }
+                _ => false,
+            })
+}
 
 pub(crate) enum Credential {
     Basic(String, String),
@@ -38,17 +137,36 @@ impl Found {
 /// Installs the registry section of the merged settings for registry requests.
 pub fn configure(config: &ConfigFile) -> Result<(), ConfigError> {
     let auth = config_file::registry_auth(config)?;
-    *CONFIGURED
+    let mut settings = CONFIGURED
         .write()
-        .unwrap_or_else(|poison| poison.into_inner()) = auth;
+        .unwrap_or_else(|poison| poison.into_inner());
+    if settings
+        .active
+        .as_ref()
+        .is_some_and(|(active, _)| !same_auth(&active.configured, &auth))
+    {
+        return Err(config.root().invalid(
+            "registry",
+            "registry settings cannot change while a request is active",
+        ));
+    }
+    settings.configured = auth;
     Ok(())
 }
 
 pub(crate) fn lookup(host: &str) -> Result<Found, String> {
-    let configured = CONFIGURED
+    let settings = CONFIGURED
         .read()
         .unwrap_or_else(|poison| poison.into_inner());
-    lookup_in(host, &configured, &paths())
+    let registry = settings.active.as_ref().map_or_else(
+        || Registry {
+            configured: settings.configured.clone(),
+            paths: paths(),
+        },
+        |(active, _)| active.clone(),
+    );
+    drop(settings);
+    lookup_in(host, &registry.configured, &registry.paths)
 }
 
 fn paths() -> Vec<PathBuf> {
@@ -158,6 +276,59 @@ fn read_file(path: &Path) -> Result<Option<serde_json::Value>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fences_concurrent_settings() {
+        let config = |token| {
+            ConfigFile::parse(
+                &format!("[registry.\"private.example\"]\ntoken = \"{token}\""),
+                Path::new("registry.toml"),
+            )
+            .unwrap()
+        };
+        let first = Registry::from_config(&config("first")).unwrap();
+        let second_config = config("second");
+        let second = Registry::from_config(&second_config).unwrap();
+        let first_scope = first.enter().unwrap();
+        let same = ConfigFile::parse(
+            "[registry.\"private.example\"]\ntoken = \"first\"",
+            Path::new("another.toml"),
+        )
+        .unwrap();
+        drop(Registry::from_config(&same).unwrap().enter().unwrap());
+        let (ready, reached) = tokio::sync::oneshot::channel();
+        let (release, released) = tokio::sync::oneshot::channel();
+        let worker = tokio::spawn(async move {
+            let _scope = first.enter().unwrap();
+            ready.send(()).unwrap();
+            released.await.unwrap();
+            assert!(matches!(
+                lookup("private.example").unwrap().credential,
+                Some(Credential::Bearer(token)) if token == "first"
+            ));
+        });
+        reached.await.unwrap();
+        drop(first_scope);
+        assert!(second.enter().is_err());
+        assert!(configure(&second_config).is_err());
+        assert!(
+            tokio::spawn(async {
+                matches!(
+                    lookup("private.example").unwrap().credential,
+                    Some(Credential::Bearer(token)) if token == "first"
+                )
+            })
+            .await
+            .unwrap()
+        );
+        release.send(()).unwrap();
+        worker.await.unwrap();
+        let _scope = second.enter().unwrap();
+        assert!(matches!(
+            lookup("private.example").unwrap().credential,
+            Some(Credential::Bearer(token)) if token == "second"
+        ));
+    }
 
     #[test]
     fn respects_source_order() {

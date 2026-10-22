@@ -30,8 +30,13 @@ pub fn executor(
         format!(
             "cannot reach a Docker or Podman engine: {error}; use `-executor simulator` for a run without containers, or `uwe check-machine` to check the setup"
         )
-    })?;
-    let backend = LocalContainer::new(engine, scratch.to_owned(), Pool::of_this_machine());
+    })?.with_journal_root(crate::cache_directory().join("containers"));
+    let capacity = Pool::of_this_machine();
+    let pool = Pool::new(
+        setup.executors.local_cpus.unwrap_or(capacity.cpus()),
+        setup.executors.local_memory.unwrap_or(capacity.memory()),
+    );
+    let backend = LocalContainer::new(engine, scratch.to_owned(), pool);
     let backend = crate::conda_backend::Local {
         backend,
         store: store.clone(),
@@ -41,6 +46,7 @@ pub fn executor(
         secrets: setup.secrets.clone(),
     };
     // Remote inputs share the folder of downloads with the files that workflow code reads.
-    let runner = Runner::new(store, backend, run, crate::runner_settings(storage, false));
+    let mut runner = Runner::new(store, backend, run, crate::runner_settings(storage, false));
+    runner.references(setup.references.clone());
     Ok(RunnerExecutor::new(runner, default_image))
 }

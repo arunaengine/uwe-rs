@@ -9,7 +9,7 @@ use nextflow_parser::Span;
 use super::library::org_json;
 use super::{AtSpan, Error, Frame, Interpreter, thrown};
 use crate::exception::Exception;
-use crate::lowered::{Place, Statement, StatementKind, Target, Update};
+use crate::lowered::{Binding, Place, Statement, StatementKind, Target, Update};
 use crate::value::{Value, tree};
 
 /// How a statement or block ended.
@@ -307,7 +307,7 @@ impl Interpreter<'_> {
                         entries,
                         default: None,
                     };
-                    let params = Value::Map(Rc::new(std::cell::RefCell::new(params)));
+                    let params = Value::Map(Rc::new(crate::value::MapCell::new(params)));
                     *target.params.borrow_mut() = Some(params);
                     self.start_script(&target)?;
                 }
@@ -441,6 +441,7 @@ impl Interpreter<'_> {
     fn target(&mut self, frame: &mut Frame, target: &Target) -> Result<Resolved, Error> {
         Ok(match target {
             Target::Variable(place) => Resolved::Variable(*place, None),
+            Target::Binding(binding) => Resolved::Binding(binding.clone()),
             Target::TypedVariable { place, class } => {
                 Resolved::Variable(*place, Some(class.clone()))
             }
@@ -457,6 +458,7 @@ impl Interpreter<'_> {
     fn load(&mut self, frame: &Frame, target: &Resolved, span: Span) -> Result<Value, Error> {
         match target {
             Resolved::Variable(place, _) => frame.read(*place, span),
+            Resolved::Binding(binding) => Ok(binding.value.borrow().clone()),
             Resolved::Property(object, name) => self.property(object, name, span),
             Resolved::Index(object, index) => self.index(object, std::slice::from_ref(index), span),
         }
@@ -470,6 +472,11 @@ impl Interpreter<'_> {
         span: Span,
     ) -> Result<Value, Error> {
         match target {
+            Resolved::Binding(binding) => {
+                let value = self.convert(value, binding.class.as_deref(), span)?;
+                *binding.value.borrow_mut() = value.clone();
+                Ok(value)
+            }
             Resolved::Variable(place, class) => {
                 let value = self.convert(value, class.as_deref(), span)?;
                 frame.set(*place, value.clone());
@@ -496,6 +503,7 @@ impl Interpreter<'_> {
 /// An assignment target whose object and index are evaluated.
 enum Resolved {
     Variable(Place, Option<Rc<str>>),
+    Binding(Rc<Binding>),
     Property(Value, Rc<str>),
     Index(Value, Value),
 }

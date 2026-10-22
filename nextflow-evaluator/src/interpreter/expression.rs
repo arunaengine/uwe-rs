@@ -18,6 +18,7 @@ impl Interpreter<'_> {
         let span = expression.span;
         Ok(match &expression.kind {
             Kind::Literal(value) => value.clone(),
+            Kind::Binding(binding) => binding.value.borrow().clone(),
             Kind::TaskOutput(index) => self
                 .task_outputs
                 .get(*index)
@@ -336,9 +337,9 @@ impl Interpreter<'_> {
                     other => Rc::new(Pattern::new(&other.to_groovy_string()).at(span)?),
                 };
                 if *matches {
-                    Value::Boolean(pattern.matches(&text))
+                    Value::Boolean(pattern.matches(&text).at(span)?)
                 } else {
-                    Value::Matcher(Rc::new(Matcher::new(pattern, text)))
+                    Value::Matcher(Rc::new(Matcher::new(pattern, text).at(span)?))
                 }
             }
             Kind::And { left, right } => Value::Boolean(

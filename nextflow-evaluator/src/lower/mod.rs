@@ -28,6 +28,7 @@ use crate::lowered::{
 use crate::value::Value;
 use scope::{Earlier, Scopes};
 
+pub use class::simple_type;
 pub use names::DIRECTIVES as PROCESS_DIRECTIVES;
 
 /// Tells lowering what a name that a script includes stands for.
@@ -76,13 +77,12 @@ pub struct ConfigNames<'a> {
     pub functions: HashSet<Rc<str>>,
     /// The functions of the files that include this one, which the module links.
     pub inherited: HashSet<Rc<str>>,
-    /// The value of another name that strict syntax does not know, given whether the code
-    /// reads it inside a closure. The value is fixed when the code is lowered.
+    /// Resolves config locals to shared bindings and settings to their current values.
     pub lookup: Option<&'a Lookup<'a>>,
 }
 
 /// Gives the value of a name, given whether the code reads it inside a closure.
-pub type Lookup<'a> = dyn Fn(&str, bool) -> Option<Value> + 'a;
+pub type Lookup<'a> = dyn Fn(&str, bool) -> Option<crate::lowered::ExpressionKind> + 'a;
 
 /// Lowers the value of one config setting like `lower_config_value`, with the names of
 /// legacy syntax.

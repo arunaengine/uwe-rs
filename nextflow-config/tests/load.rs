@@ -33,6 +33,7 @@ fn options(directory: &Path, profiles: &[&str], params: Value) -> Options {
         params,
         project_dir: directory.to_string_lossy().into_owned(),
         launch_dir: directory.to_string_lossy().into_owned(),
+        work_dir: directory.join("work").to_string_lossy().into_owned(),
     }
 }
 
@@ -131,6 +132,25 @@ fn loads_config_forms() {
     assert_eq!(get(&["process", "withName:FOO", "memory"]), "1 GB");
     assert_eq!(get(&["params", "a", "b"]), "1");
     assert_eq!(get(&["env"]), "[:]");
+}
+
+#[test]
+fn reads_work_directory() {
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("nextflow.config");
+    std::fs::write(&file, "params.scratch = workDir.resolve('references')\n").unwrap();
+    for work in [
+        directory.path().join("work"),
+        directory.path().join("custom"),
+    ] {
+        let mut options = options(directory.path(), &[], Value::map([]));
+        options.work_dir = work.to_string_lossy().into_owned();
+        let config = load(std::slice::from_ref(&file), &options, &mut Quiet).unwrap();
+        assert_eq!(
+            config.get(&["params", "scratch"]).unwrap().to_string(),
+            work.join("references").to_string_lossy()
+        );
+    }
 }
 
 #[test]

@@ -9,9 +9,9 @@ use std::rc::Rc;
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, Host, Interpreter};
 use nextflow_evaluator::lower::{
-    ConfigNames, lower_config_function, lower_config_statement, lower_legacy_value,
+    ConfigNames, lower_config_function, lower_config_statement, lower_legacy_value, simple_type,
 };
-use nextflow_evaluator::lowered::{Code, Link, Module};
+use nextflow_evaluator::lowered::{Binding, Code, ExpressionKind as Lowered, Link, Module};
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_parser::ast::{
@@ -44,11 +44,11 @@ struct File {
     /// The functions of the files that include this one, which the module links.
     inherited: HashSet<Rc<str>>,
     /// The local variables of legacy syntax, one scope per block, innermost last.
-    variables: Vec<Vec<(Rc<str>, Value)>>,
+    variables: Vec<Vec<(Rc<str>, Rc<Binding>)>>,
 }
 
 impl File {
-    fn variable(&self, name: &str) -> Option<Value> {
+    fn variable(&self, name: &str) -> Option<Rc<Binding>> {
         self.variables
             .iter()
             .rev()
@@ -57,26 +57,13 @@ impl File {
             .map(|(_, value)| value.clone())
     }
 
-    /// Sets a declared variable; the result is whether it exists.
-    fn set_variable(&mut self, name: &str, value: &Value) -> bool {
-        let found = self
-            .variables
-            .iter_mut()
-            .rev()
-            .flat_map(|scope| scope.iter_mut().rev())
-            .find(|(declared, _)| &**declared == name);
-        match found {
-            Some((_, slot)) => {
-                *slot = value.clone();
-                true
-            }
-            None => false,
-        }
-    }
-
-    fn declare(&mut self, name: &str, value: Value) {
+    fn declare(&mut self, name: &str, value: Value, class: Option<Rc<str>>) {
         let scope = self.variables.last_mut().expect("a scope is open");
-        scope.push((name.into(), value));
+        let binding = Rc::new(Binding {
+            value: std::cell::RefCell::new(value),
+            class,
+        });
+        scope.push((name.into(), binding));
     }
 }
 
@@ -338,16 +325,19 @@ impl<'a> Evaluator<'a> {
                 }
                 ConfigStatement::Declaration {
                     names,
+                    annotations,
                     value,
                     destructure,
-                    ..
+                    span,
                 } => {
                     let value = match value {
                         Some(value) => self.value(file, value, prefix, process_scope(prefix))?,
                         None => Value::Null,
                     };
                     if !*destructure {
-                        file.declare(&names[0].text, value);
+                        let class = annotations[0].as_ref().and_then(simple_type);
+                        let value = self.coerce(file, value, class.as_deref(), *span)?;
+                        file.declare(&names[0].text, value, class);
                         continue;
                     }
                     for (index, name) in names.iter().enumerate() {
@@ -355,7 +345,14 @@ impl<'a> Evaluator<'a> {
                             Value::List(list) => list.borrow().items.get(index).cloned(),
                             _ => None,
                         };
-                        file.declare(&name.text, item.unwrap_or(Value::Null));
+                        let class = annotations[index].as_ref().and_then(simple_type);
+                        let item = self.coerce(
+                            file,
+                            item.unwrap_or(Value::Null),
+                            class.as_deref(),
+                            *span,
+                        )?;
+                        file.declare(&name.text, item, class);
                     }
                 }
                 // Functions are defined before the first statement runs.
@@ -394,9 +391,10 @@ impl<'a> Evaluator<'a> {
         };
         // Legacy syntax: assigning a local variable.
         if let [name] = path
-            && file.variable(&name.text).is_some()
+            && let Some(binding) = file.variable(&name.text)
         {
-            file.set_variable(&name.text, &config);
+            let config = self.coerce(file, config, binding.class.as_deref(), span)?;
+            *binding.value.borrow_mut() = config.clone();
             return Ok(config);
         }
         let setting = match self.cli_param(&full) {
@@ -433,7 +431,7 @@ impl<'a> Evaluator<'a> {
         };
         let depth = file.variables.len();
         file.variables.push(Vec::new());
-        file.declare(&catch.name.text, Value::Exception(exception));
+        file.declare(&catch.name.text, Value::Exception(exception), None);
         let result = self.statements(file, &catch.body, prefix, in_profile);
         file.variables.truncate(depth);
         result
@@ -566,6 +564,21 @@ impl<'a> Evaluator<'a> {
         self.run(file, code).map(|_| ())
     }
 
+    fn coerce(
+        &mut self,
+        file: &File,
+        value: Value,
+        class: Option<&str>,
+        span: Span,
+    ) -> Result<Value, ConfigError> {
+        Interpreter::new(&mut *self.host)
+            .convert_value(value, class, span)
+            .map_err(|error| ConfigError::Failed {
+                file: file.path.clone(),
+                error,
+            })
+    }
+
     /// Runs lowered code of the file.
     fn run(&mut self, file: &File, code: Code) -> Result<Value, ConfigError> {
         let mut interpreter = Interpreter::new(&mut *self.host);
@@ -576,6 +589,7 @@ impl<'a> Evaluator<'a> {
         interpreter.set_global("projectDir", project.clone());
         interpreter.set_global("baseDir", project);
         interpreter.set_global("launchDir", directory(&self.options.launch_dir));
+        interpreter.set_global("workDir", directory(&self.options.work_dir));
         interpreter.set_global("secrets", Value::Namespace("secrets".into()));
         interpreter
             .evaluate(&Rc::new(code), &file.module)
@@ -620,9 +634,9 @@ fn legacy_name(
     host: &dyn Host,
     name: &str,
     in_closure: bool,
-) -> Option<Value> {
+) -> Option<Lowered> {
     if let Some(value) = file.variable(name) {
-        return Some(value);
+        return Some(Lowered::Binding(value));
     }
     if in_closure {
         return None;
@@ -632,7 +646,9 @@ fn legacy_name(
         path.push(name);
         tree::get(&file.tree, &path)
     });
-    setting.or_else(|| host.environment(name).map(Value::string))
+    setting
+        .or_else(|| host.environment(name).map(Value::string))
+        .map(Lowered::Literal)
 }
 
 /// The exception that a `catch` clause sees for an error, if it can catch it: a file that

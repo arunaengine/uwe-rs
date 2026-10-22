@@ -48,6 +48,7 @@ fn load_files(files: &[(&str, &str)]) -> (Result<Config, ConfigError>, String) {
         params: Value::map([]),
         project_dir: directory.path().to_string_lossy().into_owned(),
         launch_dir: directory.path().to_string_lossy().into_owned(),
+        work_dir: directory.path().join("work").to_string_lossy().into_owned(),
     };
     let mut host = Recorder::default();
     let files = [Path::new(directory.path()).join("nextflow.config")];
@@ -230,7 +231,7 @@ params.names = \"${first}${second}_${stamp}\"
     assert_eq!(publish, "[path:out]");
     assert_eq!(
         call(&config, &["process", "withName:FOO", "ext", "args"]),
-        "--date today"
+        "--date tomorrow"
     );
     assert_eq!(get(&config, &["params", "names"]), "ab_tomorrow");
     let config = load_text(
@@ -260,6 +261,67 @@ process.ext.prefix = { foo(1) }
     )]);
     let error = config.unwrap_err().to_string();
     assert!(error.ends_with("4:12: `x` is not defined"), "{error}");
+}
+
+#[test]
+fn shares_local_bindings() {
+    let config = load_text(
+        "def database = '/db/old'
+def update = { database = '/db/current' }
+process.ext.args = { \"--db ${database}\" }
+update()
+params.database = database
+process {
+    def scoped = 'first'
+    ext.scoped = { scoped }
+    scoped = 'last'
+}
+def mapper = { 'old' }
+process.ext.mapped = { mapper() }
+mapper = { 'new' }
+",
+    );
+    assert_eq!(get(&config, &["params", "database"]), "/db/current");
+    assert_eq!(
+        call(&config, &["process", "ext", "args"]),
+        "--db /db/current"
+    );
+    assert_eq!(call(&config, &["process", "ext", "scoped"]), "last");
+    assert_eq!(call(&config, &["process", "ext", "mapped"]), "new");
+}
+
+#[test]
+fn coerces_typed_locals() {
+    let config = load_text(
+        "int threads = 1.9
+String version = 12
+params.initial = [threads, version]
+process.cpus = { threads }
+threads = 3.8
+params.reassigned = threads
+def update = { threads = 4.7; version = 34 }
+update()
+params.final = [threads, version]
+",
+    );
+    let Some(Value::List(initial)) = config.get(&["params", "initial"]) else {
+        panic!("a list");
+    };
+    assert!(matches!(
+        &initial.borrow().items[0],
+        Value::Number(nextflow_evaluator::number::Number::Integer(1))
+    ));
+    assert!(matches!(&initial.borrow().items[1], Value::String(value) if &**value == "12"));
+    let Some(Value::List(final_values)) = config.get(&["params", "final"]) else {
+        panic!("a list");
+    };
+    assert!(matches!(
+        &final_values.borrow().items[0],
+        Value::Number(nextflow_evaluator::number::Number::Integer(4))
+    ));
+    assert!(matches!(&final_values.borrow().items[1], Value::String(value) if &**value == "34"));
+    assert_eq!(call(&config, &["process", "cpus"]), "4");
+    assert_eq!(get(&config, &["params", "reassigned"]), "3");
 }
 
 #[test]
@@ -376,6 +438,7 @@ fn includes_inside_profiles() {
             params: Value::map([]),
             project_dir: directory.path().to_string_lossy().into_owned(),
             launch_dir: directory.path().to_string_lossy().into_owned(),
+            work_dir: directory.path().join("work").to_string_lossy().into_owned(),
         };
         let mut host = Recorder::default();
         let files = [directory.path().join("nextflow.config")];

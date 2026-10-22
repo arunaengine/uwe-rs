@@ -669,6 +669,7 @@ pub enum ConfigStatement {
     /// A local variable, like `def timestamp = new Date().format('yyyy')`.
     Declaration {
         names: Vec<Name>,
+        annotations: Vec<Option<Type>>,
         value: Option<Expression>,
         /// `def (a, b) = pair`
         destructure: bool,

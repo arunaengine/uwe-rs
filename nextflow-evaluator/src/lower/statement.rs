@@ -266,6 +266,14 @@ impl Lowering<'_> {
     /// The target of an assignment: a variable, a property or an index.
     pub(super) fn target(&mut self, target: &ast::Expression) -> Option<Target> {
         match &target.kind {
+            Syntax::Variable(name)
+                if self.scopes.resolve(name).is_none()
+                    && let Some(crate::lowered::ExpressionKind::Binding(binding)) = self
+                        .lookup
+                        .and_then(|lookup| lookup(name, self.scopes.in_closure())) =>
+            {
+                Some(Target::Binding(binding))
+            }
             // A field of the class being lowered, which a method sets by its name alone.
             Syntax::Variable(name)
                 if self.scopes.resolve(name).is_none()

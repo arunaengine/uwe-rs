@@ -201,6 +201,30 @@ fn accepts_conditional_include() {
     assert_eq!(legacy, ["Unexpected input: 'include'"]);
 }
 
+#[test]
+fn updates_include_sources() {
+    let (items, _) = parse("def source = './a'\nsource += '/b'\ninclude { TASK } from source\n");
+    assert!(matches!(items.last(), Some(Item::Include(include)) if include.source.text == "./a/b"));
+    for update in [
+        "source = params.module",
+        "source += params.module",
+        "source -= '/a'",
+        "source++",
+        "(source, other) = params.paths",
+    ] {
+        let source = format!("def source = './a'\n{update}\ninclude {{ TASK }} from source\n");
+        let parsed = parse_script(&source);
+        assert!(
+            parsed
+                .errors
+                .iter()
+                .any(|error| error.message == "Expected a string"),
+            "{update}: {:?}",
+            parsed.errors
+        );
+    }
+}
+
 /// The inputs and outputs of DSL1 processes are Groovy command chains: `file 'x' into a, b`
 /// calls `into(a, b)` on the result of `file('x')`.
 #[test]

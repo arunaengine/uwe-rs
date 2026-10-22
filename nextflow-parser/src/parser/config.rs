@@ -306,6 +306,7 @@ impl Parser<'_> {
         let span = statement.span;
         let StatementKind::Declaration {
             names,
+            legacy_type,
             initializer,
             destructure,
             ..
@@ -316,6 +317,10 @@ impl Parser<'_> {
         let message = "Variable declarations cannot be mixed with config statements";
         self.legacy.push(Diagnostic::new(message, span));
         Ok(ConfigStatement::Declaration {
+            annotations: names
+                .iter()
+                .map(|name| name.annotation.clone().or_else(|| legacy_type.clone()))
+                .collect(),
             names: names.into_iter().map(|typed| typed.name).collect(),
             value: initializer,
             destructure,

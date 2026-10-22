@@ -121,7 +121,7 @@ impl Interpreter<'_> {
                 Number::Integer(_) | Number::Long(_) | Number::Double(_) | Number::Float(_),
             ) if name == "value" => object.clone(),
             // A Java array, like the result of `split`, has a `length`.
-            Value::List(list) if name == "length" && list.borrow().kind == ListKind::Array => {
+            Value::List(list) if name == "length" && list.peek().kind == ListKind::Array => {
                 Value::integer(list.borrow().items.len() as i32)
             }
             Value::List(_) | Value::Set(_) => match name {
@@ -182,7 +182,9 @@ impl Interpreter<'_> {
                     span,
                 ))
             }
-            Value::Map(map) if map.borrow().kind == MapKind::Record => Err(rejected(span)),
+            Value::Map(map) if map.readonly || map.borrow().kind == MapKind::Record => {
+                Err(rejected(span))
+            }
             Value::Object(object) if super::classes::is_library(object) => {
                 self.set_library_property(object, name, value, span)
             }
@@ -226,8 +228,10 @@ impl Interpreter<'_> {
             }
         };
         // A list with a default gets the element of an index past its end from the closure.
-        if let (Value::List(list), Value::Number(position)) = (object, index) {
-            let default = list.borrow().default.clone();
+        if let (Value::List(list), Value::Number(position)) = (object, index)
+            && !list.readonly
+        {
+            let default = list.peek().default.clone();
             let position = usize::try_from(position.to_i64()).ok();
             if let (Some(f), Some(position)) = (default, position)
                 && position >= list.borrow().items.len()
@@ -291,9 +295,10 @@ impl Interpreter<'_> {
                 }
             }
             (Value::Matcher(matcher), Value::Number(number)) if integral(number) => {
-                let count = matcher.matches.len();
+                let matches = matcher.pattern.all_groups(&matcher.text).at(span)?;
+                let count = matches.len();
                 let groups = match position(number.to_i64(), count).filter(|p| *p < count) {
-                    Some(position) => &matcher.matches[position],
+                    Some(position) => &matches[position],
                     None => {
                         let message = format!(
                             "index is out of range {}..{} (index = {number})",
@@ -338,8 +343,7 @@ impl Interpreter<'_> {
                 let indexes = indexes.borrow().items.clone();
                 let mut items = Vec::new();
                 for index in indexes {
-                    let range =
-                        matches!(&index, Value::List(list) if list.borrow().range.is_some());
+                    let range = matches!(&index, Value::List(list) if list.peek().range.is_some());
                     let found = self.index(object, &[index], span)?;
                     match found {
                         Value::List(found) if range => items.extend(found.borrow().items.clone()),
@@ -361,11 +365,12 @@ impl Interpreter<'_> {
                 })
             }
             (Value::List(list), Value::Number(number)) if integral(number) => {
-                let list = list.borrow();
-                let length = list.items.len();
+                let length = list.len();
                 match position(number.to_i64(), length) {
-                    Some(position) if position < length => list.items[position].clone(),
-                    Some(_) if list.kind != ListKind::Array => Value::Null,
+                    Some(position) if position < length => {
+                        list.item(position).unwrap_or(Value::Null)
+                    }
+                    Some(_) if list.peek().kind != ListKind::Array => Value::Null,
                     _ => {
                         return Err(out_of_bounds(
                             "ArrayIndexOutOfBoundsException",
@@ -432,13 +437,16 @@ impl Interpreter<'_> {
                 ))
             }
             (Value::Map(map), key) => {
-                if map.borrow().kind == MapKind::Record {
+                if map.readonly || map.borrow().kind == MapKind::Record {
                     return Err(rejected(span));
                 }
                 map.borrow_mut().entries.insert(Key(key.clone()), value);
                 Ok(())
             }
             (Value::List(list), Value::Number(number)) if integral(number) => {
+                if list.readonly {
+                    return Err(rejected(span));
+                }
                 let mut list = list.borrow_mut();
                 if matches!(list.kind, ListKind::Tuple | ListKind::Range) {
                     return Err(rejected(span));
@@ -477,7 +485,7 @@ impl Interpreter<'_> {
     /// closure's value for the key, which the map keeps.
     pub(super) fn default_value(
         &mut self,
-        map: &Rc<std::cell::RefCell<crate::value::Map>>,
+        map: &Rc<crate::value::MapCell>,
         key: &Value,
         span: Span,
     ) -> Result<Value, Error> {
@@ -612,7 +620,7 @@ impl Interpreter<'_> {
                 items.push(self.cast(item, element, span)?);
             }
             let list = crate::value::List::new(ListKind::Array, items);
-            return Ok(Value::List(Rc::new(std::cell::RefCell::new(list))));
+            return Ok(Value::List(Rc::new(crate::value::ListCell::new(list))));
         }
         if let Some(converted) = super::library::convert(&value, class) {
             return converted.at(span);
@@ -928,11 +936,11 @@ pub(crate) fn instance_of(value: &Value, class: &str) -> bool {
         Value::Character(_) => &["Comparable"],
         Value::String(_) => &["CharSequence", "Comparable"],
         Value::GString(_) => &["GString", "CharSequence", "Comparable"],
-        Value::List(list) if list.borrow().kind == ListKind::Array => &[],
-        Value::List(list) if list.borrow().kind == ListKind::Range => {
+        Value::List(list) if list.peek().kind == ListKind::Array => &[],
+        Value::List(list) if list.peek().kind == ListKind::Range => {
             &["Range", "List", "Collection", "Iterable"]
         }
-        Value::List(list) if list.borrow().kind == ListKind::Tuple => {
+        Value::List(list) if list.peek().kind == ListKind::Tuple => {
             &["ArrayList", "List", "Collection", "Iterable"]
         }
         Value::List(_) => &["List", "Collection", "Iterable"],

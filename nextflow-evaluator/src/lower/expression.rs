@@ -284,7 +284,7 @@ impl Lowering<'_> {
             return Kind::Builtin(name.into());
         }
         if let Some(value) = self.lookup.and_then(|lookup| lookup(name, in_closure)) {
-            return Kind::Literal(value);
+            return value;
         }
         if in_closure && self.dynamic_names {
             return Kind::Dynamic(name.into());
@@ -575,8 +575,9 @@ impl Lowering<'_> {
         }
         let in_closure = self.scopes.in_closure();
         match self.lookup.and_then(|lookup| lookup(name, in_closure)) {
-            Some(value @ Value::Closure(_)) => Some(Expression {
-                kind: Kind::Literal(value),
+            Some(kind @ Kind::Literal(Value::Closure(_))) => Some(Expression { kind, span }),
+            Some(Kind::Binding(binding)) => Some(Expression {
+                kind: Kind::Binding(binding),
                 span,
             }),
             _ => None,

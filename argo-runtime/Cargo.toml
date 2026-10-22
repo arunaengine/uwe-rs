@@ -23,6 +23,3 @@ tar.workspace = true
 tempfile.workspace = true
 workflow-graph.workspace = true
 zip.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true

@@ -127,6 +127,7 @@ opendal-http-transport-reqwest = "0.59.4"
 opendal-service-azblob = { version = "0.59.4", default-features = false }
 opendal-service-gcs = { version = "0.59.4", default-features = false }
 regex = "1.13.1"
+regex-syntax = "0.8.11"
 rattler_conda_types = "0.56.2"
 rattler_solve = { version = "11.2.0", default-features = false, features = [
     "resolvo",

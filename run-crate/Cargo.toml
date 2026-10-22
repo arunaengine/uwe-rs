@@ -19,7 +19,7 @@ serde_json.workspace = true
 sha2.workspace = true
 task-model.workspace = true
 thiserror.workspace = true
-workflow-graph.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+workflow-graph.workspace = true

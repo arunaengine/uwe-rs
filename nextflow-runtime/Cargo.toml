@@ -12,7 +12,6 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
-flate2.workspace = true
 indexmap.workspace = true
 input-schema.workspace = true
 nextflow-config.workspace = true
@@ -25,4 +24,4 @@ tempfile.workspace = true
 workflow-graph.workspace = true
 
 [dev-dependencies]
-tempfile.workspace = true
+flate2.workspace = true

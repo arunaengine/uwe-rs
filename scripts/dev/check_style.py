@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Style checks for folders, shared prefixes, names, comments and file headers.
-EXTERNAL_NAMES, SMALL_DOMAINS and HEADER_EXCEPTIONS hold the reviewed exceptions."""
+Explicit rule tables keep reviewed external names and layout exceptions narrow."""
 # Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 import argparse
@@ -17,6 +17,7 @@ SKIP_PARTS = frozenset(
     {"target", "vendor", "node_modules", ".git", ".github", ".cargo", ".config", ".claude"}
 )
 ASSET_PARTS = frozenset({"fixtures", "snapshots", "testdata"})
+SOURCE_SUFFIXES = (".rs", ".py", ".js", ".css", ".html", ".toml", ".yaml", ".yml", ".sh", ".nf", ".smk", ".cwl", ".groovy")
 LICENSE_MARKS = ("spdx-license-identifier", "copyright", "licensed under", "license")
 STRUCT_NAMES = frozenset({"bin", "benches", "examples"})
 GENERIC_PREFIXES = frozenset({("get",), ("set",), ("test",), ("tests",)})
@@ -63,6 +64,46 @@ HEADER_EXCEPTIONS = {
     "snakemake-runtime/tests/fixtures/embedded/preambles/scripts/test.sh": "fragment included in a generated preamble",
     "snakemake-runtime/tests/fixtures/embedded/preambles/snakemake-9.27.0/test.rs": "recorded preamble compared byte for byte",
     "snakemake-runtime/tests/fixtures/embedded/preambles/snakemake-9.27.0/test.sh": "recorded preamble compared byte for byte",
+}
+SOURCE_EXCEPTIONS = {
+    "demo/snakemake/scripts/plot-quals.py": "copied upstream example; retain its source names and comments",
+}
+PYTHON_NAMES = {
+    ("snakemake-runtime/src/embedded/snakemake/iocontainers.py", "FILE_HASH_PREFIX_LEN"):
+        "public constant of the importable Snakemake compatibility module",
+}
+PREFIX_EXCEPTIONS = {
+    ("nextflow-plugins/src", "nf"): "distinct upstream plugin IDs, not one shared implementation domain",
+}
+ASSET_ROOTS = frozenset({"scripts", "scripts/dev", "scripts/tests", ".github/scripts", ".github/workflows", "demo"})
+ASSET_DOMAINS = {
+    "uwe/tests/fixtures/real_runs": "grouped real_runs_* recorder scripts",
+    "uwe/tests/fixtures/real_runs/slurm": "grouped real_runs_slurm_* recorder scripts",
+}
+ASSET_LAYOUTS = {
+    "argo-runtime/tests/fixtures/test-workflows": "oracle recorder beside its frozen workflow outcomes",
+    "cwl-parser/tests/fixtures/test-workflows": "oracle recorder beside its frozen workflow outcomes",
+    "containers/cwl-js": "Docker build context for the native CWL helper image",
+    "demo/cwl": "upstream CWL example layout",
+    "demo/snakemake": "upstream Snakemake example layout",
+    "nextflow-config/tests/fixtures/profiles": "native profile oracle layout",
+    "nextflow-evaluator/tests/fixtures/oracle/groovy_methods": "native Groovy oracle layout",
+    "nextflow-evaluator/tests/fixtures/oracle/gunzip": "native Nextflow oracle layout",
+    "nextflow-evaluator/tests/fixtures/oracle/org_json": "native Groovy oracle layout",
+    "nextflow-plugins/tests/fixtures/nf_validation": "native plugin oracle layout",
+    "nextflow-plugins/tests/fixtures/params": "native plugin oracle layout",
+    "nextflow-runtime/tests/fixtures/exec": "native Nextflow oracle layout",
+    "snakemake-runtime/tests/fixtures/embedded/preambles": "recorded Snakemake script layout",
+    "snakemake-runtime/tests/fixtures/embedded/real": "executable Snakemake workflow layout",
+    "snakemake-runtime/tests/fixtures/embedded/real/scripts": "Snakemake script directive paths",
+    "snakemake-runtime/tests/fixtures/embedded/real/wrappers/upper": "Snakemake wrapper directive paths",
+    "snakemake-runtime/tests/fixtures/embedded/run/lib": "Python import layout exercised by embedded workflow",
+    "snakemake-runtime/tests/fixtures/workflows/directives/config": "configfile directive path",
+    "snakemake-runtime/tests/fixtures/workflows/modules": "module config fixture path",
+    "snakemake-runtime/tests/fixtures/workflows/pep/pep": "PEP project layout",
+    "snakemake-runtime/tests/fixtures/workflows/resources/profiles/default": "Snakemake default profile discovery path",
+    "snakemake-runtime/tests/fixtures/workflows/validate": "schema reference resolution fixture path",
+    "uwe/tests/fixtures/oracle/stub": "native Nextflow stub oracle layout",
 }
 
 WORD_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
@@ -634,7 +675,7 @@ def direct_files(files):
 
 
 def direct_stems(files):
-    return [f[:-3] for f in direct_files(files) if f.endswith(".rs")]
+    return [os.path.splitext(f)[0] for f in direct_files(files)]
 
 
 def shared_prefix(stems):
@@ -660,6 +701,8 @@ def prefix_findings(rel, dirpath, files):
         return
     prefix, count = found
     text = "_".join(prefix)
+    if (rel, text) in PREFIX_EXCEPTIONS:
+        return
     if tuple(split_terms(os.path.basename(dirpath))) == prefix:
         continuing = 0
         for stem in stems:
@@ -688,7 +731,7 @@ def check_folders(root):
             if (
                 os.path.basename(dirpath) in ASSET_PARTS
                 and rel not in SMALL_DOMAINS
-                and not any(f.endswith(".rs") for f in files)
+                and not any(f.endswith(SOURCE_SUFFIXES) for f in files)
             ):
                 dirs[:] = []
                 continue
@@ -932,7 +975,8 @@ def repo_files(root):
     """Repository-owned paths: the tracked files, or a plain walk without Git."""
     try:
         listed = subprocess.run(
-            ["git", "-C", root, "ls-files", "-z"], capture_output=True, text=True, check=True
+            ["git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+            capture_output=True, text=True, check=True
         ).stdout
         names = [name for name in listed.split("\0") if name]
         if names:
@@ -977,12 +1021,41 @@ def check_headers(root):
 
 
 def iter_python_files(root):
-    base = os.path.join(root, "scripts")
-    for dirpath, dirnames, filenames in os.walk(base):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_PARTS and d != "__pycache__"]
-        for name in sorted(filenames):
-            if name.endswith(".py"):
-                yield os.path.join(dirpath, name)
+    for rel in repo_files(root):
+        if rel in SOURCE_EXCEPTIONS or any(part in HEADER_SKIP for part in rel.split("/")):
+            continue
+        path = os.path.join(root, rel)
+        if rel.endswith(".py") and os.path.isfile(path):
+            yield path
+
+
+def asset_findings(root):
+    groups = {}
+    for rel in repo_files(root):
+        parts = rel.split("/")
+        if ("src" in parts or rel.endswith(".rs") or rel in SOURCE_EXCEPTIONS
+                or any(part in HEADER_SKIP for part in parts)):
+            continue
+        path = os.path.join(root, rel)
+        if not os.path.isfile(path) or rel in HEADER_EXCEPTIONS:
+            continue
+        with open(path, "rb") as handle:
+            owned = HEADER_NOTICES[0].encode() in handle.read(512)
+        if not owned:
+            continue
+        folder, name = os.path.split(rel)
+        groups.setdefault(folder, []).append(name)
+    for folder, files in sorted(groups.items()):
+        yield from prefix_findings(folder, os.path.join(root, folder), files)
+        if (not folder or folder in ASSET_ROOTS or folder in ASSET_LAYOUTS
+                or folder.endswith("/tests/fixtures")
+                or os.path.isfile(os.path.join(root, folder, "Cargo.toml"))):
+            continue
+        count = len(direct_files(files))
+        if folder in ASSET_DOMAINS and count >= 3:
+            continue
+        if count < FOLDER_MIN:
+            yield ("folder", folder, 0, f"{count} of {FOLDER_MIN} maintained direct files")
 
 
 def python_findings(root):
@@ -1187,6 +1260,8 @@ def python_separators(tokens):
 
 
 def python_binding(rel, name, row):
+    if (rel, name) in PYTHON_NAMES:
+        return None
     terms = decl_terms(name)
     if terms <= TERM_MAX:
         return None
@@ -1391,11 +1466,19 @@ def main(argv):
     if missing:
         print(f"HEADER_EXCEPTIONS needs a reason for: {', '.join(sorted(missing))}", file=sys.stderr)
         return 2
+    for name, table in (("SOURCE_EXCEPTIONS", SOURCE_EXCEPTIONS), ("ASSET_LAYOUTS", ASSET_LAYOUTS),
+                        ("ASSET_DOMAINS", ASSET_DOMAINS), ("PYTHON_NAMES", PYTHON_NAMES),
+                        ("PREFIX_EXCEPTIONS", PREFIX_EXCEPTIONS)):
+        missing = without_reason(table)
+        if missing:
+            print(f"{name} needs a reason for: {', '.join(map(str, sorted(missing)))}", file=sys.stderr)
+            return 2
     findings = []
     findings.extend(check_folders(root))
     findings.extend(check_sources(root))
     findings.extend(check_headers(root))
     findings.extend(python_findings(root))
+    findings.extend(asset_findings(root))
     return report(findings, args.limit)
 
 

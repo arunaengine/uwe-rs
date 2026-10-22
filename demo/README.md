@@ -150,8 +150,8 @@ the native tools:
 
 - **Snakemake: one `container:` line per rule** (10 lines, see the history of the Snakefile).
   The tutorial installs bwa, samtools, bcftools, matplotlib and pysam with Conda
-  (`environment.yaml`). uwe runs every task in a container and cannot build an image from
-  Conda yet. So each rule names a published BioContainers image: bwa 0.7.17 with samtools
+  (`environment.yaml`). This demo uses published BioContainers images instead of preparing
+  Conda images: bwa 0.7.17 with samtools
   1.19.2, bcftools 1.19, and matplotlib 3.1.2 with pysam 0.15. The last is the only published
   image with both; its pysam is older than the tutorial's 0.22, which the script does not
   notice. Snakemake itself uses the same lines with `--sdm apptainer`.
@@ -176,8 +176,8 @@ the native tools:
 - **Nextflow hello: the image is used.** `nextflow run hello` without `-with-docker` or
   `-with-apptainer` ignores `process.container`; uwe always runs it.
 - **nf-core/demo is not in this repository**, as it is a whole pipeline of about 50 files.
-  uwe cannot fetch a pipeline by its name yet, so `local-env.sh` clones it, and on the
-  cluster it was cloned by hand:
+  `local-env.sh` clones it for these local examples, and on the cluster it was cloned by hand.
+  uwe also supports `uwe run nf-core/demo -r 1.2.0`. To make the local checkout manually:
   `git clone --branch 1.2.0 https://github.com/nf-core/demo nf-core-demo`.
 
 ## Compared with the native tools
@@ -335,3 +335,22 @@ first on the PATH, makes demo/local-config.toml the config of uwe for this shell
 and goes into demo/. Then it prints the commands of the demo, to run from there: tasks run
 in containers on this machine, and each run writes report.html into demo/.
 A config file in ~/.config/uwe/ still wins over it. Nothing outside this shell changes.
+
+## Planning qualification
+
+From the repository root, `just qualify target/release/uwe` uses an already built
+binary to measure simulated Nextflow fanout/gather planning at 100 and 1000 tasks.
+It creates deterministic reference files, checks task/dependency/reference-binding
+counts, and keeps binary/workflow/content identities, timings, graphs and logs under
+`target/qualification/`. Each sample uses a fresh uwe cache; the operating-system
+page cache is uncontrolled. Use `--tasks`, `--files`, `--file-bytes` and `--repeats`
+to vary the workload, for example:
+
+```sh
+just qualify target/release/uwe --tasks 100 1000 --files 16 --file-bytes 1048576 --repeats 3
+```
+
+The reported byte count describes the reference input, not measured copying,
+hashing or transfers. This gate runs no scientific tools and establishes neither
+real task throughput nor a comparison with another workflow engine. A partial
+`results.json` has `complete: false`; retain the logs when investigating failures.

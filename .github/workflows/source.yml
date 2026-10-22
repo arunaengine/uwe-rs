@@ -39,6 +39,7 @@ jobs:
         if: matrix.check == 'format'
         run: |
           python3 scripts/dev/check_style_tests.py
+          python3 -I -m unittest discover -s scripts/tests
           python3 scripts/dev/check_style.py
       - name: Clippy
         if: matrix.check == 'clippy'

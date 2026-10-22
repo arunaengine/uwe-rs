@@ -129,12 +129,28 @@ impl Report {
     /// The tasks of the planned run: those without a container image, when `-default-image`
     /// gives none, and the local files they read that do not exist. Files in `scratch` are
     /// uwe's own, like the made-up values of inputs that have none.
-    fn tasks(&mut self, graph: &ExecutionGraph, default_image: Option<&str>, scratch: &Path) {
+    fn tasks(
+        &mut self,
+        graph: &ExecutionGraph,
+        default_image: Option<&str>,
+        scratch: &Path,
+        conda: bool,
+    ) {
         let mut without_image: BTreeMap<&str, usize> = BTreeMap::new();
         // Each missing file, with the steps that read it.
         let mut missing: BTreeMap<PathBuf, BTreeSet<&str>> = BTreeMap::new();
         let mut remote = 0;
+        let mut missing_conda = BTreeSet::new();
         for task in graph.nodes.iter().map(|node| &node.task) {
+            if !conda
+                && task
+                    .image
+                    .as_deref()
+                    .or(default_image)
+                    .is_some_and(|image| image.starts_with("conda-env:"))
+            {
+                missing_conda.insert(task.step.as_str());
+            }
             if task.image.is_none() && !task.is_no_op() && default_image.is_none() {
                 *without_image.entry(&task.step).or_default() += 1;
             }
@@ -176,6 +192,12 @@ impl Report {
                      container, so name an image in the workflow or give one with \
                      `-default-image <image>`"
                 ),
+            );
+        }
+        for step in missing_conda {
+            self.add(
+                Kind::Unsupported,
+                format!("step {step}: Conda preparation requires explicit [conda] configuration with a pinned base, target capabilities, repodata and packages"),
             );
         }
         if remote > 0 {
@@ -331,8 +353,9 @@ fn language_name(language: Language) -> &'static str {
 /// and exits with 33 when a feature is not supported, else 1 when something would stop the
 /// run, else 0.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
-    let (target, language) = crate::target_and_language(arguments)?;
     let setup = Setup::load(arguments)?;
+    let _registry = setup.registry.enter().map_err(Failure::setup)?;
+    let (target, language) = crate::target_and_language(arguments)?;
     let mut launch = crate::launch(arguments, target.clone());
     // The plan goes past the files that are missing, which the check reports.
     launch.simulated = true;
@@ -348,6 +371,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             arguments,
             &mut report,
             &cancel,
+            setup.conda.is_some(),
         ),
         Err(error) => {
             report.driver_error(&error);
@@ -371,6 +395,7 @@ fn plan(
     arguments: &Arguments,
     report: &mut Report,
     cancel: &workflow_graph::CancellationToken,
+    conda: bool,
 ) -> Option<ExecutionGraph> {
     match driver.inputs() {
         Ok(Some(inputs)) => report.inputs(&inputs),
@@ -394,6 +419,7 @@ fn plan(
         &execution.graph,
         arguments.default_image.as_deref(),
         &scratch,
+        conda,
     );
     if driver.language() == Language::Cwl {
         report.operations(&execution.graph);

@@ -174,3 +174,19 @@ fn checks_slurm_runtime() {
         )
     );
 }
+
+#[test]
+fn requires_selected_kubeconfig() {
+    let directory = tempfile::tempdir().unwrap();
+    let (code, stdout) = check_machine(directory.path(), &["-executor", "kubernetes"]);
+    assert_eq!(code, 3, "{stdout}");
+    assert!(
+        line(&stdout, "executor kubernetes").starts_with("missing    "),
+        "{stdout}"
+    );
+    let (_, stdout) = check_machine(directory.path(), &[]);
+    assert!(
+        line(&stdout, "executor kubernetes").starts_with("not set up "),
+        "{stdout}"
+    );
+}

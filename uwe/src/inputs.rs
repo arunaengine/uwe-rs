@@ -87,7 +87,9 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     };
     let cancel = crate::stop_on_interrupt();
     let _stop = cancel.clone().drop_guard();
-    let (mut driver, language, simulated) = describing(arguments, &cancel)?;
+    let setup = crate::setup::Setup::load(arguments)?;
+    let _registry = setup.registry.enter().map_err(Failure::setup)?;
+    let (mut driver, language, simulated) = describing(arguments, &setup, &cancel)?;
     let inputs = match arguments.check {
         true => checked(driver.as_mut(), simulated, true, false)?,
         false => {
@@ -127,7 +129,9 @@ pub fn outputs(arguments: &Arguments) -> Result<(), Failure> {
     let text = text_format(arguments, "outputs")?;
     let cancel = crate::stop_on_interrupt();
     let _stop = cancel.clone().drop_guard();
-    let (mut driver, language, _) = describing(arguments, &cancel)?;
+    let setup = crate::setup::Setup::load(arguments)?;
+    let _registry = setup.registry.enter().map_err(Failure::setup)?;
+    let (mut driver, language, _) = describing(arguments, &setup, &cancel)?;
     let Some(schema) = driver.outputs()? else {
         return Err(failure(format!(
             "uwe: the {language} driver does not describe the outputs of its workflows yet"
@@ -152,13 +156,13 @@ fn text_format(arguments: &Arguments, command: &str) -> Result<bool, Failure> {
 /// the same options would be simulated.
 fn describing(
     arguments: &Arguments,
+    setup: &crate::setup::Setup,
     cancel: &CancellationToken,
 ) -> Result<(Box<dyn Driver>, Language, bool), Failure> {
     let (target, language) = crate::target_and_language(arguments)?;
     let launch = crate::launch(arguments, target);
-    let setup = crate::setup::Setup::load(arguments)?;
     let run = crate::run_id();
-    let driver = crate::driver(language, &launch, &run, true, arguments, &setup, cancel)?;
+    let driver = crate::driver(language, &launch, &run, true, arguments, setup, cancel)?;
     Ok((driver, language, launch.simulated))
 }
 

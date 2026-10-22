@@ -23,6 +23,7 @@ pub(crate) const CONTROL: &str = "/uwe/control";
 pub(crate) const OUTBOX: &str = "/uwe/outbox";
 pub(crate) const HOME: &str = "/uwe/home";
 pub(crate) const WRAPPER: &str = "/uwe/wrapper.sh";
+pub(crate) const HELPER: &str = "/uwe/helper";
 
 /// How long the backend waits between two looks at a task, at most.
 const POLL: Duration = Duration::from_secs(5);
@@ -61,6 +62,28 @@ impl Backend for TesBackend {
         if cancel.is_cancelled() {
             return Err(ExecutorError::Cancelled);
         }
+        if job.spec.output_manifest.is_some() && self.settings.helper_file.is_none() {
+            return Err(ExecutorError::Unsupported(
+                "TES output manifests require a static uwe binary configured with helper_file"
+                    .into(),
+            ));
+        }
+        if job.spec.run_as.is_some() {
+            return Err(ExecutorError::Unsupported(
+                "TES cannot express task user and group identity".into(),
+            ));
+        }
+        if let Some(task_model::EnvironmentValue::Literal(text)) =
+            job.spec.environment.get("UWE_CONTAINER_FLAGS")
+        {
+            let flags: BTreeMap<String, i64> = serde_json::from_str(text)
+                .map_err(|_| ExecutorError::Unsupported("invalid container launch flags".into()))?;
+            if flags.contains_key("shm") {
+                return Err(ExecutorError::Unsupported(
+                    "TES cannot express shared memory sizing".into(),
+                ));
+            }
+        }
         if job
             .spec
             .environment
@@ -94,22 +117,34 @@ impl Backend for TesBackend {
         }
         let peers = [self];
         tokio::select! {
-            result = self.reconcile(&peers) => result?,
+            result = self.admit(&peers) => result?,
             () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
         }
         let root = self.scratch.join(job.name);
         tokio::fs::create_dir_all(&self.scratch).await?;
-        tokio::fs::create_dir_all(&root).await?;
+        tokio::fs::create_dir(&root).await?;
         let _ownership = ownership(&root)?;
         tokio::fs::create_dir_all(root.join("empty")).await?;
         let mut prefix = None;
         let result = self.attempt(job, &root, &mut prefix, cancel).await;
-        // Without a journal the task cannot run any more. A task that may still run keeps its
-        // journal, and the recovery of the attempt cleans the staging root.
-        let ended = !root.join("remote.json").exists();
-        if let (Some(staging), Some(prefix), true) = (&self.staging, &prefix, ended) {
-            staging.clean(prefix).await;
+        if let (Some(staging), Some(prefix)) = (&self.staging, &prefix)
+            && !root.join("remote.json").try_exists()?
+        {
+            let journal = serde_json::json!({"backend":"TES","server":self.client.server(),
+                "auth":self.client.identity(),"locked":true,"stopped":true,
+                "staging":{"prefix":prefix,"root":staging.objects.url(""),
+                    "cleanup":staging.settings.staging_cleanup}});
+            journal_at(&root, &journal)?;
         }
+        if root.join("remote.json").try_exists()? {
+            let journal: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(root.join("remote.json"))?)
+                    .map_err(|error| unresolved(&root, error))?;
+            if journal["stopped"] == true && journal["collect"] != true {
+                self.settle_journal(&root, &journal).await?;
+            }
+        }
+        let ended = !root.join("remote.json").exists();
         if result.is_err() && ended {
             let _ = tokio::fs::remove_dir_all(&root).await;
         }
@@ -181,6 +216,21 @@ impl TesBackend {
             Some(staging) => staging.prepare(job, shell).await?,
             None => task(job, root)?,
         };
+        if self.staging.is_none() && job.spec.output_manifest.is_some() {
+            if task.inputs.iter().any(|input| {
+                Path::new(&input.path).starts_with(HELPER)
+                    || Path::new(HELPER).starts_with(&input.path)
+            }) {
+                return Err(ExecutorError::Unsupported(
+                    "TES input paths overlap the native helper".into(),
+                ));
+            }
+            task.inputs.push(Input {
+                path: HELPER.into(),
+                url: file_url(&self.settings.helper_file.as_ref().unwrap().file),
+                kind: FileType::File,
+            });
+        }
         if task.inputs.len() > self.settings.max_inputs
             || task.outputs.len() > self.settings.max_outputs
         {
@@ -215,6 +265,12 @@ impl TesBackend {
         };
         if self.staging.is_none() {
             let script = wrapper::wrapper(job.spec, &folders);
+            let script = if job.spec.output_manifest.is_some() {
+                executor::capture::capture(&script, crate::capture::TRANSFER)?
+            } else {
+                script
+            };
+            let script = crate::capture::discover(script, job, &workdir(job), &self.settings)?;
             tokio::fs::write(root.join("wrapper.sh"), script).await?;
         }
         if cancel.is_cancelled() {
@@ -228,7 +284,11 @@ impl TesBackend {
             "started": started, "locked": true, "auth": self.client.identity(),
             "submission": submission});
         if let Some(prefix) = prefix {
-            journal["staging"] = serde_json::json!({"prefix": prefix});
+            journal["staging"] = serde_json::json!({"prefix": prefix,
+                "root":self.staging.as_ref().map(|staging| staging.objects.url("")),
+                "cleanup":self.staging.as_ref().map(|staging| staging.settings.staging_cleanup)});
+            journal["task"] =
+                serde_json::to_value(&task).map_err(|error| unresolved(root, error))?;
         }
         if self.settings.idempotency_tag.is_some() {
             journal["request"] =
@@ -265,6 +325,13 @@ impl TesBackend {
         let log = status.logs.last().and_then(|log| log.logs.last());
         let ran_out = timer && log.and_then(|log| log.exit_code) == Some(wrapper::TIMED_OUT);
         let finished = self.finish(job, &task, &status, root).await;
+        if finished.is_ok() {
+            let mut journal: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(root.join("remote.json"))?)
+                    .map_err(|error| unresolved(root, error))?;
+            journal["collect"] = serde_json::json!(false);
+            journal_at(root, &journal)?;
+        }
         // A task that ended with 124 itself recorded it; the timer ends the wrapper first.
         let recorded = Finished::from_control(root.to_owned()).ok();
         let own = recorded.and_then(|recorded| recorded.exit_code) == Some(wrapper::TIMED_OUT);
@@ -273,7 +340,6 @@ impl TesBackend {
         if let (Err(error), Some(_), true) = (&finished, &self.staging, ended) {
             // The objects stay, as they are the only copy of the results.
             tracing::warn!(prefix, %error, "cannot collect the results of an attempt; they stay in the staging root");
-            *prefix = None;
         }
         match finished {
             Ok(mut finished) if ran_out => {
@@ -334,12 +400,16 @@ impl TesBackend {
                 finished.files.clear();
                 Ok(finished)
             }
-            State::Complete => Finished::from_control(root.to_owned()).and_then(|finished| {
-                match finished.exit_code {
-                    Some(_) => Ok(finished),
-                    None => Err(failure(status, "the task ended without an exit code")),
+            State::Complete => {
+                let finished = Finished::from_control(root.to_owned())?;
+                if finished.exit_code.is_none() {
+                    return Err(failure(status, "the task ended without an exit code"));
                 }
-            }),
+                if finished.exit_code == Some(0) && job.spec.output_manifest.is_some() {
+                    executor::capture::arrange(&finished).await?;
+                }
+                Ok(finished)
+            }
             State::Canceled => Err(ExecutorError::Cancelled),
             _ => Err(failure(status, "the TES server could not run the task")),
         }
@@ -347,6 +417,33 @@ impl TesBackend {
 
     /// Resolves submissions whose coordinator no longer runs before accepting a new run.
     pub async fn reconcile(&self, peers: &[&TesBackend]) -> Result<(), ExecutorError> {
+        let mut scan = self.client.history.lock().await;
+        scan.reset();
+        while !scan.complete() {
+            let entries = scan.page(&self.scratch, 128)?;
+            self.recover(peers, entries).await?;
+        }
+        Ok(())
+    }
+
+    async fn admit(&self, peers: &[&TesBackend]) -> Result<(), ExecutorError> {
+        let mut scan = self.client.history.lock().await;
+        let entries = scan.page(&self.scratch, 128)?;
+        let result = self.recover(peers, entries).await;
+        if result.is_err() {
+            scan.reset();
+        }
+        result
+    }
+
+    async fn recover(
+        &self,
+        peers: &[&TesBackend],
+        entries: Vec<PathBuf>,
+    ) -> Result<(), ExecutorError> {
+        if entries.is_empty() {
+            return Ok(());
+        }
         tokio::time::timeout(CANCEL_GRACE, async {
             std::fs::create_dir_all(&self.scratch)?;
             let gate = File::options()
@@ -363,44 +460,45 @@ impl TesBackend {
                     Err(TryLockError::Error(error)) => return Err(error.into()),
                 }
             }
-            self.reconcile_records(peers).await
+            self.reconcile_records(peers, entries).await
         })
         .await
         .map_err(|_| unresolved(&self.scratch, "admission recovery timed out"))?
     }
 
-    async fn reconcile_records(&self, peers: &[&TesBackend]) -> Result<(), ExecutorError> {
-        let entries = match std::fs::read_dir(&self.scratch) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error.into()),
-        };
+    async fn reconcile_records(
+        &self,
+        peers: &[&TesBackend],
+        entries: Vec<PathBuf>,
+    ) -> Result<(), ExecutorError> {
         let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
-        for entry in entries {
+        for root in entries {
             tokio::task::yield_now().await;
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() {
-                continue;
-            }
-            let root = entry.path();
             let path = root.join("remote.json");
             if !path.try_exists()? {
                 continue;
             }
             let mut journal: serde_json::Value = serde_json::from_slice(&std::fs::read(&path)?)
                 .map_err(|error| unresolved(&root, error))?;
-            if journal["backend"] != "TES" || journal["host"].as_str() != Some(host.as_str()) {
+            if journal["backend"] != "TES" {
                 return Err(unresolved(
                     &root,
                     "the original backend or coordinator host changed",
                 ));
             }
-            let live_owner = journal["owner"]
-                .as_u64()
-                .and_then(|pid| u32::try_from(pid).ok())
-                .and_then(owner_start)
-                .as_deref()
-                == journal["started"].as_str()
+            if !peers
+                .iter()
+                .any(|peer| Some(peer.client.server()) == journal["server"].as_str())
+            {
+                continue;
+            }
+            let live_owner = journal["host"].as_str() == Some(host.as_str())
+                && journal["owner"]
+                    .as_u64()
+                    .and_then(|pid| u32::try_from(pid).ok())
+                    .and_then(owner_start)
+                    .as_deref()
+                    == journal["started"].as_str()
                 && journal["started"].is_string();
             let _ownership = if journal["locked"] == true {
                 let lock = match File::options().write(true).open(root.join("remote.lock")) {
@@ -409,17 +507,14 @@ impl TesBackend {
                     Err(error) => return Err(unresolved(&root, error)),
                 };
                 match lock.try_lock() {
-                    Err(TryLockError::WouldBlock) if live_owner => continue,
-                    Err(TryLockError::WouldBlock) => {
-                        return Err(unresolved(
-                            &root,
-                            "the journal lock has no matching live coordinator",
-                        ));
-                    }
+                    Err(TryLockError::WouldBlock) => continue,
                     Err(TryLockError::Error(error)) => return Err(unresolved(&root, error)),
                     Ok(()) => lock,
                 }
             } else {
+                if journal["host"].as_str() != Some(host.as_str()) {
+                    return Err(unresolved(&root, "the legacy coordinator host changed"));
+                }
                 if live_owner {
                     continue;
                 }
@@ -430,16 +525,25 @@ impl TesBackend {
             }
             journal = serde_json::from_slice(&std::fs::read(&path)?)
                 .map_err(|error| unresolved(&root, error))?;
-            if journal["backend"] != "TES" || journal["host"].as_str() != Some(host.as_str()) {
+            if journal["backend"] != "TES" {
                 return Err(unresolved(
                     &root,
                     "the original backend or coordinator host changed",
                 ));
             }
-            let backend = peers
-                .iter()
-                .find(|peer| Some(peer.client.server()) == journal["server"].as_str())
-                .ok_or_else(|| unresolved(&root, "the original TES server is not configured"))?;
+            let Some(backend) = peers.iter().find(|peer| {
+                Some(peer.client.server()) == journal["server"].as_str()
+                    && journal["auth"]
+                        .as_str()
+                        .is_none_or(|auth| auth == peer.client.identity())
+            }) else {
+                // Another site owns this journal; its admission or aggregate recovery handles it.
+                continue;
+            };
+            if journal["stopped"] == true {
+                backend.settle_journal(&root, &journal).await?;
+                continue;
+            }
             if journal["id"].is_null() {
                 let tag = backend.settings.idempotency_tag.as_deref().filter(|tag| {
                     journal["idempotency_tag"].as_str() == Some(*tag)
@@ -473,8 +577,9 @@ impl TesBackend {
                     Submitted::Absent => {
                         tracing::warn!(attempt = %root.display(),
                             "the task of an unclear submission is not on the TES server; the attempt is lost");
-                        std::fs::remove_file(&path)?;
-                        backend.clean_staging(&journal).await;
+                        journal["stopped"] = serde_json::json!(true);
+                        journal_at(&root, &journal)?;
+                        backend.settle_journal(&root, &journal).await?;
                         continue;
                     }
                     Submitted::Unclear(reason) => {
@@ -486,17 +591,47 @@ impl TesBackend {
             }
             let id = journal["id"].as_str().unwrap_or_default();
             backend.stop(id, &root, CANCEL_GRACE).await?;
-            backend.clean_staging(&journal).await;
+            let journal = serde_json::from_slice(&std::fs::read(&path)?)
+                .map_err(|error| unresolved(&root, error))?;
+            backend.settle_journal(&root, &journal).await?;
         }
         Ok(())
     }
 
     /// Removes the objects in the staging root that the journal of an attempt names.
-    async fn clean_staging(&self, journal: &serde_json::Value) {
+    async fn settle_journal(
+        &self,
+        root: &Path,
+        journal: &serde_json::Value,
+    ) -> Result<(), ExecutorError> {
         let prefix = journal["staging"]["prefix"].as_str();
-        if let (Some(staging), Some(prefix)) = (&self.staging, prefix) {
-            staging.clean(prefix).await;
+        if let Some(prefix) = prefix {
+            let staging = self
+                .staging
+                .as_ref()
+                .ok_or_else(|| unresolved(root, "the staging configuration is missing"))?;
+            if journal["staging"]["root"].as_str() != Some(staging.objects.url("").as_str()) {
+                return Err(unresolved(root, "the staging root changed"));
+            }
+            if journal["collect"] == true {
+                let task = serde_json::from_value(journal["task"].clone())
+                    .map_err(|error| unresolved(root, error))?;
+                let status = serde_json::from_value(journal["status"].clone())
+                    .map_err(|error| unresolved(root, error))?;
+                staging.collect_prefix(prefix, &task, &status, root).await?;
+                let mut journal = journal.clone();
+                journal["collect"] = serde_json::json!(false);
+                journal_at(root, &journal)?;
+            }
+            let mut staging = staging.clone();
+            staging.settings.staging_cleanup = journal["staging"]["cleanup"]
+                .as_bool()
+                .unwrap_or(staging.settings.staging_cleanup);
+            staging.try_clean(prefix).await?;
         }
+        std::fs::remove_file(root.join("remote.json"))?;
+        File::open(root)?.sync_all()?;
+        Ok(())
     }
 
     /// Finds the task of a journal whose submission left no id, by the tag value that only
@@ -552,7 +687,7 @@ impl TesBackend {
         let mut poll = Poll::new(POLL);
         loop {
             tracing::debug!(task = id, "polling TES task");
-            let answer = match poll.read(cancel, self.client.status(id)).await {
+            let answer = match poll.read(cancel, self.client.progress(id)).await {
                 Ok(answer) => answer,
                 Err(WaitError::Cancelled) => {
                     self.stop(id, root, CANCEL_GRACE).await?;
@@ -569,7 +704,7 @@ impl TesBackend {
                 Ok(status) => {
                     poll.troubled(false, READ_GRACE);
                     if status.state.is_final() {
-                        std::fs::remove_file(root.join("remote.json"))?;
+                        record_stop(root, &status)?;
                         return Ok((status, false));
                     }
                     if status.state == State::Running {
@@ -606,9 +741,25 @@ impl TesBackend {
         })
         .await
         .map_err(|_| unresolved(root, format!("task {id} termination was not confirmed")))?;
-        std::fs::remove_file(root.join("remote.json"))?;
+        record_stop(root, &status)?;
         Ok(status)
     }
+}
+
+/// Persists terminal evidence before collection or cleanup can begin.
+fn record_stop(root: &Path, status: &crate::client::Status) -> Result<(), ExecutorError> {
+    let mut journal: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root.join("remote.json"))?)
+            .map_err(|error| unresolved(root, error))?;
+    journal["stopped"] = serde_json::json!(true);
+    if journal["staging"].is_object()
+        && matches!(status.state, State::Complete | State::ExecutorError)
+    {
+        journal["collect"] = serde_json::json!(true);
+        journal["status"] =
+            serde_json::to_value(status).map_err(|error| unresolved(root, error))?;
+    }
+    journal_at(root, &journal)
 }
 
 /// What became of a submission whose answer was lost.
@@ -759,6 +910,14 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
             path_prefix: None,
         },
     ];
+    if spec.output_manifest.is_some() {
+        outputs.push(Output {
+            path: crate::capture::TRANSFER.into(),
+            url: file_url(&root.join(executor::helper::TRANSFER)),
+            kind: FileType::Directory,
+            path_prefix: None,
+        });
+    }
     outputs.extend(written_back);
     let placement = job.placement;
     const GIB: f64 = (1u64 << 30) as f64;
@@ -846,6 +1005,53 @@ mod tests {
     use super::*;
     use executor::{Staged, Staging};
     use task_model::{FORMAT, Image, OutputRule, Placement, TaskSpec};
+
+    #[tokio::test]
+    async fn retries_stopped_collection() {
+        let root = tempfile::tempdir().unwrap();
+        let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
+        let objects = content_store::Store::remote(operator.clone(), "s3://bucket/stage").unwrap();
+        let settings = Settings {
+            staging_cleanup: true,
+            ..Settings::default()
+        };
+        let backend = TesBackend {
+            client: Client::new("http://127.0.0.1:1", None).unwrap(),
+            scratch: root.path().into(),
+            configs: Default::default(),
+            staging: Some(
+                ObjectStage::new(
+                    content_store::Store::memory().unwrap(),
+                    objects.clone(),
+                    settings.clone(),
+                )
+                .unwrap(),
+            ),
+            settings,
+        };
+        let task = Task {
+            executors: vec![ExecutorSpec {
+                command: vec!["sh".into(), WRAPPER.into()],
+                ..ExecutorSpec::default()
+            }],
+            ..Task::default()
+        };
+        let journal = serde_json::json!({"stopped":true,"collect":true,"task":task,
+            "status":{"id":"done","state":"COMPLETE"},
+            "staging":{"prefix":"attempts/test","root":objects.url(""),"cleanup":true}});
+        journal_at(root.path(), &journal).unwrap();
+        assert!(backend.settle_journal(root.path(), &journal).await.is_err());
+        assert!(root.path().join("remote.json").exists());
+        for (name, text) in [("exit", "0\n"), ("manifest", ""), ("objects", "")] {
+            operator
+                .write(&format!("attempts/test/control/{name}"), text.to_owned())
+                .await
+                .unwrap();
+        }
+        backend.settle_journal(root.path(), &journal).await.unwrap();
+        assert!(!root.path().join("remote.json").exists());
+        assert!(objects.objects("attempts/test/").await.unwrap().is_empty());
+    }
 
     #[test]
     fn termination_preserves_journal() {
@@ -939,6 +1145,7 @@ mod tests {
             outputs: vec![OutputRule {
                 pattern: "out.txt".into(),
             }],
+            output_manifest: None,
             stdin: None,
             containers: Vec::new(),
             replaces_entrypoint: false,

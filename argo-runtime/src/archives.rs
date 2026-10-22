@@ -377,6 +377,7 @@ impl Run {
             location,
             target,
             mode: DeliveryMode::Copy,
+            overwrite: true,
         });
     }
 }

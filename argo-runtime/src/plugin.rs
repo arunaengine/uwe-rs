@@ -121,7 +121,11 @@ impl Run {
         let mut plugins = Vec::new();
         let mut problems = Vec::new();
         if self.spec.executor_plugins.is_empty() {
-            for document in self.library.all(Kind::ExecutorPlugin, &self.document.path) {
+            for document in self.library.all_in(
+                Kind::ExecutorPlugin,
+                &self.document.path,
+                self.document.namespace(),
+            ) {
                 match Plugin::of_config_map(&document) {
                     Ok(plugin) => plugins.push(plugin),
                     Err(problem) => problems.push(problem),

@@ -13,8 +13,7 @@ use crate::library::{Document, Kind, Library};
 use crate::merge::merge;
 use crate::objects::{KeyRef, config_map_value, missing_config_map};
 use crate::run::{
-    Failure, Result, Run, empty_mapping, fnv32a, parameters_json, placeholder, remove_key,
-    scalar_text, uid,
+    Failure, Result, Run, fnv32a, parameters_json, placeholder, remove_key, scalar_text, uid,
 };
 use crate::tags::Variables;
 use crate::time;
@@ -125,6 +124,22 @@ pub(crate) struct Joined {
 }
 
 pub(crate) fn joined_spec(document: &Document, library: &Library) -> Result<Joined> {
+    join_spec(document, library, document.namespace(), &mut Vec::new())
+}
+
+fn join_spec(
+    document: &Document,
+    library: &Library,
+    namespace: &str,
+    seen: &mut Vec<(PathBuf, usize)>,
+) -> Result<Joined> {
+    let identity = (document.path.clone(), document.index);
+    if seen.len() >= 64 || seen.contains(&identity) {
+        return Err(Failure::error(
+            "workflowTemplateRef cycle or depth limit exceeded",
+        ));
+    }
+    seen.push(identity);
     let Some(spec_node) = document.spec() else {
         return Err(Failure::error(format!("{} has no spec", document.label())));
     };
@@ -142,13 +157,14 @@ pub(crate) fn joined_spec(document: &Document, library: &Library) -> Result<Join
         } else {
             Kind::WorkflowTemplate
         };
-        let Some(template) = library.find(kind, name, &document.path) else {
+        let Some(template) = library.find_in(kind, name, &document.path, namespace) else {
             return Err(Failure::error(not_found(kind, name)));
         };
-        let base = template.spec().cloned().unwrap_or_else(empty_mapping);
+        let joined = join_spec(&template, library, namespace, seen)?;
+        let base = joined.spec;
         remove_key(&mut spec_node, "workflowTemplateRef");
         spec_node = merge(&base, &spec_node);
-        context_path = template.path.clone();
+        context_path = joined.path;
         if let Some(workflow_metadata) = base.get("workflowMetadata") {
             metadata = Some(match metadata {
                 Some(own) => merge(workflow_metadata, &own),
@@ -215,7 +231,7 @@ pub(crate) fn workflow_parameters(
     spec: &WorkflowSpec,
     entry: Option<&Node>,
     options: &Options,
-    config_maps: (&Library, &Path),
+    config_maps: (&Library, &Path, &str),
     warnings: &mut Vec<String>,
 ) -> Result<Given> {
     // Parameters of the command line and the parameter file override the spec.
@@ -299,14 +315,14 @@ pub(crate) fn workflow_parameters(
             .as_ref()
             .and_then(|from| from.config_key_ref.as_ref())
             .map(KeyRef::of);
-        let (library, near) = config_maps;
+        let (library, near, namespace) = config_maps;
         let fallback = parameter
             .value_from
             .as_ref()
             .and_then(|from| from.default.clone());
         let value = if let Some(value) = reference
             .as_ref()
-            .and_then(|reference| config_map_value(library, near, reference))
+            .and_then(|reference| config_map_value(library, near, namespace, reference))
         {
             AnyString(value)
         } else if let Some(default) = parameter.default.clone().or(fallback) {

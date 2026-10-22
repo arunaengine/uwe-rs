@@ -220,7 +220,9 @@ pub(crate) struct Run {
     pub held: bool,
     pub expired: HashMap<usize, String>,
     pub cancel_tasks: Vec<TaskId>,
-    pub locks: Rc<std::cell::RefCell<crate::sync::Locks>>,
+    pub locks: crate::sync::SharedLocks,
+    pub lock_wait: bool,
+    lock_id: u64,
     pub archives: Option<tempfile::TempDir>,
     /// Folders of the run's own: writable copies of volumes and unpacked input artifacts.
     pub folders: Option<tempfile::TempDir>,
@@ -237,6 +239,10 @@ pub fn output_text(files: Option<&dyn Files>, location: &str) -> std::io::Result
 }
 
 impl Run {
+    pub(crate) fn lock_owner(&self, owner: &str) -> String {
+        format!("{}:{owner}", self.lock_id)
+    }
+
     /// The text of an output file of a task, read through the files of the run when available.
     pub fn read_output(&self, location: &str) -> std::io::Result<String> {
         output_text(self.files.as_deref(), location)
@@ -305,7 +311,7 @@ impl Run {
             &spec,
             entry,
             &options,
-            (&library, &document.path),
+            (&library, &document.path, document.namespace()),
             &mut warnings,
         )?;
         spec.arguments.parameters = parameters;
@@ -325,7 +331,7 @@ impl Run {
             document.kind,
         ));
         let mut check = Check::new(&library);
-        check.metadata(document.node.get("metadata"));
+        check.metadata(metadata.as_ref());
         let entry = Some((entrypoint.as_str(), Supplied::Arguments(&supplied)));
         if let Err(message) = check.spec(&spec, &base, entry, false) {
             return Err(if check.unsupported() {
@@ -334,6 +340,8 @@ impl Run {
                 Failure::error(message)
             });
         }
+        static LOCK_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let locks = options.locks.clone();
         let mut run = Run {
             workflow_name,
             options,
@@ -372,7 +380,9 @@ impl Run {
             held: false,
             expired: HashMap::new(),
             cancel_tasks: Vec::new(),
-            locks: Rc::new(std::cell::RefCell::new(crate::sync::Locks::default())),
+            locks,
+            lock_wait: false,
+            lock_id: LOCK_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             archives: None,
             folders: None,
             raw_outputs: HashSet::new(),
@@ -468,6 +478,7 @@ impl Run {
         }
         loop {
             self.changed = false;
+            self.lock_wait = false;
             if !self.held {
                 self.pass()?;
             }
@@ -487,6 +498,10 @@ impl Run {
             .chain(self.deadlines.values().map(|limit| limit.at))
             .chain(self.workflow_limit)
             .chain(self.held.then(|| self.clock + crate::resume::POLL))
+            .chain(
+                self.lock_wait
+                    .then(|| self.clock + std::time::Duration::from_millis(10)),
+            )
             .chain(self.children.iter().filter_map(|child| child.run.wake_at()))
             .min()
     }
@@ -548,9 +563,7 @@ impl Run {
                 .all(|&index| self.nodes[index].phase.fulfilled())
         {
             self.workflow_limit = None;
-            self.locks
-                .borrow_mut()
-                .release(&format!("workflow:{}", self.workflow_name));
+            self.locks.lock().release(&self.lock_owner("workflow"));
         }
         Ok(())
     }
@@ -889,11 +902,12 @@ impl Run {
             } else {
                 DocumentKind::WorkflowTemplate
             };
-            let Some(document) = self.library.find_template(
+            let Some(document) = self.library.template_in(
                 kind,
                 &reference.name,
                 &reference.template,
                 &context.path,
+                self.document.namespace(),
             ) else {
                 return Err(format!(
                     "templateRef: {} {} not found",
@@ -1157,7 +1171,9 @@ impl Run {
             self.cancel_tasks.extend(daemons);
         }
         if phase.fulfilled() {
-            self.locks.borrow_mut().release(&self.nodes[index].id);
+            self.locks
+                .lock()
+                .release(&self.lock_owner(&self.nodes[index].id));
             self.deadlines.remove(&index);
             for (_, active) in self.resource_admissions.remove(&index).unwrap_or_default() {
                 active.set(active.get() - 1);
@@ -1377,6 +1393,12 @@ impl Run {
                 ))
             }
         }
+    }
+}
+
+impl Drop for Run {
+    fn drop(&mut self) {
+        self.locks.lock().release_run(&format!("{}:", self.lock_id));
     }
 }
 

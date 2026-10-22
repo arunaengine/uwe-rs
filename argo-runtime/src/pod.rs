@@ -126,7 +126,6 @@ impl Run {
         let first = init.len();
         let mut tasks: Vec<Task> = Vec::new();
         let daemon = self.daemon(template)?;
-        let mut dependencies: Vec<Vec<usize>> = Vec::new();
         if let Some(container) = &template.container {
             let mut task = base(&container.image, Some(container))?;
             fill_container(&mut task, container);
@@ -181,12 +180,7 @@ impl Run {
                     task.run_as = Some(self.run_as(template, Some(container)));
                 }
                 task.resources = sum(&task.resources, container)?;
-                let path = |mount: &Node| mount.get("mountPath").map(scalar_text);
-                for mount in &container.volume_mounts {
-                    if !mounts.iter().any(|known| path(known) == path(mount)) {
-                        mounts.push(mount.clone());
-                    }
-                }
+                extend_mounts(&mut mounts, &container.volume_mounts)?;
                 task.containers.push(TaskContainer {
                     name: container.name.clone(),
                     image: (!container.image.is_empty()).then(|| container.image.clone()),
@@ -223,9 +217,6 @@ impl Run {
             ];
             tasks.push(task);
         }
-        if dependencies.len() < tasks.len() {
-            dependencies.resize(tasks.len(), Vec::new());
-        }
         let mut ids: Vec<TaskId> = Vec::new();
         for _ in &tasks {
             ids.push(self.next_task_id()?);
@@ -234,13 +225,6 @@ impl Run {
             task.id = ids[slot];
             for &id in &done {
                 if !task.after.contains(&id) {
-                    task.after.push(id);
-                }
-            }
-            for &dependency in &dependencies[slot] {
-                if let Some(&id) = ids.get(dependency)
-                    && !task.after.contains(&id)
-                {
                     task.after.push(id);
                 }
             }
@@ -720,12 +704,7 @@ impl Run {
                 Failure::error(format!("template {}: sidecar: {error}", template.name))
             })?;
             task.resources = sum(&task.resources, &sidecar)?;
-            let path = |mount: &Node| mount.get("mountPath").map(scalar_text);
-            for mount in &sidecar.volume_mounts {
-                if !mounts.iter().any(|known| path(known) == path(mount)) {
-                    mounts.push(mount.clone());
-                }
-            }
+            extend_mounts(mounts, &sidecar.volume_mounts)?;
             task.containers.push(TaskContainer {
                 name: sidecar.name.clone(),
                 image: (!sidecar.image.is_empty()).then(|| sidecar.image.clone()),
@@ -745,6 +724,38 @@ impl Run {
         }
         Ok(())
     }
+}
+
+fn extend_mounts(mounts: &mut Vec<Node>, additions: &[Node]) -> Result<()> {
+    let field = |node: &Node, key: &str| node.get(key).map(scalar_text).unwrap_or_default();
+    for mount in additions {
+        let path = field(mount, "mountPath");
+        if let Some(known) = mounts.iter().find(|known| {
+            std::path::Path::new(&field(known, "mountPath")) == std::path::Path::new(&path)
+        }) {
+            let conflict = [
+                "name",
+                "subPath",
+                "subPathExpr",
+                "mountPropagation",
+                "recursiveReadOnly",
+            ]
+            .iter()
+            .any(|key| field(known, key) != field(mount, key));
+            let readonly = |node: &Node| {
+                node.get("readOnly")
+                    .is_some_and(|value| value.value == Yaml::Bool(true))
+            };
+            if conflict || readonly(known) != readonly(mount) {
+                return Err(Failure::unsupported(format!(
+                    "container mounts at {path} require different sources or permissions; per-container mount views are not supported"
+                )));
+            }
+        } else {
+            mounts.push(mount.clone());
+        }
+    }
+    Ok(())
 }
 
 /// A readiness probe of Kubernetes in the form of the executor.

@@ -43,7 +43,7 @@ pub(crate) fn inputs(document: &Document, library: &Library, options: &Options) 
         &spec,
         entry_node,
         options,
-        (library, &document.path),
+        (library, &document.path, document.namespace()),
         &mut warnings,
     )?;
     let mut properties = Map::new();
@@ -91,7 +91,15 @@ pub(crate) fn inputs(document: &Document, library: &Library, options: &Options) 
     if !required.is_empty() {
         schema["required"] = Json::Array(required);
     }
-    let read = read(&node, library, &document.path, entry_node, &entry, &spec);
+    let read = read(
+        &node,
+        library,
+        &document.path,
+        document.namespace(),
+        entry_node,
+        &entry,
+        &spec,
+    );
     Ok(Inputs {
         schema,
         values: Json::Object(values),
@@ -310,6 +318,7 @@ fn read(
     spec: &Node,
     library: &Library,
     near: &std::path::Path,
+    namespace: &str,
     entry: Option<&Node>,
     template: &Template,
     declared: &WorkflowSpec,
@@ -328,7 +337,7 @@ fn read(
                 true => Kind::ClusterWorkflowTemplate,
                 false => Kind::WorkflowTemplate,
             };
-            if let Some(found) = library.find(kind, &name, &near)
+            if let Some(found) = library.find_in(kind, &name, &near, namespace)
                 && let Some(spec) = found.spec()
             {
                 pending.push((spec.clone(), found.path.clone()));

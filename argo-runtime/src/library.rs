@@ -60,6 +60,10 @@ pub struct Document {
 }
 
 impl Document {
+    pub fn namespace(&self) -> &str {
+        namespace(self.node.get("metadata"))
+    }
+
     /// The workflow spec: `spec`, or `spec.workflowSpec` of a CronWorkflow.
     pub fn spec(&self) -> Option<&Node> {
         let spec = self.node.get("spec")?;
@@ -96,6 +100,14 @@ impl Document {
     pub fn label(&self) -> String {
         format!("{}/{}", self.kind.name(), self.name)
     }
+}
+
+pub(crate) fn namespace(metadata: Option<&Node>) -> &str {
+    metadata
+        .and_then(|node| node.get("namespace"))
+        .and_then(Node::as_str)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("default")
 }
 
 /// Reads the Argo documents and the ConfigMaps of a file. Other documents, like other Kubernetes
@@ -276,14 +288,24 @@ impl Library {
     /// The document of this kind and name that is best for a reference from `near`: the one
     /// with the lowest priority number, then the one whose path shares most with `near`.
     pub fn find(&self, kind: Kind, name: &str, near: &Path) -> Option<Rc<Document>> {
-        if let Some(found) = self.best(kind, name, near, |_| true) {
+        self.find_in(kind, name, near, "default")
+    }
+
+    pub fn find_in(
+        &self,
+        kind: Kind,
+        name: &str,
+        near: &Path,
+        namespace: &str,
+    ) -> Option<Rc<Document>> {
+        if let Some(found) = self.best(kind, name, near, namespace, |_| true) {
             return Some(found);
         }
         if self.directories.borrow().is_empty() {
             return None;
         }
         self.read_directories();
-        self.best(kind, name, near, |_| true)
+        self.best(kind, name, near, namespace, |_| true)
     }
 
     /// The document that a `templateRef` names: like [`Library::find`], but among several
@@ -295,27 +317,45 @@ impl Library {
         template: &str,
         near: &Path,
     ) -> Option<Rc<Document>> {
+        self.template_in(kind, name, template, near, "default")
+    }
+
+    pub fn template_in(
+        &self,
+        kind: Kind,
+        name: &str,
+        template: &str,
+        near: &Path,
+        namespace: &str,
+    ) -> Option<Rc<Document>> {
         let holds = |document: &Document| document.template(template).is_some();
         self.read_directories();
-        self.best(kind, name, near, holds)
-            .or_else(|| self.best(kind, name, near, |_| true))
+        self.best(kind, name, near, namespace, holds)
+            .or_else(|| self.best(kind, name, near, namespace, |_| true))
     }
 
     /// Every document of a kind, one per name, as [`Library::find`] picks it, by name.
     pub fn all(&self, kind: Kind, near: &Path) -> Vec<Rc<Document>> {
+        self.all_in(kind, near, "default")
+    }
+
+    pub fn all_in(&self, kind: Kind, near: &Path, namespace: &str) -> Vec<Rc<Document>> {
         self.read_directories();
         let mut names: Vec<String> = self
             .documents
             .borrow()
             .iter()
-            .filter(|(_, document)| document.kind == kind)
+            .filter(|(_, document)| {
+                document.kind == kind
+                    && (kind == Kind::ClusterWorkflowTemplate || document.namespace() == namespace)
+            })
             .map(|(_, document)| document.name.clone())
             .collect();
         names.sort();
         names.dedup();
         names
             .iter()
-            .filter_map(|name| self.best(kind, name, near, |_| true))
+            .filter_map(|name| self.best(kind, name, near, namespace, |_| true))
             .collect()
     }
 
@@ -324,12 +364,17 @@ impl Library {
         kind: Kind,
         name: &str,
         near: &Path,
+        namespace: &str,
         accept: impl Fn(&Document) -> bool,
     ) -> Option<Rc<Document>> {
         let documents = self.documents.borrow();
         let mut best: Option<(u8, usize, &Rc<Document>)> = None;
         for (priority, document) in documents.iter() {
-            if document.kind != kind || document.name != name || !accept(document) {
+            if document.kind != kind
+                || document.name != name
+                || !accept(document)
+                || (kind != Kind::ClusterWorkflowTemplate && document.namespace() != namespace)
+            {
                 continue;
             }
             let shared = document
@@ -363,6 +408,12 @@ pub fn collect_files(directory: &Path, files: &mut Vec<PathBuf>) {
         .collect();
     paths.sort();
     for path in paths {
+        if path
+            .symlink_metadata()
+            .map_or(true, |metadata| metadata.file_type().is_symlink())
+        {
+            continue;
+        }
         let name = path
             .file_name()
             .unwrap_or_default()

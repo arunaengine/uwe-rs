@@ -124,16 +124,22 @@ pub fn validate(document: &Document, library: &Library) -> Result<(), Rejection>
 
 /// The checks of [`validate`], with messages only.
 fn check_document(check: &mut Check, document: &Document) -> Result<(), String> {
-    let Some(spec_node) = document.spec() else {
+    let Some(_) = document.spec() else {
         if document.kind == Kind::ExecutorPlugin {
             return Ok(());
         }
         return Err(format!("{} has no spec", document.label()));
     };
+    let joined = crate::start::joined_spec(document, check.library).map_err(|failure| {
+        check.unsupported = failure.unsupported;
+        failure.message
+    })?;
+    check.metadata(joined.metadata.as_ref());
+    let spec_node = &joined.spec;
     let (spec, _) = decode::<WorkflowSpec>(spec_node).map_err(|error| format!("spec: {error}"))?;
     let base = Rc::new(Base::new(
         String::new(),
-        document.path.clone(),
+        joined.path,
         spec_node,
         document.kind,
     ));
@@ -152,11 +158,7 @@ fn check_document(check: &mut Check, document: &Document) -> Result<(), String> 
         }
     }
     check.template_check = template_kind;
-    let result = if spec.workflow_template_ref.is_some() {
-        // A Workflow that runs a WorkflowTemplate is checked when it starts, once its spec is
-        // joined with the template's.
-        Ok(())
-    } else if spec.entrypoint.is_empty() && template_kind {
+    let result = if spec.entrypoint.is_empty() && template_kind {
         check.spec(&spec, &base, None, true)
     } else if spec.entrypoint.is_empty() {
         Err("spec.entrypoint is required".to_owned())
@@ -336,7 +338,13 @@ impl<'a> Check<'a> {
             };
             let document = self
                 .library
-                .find_template(kind, &reference.name, &reference.template, &base.path)
+                .template_in(
+                    kind,
+                    &reference.name,
+                    &reference.template,
+                    &base.path,
+                    crate::library::namespace(self.metadata.as_ref()),
+                )
                 .ok_or_else(|| not_found(kind, &reference.name))?;
             let base = self.base_of(&document);
             let Some(node) = base.template(&reference.template).cloned() else {

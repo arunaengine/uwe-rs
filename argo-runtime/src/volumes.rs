@@ -75,7 +75,20 @@ fn below(mount: &str, relative: &str) -> String {
 
 impl Run {
     /// The volume of this name: of the template, of the workflow, or a claim template.
-    fn volume(&mut self, index: usize, template: &Template, name: &str) -> Option<Source> {
+    fn volume(&mut self, index: usize, template: &Template, name: &str) -> Result<Option<Source>> {
+        if let Some(path) = self.options.policy.volumes.get(name) {
+            let path = path
+                .canonicalize()
+                .map_err(|error| Failure::error(format!("volume {name}: {error}")))?;
+            return Ok(Some(Source::Shared {
+                key: format!("host:{}", path.display()),
+                host: Some(Host {
+                    file: path.is_file(),
+                    path: path.to_string_lossy().into_owned(),
+                    create: false,
+                }),
+            }));
+        }
         let named = |volumes: &[Node]| {
             volumes
                 .iter()
@@ -100,71 +113,102 @@ impl Run {
                             == Some(name)
                     });
                     if !claimed {
-                        return None;
+                        return Ok(None);
                     }
                     self.claims.insert(name.to_owned());
-                    return Some(Source::Shared {
+                    return Ok(Some(Source::Shared {
                         key: format!("claim:{name}"),
                         host: None,
-                    });
+                    }));
                 }
             },
         };
         let text = |source: &Node, key: &str| source.get(key).map(scalar_text).unwrap_or_default();
         if let Some(claim) = volume.get("persistentVolumeClaim") {
             let claim = text(claim, "claimName");
+            if self.spec.volume_claim_templates.iter().any(|item| {
+                item.get("metadata")
+                    .and_then(|node| node.get("name"))
+                    .and_then(Node::as_str)
+                    == Some(claim.as_str())
+            }) {
+                self.claims.insert(claim.clone());
+            }
             if !self.claims.contains(&claim) {
+                if !self.options.assume_inputs {
+                    return Err(Failure::unsupported(format!(
+                        "volume {name}: existing claim {claim} requires an explicit host volume mapping"
+                    )));
+                }
                 self.warn(format!(
                     "volume claim {claim} exists only in a cluster; the run starts it empty"
                 ));
             }
-            return Some(Source::Shared {
+            return Ok(Some(Source::Shared {
                 key: format!("claim:{claim}"),
                 host: None,
-            });
+            }));
         }
         if let Some(host) = volume.get("hostPath") {
             let path = text(host, "path");
+            if let Some(roots) = &self.options.policy.host_roots {
+                if Path::new(&path)
+                    .components()
+                    .any(|part| part == Component::ParentDir)
+                    || !roots
+                        .iter()
+                        .any(|root| confined(root, Path::new(&path)).is_ok())
+                {
+                    return Err(Failure::unsupported(format!(
+                        "volume {name}: hostPath {path} is outside authorized roots"
+                    )));
+                }
+            }
             let kind = text(host, "type");
-            return Some(Source::Shared {
+            return Ok(Some(Source::Shared {
                 key: format!("host:{path}"),
                 host: Some(Host {
                     path,
                     file: kind.starts_with("File"),
                     create: kind.ends_with("OrCreate"),
                 }),
-            });
+            }));
         }
         if volume.get("emptyDir").is_some() {
             let pod = &self.nodes[index].name;
-            return Some(Source::Shared {
+            return Ok(Some(Source::Shared {
                 key: format!("pod:{pod}:{name}"),
                 host: None,
-            });
+            }));
         }
         if let Some(map) = volume.get("configMap") {
             let mut reference = KeyRef::of(map);
             reference.key.clear();
-            return Some(Source::ConfigMap {
+            return Ok(Some(Source::ConfigMap {
                 reference,
                 items: items(map),
-            });
+            }));
         }
         if let Some(secret) = volume.get("secret") {
             let mut reference = KeyRef::of(secret);
             reference.name = text(secret, "secretName");
-            return Some(Source::Secret {
+            return Ok(Some(Source::Secret {
                 reference,
                 items: items(secret),
-            });
+            }));
+        }
+        if !self.options.assume_inputs {
+            return Err(Failure::unsupported(format!(
+                "volume {name}: this source requires an explicit host volume mapping"
+            )));
         }
         self.warn(format!(
             "volume {name} is of a kind that needs a cluster; it acts like a claim of that name"
         ));
-        Some(Source::Shared {
+        Ok(Some(Source::Shared {
             key: format!("volume:{name}"),
             host: None,
-        })
+        }))
     }
 
     /// Gives a task the volumes that `mounts` name: their files as inputs below the mount
@@ -198,7 +242,7 @@ impl Run {
                 mount.get("readOnly").map(|node| &node.value),
                 Some(Yaml::Bool(true))
             );
-            let Some(source) = self.volume(index, template, &name) else {
+            let Some(source) = self.volume(index, template, &name)? else {
                 self.warn(format!(
                     "template {} mounts volume {name}, which neither the template nor the workflow declares; it is left out",
                     template.name
@@ -345,7 +389,12 @@ impl Run {
                     }
                 }
                 Source::ConfigMap { reference, items } => {
-                    let found = config_map(&self.library, &self.document.path, &reference.name);
+                    let found = config_map(
+                        &self.library,
+                        &self.document.path,
+                        self.document.namespace(),
+                        &reference.name,
+                    );
                     let Some(entries) = found else {
                         if !reference.optional {
                             let message = format!(

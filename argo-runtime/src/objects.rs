@@ -35,9 +35,10 @@ impl KeyRef {
 pub(crate) fn config_map(
     library: &Library,
     near: &Path,
+    namespace: &str,
     name: &str,
 ) -> Option<Vec<(String, String)>> {
-    let document = library.find(Kind::ConfigMap, name, near)?;
+    let document = library.find_in(Kind::ConfigMap, name, near, namespace)?;
     let entries = match document.node.get("data").map(|data| &data.value) {
         Some(Yaml::Mapping(entries)) => entries
             .iter()
@@ -52,9 +53,10 @@ pub(crate) fn config_map(
 pub(crate) fn config_map_value(
     library: &Library,
     near: &Path,
+    namespace: &str,
     reference: &KeyRef,
 ) -> Option<String> {
-    config_map(library, near, &reference.name)?
+    config_map(library, near, namespace, &reference.name)?
         .into_iter()
         .find(|(key, _)| *key == reference.key)
         .map(|(_, value)| value)
@@ -116,7 +118,12 @@ impl Run {
 
     /// The value of a ConfigMap key, or what stands for it when no loaded document holds it.
     pub(crate) fn config_map_key(&mut self, what: &str, reference: &KeyRef) -> Result<String> {
-        if let Some(value) = config_map_value(&self.library, &self.document.path, reference) {
+        if let Some(value) = config_map_value(
+            &self.library,
+            &self.document.path,
+            self.document.namespace(),
+            reference,
+        ) {
             return Ok(value);
         }
         let mut warnings = Vec::new();

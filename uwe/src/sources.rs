@@ -31,6 +31,23 @@ pub struct Sources {
     pub skipped: Option<String>,
 }
 
+impl Sources {
+    /// Strict runs require a complete, nonempty source inventory.
+    pub fn complete(&self) -> Result<(), String> {
+        match &self.skipped {
+            Some(reason) => Err(reason.clone()),
+            None if !self
+                .files
+                .iter()
+                .any(|source| source.kind == SourceKind::Workflow) =>
+            {
+                Err("the workflow has no recorded sources".into())
+            }
+            None => Ok(()),
+        }
+    }
+}
+
 /// A file with its place and its digest.
 struct Found {
     path: PathBuf,
@@ -41,7 +58,7 @@ struct Found {
 pub async fn collect(target: &Path, arguments: &Arguments) -> Sources {
     let remote = storage::address::scheme(&target.to_string_lossy()).is_some();
     let target = std::path::absolute(target).unwrap_or_else(|_| target.to_owned());
-    let (folder, found, skipped) = if remote {
+    let (folder, found, mut skipped) = if remote {
         (PathBuf::new(), Vec::new(), None)
     } else {
         workflow_files(&target, arguments)
@@ -58,7 +75,11 @@ pub async fn collect(target: &Path, arguments: &Arguments) -> Sources {
                 path: file.relative,
                 digest: digest.to_string(),
                 size,
+                executable: std::fs::metadata(&file.path)
+                    .is_ok_and(|metadata| metadata.mode() & 0o111 != 0),
             });
+        } else {
+            skipped = Some(format!("cannot record {}", file.path.display()));
         }
     }
     let named = (arguments.configs.iter()).chain(arguments.inputs.as_ref());
@@ -73,7 +94,11 @@ pub async fn collect(target: &Path, arguments: &Arguments) -> Sources {
                 path: path.to_string_lossy().into_owned(),
                 digest: digest.to_string(),
                 size,
+                executable: std::fs::metadata(&path)
+                    .is_ok_and(|metadata| metadata.mode() & 0o111 != 0),
             });
+        } else {
+            skipped = Some(format!("cannot record {}", path.display()));
         }
     }
     Sources {
@@ -150,7 +175,7 @@ pub fn tree(workflow: &[&Source]) -> Result<Tree, task_model::SpecError> {
                     task_model::SpecError::Encoding(format!("digest {}", source.digest))
                 })?,
                 size: source.size,
-                executable: false,
+                executable: source.executable,
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -321,6 +346,23 @@ fn walk(root: &Path, folder: &Path, output: Option<&Path>, files: &mut Vec<Found
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_incomplete_capture() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("main.nf");
+        std::fs::write(&target, "workflow {}").unwrap();
+        let arguments = Arguments {
+            configs: vec![root.path().join("missing.config")],
+            ..Arguments::default()
+        };
+        let sources = workflow_graph::runtime()
+            .unwrap()
+            .block_on(collect(&target, &arguments));
+        assert!(!sources.files.is_empty());
+        assert!(sources.complete().unwrap_err().contains("missing.config"));
+        assert!(Sources::default().complete().is_err());
+    }
 
     fn write(path: &Path, text: &str) {
         std::fs::create_dir_all(path.parent().expect("a parent")).expect("makes folders");

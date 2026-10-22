@@ -63,12 +63,15 @@ impl RunRequest {
         let cancel = self.settings.cancel.child_token();
         let _stop = cancel.clone().drop_guard();
         tokio::task::spawn_blocking(move || {
+            let _cache = support::CacheScope::new(false);
             let network = self.settings.network.take();
             let (arguments, setup, _inputs) = self.settings.prepare()?;
             let mut setup = match setup {
                 Some(setup) => setup,
                 None => crate::setup::Setup::load(&arguments)?,
             };
+            let _registry = setup.registry.enter().map_err(Failure::setup)?;
+            setup.storage = setup.storage.session();
             if let Some(network) = network {
                 setup.network = network;
             }
@@ -105,6 +108,14 @@ fn execute_with(
     pinned: &Pinned,
     admission: Option<Policy>,
 ) -> Result<Run, Failure> {
+    let _cache = support::CacheScope::new(settings.cli.is_some());
+    let hosted = settings.hosted.clone();
+    let strict = settings.strict_provenance || hosted.is_some();
+    let admission = if hosted.is_some() {
+        Some(Policy::Strict)
+    } else {
+        admission
+    };
     let interrupt = if settings.cli.is_some() {
         settings.cancel.clone()
     } else {
@@ -119,15 +130,17 @@ fn execute_with(
         arguments.no_network = false;
     }
     let arguments = &arguments;
+    let mut setup = match setup {
+        Some(setup) => setup,
+        None => crate::setup::Setup::load(arguments)?,
+    };
+    let _registry = setup.registry.enter().map_err(Failure::setup)?;
+    setup.storage = setup.storage.session();
     let (target, language) = target_and_language(arguments)?;
     let target = &target;
     let launch = launch(arguments, target.clone());
     let run = run_id();
     let name = arguments.executor.as_deref().unwrap_or("local");
-    let mut setup = match setup {
-        Some(setup) => setup,
-        None => crate::setup::Setup::load(arguments)?,
-    };
     if let Some(network) = network {
         setup.network = network;
     }
@@ -148,6 +161,9 @@ fn execute_with(
     let verbose = !quiet && !(shown && terminal::possible());
     let runtime = workflow_graph::runtime().map_err(|error| failure(format!("uwe: {error}")))?;
     let sources = runtime.block_on(sources::collect(target, arguments));
+    if real && strict {
+        sources.complete().map_err(Failure::setup)?;
+    }
     let invocation = admission.map(|_| {
         let mut words = record::run_arguments(arguments);
         for (option, targets) in [
@@ -174,6 +190,7 @@ fn execute_with(
         sources: &sources,
         repeats: pinned.repeats.as_deref(),
         invocation: invocation.as_deref(),
+        strict_provenance: strict,
     };
     // Read before this run is in the database.
     let measured = resources::measured(arguments);
@@ -220,6 +237,9 @@ fn execute_with(
                     policy,
                 )
                 .map_err(|error| failure(error.to_string()))?;
+                if let Some(hosted) = &hosted {
+                    hosted.authorize(&admission)?;
+                }
                 if let Some(inputs) = &admission.inputs {
                     driver.use_inputs(inputs.values.clone())?;
                 }
@@ -240,19 +260,27 @@ fn execute_with(
         Ok(prepared) => prepared,
         Err(failure) => {
             recorder.ended(Some(&failure.message));
-            close(recorder);
+            close_checked(recorder, strict)?;
             return Err(failure);
         }
     };
     // A real run keeps the files of its workflow and the remote files it read in its store,
     // so that a repeat of the run has them years later.
     let kept = match real {
+        true if strict => Some(setup.store(arguments)?),
         true => setup.store(arguments).ok(),
         false => None,
     };
     if let Some(store) = &kept
         && let Err(message) = runtime.block_on(sources::keep(store, &sources))
     {
+        if strict {
+            recorder.ended(Some(&message));
+            close_checked(recorder, true)?;
+            return Err(Failure::setup(format!(
+                "workflow provenance was not retained: {message}"
+            )));
+        }
         tracing::warn!("uwe: the store does not keep the files of the workflow: {message}");
     }
     if let (true, Some(reason)) = (real, &sources.skipped) {
@@ -307,13 +335,17 @@ fn execute_with(
         }
         None => &mut noting,
     };
+    let mut terminal = record::Terminal {
+        observer,
+        defer: strict,
+    };
     let mut execution = Engine::new(executor.as_mut())
         .options(options)
         .retries(arguments.machine_retries.unwrap_or(2))
         .retry_delay(std::time::Duration::from_millis(
             arguments.retry_delay_ms.unwrap_or(1_000),
         ))
-        .observer(observer)
+        .observer(&mut terminal)
         .cancel(interrupt.clone())
         .run(&workflow, driver.as_mut());
     if !real {
@@ -326,9 +358,19 @@ fn execute_with(
     if let Some(store) = &kept
         && let Err(message) = runtime.block_on(fetched::keep(store, &read))
     {
+        if strict {
+            recorder.ended(Some(&message));
+            close_checked(recorder, true)?;
+            return Err(Failure::setup(format!(
+                "remote input provenance was not retained: {message}"
+            )));
+        }
         tracing::warn!("uwe: the store does not keep the remote files of the run: {message}");
     }
-    close(recorder);
+    if strict {
+        recorder.ended(execution.error.as_ref().map(ToString::to_string).as_deref());
+    }
+    close_checked(recorder, strict)?;
     // A failed run leaves its error as the first line on standard error.
     if execution.error.is_none() && !arguments.no_right_sizing {
         for line in resources::notes(&execution.graph, &measured, !real) {
@@ -368,7 +410,17 @@ pub(crate) type Ran = Run;
 
 /// Ends the record of a run. A run goes on when the database fails; it only says so.
 pub(crate) fn close(recorder: Recorder) {
+    let _ = close_checked(recorder, false);
+}
+
+fn close_checked(recorder: Recorder, strict: bool) -> Result<(), Failure> {
     if let Err(error) = recorder.close() {
+        if strict {
+            return Err(Failure::setup(format!(
+                "the run database did not record the whole run: {error}"
+            )));
+        }
         tracing::warn!("uwe: the run database did not record the whole run: {error}");
     }
+    Ok(())
 }

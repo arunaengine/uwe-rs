@@ -12,6 +12,7 @@ use crate::workflow::workflow_error;
 
 #[derive(Clone, Default)]
 pub struct Profile {
+    flags: std::collections::HashSet<String>,
     pub configfiles: Vec<PathBuf>,
     /// `config:` as `key=value` texts, as `--config` takes them.
     pub config: Vec<(String, String)>,
@@ -295,10 +296,21 @@ impl Profile {
         if other.executor.is_some() {
             self.executor = other.executor;
         }
-        self.all_temp = self.all_temp || other.all_temp;
-        self.notemp = self.notemp || other.notemp;
-        self.nolock = self.nolock || other.nolock;
-        self.rerun_incomplete = self.rerun_incomplete || other.rerun_incomplete;
+        for (name, current, incoming) in [
+            ("all-temp", &mut self.all_temp, other.all_temp),
+            ("notemp", &mut self.notemp, other.notemp),
+            ("nolock", &mut self.nolock, other.nolock),
+            (
+                "rerun-incomplete",
+                &mut self.rerun_incomplete,
+                other.rerun_incomplete,
+            ),
+        ] {
+            if other.flags.contains(name) {
+                *current = incoming;
+            }
+        }
+        self.flags.extend(other.flags);
         if !other.envvars.is_empty() {
             self.envvars = other.envvars;
         }
@@ -421,11 +433,16 @@ impl Profile {
                 }
                 "resources" | "res" => profile.resources = pairs(interpreter, &value)?,
                 "executor" => profile.executor = Some(interpreter.to_str(&value)?),
-                "all-temp" => profile.all_temp = interpreter.truthy(&value)?,
-                "notemp" | "nt" | "no-temp" => profile.notemp = interpreter.truthy(&value)?,
-                "nolock" => profile.nolock = interpreter.truthy(&value)?,
-                "rerun-incomplete" | "ri" => {
-                    profile.rerun_incomplete = interpreter.truthy(&value)?
+                key @ ("all-temp" | "notemp" | "nt" | "no-temp" | "nolock" | "rerun-incomplete"
+                | "ri") => {
+                    let (name, flag) = match key {
+                        "all-temp" => ("all-temp", &mut profile.all_temp),
+                        "notemp" | "nt" | "no-temp" => ("notemp", &mut profile.notemp),
+                        "nolock" => ("nolock", &mut profile.nolock),
+                        _ => ("rerun-incomplete", &mut profile.rerun_incomplete),
+                    };
+                    *flag = interpreter.truthy(&value)?;
+                    profile.flags.insert(name.to_owned());
                 }
                 "envvars" => profile.envvars = words(interpreter, &value)?,
                 "wrapper-prefix" => profile.wrapper_prefix = Some(interpreter.to_str(&value)?),
@@ -585,6 +602,41 @@ impl Profile {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replaces_explicit_flags() {
+        let folder = tempfile::tempdir().unwrap();
+        let first = folder.path().join("first.yaml");
+        let second = folder.path().join("second.yaml");
+        std::fs::write(
+            &first,
+            "all-temp: true\nnotemp: true\nnolock: true\nrerun-incomplete: true\n",
+        )
+        .unwrap();
+        let mut interpreter = Interpreter::new(std::rc::Rc::new(python_evaluator::LocalHost::new(
+            folder.path(),
+        )));
+        for (settings, expected) in [
+            (
+                "all-temp: false\nnt: false\nnolock: false\nri: false\n",
+                false,
+            ),
+            ("{}", true),
+        ] {
+            std::fs::write(&second, settings).unwrap();
+            let profile =
+                Profile::given(&mut interpreter, &[first.clone(), second.clone()]).unwrap();
+            assert_eq!(
+                [
+                    profile.all_temp,
+                    profile.notemp,
+                    profile.nolock,
+                    profile.rerun_incomplete
+                ],
+                [expected; 4]
+            );
+        }
+    }
 
     #[test]
     fn loads_workflow_profile() {

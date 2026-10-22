@@ -102,17 +102,24 @@ impl Journal {
         receiver.await.map_err(|error| error.to_string())?
     }
 
-    pub(crate) fn bind(&self, mut pending: Pending, id: &str) -> Result<(), (String, Pending)> {
+    pub(crate) fn bind(
+        &self,
+        mut pending: Pending,
+        id: &str,
+    ) -> Result<(), Box<(String, Pending)>> {
         pending.record.id = Some(id.into());
         if let Err(error) = pending.save() {
-            return Err((error, pending));
+            return Err(Box::new((error, pending)));
         }
         let mut active = self
             .active
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         if active.contains_key(id) {
-            return Err(("the engine reused a live container ID".into(), pending));
+            return Err(Box::new((
+                "the engine reused a live container ID".into(),
+                pending,
+            )));
         }
         active.insert(id.into(), pending);
         Ok(())

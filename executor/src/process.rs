@@ -529,10 +529,9 @@ pub(crate) async fn create_id(
         let result = match created {
             Ok(Ok(created)) => match engine.journal.bind(pending, &created.id) {
                 Ok(()) => Ok(Created::owned(&engine, &created.id)),
-                Err((reason, pending)) => {
-                    if remove_async(&client, &created.id).await {
-                        let _ = pending.reject();
-                    }
+                Err(failed) => {
+                    let (reason, pending) = *failed;
+                    reconcile(&client, pending, &pending_name, &owner).await;
                     Err(ProcessError::Start {
                         engine: engine_name,
                         reason,

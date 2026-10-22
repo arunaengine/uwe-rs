@@ -49,8 +49,8 @@ struct Step {
     made: Vec<String>,
     /// The content of the inputs of each task, whatever their paths.
     inputs: Vec<String>,
-    /// The outputs of each task by path and digest.
-    outputs: Vec<Vec<(String, String)>>,
+    /// Task construction stays associated with its output paths and digests.
+    outputs: Vec<(String, Vec<(String, String)>)>,
     /// The steps that made its inputs.
     after: BTreeSet<String>,
 }
@@ -86,7 +86,7 @@ impl Database {
                 StepChange::Outputs
             };
             differences.push(StepDifference {
-                outputs: differing(&x.outputs, &y.outputs),
+                outputs: differing(&x.outputs, &y.outputs, x.made == y.made),
                 tasks: (x.made.len(), y.made.len()),
                 after: Vec::new(),
                 step: name,
@@ -177,14 +177,15 @@ impl Database {
                 Step::default()
             });
             let paths = placed.remove(&task.id).unwrap_or_default();
-            step.made.push(made(description, &paths, run));
+            let identity = made(description, &paths, run);
+            step.made.push(identity.clone());
             let mut read = inputs.remove(&task.id).unwrap_or_default();
             read.retain(|content| !content.is_empty());
             read.sort();
             step.inputs.push(read.join("\n"));
             let mut made_files = outputs.remove(&task.id).unwrap_or_default();
             made_files.sort();
-            step.outputs.push(made_files);
+            step.outputs.push((identity, made_files));
             step.after
                 .extend(after.remove(&task.id).unwrap_or_default());
         }
@@ -242,11 +243,24 @@ fn made(task: &Task, paths: &[String], run: &str) -> String {
 
 /// The paths of outputs that one run made with other content than the other, at most
 /// [`NAMED`].
-fn differing(a: &[Vec<(String, String)>], b: &[Vec<(String, String)>]) -> Vec<String> {
-    let count = |outputs: &[Vec<(String, String)>]| {
-        let mut counted: BTreeMap<(String, String), usize> = BTreeMap::new();
-        for (path, digest) in outputs.iter().flatten() {
-            *counted.entry((path.clone(), digest.clone())).or_default() += 1;
+fn differing(
+    a: &[(String, Vec<(String, String)>)],
+    b: &[(String, Vec<(String, String)>)],
+    associated: bool,
+) -> Vec<String> {
+    let count = |outputs: &[(String, Vec<(String, String)>)]| {
+        let mut counted: BTreeMap<(String, String, String), usize> = BTreeMap::new();
+        for (identity, files) in outputs {
+            for (path, digest) in files {
+                let identity = if associated {
+                    identity.clone()
+                } else {
+                    String::new()
+                };
+                *counted
+                    .entry((identity, path.clone(), digest.clone()))
+                    .or_default() += 1;
+            }
         }
         counted
     };
@@ -254,7 +268,7 @@ fn differing(a: &[Vec<(String, String)>], b: &[Vec<(String, String)>]) -> Vec<St
     let mut paths: BTreeSet<String> = BTreeSet::new();
     for (key, number) in x.iter().chain(y.iter()) {
         if x.get(key) != y.get(key) || x.get(key) != Some(number) {
-            paths.insert(key.0.clone());
+            paths.insert(key.1.clone());
         }
     }
     paths.into_iter().take(NAMED).collect()

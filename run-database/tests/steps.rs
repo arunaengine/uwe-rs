@@ -172,3 +172,39 @@ fn compares_step_content() {
     assert_eq!(differences[1].after, ["JOIN"]);
     assert_eq!(differences[2].tasks, (1, 2));
 }
+
+#[test]
+fn preserves_sample_results() {
+    let directory = tempfile::tempdir().unwrap();
+    let folder = directory.path();
+    let path = folder.join("runs.sqlite");
+    for (run, samples) in [
+        ("original", [("a", "one"), ("b", "two")]),
+        ("reordered", [("b", "two"), ("a", "one")]),
+        ("swapped", [("a", "two"), ("b", "one")]),
+    ] {
+        let tasks: Vec<_> = samples
+            .iter()
+            .enumerate()
+            .map(|(index, (sample, result))| Planned {
+                id: index as u64 + 1,
+                step: "ANALYZE",
+                script: "analyze in0.txt > out.txt",
+                sources: vec![format!("/samples/{sample}")],
+                made: result,
+            })
+            .collect();
+        record(&path, folder, run, &tasks);
+    }
+    let database = Database::open(&path).unwrap();
+    assert!(
+        database
+            .compare_steps("original", "reordered")
+            .unwrap()
+            .is_empty()
+    );
+    let differences = database.compare_steps("original", "swapped").unwrap();
+    assert_eq!(differences.len(), 1);
+    assert_eq!(differences[0].change, StepChange::Outputs);
+    assert_eq!(differences[0].outputs, ["out.txt"]);
+}

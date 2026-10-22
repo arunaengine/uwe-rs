@@ -28,7 +28,7 @@ use crate::job::{CONTROL, ExecutorError, Finished, HOME, Job, Usage, WORK};
 use crate::manifest::parse;
 use crate::pool::{Pool, Share};
 use crate::process::{Mount, ProcessError, create_id};
-use crate::stage::place;
+use crate::stage::place_cancellable;
 use crate::wrapper::{ENDED, Folders, MANIFEST, STDERR, wrapper};
 
 /// How long a task may take to end after it was asked to stop, before it is killed.
@@ -114,21 +114,22 @@ impl crate::Backend for LocalContainer {
         };
         group_resources(share.cpus, share.memory, groups.len().max(1))?;
         let root = self.scratch.join(job.name);
-        let placed = {
-            let (root, staging) = (root.clone(), job.staging.clone());
-            tokio::task::spawn_blocking(move || place(&root, &staging))
-                .await
-                .map_err(|error| std::io::Error::other(error.to_string()))?
-        };
+        let placed = place_cancellable(&root, job.staging, cancel).await;
         let result = match placed {
             // Another attempt has this name; its directory is not ours to remove.
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 return Err(error.into());
             }
+            Err(_) if cancel.is_cancelled() => Err(ExecutorError::Cancelled),
             Err(error) => Err(error.into()),
-            Ok(mounts) => self.contain(job, &root, &mounts, &share, cancel).await,
+            Ok(mounts) => self
+                .contain(job, &root, &mounts, share, cancel)
+                .await
+                .and_then(|mut finished| {
+                    finished.collect_outputs(job.spec, job.staging)?;
+                    Ok(finished)
+                }),
         };
-        drop(share);
         if result.is_err() {
             let _ = tokio::fs::remove_dir_all(&root).await;
         }
@@ -434,6 +435,13 @@ impl LocalContainer {
     /// The executor of a run with the engine of this machine, which runs each task in its
     /// own scratch directory in `scratch`, within its share of `pool`.
     pub fn new(engine: ContainerEngine, scratch: PathBuf, pool: Pool) -> LocalContainer {
+        let cpus = engine
+            .cpus
+            .map_or(pool.cpus(), |cpus| cpus.min(pool.cpus()));
+        let memory = engine
+            .memory
+            .map_or(pool.memory(), |memory| memory.min(pool.memory()));
+        let pool = Pool::new(cpus, memory);
         LocalContainer {
             engine,
             scratch,
@@ -451,11 +459,13 @@ impl LocalContainer {
         job: Job<'_>,
         root: &Path,
         mounts: &[Mount],
-        share: &Share<'_>,
+        share: Share<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
         if !job.spec.containers.is_empty() {
-            return self.contain_several(job, root, mounts, share, cancel).await;
+            return self
+                .contain_several(job, root, mounts, &share, cancel)
+                .await;
         }
         let image = job.spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
         let mut spec = job.spec.clone();
@@ -525,7 +535,15 @@ impl LocalContainer {
                 config.auto_remove = Some(false);
             }
             return self
-                .serve(&container, body, daemon, root.to_owned(), time, cancel)
+                .serve(
+                    &container,
+                    body,
+                    daemon,
+                    root.to_owned(),
+                    time,
+                    cancel,
+                    share.owned(),
+                )
                 .await;
         }
         let time = job.placement.time_seconds.map(Duration::from_secs);
@@ -784,7 +802,7 @@ impl LocalContainer {
             Ok(id) => id,
             Err(_) => return,
         };
-        let created = Created::new(client, &id);
+        let created = Created::owned(&self.engine, &id);
         let mut exited = tokio::spawn(exit_code(client.clone(), id.clone()));
         let ended = async {
             client.start_container(&id, None).await?;
@@ -853,7 +871,7 @@ impl LocalContainer {
                     message: error.to_string(),
                 },
             })?;
-        let created = Created::new(client, &id);
+        let created = Created::owned(&self.engine, &id);
         let attach = AttachContainerOptions {
             stream: true,
             stdout: true,
@@ -1188,6 +1206,24 @@ fn read(path: &Path) -> Option<String> {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn respects_engine_budget() {
+        let server = crate::test_engine::Server::start(0, |_| panic!("unexpected request")).await;
+        let backend = LocalContainer::new(
+            server.engine.clone(),
+            "/scratch".into(),
+            Pool::new(16, 16 << 30),
+        );
+        assert_eq!((backend.pool.cpus(), backend.pool.memory()), (2, 1 << 30));
+        let smaller = LocalContainer::new(
+            server.engine.clone(),
+            "/scratch".into(),
+            Pool::new(1, 64 << 20),
+        );
+        assert_eq!((smaller.pool.cpus(), smaller.pool.memory()), (1, 64 << 20));
+        server.finish();
+    }
+
     #[test]
     fn rejects_local_accelerators() {
         let spec = TaskSpec {
@@ -1202,6 +1238,7 @@ mod tests {
             environment: std::collections::BTreeMap::new(),
             inputs: Vec::new(),
             outputs: Vec::new(),
+            output_manifest: None,
             stdin: None,
             containers: Vec::new(),
             replaces_entrypoint: false,
@@ -1455,6 +1492,7 @@ mod flag_tests {
             )]),
             inputs: Vec::new(),
             outputs: Vec::new(),
+            output_manifest: None,
             stdin: None,
             containers: Vec::new(),
             replaces_entrypoint: false,

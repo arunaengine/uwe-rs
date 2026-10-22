@@ -55,6 +55,7 @@ fn check_removal(test: &str, helper: bool, status: u16) {
     let mut child = Command::new(std::env::current_exe().unwrap())
         .args(["--exact", test, "--nocapture"])
         .env("UWE_CANCEL_ENGINE", &socket)
+        .env("XDG_CACHE_HOME", folder.path().join("cache"))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -97,6 +98,7 @@ fn serve(
     let mut control = control.accept().unwrap().0;
     let mut held = Vec::new();
     let mut deleting = false;
+    let mut unblocked = false;
     loop {
         let mut stream = listener.accept().unwrap().0;
         stream
@@ -136,8 +138,11 @@ fn serve(
                 reply(&mut stream, 409, r#"{"message":"removal in progress"}"#);
                 continue;
             }
-            requested.send(()).unwrap();
-            released.recv_timeout(Duration::from_secs(5)).unwrap();
+            if !unblocked {
+                requested.send(()).unwrap();
+                released.recv_timeout(Duration::from_secs(5)).unwrap();
+                unblocked = true;
+            }
             if status == 0 {
                 held.push(stream);
             } else {
@@ -150,7 +155,11 @@ fn serve(
         } else if first.contains("/images/") {
             reply(&mut stream, 200, r#"{"Id":"local-image"}"#);
         } else if first.contains("/version") || first.contains("/info") {
-            reply(&mut stream, 200, r#"{"MemoryLimit":true,"SwapLimit":true}"#);
+            reply(
+                &mut stream,
+                200,
+                r#"{"ID":"cancel-engine","MemoryLimit":true,"SwapLimit":true}"#,
+            );
         } else {
             panic!("unexpected engine request: {first}");
         }
@@ -215,6 +224,7 @@ fn probe(socket: &Path, helper: bool) {
             Pool::new(1, 1 << 30),
         );
         let spec = TaskSpec {
+            output_manifest: None,
             format: FORMAT,
             namespace: String::new(),
             image: Some(Image {

@@ -131,6 +131,7 @@ impl LocalContainer {
         root: std::path::PathBuf,
         time: Option<Duration>,
         cancel: &CancellationToken,
+        share: crate::Share<'static>,
     ) -> Result<Finished, ExecutorError> {
         let client = self.engine.client().clone();
         if let Some(port) = self.forwarded(&daemon) {
@@ -148,9 +149,15 @@ impl LocalContainer {
             })?;
         // The daemon stops when its run says so, or at once when it fails before it is ready.
         let stop = cancel.child_token();
-        let watched = (client.clone(), id.clone(), root.clone(), stop.clone());
+        let watched = (
+            self.engine.clone(),
+            client.clone(),
+            id.clone(),
+            root.clone(),
+            stop.clone(),
+        );
         let watcher = tokio::spawn(async move {
-            let (client, id, root, stop) = watched;
+            let (engine, client, id, root, stop) = watched;
             // Like a pod of Argo past its deadline, a daemon stops at the end of its time.
             let over = async {
                 match time {
@@ -166,8 +173,16 @@ impl LocalContainer {
                 t: Some(10),
                 ..Default::default()
             };
-            let _ = client.stop_container(&id, Some(options)).await;
-            crate::engine::remove(&client, &id).await;
+            let stopped = tokio::time::timeout(
+                Duration::from_secs(15),
+                client.stop_container(&id, Some(options)),
+            )
+            .await
+            .is_ok_and(|result| result.is_ok());
+            if !crate::engine::remove_owned(&engine, &id).await && !stopped {
+                share.hold();
+            }
+            drop(share);
             let _ = tokio::fs::remove_dir_all(&root).await;
         });
         self.daemons.lock().expect("the daemons").push(watcher);
@@ -394,6 +409,67 @@ impl LocalContainer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn retains_daemon_share() {
+        use crate::test_engine::{Reply, Server};
+        use futures_util::FutureExt;
+        let (deleting, reached) = tokio::sync::oneshot::channel();
+        let (release, released) = std::sync::mpsc::channel();
+        let mut deleting = Some(deleting);
+        let mut network = String::new();
+        let server = Server::start(6, move |request| {
+            if request.path.contains("/containers/create?") {
+                Reply::Json(201, serde_json::json!({"Id": "daemon-id", "Warnings": []}))
+            } else if request.path.ends_with("/start") || request.path.contains("/stop?") {
+                Reply::Json(204, serde_json::Value::Null)
+            } else if request.path.ends_with("/networks/create") {
+                network = request.body["Name"].as_str().unwrap().into();
+                Reply::Json(201, serde_json::json!({"Id": "network-id"}))
+            } else if request.method == "DELETE" {
+                deleting.take().unwrap().send(()).unwrap();
+                released.recv().unwrap();
+                Reply::Json(204, serde_json::Value::Null)
+            } else {
+                assert!(request.path.ends_with("/containers/daemon-id/json"));
+                Reply::Json(200, serde_json::json!({"NetworkSettings": {"Networks": {network.clone(): {"IPAddress": "10.1.0.2"}}}}))
+            }
+        }).await;
+        let folder = tempfile::tempdir().unwrap();
+        let backend = LocalContainer::new(
+            server.engine.clone(),
+            folder.path().into(),
+            crate::Pool::new(1, 1 << 30),
+        );
+        let share = backend.pool.share(1, Some(1 << 30), 0).await.owned();
+        let cancel = CancellationToken::new();
+        backend
+            .serve(
+                "daemon",
+                ContainerCreateBody::default(),
+                Daemon::default(),
+                folder.path().join("task"),
+                None,
+                &cancel,
+                share,
+            )
+            .await
+            .unwrap();
+        let mut waiting = Box::pin(backend.pool.share(1, Some(1 << 30), 0));
+        assert!((&mut waiting).now_or_never().is_none());
+        cancel.cancel();
+        reached.await.unwrap();
+        assert!((&mut waiting).now_or_never().is_none());
+        release.send(()).unwrap();
+        let watchers = std::mem::take(&mut *backend.daemons.lock().unwrap());
+        for watcher in watchers {
+            watcher.await.unwrap();
+        }
+        let admitted = waiting.await;
+        assert_eq!(admitted.cpus, 1);
+        drop(admitted);
+        server.finish();
+    }
 
     #[test]
     fn reads_daemon_settings() {

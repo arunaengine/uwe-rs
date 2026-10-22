@@ -3,15 +3,85 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeSet;
+use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
+use crate::CancellationToken;
 use crate::job::{CONTROL, MOUNTS, Staged, Staging, WORK};
 use crate::process::Mount;
 use crate::wrapper::STDIN;
 
 /// Makes the scratch directory `root` of a task and places its inputs.
 pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
+    place_with(root, staging, &CancellationToken::new(), &mut false)
+}
+
+/// Cancellation stops copying, and dropping this future waits for the staging worker to finish.
+pub async fn place_cancellable(
+    root: &Path,
+    staging: &Staging,
+    cancel: &CancellationToken,
+) -> std::io::Result<Vec<Mount>> {
+    let (root, staging) = (root.to_owned(), staging.clone());
+    joined(cancel, move |cancel| {
+        let mut owned = false;
+        let result = place_with(&root, &staging, &cancel, &mut owned);
+        if owned && cancel.is_cancelled() {
+            let _ = std::fs::remove_dir_all(&root);
+        }
+        result
+    })
+    .await
+}
+
+struct StagingWait {
+    cancel: CancellationToken,
+    done: std::sync::mpsc::Receiver<()>,
+}
+
+impl Drop for StagingWait {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+        let _ = self.done.recv();
+    }
+}
+
+async fn joined<T: Send + 'static>(
+    cancel: &CancellationToken,
+    work: impl FnOnce(CancellationToken) -> std::io::Result<T> + Send + 'static,
+) -> std::io::Result<T> {
+    let cancel = cancel.child_token();
+    let (done, receiver) = std::sync::mpsc::channel();
+    let _waiting = StagingWait {
+        cancel: cancel.clone(),
+        done: receiver,
+    };
+    tokio::task::spawn_blocking(move || {
+        let _done = done;
+        work(cancel)
+    })
+    .await
+    .map_err(std::io::Error::other)?
+}
+
+fn check(cancel: &CancellationToken) -> std::io::Result<()> {
+    if cancel.is_cancelled() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Interrupted,
+            "staging cancelled",
+        ));
+    }
+    Ok(())
+}
+
+fn place_with(
+    root: &Path,
+    staging: &Staging,
+    cancel: &CancellationToken,
+    owned: &mut bool,
+) -> std::io::Result<Vec<Mount>> {
+    check(cancel)?;
     for path in staging
         .inputs
         .iter()
@@ -31,6 +101,7 @@ pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
         std::fs::create_dir_all(scratch)?;
     }
     std::fs::create_dir(root)?;
+    *owned = true;
     std::fs::create_dir_all(&work)?;
     std::fs::create_dir_all(&control)?;
     let place = |path: &str| match path.starts_with('/') {
@@ -53,12 +124,14 @@ pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
     let mut made = BTreeSet::new();
     let mut mounts = Vec::new();
     for directory in &staging.directories {
+        check(cancel)?;
         std::fs::create_dir_all(place(directory))?;
         if directory.starts_with('/') {
             made.insert(Path::new(directory).components().collect());
         }
     }
     for (index, input) in staging.inputs.iter().enumerate() {
+        check(cancel)?;
         let path = input.path.trim_end_matches('/');
         if input.in_place {
             mounts.push(mount(input.source.clone(), path, false));
@@ -75,6 +148,7 @@ pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
             continue;
         }
         let target = place(path);
+        confined(root, &target)?;
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -89,7 +163,7 @@ pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
             })
         };
         if input.copy || overlaps() {
-            copy(input, &target)?;
+            copy(input, &target, root, cancel)?;
             if path.starts_with('/') {
                 made.insert(Path::new(path).components().collect());
             }
@@ -107,7 +181,8 @@ pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
         mounts.push(mount(folder, &target, true));
     }
     if let Some(stdin) = &staging.stdin {
-        std::fs::copy(stdin, control.join(STDIN))?;
+        copy_file(stdin, &control.join(STDIN), cancel)?;
+        std::fs::set_permissions(control.join(STDIN), std::fs::metadata(stdin)?.permissions())?;
     }
     Ok(mounts)
 }
@@ -146,32 +221,46 @@ fn outermost(folders: BTreeSet<PathBuf>) -> Vec<PathBuf> {
 }
 
 /// Copies an input file or directory into place, executable when it is a program.
-fn copy(input: &Staged, target: &Path) -> std::io::Result<()> {
+fn copy(
+    input: &Staged,
+    target: &Path,
+    root: &Path,
+    cancel: &CancellationToken,
+) -> std::io::Result<()> {
     if input.directory {
-        return copy_tree(&input.source, target);
+        return copy_tree(&input.source, target, root, cancel);
     }
-    std::fs::copy(&input.source, target)?;
+    copy_file(&input.source, target, cancel)?;
     let mode = if input.executable { 0o755 } else { 0o644 };
     std::fs::set_permissions(target, std::fs::Permissions::from_mode(mode))
 }
 
 /// Copies a directory, which the task may change: its folders and files are writable, and
 /// files keep whether they are programs.
-fn copy_tree(source: &Path, target: &Path) -> std::io::Result<()> {
+fn copy_tree(
+    source: &Path,
+    target: &Path,
+    root: &Path,
+    cancel: &CancellationToken,
+) -> std::io::Result<()> {
+    check(cancel)?;
+    confined(root, target)?;
     std::fs::create_dir_all(target)?;
     std::fs::set_permissions(target, std::fs::Permissions::from_mode(0o755))?;
     for entry in std::fs::read_dir(source)? {
+        check(cancel)?;
         let entry = entry?;
         let to = target.join(entry.file_name());
+        confined(root, &to)?;
         if entry.file_type()?.is_symlink() && !entry.path().is_file() {
             std::os::unix::fs::symlink(std::fs::read_link(entry.path())?, &to)?;
             continue;
         }
         let metadata = std::fs::metadata(entry.path())?;
         if metadata.is_dir() {
-            copy_tree(&entry.path(), &to)?;
+            copy_tree(&entry.path(), &to, root, cancel)?;
         } else {
-            std::fs::copy(entry.path(), &to)?;
+            copy_file(&entry.path(), &to, cancel)?;
             let mode = match metadata.permissions().mode() & 0o111 {
                 0 => 0o644,
                 _ => 0o755,
@@ -182,9 +271,184 @@ fn copy_tree(source: &Path, target: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+fn copy_file(source: &Path, target: &Path, cancel: &CancellationToken) -> std::io::Result<()> {
+    check(cancel)?;
+    let metadata = std::fs::metadata(source)?;
+    if !metadata.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "input is not a regular file",
+        ));
+    }
+    let mut source = std::fs::File::open(source)?;
+    let mut output = std::fs::File::create(target)?;
+    let mut buffer = vec![0; metadata.len().clamp(1, 1 << 20) as usize];
+    loop {
+        check(cancel)?;
+        let count = source.read(&mut buffer)?;
+        if count == 0 {
+            return Ok(());
+        }
+        output.write_all(&buffer[..count])?;
+    }
+}
+
+fn confined(root: &Path, path: &Path) -> std::io::Result<()> {
+    use std::path::Component;
+    let denied = || {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "staging target escapes its directory",
+        )
+    };
+    let relative = path.strip_prefix(root).map_err(|_| denied())?;
+    let root = std::fs::canonicalize(root)?;
+    let mut current = root.clone();
+    let mut pending: Vec<_> = relative
+        .components()
+        .rev()
+        .map(|part| part.as_os_str().to_owned())
+        .collect();
+    let mut hops = 0;
+    while let Some(part) = pending.pop() {
+        match Path::new(&part).components().next().ok_or_else(denied)? {
+            Component::CurDir => continue,
+            Component::ParentDir if current != root => {
+                current.pop();
+                continue;
+            }
+            Component::Normal(_) => current.push(&part),
+            _ => return Err(denied()),
+        }
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.is_symlink() => {
+                hops += 1;
+                if hops > 40 {
+                    return Err(denied());
+                }
+                let target = std::fs::read_link(&current)?;
+                current.pop();
+                let target = if target.is_absolute() {
+                    current = root.clone();
+                    target.strip_prefix(&root).map_err(|_| denied())?
+                } else {
+                    &target
+                };
+                pending.extend(
+                    target
+                        .components()
+                        .rev()
+                        .map(|part| part.as_os_str().to_owned()),
+                );
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn joins_cancelled_staging() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let (ready, started) = tokio::sync::oneshot::channel();
+        let (release, released) = std::sync::mpsc::channel();
+        let finished = std::sync::Arc::new(AtomicBool::new(false));
+        let completed = finished.clone();
+        let running = tokio::spawn(async move {
+            joined(&CancellationToken::new(), move |cancel| {
+                ready.send(cancel.clone()).unwrap();
+                released.recv().unwrap();
+                assert!(cancel.is_cancelled());
+                completed.store(true, Ordering::SeqCst);
+                check(&cancel)
+            })
+            .await
+        });
+        let cancel = started.await.unwrap();
+        let observed = finished.clone();
+        let controller = std::thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(cancel.cancelled());
+            assert!(!observed.load(Ordering::SeqCst));
+            release.send(()).unwrap();
+        });
+        running.abort();
+        assert!(running.await.unwrap_err().is_cancelled());
+        assert!(finished.load(Ordering::SeqCst));
+        controller.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn preserves_existing_staging() {
+        let folder = tempfile::tempdir().unwrap();
+        let root = folder.path().join("attempt");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("owned"), "existing").unwrap();
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        assert_eq!(
+            place_cancellable(&root, &Staging::default(), &cancel)
+                .await
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::Interrupted
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("owned")).unwrap(),
+            "existing"
+        );
+    }
+
+    #[test]
+    fn confines_link_overlays() {
+        let folder = tempfile::tempdir().unwrap();
+        let source = folder.path().join("source");
+        let outside = folder.path().join("outside");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(outside.join("config"), "original").unwrap();
+        std::os::unix::fs::symlink(&outside, source.join("link")).unwrap();
+        let replacement = folder.path().join("replacement");
+        std::fs::write(&replacement, "changed").unwrap();
+        let mut directory = input("d", &source, true);
+        directory.directory = true;
+        let staged = Staging {
+            inputs: vec![directory, input("d/link/config", &replacement, true)],
+            ..Default::default()
+        };
+        let root = folder.path().join("scratch");
+        assert_eq!(
+            place(&root, &staged).unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            std::fs::read_to_string(outside.join("config")).unwrap(),
+            "original"
+        );
+        std::fs::remove_file(source.join("link")).unwrap();
+        std::fs::create_dir(source.join("real")).unwrap();
+        std::fs::write(source.join("real/config"), "original").unwrap();
+        std::os::unix::fs::symlink("real", source.join("link")).unwrap();
+        let root = folder.path().join("internal");
+        place(&root, &staged).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.join("work/d/real/config")).unwrap(),
+            "changed"
+        );
+        assert_eq!(
+            std::fs::read_to_string(source.join("real/config")).unwrap(),
+            "original"
+        );
+    }
 
     fn input(path: &str, source: &Path, copy: bool) -> Staged {
         Staged {

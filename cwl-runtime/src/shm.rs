@@ -18,7 +18,7 @@ pub(crate) fn size(
 ) -> Result<Option<i64>, String> {
     let Some((value, required)) = scope.find(|class| match class {
         RequirementClass::Other { class, value }
-            if class.rsplit(['#', ':']).next() == Some("ShmSize") =>
+            if class == "http://commonwl.org/cwltool#ShmSize" =>
         {
             Some(value)
         }
@@ -26,10 +26,10 @@ pub(crate) fn size(
     }) else {
         return Ok(None);
     };
-    if !options.simulated && options.local_engine.is_none() {
+    if !options.simulated && options.local_engine.is_none() && !options.shm {
         return if required {
             Err(unsupported(
-                "ShmSize needs a local executor that sets the container shm limit",
+                "ShmSize needs a local executor or a remote backend with shared-memory enforcement",
             ))
         } else {
             Ok(None)

@@ -7,11 +7,72 @@ use std::io::{Read, Write};
 use std::path::Path;
 
 use cwl_parser::iri;
-use cwl_parser::model::Docker;
+use cwl_parser::model::{Docker, RequirementClass};
 use executor::{ContainerEngine, ImageSource};
 use sha2::{Digest, Sha256};
 
+use crate::scope::Scope;
 use crate::tool::Options;
+
+/// Sends declared software to the existing configured native Conda image preparation.
+pub(crate) fn software(
+    image: String,
+    docker: bool,
+    scope: &Scope,
+    options: &Options,
+) -> Result<String, String> {
+    let Some((packages, required)) = scope.find(|class| match class {
+        RequirementClass::Software { packages } => Some(packages),
+        _ => None,
+    }) else {
+        return Ok(image);
+    };
+    if !required || !options.software || packages.is_empty() {
+        return Ok(image);
+    }
+    let mut specs = Vec::new();
+    for package in packages {
+        let name = &package.package;
+        let valid = !name.is_empty()
+            && name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'));
+        let versions = package.version.iter().all(|version| {
+            !version.is_empty()
+                && version.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'+' | b'!')
+                })
+        });
+        if !valid || !versions {
+            return Err(crate::tool::unsupported(
+                "SoftwareRequirement needs Conda package names and literal versions",
+            ));
+        }
+        if package.version.is_empty() {
+            specs.push(name.clone());
+        } else {
+            let versions = package
+                .version
+                .iter()
+                .map(|version| format!("=={version}"))
+                .collect::<Vec<_>>()
+                .join("|");
+            specs.push(format!("{name}[version='{versions}']"));
+        }
+    }
+    let source = format!(
+        "nextflow-packages:{}",
+        serde_json::to_string(&specs.join(" ")).map_err(|error| error.to_string())?
+    );
+    Ok(if docker {
+        format!(
+            "conda-container:{}",
+            serde_json::to_string(&[image, source]).map_err(|error| error.to_string())?
+        )
+    } else {
+        format!("conda-env:{source}")
+    })
+}
 
 pub(crate) fn select(docker: Option<(&Docker, bool)>, options: &Options) -> Result<String, String> {
     let Some((docker, required)) = docker else {

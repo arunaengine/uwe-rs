@@ -76,3 +76,20 @@ fn refuses_remote_shm() {
     .unwrap_err();
     assert!(error.contains("local executor"), "{error}");
 }
+
+#[test]
+fn enables_remote_shm() {
+    let task = task(
+        "cwltool:ShmSize",
+        "shmSize: '128m'",
+        Options {
+            simulated: false,
+            shm: true,
+            ..Options::default()
+        },
+    )
+    .expect("capable remote backend");
+    let flags: serde_json::Value =
+        serde_json::from_str(&task.environment["UWE_CONTAINER_FLAGS"]).expect("flags");
+    assert_eq!(flags["shm"], 128 << 20);
+}

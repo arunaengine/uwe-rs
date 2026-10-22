@@ -66,6 +66,10 @@ pub struct Options {
     /// For SLURM with Apptainer without a registry: the folder where those images are saved as
     /// docker-archive tars, `sha256-<hex>.tar`; tasks name them by image ID, `sha256:<hex>`.
     pub archives: Option<std::path::PathBuf>,
+    /// Whether the configured backend resolves native Conda software environments.
+    pub software: bool,
+    /// Whether a remote backend enforces the shared-memory size request.
+    pub shm: bool,
 }
 
 impl Default for Options {
@@ -79,6 +83,8 @@ impl Default for Options {
             local_engine: None,
             registry: None,
             archives: None,
+            software: false,
+            shm: false,
         }
     }
 }
@@ -177,6 +183,7 @@ pub fn task(
         .and_then(|(docker, _)| docker.docker_output_directory.clone())
         .unwrap_or_else(|| OUTDIR.to_owned());
     let image = crate::image::select(docker, options)?;
+    let image = crate::image::software(image, docker.is_some(), scope, options)?;
     let job = Value::Map(job);
     let mut runtime = Map::new();
     runtime.insert("outdir".into(), Value::string(outdir.as_str()));
@@ -423,8 +430,7 @@ pub fn task(
         );
     }
 
-    // Outputs the executor fetches: the standard streams, the globs, and cwl.output.json
-    // when an output can come from nowhere else.
+    // Every real tool may override its bindings with cwl.output.json.
     let mut outputs: Vec<String> = stdout.iter().chain(&stderr).cloned().collect();
     // The copies that the tool updates in place come back, as the new versions of their files.
     for entry in &stager.in_place {
@@ -454,9 +460,8 @@ pub fn task(
             }
         }
     }
-    // The glob `.` names the output directory itself, and cwl.output.json, an `outputEval` that
-    // gives files and secondary files that expressions name may name any file of it, so a real
-    // run keeps all of it, as cwltool keeps the directory; the simulator makes no such files.
+    // Output expressions can name files outside their globs; their discovery keeps the folder.
+    // JSON overrides use the executor's bounded manifest discovery instead.
     let whole = process.outputs.iter().any(|output| {
         let named = (output.secondary_files.iter()).any(|entry| has_code(&entry.pattern));
         let Some(binding) = output.binding.as_ref() else {
@@ -468,10 +473,10 @@ pub fn task(
             binding.output_eval.is_some() && outputs::holds_files(&types, &output.value_type);
         dot || evaluated || named
     });
-    if needs_json {
+    if needs_json || tool.is_some() && !options.simulated {
         outputs.push(OUTPUT_JSON.to_owned());
     }
-    if (needs_json || whole) && !options.simulated {
+    if whole && !options.simulated {
         outputs.push("*".to_owned());
     }
     let mut unique = Vec::new();
@@ -547,6 +552,8 @@ pub fn task(
         None => true,
     };
     let task = Task {
+        defer_logs: true,
+        output_manifest: (tool.is_some() && !options.simulated).then(|| OUTPUT_JSON.to_owned()),
         run_as: None,
         id,
         name: name.to_owned(),

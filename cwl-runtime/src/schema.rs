@@ -191,7 +191,11 @@ fn type_schema(value_type: &Type, types: &Types, namespaces: &Namespaces, depth:
         Type::Directory => json!({"type": "string", "format": DIRECTORY_PATH, "exists": true}),
         Type::Any | Type::Named(_) => json!({}),
         Type::Array(array) => {
-            json!({"type": "array", "items": type_schema(&array.items, types, namespaces, depth + 1)})
+            let mut items = type_schema(&array.items, types, namespaces, depth + 1);
+            if types.optional(&array.items) && !matches!(types.resolve(&array.items), Type::Null) {
+                items = json!({"anyOf": [items, {"type": "null"}]});
+            }
+            json!({"type": "array", "items": items})
         }
         Type::Enum(schema) => {
             let symbols: Vec<&str> = schema.symbols.iter().map(|s| short_name(s)).collect();

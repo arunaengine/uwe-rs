@@ -8,7 +8,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use cwl_parser::iri;
-use cwl_parser::model::{Class, Process, Requirement, RequirementClass, Step, short_name};
+use cwl_parser::model::{
+    Class, Process, Requirement, RequirementClass, ScatterMethod, Step, short_name,
+};
 use workflow_graph::{Files, Note, Outcome, Task, TaskId};
 
 use crate::expression::Variables;
@@ -111,6 +113,21 @@ struct ScatterRun {
     shape: Vec<usize>,
     results: Vec<Option<Map>>,
     remaining: usize,
+    cursor: Option<Box<ScatterCursor>>,
+}
+
+#[derive(Debug)]
+struct ScatterCursor {
+    step: Arc<Step>,
+    scope: Scope,
+    names: Names,
+    common: Map,
+    keys: Vec<String>,
+    columns: Vec<Vec<Value>>,
+    lengths: Vec<usize>,
+    count: usize,
+    next: usize,
+    method: ScatterMethod,
 }
 
 enum Event {
@@ -424,6 +441,10 @@ impl Run {
                 State::Deferred(raw) => raw.job.values_mut().for_each(&mut update),
                 State::Workflow(run) => run.values.values_mut().for_each(&mut update),
                 State::Scatter(scatter) => {
+                    if let Some(cursor) = &mut scatter.cursor {
+                        cursor.common.values_mut().for_each(&mut update);
+                        cursor.columns.iter_mut().flatten().for_each(&mut update);
+                    }
                     for result in scatter.results.iter_mut().flatten() {
                         result.values_mut().for_each(&mut update);
                     }
@@ -590,7 +611,7 @@ impl Run {
         };
         let scope = outer.enter(process);
         scope
-            .check_supported()
+            .check_supported(self.options.software)
             .map_err(|error| format!("{}{}", tool::UNSUPPORTED, error.message))?;
         let evaluator = scope.evaluator(&self.options.javascript);
         let mut types = scope.types();
@@ -730,6 +751,12 @@ impl Run {
                     // Over files without real content, a null output is what real data
                     // would fill, so it gets a placeholder too.
                     let unfit = value.is_null() || !types.matches(&output.value_type, &value);
+                    if !self.options.simulated && !types.matches(&output.value_type, &value) {
+                        return Err(at(format!(
+                            "the output `{name}` does not match its declared type: {}",
+                            value.summary()
+                        )));
+                    }
                     let value = if fake && unfit {
                         let hint = placeholder::Hint::default();
                         let mut value =
@@ -795,6 +822,45 @@ impl Run {
             let Some(&id) = self.deferred.front() else {
                 break;
             };
+            // A cursor keeps declaration order without allocating every scattered job.
+            if matches!(self.jobs[id].state, State::Scatter(_)) {
+                if self.tasks.len() >= 64 {
+                    break;
+                }
+                let descendant = |mut job: JobId| loop {
+                    match self.jobs[job].parent {
+                        Parent::Root => return false,
+                        Parent::Step { workflow, .. } => job = workflow,
+                        Parent::Element { scatter, .. } => {
+                            if scatter == id {
+                                return true;
+                            }
+                            job = scatter;
+                        }
+                    }
+                };
+                let pending = self
+                    .deferred
+                    .iter()
+                    .filter(|job| descendant(**job))
+                    .take(64)
+                    .count();
+                if pending >= 64 {
+                    let position = self
+                        .deferred
+                        .iter()
+                        .position(|job| descendant(*job))
+                        .expect("deferred job");
+                    let next = self.deferred.remove(position).expect("deferred job");
+                    self.deferred.push_front(next);
+                } else {
+                    self.deferred.pop_front();
+                    self.scatter_next(id)?;
+                    let next = self.deferred.pop_back().expect("scatter element");
+                    self.deferred.push_front(next);
+                }
+                continue;
+            }
             let State::Deferred(raw) = &self.jobs[id].state else {
                 return Err("a deferred job lost its inputs".into());
             };
@@ -858,6 +924,10 @@ impl Run {
                 State::Deferred(raw) => raw.job.values().for_each(&mut gather),
                 State::Workflow(run) => run.values.values().for_each(&mut gather),
                 State::Scatter(scatter) => {
+                    if let Some(cursor) = &scatter.cursor {
+                        cursor.common.values().for_each(&mut gather);
+                        cursor.columns.iter().flatten().for_each(&mut gather);
+                    }
                     for result in scatter.results.iter().flatten() {
                         result.values().for_each(&mut gather);
                     }

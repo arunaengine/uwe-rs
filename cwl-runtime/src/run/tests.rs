@@ -107,3 +107,35 @@ fn detects_parent_conflicts() {
     run.in_place_sources.insert(writer);
     assert!(run.observe_directories(&view).is_err());
 }
+
+#[test]
+fn bounds_nested_admission() {
+    let source = "cwlVersion: v1.2\nclass: Workflow\nrequirements: {ScatterFeatureRequirement: {}, SubworkflowFeatureRequirement: {}}\ninputs: {values: 'int[]'}\noutputs: []\nsteps:\n  each:\n    scatter: x\n    in: {x: values}\n    out: []\n    run:\n      class: Workflow\n      inputs: {x: int}\n      outputs: []\n      steps:\n        inner:\n          in: {x: x}\n          out: []\n          run:\n            class: CommandLineTool\n            baseCommand: 'true'\n            inputs: {x: int}\n            outputs: []\n";
+    let mut memory = cwl_parser::source::Memory::default();
+    memory.insert("file:///main.cwl", source);
+    let process = cwl_parser::Loader::new(memory)
+        .load("file:///main.cwl")
+        .expect("workflow")
+        .process;
+    for count in [1000, 10_000] {
+        let mut run = Run::new(
+            Options {
+                simulated: false,
+                ..Options::default()
+            },
+            false,
+        );
+        let job = [(
+            "values".into(),
+            Value::List((0..count).map(Value::Integer).collect()),
+        )]
+        .into_iter()
+        .collect();
+        let tasks = run
+            .start(&process, job, "main", Vec::new())
+            .expect("admission");
+        assert_eq!(tasks.len(), 64);
+        assert!(run.deferred.len() <= 65);
+        assert!(run.jobs.len() <= 260);
+    }
+}

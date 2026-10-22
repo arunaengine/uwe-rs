@@ -287,19 +287,36 @@ impl Collector<'_> {
                 .to_string_lossy()
                 .into_owned()
         };
-        let mut mapped = None;
+        let mapped = self
+            .outcome
+            .files
+            .iter()
+            .filter_map(|file| {
+                let path = Path::new(&self.pending.outdir).join(&file.path);
+                let path = iri::file_path(&iri::join("", &iri::file_url(&path)))?;
+                let path = path.to_string_lossy();
+                let path = path.trim_end_matches('/');
+                (absolute == path || file.directory && absolute.starts_with(&format!("{path}/")))
+                    .then(|| {
+                        (
+                            path.len(),
+                            join_location(
+                                &file.location,
+                                absolute[path.len()..].trim_start_matches('/'),
+                            ),
+                        )
+                    })
+            })
+            .max_by_key(|(length, _)| *length);
+        let exact = mapped
+            .as_ref()
+            .is_some_and(|(length, _)| *length == absolute.len());
+        let mut mapped = mapped.map(|(_, location)| location);
         let mut longest = 0;
         for (staged, (original, directory)) in &self.pending.staged {
             if (absolute == *staged || (*directory && absolute.starts_with(&format!("{staged}/"))))
                 && staged.len() >= longest
-                && !self.outcome.files.iter().any(|file| {
-                    absolute
-                        == format!(
-                            "{}/{}",
-                            self.pending.outdir,
-                            file.path.trim_end_matches('/')
-                        )
-                })
+                && !exact
             {
                 longest = staged.len();
                 mapped = Some(join_location(

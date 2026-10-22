@@ -13,7 +13,7 @@ use content_store::{Store, hash_file, layout};
 use task_model::Digest;
 
 use crate::binary::Binary;
-use crate::helper::{Input, Plan, Record, Request};
+use crate::helper::{Discovery, Input, Plan, Record, Request};
 use crate::job::{CONTROL, ExecutorError, Finished, HOME, Job, MOUNTS, WORK};
 use crate::process::Mount;
 
@@ -77,11 +77,35 @@ impl RemoteStage {
         records: &[&str],
         open: bool,
     ) -> Result<Planned, ExecutorError> {
+        self.plan_discovery(
+            job,
+            root,
+            extra,
+            files,
+            records,
+            open,
+            Discovery::of(job.spec, job.staging),
+        )
+        .await
+    }
+
+    /// Keeps discovery metadata independent of reference inputs omitted from the upload.
+    pub async fn plan_discovery(
+        &self,
+        job: Job<'_>,
+        root: &Path,
+        extra: &[(&str, String)],
+        files: &[(&str, &Path)],
+        records: &[&str],
+        open: bool,
+        discovery: Option<Discovery>,
+    ) -> Result<Planned, ExecutorError> {
         let prefix = crate::capture::attempt_prefix(job)?;
         let layout = self.upload(job, root, extra, files).await?;
         let mut plan = Plan {
             directories: layout.directories,
             open,
+            discovery,
             ..Plan::default()
         };
         for file in layout.files {
@@ -283,20 +307,28 @@ impl RemoteStage {
     /// cleans up. The inputs in `cas/` stay, as other attempts may use them. A failure only
     /// leaves objects behind, so it is a warning.
     pub async fn clean(&self, prefix: &str, plan: &str) {
-        if !self.cleanup {
-            return;
+        if let Err(error) = self.try_clean(prefix, plan).await {
+            tracing::warn!(prefix, %error, "cannot remove the objects of an attempt");
         }
-        let objects = self.objects.objects(&format!("{prefix}/")).await;
-        let mut locations: Vec<String> = match objects {
-            Ok(objects) => objects.into_iter().map(|object| object.location).collect(),
-            Err(error) => return tracing::warn!(prefix, %error, "cannot list an attempt"),
-        };
+    }
+
+    /// Removes attempt objects, preserving a caller's durable cleanup obligation on failure.
+    pub async fn try_clean(&self, prefix: &str, plan: &str) -> Result<(), ExecutorError> {
+        if !self.cleanup {
+            return Ok(());
+        }
+        let objects = self
+            .objects
+            .objects(&format!("{prefix}/"))
+            .await
+            .map_err(failed)?;
+        let mut locations: Vec<String> =
+            objects.into_iter().map(|object| object.location).collect();
         locations.push(plan.to_owned());
         for location in locations {
-            if let Err(error) = self.objects.remove(&location).await {
-                tracing::warn!(location, %error, "cannot remove an object of an attempt");
-            }
+            self.objects.remove(&location).await.map_err(failed)?;
         }
+        Ok(())
     }
 
     /// Downloads one record of an attempt into the control folder of `root`, if it is there.
@@ -356,6 +388,48 @@ impl RemoteStage {
         stage
             .request(&format!("{prefix}/control/{name}"), true)
             .await
+    }
+
+    /// Persists a small control record before a node performs its corresponding effect.
+    pub async fn write_record(
+        &self,
+        prefix: &str,
+        name: &str,
+        bytes: &[u8],
+    ) -> Result<(), ExecutorError> {
+        let request = self.record(prefix, name).await?;
+        let url = reqwest::Url::parse(&request.url).map_err(failed)?;
+        if url.scheme() == "file" {
+            let path = url
+                .to_file_path()
+                .map_err(|()| failed("invalid local record URL"))?;
+            let parent = path
+                .parent()
+                .ok_or_else(|| failed("record has no parent"))?;
+            tokio::fs::create_dir_all(parent).await?;
+            let mut file = tokio::fs::File::create(&path).await?;
+            use tokio::io::AsyncWriteExt;
+            file.write_all(bytes).await?;
+            file.sync_all().await?;
+            std::fs::File::open(parent)?.sync_all()?;
+            return Ok(());
+        }
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(failed)?;
+        let mut upload = client.put(url).body(bytes.to_vec());
+        for (name, value) in request.headers {
+            upload = upload.header(name, value);
+        }
+        upload
+            .send()
+            .await
+            .map_err(failed)?
+            .error_for_status()
+            .map_err(failed)?;
+        Ok(())
     }
 
     /// A request that reads or writes `location`: presigned, the address of the object for

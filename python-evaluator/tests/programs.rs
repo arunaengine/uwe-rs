@@ -24,8 +24,9 @@ fn run(path: &Path) -> String {
 #[test]
 fn matches_python_output() {
     let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/python");
-    let mut programs: Vec<_> = std::fs::read_dir(&folder)
-        .expect("reads the fixtures")
+    let mut programs: Vec<_> = [folder.clone(), folder.join("generator")]
+        .into_iter()
+        .flat_map(|folder| std::fs::read_dir(folder).expect("reads the fixtures"))
         .map(|entry| entry.expect("an entry").path())
         .filter(|path| path.extension().is_some_and(|extension| extension == "py"))
         .collect();

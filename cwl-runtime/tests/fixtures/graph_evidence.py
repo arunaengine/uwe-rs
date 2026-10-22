@@ -35,14 +35,9 @@ def directory(path):
     return {"class": "Directory", "path": path}
 
 
-# Each case says why the documents cannot run, in one plain sentence, and how cwltool shows it:
-# `run` runs cwltool on a document with a job (a path in the test workflows, or values whose
-# files are made empty); `collect` loads a tool with cwltool and collects one output from an
-# empty output directory, as after a run that made nothing; `evaluate` evaluates one expression
-# of a document with cwltool's evaluator, for steps of workflows that cwltool will not run.
-# `validate` checks a document whose feature uwe intentionally leaves unsupported.
-# The kind of a case is `invalid` (the documents are broken) unless it gives `kind`: `missing` or
-# `unsupported (decision N)`.
+# Cases explain failures through cwltool execution, empty-output collection, expression
+# evaluation, or validation. Jobs name fixtures or values backed by empty files.
+# The default kind is invalid; missing and unsupported cases give an explicit kind.
 CASES = [
     {
         "why": "the tool names `inputs.in2`, which it does not declare, in its arguments",

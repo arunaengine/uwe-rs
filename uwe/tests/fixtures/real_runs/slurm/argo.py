@@ -12,8 +12,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 UWE = os.environ.get("UWE") or "uwe"
-LOCAL = Path(__file__).with_name("real_runs_argo.txt")
-OUTPUT = Path(os.environ.get("RECORD") or Path(__file__).with_name("real_runs_slurm_argo.txt"))
+LOCAL = Path(__file__).resolve().parents[2].joinpath("real_runs_argo.txt")
+OUTPUT = Path(os.environ.get("RECORD") or Path(__file__).resolve().parents[2].joinpath("real_runs_slurm_argo.txt"))
 IMAGES = {"argoproj/argosay:v2", "alpine:3.23", "alpine:latest", "alpine", "python:alpine3.23"}
 PARALLEL = int(os.environ.get("PARALLEL") or 4)
 TIMEOUT = 900
@@ -99,7 +99,7 @@ def main():
         counts[kind] = counts.get(kind, 0) + 1
     summary = ", ".join(f"{count} {kind}" for kind, count in sorted(counts.items()))
     header = ("# Argo workflows run for real on a SLURM cluster with Apptainer, against what "
-              "Argo's tests expect; written by real_runs_slurm_argo.py. A tab ends the path.\n"
+              "Argo's tests expect; written by real_runs/slurm/argo.py. A tab ends the path.\n"
               f"# {len(records)} workflows: {summary}.\n")
     OUTPUT.write_text(header + "".join(f"{name}\t{record}\n"
                                        for name, record in sorted(records.items())))

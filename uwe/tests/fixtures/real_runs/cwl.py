@@ -19,7 +19,7 @@ TESTS = Path(os.environ.get("CWL_TEST_WORKFLOWS") or HOME / ".cache/uwe/test-wor
 DATA = Path(os.environ.get("CWL_CONFORMANCE_DATA")
             or HOME / ".cache/uwe/test-workflows/cwl-conformance-data")
 UWE = Path(os.environ.get("UWE") or "target/release/uwe").resolve()
-OUTPUT = Path(__file__).with_name("real_runs_cwl.txt")
+OUTPUT = Path(__file__).resolve().parents[1].joinpath("real_runs_cwl.txt")
 IMAGE = "debian:stable-slim"
 TIMEOUT = 300
 
@@ -218,7 +218,7 @@ def main():
         counts[kind] = counts.get(kind, 0) + 1
     summary = ", ".join(f"{count} {kind}" for kind, count in sorted(counts.items()))
     header = ("# The CWL conformance tests (v1.2) run for real by uwe and by cwltool, compared "
-              "by their output objects; written by real_runs_cwl.py.\n"
+              "by their output objects; written by real_runs/cwl.py.\n"
               f"# {len(records)} tests: {summary}.\n")
     OUTPUT.write_text(header + "".join(f"{name} {record}\n"
                                        for name, record in sorted(records.items())))

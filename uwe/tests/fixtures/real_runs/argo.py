@@ -11,18 +11,19 @@ import sys
 import tempfile
 from pathlib import Path
 
-# The helper next to this script; Python keeps no compiled copy of it in the repository.
+# The helper beside the recorder family; Python keeps no compiled copy of it in the repository.
 sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from docker_no_pull import NoPull  # noqa: E402
 
 import yaml
 
 TESTS = Path(os.environ.get("ARGO_TEST_WORKFLOWS")
              or Path.home() / ".cache/uwe/test-workflows/argo")
-REPOSITORY = Path(__file__).resolve().parents[3]
+REPOSITORY = Path(__file__).resolve().parents[4]
 OUTCOMES = REPOSITORY / "argo-runtime/tests/fixtures/test-workflows/outcomes.txt"
 UWE = Path(os.environ.get("UWE") or "target/release/uwe").resolve()
-OUTPUT = Path(__file__).with_name("real_runs_argo.txt")
+OUTPUT = Path(__file__).resolve().parents[1].joinpath("real_runs_argo.txt")
 TIMEOUT = 300
 # The start of the record of a workflow whose images are not all on this machine.
 ABSENT = "skipped: images not on this machine"
@@ -233,7 +234,7 @@ def main():
     # The workflows whose images are not on this machine are only counted.
     absent = sorted(name for name, record in records.items() if record.startswith(ABSENT))
     header = ("# Argo workflows run for real by uwe, against what Argo's tests expect (argo "
-              "lint, expected failures); written by real_runs_argo.py. A tab ends the path.\n"
+              "lint, expected failures); written by real_runs/argo.py. A tab ends the path.\n"
               f"# {len(records)} workflows: {summary}.\n"
               f"# {len(absent)} of the skipped ones name images that are not on this machine; "
               "they are not listed.\n")

@@ -14,6 +14,10 @@ use crate::value::Value;
 /// The fields of a step or task that loop.
 pub(crate) const LOOP_FIELDS: [&str; 3] = ["withItems", "withParam", "withSequence"];
 
+const ITEM_LIMIT: usize = 100_000;
+const BYTE_LIMIT: usize = 16 * 1024 * 1024;
+const WIDTH_LIMIT: usize = 4096;
+
 /// Whether a step or task loops.
 pub(crate) fn loops(node: &Node) -> bool {
     LOOP_FIELDS
@@ -38,6 +42,9 @@ pub(crate) fn items(
         ..
     }) = node.get("withItems")
     {
+        if items.len() > ITEM_LIMIT {
+            return Err("withItems exceeds the expansion limit".into());
+        }
         return Ok(items.iter().map(yaml_value).collect());
     }
     if let Some(param) = node.get("withParam") {
@@ -64,8 +71,12 @@ pub(crate) fn items(
             ));
             return Ok(Vec::new());
         }
+        if text.len() > BYTE_LIMIT {
+            return Err("withParam exceeds the byte limit".into());
+        }
         return match Value::parse_json(&text) {
-            Ok(Value::Array(items)) => Ok(items),
+            Ok(Value::Array(items)) if items.len() <= ITEM_LIMIT => Ok(items),
+            Ok(Value::Array(_)) => Err("withParam exceeds the expansion limit".into()),
             Ok(_) => Err(format!(
                 "withParam value could not be parsed as a JSON list: {}",
                 text.trim()
@@ -132,19 +143,33 @@ fn expand_sequence(sequence: &Sequence) -> Result<Vec<Value>, String> {
     } else {
         sequence.format.as_str()
     };
-    let numbers: Vec<i64> = if start <= end {
-        (start..=end).collect()
-    } else {
-        (end..=start).rev().collect()
-    };
-    Ok(numbers
-        .into_iter()
-        .map(|number| Value::String(printf(format, number)))
-        .collect())
+    let count = start.abs_diff(end) as u128 + 1;
+    if count > ITEM_LIMIT as u128 {
+        return Err("withSequence exceeds the expansion limit".into());
+    }
+    let mut values = Vec::new();
+    let mut bytes = 0;
+    for offset in 0..count as i64 {
+        let number = if start <= end {
+            start + offset
+        } else {
+            start - offset
+        };
+        let value = printf(format, number)?;
+        bytes += value.len();
+        if bytes > BYTE_LIMIT {
+            return Err("withSequence exceeds the byte limit".into());
+        }
+        values.push(Value::String(value));
+    }
+    Ok(values)
 }
 
 /// Go's `fmt.Sprintf(format, number)` for the verbs a sequence format uses.
-fn printf(format: &str, number: i64) -> String {
+fn printf(format: &str, number: i64) -> Result<String, String> {
+    if format.len() > WIDTH_LIMIT {
+        return Err("withSequence format exceeds the byte limit".into());
+    }
     let mut out = String::new();
     let mut characters = format.chars().peekable();
     while let Some(character) = characters.next() {
@@ -179,10 +204,17 @@ fn printf(format: &str, number: i64) -> String {
         };
         let zero = flags.starts_with('0');
         let left = flags.contains('-');
-        let width: usize = flags
-            .trim_start_matches(['0', '-', '+', ' '])
-            .parse()
-            .unwrap_or(0);
+        let digits = flags.trim_start_matches(['0', '-', '+', ' ']);
+        let width = if digits.is_empty() {
+            0
+        } else {
+            digits
+                .parse::<usize>()
+                .map_err(|_| "withSequence format width exceeds the limit")?
+        };
+        if width > WIDTH_LIMIT || out.len() + width.max(body.len()) > WIDTH_LIMIT {
+            return Err("withSequence format width exceeds the limit".into());
+        }
         let body = if flags.contains('+') && number >= 0 {
             format!("+{body}")
         } else {
@@ -204,7 +236,7 @@ fn printf(format: &str, number: i64) -> String {
             out.push_str(&format!("{body:>width$}"));
         }
     }
-    out
+    Ok(out)
 }
 
 /// A YAML value as the JSON value Argo holds in an `Item`.

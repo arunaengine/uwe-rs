@@ -386,6 +386,11 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     }
 }
 
+/// Whether the simulator finished a task, so that later values come from made-up outputs.
+fn made_outputs(graph: &ExecutionGraph) -> bool {
+    graph.nodes.iter().any(|node| node.exit_code == Some(0))
+}
+
 /// Checks the inputs, then plans the run with the simulator and checks its tasks. The graph
 /// of the plan, unless the workflow did not load.
 fn plan(
@@ -424,8 +429,21 @@ fn plan(
     if driver.language() == Language::Cwl {
         report.operations(&execution.graph);
     }
-    if let Some(error) = &execution.error {
-        report.execute_error(error);
+    match &execution.error {
+        // Workflow code that reads made-up outputs can fail where real ones would not, like
+        // `logs[-1]` of the two reports of a tool that the simulator makes as one file.
+        Some(ExecuteError::Driver(error))
+            if !error.unsupported && made_outputs(&execution.graph) =>
+        {
+            report.add_lines(Kind::Warning, &error.message);
+            report.notes.push(
+                "the workflow code stopped on made-up task outputs, so a real run may go on \
+                 there; the check cannot see the tasks after it"
+                    .into(),
+            );
+        }
+        Some(error) => report.execute_error(error),
+        None => {}
     }
     let _ = std::fs::remove_dir_all(&simulated);
     Some(execution.graph)

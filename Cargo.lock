@@ -1058,6 +1058,7 @@ dependencies = [
  "bytes",
  "futures-util",
  "opendal",
+ "rustix 1.1.5",
  "serde",
  "serde_json",
  "sha2 0.11.0",

@@ -1086,14 +1086,52 @@ async fn hash_object(operator: &Operator, location: &str) -> Result<(Digest, u64
     Ok((Digest::from_sha256(&hasher.finalize()), offset))
 }
 
+/// How long one read of a file may take before uwe opens the file again. On CephFS a read of
+/// a file that another node wrote can wait forever for its read rights (CVE-2026-80527, Linux
+/// before 7.1.10), until other traffic on the file wakes it.
+const READ_NUDGE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How often a read is woken before it counts as lost.
+const READ_NUDGES: u32 = 30;
+
 /// The digest and size of a local file, read in parts.
 pub async fn hash_file(file: &std::path::Path) -> Result<(Digest, u64), StoreError> {
+    hash_patiently(file, READ_NUDGE, READ_NUDGES).await
+}
+
+/// [`hash_file`] that wakes a read which takes longer than `nudge`, up to `nudges` times.
+async fn hash_patiently(
+    file: &std::path::Path,
+    nudge: std::time::Duration,
+    nudges: u32,
+) -> Result<(Digest, u64), StoreError> {
     let mut reader = tokio::fs::File::open(file).await?;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0; PART_SIZE];
     let mut size = 0;
     loop {
-        let read = reader.read(&mut buffer).await?;
+        let pending = reader.read(&mut buffer);
+        tokio::pin!(pending);
+        let mut woken = 0;
+        let read = loop {
+            match tokio::time::timeout(nudge, &mut pending).await {
+                Ok(read) => break read?,
+                Err(_) if woken < nudges => {
+                    woken += 1;
+                    wake(file, nudge).await;
+                }
+                Err(_) => {
+                    let message = format!(
+                        "the file system did not answer a read for {} seconds",
+                        nudge.as_secs() * u64::from(nudges + 1)
+                    );
+                    return Err(StoreError::File {
+                        path: file.to_owned(),
+                        error: std::io::Error::new(std::io::ErrorKind::TimedOut, message),
+                    });
+                }
+            }
+        };
         if read == 0 {
             break;
         }
@@ -1101,6 +1139,18 @@ pub async fn hash_file(file: &std::path::Path) -> Result<(Digest, u64), StoreErr
         size += read as u64;
     }
     Ok((Digest::from_sha256(&hasher.finalize()), size))
+}
+
+/// Opens a file again and reads its first byte at offset 0, which takes nothing from a
+/// stream: the request for read rights wakes a read of the file that waits for them.
+async fn wake(file: &std::path::Path, nudge: std::time::Duration) {
+    let path = file.to_owned();
+    let opened = tokio::task::spawn_blocking(move || {
+        use std::os::unix::fs::FileExt;
+        let mut byte = [0];
+        std::fs::File::open(&path)?.read_at(&mut byte, 0)
+    });
+    let _ = tokio::time::timeout(nudge, opened).await;
 }
 
 /// Removes a local copy that does not match its digest, if it is still the file that was read:
@@ -1151,6 +1201,51 @@ fn at(path: &std::path::Path) -> impl FnOnce(std::io::Error) -> StoreError + '_ 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A read that waits is woken, and one that never ends fails instead of waiting forever.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn wakes_stuck_reads() {
+        use std::io::Write;
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("fifo");
+        rustix::fs::mknodat(
+            rustix::fs::CWD,
+            &path,
+            rustix::fs::FileType::Fifo,
+            rustix::fs::Mode::from_raw_mode(0o600),
+            0,
+        )
+        .unwrap();
+        let pause = std::time::Duration::from_millis(50);
+        let target = path.clone();
+        let writer = std::thread::spawn(move || {
+            let mut fifo = std::fs::OpenOptions::new()
+                .write(true)
+                .open(target)
+                .unwrap();
+            std::thread::sleep(pause * 6);
+            fifo.write_all(b"late").unwrap();
+        });
+        let (digest, size) = hash_patiently(&path, pause, 20).await.unwrap();
+        writer.join().unwrap();
+        assert_eq!((digest, size), (Digest::sha256(b"late"), 4));
+        let target = path.clone();
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        let writer = std::thread::spawn(move || {
+            let _fifo = std::fs::OpenOptions::new()
+                .write(true)
+                .open(target)
+                .unwrap();
+            let _ = held.recv();
+        });
+        let error = hash_patiently(&path, pause, 2).await.unwrap_err();
+        assert!(
+            error.to_string().contains("did not answer a read"),
+            "{error}"
+        );
+        release.send(()).unwrap();
+        writer.join().unwrap();
+    }
 
     #[tokio::test]
     async fn repair_keeps_rewrites() {

@@ -115,6 +115,12 @@ pub(crate) fn driver(
                 local_engine: (arguments.executor.as_deref().unwrap_or("local") == "local")
                     .then(|| setup.engine()),
                 registry: setup.cwl_registry.clone(),
+                software: setup.conda.is_some(),
+                shm: match arguments.executor.as_deref().unwrap_or("local") {
+                    "local" | "kubernetes" => true,
+                    "slurm" => matches!(setup.slurm_container(arguments), "docker" | "podman"),
+                    _ => false,
+                },
                 // Apptainer on SLURM runs a saved image archive; it needs no registry.
                 archives: (arguments.executor.as_deref() == Some("slurm")
                     && matches!(
@@ -163,6 +169,8 @@ pub(crate) fn driver(
                 crate::git::checkout(&fetch, folder, &stop).map(|_| ())
             };
             let services = argo_runtime::Services {
+                policy: setup.argo_policy.clone(),
+                locks: setup.argo_locks.clone(),
                 endpoints,
                 resume: Some(resume_folder(run)),
                 git: Some(argo_runtime::GitClient(std::sync::Arc::new(git))),

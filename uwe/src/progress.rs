@@ -437,6 +437,7 @@ mod tests {
 
     fn delivered(board: &mut Board, target: &str) {
         let delivery = Delivery {
+            overwrite: true,
             location: String::new(),
             target: target.to_owned(),
             mode: Default::default(),

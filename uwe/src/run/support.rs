@@ -23,19 +23,40 @@ pub(crate) fn runner_settings(
     }
 }
 
-/// The cache folder that `[cache] folder` of the config file names, set once at the start.
-static CACHE_FOLDER: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+thread_local! {
+    static CACHE_FOLDER: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
 
-/// Uses this cache folder for the whole command, in place of the one of `XDG_CACHE_HOME`.
+pub(crate) struct CacheScope(Option<PathBuf>);
+
+impl CacheScope {
+    pub(crate) fn new(inherit: bool) -> Self {
+        Self(CACHE_FOLDER.with(|folder| {
+            if inherit {
+                folder.borrow().clone()
+            } else {
+                folder.replace(None)
+            }
+        }))
+    }
+}
+
+impl Drop for CacheScope {
+    fn drop(&mut self) {
+        CACHE_FOLDER.with(|folder| folder.replace(self.0.take()));
+    }
+}
+
+/// Uses this folder within the current command or blocking submission worker.
 pub(crate) fn use_cache_folder(folder: PathBuf) {
-    let _ = CACHE_FOLDER.set(folder);
+    CACHE_FOLDER.with(|current| current.replace(Some(folder)));
 }
 
 /// The folder of `[cache] folder` of the config file, else `$XDG_CACHE_HOME/uwe`, else
 /// `~/.cache/uwe`.
 pub(crate) fn cache_directory() -> PathBuf {
-    if let Some(folder) = CACHE_FOLDER.get() {
-        return folder.clone();
+    if let Some(folder) = CACHE_FOLDER.with(|folder| folder.borrow().clone()) {
+        return folder;
     }
     let base = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
@@ -156,6 +177,34 @@ mod tests {
     use super::*;
     use crate::failure;
     use workflow_graph::{DriverError, Engine, Launch};
+
+    #[test]
+    fn isolates_cache_scopes() {
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        std::thread::scope(|scope| {
+            for name in ["tenant-one", "tenant-two"] {
+                let barrier = barrier.clone();
+                scope.spawn(move || {
+                    let _cache = CacheScope::new(false);
+                    use_cache_folder(PathBuf::from(name));
+                    barrier.wait();
+                    assert_eq!(cache_directory(), PathBuf::from(name));
+                });
+            }
+        });
+    }
+
+    #[test]
+    fn restores_cache_scope() {
+        let _outer = CacheScope::new(false);
+        use_cache_folder(PathBuf::from("outer"));
+        {
+            let _inner = CacheScope::new(false);
+            use_cache_folder(PathBuf::from("inner"));
+            assert_eq!(cache_directory(), PathBuf::from("inner"));
+        }
+        assert_eq!(cache_directory(), PathBuf::from("outer"));
+    }
 
     #[test]
     #[ignore = "needs Docker and the cached debian:stable-slim image"]

@@ -357,6 +357,7 @@ mod tests {
     #[test]
     fn fills_named_variables() {
         let mut spec = task_model::TaskSpec {
+            output_manifest: None,
             format: task_model::FORMAT,
             namespace: String::new(),
             image: None,

@@ -116,6 +116,27 @@ impl Host for Console {
             .map_err(|error| storage_error(&path.uri(), error))
     }
 
+    fn copy_file(&mut self, source: &PathValue, target: &PathValue) -> Result<(), Error> {
+        let local = match source.prefix {
+            Some(_) => self.download(source)?,
+            None => PathBuf::from(&source.path),
+        };
+        if target.prefix.is_some() {
+            return self
+                .storage
+                .upload(&local, &target.uri())
+                .map_err(|error| storage_error(&target.uri(), error));
+        }
+        if let Some(parent) = std::path::Path::new(&target.path).parent() {
+            std::fs::create_dir_all(parent).map_err(|error| io_error(error.to_string()))?;
+        }
+        let mut source = std::fs::File::open(local).map_err(|error| io_error(error.to_string()))?;
+        let mut output =
+            std::fs::File::create(&target.path).map_err(|error| io_error(error.to_string()))?;
+        std::io::copy(&mut source, &mut output).map_err(|error| io_error(error.to_string()))?;
+        Ok(())
+    }
+
     fn create_directories(&mut self, path: &PathValue) -> Result<(), Error> {
         if path.prefix.is_none() {
             std::fs::create_dir_all(&path.path).map_err(|error| io_error(error.to_string()))?;

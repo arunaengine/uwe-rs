@@ -2,7 +2,6 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use nextflow_parser::Span;
@@ -120,14 +119,20 @@ impl Interpreter<'_> {
                 match replacement {
                     Value::Closure(closure) => {
                         let closure = closure.clone();
-                        let replaced = pattern.replace_with(text, all, |groups| {
-                            let argument = match groups.as_slice() {
-                                [whole] => text_value(whole),
-                                groups => Value::list(groups.iter().map(text_value).collect()),
-                            };
-                            let result = self.call_closure_value(&closure, vec![argument], span)?;
-                            Ok::<_, Error>(result.to_string())
-                        })?;
+                        let replaced = pattern.replace_with(
+                            text,
+                            all,
+                            |error| thrown(error, span),
+                            |groups| {
+                                let argument = match groups.as_slice() {
+                                    [whole] => text_value(whole),
+                                    groups => Value::list(groups.iter().map(text_value).collect()),
+                                };
+                                let result =
+                                    self.call_closure_value(&closure, vec![argument], span)?;
+                                Ok::<_, Error>(result.to_string())
+                            },
+                        )?;
                         Value::string(replaced)
                     }
                     other => {
@@ -142,18 +147,20 @@ impl Interpreter<'_> {
                     [limit] => integer(limit).ok_or_else(|| wrong_arguments(name, span))? as i32,
                     _ => return Ok(None),
                 };
-                let parts = pattern(regex, span)?.split(text, limit);
+                let parts = pattern(regex, span)?.split(text, limit).at(span)?;
                 strings(ListKind::Array, parts)
             }
             // Groovy's `split()` gives the words between whitespace, as `tokenize()` does.
             ("split", []) => strings(ListKind::Array, tokens(text, " \t\n\r\u{0C}")),
-            ("matches", [regex]) => Value::Boolean(pattern(regex, span)?.matches(text)),
-            ("find", [regex]) => match pattern(regex, span)?.all_groups(text).first() {
+            ("matches", [regex]) => Value::Boolean(pattern(regex, span)?.matches(text).at(span)?),
+            ("find", [regex]) => match pattern(regex, span)?.first_groups(text).at(span)? {
                 Some(groups) => text_value(&groups[0]),
                 None => Value::Null,
             },
             ("padLeft" | "padRight" | "center", [width, rest @ ..]) if rest.len() <= 1 => {
-                let width = integer(width).ok_or_else(|| wrong_arguments(name, span))? as usize;
+                let width = integer(width)
+                    .ok_or_else(|| wrong_arguments(name, span))?
+                    .max(0) as usize;
                 let padding = match rest {
                     [padding] => string(padding).ok_or_else(|| wrong_arguments(name, span))?,
                     _ => " ".into(),
@@ -193,7 +200,7 @@ impl Interpreter<'_> {
                 };
                 Value::string(translate(text, &source, &replacement))
             }
-            ("toCharArray", []) => Value::List(Rc::new(RefCell::new(List::new(
+            ("toCharArray", []) => Value::List(Rc::new(crate::value::ListCell::new(List::new(
                 ListKind::Array,
                 text.encode_utf16().map(Value::Character).collect(),
             )))),
@@ -208,7 +215,7 @@ impl Interpreter<'_> {
                 if rest.len() <= 1 && !matches!(regex, Value::Closure(_)) =>
             {
                 let mut found = Vec::new();
-                for groups in pattern(regex, span)?.all_groups(text) {
+                for groups in pattern(regex, span)?.all_groups(text).at(span)? {
                     let value = match rest {
                         [Value::Closure(f)] if groups.len() > 1 => {
                             let groups = groups.iter().map(text_value).collect();
@@ -258,7 +265,7 @@ impl Interpreter<'_> {
                 super::bytes::bytes(super::bytes::decode_base64(text).at(span)?)
             }
             // `chars()`: an `IntStream` of the UTF-16 code units.
-            ("chars", []) => Value::List(Rc::new(RefCell::new(List::new(
+            ("chars", []) => Value::List(Rc::new(crate::value::ListCell::new(List::new(
                 ListKind::Stream,
                 text.encode_utf16()
                     .map(|unit| Value::integer(i32::from(unit)))
@@ -274,6 +281,7 @@ impl Interpreter<'_> {
                 for line in text.lines() {
                     let parts = pattern
                         .split(line, 0)
+                        .at(span)?
                         .into_iter()
                         .map(Value::string)
                         .collect();
@@ -333,7 +341,7 @@ fn text_value(text: &Option<String>) -> Value {
 
 fn strings(kind: ListKind, items: Vec<String>) -> Value {
     let items = items.into_iter().map(Value::string).collect();
-    Value::List(Rc::new(RefCell::new(List::new(kind, items))))
+    Value::List(Rc::new(crate::value::ListCell::new(List::new(kind, items))))
 }
 
 /// A pattern from a string argument or an existing pattern.

@@ -95,20 +95,6 @@ pub(super) fn decode_base64(text: &str) -> Result<Vec<u8>, Exception> {
 
 /// Base64 with padding, as `encodeBase64()` writes it.
 pub(super) fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::new();
-    for chunk in bytes.chunks(3) {
-        let group = chunk.iter().enumerate().fold(0u32, |group, (index, byte)| {
-            group | (u32::from(*byte) << (16 - 8 * index))
-        });
-        for index in 0..4 {
-            if index <= chunk.len() {
-                let sextet = (group >> (18 - 6 * index)) & 0x3f;
-                out.push(ALPHABET[sextet as usize] as char);
-            } else {
-                out.push('=');
-            }
-        }
-    }
-    out
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(bytes)
 }

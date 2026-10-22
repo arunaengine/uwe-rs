@@ -13,6 +13,13 @@ use crate::value::{Operator, Relation, Value};
 /// A variable slot of one call of a function or closure.
 pub type Slot = usize;
 
+/// A config local shared with closures after its declaring block finishes.
+#[derive(Debug)]
+pub struct Binding {
+    pub value: std::cell::RefCell<Value>,
+    pub class: Option<Rc<str>>,
+}
+
 /// Where a variable lives while code runs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Place {
@@ -460,6 +467,7 @@ pub enum Update {
 #[derive(Debug)]
 pub enum Target {
     Variable(Place),
+    Binding(Rc<Binding>),
     TypedVariable {
         place: Place,
         class: Rc<str>,
@@ -494,6 +502,7 @@ pub enum ExpressionKind {
     TaskOutput(usize),
     /// `null`, a boolean, a number or a string.
     Literal(Value),
+    Binding(Rc<Binding>),
     Variable(Place),
     /// A built-in constant of the current scope, like `params`, `workflow` or `task`.
     Builtin(Rc<str>),

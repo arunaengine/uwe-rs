@@ -49,7 +49,14 @@ impl Config {
         for (key, body) in &entries {
             if let Some(pattern) = key.strip_prefix("withLabel:") {
                 let (pattern, negated) = selector(pattern)?;
-                if labels.iter().any(|label| pattern.matches(label)) != negated {
+                let mut matched = false;
+                for label in &labels {
+                    if pattern.matches(label)? {
+                        matched = true;
+                        break;
+                    }
+                }
+                if matched != negated {
                     add(&mut settings.selected, body);
                 }
             }
@@ -64,7 +71,7 @@ impl Config {
             for (key, body) in &entries {
                 if let Some(pattern) = key.strip_prefix("withName:") {
                     let (pattern, negated) = selector(pattern)?;
-                    if pattern.matches(name) != negated {
+                    if pattern.matches(name)? != negated {
                         add(&mut settings.selected, body);
                     }
                 }

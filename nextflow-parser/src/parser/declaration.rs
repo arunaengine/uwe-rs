@@ -414,25 +414,62 @@ impl Parser<'_> {
     /// Remembers a script variable that a later include source may use, like
     /// `PROJECT_DIR = workflow.projectDir` or `def local_modules = file("$baseDir/x.nf")`.
     fn remember_include_variable(&mut self, statement: &Statement) {
-        let (name, value) = match &statement.kind {
+        let (name, value, operator) = match &statement.kind {
             StatementKind::Assign {
                 target,
-                operator: AssignOperator::Assign,
+                operator,
                 value,
             } => match &target.kind {
-                ExpressionKind::Variable(name) => (name, value),
+                ExpressionKind::Variable(name) => (name, Some(value), *operator),
                 _ => return,
             },
             StatementKind::Declaration {
                 names,
-                initializer: Some(value),
+                initializer,
                 destructure: false,
                 ..
-            } if names.len() == 1 => (&names[0].name.text, value),
+            } if names.len() == 1 => (
+                &names[0].name.text,
+                initializer.as_ref(),
+                AssignOperator::Assign,
+            ),
+            StatementKind::Declaration { names, .. } => {
+                for name in names {
+                    self.include_variables.remove(&name.name.text);
+                }
+                return;
+            }
+            StatementKind::MultipleAssign { names, .. } => {
+                for name in names {
+                    self.include_variables.remove(&name.text);
+                }
+                return;
+            }
+            StatementKind::Expression(Expression {
+                kind: ExpressionKind::Postfix { operand, .. },
+                ..
+            }) => {
+                if let ExpressionKind::Variable(name) = &operand.kind {
+                    self.include_variables.remove(name);
+                }
+                return;
+            }
             _ => return,
         };
-        if let Some(text) = self.include_text(value) {
+        let text = value.and_then(|value| self.include_text(value));
+        let text = match operator {
+            AssignOperator::Assign => text,
+            AssignOperator::Add => self
+                .include_variables
+                .get(name)
+                .zip(text)
+                .map(|(previous, suffix)| previous.clone() + &suffix),
+            _ => None,
+        };
+        if let Some(text) = text {
             self.include_variables.insert(name.clone(), text);
+        } else {
+            self.include_variables.remove(name);
         }
     }
 

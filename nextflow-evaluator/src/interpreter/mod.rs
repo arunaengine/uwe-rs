@@ -136,6 +136,28 @@ pub trait Host {
         std::fs::write(local, bytes).map_err(|error| file_error(path, &error))
     }
 
+    /// Streams local destinations. Custom remote hosts retain read/write compatibility and
+    /// should override this method to provide bounded streaming or provider-side copying.
+    fn copy_file(&mut self, source: &PathValue, target: &PathValue) -> Result<(), Error> {
+        if target.prefix.is_some() {
+            let bytes = self.read(source)?;
+            return self.write(target, &bytes);
+        }
+        let source = match source.prefix {
+            Some(_) => self.download(source)?,
+            None => PathBuf::from(&source.path),
+        };
+        let local = local_path(target)?;
+        if let Some(parent) = local.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| file_error(target, &error))?;
+        }
+        let mut source = std::fs::File::open(source).map_err(|error| file_error(target, &error))?;
+        let mut output =
+            std::fs::File::create(local).map_err(|error| file_error(target, &error))?;
+        std::io::copy(&mut source, &mut output).map_err(|error| file_error(target, &error))?;
+        Ok(())
+    }
+
     /// Deletes a file; the result is whether it existed. The default deletes local files.
     fn delete(&mut self, path: &PathValue) -> Result<bool, Error> {
         match std::fs::remove_file(local_path(path)?) {
@@ -559,6 +581,16 @@ impl<'h> Interpreter<'h> {
     /// A value `as` a class, like `value as Integer`.
     pub fn cast_value(&mut self, value: Value, class: &str) -> Result<Value, Error> {
         self.cast(value, class, Span::default())
+    }
+
+    /// Converts a config local with the same rules as a typed script declaration.
+    pub fn convert_value(
+        &mut self,
+        value: Value,
+        class: Option<&str>,
+        span: Span,
+    ) -> Result<Value, Error> {
+        self.convert(value, class, span)
     }
 
     /// Reads a property of a value, as `value.name` does.

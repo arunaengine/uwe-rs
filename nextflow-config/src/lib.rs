@@ -28,6 +28,8 @@ pub struct Options {
     pub project_dir: String,
     /// The directory the run starts in.
     pub launch_dir: String,
+    /// The effective working directory of the run.
+    pub work_dir: String,
 }
 
 /// The merged settings of all config files.

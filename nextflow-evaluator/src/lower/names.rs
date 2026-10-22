@@ -21,8 +21,14 @@ pub(super) const SCRIPT_CONSTANTS: &[&str] = &[
 pub(super) const ENTRY_CONSTANTS: &[&str] = &["args", "params"];
 
 /// Constants of config files (nf-lang `ConfigDsl`).
-pub(super) const CONFIG_CONSTANTS: &[&str] =
-    &["baseDir", "launchDir", "params", "projectDir", "secrets"];
+pub(super) const CONFIG_CONSTANTS: &[&str] = &[
+    "baseDir",
+    "launchDir",
+    "params",
+    "projectDir",
+    "secrets",
+    "workDir",
+];
 
 /// Packages whose classes scripts may name in full, like `java.util.UUID`.
 pub(super) const PACKAGES: &[&str] = &["groovy", "java", "javax", "nextflow", "org"];

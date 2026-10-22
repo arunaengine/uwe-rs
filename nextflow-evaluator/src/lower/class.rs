@@ -325,7 +325,7 @@ impl Lowering<'_> {
 
 /// The simple name of a type, without package and type arguments; `None` for `Object`,
 /// which takes any value.
-pub(super) fn simple_type(annotation: &ast::Type) -> Option<Rc<str>> {
+pub fn simple_type(annotation: &ast::Type) -> Option<Rc<str>> {
     let name = annotation.name.parts.last()?;
     let dimensions = "[]".repeat(annotation.dimensions as usize);
     (name.text != "Object" || !dimensions.is_empty())

@@ -916,6 +916,7 @@ pub fn build(
     let usage = crate::scheduling::usage(threads, &resources);
     Ok(Built {
         task: Task {
+            output_manifest: None,
             run_as: None,
             id,
             name: label,
@@ -928,6 +929,7 @@ pub fn build(
             inputs,
             outputs,
             stdin: None,
+            defer_logs: true,
             resources: {
                 let mut asked = crate::resources::task_resources(threads, &resources);
                 // A local run of Snakemake only counts `gpu` against the global resources.

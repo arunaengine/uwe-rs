@@ -35,6 +35,7 @@ pub fn run(
             .await
             .map_err(|error| error.to_string())?;
         let spec = TaskSpec {
+            output_manifest: None,
             format: task_model::FORMAT,
             namespace: String::new(),
             image: Some(Image {

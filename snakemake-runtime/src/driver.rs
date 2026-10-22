@@ -1309,8 +1309,15 @@ impl Session {
             let mut seen = HashSet::new();
             files.retain(|file| seen.insert(file.clone()));
         }
-        let lock = crate::locks::Lock::take(&self.workdir, &inputs, &outputs);
-        self.lock = Some(lock.map_err(DriverError::new)?);
+        match &mut self.lock {
+            Some(lock) => lock.extend(&inputs, &outputs).map_err(DriverError::new)?,
+            None => {
+                self.lock = Some(
+                    crate::locks::Lock::take(&self.workdir, &inputs, &outputs)
+                        .map_err(DriverError::new)?,
+                );
+            }
+        }
         Ok(())
     }
 
@@ -2006,6 +2013,7 @@ impl Session {
                     location: file.location.clone(),
                     target: storage_target.unwrap_or_else(|| path.to_string_lossy().into_owned()),
                     mode: DeliveryMode::Copy,
+                    overwrite: true,
                 };
                 if !self.launch.simulated && !stored && protected() {
                     self.protections.push(delivery.clone());
@@ -2058,9 +2066,10 @@ impl Session {
         if !self.failures.is_empty() && !self.launch.keep_going {
             return Ok(Vec::new());
         }
-        if self.replan && self.outstanding == 0 {
+        if self.replan {
             self.replan = false;
             self.plan()?;
+            self.take_lock()?;
             return self.ready_tasks(None);
         }
         let mut tasks = Vec::new();
@@ -2440,10 +2449,8 @@ impl Session {
     /// run that keeps going plans again when a checkpoint waited for this job.
     fn failed(&mut self, message: String) -> Result<Vec<Task>, DriverError> {
         self.failures.push(message);
-        if self.launch.keep_going && self.replan && self.outstanding == 0 {
-            self.replan = false;
-            self.plan()?;
-            return self.ready_tasks(None);
+        if self.launch.keep_going && self.replan {
+            return self.next_tasks(&[]);
         }
         // A run that keeps going starts the held jobs that the failed job made room for.
         if self.launch.keep_going && !self.held.is_empty() {
@@ -2646,6 +2653,7 @@ impl Session {
             location: file.to_string_lossy().into_owned(),
             target: path.to_string_lossy().into_owned(),
             mode: DeliveryMode::Copy,
+            overwrite: true,
         });
         Ok(())
     }
@@ -2680,6 +2688,7 @@ impl Session {
                 location: empty.to_string_lossy().into_owned(),
                 target: path.to_string_lossy().into_owned(),
                 mode: DeliveryMode::Copy,
+                overwrite: true,
             });
         }
         Ok(())

@@ -18,28 +18,60 @@ pub fn release_locks() {
 
 fn remove(files: &[PathBuf]) {
     for file in files {
+        let folder = file.parent().expect("a lock folder");
+        let workdir = folder.parent().and_then(Path::parent).expect("a workdir");
+        let _guard = guard(workdir).ok();
         let _ = std::fs::remove_file(file);
-    }
-    // Only an empty folder goes: other runs may hold locks of their own.
-    if let Some(folder) = files.first().and_then(|file| file.parent()) {
         let _ = std::fs::remove_dir(folder);
     }
+}
+
+fn guard(workdir: &Path) -> std::io::Result<std::fs::File> {
+    let folder = workdir.join(".snakemake");
+    std::fs::create_dir_all(&folder)?;
+    // Keep this inode outside the removable lock directory so every process shares it.
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(folder.join("uwe-planning.lock"))?;
+    rustix::fs::flock(&file, rustix::fs::FlockOperation::LockExclusive)?;
+    Ok(file)
 }
 
 /// The lock files that a run wrote in `.snakemake/locks`; they go when the lock is dropped.
 #[derive(Debug)]
 pub struct Lock {
     files: Vec<PathBuf>,
+    workdir: PathBuf,
 }
 
 impl Lock {
     /// Locks the inputs and outputs of a run as Snakemake's `persistence.lock` does, or says
     /// why not: another run reads an output of this one, or writes a file this one uses.
     pub fn take(workdir: &Path, inputs: &[String], outputs: &[String]) -> Result<Lock, String> {
-        let folder = workdir.join(".snakemake").join("locks");
+        let mut lock = Lock {
+            files: Vec::new(),
+            workdir: workdir.to_owned(),
+        };
+        lock.extend(inputs, outputs)?;
+        Ok(lock)
+    }
+
+    pub fn extend(&mut self, inputs: &[String], outputs: &[String]) -> Result<(), String> {
+        let folder = self.workdir.join(".snakemake").join("locks");
         let failed = |error: std::io::Error| format!("cannot lock {}: {error}", folder.display());
+        let _guard = guard(&self.workdir).map_err(failed)?;
+        let mut inputs = inputs.to_vec();
+        let mut outputs = outputs.to_vec();
         let mut stale = Vec::new();
         for (kind, file, lock) in held(&folder).map_err(failed)? {
+            if self.files.contains(&lock) {
+                match kind {
+                    Kind::Input => inputs.retain(|input| input != &file),
+                    Kind::Output => outputs.retain(|output| output != &file),
+                }
+                continue;
+            }
             let taken = match kind {
                 Kind::Input => outputs.contains(&file),
                 Kind::Output => outputs.contains(&file) || inputs.contains(&file),
@@ -49,18 +81,17 @@ impl Lock {
             }
         }
         if !stale.is_empty() {
-            return Err(refusal(workdir, &stale));
+            return Err(refusal(&self.workdir, &stale));
         }
-        let mut lock = Lock { files: Vec::new() };
-        for (kind, files) in [("input", inputs), ("output", outputs)] {
+        for (kind, files) in [("input", &inputs), ("output", &outputs)] {
             if files.is_empty() {
                 continue;
             }
             let path = write_lock(&folder, kind, files).map_err(failed)?;
-            lock.files.push(path.clone());
+            self.files.push(path.clone());
             (HELD.lock().unwrap_or_else(PoisonError::into_inner)).push(path);
         }
-        Ok(lock)
+        Ok(())
     }
 }
 
@@ -73,7 +104,10 @@ fn write_lock(folder: &Path, kind: &str, files: &[String]) -> std::io::Result<Pa
         let created = (std::fs::OpenOptions::new().write(true).create_new(true)).open(&path);
         match created {
             Ok(mut file) => {
-                writeln!(file, "{}", files.join("\n"))?;
+                if let Err(error) = writeln!(file, "{}", files.join("\n")) {
+                    let _ = std::fs::remove_file(&path);
+                    return Err(error);
+                }
                 return Ok(path);
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => number += 1,
@@ -159,9 +193,91 @@ fn refusal(workdir: &Path, stale: &[PathBuf]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::BufRead;
+
+    static SERIAL: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn extends_conflict_locks() {
+        let _serial = SERIAL.lock().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let mut first = Lock::take(folder.path(), &["input".into()], &["seed".into()]).unwrap();
+        first
+            .extend(&["input".into()], &["seed".into(), "dynamic".into()])
+            .unwrap();
+        assert!(Lock::take(folder.path(), &[], &["dynamic".into()]).is_err());
+        let other = Lock::take(folder.path(), &[], &["occupied".into()]).unwrap();
+        assert!(first.extend(&[], &["occupied".into()]).is_err());
+        assert!(Lock::take(folder.path(), &[], &["seed".into()]).is_err());
+        drop(other);
+        first.extend(&[], &["occupied".into()]).unwrap();
+    }
+
+    #[test]
+    fn process_child() {
+        let Some(folder) = std::env::var_os("UWE_LOCK_TEST") else {
+            return;
+        };
+        let mut input = std::io::stdin().lock();
+        let mut line = String::new();
+        println!("\nUWE_READY");
+        std::io::stdout().flush().unwrap();
+        input.read_line(&mut line).unwrap();
+        let lock = Lock::take(Path::new(&folder), &[], &["output".into()]);
+        println!("\nUWE_RESULT:{}", lock.is_ok());
+        std::io::stdout().flush().unwrap();
+        line.clear();
+        input.read_line(&mut line).unwrap();
+        drop(lock);
+    }
+
+    #[test]
+    fn serializes_processes() {
+        let folder = tempfile::tempdir().unwrap();
+        let mut children = Vec::new();
+        for _ in 0..2 {
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "locks::tests::process_child", "--nocapture"])
+                .env("UWE_LOCK_TEST", folder.path())
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut output = std::io::BufReader::new(child.stdout.take().unwrap());
+            assert_eq!(read_signal(&mut output, "UWE_READY"), "UWE_READY");
+            children.push((child, output));
+        }
+        for (child, _) in &mut children {
+            writeln!(child.stdin.as_mut().unwrap(), "start").unwrap();
+        }
+        let accepted: usize = children
+            .iter_mut()
+            .map(|(_, output)| usize::from(read_signal(output, "UWE_RESULT:") == "UWE_RESULT:true"))
+            .sum();
+        for (child, _) in &mut children {
+            writeln!(child.stdin.as_mut().unwrap(), "release").unwrap();
+            assert!(child.wait().unwrap().success());
+        }
+        assert_eq!(accepted, 1, "only one process may own the output");
+    }
+
+    fn read_signal(input: &mut impl BufRead, prefix: &str) -> String {
+        loop {
+            let mut line = String::new();
+            assert_ne!(
+                input.read_line(&mut line).unwrap(),
+                0,
+                "child exited before {prefix}"
+            );
+            if let Some((_, signal)) = line.split_once(prefix) {
+                return format!("{prefix}{}", signal.trim());
+            }
+        }
+    }
 
     #[test]
     fn refuses_shared_files() {
+        let _serial = SERIAL.lock().unwrap();
         let folder = tempfile::tempdir().expect("a folder");
         let names = |files: &[&str]| {
             files

@@ -31,6 +31,142 @@ rule side:
 "#;
 
 #[test]
+fn accepts_finite_chains() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        r#"
+rule count:
+    input: lambda wildcards: [] if int(wildcards.n) == 12 else [str(int(wildcards.n) + 1) + ".txt"]
+    output: "{n}.txt"
+    shell: "touch {output}"
+"#,
+    )
+    .unwrap();
+    let launch = Launch {
+        target: folder.path().into(),
+        targets: vec!["1.txt".into()],
+        simulated: true,
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).unwrap();
+    let tasks = driver.start().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].outputs, ["12.txt"]);
+}
+
+#[test]
+fn rejects_growing_chains() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        r#"
+rule count:
+    input: "{n}.gz"
+    output: "{n}"
+    shell: "true"
+"#,
+    )
+    .unwrap();
+    let launch = Launch {
+        target: folder.path().into(),
+        targets: vec!["a".into()],
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).unwrap();
+    let error = driver.start().unwrap_err();
+    assert!(error.message.contains("Cyclic dependency"), "{error}");
+}
+
+#[test]
+fn advances_checkpoint_jobs() {
+    use workflow_graph::{Outcome, OutputFile};
+    for competing in [false, true] {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::write(
+            folder.path().join("Snakefile"),
+            r#"
+def chosen(wildcards):
+    with open(checkpoints.pick.get().output[0]) as manifest:
+        return manifest.read().strip()
+rule all:
+    input: "final", "slow"
+rule finish:
+    input: chosen
+    output: "final"
+    shell: "true"
+checkpoint pick:
+    output: "choice"
+    shell: "true"
+rule generate:
+    output: "{sample}.txt"
+    shell: "true"
+rule slow:
+    output: "slow"
+    shell: "true"
+"#,
+        )
+        .unwrap();
+        let launch = Launch {
+            target: folder.path().into(),
+            scratch: folder.path().join("scratch"),
+            ..Launch::default()
+        };
+        let mut driver = snakemake_runtime::driver(&launch).unwrap();
+        let tasks = driver.start().unwrap();
+        assert_eq!(tasks.len(), 2);
+        let checkpoint = tasks.iter().find(|task| task.step == "pick").unwrap();
+        let slow = tasks.iter().find(|task| task.step == "slow").unwrap();
+        let mut rival = None;
+        if competing {
+            let other = Launch {
+                targets: vec!["new.txt".into()],
+                scratch: folder.path().join("rival"),
+                ..launch.clone()
+            };
+            let mut other = snakemake_runtime::driver(&other).unwrap();
+            assert_eq!(other.start().unwrap()[0].step, "generate");
+            rival = Some(other);
+        }
+        let made = folder.path().join("made-choice");
+        std::fs::write(&made, "new.txt").unwrap();
+        let next = driver.complete(Outcome {
+            id: checkpoint.id,
+            files: vec![OutputFile {
+                path: "choice".into(),
+                location: made.to_string_lossy().into_owned(),
+                ..OutputFile::default()
+            }],
+            ..Outcome::default()
+        });
+        if competing {
+            assert!(next.unwrap_err().message.contains("LockException"));
+        } else {
+            let next = next.unwrap();
+            assert_eq!(next.len(), 1, "the unrelated task remains outstanding");
+            assert_eq!(next[0].step, "generate");
+            assert_ne!(next[0].id, slow.id);
+            let other = Launch {
+                targets: vec!["new.txt".into()],
+                scratch: folder.path().join("rival"),
+                ..launch.clone()
+            };
+            let mut other = snakemake_runtime::driver(&other).unwrap();
+            assert!(other.start().unwrap_err().message.contains("LockException"));
+            let pending = driver
+                .complete(Outcome {
+                    id: slow.id,
+                    exit_code: 1,
+                    ..Outcome::default()
+                })
+                .unwrap();
+            assert!(pending.is_empty());
+        }
+        drop(rival);
+    }
+}
+
+#[test]
 fn bypasses_forced_reuse() {
     for forceall in [false, true] {
         let folder = tempfile::tempdir().unwrap();

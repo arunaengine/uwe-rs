@@ -14,6 +14,7 @@ pub mod credentials;
 pub mod daemon;
 pub mod engine;
 pub mod helper;
+pub mod history;
 pub mod http;
 mod image;
 mod job;

@@ -74,6 +74,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let database = runs::open(arguments)?;
     let run = named_run(&database, arguments, "changes")?;
     let setup = crate::setup::Setup::load(arguments)?;
+    let _registry = setup.registry.enter().map_err(Failure::setup)?;
     let changes = found(&database, run, &setup.storage, &registry)?;
     print!("{}", report(&changes));
     Ok(())
@@ -258,10 +259,15 @@ fn parsed_arguments(run: &Run) -> Result<Arguments, Failure> {
 
 /// The files of one kind that differ between the run and now, by path.
 fn compared(recorded: &[Source], now: &[Source], kind: SourceKind, what: &'static str) -> Part {
-    let by_path = |sources: &[Source]| -> BTreeMap<String, String> {
+    let by_path = |sources: &[Source]| -> BTreeMap<String, (String, bool)> {
         (sources.iter())
             .filter(|source| source.kind == kind)
-            .map(|source| (source.path.clone(), source.digest.clone()))
+            .map(|source| {
+                (
+                    source.path.clone(),
+                    (source.digest.clone(), source.executable),
+                )
+            })
             .collect()
     };
     let (then, now) = (by_path(recorded), by_path(now));
@@ -522,12 +528,23 @@ pub fn report(changes: &Changes) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn detects_mode_changes() {
+        let before = source(SourceKind::Workflow, "helper", "sha256:aa");
+        let mut after = before.clone();
+        after.executable = true;
+        let changes = compared(&[before], &[after], SourceKind::Workflow, "workflow");
+        assert_eq!(changes.changes.len(), 1);
+        assert_eq!(changes.changes[0].kind, Kind::Changed);
+    }
+
     fn source(kind: SourceKind, path: &str, digest: &str) -> Source {
         Source {
             kind,
             path: path.into(),
             digest: digest.into(),
             size: 1,
+            executable: false,
         }
     }
 

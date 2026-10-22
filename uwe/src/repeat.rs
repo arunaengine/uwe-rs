@@ -39,6 +39,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         )));
     }
     let setup = Setup::load(arguments)?;
+    let registry = setup.registry.enter().map_err(Failure::setup)?;
     let changes = changes::found(&database, run.clone(), &setup.storage, &changes::registry)?;
     eprint!("{}", changes::report(&changes));
     let store = kept_by(&setup, &run)?;
@@ -62,6 +63,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         std::env::set_current_dir(launch)
             .map_err(|error| Failure::setup(format!("uwe: cannot work in {launch}: {error}")))?;
     }
+    drop(registry);
     let Ran { execution, id, .. } = execute(&repeated, false, &pinned)?;
     let differences = (runs::open(arguments)?.compare_steps(&run.id, &id)).map_err(broken)?;
     eprint!("{}", compared(&run, &id, &differences));
@@ -204,7 +206,13 @@ async fn copy_out(store: &Store, source: &Source, target: &Path) -> Result<(), F
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent).map_err(|error| failed(error.to_string()))?;
     }
-    std::fs::write(target, &bytes).map_err(|error| failed(error.to_string()))
+    std::fs::write(target, &bytes).map_err(|error| failed(error.to_string()))?;
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(
+        target,
+        std::fs::Permissions::from_mode(if source.executable { 0o755 } else { 0o644 }),
+    )
+    .map_err(|error| failed(error.to_string()))
 }
 
 /// The images of the run that ran at a digest, by the names that tasks gave them.
@@ -321,7 +329,11 @@ mod tests {
         let store = Store::local(&root.path().join("store")).unwrap();
         let runtime = runtime().unwrap();
         let mut sources = Vec::new();
-        for (name, text) in [("main.nf", "workflow {}"), (".settings", "kept")] {
+        for (name, text) in [
+            ("main.nf", "workflow {}"),
+            (".settings", "kept"),
+            ("helper", "#!/bin/sh\nprintf restored"),
+        ] {
             let path = root.path().join(name);
             std::fs::write(&path, text).unwrap();
             let (digest, size) = runtime.block_on(store.put_file(&path)).unwrap();
@@ -330,6 +342,7 @@ mod tests {
                 path: name.into(),
                 digest: digest.to_string(),
                 size,
+                executable: name == "helper",
             });
         }
         let commit = "0123456789abcdef0123456789abcdef01234567";
@@ -367,7 +380,18 @@ mod tests {
         let target = arguments.target.as_ref().unwrap();
         assert_eq!(crate::revision::revision(target).as_deref(), Some(commit));
         let restored = runtime.block_on(crate::sources::collect(target, &arguments));
-        assert_eq!(restored.files.len(), 2);
+        assert_eq!(restored.files.len(), 3);
+        assert!(
+            restored
+                .files
+                .iter()
+                .any(|source| source.path == "helper" && source.executable)
+        );
+        let output = std::process::Command::new(target.join("helper"))
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"restored");
         assert!(
             restored
                 .files

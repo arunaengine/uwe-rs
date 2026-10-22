@@ -24,6 +24,7 @@ fn sources() -> Vec<Source> {
         path: path.into(),
         digest: task_model::Digest::sha256(text.as_bytes()).to_string(),
         size: text.len() as u64,
+        executable: false,
     };
     vec![
         source(SourceKind::Workflow, "main.nf", WORKFLOW),

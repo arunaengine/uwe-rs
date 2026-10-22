@@ -133,11 +133,7 @@ impl Data {
             digest.hex().to_owned()
         };
         let target = self.directory.join(&name);
-        if target.exists() {
-            std::fs::remove_file(&part)?;
-        } else {
-            std::fs::rename(&part, &target)?;
-        }
+        std::fs::rename(&part, &target)?;
         Ok(Some((format!("data/{name}"), digest, size)))
     }
 
@@ -239,10 +235,9 @@ impl Data {
         };
         let target = self.directory.join(&name);
         if target.exists() {
-            std::fs::remove_dir_all(&part)?;
-        } else {
-            std::fs::rename(&part, &target)?;
+            std::fs::remove_dir_all(&target)?;
         }
+        std::fs::rename(&part, &target)?;
         Ok(Placed::Copied {
             id: format!("data/{name}/"),
             digest,
@@ -287,6 +282,40 @@ fn executable(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replaces_corrupt_exports() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("input"), "original").unwrap();
+        let output = root.path().join("crate");
+        for path in [&source, &source.join("input")] {
+            let mut data = Data::new(&output);
+            let Placed::Copied {
+                id,
+                digest,
+                directory,
+                ..
+            } = data.place(path.to_str().unwrap()).unwrap()
+            else {
+                panic!("copies input");
+            };
+            let copied = output.join(&id);
+            let damaged = if directory {
+                copied.join("input")
+            } else {
+                copied.clone()
+            };
+            std::fs::write(&damaged, "corrupt").unwrap();
+            let mut data = Data::new(&output);
+            let placed = data
+                .place_checked(path.to_str().unwrap(), Some(&digest.to_string()))
+                .unwrap();
+            assert!(matches!(placed, Placed::Copied { .. }));
+            assert_eq!(std::fs::read(&damaged).unwrap(), b"original");
+        }
+    }
 
     #[test]
     fn preserves_directory_identity() {

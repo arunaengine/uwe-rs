@@ -85,6 +85,11 @@ pub fn export(
         if !pinned::copy_checked(&main.0, &directory.join(&workflow), expected)? {
             return Err(CrateError::Workflow(options.workflow.clone()));
         }
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            directory.join(&workflow),
+            std::fs::Permissions::from_mode(if main.2 { 0o755 } else { 0o644 }),
+        )?;
     } else {
         std::fs::copy(&main.0, directory.join(&workflow))?;
     }
@@ -201,7 +206,7 @@ fn main_file(
     database: &Database,
     run: &Run,
     options: &Options,
-) -> Result<(PathBuf, Option<String>), CrateError> {
+) -> Result<(PathBuf, Option<String>, bool), CrateError> {
     let folder = run.workflow_folder.as_deref().map(Path::new);
     let recorded = (database.sources(&run.id)?.into_iter()).find(|source| {
         source.kind == run_database::SourceKind::Workflow
@@ -214,7 +219,12 @@ fn main_file(
     let kept = digest
         .as_ref()
         .and_then(|digest| options.sources.get(digest).cloned());
-    Ok((kept.unwrap_or_else(|| options.workflow.clone()), digest))
+    let executable = recorded.is_some_and(|source| source.executable);
+    Ok((
+        kept.unwrap_or_else(|| options.workflow.clone()),
+        digest,
+        executable,
+    ))
 }
 
 /// A short text for people who open the crate folder.

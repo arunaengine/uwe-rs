@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -87,7 +88,7 @@ pub struct ExecutorSpec {
 }
 
 /// The state of a task on the server.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum State {
     Unknown,
@@ -118,7 +119,7 @@ impl State {
 }
 
 /// What the server tells of a task.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Status {
     pub id: String,
     pub state: State,
@@ -126,7 +127,7 @@ pub struct Status {
     pub logs: Vec<TaskLog>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct TaskLog {
     #[serde(default)]
     pub system_logs: Vec<String>,
@@ -136,14 +137,14 @@ pub struct TaskLog {
     pub outputs: Vec<FileLog>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ExecutorLog {
     pub exit_code: Option<i32>,
     pub stdout: Option<String>,
     pub stderr: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FileLog {
     pub path: String,
     pub url: String,
@@ -183,6 +184,8 @@ pub struct Client {
     /// A bearer token for the server, when it needs one.
     token: Option<String>,
     basic: Option<(String, String)>,
+    polling: Arc<tokio::sync::Semaphore>,
+    pub(crate) history: Arc<tokio::sync::Mutex<executor::history::Scan>>,
 }
 
 impl std::fmt::Debug for Client {
@@ -224,6 +227,8 @@ impl Client {
             http,
             token,
             basic: None,
+            polling: Arc::new(tokio::sync::Semaphore::new(16)),
+            history: Default::default(),
         })
     }
 
@@ -297,6 +302,26 @@ impl Client {
             }
         }
         Ok(status)
+    }
+
+    pub(crate) async fn progress(&self, id: &str) -> Result<Status, TesError> {
+        let url = format!("{}/tasks/{id}?view=MINIMAL", self.base);
+        let _permit = tokio::time::timeout(Duration::from_secs(120), self.polling.acquire())
+            .await
+            .map_err(|_| TesError::Request {
+                url: url.clone(),
+                message: "status admission timed out".into(),
+            })?
+            .map_err(|error| TesError::Request {
+                url: url.clone(),
+                message: error.to_string(),
+            })?;
+        let status: Status = self.send(self.http.get(&url), &url).await?;
+        if status.state.is_final() {
+            self.status(id).await
+        } else {
+            Ok(status)
+        }
     }
 
     /// The tasks whose name starts with `name` and that have the tag `key` with `value`, with
@@ -384,6 +409,57 @@ fn cause(error: &reqwest::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn polls_minimal_status() {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let client =
+            Client::new(&format!("http://{}", listener.local_addr().unwrap()), None).unwrap();
+        let server = std::thread::spawn(move || {
+            let mut requests = Vec::new();
+            for state in ["RUNNING", "COMPLETE", "COMPLETE"] {
+                let (stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream);
+                let mut first = String::new();
+                reader.read_line(&mut first).unwrap();
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    if line.trim().is_empty() {
+                        break;
+                    }
+                }
+                let logs = if first.contains("view=FULL") {
+                    serde_json::json!([{ "logs": [{"exit_code":0}] }])
+                } else {
+                    serde_json::json!([])
+                };
+                requests.push(first);
+                let body = serde_json::json!({"id":"task", "state":state, "logs":logs}).to_string();
+                write!(
+                    reader.get_mut(),
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .unwrap();
+            }
+            requests
+        });
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let running = runtime.block_on(client.progress("task")).unwrap();
+        assert_eq!(running.state, State::Running);
+        assert!(running.logs.is_empty());
+        let finished = runtime.block_on(client.progress("task")).unwrap();
+        assert_eq!(finished.logs[0].logs[0].exit_code, Some(0));
+        let requests = server.join().unwrap();
+        assert!(requests[0].contains("view=MINIMAL"));
+        assert!(requests[1].contains("view=MINIMAL"));
+        assert!(requests[2].contains("view=FULL"));
+    }
 
     #[test]
     fn hides_authentication_secrets() {

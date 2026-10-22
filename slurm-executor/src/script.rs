@@ -17,6 +17,14 @@ pub const LOG: &str = "slurm.log";
 /// The file in the control folder where the job records the exit code of the container once
 /// it ended, so that the files of the task are complete.
 pub const CONTAINER_EXIT: &str = "container-exit";
+pub(crate) const ENGINE_EXIT: &str = "engine-exit";
+
+pub(crate) fn engine_marker(root: &Path) -> PathBuf {
+    root.with_file_name(format!(
+        ".{}.{ENGINE_EXIT}",
+        root.file_name().unwrap_or_default().to_string_lossy()
+    ))
+}
 
 /// How the nodes run the containers of tasks.
 #[derive(Clone, Debug)]
@@ -42,15 +50,79 @@ pub fn sbatch_options(job: Job<'_>, root: &Path, margin: u64, extra: &[String]) 
     if let Some(seconds) = placement.time_seconds {
         options.push(format!("--time={}", time(seconds.saturating_add(margin))));
     }
-    let gpus: u32 = placement.accelerators.iter().map(|gpu| gpu.count).sum();
-    if gpus > 0 {
-        options.push(format!("--gpus={gpus}"));
+    let mut gpus = std::collections::BTreeMap::<Option<&str>, u64>::new();
+    for gpu in placement.accelerators.iter().filter(|gpu| gpu.count > 0) {
+        *gpus.entry(gpu.kind.as_deref()).or_default() += u64::from(gpu.count);
+    }
+    if !gpus.is_empty() {
+        let types: Vec<_> = gpus
+            .into_iter()
+            .map(|(kind, count)| match kind {
+                Some(kind) => format!("{kind}:{count}"),
+                None => count.to_string(),
+            })
+            .collect();
+        options.push(format!("--gpus={}", types.join(",")));
     }
     if let Some(queue) = &placement.queue {
         options.push(format!("--partition={queue}"));
     }
     options.extend(extra.iter().cloned());
     options
+}
+
+pub(crate) fn check_gpus(placement: &task_model::Placement) -> Result<(), ExecutorError> {
+    for gpu in placement.accelerators.iter().filter(|gpu| gpu.count > 0) {
+        if let Some(kind) = &gpu.kind
+            && (kind.is_empty()
+                || !kind
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+                || ![
+                    "nvidia", "tesla", "rtx", "a100", "a10", "a30", "a40", "h100", "h200", "v100",
+                    "p100", "t4", "l4", "l40",
+                ]
+                .iter()
+                .any(|prefix| kind.to_ascii_lowercase().starts_with(*prefix)))
+        {
+            return Err(ExecutorError::Unsupported(format!(
+                "SLURM accelerator kind `{kind}` requires unsupported container integration"
+            )));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn shared_memory(
+    container: &Container,
+    spec: &task_model::TaskSpec,
+) -> Result<Option<u64>, ExecutorError> {
+    let Some(task_model::EnvironmentValue::Literal(text)) =
+        spec.environment.get("UWE_CONTAINER_FLAGS")
+    else {
+        return Ok(None);
+    };
+    let flags: std::collections::BTreeMap<String, i64> = serde_json::from_str(text)
+        .map_err(|_| ExecutorError::Unsupported("invalid container launch flags".into()))?;
+    let Some(bytes) = flags.get("shm").copied() else {
+        return Ok(None);
+    };
+    let bytes = u64::try_from(bytes)
+        .map_err(|_| ExecutorError::Unsupported("negative shared memory request".into()))?;
+    if !matches!(container, Container::Engine(_)) {
+        return Err(ExecutorError::Unsupported(
+            "SLURM shared memory sizing requires Docker or Podman".into(),
+        ));
+    }
+    Ok(Some(bytes))
+}
+
+pub(crate) fn size_memory(container: &Container, script: String, bytes: Option<u64>) -> String {
+    let (Container::Engine(engine), Some(bytes)) = (container, bytes) else {
+        return script;
+    };
+    let command = format!("{} 'run' '--init'", quote(&engine.program));
+    script.replace(&command, &format!("{command} '--shm-size={bytes}'"))
 }
 
 /// What the job that pulls an image into a SIF file asks for. Very large images may need more
@@ -132,15 +204,22 @@ pub fn job_script(
     let exit = quote(&control.join(CONTAINER_EXIT).to_string_lossy());
     let record = quote(&control.join(executor::wrapper::EXIT).to_string_lossy());
     format!(
-        "#!/bin/bash\n# The uwe job of one attempt of a task.\n{}{}{}{}\nstatus=$?\n{}{}\
+        "#!/bin/bash\n# The uwe job of one attempt of a task.\n{}{}{}{}{}\nstatus=$?\n{}{}{}\
          [ \"$status\" -ne 0 ] || [ -s {record} ] || echo \"uwe: the container ended, but \
          the wrapper of the task recorded no exit code on $(hostname)\" >&2\n\
          echo $status > {exit}\n",
         wait_for(&[(PathBuf::from(run.script()), size)], &exit),
+        engine_guard(
+            container,
+            &[run.name],
+            &quote(&engine_marker(run.root).to_string_lossy()),
+            ""
+        ),
         clock(time),
         timeout(time),
-        words.join(" "),
+        engine_launch(container, words.join(" "), 0),
         timed_out(time),
+        engine_finish(container),
         durable(run.root)
     )
 }
@@ -161,6 +240,14 @@ pub fn container_script(
         .map(|(run, size)| (PathBuf::from(run.script()), *size))
         .collect();
     script.push_str(&wait_for(&wrappers, &quote(&exit.to_string_lossy())));
+    let names: Vec<_> = runs.iter().map(|run| run.name).collect();
+    let marker = engine_marker(runs[0].root);
+    script.push_str(&engine_guard(
+        container,
+        &names,
+        &quote(&marker.to_string_lossy()),
+        "",
+    ));
     script.push_str(clock(time));
     script.push_str("pids=\n");
     for (index, run) in runs.iter().enumerate() {
@@ -170,17 +257,74 @@ pub fn container_script(
         let exits: Vec<String> = (exits.get(index).into_iter().flatten())
             .map(|exit| exit.to_string_lossy().into_owned())
             .collect();
-        let command = format!("{}{}", timeout(time), words.join(" "));
+        let command = format!(
+            "{}{}",
+            timeout(time),
+            engine_launch(container, words.join(" "), index)
+        );
         script.push_str(&recording_its_end(&command, &exits));
         script.push_str("pids=\"$pids $!\"\n");
     }
     script.push_str(&format!(
-        "status=0\nfor pid in $pids; do\n    wait \"$pid\"\n    code=$?\n    [ \"$status\" -ne 0 ] || status=$code\ndone\n{}{}echo \"$status\" > {}\n",
+        "status=0\nfor pid in $pids; do\n    wait \"$pid\"\n    code=$?\n    [ \"$status\" -ne 0 ] || status=$code\ndone\n{}{}{}echo \"$status\" > {}\n",
         timed_out(time),
+        engine_finish(container),
         durable(runs[0].root),
         quote(&exit.to_string_lossy())
     ));
     script
+}
+
+pub(crate) fn engine_guard(
+    container: &Container,
+    _names: &[&str],
+    marker: &str,
+    publish: &str,
+) -> String {
+    let Container::Engine(engine) = container else {
+        return String::new();
+    };
+    let engine = quote(&engine.program);
+    let publish = if publish.is_empty() { ":" } else { publish };
+    format!(
+        "engine_done=\nengine_tag=$(cat /proc/sys/kernel/random/uuid) && \
+         engine_dir=$(mktemp -d {marker}.XXXXXXXX) || exit {NOT_SEEN}\n\
+         mark_engine() {{\n    echo \"$1\" > {marker} && sync -- {marker} && {publish}\n}}\n\
+         engine_clean() {{\n    [ -z \"$engine_done\" ] || return 0\n    trap '' TERM INT HUP\n    failed=\n\
+         owned=$(timeout --kill-after=5 10 {engine} ps --all --quiet --no-trunc \
+         --filter \"label=org.uwe.invocation=$engine_tag\") || return 1\n\
+         for id in $owned; do\n        recorded=\n        for file in \"$engine_dir\"/*; do\n\
+         [ -s \"$file\" ] || continue\n            read -r cid < \"$file\" || continue\n\
+         [ \"$cid\" != \"$id\" ] || recorded=1\n        done\n\
+         [ -n \"$recorded\" ] || {{ failed=1; continue; }}\n\
+         label=$(timeout --kill-after=5 10 {engine} inspect \
+         --format '{{{{ index .Config.Labels \"org.uwe.invocation\" }}}}' \"$id\") || {{ failed=1; continue; }}\n\
+         [ \"$label\" = \"$engine_tag\" ] || {{ failed=1; continue; }}\n\
+         timeout --kill-after=5 20 {engine} rm --force \"$id\" > /dev/null 2>&1 || failed=1\n\
+         done\n    [ -z \"$failed\" ] || return 1\n\
+         left=$(timeout --kill-after=5 10 {engine} ps --all --quiet --no-trunc \
+         --filter \"label=org.uwe.invocation=$engine_tag\") || return 1\n\
+         [ -z \"$left\" ] || return 1\n    mark_engine 0 || return 1\n\
+         rm -rf \"$engine_dir\"\n    engine_done=1\n}}\n\
+         trap engine_clean EXIT\ntrap 'exit 143' TERM INT HUP\nmark_engine 1 || exit {NOT_SEEN}\n",
+    )
+}
+
+pub(crate) fn engine_launch(container: &Container, script: String, index: usize) -> String {
+    let Container::Engine(engine) = container else {
+        return script;
+    };
+    let command = format!("{} 'run' '--init'", quote(&engine.program));
+    script.replace(&command, &format!(
+        "{command} '--label' \"org.uwe.invocation=$engine_tag\" '--cidfile' \"$engine_dir/{index}\""
+    ))
+}
+
+pub(crate) fn engine_finish(container: &Container) -> &'static str {
+    match container {
+        Container::Engine(_) => "engine_clean || exit 125\n",
+        _ => "",
+    }
 }
 
 /// The exit code that a job records when the node does not see the whole wrapper of its task
@@ -325,6 +469,77 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn preserves_name_conflicts() {
+        use std::os::unix::fs::PermissionsExt;
+        for mode in ["collision", "replacement", "owned"] {
+            let root = tempfile::tempdir().unwrap();
+            let engine = root.path().join("engine");
+            std::fs::write(root.path().join("mode"), mode).unwrap();
+            std::fs::write(
+                &engine,
+                r#"#!/bin/bash
+state=$(dirname "$0")
+id=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+case "$1" in
+run)
+    shift
+    while [ $# -gt 0 ]; do
+        case "$1" in --label) label=$2; shift ;; --cidfile) cid=$2; shift ;; esac
+        shift
+    done
+    echo preserved > "$state/unrelated"
+    [ "$(cat "$state/mode")" != collision ] || exit 125
+    echo "$id" > "$cid"
+    echo "${label#*=}" > "$state/label"
+    touch "$state/owned"
+    [ "$(cat "$state/mode")" != replacement ] || rm "$state/owned"
+    ;;
+ps)
+    [ ! -e "$state/owned" ] || echo "$id"
+    ;;
+inspect) cat "$state/label" ;;
+rm)
+    [ "${@: -1}" = "$id" ] || { rm -f "$state/unrelated"; exit 1; }
+    echo "$id" > "$state/removed"
+    rm -f "$state/owned"
+    ;;
+esac
+"#,
+            )
+            .unwrap();
+            std::fs::set_permissions(&engine, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let container = Container::Engine(EngineCommand::docker(engine.to_str().unwrap()));
+            let marker = root.path().join("proof");
+            let launch = engine_launch(
+                &container,
+                format!(
+                    "{} 'run' '--init' '--name' 'taken' image",
+                    quote(engine.to_str().unwrap())
+                ),
+                0,
+            );
+            let script = format!(
+                "{}{}\nstatus=$?\nengine_clean || exit 1\nexit \"$status\"\n",
+                engine_guard(&container, &["taken"], &quote(marker.to_str().unwrap()), ""),
+                launch
+            );
+            let output = std::process::Command::new("bash")
+                .arg("-c")
+                .arg(script)
+                .output()
+                .unwrap();
+            assert_eq!(
+                output.status.code(),
+                Some(if mode == "collision" { 125 } else { 0 }),
+                "{output:?}"
+            );
+            assert!(root.path().join("unrelated").exists(), "{mode}");
+            assert_eq!(root.path().join("removed").exists(), mode == "owned");
+            assert_eq!(std::fs::read_to_string(marker).unwrap(), "0\n");
+        }
+    }
+
     fn spec(workdir: Option<&str>) -> TaskSpec {
         TaskSpec {
             run_as: None,
@@ -339,6 +554,7 @@ mod tests {
             environment: BTreeMap::new(),
             inputs: Vec::new(),
             outputs: Vec::new(),
+            output_manifest: None,
             stdin: None,
             containers: Vec::new(),
             replaces_entrypoint: false,
@@ -372,6 +588,57 @@ mod tests {
         capabilities: Vec::new(),
         hand_back: None,
     };
+
+    #[test]
+    fn preserves_gpu_types() {
+        let spec = spec(None);
+        let staging = Staging::default();
+        let mut placement = Placement {
+            accelerators: vec![Accelerator {
+                count: 2,
+                kind: Some("a100_80gb".into()),
+            }],
+            ..Placement::default()
+        };
+        check_gpus(&placement).unwrap();
+        let options = sbatch_options(
+            Job {
+                name: "typed",
+                spec: &spec,
+                staging: &staging,
+                placement: &placement,
+            },
+            Path::new("/scratch"),
+            0,
+            &[],
+        );
+        assert!(options.contains(&"--gpus=a100_80gb:2".to_owned()));
+        placement.accelerators[0].kind = Some("mi250".into());
+        assert!(matches!(
+            check_gpus(&placement),
+            Err(ExecutorError::Unsupported(_))
+        ));
+    }
+
+    #[test]
+    fn sizes_engine_memory() {
+        let container = Container::Engine(EngineCommand::docker("docker"));
+        let mut spec = spec(None);
+        spec.environment.insert(
+            "UWE_CONTAINER_FLAGS".into(),
+            task_model::EnvironmentValue::Literal("{\"shm\":1073741824}".into()),
+        );
+        let bytes = shared_memory(&container, &spec).unwrap();
+        let image = spec.image.as_ref().unwrap();
+        let run = run(image, &[], None);
+        let script = size_memory(
+            &container,
+            job_script(&container, &run, false, None, 0),
+            bytes,
+        );
+        assert!(script.contains("'run' '--init' '--shm-size=1073741824'"));
+        assert!(shared_memory(&Container::Apptainer("apptainer".into()), &spec).is_err());
+    }
 
     #[test]
     fn requests_task_resources() {
@@ -565,7 +832,7 @@ mod tests {
         );
         assert!(
             script.contains(
-                "\nstatus=$?\n[ $status -eq 137 ] && [ $SECONDS -ge 90 ] && status=124\nfind "
+                "\nstatus=$?\n[ $status -eq 137 ] && [ $SECONDS -ge 90 ] && status=124\nengine_clean || exit 125\nfind "
             ),
             "{script}"
         );

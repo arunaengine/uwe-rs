@@ -98,6 +98,10 @@ for argument in "$@"; do
 done
 mkdir -p "$state"
 # A busy controller answers late.
+if [ -n "$identified" ] && [ -e "$(dirname "$0")/identity-fails" ]; then
+    rm "$(dirname "$0")/identity-fails"
+    exit 1
+fi
 [ ! -e "$(dirname "$0")/slow" ] || sleep 6
 echo "${json:-text}" >> "$state/squeue"
 if [ -n "$name" ]; then
@@ -298,6 +302,7 @@ fn spec(script: &str) -> TaskSpec {
         outputs: vec![OutputRule {
             pattern: "out.txt".into(),
         }],
+        output_manifest: None,
         stdin: None,
         containers: Vec::new(),
         replaces_entrypoint: false,
@@ -383,6 +388,41 @@ async fn returns_job_outputs() {
     // Job 101 pulled the image.
     let options = std::fs::read_to_string(bin.join("state/102.options")).expect("the options");
     assert!(options.contains("--mem=256M\n--account=lab\n"), "{options}");
+}
+
+#[tokio::test]
+async fn collects_manifest_outputs() {
+    let root = tempfile::tempdir().unwrap();
+    let bin = cluster(root.path(), APPTAINER);
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    let mut spec = spec(
+        "echo selected > dynamic.txt; echo ignored > ignored.txt; \
+         printf '%s' '{\"out\":{\"class\":\"File\",\"location\":\"dynamic.txt\"}}' > cwl.output.json",
+    );
+    spec.outputs.clear();
+    spec.output_manifest = Some("cwl.output.json".into());
+    let finished = backend
+        .run(
+            Job {
+                name: "manifest",
+                spec: &spec,
+                staging: &Staging::default(),
+                placement: &placement(),
+            },
+            &CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(finished.files.len(), 1);
+    assert_eq!(finished.files[0].path, "dynamic.txt");
+    assert_eq!(
+        std::fs::read(finished.local_path("dynamic.txt")).unwrap(),
+        b"selected\n"
+    );
 }
 
 #[tokio::test]
@@ -1090,6 +1130,10 @@ async fn recovers_dropped_attempts() {
         result = active.run(old, &cancel) => panic!("{result:?}"),
         () = until(|| submitted(&journal)) => {}
     }
+    let mut record: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&journal).unwrap()).unwrap();
+    record["host"] = serde_json::json!("previous-boot");
+    std::fs::write(&journal, record.to_string()).unwrap();
     let delay = bin.join("completing");
     std::fs::write(&delay, "").unwrap();
     let mut next = spec.clone();
@@ -1118,6 +1162,120 @@ async fn recovers_dropped_attempts() {
             .unwrap()
             .contains("--name=uwe-dropped")
     );
+}
+
+#[tokio::test]
+async fn confirms_daemon_removal() {
+    struct Daemon(PathBuf);
+    impl Drop for Daemon {
+        fn drop(&mut self) {
+            if let Ok(pid) = std::fs::read_to_string(&self.0) {
+                let _ = std::process::Command::new("kill")
+                    .args(["-KILL", "--", &format!("-{}", pid.trim())])
+                    .status();
+            }
+        }
+    }
+    for refuses in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let bin = cluster(root.path(), APPTAINER);
+        let engine = bin.join("docker");
+        std::fs::write(&engine, r#"#!/bin/bash
+state="$(dirname "$0")/state"
+mkdir -p "$state"
+case "$1" in
+    run)
+        shift
+        while [ $# -gt 0 ]; do
+            case "$1" in --label) echo "${2#*=}" > "$state/label"; shift ;; --cidfile) echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa > "$2"; shift ;; esac
+            shift
+        done
+        setsid bash -c 'trap "" TERM INT HUP; echo $$ > "$1"; exec sleep 300' daemon "$state/daemon" > /dev/null 2>&1 &
+        until [ -s "$state/daemon" ]; do sleep 0.01; done
+        touch "$state/ready"
+        sleep 300 ;;
+    rm)
+        [ "${@: -1}" = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ] || exit 2
+        [ ! -e "$state/refuse" ] || exit 1
+        [ ! -e "$state/daemon" ] || kill -KILL -- "-$(cat "$state/daemon")"
+        rm -f "$state/daemon" ;;
+    ps) [ ! -e "$state/daemon" ] || echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
+    inspect) cat "$state/label" ;;
+    *) exit 2 ;;
+esac
+"#).unwrap();
+        std::fs::set_permissions(&engine, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if refuses {
+            std::fs::create_dir_all(bin.join("state")).unwrap();
+            std::fs::write(bin.join("state/refuse"), "").unwrap();
+        }
+        let daemon = Daemon(bin.join("state/daemon"));
+        let backend = backend(
+            root.path(),
+            &bin,
+            Container::Engine(EngineCommand::docker(&text(&engine))),
+        );
+        let spec = spec("sleep 300");
+        let (staging, placement, cancel) =
+            (Staging::default(), placement(), CancellationToken::new());
+        let run = backend.run(
+            Job {
+                name: "daemon",
+                spec: &spec,
+                staging: &staging,
+                placement: &placement,
+            },
+            &cancel,
+        );
+        let stop = async {
+            until(|| bin.join("state/ready").exists()).await;
+            cancel.cancel();
+        };
+        let (result, ()) = tokio::join!(run, stop);
+        let journal = backend.scratch.join("daemon/remote.json");
+        if refuses {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("container removal")
+            );
+            assert!(journal.exists());
+            assert!(daemon.0.exists());
+        } else {
+            assert!(matches!(result, Err(ExecutorError::Cancelled)));
+            assert!(!journal.exists());
+            assert!(!daemon.0.exists());
+        }
+    }
+}
+
+#[tokio::test]
+async fn retries_scheduler_identity() {
+    let root = tempfile::tempdir().unwrap();
+    let bin = cluster(root.path(), APPTAINER);
+    std::fs::write(bin.join("identity-fails"), "").unwrap();
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    let mut spec = spec("echo recovered > out.txt");
+    spec.image.as_mut().unwrap().reference = "/images/tool.sif".into();
+    let result = backend
+        .run(
+            Job {
+                name: "identity-retry",
+                spec: &spec,
+                staging: &Staging::default(),
+                placement: &placement(),
+            },
+            &CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, Some(0));
+    assert!(!result.root.join("remote.json").exists());
 }
 
 #[tokio::test]
@@ -1512,28 +1670,33 @@ async fn docker_groups_images() {
 
 #[tokio::test]
 async fn stages_through_objects() {
-    stage_objects(false, false, false).await;
+    stage_objects(false, false, false, false).await;
 }
 
 #[tokio::test]
 async fn stages_with_credentials() {
-    stage_objects(true, false, false).await;
+    stage_objects(true, false, false, false).await;
 }
 
 #[tokio::test]
 async fn stages_uploaded_helper() {
-    stage_objects(false, true, false).await;
+    stage_objects(false, true, false, false).await;
 }
 
 #[tokio::test]
 async fn stages_image_archives() {
-    stage_objects(false, false, true).await;
+    stage_objects(false, false, true, false).await;
+}
+
+#[tokio::test]
+async fn stages_manifest_outputs() {
+    stage_objects(false, false, false, true).await;
 }
 
 /// Runs a task through a staging root, with presigned requests, or with the credentials of the
 /// file of storage providers and a cleanup of the staging root. An `upload` job downloads the
 /// helper from the staging root; an `archive` task runs an image archive of this machine.
-async fn stage_objects(credentials: bool, upload: bool, archive: bool) {
+async fn stage_objects(credentials: bool, upload: bool, archive: bool, manifest: bool) {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), NODE_APPTAINER);
     let mut backend = backend(
@@ -1596,6 +1759,13 @@ async fn stage_objects(credentials: bool, upload: bool, archive: bool) {
         secret_file: secret_file.clone(),
     });
     let mut spec = spec("tr a-z A-Z < in.txt > out.txt && cat /opt/uwe-test/extra.txt >> out.txt");
+    if manifest {
+        spec.arguments[2].push_str(
+            "; printf '%s' '{\"out\":{\"class\":\"File\",\"location\":\"out.txt\"}}' > cwl.output.json",
+        );
+        spec.outputs[0].pattern = "cwl.output.json".into();
+        spec.output_manifest = Some("cwl.output.json".into());
+    }
     let archived = archive.then(|| image_archive(root.path(), &[]));
     if let Some(reference) = &archived {
         spec.image = Some(Image {

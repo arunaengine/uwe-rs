@@ -12,6 +12,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
+pub use crate::manifest::Discovery;
+
 /// The copy of the plan that stage-in keeps in the folder for stage-out.
 pub const PLAN: &str = "plan.json";
 /// The folder of numbered output files that the capture wrapper fills.
@@ -45,6 +47,8 @@ pub struct Plan {
     /// than the helper.
     #[serde(default)]
     pub open: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discovery: Option<Discovery>,
 }
 
 /// One file to download.
@@ -77,9 +81,8 @@ pub struct Request {
     pub headers: Vec<(String, String)>,
 }
 
-/// Runs `__stage in <folder> <plan> [<control>]`, `__stage out <folder> [<control>]` or
-/// `__stage install <file>`. The plan stays in `<control>`, a folder that the task cannot
-/// reach, else in `<folder>`.
+/// Runs stage-in, stage-out, discovery, or installation from `__stage` arguments.
+/// Stage-in keeps its plan in the separate control folder when supplied.
 pub fn main(arguments: &[String]) -> Result<(), String> {
     match arguments {
         [command, folder, plan, control @ ..] if command == "in" && control.len() < 2 => {
@@ -102,9 +105,14 @@ pub fn main(arguments: &[String]) -> Result<(), String> {
             stage_out(folder, control, &plan)
         }
         [command, file] if command == "install" => install(Path::new(file)),
+        [command, folder, config] if command == "discover" => {
+            let discovery: Discovery = serde_json::from_str(config)
+                .map_err(|error| format!("invalid discovery: {error}"))?;
+            discover(Path::new(folder), &discovery, 100_000)
+        }
         _ => Err(
             "use `__stage in <folder> <plan> [<control>]`, `__stage out <folder> [<control>]` \
-             or `__stage install <file>`"
+             `__stage discover <folder> <config-json>` or `__stage install <file>`"
                 .into(),
         ),
     }
@@ -131,6 +139,9 @@ pub fn stage_in(folder: &Path, plan: &Plan) -> Result<(), String> {
 /// Uploads the numbered output files and then the control records that exist. A record in
 /// `control`, like the log of the job, comes before one that the task wrote.
 pub fn stage_out(folder: &Path, control: Option<&Path>, plan: &Plan) -> Result<(), String> {
+    if let Some(discovery) = &plan.discovery {
+        discover(folder, discovery, plan.files.len())?;
+    }
     let client = client(None)?;
     let mut number = 1;
     while let Ok(metadata) =
@@ -161,6 +172,154 @@ pub fn stage_out(folder: &Path, control: Option<&Path>, plan: &Plan) -> Result<(
         }
     }
     Ok(())
+}
+
+/// Appends JSON-selected outputs to the existing container-side capture.
+pub fn discover(folder: &Path, discovery: &Discovery, limit: usize) -> Result<(), String> {
+    let folder = folder.canonicalize().map_err(|error| error.to_string())?;
+    let folder = folder.as_path();
+    discovery.check(folder)?;
+    let mut finished =
+        crate::Finished::from_control(folder.to_owned()).map_err(|error| error.to_string())?;
+    if finished.exit_code != Some(0) {
+        return Ok(());
+    }
+    let original = finished.files.len();
+    discovery.collect(folder, &mut finished.files)?;
+    let transfer = folder.join(TRANSFER);
+    std::fs::create_dir_all(&transfer).map_err(|error| error.to_string())?;
+    let mut index =
+        std::fs::read_to_string(folder.join(crate::CONTROL).join(crate::capture::INDEX))
+            .map_err(|error| error.to_string())?;
+    let mut paths = std::collections::BTreeSet::new();
+    for line in index.lines() {
+        let (number, path) = line.split_once(' ').ok_or("the capture index is invalid")?;
+        let number: usize = number.parse().map_err(|_| "the capture index is invalid")?;
+        crate::manifest::parse(&format!("file {path}")).map_err(|error| error.to_string())?;
+        if number != paths.len() + 1 || !paths.insert(path.trim_start_matches("./").to_owned()) {
+            return Err("the capture index is not a sequence of unique paths".into());
+        }
+        let source = transfer.join(number.to_string());
+        crate::manifest::check_path(folder, &source)?;
+        if !std::fs::symlink_metadata(source).is_ok_and(|data| data.is_file()) {
+            return Err("a captured output file is missing or is not a regular file".into());
+        }
+    }
+    if paths.len() > limit {
+        return Err(format!(
+            "the task has more than {limit} output files, which the plan allows"
+        ));
+    }
+    let mut empty = Vec::new();
+    for file in &finished.files[original..] {
+        let source = if !file.path.starts_with('/')
+            && let Some(work) = &discovery.work
+        {
+            Path::new(work).join(&file.path)
+        } else {
+            finished.local_path(&file.path)
+        };
+        empty.extend(flatten(
+            &source, &file.path, &transfer, &mut paths, &mut index, limit, 0,
+        )?);
+    }
+    for path in empty {
+        if !finished.files.iter().any(|file| file.path == path) {
+            finished.files.push(crate::manifest::Collected {
+                path,
+                directory: true,
+            });
+        }
+    }
+    let manifest: String = finished
+        .files
+        .iter()
+        .map(|file| {
+            format!(
+                "{} {}\n",
+                if file.directory { "directory" } else { "file" },
+                file.path
+            )
+        })
+        .collect();
+    std::fs::write(
+        folder.join(crate::CONTROL).join(crate::wrapper::MANIFEST),
+        manifest,
+    )
+    .map_err(|error| error.to_string())?;
+    std::fs::write(
+        folder.join(crate::CONTROL).join(crate::capture::INDEX),
+        index,
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn flatten(
+    source: &Path,
+    path: &str,
+    transfer: &Path,
+    paths: &mut std::collections::BTreeSet<String>,
+    index: &mut String,
+    limit: usize,
+    depth: usize,
+) -> Result<Vec<String>, String> {
+    let mut empty = Vec::new();
+    if depth > 64 || path.contains(['\n', '\r', '\0']) {
+        return Err("an output path is invalid or exceeds depth 64".into());
+    }
+    let data = std::fs::symlink_metadata(source).map_err(|error| error.to_string())?;
+    if source.is_dir() {
+        if data.is_symlink() {
+            return Err("cannot capture directory links".into());
+        }
+        let mut entries = std::fs::read_dir(source)
+            .map_err(|error| error.to_string())?
+            .take(100_001)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+        if entries.len() > 100_000 {
+            return Err("an output directory exceeds 100000 entries".into());
+        }
+        if entries.is_empty() {
+            empty.push(path.trim_start_matches("./").to_owned());
+        }
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let name = entry
+                .file_name()
+                .into_string()
+                .map_err(|_| "an output path is not UTF-8")?;
+            empty.extend(flatten(
+                &entry.path(),
+                &format!("{path}/{name}"),
+                transfer,
+                paths,
+                index,
+                limit,
+                depth + 1,
+            )?);
+        }
+    } else if source.is_file() {
+        let path = path.trim_start_matches("./");
+        if paths.insert(path.to_owned()) {
+            if paths.len() > limit {
+                return Err(format!(
+                    "the task has more than {limit} output files, which the plan allows"
+                ));
+            }
+            let number = paths.len();
+            let target = transfer.join(number.to_string());
+            crate::manifest::check_path(
+                transfer.parent().ok_or("the transfer has no parent")?,
+                &target,
+            )?;
+            std::fs::copy(source, target).map_err(|error| error.to_string())?;
+            index.push_str(&format!("{number} {path}\n"));
+        }
+    } else {
+        return Err("an output is not a regular file".into());
+    }
+    Ok(empty)
 }
 
 /// Copies this program to `file`, for a container that gets it from an init container.

@@ -107,6 +107,51 @@ fn requests(run: &Run) -> Vec<Json> {
 }
 
 #[test]
+fn propagates_truth_errors() {
+    for expression in ["bool(toy)", "len(toy)", "1 if toy else 0"] {
+        let mut test = interpreter(
+            vec![
+                handle(1, "module", false),
+                error("ValueError", "builtins", &[], "ambiguous"),
+            ],
+            None,
+        );
+        let failure = run(&mut test, &format!("import toy\n{expression}\n"))
+            .expect_err("package exception propagates");
+        assert!(failure.is("ValueError"), "{failure}");
+        assert_eq!(
+            requests(&test).len(),
+            2,
+            "no fallback request after failure"
+        );
+        let mut test = interpreter(vec![handle(1, "module", false)], None);
+        let failure = run(&mut test, &format!("import toy\n{expression}\n"))
+            .expect_err("transport failure stops evaluation");
+        assert!(
+            failure.exception().is_none() && !failure.is_unsupported(),
+            "{failure}"
+        );
+        assert_eq!(requests(&test).len(), 2);
+    }
+}
+
+#[test]
+fn returns_package_truth() {
+    let mut test = interpreter(
+        vec![
+            handle(1, "module", false),
+            value(json!(false)),
+            value(json!(7)),
+        ],
+        None,
+    );
+    assert_eq!(
+        run(&mut test, "import toy\nprint(bool(toy), len(toy))\n").unwrap(),
+        "False 7\n"
+    );
+}
+
+#[test]
 fn returns_package_values() {
     let mut test = interpreter(
         vec![

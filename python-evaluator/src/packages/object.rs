@@ -62,6 +62,22 @@ impl PackageObject {
         self.class_name.as_deref()
     }
 
+    pub(crate) fn truth(&self) -> Result<bool, Error> {
+        match self.ask("bool", Vec::new())? {
+            Value::Bool(value) => Ok(value),
+            _ => Err(Error::stop(
+                "the Python package returned a non-boolean truth value",
+            )),
+        }
+    }
+
+    pub(crate) fn size(&self) -> Result<usize, Error> {
+        self.ask("len", Vec::new())?
+            .as_int()
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| Error::stop("the Python package returned an invalid length"))
+    }
+
     /// Whether the object is a class of exceptions of the package that an exception of the
     /// package is, or derives from, so that `except package.Error:` catches it.
     pub fn catches(&self, exception: &Value) -> bool {
@@ -217,23 +233,13 @@ impl Native for PackageObject {
     }
 
     fn length(&self) -> Option<usize> {
-        self.ask("len", Vec::new())
-            .ok()
-            .and_then(|length| length.as_int())
-            .and_then(|length| usize::try_from(length).ok())
+        self.size().ok()
     }
 
     fn contains(&self, interpreter: &mut Interpreter, item: &Value) -> Result<Option<bool>, Error> {
         let item = encode(interpreter, item)?;
         let found = self.ask("contains", vec![("item", item)])?;
         Ok(Some(matches!(found, Value::Bool(true))))
-    }
-
-    fn truthy(&self) -> Option<bool> {
-        match self.ask("bool", Vec::new()) {
-            Ok(Value::Bool(flag)) => Some(flag),
-            _ => None,
-        }
     }
 
     fn to_str(&self, _: &mut Interpreter) -> Result<Option<String>, Error> {

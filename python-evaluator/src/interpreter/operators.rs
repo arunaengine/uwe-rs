@@ -560,6 +560,21 @@ impl Interpreter {
 
     /// `bool(value)`.
     pub fn truthy(&mut self, value: &Value) -> Result<bool, Error> {
+        if let Some(object) = value.as_native::<crate::packages::PackageObject>() {
+            return object.truth();
+        }
+        if let Some(array) = value.as_native::<crate::pandas::Array>() {
+            let element = match array.values.borrow().as_slice() {
+                [] => return Ok(false),
+                [value] => value.clone(),
+                _ => {
+                    return Err(Error::value_error(
+                        "The truth value of an array with more than one element is ambiguous",
+                    ));
+                }
+            };
+            return self.truthy(&element);
+        }
         if value.as_native::<crate::pandas::Series>().is_some()
             || value.as_native::<crate::pandas::DataFrame>().is_some()
             || value.as_native::<crate::pandas::IndexObject>().is_some()

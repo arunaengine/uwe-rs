@@ -78,15 +78,17 @@ pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let overlaps = destinations[index].as_ref().is_some_and(|path| {
-            destinations.iter().enumerate().any(|(other, destination)| {
-                other != index
-                    && destination.as_ref().is_some_and(|destination| {
-                        path.starts_with(destination) || destination.starts_with(path)
-                    })
+        let overlaps = || {
+            destinations[index].as_ref().is_some_and(|path| {
+                destinations.iter().enumerate().any(|(other, destination)| {
+                    other != index
+                        && destination.as_ref().is_some_and(|destination| {
+                            path.starts_with(destination) || destination.starts_with(path)
+                        })
+                })
             })
-        });
-        if input.copy || overlaps {
+        };
+        if input.copy || overlaps() {
             copy(input, &target)?;
             if path.starts_with('/') {
                 made.insert(Path::new(path).components().collect());

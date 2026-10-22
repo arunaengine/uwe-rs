@@ -100,6 +100,15 @@ impl<B: Backend> Runner<B> {
         cancel: &CancellationToken,
         snapshots: &Snapshots,
     ) -> Result<Finished, ExecutorError> {
+        // Group output capture follows input mounts beneath each member directory.
+        if job
+            .staging
+            .inputs
+            .iter()
+            .any(|input| !input.copy && self.inputs().references.contains(&input.source))
+        {
+            return self.backend.run(job, cancel).await;
+        }
         let (reply, mut answer) = oneshot::channel();
         let key = key(&job);
         let member = Member {
@@ -567,6 +576,91 @@ mod tests {
             "the group keeps the flags, the wrappers the rest"
         );
         assert_eq!(spec.environment[FLAGS], flags(r#"{"shm":2147483648}"#));
+    }
+
+    #[tokio::test]
+    async fn references_bypass_groups() {
+        use std::os::unix::fs::PermissionsExt;
+
+        struct Direct;
+        impl Backend for Direct {
+            async fn pin(&self, _: &str) -> Result<Option<String>, ExecutorError> {
+                Ok(None)
+            }
+            async fn run(
+                &self,
+                job: Job<'_>,
+                _: &CancellationToken,
+            ) -> Result<Finished, ExecutorError> {
+                assert!(matches!(job.name, "first" | "second"));
+                assert_eq!(
+                    job.spec.outputs,
+                    [OutputRule {
+                        pattern: "out.txt".into()
+                    }]
+                );
+                assert_eq!(job.staging.inputs.len(), 1);
+                assert_eq!(job.staging.inputs[0].path, "database");
+                assert!(!job.staging.inputs[0].copy);
+                assert!(job.staging.inputs[0].directory);
+                Ok(Finished {
+                    root: job.name.into(),
+                    exit_code: Some(0),
+                    files: Vec::new(),
+                    usage: None,
+                    address: None,
+                })
+            }
+        }
+        let root = tempfile::tempdir().unwrap();
+        let reference = root.path().join("reference");
+        std::fs::create_dir(&reference).unwrap();
+        let file = reference.join("genome");
+        std::fs::write(&file, b"ACGT").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o444)).unwrap();
+        std::fs::set_permissions(&reference, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let mut references = crate::References::default();
+        references
+            .register(
+                &reference,
+                crate::reference_digest(&reference).await.unwrap(),
+            )
+            .await
+            .unwrap();
+        let settings = crate::Settings {
+            downloads: root.path().join("downloads"),
+            import_inputs: true,
+            storage: storage::Storage::default(),
+            digests: None,
+        };
+        let mut runner = Runner::new(
+            content_store::Store::local(&root.path().join("store")).unwrap(),
+            Direct,
+            "test",
+            settings,
+        );
+        runner.references(references);
+        let (mut first, _) = member("first", "out.txt");
+        let (mut second, _) = member("second", "out.txt");
+        for member in [&mut first, &mut second] {
+            member.spec.replaces_entrypoint = true;
+            member.staging.stdin = None;
+            member.staging.inputs[0] = Staged {
+                path: "database".into(),
+                source: reference.clone(),
+                directory: true,
+                ..Staged::default()
+            };
+            assert!(joinable(&member.job()));
+        }
+        let (first_result, second_result) = tokio::join!(
+            runner.together(first.job(), 4, &first.cancel, &first._snapshots),
+            runner.together(second.job(), 4, &second.cancel, &second._snapshots)
+        );
+        assert_eq!(first_result.unwrap().root, Path::new("first"));
+        assert_eq!(second_result.unwrap().root, Path::new("second"));
+        assert!(runner.gathering.lock().unwrap().is_empty());
+        std::fs::set_permissions(reference, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 
     #[tokio::test]

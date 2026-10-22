@@ -29,123 +29,6 @@ pub use os::{PathObject, glob_regex, make_dirs};
 pub use re::{Pattern, compile as compile_regex, translate as translate_regex};
 pub use yte::render_document as render_yte;
 
-/// The modules that have a native stand-in.
-const NATIVE: &[&str] = &[
-    "os",
-    "os.path",
-    "posixpath",
-    "sys",
-    "re",
-    "json",
-    "yaml",
-    "glob",
-    "math",
-    "itertools",
-    "functools",
-    "collections",
-    "collections.abc",
-    "pathlib",
-    "csv",
-    "datetime",
-    "time",
-    "string",
-    "textwrap",
-    "shutil",
-    "subprocess",
-    "warnings",
-    "logging",
-    "socket",
-    "platform",
-    "getpass",
-    "copy",
-    "typing",
-    "typing_extensions",
-    "operator",
-    "random",
-    "gzip",
-    "tempfile",
-    "io",
-    "dataclasses",
-    "abc",
-    "contextlib",
-    "fnmatch",
-    "errno",
-    "traceback",
-    "pprint",
-    "statistics",
-    "uuid",
-    "pandas",
-    "polars",
-    "numpy",
-    "urllib",
-    "urllib.parse",
-    "urllib.request",
-    "hashlib",
-    "inspect",
-    "types",
-    "enum",
-    "builtins",
-    "argparse",
-    "locale",
-    "signal",
-    "multiprocessing",
-    "threading",
-    "concurrent",
-    "concurrent.futures",
-    "zipfile",
-    "tarfile",
-    "requests",
-    "base64",
-    "codecs",
-    "struct",
-    "decimal",
-    "fractions",
-    "numbers",
-    "keyword",
-    "shlex",
-    "difflib",
-    "bisect",
-    "heapq",
-    "calendar",
-    "zlib",
-    "__future__",
-    "importlib",
-    "pkgutil",
-    "atexit",
-    "gc",
-    "weakref",
-    "psutil",
-    "distutils",
-    "packaging",
-    "packaging.version",
-    "importlib.metadata",
-    "pkg_resources",
-    "unicodedata",
-    "pwd",
-    "queue",
-    "pickle",
-    "fileinput",
-    "filecmp",
-    "urllib.error",
-    "tkinter",
-    "configparser",
-    "email",
-    "email.message",
-    "imaplib",
-    "smtplib",
-    "resource",
-    "pyarrow",
-    "yte",
-    "git",
-    "git.exc",
-];
-
-/// Whether a module name has a native stand-in, so that missing names in it are unsupported
-/// rather than errors of the workflow.
-pub fn is_native(name: &str) -> bool {
-    NATIVE.contains(&name)
-}
-
 /// Names that Python 3 removed from modules that have a stand-in. Code that still uses them
 /// gets the `AttributeError` of Python, which it may catch, rather than an unsupported
 /// feature.
@@ -378,9 +261,29 @@ pub fn is_removed(module: &str, name: &str) -> bool {
     REMOVED.contains(&(module, name))
 }
 
-/// The stand-in module of that name, if there is one.
-pub fn native(interpreter: &mut Interpreter, name: &str) -> Result<Option<Value>, Error> {
-    let entries: Vec<(&str, Value)> = match name {
+// One registry keeps missing-attribute classification aligned with module construction.
+macro_rules! native_modules {
+    ($interpreter:ident, $name:ident; $($module:pat => $entries:expr),* $(,)?) => {
+        /// Whether missing module attributes represent unsupported library features.
+        pub fn is_native(name: &str) -> bool {
+            match name {
+                $($module => true,)*
+                _ => false,
+            }
+        }
+
+        /// Constructs the named library stand-in, when registered.
+        pub fn native($interpreter: &mut Interpreter, $name: &str) -> Result<Option<Value>, Error> {
+            let entries: Vec<(&str, Value)> = match $name {
+                $($module => $entries,)*
+                _ => return Ok(None),
+            };
+            Ok(Some(module($name, entries)))
+        }
+    };
+}
+
+native_modules! { interpreter, name;
         "os" => os::os(interpreter)?,
         "os.path" | "posixpath" => os::path(),
         "glob" => os::glob_module(),
@@ -459,26 +362,22 @@ pub fn native(interpreter: &mut Interpreter, name: &str) -> Result<Option<Value>
                 name: "builtins".into(),
                 globals: builtins,
             }))));
-        }
+        },
         "pandas" => crate::pandas::module(),
         "polars" => crate::pandas::polars::module(),
         "numpy" => crate::pandas::numpy::module(),
         "urllib" => vec![],
         "concurrent" => vec![],
         "packaging" => vec![],
-        "packaging.version" | "distutils" | "pkg_resources" => misc::version_module(),
+        "packaging.version" | "pkg_resources" => misc::packaging_version(),
+        "distutils" => misc::version_module(),
         "importlib.metadata" => misc::importlib_metadata(),
         "inspect" => misc::inspect(),
         "types" => misc::types_module(),
         "unicodedata" => misc::unicodedata(),
-        _ if is_native(name) => {
-            // Known library modules without a stand-in yet: importing is fine, using them
-            // is unsupported.
-            Vec::new()
-        }
-        _ => return Ok(None),
-    };
-    Ok(Some(module(name, entries)))
+        "argparse" | "base64" | "calendar" | "codecs" | "concurrent.futures"
+        | "decimal" | "difflib" | "fractions" | "hashlib" | "requests" | "struct"
+        | "zipfile" | "zlib" => Vec::new(),
 }
 
 /// A module value with the given attributes.

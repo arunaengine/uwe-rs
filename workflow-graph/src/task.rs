@@ -62,8 +62,15 @@ pub struct Task {
     pub inputs: Vec<Input>,
     /// Output paths or shell globs, relative to the working directory unless absolute.
     pub outputs: Vec<String>,
+    /// Optional JSON manifest naming additional File and Directory outputs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_manifest: Option<String>,
     /// Text for standard input, when the task reads one.
     pub stdin: Option<String>,
+    /// Keep successful streams as locations without loading their text; consumers read them
+    /// through `Files` when needed. Leave false for stdout-driven outputs and expressions.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub defer_logs: bool,
     pub resources: Resources,
     /// Whether the workflow lets the task use the network: CWL tools run without it unless
     /// they ask for it with `NetworkAccess`; the other languages do not say, and the run
@@ -245,6 +252,10 @@ pub struct Outcome {
     pub files: Vec<OutputFile>,
     pub stdout: String,
     pub stderr: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stdout_log: Option<Stream>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stderr_log: Option<Stream>,
     /// Whether an earlier result answered the task, so that it did not run.
     pub cached: bool,
     /// The image as the task ran in it, pinned to its digest where it has one; `None` when no
@@ -291,6 +302,18 @@ pub struct ContainerOutcome {
     pub exit_code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stdout_log: Option<Stream>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stderr_log: Option<Stream>,
+}
+
+/// Captured stream metadata for deferred reads and durable retention.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Stream {
+    pub location: String,
+    pub digest: String,
+    pub size: u64,
 }
 
 /// A task whose result came from the cache, run again to see whether its tool gives the same

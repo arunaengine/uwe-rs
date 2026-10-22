@@ -38,6 +38,11 @@ impl<'a> Table<'a> {
         self.origin
     }
 
+    /// Where the effective value was written, including overrides from later files.
+    pub fn value_origin(&self, key: &str) -> Option<&Origin> {
+        self.get(key).map(|node| &node.origin)
+    }
+
     /// The keys of the table, in order.
     pub fn keys(&self) -> impl Iterator<Item = &'a str> + use<'a> {
         self.entries.keys().map(String::as_str)

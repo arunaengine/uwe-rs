@@ -120,6 +120,39 @@ uwe run nf-core/demo -r 1.2.0 -profile test,docker --outdir results
 
 `uwe help` lists all commands and `uwe run -help` lists all run options.
 
+## Configured workflows and local references
+
+A site or user uwe config can define named workflow presets and installed reference releases. `uwe presets` lists them as JSON. `uwe check -preset NAME`, `uwe inputs -preset NAME`, and `uwe run -preset NAME` use the same selection. Each submission verifies installed digests and read-only permissions before workflow admission. The normal schema and planning checks still apply.
+
+```toml
+[workflows.demo]
+source = "nf-core/demo"
+revision = "<full Git commit>"
+language = "nextflow"
+profiles = ["docker"]
+params = "demo-inputs.json"
+overrides = ["input", "outdir"]
+executor = "local"
+executors = ["local", "kubernetes"]
+
+[workflows.demo.references]
+reference = "genome_v1"
+
+[references.genome_v1]
+path = "/srv/references/genome-v1.fa"
+digest = "sha256:<64 lowercase hexadecimal digits>"
+version = "1"
+files = []
+```
+
+Replace the commit, digest, and parameter names with the release values and names used by your workflow. `uwe digest PATH` computes the file or canonical directory digest before installing it read-only. A file reference uses its SHA-256 digest. A directory reference uses the digest of its canonical `task_model::Tree` manifest; `files = ["genome.fa", "genome.fa.fai"]` additionally requires those files inside that directory. Required paths cannot escape through `..` or symlinks. Installations must be read-only, including their directories. uwe verifies installed data and does not install or update databases.
+
+For a local workflow, omit `revision` and supply `digest` for the entire read-only project directory. A directory `source` pins that directory; a file `source` pins its parent directory, including sibling modules and configuration. Keep workflow dependencies inside that project. Remote repository sources require a full immutable Git commit, not a branch or tag. Runtime access to anything outside the pinned project remains subject to the embedding host's authorization policy.
+
+`source`, `params`, and reference `path` values resolve relative to the configuration file that defined that value, including layered overrides. The `params` file must contain a JSON object. Posted JSON inputs override these defaults, and CLI parameters override matching posted values using the language's normal parameter syntax. Only names listed in `overrides` may be supplied; reference-bound parameters cannot be overridden. Use absolute local file paths inside input JSON. A preset supplies its source, language, native profiles, optional `entry`, and workflow configuration; alternate launch configuration is rejected. Optional `executors` restricts executor overrides. Optional `requires = ["sidecars"]` checks declared backend capabilities before loading inputs; supported requirement names are `daemons`, `sidecars`, and `offline`. Profiles declaring either list must supply a default `executor`. `uwe presets` exposes these capabilities, native Nextflow coverage and its format version. Per-workflow checks and real qualification remain necessary.
+
+Each input JSON file is limited to 1 MiB. The Rust embedding API exposes `Catalogue::prepare` and returns the temporary input-file guard plus verified `task_runner::References`; retain them for the submission. `uwe run -strict-provenance` makes provenance retention failures fatal. `uwe clean -front` evicts only the local front of a layered store. `uwe reconcile RUN -reason TEXT` records operator reconciliation only after the local run owner is provably stopped; foreign or uncertain owners require backend reconciliation first.
+
 ## Remote executors without shared folders
 
 SLURM and Kubernetes take a `staging` setting in `[executor.slurm]` or `[executor.kubernetes]` of the config file. In every mode the task container runs the original image of the task, unchanged.

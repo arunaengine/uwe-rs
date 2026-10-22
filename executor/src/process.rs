@@ -19,7 +19,7 @@ use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, channel, unbounded_
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::engine::{ContainerEngine, remove as remove_async};
+use crate::engine::{ContainerEngine, Created, remove as remove_async};
 
 /// A folder of the machine that the container sees.
 #[derive(Clone, Debug)]
@@ -122,11 +122,6 @@ fn runtime() -> Result<&'static Runtime, ProcessError> {
     runtime
         .as_ref()
         .map_err(|message| ProcessError::NoEngine(message.clone()))
-}
-
-/// The engine that a spec names, asked on the runtime of this module.
-fn engine(spec: &ContainerSpec) -> Result<ContainerEngine, ProcessError> {
-    engine_cancellable(spec, &CancellationToken::new())
 }
 
 fn engine_cancellable(
@@ -467,61 +462,149 @@ fn remove(engine: &ContainerEngine, name: &str) {
     let Ok(runtime) = runtime() else {
         return;
     };
-    runtime.block_on(remove_async(engine.client(), name));
+    runtime.block_on(crate::engine::remove_owned(engine, name));
 }
 
 pub(crate) async fn create_id(
     engine: &ContainerEngine,
-    options: CreateContainerOptions,
-    body: ContainerCreateBody,
+    mut options: CreateContainerOptions,
+    mut body: ContainerCreateBody,
     cancel: &CancellationToken,
 ) -> Result<String, ProcessError> {
     if cancel.is_cancelled() {
         return Err(ProcessError::Cancelled);
     }
+    bounded(cancel, STOP_GRACE, engine.journal.verify(engine.client()))
+        .await?
+        .map_err(|reason| ProcessError::Start {
+            engine: engine.name.clone(),
+            reason,
+        })?;
+    bounded(cancel, STOP_GRACE, engine.journal.recover(engine.client()))
+        .await?
+        .map_err(|reason| ProcessError::Start {
+            engine: engine.name.clone(),
+            reason,
+        })?;
     let client = engine.client().clone();
     let engine_name = engine.name.clone();
-    let name = options.name.clone().unwrap_or_default();
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let owner = format!(
+        "{}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+    let name = options
+        .name
+        .get_or_insert_with(|| format!("uwe-create-{owner}"))
+        .clone();
+    body.labels
+        .get_or_insert_default()
+        .insert(CREATE_OWNER.into(), owner.clone());
+    let pending = engine
+        .journal
+        .begin(&name, &owner)
+        .await
+        .map_err(|reason| ProcessError::Start {
+            engine: engine.name.clone(),
+            reason,
+        })?;
+    if cancel.is_cancelled() {
+        let _ = pending.reject();
+        return Err(ProcessError::Cancelled);
+    }
+    let engine = engine.clone();
+    let pending_name = name.clone();
     let (sender, mut receiver) = unbounded_channel();
     tokio::spawn(async move {
-        let result = tokio::time::timeout(
+        let created = tokio::time::timeout(
             OPERATION_LIMIT,
             client.create_container(Some(options), body),
         )
-        .await
-        .map_err(|_| ProcessError::Timeout)
-        .and_then(|result| {
-            result
-                .map(|created| created.id)
-                .map_err(|error| ProcessError::Start {
+        .await;
+        let result = match created {
+            Ok(Ok(created)) => match engine.journal.bind(pending, &created.id) {
+                Ok(()) => Ok(Created::owned(&engine, &created.id)),
+                Err((reason, pending)) => {
+                    if remove_async(&client, &created.id).await {
+                        let _ = pending.reject();
+                    }
+                    Err(ProcessError::Start {
+                        engine: engine_name,
+                        reason,
+                    })
+                }
+            },
+            Ok(Err(error)) => {
+                if matches!(
+                    &error,
+                    bollard::errors::Error::DockerResponseServerError {
+                        status_code: 400..=499,
+                        ..
+                    }
+                ) {
+                    if let Err(reason) = pending.reject() {
+                        eprintln!("uwe: warning: retained rejected container record: {reason}");
+                    }
+                } else {
+                    reconcile(&client, pending, &pending_name, &owner).await;
+                }
+                Err(ProcessError::Start {
                     engine: engine_name,
                     reason: error.to_string(),
                 })
-        });
+            }
+            Err(_) => {
+                reconcile(&client, pending, &pending_name, &owner).await;
+                Err(ProcessError::Timeout)
+            }
+        };
         if let Err(unsent) = sender.send(result)
-            && let Ok(id) = unsent.0
+            && let Ok(created) = unsent.0
         {
-            remove_async(&client, &id).await;
+            created.remove().await;
         }
     });
     match bounded(cancel, OPERATION_LIMIT, receiver.recv()).await {
-        Ok(Some(result)) => result,
+        Ok(Some(result)) => result.map(Created::take_id),
         Ok(None) => Err(ProcessError::Ended { stderr: Vec::new() }),
         Err(error) => {
             // Creation can finish after cancellation; wait for its owned ID before returning.
             match tokio::time::timeout(STOP_GRACE, receiver.recv()).await {
-                Ok(Some(Ok(id))) => remove_async(engine.client(), &id).await,
+                Ok(Some(Ok(created))) => {
+                    created.remove().await;
+                }
                 Err(_) => eprintln!(
                     "uwe: warning: container creation for {name} is still pending; its removal could not be confirmed"
                 ),
                 _ => {}
             }
             receiver.close();
-            if let Ok(Ok(id)) = receiver.try_recv() {
-                remove_async(engine.client(), &id).await;
+            if let Ok(Ok(created)) = receiver.try_recv() {
+                created.remove().await;
             }
             Err(error)
         }
+    }
+}
+
+const CREATE_OWNER: &str = crate::engine::journal::OWNER;
+
+async fn reconcile(
+    client: &bollard::Docker,
+    pending: crate::engine::journal::Pending,
+    name: &str,
+    owner: &str,
+) {
+    let checked = tokio::time::timeout(STOP_GRACE, pending.reconcile(client)).await;
+    if checked != Ok(true) {
+        eprintln!(
+            "uwe: warning: creation outcome for {name} remains unconfirmed (ownership {owner})"
+        );
     }
 }
 
@@ -639,10 +722,13 @@ fn take_lines(buffer: &mut Vec<u8>) -> Vec<String> {
 /// Creates a helper without capabilities or privilege escalation; core dumps cannot fill the journal.
 /// Rootless container root maps to the invoking user.
 fn create(spec: &ContainerSpec, engine: &ContainerEngine, remove: bool) -> ContainerCreateBody {
-    let binds = (spec.mounts.iter())
-        .map(|mount| {
-            let mode = if mount.read_only { ":ro" } else { "" };
-            format!("{}:{}{mode}", mount.source.display(), mount.target)
+    let mounts = (spec.mounts.iter())
+        .map(|mount| bollard::models::Mount {
+            source: Some(mount.source.to_string_lossy().into_owned()),
+            target: Some(mount.target.clone()),
+            typ: Some(bollard::models::MountType::BIND),
+            read_only: Some(mount.read_only),
+            ..Default::default()
         })
         .collect();
     let environment = (spec.environment.iter())
@@ -659,7 +745,7 @@ fn create(spec: &ContainerSpec, engine: &ContainerEngine, remove: bool) -> Conta
         working_dir: spec.workdir.clone(),
         env: Some(environment),
         host_config: Some(HostConfig {
-            binds: Some(binds),
+            mounts: Some(mounts),
             memory: spec.memory.map(|bytes| bytes as i64),
             auto_remove: Some(remove),
             cap_drop: Some(vec!["ALL".to_owned()]),
@@ -774,12 +860,147 @@ pub fn check_engine(engine: &str) -> Result<(), ProcessError> {
         engine: engine.to_owned(),
         ..ContainerSpec::default()
     };
-    self::engine(&spec).map(|_| ())
+    engine_cancellable(&spec, &CancellationToken::new()).map(|_| ())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn settles_rejected_creation() {
+        let server = crate::test_engine::Server::start(1, |request| {
+            assert!(request.path.contains("/containers/create?"));
+            crate::test_engine::Reply::Json(
+                409,
+                serde_json::json!({"message":"name belongs to another task"}),
+            )
+        })
+        .await;
+        let result = create_id(
+            &server.engine,
+            CreateContainerOptions {
+                name: Some("unrelated-name".into()),
+                ..Default::default()
+            },
+            ContainerCreateBody::default(),
+            &CancellationToken::new(),
+        )
+        .await;
+        assert!(matches!(result, Err(ProcessError::Start { .. })));
+        assert!(server.engine.journal.empty());
+        server.finish();
+    }
+
+    #[tokio::test]
+    async fn retains_unknown_creation() {
+        use crate::test_engine::{Reply, Server};
+        let folder = tempfile::tempdir().unwrap();
+        let saved = folder.path().to_owned();
+        let mut phase = 0;
+        let mut owner = String::new();
+        let server = Server::start(4, move |request| {
+            phase += 1;
+            match phase {
+                1 => {
+                    assert!(request.path.contains("/containers/create?"));
+                    let root = std::fs::read_dir(&saved).unwrap().next().unwrap().unwrap().path();
+                    assert!(root.join("0/record.json").is_file(), "ownership must precede create");
+                    owner = request.body["Labels"][CREATE_OWNER].as_str().unwrap().into();
+                    Reply::Lost
+                }
+                2 => Reply::Json(503, serde_json::json!({"message":"engine unavailable"})),
+                3 => Reply::Json(200, serde_json::json!({"Id":"recovered-id","Config":{"Labels":{CREATE_OWNER:owner.clone()}}})),
+                _ => {
+                    assert_eq!(phase, 4);
+                    assert_eq!(request.method, "DELETE");
+                    assert!(request.path.contains("/containers/recovered-id?"));
+                    Reply::Json(204, serde_json::Value::Null)
+                }
+            }
+        }).await;
+        let engine = server
+            .engine
+            .clone()
+            .with_journal_root(folder.path().to_owned());
+        let result = create_id(
+            &engine,
+            CreateContainerOptions {
+                name: Some("uncertain-task".into()),
+                ..Default::default()
+            },
+            ContainerCreateBody::default(),
+            &CancellationToken::new(),
+        )
+        .await;
+        assert!(matches!(result, Err(ProcessError::Start { .. })));
+        assert!(!engine.journal.empty());
+        let reopened = engine.with_journal_root(folder.path().to_owned());
+        reopened.journal.recover(reopened.client()).await.unwrap();
+        assert!(reopened.journal.empty());
+        server.finish();
+    }
+
+    #[tokio::test]
+    async fn reconciles_lost_creation() {
+        use crate::test_engine::{Reply, Server};
+        for owned in [true, false] {
+            let mut owner = String::new();
+            let server = Server::start(if owned { 3 } else { 2 }, move |request| {
+                if request.path.contains("/containers/create?") {
+                    owner = request.body["Labels"][CREATE_OWNER].as_str().unwrap().into();
+                    assert!(!owner.is_empty());
+                    Reply::Lost
+                } else if request.method == "DELETE" {
+                    assert!(owned);
+                    assert!(request.path.contains("/containers/owned-id?"));
+                    Reply::Json(204, serde_json::Value::Null)
+                } else {
+                    assert!(request.path.ends_with("/containers/requested-name/json"));
+                    Reply::Json(200, serde_json::json!({
+                        "Id": "owned-id",
+                        "Config": {"Labels": {CREATE_OWNER: if owned { owner.clone() } else { "someone-else".into() }}}
+                    }))
+                }
+            }).await;
+            let result = create_id(
+                &server.engine,
+                CreateContainerOptions {
+                    name: Some("requested-name".into()),
+                    ..Default::default()
+                },
+                ContainerCreateBody::default(),
+                &CancellationToken::new(),
+            )
+            .await;
+            assert!(matches!(result, Err(ProcessError::Start { .. })));
+            server.finish();
+        }
+    }
+
+    #[tokio::test]
+    async fn preserves_mount_colons() {
+        let server = crate::test_engine::Server::start(0, |_| panic!("unexpected request")).await;
+        let body = create(
+            &ContainerSpec {
+                mounts: vec![Mount {
+                    source: "/input:2026".into(),
+                    target: "/data:input".into(),
+                    read_only: true,
+                }],
+                ..Default::default()
+            },
+            &server.engine,
+            true,
+        );
+        let host = body.host_config.unwrap();
+        assert!(host.binds.is_none());
+        let mounts = host.mounts.unwrap();
+        assert_eq!(mounts[0].source.as_deref(), Some("/input:2026"));
+        assert_eq!(mounts[0].target.as_deref(), Some("/data:input"));
+        assert_eq!(mounts[0].read_only, Some(true));
+        server.finish();
+    }
 
     #[test]
     fn cancellation_avoids_engine() {
@@ -830,10 +1051,12 @@ mod tests {
         listener.set_nonblocking(true).unwrap();
         let removed = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let observed = removed.clone();
+        let cancel = CancellationToken::new();
+        let trigger = cancel.clone();
         let server = std::thread::spawn(move || {
             let mut requests = Vec::new();
             let deadline = std::time::Instant::now() + Duration::from_secs(2);
-            for _ in 0..4 {
+            for _ in 0..6 {
                 let mut stream = loop {
                     if let Ok((stream, _)) = listener.accept() {
                         break stream;
@@ -865,8 +1088,10 @@ mod tests {
                 }
                 reader.read_exact(&mut vec![0; length]).unwrap();
                 let body = if first.starts_with("POST ") {
-                    std::thread::sleep(Duration::from_millis(100));
+                    trigger.cancel();
                     r#"{"Id":"accepted-id","Warnings":[]}"#
+                } else if first.contains("/info ") {
+                    r#"{"ID":"late-create-engine"}"#
                 } else {
                     "{}"
                 };
@@ -884,13 +1109,8 @@ mod tests {
         });
         let engine = ContainerEngine::connect(socket.to_str().unwrap())
             .await
-            .unwrap();
-        let cancel = CancellationToken::new();
-        let trigger = cancel.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(30)).await;
-            trigger.cancel();
-        });
+            .unwrap()
+            .with_journal_root(folder.path().join("journal"));
         let result = create_id(
             &engine,
             CreateContainerOptions {
@@ -913,9 +1133,9 @@ mod tests {
         .await
         .unwrap()
         .unwrap();
-        assert!(requests[3].starts_with("DELETE "));
-        assert!(requests[3].contains("/containers/accepted-id?"));
-        assert!(!requests[3].contains("unowned-name"));
+        assert!(requests[5].starts_with("DELETE "));
+        assert!(requests[5].contains("/containers/accepted-id?"));
+        assert!(!requests[5].contains("unowned-name"));
     }
 
     #[test]

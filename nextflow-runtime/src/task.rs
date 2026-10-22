@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use nextflow_evaluator::interpreter::TaskDirective;
+use nextflow_evaluator::interpreter::{TaskDirective, normalise_script};
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::units::{parse_duration, parse_memory};
 use nextflow_evaluator::value::Value;
@@ -87,12 +87,27 @@ pub fn command_script(request: &TaskRequest) -> String {
     script
 }
 
-/// The program of a task: the shell of its `shell` directive, else Nextflow's default
-/// `/bin/bash -ue`, with `.command.sh` as its argument.
+/// The program of a task, with `.command.sh` as its argument: the interpreter of the
+/// script's own shebang, like `#!/usr/bin/env python` of a template, as Nextflow runs it;
+/// else the shell of its `shell` directive, else Nextflow's default `/bin/bash -ue`.
 pub fn command(request: &TaskRequest) -> Vec<String> {
-    let mut arguments: Vec<String> = match directive(&request.directives, "shell") {
-        Some(Value::List(list)) => list.borrow().items.iter().map(Value::to_string).collect(),
-        Some(Value::String(shell)) => vec![shell.to_string()],
+    let shell = directive(&request.directives, "shell");
+    let added = normalise_script("", shell.as_ref());
+    let own = (request.script.lines().next())
+        .filter(|line| line.starts_with("#!") && Some(*line) != added.lines().next())
+        .map(|line| {
+            line[2..]
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .filter(|words| !words.is_empty());
+    let mut arguments: Vec<String> = match (own, shell) {
+        (Some(words), _) => words,
+        (None, Some(Value::List(list))) => {
+            list.borrow().items.iter().map(Value::to_string).collect()
+        }
+        (None, Some(Value::String(shell))) => vec![shell.to_string()],
         _ => vec!["/bin/bash".into(), "-ue".into()],
     };
     arguments.push(SCRIPT.into());

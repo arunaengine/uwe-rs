@@ -17,6 +17,7 @@ struct Versions {
     reads: AtomicUsize,
     stats: AtomicUsize,
     unavailable: bool,
+    replacement: Option<Operator>,
 }
 
 impl Service for Versions {
@@ -99,6 +100,7 @@ impl Service for Versions {
         Ok(ConditionalDelete {
             inner: self.inner.delete(ctx)?,
             version: self.version.clone(),
+            replacement: self.replacement.clone(),
         })
     }
     fn list(
@@ -148,10 +150,15 @@ impl Service for Versions {
 struct ConditionalDelete {
     inner: oio::Deleter,
     version: Arc<AtomicUsize>,
+    replacement: Option<Operator>,
 }
 
 impl oio::Delete for ConditionalDelete {
     async fn delete(&mut self, path: &str, args: OpDelete) -> opendal::Result<()> {
+        if let Some(operator) = self.replacement.take() {
+            operator.write(path, "good").await?;
+            self.version.fetch_add(1, Ordering::SeqCst);
+        }
         let tag = self.version.load(Ordering::SeqCst).to_string();
         if args.if_match() != Some(tag.as_str()) {
             return Err(opendal::Error::new(
@@ -178,6 +185,7 @@ async fn invalidation_preserves_versions() {
         reads: AtomicUsize::new(0),
         stats: AtomicUsize::new(0),
         unavailable: false,
+        replacement: None,
     });
     let operator = Operator::from_parts(inner.context().clone(), service.clone());
     let store = Store::remote(operator, "test://entries").unwrap();
@@ -210,6 +218,7 @@ async fn reports_shared_outage() {
         reads: AtomicUsize::new(0),
         stats: AtomicUsize::new(0),
         unavailable: true,
+        replacement: None,
     });
     let operator = Operator::from_parts(inner.context().clone(), service.clone());
     let shared = Store::remote(operator, "test://unavailable").unwrap();
@@ -224,4 +233,41 @@ async fn reports_shared_outage() {
     assert!(error.to_string().contains("shared store unavailable"));
     assert_eq!(service.stats.load(Ordering::SeqCst), 1);
     assert_eq!(front.get_entry("", &key).await.unwrap(), Some(bytes));
+}
+
+#[tokio::test]
+async fn repair_preserves_replacement() {
+    let inner = Operator::new(opendal::services::Memory::default()).unwrap();
+    let digest = Digest::sha256(b"good");
+    let location = layout::content(&digest);
+    inner.write(&location, "bad!").await.unwrap();
+    let service = Arc::new(Versions {
+        inner: inner.service().clone(),
+        version: Arc::new(AtomicUsize::new(0)),
+        reads: AtomicUsize::new(1),
+        stats: AtomicUsize::new(0),
+        unavailable: false,
+        replacement: Some(inner.clone()),
+    });
+    let operator = Operator::from_parts(inner.context().clone(), service);
+    let store = Store::remote(operator, "test://repair").unwrap();
+    store.repair(&location, &digest).await.unwrap();
+    assert_eq!(
+        inner.read(&location).await.unwrap().to_bytes().as_ref(),
+        b"good"
+    );
+}
+
+#[tokio::test]
+async fn repair_retains_unsupported() {
+    let operator = Operator::new(opendal::services::Memory::default()).unwrap();
+    let digest = Digest::sha256(b"good");
+    let location = layout::content(&digest);
+    operator.write(&location, "bad!").await.unwrap();
+    let store = Store::remote(operator.clone(), "test://unsupported").unwrap();
+    store.repair(&location, &digest).await.unwrap();
+    assert_eq!(
+        operator.read(&location).await.unwrap().to_bytes().as_ref(),
+        b"bad!"
+    );
 }

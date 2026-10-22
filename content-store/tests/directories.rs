@@ -567,3 +567,43 @@ mod authority {
         }
     }
 }
+
+#[tokio::test]
+async fn hydrates_cached_members() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let front = Store::local(root.path()).unwrap();
+    let member = front
+        .put_content(Bytes::from_static(b"cached"))
+        .await
+        .unwrap();
+    let shared = Store::memory().unwrap();
+    let tree = Tree {
+        entries: vec![TreeEntry::File {
+            path: "database".into(),
+            digest: member.clone(),
+            size: 6,
+            executable: false,
+        }],
+    };
+    let digest = shared.put_tree(&tree).await.unwrap();
+    let location = "runs/run/task/1/work/db";
+    shared.put_directory(location, &digest).await.unwrap();
+    assert!(!shared.has_content(&member).await.unwrap());
+    let store = Store::layered(front, shared).unwrap();
+    let path = store.local_file(location).await.unwrap().unwrap();
+    assert_eq!(std::fs::read(path.join("database")).unwrap(), b"cached");
+    assert_eq!(store.local_file(location).await.unwrap().unwrap(), path);
+    let file = path.join("database");
+    let modified = std::fs::metadata(&file).unwrap().modified().unwrap();
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::fs::write(&file, b"broken").unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&file)
+        .unwrap()
+        .set_times(std::fs::FileTimes::new().set_modified(modified))
+        .unwrap();
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o444)).unwrap();
+    assert!(store.local_file(location).await.is_err());
+}

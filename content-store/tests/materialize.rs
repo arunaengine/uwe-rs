@@ -277,3 +277,40 @@ fn damage(path: &std::path::Path, bytes: &[u8]) {
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).unwrap();
     std::fs::write(path, bytes).unwrap();
 }
+
+#[tokio::test]
+async fn reads_preserve_storage() {
+    let root = tempfile::tempdir().unwrap();
+    let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
+    let shared = Store::remote(operator.clone(), "test://shared").unwrap();
+    let digest = Digest::sha256(b"good");
+    let location = layout::content(&digest);
+    operator
+        .write(&location, Bytes::from_static(b"bad!"))
+        .await
+        .unwrap();
+    let key = Digest::sha256(b"entry");
+    shared
+        .put_entry("", &key, Bytes::from_static(b"entry"))
+        .await
+        .unwrap();
+    let store = Store::layered(Store::local(root.path()).unwrap(), shared)
+        .unwrap()
+        .read_only();
+    assert!(matches!(
+        store.get_content(&digest).await,
+        Err(StoreError::Corrupt { .. })
+    ));
+    assert_eq!(
+        store.get_entry("", &key).await.unwrap().unwrap().as_ref(),
+        b"entry"
+    );
+    let observed = store.observe_entry("", &key).await.unwrap().unwrap();
+    assert!(!store.invalidate_entry("", &key, &observed).await.unwrap());
+    assert!(store.local_file(&location).await.unwrap().is_none());
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+    assert_eq!(
+        operator.read(&location).await.unwrap().to_bytes().as_ref(),
+        b"bad!"
+    );
+}

@@ -240,3 +240,20 @@ async fn s3_contract() {
     };
     check_contract(&Store::s3(&options).expect("s3 store")).await;
 }
+
+#[tokio::test]
+async fn imports_use_staging() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    std::fs::write(&source, b"input").unwrap();
+    let staging = root.path().join("staging");
+    let store = Store::memory().unwrap().with_staging(staging.clone());
+    let (digest, _) = store.put_file(&source).await.unwrap();
+    assert!(staging.is_dir());
+    assert_eq!(std::fs::read_dir(&staging).unwrap().count(), 0);
+    store.put_file_as(&source, &digest).await.unwrap();
+    std::fs::remove_dir(&staging).unwrap();
+    std::fs::write(&staging, b"blocked").unwrap();
+    assert!(store.put_file(&source).await.is_err());
+    assert_eq!(store.get_content(&digest).await.unwrap().as_ref(), b"input");
+}

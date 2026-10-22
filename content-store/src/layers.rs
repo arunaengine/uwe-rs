@@ -2,12 +2,14 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use bytes::Bytes;
+use futures_util::TryStreamExt;
 use opendal::{ErrorKind, Operator};
 use sha2::{Digest as _, Sha256};
 use task_model::{Digest, Tree, TreeEntry};
@@ -15,6 +17,17 @@ use tokio::io::AsyncWriteExt;
 
 use crate::store::PART_SIZE;
 use crate::{Store, StoreError, hash_file, layout, local};
+
+pub(crate) type Verified = BTreeMap<PathBuf, BTreeMap<PathBuf, Stamp>>;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Stamp {
+    device: u64,
+    inode: u64,
+    size: u64,
+    mode: u32,
+    changed: (i64, i64),
+}
 
 impl Store {
     /// A store whose objects live in the store `local`, in a folder of this machine, and in
@@ -72,6 +85,9 @@ impl Store {
         let Some(path) = self.local_path(location) else {
             return Ok(None);
         };
+        if !self.repair_reads {
+            return Ok(path.try_exists().map_err(at(&path))?.then_some(path));
+        }
         let Some(shared) = &self.shared else {
             return Ok(Some(path));
         };
@@ -122,11 +138,10 @@ impl Store {
         } else {
             let shared = self.shared.as_ref().expect("a shared layer");
             let folder = format!("{}/", location.trim_end_matches('/'));
-            let entries = shared.operator.list_with(&folder).recursive(true).await?;
-            if entries.is_empty() && !shared.operator.stat(&folder).await?.is_dir() {
-                return Err(opendal::Error::new(ErrorKind::NotFound, location.to_owned()).into());
-            }
-            for entry in entries {
+            let mut entries = shared.operator.lister_with(&folder).recursive(true).await?;
+            let mut found = false;
+            while let Some(entry) = entries.try_next().await? {
+                found = true;
                 let inside = entry
                     .path()
                     .strip_prefix(&folder)
@@ -144,6 +159,9 @@ impl Store {
                     download(&shared.operator, entry.path(), &target).await?;
                 }
             }
+            if !found && !shared.operator.stat(&folder).await?.is_dir() {
+                return Err(opendal::Error::new(ErrorKind::NotFound, location.to_owned()).into());
+            }
         }
         std::fs::set_permissions(temporary.path(), std::fs::Permissions::from_mode(0o755))?;
         let _ = temporary.keep();
@@ -158,7 +176,7 @@ impl Store {
             .expect("a front layer");
         let input = target.join("input");
         if target.try_exists().map_err(at(&target))? {
-            verify_directory(&input, &tree, true).await?;
+            self.verify_snapshot(&input, &tree).await?;
             return Ok(input);
         }
         let parent = target.parent().expect("a parent");
@@ -166,7 +184,6 @@ impl Store {
         let temporary = tempfile::tempdir_in(parent).map_err(at(parent))?;
         let root = temporary.path().join("input");
         std::fs::create_dir(&root).map_err(at(&root))?;
-        let shared = self.shared.as_ref().expect("a shared layer");
         for entry in &tree.entries {
             let inside = root.join(entry.path());
             match entry {
@@ -176,14 +193,9 @@ impl Store {
                     executable,
                     ..
                 } => {
-                    download_file(
-                        &shared.operator,
-                        &layout::content(digest),
-                        &inside,
-                        Some((digest, *size)),
-                    )
-                    .await?;
-                    let mode = if *executable { 0o755 } else { 0o644 };
+                    self.materialize_content_bounded(digest, &inside, *size)
+                        .await?;
+                    let mode = if *executable { 0o555 } else { 0o444 };
                     std::fs::set_permissions(&inside, std::fs::Permissions::from_mode(mode))
                         .map_err(at(&inside))?;
                 }
@@ -205,11 +217,37 @@ impl Store {
         match std::fs::rename(temporary.path(), &target) {
             Ok(()) => {}
             Err(_) if target.is_dir() => {
-                verify_directory(&input, &tree, true).await?;
+                self.verify_snapshot(&input, &tree).await?;
             }
             Err(error) => return Err(at(&target)(error)),
         }
+        self.verify_snapshot(&input, &tree).await?;
         Ok(input)
+    }
+
+    async fn verify_snapshot(&self, root: &Path, tree: &Tree) -> Result<(), StoreError> {
+        let before = snapshot_stamp(root).await?;
+        if self
+            .verified
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .get(root)
+            == Some(&before)
+        {
+            return Ok(());
+        }
+        verify_directory(root, tree, true).await?;
+        let after = snapshot_stamp(root).await?;
+        if before != after {
+            return Err(StoreError::Location(
+                "directory changed during verification".into(),
+            ));
+        }
+        self.verified
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .insert(root.to_owned(), after);
+        Ok(())
     }
 
     /// Whether the shared store behind a store in layers has an object or a folder at
@@ -232,6 +270,35 @@ impl Store {
         let entries = shared.operator.list_with(&folder).limit(1).await?;
         Ok(!entries.is_empty())
     }
+}
+
+async fn snapshot_stamp(root: &Path) -> Result<BTreeMap<PathBuf, Stamp>, StoreError> {
+    let root = root.to_owned();
+    tokio::task::spawn_blocking(move || {
+        let mut found = BTreeMap::new();
+        let mut pending = vec![root];
+        while let Some(path) = pending.pop() {
+            let metadata = std::fs::symlink_metadata(&path).map_err(at(&path))?;
+            if metadata.is_dir() {
+                for entry in std::fs::read_dir(&path).map_err(at(&path))? {
+                    pending.push(entry.map_err(at(&path))?.path());
+                }
+            }
+            found.insert(
+                path,
+                Stamp {
+                    device: metadata.dev(),
+                    inode: metadata.ino(),
+                    size: metadata.len(),
+                    mode: metadata.mode(),
+                    changed: (metadata.ctime(), metadata.ctime_nsec()),
+                },
+            );
+        }
+        Ok(found)
+    })
+    .await
+    .map_err(std::io::Error::other)?
 }
 
 /// Downloads an object in parts to a file of this machine, under a temporary name first, so

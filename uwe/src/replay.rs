@@ -129,7 +129,11 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         telemetry.finish();
     }
     if driver.outcome.is_some() {
-        print!("{}", report(&database, &run, &id, task, &from_store)?);
+        let files = executor_of_run.files();
+        print!(
+            "{}",
+            report(&database, &run, &id, task, &from_store, files.as_deref())?
+        );
     }
     execution.into_result().map(|_| ()).map_err(Failure::from)
 }
@@ -223,6 +227,7 @@ fn report(
     replay: &str,
     task: u64,
     from_store: &[String],
+    files: Option<&dyn workflow_graph::Files>,
 ) -> Result<String, Failure> {
     let broken = |error: run_database::DatabaseError| failure(error.to_string());
     let (Some(before), Some(now)) = (
@@ -307,7 +312,13 @@ fn report(
             let _ = writeln!(text, "{title} {when}:");
             match found {
                 None => text.push_str("  (empty)\n"),
-                Some(log) => {
+                Some(mut log) => {
+                    run_page::log_tail(
+                        &mut log,
+                        files.unwrap_or(&workflow_graph::LocalFiles),
+                        run_database::LOG_LIMIT,
+                    )
+                    .map_err(|error| failure(format!("uwe: cannot read retained log: {error}")))?;
                     let lines: Vec<&str> = log.text.lines().collect();
                     let skipped = lines.len().saturating_sub(LOG_LINES);
                     if skipped > 0 || !log.whole {
@@ -359,6 +370,60 @@ impl Driver for Replay {
 mod tests {
     use super::*;
     use workflow_graph::{Input, TaskId};
+
+    #[test]
+    fn displays_deferred_logs() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("runs.sqlite");
+        let log = root.path().join("stdout");
+        let bytes = b"retained stdout\n";
+        std::fs::write(&log, bytes).unwrap();
+        for id in ["original", "replayed"] {
+            let start = RunStart {
+                id: id.into(),
+                resumes: None,
+                workflow: "/work/main.nf".into(),
+                language: Language::Nextflow,
+                revision: None,
+                arguments: vec![],
+                parameters: vec![],
+                executor: "local".into(),
+                simulated: false,
+                store: None,
+                program: None,
+                launch: None,
+                workflow_folder: None,
+                repeats: None,
+            };
+            let mut recorder = Database::open(&path).unwrap().record(&start).unwrap();
+            let task = Task {
+                id: TaskId(1),
+                defer_logs: true,
+                ..Task::default()
+            };
+            recorder.requested(&task, &[]);
+            recorder.started(task.id, 1);
+            recorder.finished(
+                &Outcome {
+                    id: task.id,
+                    stdout_log: Some(workflow_graph::Stream {
+                        location: log.to_string_lossy().into_owned(),
+                        digest: Digest::sha256(bytes).to_string(),
+                        size: bytes.len() as u64,
+                    }),
+                    ..Outcome::default()
+                },
+                1,
+                false,
+            );
+            recorder.ended(None);
+            recorder.close().unwrap();
+        }
+        let database = Database::open(&path).unwrap();
+        let text = report(&database, "original", "replayed", 1, &[], None).unwrap();
+        assert!(text.contains("standard output before:\n  retained stdout\n"));
+        assert!(text.contains("standard output now:\n  retained stdout\n"));
+    }
 
     #[test]
     fn restores_recorded_inputs() {

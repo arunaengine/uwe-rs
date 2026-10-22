@@ -3,10 +3,13 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
+use std::io::{self, Read};
 
 use run_database::{Database, DatabaseError, Delivered, Log};
 use serde::Serialize;
+use sha2::{Digest as _, Sha256};
 use workflow_graph::render::{Direction, FOLD, Options, View};
+use workflow_graph::{Files, LocalFiles};
 
 use crate::{api, assets};
 
@@ -36,6 +39,15 @@ struct Data {
 
 /// The report of a run as one HTML file, or `None` when the database has no such run.
 pub fn report(database: &Database, run: &str) -> Result<Option<String>, DatabaseError> {
+    report_with_files(database, run, &LocalFiles)
+}
+
+/// Resolves deferred log locations through the request's configured storage providers.
+pub fn report_with_files(
+    database: &Database,
+    run: &str,
+    files: &dyn Files,
+) -> Result<Option<String>, DatabaseError> {
     let Some(view) = api::run_view(database, run)? else {
         return Ok(None);
     };
@@ -50,8 +62,12 @@ pub fn report(database: &Database, run: &str) -> Result<Option<String>, Database
         let Some(mut task) = api::task_view(database, run, row.id)? else {
             continue;
         };
-        tail(&mut task.stdout);
-        tail(&mut task.stderr);
+        for log in [&mut task.stdout, &mut task.stderr] {
+            if let Some(log) = log {
+                log_tail(log, files, LOG_TAIL)?;
+            }
+            tail(log);
+        }
         answers.insert(
             format!("{base}/tasks/{}", row.id),
             serde_json::to_value(&task)?,
@@ -92,6 +108,60 @@ pub fn report(database: &Database, run: &str) -> Result<Option<String>, Database
         deliveries: database.deliveries(run)?,
     };
     Ok(Some(page(&data)?))
+}
+
+/// Reads a deferred log on demand, verifying its bytes while retaining only its bounded tail.
+pub fn log_tail(log: &mut Log, files: &dyn Files, limit: usize) -> io::Result<()> {
+    if log.whole || !log.text.is_empty() || log.size == 0 {
+        return Ok(());
+    }
+    let Some(location) = &log.location else {
+        return Ok(());
+    };
+    let mut file = std::fs::File::open(files.local(location)?)?;
+    let mut hasher = Sha256::new();
+    let mut size = 0;
+    let mut kept = Vec::new();
+    let mut buffer = [0; 8192];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+        size += read as u64;
+        if read >= limit {
+            kept.clear();
+            kept.extend_from_slice(&buffer[read - limit..read]);
+        } else {
+            let remove = (kept.len() + read).saturating_sub(limit);
+            kept.drain(..remove);
+            kept.extend_from_slice(&buffer[..read]);
+        }
+    }
+    if size != log.size
+        || task_model::Digest::from_sha256(&hasher.finalize()).as_str() != log.digest
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "retained log bytes do not match their recorded digest and size",
+        ));
+    }
+    let start = if size > kept.len() as u64 {
+        kept.iter()
+            .position(|byte| byte & 0xc0 != 0x80)
+            .unwrap_or(kept.len())
+    } else {
+        0
+    };
+    let text = String::from_utf8_lossy(&kept[start..]);
+    let mut start = text.len().saturating_sub(limit);
+    while !text.is_char_boundary(start) {
+        start += 1;
+    }
+    log.whole = size <= limit as u64 && text.len() as u64 == size;
+    log.text = text[start..].to_owned();
+    Ok(())
 }
 
 /// The end of a log, at most [`LOG_TAIL`] bytes, from the start of a character.
@@ -154,6 +224,41 @@ fn page(data: &Data) -> Result<String, serde_json::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verifies_deferred_tail() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let text = format!("{}é{}", "a".repeat(3 * LOG_TAIL), "b".repeat(LOG_TAIL - 1));
+        std::fs::write(file.path(), &text).unwrap();
+        let mut log = Log {
+            digest: task_model::Digest::sha256(text.as_bytes()).to_string(),
+            size: text.len() as u64,
+            text: String::new(),
+            whole: false,
+            location: Some(file.path().to_string_lossy().into_owned()),
+        };
+        log_tail(&mut log, &LocalFiles, LOG_TAIL).unwrap();
+        assert_eq!(log.text, "b".repeat(LOG_TAIL - 1));
+        assert!(!log.whole);
+        log.text.clear();
+        std::fs::write(file.path(), text.replace('a', "c")).unwrap();
+        assert_eq!(
+            log_tail(&mut log, &LocalFiles, LOG_TAIL)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::InvalidData
+        );
+        assert!(log.text.is_empty());
+        std::fs::write(file.path(), "short").unwrap();
+        assert!(log_tail(&mut log, &LocalFiles, LOG_TAIL).is_err());
+        let bytes = vec![0xff; 2 * LOG_TAIL];
+        std::fs::write(file.path(), &bytes).unwrap();
+        log.digest = task_model::Digest::sha256(&bytes).to_string();
+        log.size = bytes.len() as u64;
+        log_tail(&mut log, &LocalFiles, LOG_TAIL).unwrap();
+        assert!(log.text.len() <= LOG_TAIL);
+        assert!(!log.whole);
+    }
 
     #[test]
     fn truncates_at_character() {

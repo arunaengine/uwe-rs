@@ -15,6 +15,7 @@ use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use crate::Runner;
+use crate::inputs::Snapshots;
 
 /// How long the first short task of a group waits for others that can join it.
 const WINDOW: Duration = Duration::from_millis(250);
@@ -41,6 +42,7 @@ pub(crate) struct Member {
     name: String,
     spec: TaskSpec,
     staging: Staging,
+    _snapshots: Snapshots,
     placement: Placement,
     /// How many tasks like this one may share a container.
     per_container: usize,
@@ -74,6 +76,7 @@ pub(crate) fn joinable(job: &Job<'_>) -> bool {
     let spec = job.spec;
     spec.image.is_some()
         && spec.containers.is_empty()
+        && spec.output_manifest.is_none()
         && spec.replaces_entrypoint
         && job.placement.time_seconds.is_none()
         // A task that runs as its image says may run as another user, in another folder.
@@ -95,13 +98,15 @@ impl<B: Backend> Runner<B> {
         job: Job<'_>,
         per_container: usize,
         cancel: &CancellationToken,
+        snapshots: &Snapshots,
     ) -> Result<Finished, ExecutorError> {
-        let (reply, answer) = oneshot::channel();
+        let (reply, mut answer) = oneshot::channel();
         let key = key(&job);
         let member = Member {
             name: job.name.to_owned(),
             spec: job.spec.clone(),
             staging: job.staging.clone(),
+            _snapshots: snapshots.clone(),
             placement: job.placement.clone(),
             per_container,
             cancel: cancel.clone(),
@@ -131,8 +136,13 @@ impl<B: Backend> Runner<B> {
             });
         }
         tokio::select! {
-            answer = answer => answer.unwrap_or_else(|_| Err(lost())),
-            () = cancel.cancelled() => Err(ExecutorError::Cancelled),
+            answer = &mut answer => answer.unwrap_or_else(|_| Err(lost())),
+            () = cancel.cancelled() => {
+                if let Ok(Ok(finished)) = answer.await {
+                    let _ = tokio::fs::remove_dir_all(&finished.root).await;
+                }
+                Err(ExecutorError::Cancelled)
+            },
         }
     }
 
@@ -308,7 +318,6 @@ fn combined(members: &[Member], script: PathBuf) -> (TaskSpec, Staging, Placemen
     };
     let mut outputs = Vec::new();
     let mut placement = first.placement.clone();
-    let mut time = Some(0);
     for (number, member) in members.iter().enumerate() {
         let folder = format!("m{number}");
         for input in &member.staging.inputs {
@@ -328,14 +337,8 @@ fn combined(members: &[Member], script: PathBuf) -> (TaskSpec, Staging, Placemen
             });
         }
         outputs.push(OutputRule { pattern: folder });
-        placement.cpus = placement.cpus.max(member.placement.cpus);
-        placement.memory_bytes = placement.memory_bytes.max(member.placement.memory_bytes);
         placement.priority = placement.priority.max(member.placement.priority);
-        time = time
-            .zip(member.placement.time_seconds)
-            .map(|(sum, own)| sum + own);
     }
-    placement.time_seconds = time;
     // Each wrapper sets the environment of its task; the group keeps the container options.
     let flags = first.spec.environment.get_key_value(FLAGS);
     let spec = TaskSpec {
@@ -425,6 +428,7 @@ mod tests {
         let (reply, answer) = oneshot::channel();
         let spec = TaskSpec {
             run_as: None,
+            output_manifest: None,
             format: FORMAT,
             namespace: String::new(),
             image: Some(Image {
@@ -456,9 +460,17 @@ mod tests {
             },
             placement: Placement {
                 cpus: 1,
-                time_seconds: Some(10),
                 ..Placement::default()
             },
+            _snapshots: Snapshots::new(
+                &crate::Settings {
+                    downloads: "/unused".into(),
+                    import_inputs: false,
+                    storage: storage::Storage::default(),
+                    digests: None,
+                },
+                "test",
+            ),
             per_container: 4,
             cancel: CancellationToken::new(),
             reply,
@@ -494,7 +506,7 @@ mod tests {
                 "m1/control/stdin"
             ]
         );
-        assert_eq!(placement.time_seconds, Some(20));
+        assert_eq!(placement.time_seconds, None);
         let text = script(&members);
         assert!(text.contains("work=\"${0%/*/*}\"'/m1/work'"), "{text}");
         assert!(text.contains("sh \"$group/m1/wrapper.sh\""), "{text}");
@@ -555,5 +567,81 @@ mod tests {
             "the group keeps the flags, the wrappers the rest"
         );
         assert_eq!(spec.environment[FLAGS], flags(r#"{"shm":2147483648}"#));
+    }
+
+    #[tokio::test]
+    async fn cancellation_retains_snapshots() {
+        struct Waiting {
+            root: PathBuf,
+            started: tokio::sync::Notify,
+            release: tokio::sync::Notify,
+        }
+        impl Backend for Waiting {
+            async fn pin(&self, _: &str) -> Result<Option<String>, ExecutorError> {
+                Ok(None)
+            }
+            async fn run(
+                &self,
+                job: Job<'_>,
+                _: &CancellationToken,
+            ) -> Result<Finished, ExecutorError> {
+                self.started.notify_one();
+                self.release.notified().await;
+                for input in &job.staging.inputs {
+                    std::fs::read(&input.source)?;
+                }
+                let root = self.root.join(job.name);
+                for index in 0..2 {
+                    let member = root.join(WORK).join(format!("m{index}"));
+                    std::fs::create_dir_all(member.join(CONTROL))?;
+                    std::fs::create_dir_all(member.join(WORK))?;
+                    std::fs::write(member.join(CONTROL).join(wrapper::EXIT), "0")?;
+                }
+                Ok(Finished {
+                    root,
+                    exit_code: Some(0),
+                    files: Vec::new(),
+                    usage: None,
+                    address: None,
+                })
+            }
+        }
+        let root = tempfile::tempdir().unwrap();
+        let settings = crate::Settings {
+            downloads: root.path().join("downloads"),
+            import_inputs: false,
+            storage: storage::Storage::default(),
+            digests: None,
+        };
+        let runner = Runner::new(
+            content_store::Store::local(&root.path().join("store")).unwrap(),
+            Waiting {
+                root: root.path().join("scratch"),
+                started: Default::default(),
+                release: Default::default(),
+            },
+            "test",
+            settings.clone(),
+        );
+        let (mut first, first_result) = member("first", "out");
+        let (mut second, second_result) = member("second", "out");
+        let mut paths = Vec::new();
+        for member in [&mut first, &mut second] {
+            let snapshots = Snapshots::new(&settings, &member.name);
+            let path = snapshots.folder().await.unwrap().join("input");
+            std::fs::write(&path, b"input").unwrap();
+            member.staging.stdin = None;
+            member.staging.inputs[0].source = path.clone();
+            member._snapshots = snapshots;
+            paths.push(path);
+        }
+        let cancelled = second.cancel.clone();
+        runner.start_groups(vec![first, second]);
+        runner.backend().started.notified().await;
+        cancelled.cancel();
+        drop(second_result);
+        assert!(paths.iter().all(|path| path.exists()));
+        runner.backend().release.notify_one();
+        assert!(first_result.await.unwrap().is_ok());
     }
 }

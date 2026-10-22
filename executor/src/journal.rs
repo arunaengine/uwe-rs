@@ -382,3 +382,7 @@ fn make_folder(path: &Path) -> Result<(), String> {
         Err(error) => Err(error.to_string()),
     }
 }
+
+#[cfg(test)]
+#[path = "journal_tests.rs"]
+mod tests;

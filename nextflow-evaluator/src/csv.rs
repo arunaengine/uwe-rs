@@ -2,7 +2,6 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use indexmap::IndexMap;
@@ -127,7 +126,7 @@ impl Iterator for Records {
                 for (field, (_, value)) in row.into_iter().zip(entries.iter_mut()) {
                     *value = Value::string(field);
                 }
-                Value::Map(Rc::new(RefCell::new(Map {
+                Value::Map(Rc::new(crate::value::MapCell::new(Map {
                     kind: MapKind::LinkedHashMap,
                     entries,
                     default: None,

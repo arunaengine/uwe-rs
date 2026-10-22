@@ -359,7 +359,7 @@ impl Interpreter<'_> {
                 .map(|path| Value::Path(Rc::new(path)))
                 .collect();
             let list = crate::value::List::new(crate::value::ListKind::LinkedList, paths);
-            return Ok(Value::List(Rc::new(std::cell::RefCell::new(list))));
+            return Ok(Value::List(Rc::new(crate::value::ListCell::new(list))));
         }
         let launch = self.host.launch_dir();
         let path = PathValue::parse(&text, &launch);
@@ -394,7 +394,10 @@ pub(super) fn invoked(error: Error) -> Error {
 }
 
 fn tuple(items: Vec<Value>) -> Value {
-    Value::List(Rc::new(RefCell::new(List::new(ListKind::Tuple, items))))
+    Value::List(Rc::new(crate::value::ListCell::new(List::new(
+        ListKind::Tuple,
+        items,
+    ))))
 }
 
 /// Whether the code takes this many arguments. Parameters with defaults are optional.

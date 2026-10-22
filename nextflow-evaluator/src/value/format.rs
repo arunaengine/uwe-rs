@@ -2,7 +2,6 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
@@ -22,7 +21,7 @@ impl Value {
     /// from `to_groovy_string` for ranges, which it writes as lists.
     pub fn to_interpolated(&self) -> String {
         match self {
-            Value::List(list) if list.borrow().range.is_some() => {
+            Value::List(list) if list.peek().range.is_some() => {
                 let mut text = String::new();
                 write_items(&mut text, list, |item, out| item.write_groovy(out));
                 text
@@ -44,7 +43,7 @@ impl Value {
 
     fn write_groovy_body(&self, out: &mut String) {
         match self {
-            Value::List(list) if list.borrow().range.is_some() => self.write_java(out),
+            Value::List(list) if list.peek().range.is_some() => self.write_java(out),
             Value::List(list) => write_items(out, list, |item, out| item.write_groovy(out)),
             Value::Set(set) => {
                 out.push('[');
@@ -91,19 +90,22 @@ impl Value {
             Value::String(text) | Value::GString(text) => out.push_str(text),
             Value::Date(millis) => out.push_str(&crate::date::text(*millis)),
             Value::Class(name) => out.push_str(&super::class_text(name)),
-            Value::List(list) => match &list.borrow().range {
-                Some(range) => out.push_str(&range.text()),
-                None if list.borrow().kind == ListKind::BlankSeparated => {
-                    let names: Vec<String> = list
-                        .borrow()
-                        .items
-                        .iter()
-                        .map(Value::to_java_string)
-                        .collect();
-                    out.push_str(&names.join(" "));
+            Value::List(list) => {
+                let range = list.peek().range.clone();
+                match range {
+                    Some(range) => out.push_str(&range.text()),
+                    None if list.peek().kind == ListKind::BlankSeparated => {
+                        let names: Vec<String> = list
+                            .borrow()
+                            .items
+                            .iter()
+                            .map(Value::to_java_string)
+                            .collect();
+                        out.push_str(&names.join(" "));
+                    }
+                    None => write_items(out, list, |item, out| item.write_java(out)),
                 }
-                None => write_items(out, list, |item, out| item.write_java(out)),
-            },
+            }
             Value::Set(set) => {
                 out.push('[');
                 for (index, item) in set.borrow().items.iter().enumerate() {
@@ -193,7 +195,7 @@ impl Value {
 /// Writes `[a, b]`, with `(this Collection)` for an element that is the list itself.
 fn write_items(
     out: &mut String,
-    list: &Rc<RefCell<super::List>>,
+    list: &Rc<crate::value::ListCell>,
     write: impl Fn(&Value, &mut String),
 ) {
     out.push('[');
@@ -213,7 +215,7 @@ fn write_items(
 fn write_map_part(
     out: &mut String,
     part: &Value,
-    map: &Rc<RefCell<super::Map>>,
+    map: &Rc<crate::value::MapCell>,
     write: fn(&Value, &mut String),
 ) {
     match part {

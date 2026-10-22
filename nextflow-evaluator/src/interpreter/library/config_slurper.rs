@@ -3,7 +3,6 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use nextflow_parser::ast::{self, ConfigStatement};
@@ -114,7 +113,7 @@ impl Interpreter<'_> {
 
 /// An empty map, which makes a value of a key it lacks with `default`.
 fn new_map(default: Option<Rc<Closure>>) -> Value {
-    Value::Map(Rc::new(RefCell::new(Map {
+    Value::Map(Rc::new(crate::value::MapCell::new(Map {
         kind: MapKind::LinkedHashMap,
         entries: Default::default(),
         default,

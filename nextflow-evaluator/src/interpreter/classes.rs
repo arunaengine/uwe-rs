@@ -303,7 +303,7 @@ impl Interpreter<'_> {
         match (name, arguments) {
             ("values", []) if class.def.enumeration => {
                 let list = List::new(ListKind::Array, constants());
-                Ok(Value::List(Rc::new(RefCell::new(list))))
+                Ok(Value::List(Rc::new(crate::value::ListCell::new(list))))
             }
             ("valueOf", [text]) if class.def.enumeration => {
                 let text = text.to_string();
@@ -466,7 +466,7 @@ fn choose<'m>(
             let mut adapted: Vec<Value> = arguments.iter().take(fixed).cloned().collect();
             let rest: Vec<Value> = arguments.iter().skip(fixed).cloned().collect();
             let list = List::new(ListKind::Array, rest);
-            adapted.push(Value::List(Rc::new(RefCell::new(list))));
+            adapted.push(Value::List(Rc::new(crate::value::ListCell::new(list))));
             adapted
         } else {
             if arguments.len() < required || arguments.len() > parameters.len() {

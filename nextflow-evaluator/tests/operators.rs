@@ -2,7 +2,6 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use nextflow_evaluator::number::Number;
@@ -90,10 +89,9 @@ fn lists_and_sets() {
     assert!(matches!((&target, &result), (Value::List(a), Value::List(b)) if Rc::ptr_eq(a, b)));
     assert_eq!(target.to_string(), "[1, 2]");
 
-    let tuple = Value::List(Rc::new(RefCell::new(List::new(
-        ListKind::Tuple,
-        vec![n("1")],
-    ))));
+    let tuple = Value::List(Rc::new(nextflow_evaluator::value::ListCell::new(
+        List::new(ListKind::Tuple, vec![n("1")]),
+    )));
     assert_eq!(
         error(&tuple, Add, &list(vec![n("2")])),
         "UnsupportedOperationException"

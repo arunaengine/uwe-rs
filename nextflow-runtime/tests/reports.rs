@@ -135,6 +135,16 @@ fn skips_simulated_reports() {
 
 #[test]
 fn delivers_failure_reports() {
+    struct Failed;
+    impl workflow_graph::Executor for Failed {
+        fn run(&mut self, attempt: workflow_graph::Attempt) -> workflow_graph::Running {
+            workflow_graph::Running::ended(Ok(workflow_graph::Outcome {
+                id: attempt.task.id,
+                exit_code: 7,
+                ..Default::default()
+            }))
+        }
+    }
     let directory = tempfile::tempdir().unwrap();
     std::fs::write(
         directory.path().join("main.nf"),
@@ -148,7 +158,7 @@ fn delivers_failure_reports() {
         ..Launch::default()
     })
     .unwrap();
-    let mut executor = Simulator::new(directory.path().join("simulator"));
+    let mut executor = Failed;
     let mut deliveries = Deliveries::default();
     let execution = Engine::new(&mut executor)
         .observer(&mut deliveries)

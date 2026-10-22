@@ -64,7 +64,19 @@ fn probes_pure_outputs() {
             ..Launch::default()
         })
         .unwrap();
-        assert!(driver.start().unwrap().is_empty());
+        let tasks = driver.start().unwrap();
+        assert_eq!(tasks.len(), usize::from(!stored));
+        for task in tasks {
+            assert!(
+                driver
+                    .complete(workflow_graph::Outcome {
+                        id: task.id,
+                        ..Default::default()
+                    })
+                    .unwrap()
+                    .is_empty()
+            );
+        }
         driver.finish().unwrap();
         if stored {
             assert!(!sentinel.exists());

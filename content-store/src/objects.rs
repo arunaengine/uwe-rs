@@ -470,7 +470,10 @@ mod tests {
         store.mark_used("", &key, "reader").await.unwrap();
         assert!(!store.remove_entry_observed("", &key, &first).await.unwrap());
         let second = store.objects("ac/").await.unwrap();
-        store.put_entry("", &key, "new".into()).await.unwrap();
+        store
+            .replace(&layout::entry("", &key).unwrap(), b"new")
+            .await
+            .unwrap();
         assert!(
             !store
                 .remove_entry_observed("", &key, &second)

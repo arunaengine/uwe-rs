@@ -206,7 +206,7 @@ fn retry_pending_expires() {
     );
     let first = run.operate().unwrap();
     assert_eq!(first.len(), 1);
-    let deadline = run.wake_at().unwrap();
+    let deadline = run.deadlines.values().map(|limit| limit.at).min().unwrap();
     assert!(run.wake(deadline).unwrap().is_empty());
     assert!(run.cancellations().is_empty());
     assert!(

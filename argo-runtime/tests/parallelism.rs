@@ -265,6 +265,7 @@ fn preserves_loop_states() {
 fn propagates_volume_updates() {
     bounded(|| {
         let folder = tempfile::tempdir().unwrap();
+        let backing = tempfile::tempdir().unwrap();
         let spec = r#"  entrypoint: main
   parallelism: 1
   volumes: [{name: data, persistentVolumeClaim: {claimName: data}}]
@@ -280,7 +281,22 @@ fn propagates_volume_updates() {
       command: [update-counter]
       volumeMounts: [{name: data, mountPath: /data}]
 "#;
-        let mut run = driver(folder.path(), spec);
+        let target = folder.path().join("workflow.yaml");
+        std::fs::write(&target, format!("apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {{name: limits}}\nspec:\n{spec}")).unwrap();
+        let mut run = argo_runtime::driver_with(
+            &Launch {
+                target,
+                ..Launch::default()
+            },
+            argo_runtime::Services {
+                policy: argo_runtime::Policy {
+                    volumes: [("data".into(), backing.path().to_owned())].into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let tasks = run.start().unwrap();
         assert_eq!(tasks.len(), 1);
         let directory = folder.path().join("first");

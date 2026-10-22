@@ -37,6 +37,7 @@ pub struct CwlDriver {
     simulated: bool,
     /// The files of the output object to deliver, once the run finished for real.
     deliveries: Vec<Delivery>,
+    literals: Option<tempfile::TempDir>,
     process: Arc<Process>,
     /// The `$namespaces` of the document, which expand prefixed formats of the job file.
     namespaces: Namespaces,
@@ -73,6 +74,7 @@ impl CwlDriver {
             launch: launch.clone(),
             simulated,
             deliveries: Vec::new(),
+            literals: None,
             run,
             namespaces: Namespaces::default().extend(document.namespaces),
             process: document.process,
@@ -342,7 +344,14 @@ impl Driver for CwlDriver {
                     None => std::env::current_dir().unwrap_or_default(),
                 };
                 let mut outputs = outputs.clone();
-                self.deliveries = results::deliver(&mut outputs, &folder).map_err(error)?;
+                if folder.to_string_lossy().contains("://") {
+                    let local = tempfile::tempdir().map_err(|cause| error(cause.to_string()))?;
+                    self.deliveries =
+                        results::materialize(&mut outputs, local.path()).map_err(error)?;
+                    self.literals = Some(local);
+                }
+                self.deliveries
+                    .extend(results::deliver(&mut outputs, &folder).map_err(error)?);
                 println!("{}", Value::Map(outputs).to_pretty_json());
             }
             return Ok(());

@@ -11,14 +11,51 @@ use workflow_graph::{Delivery, DeliveryMode};
 use crate::files;
 use crate::value::{Map, Value};
 
-/// The deliveries of the files of an output object to `folder`; the object then names the
-/// files at their new places. A literal, a file or directory that has no place yet, is
-/// written to a local folder at once, as cwltool does; a remote file stays as it is.
+/// Plans output delivery and rewrites result locations to their destinations.
+/// Literals are written locally; remote callers materialize them before delivery.
 pub fn deliver(outputs: &mut Map, folder: &Path) -> Result<Vec<Delivery>, String> {
     let mut deliveries = Vec::new();
     let mut used = HashSet::new();
     for (_, value) in outputs.iter_mut() {
         relocate(value, folder, &mut deliveries, &mut used, false)?;
+    }
+    Ok(deliveries)
+}
+
+/// Materializes literals before remote delivery; referenced children are copied first.
+pub fn materialize(outputs: &mut Map, folder: &Path) -> Result<Vec<Delivery>, String> {
+    fn visit(
+        value: &mut Value,
+        folder: &Path,
+        deliveries: &mut Vec<Delivery>,
+        used: &mut HashSet<PathBuf>,
+    ) -> Result<(), String> {
+        if value.is_file_like()
+            && value
+                .text("location")
+                .is_none_or(|location| location.starts_with("_:"))
+        {
+            return relocate(value, folder, deliveries, used, false);
+        }
+        match value {
+            Value::Map(map) => {
+                for value in map.values_mut() {
+                    visit(value, folder, deliveries, used)?;
+                }
+            }
+            Value::List(items) => {
+                for value in items {
+                    visit(value, folder, deliveries, used)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    let mut deliveries = Vec::new();
+    let mut used = HashSet::new();
+    for value in outputs.values_mut() {
+        visit(value, folder, &mut deliveries, &mut used)?;
     }
     Ok(deliveries)
 }
@@ -71,15 +108,16 @@ fn relocate(
                 write_literal(map, folder, deliveries, used)?;
                 return Ok(());
             }
-            let Some(source) = location.and_then(files::local_path) else {
-                return Ok(());
-            };
+            let source = location
+                .and_then(files::local_path)
+                .unwrap_or_else(|| PathBuf::from(location.unwrap_or_default()));
             let basename = match map.get("basename").and_then(Value::as_str) {
                 Some(name) => name.to_owned(),
                 None => files::basename_of(location.unwrap_or_default()),
             };
             let target = folder.join(&basename);
             deliveries.push(Delivery {
+                overwrite: true,
                 location: source.to_string_lossy().into_owned(),
                 target: target.to_string_lossy().into_owned(),
                 mode: DeliveryMode::Copy,
@@ -193,7 +231,12 @@ fn is_filesystem_value(map: &Map) -> bool {
 
 /// Names a file or directory at its new place, with the entries of its `listing` inside it.
 fn name(map: &mut Map, source: &Path, target: &Path) {
-    map.insert("location".into(), Value::String(iri::file_url(target)));
+    let location = if target.to_string_lossy().contains("://") {
+        target.to_string_lossy().into_owned()
+    } else {
+        iri::file_url(target)
+    };
+    map.insert("location".into(), Value::String(location));
     map.insert(
         "path".into(),
         Value::String(target.to_string_lossy().into_owned()),
@@ -206,7 +249,9 @@ fn name(map: &mut Map, source: &Path, target: &Path) {
             continue;
         };
         let inner = entry.get("location").and_then(Value::as_str);
-        let Some(inner) = inner.and_then(files::local_path) else {
+        let Some(inner) = inner
+            .map(|location| files::local_path(location).unwrap_or_else(|| PathBuf::from(location)))
+        else {
             continue;
         };
         if let Ok(relative) = inner.strip_prefix(source) {
@@ -336,6 +381,61 @@ mod tests {
         };
         let deliveries = deliver(&mut outputs, root.path()).expect("deliveries");
         assert_ne!(deliveries[0].target, deliveries[1].target);
+    }
+
+    #[test]
+    fn preserves_remote_destinations() {
+        let Value::Map(mut outputs) = Value::parse("{out: {class: Directory, location: 'file:///source/tree', listing: [{class: File, location: 'file:///source/tree/child'}]}} ").expect("outputs") else { panic!("map") };
+        let deliveries = deliver(&mut outputs, Path::new("s3://bucket/results")).expect("delivery");
+        assert_eq!(deliveries[0].target, "s3://bucket/results/tree");
+        assert_eq!(
+            outputs["out"].text("location"),
+            Some(deliveries[0].target.as_str())
+        );
+        let Value::List(children) = outputs["out"].get("listing").expect("listing") else {
+            panic!("list")
+        };
+        assert_eq!(
+            children[0].text("location"),
+            Some("s3://bucket/results/tree/child")
+        );
+    }
+
+    #[test]
+    fn stages_remote_literals() {
+        let root = tempfile::tempdir().expect("folder");
+        let source = root.path().join("source");
+        std::fs::write(&source, "referenced bytes").expect("source");
+        let text =
+            serde_json::json!({"out": {"class": "Directory", "basename": "tree", "listing": [
+                {"class": "File", "basename": "literal", "contents": "literal bytes"},
+                {"class": "File", "basename": "reference", "location": iri::file_url(&source)}
+            ]}})
+            .to_string();
+        let Value::Map(mut outputs) = Value::parse(&text).expect("outputs") else {
+            panic!("map")
+        };
+        let local = root.path().join("materialized");
+        let mut deliveries = materialize(&mut outputs, &local).expect("materialized");
+        assert_eq!(deliveries.len(), 1);
+        let staged = deliveries.remove(0);
+        std::fs::copy(staged.location, staged.target).expect("referenced child delivered first");
+        let deliveries =
+            deliver(&mut outputs, Path::new("s3://bucket/results")).expect("remote delivery");
+        assert_eq!(deliveries.len(), 1);
+        let source = Path::new(&deliveries[0].location);
+        assert_eq!(
+            std::fs::read_to_string(source.join("literal")).expect("literal"),
+            "literal bytes"
+        );
+        assert_eq!(
+            std::fs::read_to_string(source.join("reference")).expect("reference"),
+            "referenced bytes"
+        );
+        assert_eq!(
+            outputs["out"].text("location"),
+            Some("s3://bucket/results/tree")
+        );
     }
 
     #[test]

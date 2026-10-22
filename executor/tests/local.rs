@@ -17,6 +17,7 @@ use tokio_util::sync::CancellationToken;
 
 fn spec(image: Option<&str>, outputs: &[&str]) -> TaskSpec {
     TaskSpec {
+        output_manifest: None,
         run_as: None,
         format: FORMAT,
         namespace: String::new(),

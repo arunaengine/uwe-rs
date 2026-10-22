@@ -384,6 +384,7 @@ mod tests {
             platform: None,
         };
         TaskSpec {
+            output_manifest: None,
             format: FORMAT,
             namespace: String::new(),
             image: Some(image(containers[0].1)),

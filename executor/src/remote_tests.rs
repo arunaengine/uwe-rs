@@ -14,6 +14,7 @@ use crate::{Staged, Staging};
 
 fn spec() -> TaskSpec {
     TaskSpec {
+        output_manifest: None,
         format: FORMAT,
         arguments: vec![
             "sh".into(),

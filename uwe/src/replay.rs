@@ -5,10 +5,10 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
-use content_store::{Store, layout};
+use content_store::Store;
 use run_database::{Database, Log, RunStart, TaskDetail};
 use task_model::Digest;
-use workflow_graph::{Driver, DriverError, Engine, Language, Outcome, Task};
+use workflow_graph::{Driver, DriverError, Engine, Language, Outcome, Task, Writable};
 
 use super::duration;
 use crate::arguments::Arguments;
@@ -61,11 +61,16 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         arguments.store = original.store.clone();
     }
     let setup = Setup::load(&arguments)?;
-    let store = setup.store(&arguments)?;
-    let (replayed, from_store) = replayed_task(&database, &detail, &store)?;
+    let _registry = setup.registry.enter().map_err(Failure::setup)?;
+    let store = match crate::repeat::kept_by(&setup, &original)? {
+        Some(store) => store,
+        None => setup.store(&arguments)?,
+    };
+    let id = crate::run_id();
+    let folder = crate::repeat::restoration_folder(&crate::cache_directory().join("replays"), &id)?;
+    let (replayed, from_store) = replayed_task(&detail, &store, &folder)?;
     let language: Language = serde_json::from_value(original.language.clone().into())
         .map_err(|_| failure(format!("uwe: run {run} has an unknown language")))?;
-    let id = crate::run_id();
     let mut executor_of_run = crate::executor(
         &arguments,
         &setup,
@@ -129,13 +134,11 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     execution.into_result().map(|_| ()).map_err(Failure::from)
 }
 
-/// The task as it ran, to run again alone: in the image it ran in, and each input where it is
-/// now: at its place when the file is still there, else in the store by its digest. The paths
-/// of the inputs that come from the store come with it.
+/// Restores recorded input bytes before running a task alone in its recorded image.
 fn replayed_task(
-    database: &Database,
     detail: &TaskDetail,
     store: &Store,
+    folder: &Path,
 ) -> Result<(Task, Vec<String>), Failure> {
     let mut task = detail.description.clone();
     let mut from_store = Vec::new();
@@ -147,42 +150,65 @@ fn replayed_task(
     {
         task.image = Some(image);
     }
-    for input in &mut task.inputs {
-        let there = input.source.contains("://") || Path::new(&input.source).exists();
-        if input.content.is_some() || there {
+    let runtime = crate::changes::runtime()?;
+    for (index, input) in task.inputs.iter_mut().enumerate() {
+        if input.content.is_some() {
             continue;
         }
         let recorded = (detail.inputs.iter())
             .find(|file| file.path == input.path)
             .and_then(|file| file.digest.clone());
-        let digest = match recorded {
-            Some(digest) => Some(digest),
-            None => {
-                (database.digest_of(&input.source)).map_err(|error| failure(error.to_string()))?
-            }
-        };
         let gone = || {
             failure(format!(
-                "uwe: the input `{}` is gone: {} is no longer there, and the store has no \
-                 copy of it by its digest",
+                "uwe: the recorded input `{}` cannot be restored or verified: {}",
                 input.path, input.source
             ))
         };
-        let digest: Digest = digest
+        let digest: Digest = recorded
             .and_then(|digest| digest.parse().ok())
             .ok_or_else(gone)?;
-        // A directory is kept as the files under its place in the store, not by one digest.
+        if matches!(input.writable, Writable::InPlace | Writable::Shared) {
+            let place = Path::new(&input.source)
+                .canonicalize()
+                .map_err(|_| gone())?;
+            if Digest::sha256(place.to_string_lossy().as_bytes()) != digest {
+                return Err(gone());
+            }
+            continue;
+        }
+        let target = folder.join(index.to_string());
+        std::fs::create_dir_all(&target).map_err(|_| gone())?;
         if input.directory {
-            return Err(gone());
+            let copy = runtime
+                .block_on(runs::kept_tree(store, &digest.to_string(), &target))
+                .ok_or_else(gone)?;
+            input.source = copy.to_string_lossy().into_owned();
+        } else {
+            let copy = target.join("input");
+            let retained = runtime.block_on(store.materialize_content(&digest, &copy));
+            if retained.is_err() {
+                if input.source.contains("://") {
+                    return Err(gone());
+                }
+                std::fs::copy(&input.source, &copy).map_err(|_| gone())?;
+                let (actual, _) = runtime
+                    .block_on(content_store::hash_file(&copy))
+                    .map_err(|_| gone())?;
+                if actual != digest {
+                    let _ = std::fs::remove_file(&copy);
+                    return Err(gone());
+                }
+            }
+            use std::os::unix::fs::PermissionsExt;
+            if input.executable
+                || std::fs::metadata(&input.source)
+                    .is_ok_and(|metadata| metadata.permissions().mode() & 0o111 != 0)
+            {
+                std::fs::set_permissions(&copy, std::fs::Permissions::from_mode(0o755))
+                    .map_err(|_| gone())?;
+            }
+            input.source = copy.to_string_lossy().into_owned();
         }
-        let location = layout::content(&digest);
-        // A path when the object is on this machine (also in the shared layer of a store in
-        // layers), else its address.
-        let source = store.url(&location);
-        if !source.contains("://") && !Path::new(&source).exists() {
-            return Err(gone());
-        }
-        input.source = source;
         from_store.push(input.path.clone());
     }
     Ok((task, from_store))
@@ -247,7 +273,7 @@ fn report(
     for path in from_store {
         let _ = writeln!(
             text,
-            "  - the input `{path}` came from the store by its digest, as its file is gone"
+            "  - the input `{path}` was restored and verified against its recorded digest"
         );
     }
     if let Some(pair) = pair {
@@ -326,5 +352,114 @@ impl Driver for Replay {
             ))),
             _ => Ok(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use workflow_graph::{Input, TaskId};
+
+    #[test]
+    fn restores_recorded_inputs() {
+        let root = tempfile::tempdir().unwrap();
+        let local = root.path().join("reference.fa");
+        std::fs::write(&local, "original").unwrap();
+        let store = Store::local(&root.path().join("store")).unwrap();
+        let runtime = crate::changes::runtime().unwrap();
+        let (digest, _) = runtime.block_on(store.put_file(&local)).unwrap();
+        let path = root.path().join("runs.sqlite");
+        let start = RunStart {
+            id: "recorded".into(),
+            resumes: None,
+            workflow: "/work/main.nf".into(),
+            language: Language::Nextflow,
+            revision: None,
+            arguments: vec![],
+            parameters: vec![],
+            executor: "local".into(),
+            simulated: false,
+            store: None,
+            program: None,
+            launch: None,
+            workflow_folder: None,
+            repeats: None,
+        };
+        let mut recorder = Database::open(&path).unwrap().record(&start).unwrap();
+        let place = local.canonicalize().unwrap();
+        let path_digest = Digest::sha256(place.to_string_lossy().as_bytes());
+        for (id, source, writable, digest) in [
+            (
+                1,
+                local.to_string_lossy().into_owned(),
+                Writable::No,
+                &digest,
+            ),
+            (
+                2,
+                "https://example.org/reference.fa".into(),
+                Writable::No,
+                &digest,
+            ),
+            (
+                3,
+                local.to_string_lossy().into_owned(),
+                Writable::InPlace,
+                &path_digest,
+            ),
+        ] {
+            let task = Task {
+                id: TaskId(id),
+                inputs: vec![Input {
+                    path: "reference.fa".into(),
+                    source,
+                    writable,
+                    ..Input::default()
+                }],
+                ..Task::default()
+            };
+            recorder.requested(&task, &[]);
+            recorder.started(task.id, 1);
+            recorder.finished(
+                &Outcome {
+                    id: task.id,
+                    inputs: [("reference.fa".into(), digest.to_string())].into(),
+                    ..Outcome::default()
+                },
+                1,
+                false,
+            );
+        }
+        recorder.ended(None);
+        recorder.close().unwrap();
+        std::fs::write(&local, "changed").unwrap();
+        let database = Database::open(&path).unwrap();
+        for id in [1, 2] {
+            let detail = database.task("recorded", id).unwrap().unwrap();
+            let (task, _) =
+                replayed_task(&detail, &store, &root.path().join(format!("replay-{id}"))).unwrap();
+            assert_eq!(std::fs::read(&task.inputs[0].source).unwrap(), b"original");
+            let empty = Store::local(&root.path().join("empty")).unwrap();
+            assert!(
+                replayed_task(&detail, &empty, &root.path().join(format!("missing-{id}"))).is_err()
+            );
+        }
+        let detail = database.task("recorded", 3).unwrap().unwrap();
+        let empty = Store::local(&root.path().join("empty")).unwrap();
+        let folder = root.path().join("in-place");
+        let (task, from_store) = replayed_task(&detail, &empty, &folder).unwrap();
+        assert_eq!(task.inputs[0].source, local.to_string_lossy());
+        assert_eq!(task.inputs[0].writable, Writable::InPlace);
+        assert_eq!(std::fs::read(&task.inputs[0].source).unwrap(), b"changed");
+        assert!(from_store.is_empty());
+        assert!(!folder.exists());
+        std::fs::remove_file(&local).unwrap();
+        assert!(replayed_task(&detail, &empty, &folder).is_err());
+        std::fs::write(&local, "original").unwrap();
+        let detail = database.task("recorded", 1).unwrap().unwrap();
+        let empty = Store::local(&root.path().join("empty")).unwrap();
+        let (task, _) = replayed_task(&detail, &empty, &root.path().join("verified")).unwrap();
+        std::fs::write(&local, "changed again").unwrap();
+        assert_eq!(std::fs::read(&task.inputs[0].source).unwrap(), b"original");
     }
 }

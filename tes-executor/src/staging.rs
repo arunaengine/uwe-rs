@@ -20,6 +20,18 @@ pub struct ObjectStage {
     pub(crate) settings: Settings,
 }
 
+enum Walk {
+    Path {
+        source: PathBuf,
+        path: String,
+    },
+    Folder {
+        reader: tokio::fs::ReadDir,
+        path: String,
+        empty: bool,
+    },
+}
+
 impl ObjectStage {
     pub fn configured(
         source: Store,
@@ -76,7 +88,8 @@ impl ObjectStage {
             ));
         }
         let work = container_path(spec.workdir.as_deref().unwrap_or(super::backend::WORK), "/")?;
-        let shell = shell || shell_command(&spec.arguments);
+        let shell = shell || shell_command(&spec.arguments) || spec.output_manifest.is_some();
+        let helper = usize::from(spec.output_manifest.is_some());
         if shell
             && [
                 super::backend::CONTROL,
@@ -116,36 +129,61 @@ impl ObjectStage {
                 ),
                 None => None,
             };
-            let mut pending = vec![(staged.source.clone(), inside.clone())];
-            while let Some((source, path)) = pending.pop() {
-                let metadata = std::fs::symlink_metadata(&source)?;
+            let entries: Option<BTreeMap<_, _>> = tree.as_ref().map(|tree| {
+                tree.entries
+                    .iter()
+                    .map(|entry| (entry.path(), entry))
+                    .collect()
+            });
+            let mut pending = vec![Walk::Path {
+                source: staged.source.clone(),
+                path: inside.clone(),
+            }];
+            while let Some(next) = pending.pop() {
+                let (source, path) = match next {
+                    Walk::Path { source, path } => (source, path),
+                    Walk::Folder {
+                        mut reader,
+                        path,
+                        empty,
+                    } => {
+                        let Some(entry) = reader.next_entry().await? else {
+                            if empty {
+                                directories.push(path);
+                            }
+                            continue;
+                        };
+                        let name = entry
+                            .file_name()
+                            .into_string()
+                            .map_err(|_| unsupported("TES paths must be UTF-8"))?;
+                        let target = container_path(&format!("{path}/{name}"), "/")?;
+                        pending.push(Walk::Folder {
+                            reader,
+                            path,
+                            empty: false,
+                        });
+                        (entry.path(), target)
+                    }
+                };
+                let metadata = tokio::fs::symlink_metadata(&source).await?;
                 if metadata.is_symlink() {
                     return Err(unsupported(
                         "TES FILE inputs cannot preserve symbolic links",
                     ));
                 }
                 if metadata.is_dir() {
-                    let mut empty = true;
-                    for entry in std::fs::read_dir(&source)? {
-                        let entry = entry?;
-                        let name = entry
-                            .file_name()
-                            .into_string()
-                            .map_err(|_| unsupported("TES paths must be UTF-8"))?;
-                        pending.push((
-                            entry.path(),
-                            container_path(&format!("{path}/{name}"), "/")?,
-                        ));
-                        empty = false;
-                    }
-                    if empty {
-                        directories.push(path);
-                    }
+                    let reader = tokio::fs::read_dir(&source).await?;
+                    pending.push(Walk::Folder {
+                        reader,
+                        path,
+                        empty: true,
+                    });
                 } else if metadata.is_file() {
-                    let expected = match &tree {
-                        Some(tree) => {
+                    let expected = match &entries {
+                        Some(entries) => {
                             let relative = path.strip_prefix(&format!("{inside}/")).unwrap_or("");
-                            match tree.entries.iter().find(|entry| entry.path() == relative) {
+                            match entries.get(relative).copied() {
                                 Some(TreeEntry::File {
                                     digest, executable, ..
                                 }) => {
@@ -168,6 +206,9 @@ impl ObjectStage {
                             .map(|input| input.digest.clone()),
                     };
                     files.push((source, path, expected));
+                    if files.len() + usize::from(shell) + helper > self.settings.max_inputs {
+                        return Err(unsupported("TES expanded inputs exceed max_inputs"));
+                    }
                 } else {
                     return Err(unsupported("TES inputs must be regular files"));
                 }
@@ -178,7 +219,7 @@ impl ObjectStage {
                 "empty directories and executable inputs require a task shell for TES staging",
             ));
         }
-        if files.len() + usize::from(shell) > self.settings.max_inputs {
+        if files.len() + usize::from(shell) + helper > self.settings.max_inputs {
             return Err(unsupported("TES expanded inputs exceed max_inputs"));
         }
         let prefix = executor::capture::attempt_prefix(job)?;
@@ -225,29 +266,61 @@ impl ObjectStage {
         if task.outputs.len() > self.settings.max_outputs {
             return Err(unsupported("TES outputs exceed max_outputs"));
         }
-        for (source, path, expected) in files {
+        let mut uploads = tokio::task::JoinSet::new();
+        let mut inputs = vec![None; files.len()];
+        for (index, (source, path, expected)) in files.into_iter().enumerate() {
             if wildcard(&path) {
                 return Err(unsupported("TES input paths cannot contain wildcards"));
             }
-            super::outputs::check_input(&task, &path)?;
-            let (digest, _) = hash_file(&source).await.map_err(storage_error)?;
-            if expected
-                .as_ref()
-                .is_some_and(|expected| expected != &digest)
-            {
-                return Err(storage_error(
-                    "staged TES input differs from its content digest",
-                ));
+            if helper != 0 && Path::new(&path).starts_with(super::backend::HELPER) {
+                return Err(unsupported("TES input paths overlap the native helper"));
             }
-            let url = self.input_url(&source, &digest).await?;
+            super::outputs::check_input(&task, &path)?;
             task.inputs.push(Input {
-                path,
-                url,
-                kind: FileType::File,
+                path: path.clone(),
+                ..Input::default()
             });
+            let stage = self.clone();
+            uploads.spawn(async move {
+                let (digest, _) = hash_file(&source).await.map_err(storage_error)?;
+                if expected
+                    .as_ref()
+                    .is_some_and(|expected| expected != &digest)
+                {
+                    return Err(storage_error(
+                        "staged TES input differs from its content digest",
+                    ));
+                }
+                let url = stage.input_url(&source, &digest).await?;
+                Ok::<_, ExecutorError>((
+                    index,
+                    Input {
+                        path,
+                        url,
+                        kind: FileType::File,
+                    },
+                ))
+            });
+            if uploads.len() >= 8 {
+                let (index, input) = uploads
+                    .join_next()
+                    .await
+                    .unwrap()
+                    .map_err(storage_error)??;
+                inputs[index] = Some(input);
+            }
         }
+        while let Some(result) = uploads.join_next().await {
+            let (index, input) = result.map_err(storage_error)??;
+            inputs[index] = Some(input);
+        }
+        task.inputs = inputs
+            .into_iter()
+            .map(|input| input.expect("every upload completed"))
+            .collect();
         if shell {
             let script = super::capture::script(job, &work, &directories, &programs)?;
+            let script = super::capture::discover(script, job, &work, &self.settings)?;
             let digest = self
                 .objects
                 .put_content(script.into_bytes().into())
@@ -260,26 +333,52 @@ impl ObjectStage {
             });
             task.executors[0].command = vec!["sh".into(), super::backend::WRAPPER.into()];
         }
+        if let Some(helper) = self.settings.helper_file.as_ref().filter(|_| helper != 0) {
+            if !self
+                .objects
+                .has_content(&helper.digest)
+                .await
+                .map_err(storage_error)?
+            {
+                self.objects
+                    .put_file_as(&helper.file, &helper.digest)
+                    .await
+                    .map_err(storage_error)?;
+            }
+            task.inputs.push(Input {
+                path: super::backend::HELPER.into(),
+                url: destination(
+                    &self.objects,
+                    &content_store::layout::content(&helper.digest),
+                )?,
+                kind: FileType::File,
+            });
+        }
         Ok(task)
     }
 
-    /// Removes what the attempt at `prefix` left in the staging root, when the settings ask for
-    /// it. The inputs in `cas/` stay, as other tasks may use them. A failure only leaves
-    /// objects behind, so it is a warning.
-    pub(crate) async fn clean(&self, prefix: &str) {
+    /// Removes attempt objects when configured, retaining failures for durable retry.
+    pub(crate) async fn try_clean(&self, prefix: &str) -> Result<(), ExecutorError> {
         if !self.settings.staging_cleanup {
-            return;
+            return Ok(());
         }
-        let objects = match self.objects.objects(&format!("{prefix}/")).await {
-            Ok(objects) => objects,
-            Err(error) => return tracing::warn!(prefix, %error, "cannot list an attempt"),
-        };
-        for object in objects {
-            if let Err(error) = self.objects.remove(&object.location).await {
-                let location = object.location;
-                tracing::warn!(location, %error, "cannot remove an object of an attempt");
-            }
+        let mut objects = self
+            .objects
+            .inventory(&format!("{prefix}/"))
+            .await
+            .map_err(storage_error)?;
+        loop {
+            let object = match objects.next().await {
+                Ok(Some(object)) => object,
+                Ok(None) => break,
+                Err(error) => return Err(storage_error(error)),
+            };
+            self.objects
+                .remove(&object.location)
+                .await
+                .map_err(storage_error)?;
         }
+        Ok(())
     }
 
     async fn input_url(&self, source: &Path, digest: &Digest) -> Result<String, ExecutorError> {
@@ -292,10 +391,17 @@ impl ObjectStage {
         {
             return Ok(address);
         }
-        self.objects
-            .put_file_as(source, digest)
+        if !self
+            .objects
+            .has_content(digest)
             .await
-            .map_err(storage_error)?;
+            .map_err(storage_error)?
+        {
+            self.objects
+                .put_file_as(source, digest)
+                .await
+                .map_err(storage_error)?;
+        }
         destination(&self.objects, &content_store::layout::content(digest))
     }
 }

@@ -5,6 +5,182 @@
 use super::*;
 
 #[tokio::test]
+async fn delivers_native_helper() {
+    let folder = tempfile::tempdir().unwrap();
+    let (_, objects, source) = stores();
+    let file = folder.path().join("uwe");
+    let bytes = b"configured static helper";
+    std::fs::write(&file, bytes).unwrap();
+    let helper = executor::binary::Binary {
+        file,
+        digest: Digest::sha256(bytes),
+        machine: executor::binary::Machine::Amd64,
+        uploaded: Default::default(),
+    };
+    let stage = ObjectStage::new(
+        source,
+        objects.clone(),
+        Settings {
+            helper_file: Some(helper.clone()),
+            ..Settings::default()
+        },
+    )
+    .unwrap();
+    let mut spec = spec(false);
+    spec.output_manifest = Some("cwl.output.json".into());
+    let task = stage
+        .prepare(
+            Job {
+                name: "manifest",
+                spec: &spec,
+                staging: &Staging::default(),
+                placement: &Placement::default(),
+            },
+            false,
+        )
+        .await
+        .unwrap();
+    assert_eq!(task.executors[0].command, ["sh", crate::backend::WRAPPER]);
+    let input = task
+        .inputs
+        .iter()
+        .find(|input| input.path == crate::backend::HELPER)
+        .unwrap();
+    assert!(
+        input
+            .url
+            .ends_with(&content_store::layout::content(&helper.digest))
+    );
+    assert_eq!(
+        objects.get_content(&helper.digest).await.unwrap().as_ref(),
+        bytes
+    );
+    let input = task
+        .inputs
+        .iter()
+        .find(|input| input.path == crate::backend::WRAPPER)
+        .unwrap();
+    let location = input.url.strip_prefix("s3://bucket/tes/").unwrap();
+    let script = String::from_utf8(objects.get_object(location).await.unwrap().to_vec()).unwrap();
+    assert!(script.contains("'x86_64'"));
+    assert!(script.contains(helper.digest.hex()));
+    assert!(script.contains("'/uwe/helper' __stage discover /uwe"));
+    assert!(
+        script.find(": > \"$control/objects\"").unwrap() < script.find("__stage discover").unwrap()
+    );
+}
+
+#[tokio::test]
+#[ignore = "bounded local staging benchmark; run with --ignored --nocapture"]
+async fn benchmarks_reference_staging() {
+    let folder = tempfile::tempdir().unwrap();
+    let (_, objects, source) = stores();
+    let stage = ObjectStage::new(source.clone(), objects, Settings::default()).unwrap();
+    let mut spec = spec(false);
+    let mut staging = Staging::default();
+    for index in 0..512 {
+        let name = format!("reference-{index:03}");
+        let mut bytes = vec![b'a'; 4096];
+        bytes[..8].copy_from_slice(&(index as u64).to_le_bytes());
+        let path = folder.path().join(&name);
+        std::fs::write(&path, &bytes).unwrap();
+        spec.inputs.push(InputFile {
+            path: name.clone(),
+            digest: Digest::sha256(&bytes),
+            kind: FileKind::File,
+            executable: false,
+            writable: false,
+        });
+        staging.inputs.push(Staged {
+            path: name,
+            source: path,
+            ..Staged::default()
+        });
+    }
+    for round in ["cold", "warm"] {
+        let start = std::time::Instant::now();
+        let task = stage
+            .prepare(
+                Job {
+                    name: "benchmark-1",
+                    spec: &spec,
+                    staging: &staging,
+                    placement: &Placement::default(),
+                },
+                false,
+            )
+            .await
+            .unwrap();
+        assert_eq!(task.inputs.len(), 512);
+        eprintln!(
+            "TES reference staging: round={round} files=512 bytes=2097152 elapsed_us={}",
+            start.elapsed().as_micros()
+        );
+    }
+}
+
+#[tokio::test]
+async fn stages_indexed_tree() {
+    let folder = tempfile::tempdir().unwrap();
+    let (operator, objects, source) = stores();
+    let mut entries = Vec::new();
+    for index in 0..32 {
+        let path = format!("file-{index:02}");
+        let bytes = path.as_bytes();
+        std::fs::write(folder.path().join(&path), bytes).unwrap();
+        entries.push(TreeEntry::File {
+            path: path.clone(),
+            digest: Digest::sha256(bytes),
+            size: bytes.len() as u64,
+            executable: false,
+        });
+    }
+    let digest = source
+        .put_tree(&task_model::Tree { entries })
+        .await
+        .unwrap();
+    let mut spec = spec(false);
+    spec.inputs.push(InputFile {
+        path: "reference".into(),
+        kind: FileKind::Directory,
+        digest,
+        executable: false,
+        writable: false,
+    });
+    let staging = Staging {
+        inputs: vec![Staged {
+            path: "reference".into(),
+            source: folder.path().to_owned(),
+            directory: true,
+            ..Staged::default()
+        }],
+        ..Staging::default()
+    };
+    let stage = ObjectStage::new(source, objects.clone(), Settings::default()).unwrap();
+    let task = stage
+        .prepare(
+            Job {
+                name: "reference-1",
+                spec: &spec,
+                staging: &staging,
+                placement: &Placement::default(),
+            },
+            false,
+        )
+        .await
+        .unwrap();
+    assert_eq!(task.inputs.len(), 32);
+    for input in task.inputs {
+        let name = input.path.rsplit('/').next().unwrap();
+        let key = objects.location_of(&input.url).unwrap();
+        assert_eq!(
+            operator.read(&key).await.unwrap().to_bytes().as_ref(),
+            name.as_bytes()
+        );
+    }
+}
+
+#[tokio::test]
 async fn refuses_unrepresentable_tasks() {
     let folder = tempfile::tempdir().unwrap();
     let (_, objects, source) = stores();

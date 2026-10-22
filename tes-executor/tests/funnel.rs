@@ -41,6 +41,7 @@ fn spec(script: &str) -> TaskSpec {
         outputs: vec![OutputRule {
             pattern: "out/*.txt".into(),
         }],
+        output_manifest: None,
         stdin: None,
         containers: Vec::new(),
         replaces_entrypoint: false,

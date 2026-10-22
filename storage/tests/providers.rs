@@ -1129,6 +1129,30 @@ async fn isolates_storage_sessions() {
 }
 
 #[tokio::test]
+async fn observes_downloaded_children() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("data");
+    std::fs::write(&source, b"child content").unwrap();
+    let storage = storage(&format!(
+        "[storage.mirror]\ntype='folder'\nprefixes='s3://bucket/'\npath='{}'",
+        root.path().display()
+    ));
+    let parent = storage.current("s3://bucket/").await.unwrap().unwrap();
+    assert!(parent.directory);
+    let address = "s3://bucket/data";
+    let expected = storage.stat(address).await.unwrap().unwrap();
+    let copy = storage
+        .fetch(address, &root.path().join("downloads"))
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(&copy).unwrap(), b"child content");
+    let recorded = storage.fetched();
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0].size, expected.size);
+    assert_eq!(recorded[0].version, expected.version);
+}
+
+#[tokio::test]
 async fn holds_read_downloads() {
     let root = tempfile::tempdir().unwrap();
     let downloads = tempfile::tempdir().unwrap();
@@ -1463,6 +1487,7 @@ async fn rejects_changed_observation() {
     let server = std::thread::spawn(move || {
         for (mut stream, version) in listener
             .incoming()
+            .take(4)
             .map(Result::unwrap)
             .zip(["A", "B", "A", "A"])
         {

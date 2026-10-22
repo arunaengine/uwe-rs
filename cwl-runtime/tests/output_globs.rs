@@ -265,6 +265,9 @@ fn expands_remote_globs() {
             ..Outcome::default()
         })
         .expect("outcome");
+    if driver.outputs().is_none() {
+        panic!("collection failed: {:?}", driver.finish());
+    }
     let output = driver
         .outputs()
         .expect("successful collection")

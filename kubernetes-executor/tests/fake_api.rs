@@ -1585,10 +1585,19 @@ async fn containers_share_pod() {
     assert_eq!(finished.exit_code, Some(0));
     let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
     assert_eq!(output, "yes\n");
-    // One Job with a container for each image.
-    let calls = state.lock().expect("the state").calls.clone();
+    let state = state.lock().expect("the state");
+    let calls = &state.calls;
     let created = calls.iter().filter(|call| call.starts_with("POST")).count();
-    assert_eq!(created, 1, "{calls:?}");
+    assert_eq!(created, 2, "{calls:?}");
+    assert_eq!(state.submitted.len(), 1);
+    assert_eq!(state.submitted[0]["metadata"]["uid"], "accepted-0");
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| call.starts_with("PATCH"))
+            .count(),
+        1
+    );
     let control = finished.root.join(executor::CONTROL);
     let ended = executor::containers::ended(&spec, &control);
     let codes: Vec<Option<i32>> = ended.iter().map(|ended| ended.exit_code).collect();
@@ -2545,6 +2554,17 @@ printf '%s' '{"out":{"class":"File","location":"selected.txt"}}' > cwl.output.js
     );
     assert!(!result.local_path("discarded.txt").exists());
     assert!(result.files.iter().any(|file| file.path == "selected.txt"));
+    let prefix = executor::capture::attempt_prefix(job).unwrap();
+    let control = data.join(prefix).join("control");
+    assert_eq!(
+        std::fs::read_to_string(control.join("exit")).unwrap(),
+        "0\n"
+    );
+    let index = std::fs::read_to_string(control.join("objects")).unwrap();
+    assert_eq!(index.lines().count(), 2);
+    assert!(index.contains("cwl.output.json"));
+    assert!(index.contains("selected.txt"));
+    assert!(!index.contains("discarded.txt"));
     let state = state.lock().unwrap();
     let pod = &state.submitted[0]["spec"]["template"]["spec"];
     assert!(pod.get("initContainers").is_none());

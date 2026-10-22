@@ -205,7 +205,7 @@ impl Storage {
             if let Some(expected) = expected.as_ref()
                 && expected.version.is_some()
                 && (expected.version != downloaded.version
-                    || expected.size != temporary.as_file().metadata().map_err(local(&copy))?.len())
+                    || expected.size != temporary.path().metadata().map_err(local(&copy))?.len())
             {
                 let served = self.serve(target)?;
                 return Err(served.failed(

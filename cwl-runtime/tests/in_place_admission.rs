@@ -107,7 +107,7 @@ fn refreshes_deferred_inputs() {
         }
         let location = outcome.files[0].location.clone();
         let second = driver.complete(outcome).expect("first completes");
-        assert_eq!(second.len(), 1);
+        assert_eq!(second.len(), 1, "writer preparation: {:?}", driver.finish());
         assert_eq!(second[0].command, ["update", "first update", "12"]);
         let copy = second[0]
             .inputs

@@ -3,7 +3,6 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use indexmap::IndexMap;
@@ -12,29 +11,36 @@ use nextflow_parser::Span;
 use super::super::{AtSpan, Error, Interpreter, thrown};
 use super::iterable::elements;
 use crate::exception::Exception;
-use crate::value::{Closure, Key, Map, MapKind, Operator, Value};
+use crate::value::{Closure, Key, MapKind, Operator, Value};
 
 impl Interpreter<'_> {
     pub(super) fn map_method(
         &mut self,
-        map: &Rc<RefCell<Map>>,
+        map: &Rc<crate::value::MapCell>,
         name: &str,
         arguments: &[Value],
         span: Span,
     ) -> Result<Option<Value>, Error> {
         let object = Value::Map(map.clone());
-        let entries: Vec<(Value, Value)> = map
-            .borrow()
-            .entries
-            .iter()
-            .map(|(key, value)| (key.0.clone(), value.clone()))
-            .collect();
+        let entries = std::cell::LazyCell::new(|| {
+            map.borrow()
+                .entries
+                .iter()
+                .map(|(key, value)| (key.0.clone(), value.clone()))
+                .collect::<Vec<(Value, Value)>>()
+        });
         let kind = map.borrow().kind;
         let changing = matches!(
             name,
             "put" | "putAll" | "remove" | "clear" | "replace" | "putIfAbsent" | "computeIfAbsent"
         ) || (name == "get" && arguments.len() == 2);
-        if changing && kind == MapKind::Record {
+        let existing_get = name == "get"
+            && arguments.len() == 2
+            && map
+                .borrow()
+                .entries
+                .contains_key(&Key(arguments[0].clone()));
+        if changing && (kind == MapKind::Record || (map.readonly && !existing_get)) {
             return Err(thrown(
                 Exception::new("UnsupportedOperationException", ""),
                 span,
@@ -42,8 +48,8 @@ impl Interpreter<'_> {
         }
         let get = |key: &Value| map.borrow().entries.get(&Key(key.clone())).cloned();
         Ok(Some(match (name, arguments) {
-            ("size", []) => Value::integer(entries.len() as i32),
-            ("isEmpty", []) => Value::Boolean(entries.is_empty()),
+            ("size", []) => Value::integer(map.borrow().entries.len() as i32),
+            ("isEmpty", []) => Value::Boolean(map.borrow().entries.is_empty()),
             ("containsKey", [key]) => Value::Boolean(get(key).is_some()),
             ("containsValue", [value]) => {
                 Value::Boolean(entries.iter().any(|(_, other)| other.java_equals(value)))
@@ -102,11 +108,13 @@ impl Interpreter<'_> {
                 map.borrow_mut().entries.clear();
                 Value::Null
             }
-            ("keySet", []) => Value::set(entries.into_iter().map(|(key, _)| key)),
-            ("values", []) => Value::list(entries.into_iter().map(|(_, value)| value).collect()),
-            ("entrySet", []) => Value::set(entries.into_iter().map(entry)),
+            ("keySet", []) => Value::set(entries.iter().cloned().map(|(key, _)| key)),
+            ("values", []) => {
+                Value::list(entries.iter().cloned().map(|(_, value)| value).collect())
+            }
+            ("entrySet", []) => Value::set(entries.iter().cloned().map(entry)),
             ("each", [Value::Closure(f)]) => {
-                for (key, value) in &entries {
+                for (key, value) in &*entries {
                     self.call_closure_value(f, pair(f, key, value), span)?;
                 }
                 object
@@ -178,12 +186,13 @@ impl Interpreter<'_> {
             }
             // `workflow.manifest` is a map here; its `toMap()` gives a copy.
             ("toMap", []) => super::copy_map(&Value::Map(map.clone())),
-            // An unmodifiable view; changes through it are not checked yet.
-            ("asImmutable" | "asUnmodifiable", []) => Value::Map(map.clone()),
+            ("asImmutable" | "asUnmodifiable", []) => Value::Map(Rc::new(
+                crate::value::MapCell::readonly(map, name == "asImmutable"),
+            )),
             ("groupBy", [Value::Closure(f)]) => {
                 let keys = self.map_entries(&entries, f, span)?;
                 let mut groups: IndexMap<Key, Vec<(Value, Value)>> = IndexMap::new();
-                for (key, pair) in keys.into_iter().zip(entries) {
+                for (key, pair) in keys.into_iter().zip(entries.iter().cloned()) {
                     groups.entry(Key(key)).or_default().push(pair);
                 }
                 Value::map(
@@ -194,7 +203,7 @@ impl Interpreter<'_> {
             }
             ("inject", [initial, Value::Closure(f)]) => {
                 let mut accumulator = initial.clone();
-                for (key, value) in &entries {
+                for (key, value) in &*entries {
                     let arguments = if parameter_count(f) == 3 {
                         vec![accumulator, key.clone(), value.clone()]
                     } else {
@@ -220,12 +229,12 @@ impl Interpreter<'_> {
                 sub
             }
             ("toSorted", []) => {
-                let mut sorted = entries;
+                let mut sorted = entries.clone();
                 sorted.sort_by(|a, b| a.0.number_aware_compare(&b.0));
                 Value::map(sorted)
             }
             ("toSorted", [Value::Closure(f)]) => {
-                let mut sorted: Vec<Value> = entries.into_iter().map(entry).collect();
+                let mut sorted: Vec<Value> = entries.iter().cloned().map(entry).collect();
                 self.sort_with(&mut sorted, f, span)?;
                 Value::map(sorted.into_iter().filter_map(|item| match item {
                     Value::MapEntry(pair) => Some((pair.0.clone(), pair.1.clone())),
@@ -239,7 +248,7 @@ impl Interpreter<'_> {
             // The entry with the largest or smallest key of a closure over entries, or that
             // a closure of two entries finds by comparing.
             ("max" | "min", [Value::Closure(f)]) => {
-                let items: Vec<Value> = entries.into_iter().map(entry).collect();
+                let items: Vec<Value> = entries.iter().cloned().map(entry).collect();
                 let list = Value::list(items);
                 let arguments = [Value::Closure(f.clone())];
                 return self.library_method(&list, name, &arguments, span);
@@ -249,7 +258,7 @@ impl Interpreter<'_> {
                     [default, _] => default.clone(),
                     _ => Value::Null,
                 };
-                for (key, value) in &entries {
+                for (key, value) in &*entries {
                     let result = self.call_closure_value(f, pair(f, key, value), span)?;
                     if !matches!(result, Value::Null) {
                         found = result;
@@ -260,7 +269,7 @@ impl Interpreter<'_> {
             }
             ("takeWhile" | "dropWhile", [Value::Closure(f)]) => {
                 let mut count = 0;
-                for (key, value) in &entries {
+                for (key, value) in &*entries {
                     if !self
                         .call_closure_value(f, pair(f, key, value), span)?
                         .truth()
@@ -295,7 +304,7 @@ impl Interpreter<'_> {
                 }
             },
             ("sort", []) => {
-                let mut sorted = entries;
+                let mut sorted = entries.clone();
                 sorted.sort_by(|a, b| a.0.number_aware_compare(&b.0));
                 let sorted = Value::map(sorted);
                 if let Value::Map(inner) = &sorted {
@@ -304,7 +313,7 @@ impl Interpreter<'_> {
                 sorted
             }
             ("clone", []) => {
-                let copy = Value::map(entries);
+                let copy = Value::map(entries.clone());
                 if let Value::Map(inner) = &copy {
                     inner.borrow_mut().kind = kind;
                 }

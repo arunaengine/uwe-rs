@@ -17,7 +17,7 @@ use crate::value::{Closure, Key, List, ListKind, Set, Value};
 impl Interpreter<'_> {
     pub(super) fn list_method(
         &mut self,
-        list: &Rc<RefCell<List>>,
+        list: &Rc<crate::value::ListCell>,
         name: &str,
         arguments: &[Value],
         span: Span,
@@ -32,8 +32,137 @@ impl Interpreter<'_> {
             };
             return self.list_method(list, name, rest, span);
         }
-        let items = list.borrow().items.clone();
-        let kind = list.borrow().kind;
+        let kind = list.peek().kind;
+        let changing = matches!(
+            name,
+            "sort"
+                | "unique"
+                | "add"
+                | "addAll"
+                | "remove"
+                | "removeAll"
+                | "clear"
+                | "set"
+                | "leftShift"
+                | "push"
+                | "pop"
+                | "retainAll"
+                | "swap"
+                | "removeIf"
+                | "withDefault"
+        );
+        if list.readonly && changing {
+            return Err(rejected(span));
+        }
+        match (name, arguments) {
+            ("getClass", []) => {
+                return Ok(Some(Value::Class(
+                    Value::List(list.clone()).java_class_name().into(),
+                )));
+            }
+            ("toString", []) => {
+                return Ok(Some(Value::string(
+                    Value::List(list.clone()).to_groovy_string(),
+                )));
+            }
+            ("contains", [item]) if kind == ListKind::Range => {
+                return Value::List(list.clone())
+                    .is_case(item)
+                    .map(Value::Boolean)
+                    .map(Some)
+                    .map_err(|error| thrown(error, span));
+            }
+            ("take" | "drop", [Value::Number(count)]) if kind == ListKind::Range => {
+                let count = (count.to_i64().max(0) as usize).min(list.len());
+                let (from, to) = if name == "take" {
+                    (0, count)
+                } else {
+                    (count, list.len())
+                };
+                return Ok(Some(Value::list(
+                    (from..to).filter_map(|index| list.item(index)).collect(),
+                )));
+            }
+            ("step", [Value::Number(step)]) if kind == ListKind::Range && step.to_i64() != 0 => {
+                let step = step.to_i64();
+                let indexes = (0..list.len()).step_by(step.unsigned_abs() as usize);
+                return Ok(Some(Value::list(
+                    indexes
+                        .filter_map(|index| {
+                            list.item(if step < 0 {
+                                list.len() - index - 1
+                            } else {
+                                index
+                            })
+                        })
+                        .collect(),
+                )));
+            }
+            ("size", []) => {
+                let size = i32::try_from(list.len()).map_err(|_| {
+                    thrown(
+                        Exception::illegal_argument("List size exceeds Integer.MAX_VALUE"),
+                        span,
+                    )
+                })?;
+                return Ok(Some(Value::integer(size)));
+            }
+            ("isEmpty", []) => return Ok(Some(Value::Boolean(list.is_empty()))),
+            ("get", [Value::Number(index)]) => {
+                let item = usize::try_from(index.to_i64())
+                    .ok()
+                    .and_then(|index| list.item(index));
+                return item.map(Some).ok_or_else(|| {
+                    thrown(
+                        Exception::new(
+                            "IndexOutOfBoundsException",
+                            format!("Index {index} out of bounds for length {}", list.len()),
+                        ),
+                        span,
+                    )
+                });
+            }
+            ("getAt", [index]) => {
+                return self
+                    .index(
+                        &Value::List(list.clone()),
+                        std::slice::from_ref(index),
+                        span,
+                    )
+                    .map(Some);
+            }
+            ("first" | "head" | "last", []) if !list.is_empty() => {
+                return Ok(list.item(if name == "last" { list.len() - 1 } else { 0 }));
+            }
+            ("add", [item])
+                if !matches!(kind, ListKind::Tuple | ListKind::Array | ListKind::Range) =>
+            {
+                list.borrow_mut().items.push(item.clone());
+                return Ok(Some(Value::Boolean(true)));
+            }
+            ("set", [_, _]) if !matches!(kind, ListKind::Tuple | ListKind::Range) => {
+                return self.set_list_item(list, arguments, span);
+            }
+            ("subList", [Value::Number(from), Value::Number(to)]) => {
+                let (from, to) = (from.to_i64(), to.to_i64());
+                if from < 0 || to > list.len() as i64 || from > to {
+                    return Err(thrown(
+                        Exception::new(
+                            "IndexOutOfBoundsException",
+                            format!("fromIndex: {from}, toIndex: {to}, size: {}", list.len()),
+                        ),
+                        span,
+                    ));
+                }
+                return Ok(Some(Value::List(Rc::new(crate::value::ListCell::slice(
+                    list,
+                    from as usize,
+                    to as usize,
+                )))));
+            }
+            _ => {}
+        }
+        let items = std::cell::LazyCell::new(|| list.borrow().items.clone());
         let fixed = matches!(kind, ListKind::Tuple | ListKind::Array | ListKind::Range);
         let empty = |what: &str| {
             let message = format!("Cannot access {what}() element from an empty List");
@@ -46,21 +175,6 @@ impl Interpreter<'_> {
             ("count", []) if kind == ListKind::Stream => {
                 Value::Number(crate::number::Number::Long(items.len() as i64))
             }
-            ("get", [Value::Number(index)]) => match usize::try_from(index.to_i64()) {
-                Ok(position) if position < items.len() => items[position].clone(),
-                _ => {
-                    let message = format!("Index {index} out of bounds for length {}", items.len());
-                    return Err(thrown(
-                        Exception::new("IndexOutOfBoundsException", message),
-                        span,
-                    ));
-                }
-            },
-            ("getAt", [index]) => self.index(
-                &Value::List(list.clone()),
-                std::slice::from_ref(index),
-                span,
-            )?,
             ("first" | "head", []) => match items.first() {
                 Some(item) => item.clone(),
                 None => return empty("first"),
@@ -82,7 +196,7 @@ impl Interpreter<'_> {
             }
             ("takeWhile" | "dropWhile", [Value::Closure(f)]) => {
                 let mut count = 0;
-                for item in &items {
+                for item in &*items {
                     if !self
                         .call_closure_value(f, vec![item.clone()], span)?
                         .truth()
@@ -99,18 +213,6 @@ impl Interpreter<'_> {
                 Value::list(part.to_vec())
             }
             ("reverse", []) => Value::list(items.iter().rev().cloned().collect()),
-            ("subList", [Value::Number(from), Value::Number(to)]) => {
-                let (from, to) = (from.to_i64(), to.to_i64());
-                if from < 0 || to > items.len() as i64 || from > to {
-                    let message =
-                        format!("fromIndex: {from}, toIndex: {to}, size: {}", items.len());
-                    return Err(thrown(
-                        Exception::new("IndexOutOfBoundsException", message),
-                        span,
-                    ));
-                }
-                Value::list(items[from as usize..to as usize].to_vec())
-            }
             ("indexOf" | "lastIndexOf", [item]) => {
                 let mut positions = items
                     .iter()
@@ -141,20 +243,6 @@ impl Interpreter<'_> {
                     .map(Value::list)
                     .collect();
                 Value::list(windows)
-            }
-            ("step", [Value::Number(step)]) if kind == ListKind::Range && step.to_i64() != 0 => {
-                let step = step.to_i64();
-                let ordered: Vec<Value> = if step > 0 {
-                    items.clone()
-                } else {
-                    items.iter().rev().cloned().collect()
-                };
-                Value::list(
-                    ordered
-                        .into_iter()
-                        .step_by(step.unsigned_abs() as usize)
-                        .collect(),
-                )
             }
             ("combinations", []) => {
                 Value::list(combinations(&items).into_iter().map(Value::list).collect())
@@ -225,16 +313,12 @@ impl Interpreter<'_> {
                 }
                 return Err(rejected(span));
             }
-            ("add", [item]) => {
-                list.borrow_mut().items.push(item.clone());
-                Value::Boolean(true)
-            }
             ("add", [Value::Number(index), item]) => {
                 let position = usize::try_from(index.to_i64())
                     .ok()
-                    .filter(|p| *p <= items.len());
+                    .filter(|p| *p <= list.len());
                 let Some(position) = position else {
-                    let message = format!("Index: {index}, Size: {}", items.len());
+                    let message = format!("Index: {index}, Size: {}", list.len());
                     return Err(thrown(
                         Exception::new("IndexOutOfBoundsException", message),
                         span,
@@ -255,7 +339,7 @@ impl Interpreter<'_> {
                 Value::Boolean(true)
             }
             ("pop", []) => {
-                if items.is_empty() {
+                if list.is_empty() {
                     let message = "Cannot pop() an empty List";
                     return Err(thrown(
                         Exception::new("NoSuchElementException", message),
@@ -267,12 +351,12 @@ impl Interpreter<'_> {
             ("remove", [Value::Number(index @ Number::Integer(_))]) => {
                 match usize::try_from(index.to_i64())
                     .ok()
-                    .filter(|p| *p < items.len())
+                    .filter(|p| *p < list.len())
                 {
                     Some(position) => list.borrow_mut().items.remove(position),
                     None => {
                         let message =
-                            format!("Index {index} out of bounds for length {}", items.len());
+                            format!("Index {index} out of bounds for length {}", list.len());
                         return Err(thrown(
                             Exception::new("IndexOutOfBoundsException", message),
                             span,
@@ -290,7 +374,7 @@ impl Interpreter<'_> {
             // Groovy's `removeAll` and `retainAll` with a closure that picks the items.
             ("removeAll" | "retainAll", [Value::Closure(f)]) => {
                 let mut kept = Vec::new();
-                for item in &items {
+                for item in &*items {
                     let picked = self.call_closure_value(f, vec![item.clone()], span)?;
                     if picked.truth() == (name == "retainAll") {
                         kept.push(item.clone());
@@ -301,17 +385,18 @@ impl Interpreter<'_> {
                 Value::Boolean(changed)
             }
             ("retainAll", [others]) => {
+                let length = list.len();
                 let others = elements(others);
                 list.borrow_mut()
                     .items
                     .retain(|item| others.iter().any(|o| o.java_equals(item)));
-                Value::Boolean(list.borrow().items.len() != items.len())
+                Value::Boolean(list.len() != length)
             }
             ("swap", [Value::Number(first), Value::Number(second)]) => {
                 let (first, second) = (first.to_i64(), second.to_i64());
-                let valid = |index: i64| usize::try_from(index).ok().filter(|i| *i < items.len());
+                let valid = |index: i64| usize::try_from(index).ok().filter(|i| *i < list.len());
                 let (Some(first), Some(second)) = (valid(first), valid(second)) else {
-                    let message = format!("Index {first} out of bounds for length {}", items.len());
+                    let message = format!("Index {first} out of bounds for length {}", list.len());
                     let exception = Exception::new("IndexOutOfBoundsException", message);
                     return Err(thrown(exception, span));
                 };
@@ -321,7 +406,7 @@ impl Interpreter<'_> {
             // Groovy's `split(Closure)`: the items the closure accepts, then the others.
             ("split", [Value::Closure(f)]) => {
                 let (mut accepted, mut rejected) = (Vec::new(), Vec::new());
-                for item in &items {
+                for item in &*items {
                     match self
                         .call_closure_value(f, vec![item.clone()], span)?
                         .truth()
@@ -371,21 +456,24 @@ impl Interpreter<'_> {
                 (items.iter().enumerate())
                     .map(|(index, item)| (Value::integer(index as i32), item.clone())),
             ),
-            ("toArray", []) => Value::List(Rc::new(RefCell::new(List::new(
+            ("toArray", []) => Value::List(Rc::new(crate::value::ListCell::new(List::new(
                 ListKind::Array,
                 items.clone(),
             )))),
-            ("asImmutable" | "asUnmodifiable", []) => Value::List(list.clone()),
+            ("asImmutable" | "asUnmodifiable", []) => Value::List(Rc::new(
+                crate::value::ListCell::readonly(list, name == "asImmutable"),
+            )),
             ("removeAll", [others]) => {
+                let length = list.len();
                 let others = elements(others);
                 list.borrow_mut()
                     .items
                     .retain(|item| !others.iter().any(|o| o.java_equals(item)));
-                Value::Boolean(list.borrow().items.len() != items.len())
+                Value::Boolean(list.len() != length)
             }
             ("removeIf", [Value::Closure(f)]) => {
                 let mut kept = Vec::new();
-                for item in &items {
+                for item in &*items {
                     if !self
                         .call_closure_value(f, vec![item.clone()], span)?
                         .truth()
@@ -401,7 +489,6 @@ impl Interpreter<'_> {
                 list.borrow_mut().items.clear();
                 Value::Null
             }
-            ("set", [_, _]) => return self.set_list_item(list, arguments, span),
             // Groovy's `plus(index, element)`: a new list with the element inserted.
             ("plus", [Value::Number(index), element]) if index.to_i64() >= 0 => {
                 let index = index.to_i64() as usize;
@@ -410,7 +497,7 @@ impl Interpreter<'_> {
                     let exception = Exception::new("IndexOutOfBoundsException", message);
                     return Err(super::super::thrown(exception, span));
                 }
-                let mut items = items;
+                let mut items = items.clone();
                 items.insert(index, element.clone());
                 Value::list(items)
             }
@@ -425,12 +512,13 @@ impl Interpreter<'_> {
         arguments: &[Value],
         span: Span,
     ) -> Result<Option<Value>, Error> {
-        let items: Vec<Value> = set
-            .borrow()
-            .items
-            .iter()
-            .map(|item| item.0.clone())
-            .collect();
+        let items = std::cell::LazyCell::new(|| {
+            set.borrow()
+                .items
+                .iter()
+                .map(|item| item.0.clone())
+                .collect::<Vec<_>>()
+        });
         Ok(Some(match (name, arguments) {
             ("add", [item]) => Value::Boolean(set.borrow_mut().add(item.clone())),
             ("addAll", [others]) => {
@@ -453,7 +541,7 @@ impl Interpreter<'_> {
                 Value::Set(set.clone())
             }
             ("sort" | "toSorted", rest) => {
-                let mut sorted = items;
+                let mut sorted = items.clone();
                 match rest {
                     [] => sorted.sort_by(Value::number_aware_compare),
                     [Value::Closure(f)] => self.sort_with(&mut sorted, f, span)?,
@@ -518,7 +606,7 @@ impl Interpreter<'_> {
 
     fn set_list_item(
         &mut self,
-        list: &Rc<RefCell<List>>,
+        list: &Rc<crate::value::ListCell>,
         arguments: &[Value],
         span: Span,
     ) -> Result<Option<Value>, Error> {

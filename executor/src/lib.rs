@@ -25,6 +25,8 @@ pub mod process;
 pub mod registry;
 pub mod remote;
 mod stage;
+#[cfg(test)]
+mod test_engine;
 pub mod wrapper;
 
 use std::future::Future;

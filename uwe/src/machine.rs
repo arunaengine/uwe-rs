@@ -85,6 +85,7 @@ impl Report {
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let mut report = Report::default();
     let setup = config::config(arguments, &mut report);
+    let _registry = setup.registry.enter().map_err(Failure::setup)?;
     let runtime = workflow_graph::runtime().map_err(|error| Failure::setup(error.to_string()))?;
     local::engine(runtime, &setup, arguments, &mut report);
     local::store(runtime, &setup, arguments, &mut report);
@@ -407,7 +408,11 @@ mod executors {
         let kubeconfig = (arguments.kubeconfig.clone()).or_else(|| executors.kubeconfig.clone());
         let Some(kubeconfig) = kubeconfig else {
             report.add(
-                State::NotSetUp,
+                if arguments.executor.as_deref() == Some("kubernetes") {
+                    State::Missing
+                } else {
+                    State::NotSetUp
+                },
                 part,
                 "no kubeconfig named; name one with -kubeconfig or `kubeconfig` in \
                  [executor.kubernetes]; uwe never takes the default one",

@@ -159,3 +159,114 @@ fn checks_native_languages() {
     assert_eq!(code, 33, "{stdout}");
     assert!(stdout.contains("(decision 18)"), "{stdout}");
 }
+
+#[test]
+fn retains_backend_context() {
+    let directory = folder(&[
+        (
+            "main.nf",
+            "process A { container 'alpine:3.21'; script: 'true' }\nworkflow { if (workflow.containerEngine != 'apptainer') { error 'wrong engine' }; A() }\n",
+        ),
+        ("lab.toml", "[executor]\ndefault = 'slurm'\n"),
+    ]);
+    for options in [
+        vec!["main.nf", "-executor", "slurm"],
+        vec!["main.nf", "-uwe-config", "lab.toml"],
+    ] {
+        let (code, stdout) = check(directory.path(), &options);
+        assert_eq!(code, 0, "{stdout}");
+        assert!(stdout.contains("1 task"), "{stdout}");
+    }
+    let (code, stdout) = check(directory.path(), &["main.nf", "-executor", "local"]);
+    assert_eq!(code, 1, "{stdout}");
+    assert!(stdout.contains("wrong engine"), "{stdout}");
+}
+
+#[test]
+fn retains_preset_context() {
+    let directory = tempfile::tempdir().unwrap();
+    let revision = "a".repeat(40);
+    let project = directory
+        .path()
+        .join("cache/uwe/pipelines/github.com/team/pipeline")
+        .join(&revision);
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(project.join(".uwe-revision"), &revision).unwrap();
+    std::fs::write(project.join("main.nf"), "process A { container 'alpine:3.21'; script: 'true' }\nworkflow { if (workflow.containerEngine != 'apptainer') { error 'wrong engine' }; A() }\n").unwrap();
+    for (preset, explicit, expected) in [
+        ("", None, 0),
+        ("executor='local'\n", None, 1),
+        ("executor='local'\n", Some("slurm"), 0),
+    ] {
+        std::fs::write(directory.path().join("lab.toml"), format!(
+            "[executor]\ndefault='slurm'\n[workflows.demo]\nsource='team/pipeline'\nrevision='{revision}'\n{preset}"
+        )).unwrap();
+        let mut options = vec!["-preset", "demo", "-uwe-config", "lab.toml"];
+        if let Some(executor) = explicit {
+            options.extend(["-executor", executor]);
+        }
+        let (code, stdout) = check(directory.path(), &options);
+        assert_eq!(code, expected, "{stdout}");
+        if expected == 0 {
+            assert!(stdout.contains("1 task"), "{stdout}");
+        } else {
+            assert!(stdout.contains("wrong engine"), "{stdout}");
+        }
+    }
+}
+
+#[test]
+fn requires_conda_setup() {
+    let directory = folder(&[
+        (
+            "main.nf",
+            "process A { conda 'samtools=1.20'; script: 'true' }\nworkflow { A() }\n",
+        ),
+        ("nextflow.config", "conda.enabled = true\n"),
+    ]);
+    let (code, stdout) = check(directory.path(), &["main.nf"]);
+    assert_eq!(code, 33, "{stdout}");
+    assert!(
+        stdout.contains("Conda preparation requires explicit [conda]"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn checks_pinned_revisions() {
+    let directory = tempfile::tempdir().unwrap();
+    for (commit, name) in [("a".repeat(40), "first"), ("b".repeat(40), "second")] {
+        let project = directory
+            .path()
+            .join("cache/uwe/pipelines/github.com/team/pipeline")
+            .join(&commit);
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(project.join(".uwe-revision"), &commit).unwrap();
+        std::fs::write(project.join("main.nf"), "workflow {}\n").unwrap();
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {name: {"type": "string"}},
+            "required": [name]
+        });
+        std::fs::write(project.join("nextflow_schema.json"), schema.to_string()).unwrap();
+        let (code, stdout) = check(directory.path(), &["team/pipeline", "-r", &commit]);
+        assert_eq!(code, 1, "{stdout}");
+        assert!(
+            stdout.contains(&format!("`{name}` is required")),
+            "{stdout}"
+        );
+        for command in ["inputs", "outputs"] {
+            let output = common::command()
+                .args([command, "team/pipeline", "-r", &commit])
+                .env("XDG_CACHE_HOME", directory.path().join("cache"))
+                .current_dir(directory.path())
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+            if command == "inputs" {
+                let described: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+                assert_eq!(described["required"], serde_json::json!([name]));
+            }
+        }
+    }
+}

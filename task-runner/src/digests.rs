@@ -19,11 +19,11 @@ const RECENT: Duration = Duration::from_secs(2);
 /// A smaller file is read rather than looked up: reading it takes less time than a query of
 /// the cache, above all on a file system that cluster nodes share, where each query and each
 /// commit waits for a lock.
-const SMALLEST: u64 = 1 << 20;
+pub(crate) const SMALLEST: u64 = 1 << 20;
 
 /// What tells one version of a file from another. Times are in nanoseconds since 1970.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Version {
+pub(crate) struct Version {
     device: u64,
     inode: u64,
     size: u64,
@@ -32,7 +32,7 @@ struct Version {
 }
 
 impl Version {
-    fn of(metadata: &std::fs::Metadata) -> Version {
+    pub(crate) fn of(metadata: &std::fs::Metadata) -> Version {
         let nanoseconds = |seconds: i64, nanoseconds: i64| {
             seconds
                 .saturating_mul(1_000_000_000)

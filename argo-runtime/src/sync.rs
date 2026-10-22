@@ -1,9 +1,10 @@
-//! Resolves semaphore limits and admits nodes through locks shared by one run.
+//! Resolves semaphore limits and admits nodes through locks shared across runs.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::path::Path;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use argo_parser::{Node, Value as Yaml};
 
@@ -12,9 +13,22 @@ use crate::node::Phase;
 use crate::run::{Failure, Processed, Result, Run, scalar_text};
 use crate::tags::{Variables, replace_node};
 
-#[derive(Default)]
+/// Clone this host-owned coordinator into independently submitted runs.
+#[derive(Clone, Debug, Default)]
+pub struct SharedLocks(Arc<Mutex<Locks>>);
+
+impl SharedLocks {
+    pub(crate) fn lock(&self) -> MutexGuard<'_, Locks> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+#[derive(Debug, Default)]
 pub(crate) struct Locks(BTreeMap<String, Lock>);
 
+#[derive(Debug)]
 struct Lock {
     limit: usize,
     holders: HashSet<String>,
@@ -60,6 +74,17 @@ impl Locks {
             lock.holders.remove(owner);
             lock.waiting.retain(|item| item != owner);
         }
+        self.0
+            .retain(|_, lock| !lock.holders.is_empty() || !lock.waiting.is_empty());
+    }
+
+    pub fn release_run(&mut self, prefix: &str) {
+        for lock in self.0.values_mut() {
+            lock.holders.retain(|owner| !owner.starts_with(prefix));
+            lock.waiting.retain(|owner| !owner.starts_with(prefix));
+        }
+        self.0
+            .retain(|_, lock| !lock.holders.is_empty() || !lock.waiting.is_empty());
     }
 }
 
@@ -125,8 +150,7 @@ fn limits(
             .unwrap_or_else(|| namespace.into())
     };
     for mutex in entries(node, "mutexes", "mutex")? {
-        // Argo keeps database mutexes apart from the others of the same name. One uwe
-        // process holds all locks of its runs, as one controller would.
+        // Database mutexes have a separate identity within the host coordinator.
         let database = (mutex.get("database")).is_some_and(|value| value.value == Yaml::Bool(true));
         let kind = if database { "database" } else { "mutex" };
         limits.push((
@@ -148,7 +172,7 @@ fn limits(
             .or_else(|| reference.get("limit"))
             .map(scalar_text);
         let value = inline.or_else(|| {
-            library.all(Kind::ConfigMap, near).into_iter().find(|document| document.name == name && document.node.get("metadata").and_then(|node| node.get("namespace")).map(scalar_text).filter(|value| !value.is_empty()).unwrap_or_else(|| "default".into()) == namespace)
+            library.find_in(Kind::ConfigMap, &name, near, &namespace)
                 .and_then(|document| document.node.get("data").and_then(|data| data.get(&key)).map(scalar_text))
         }).ok_or_else(|| Failure::unsupported(format!("synchronization semaphore requires ConfigMap {namespace}/{name} key {key}; supply a ConfigMap with data.{key} using -config, or an inline configMapKeyRef.limit")))?;
         let limit = value.parse::<usize>().ok().filter(|value| *value > 0).ok_or_else(|| Failure::error(format!("synchronization {namespace}/{name}/{key}: semaphore limit must be a positive integer")))?;
@@ -163,6 +187,12 @@ fn limits(
 
 impl Run {
     pub fn lock_workflow(&mut self) -> Result<bool> {
+        if self
+            .root
+            .is_some_and(|root| self.nodes[root].phase.fulfilled())
+        {
+            return Ok(true);
+        }
         let Some(mut node) = self.spec.synchronization.clone() else {
             return Ok(true);
         };
@@ -174,9 +204,12 @@ impl Run {
             &self.document.path,
             &self.globals["workflow.namespace"],
         )?;
-        self.locks
-            .borrow_mut()
-            .acquire(&format!("workflow:{}", self.workflow_name), &limits)
+        let acquired = self
+            .locks
+            .lock()
+            .acquire(&self.lock_owner("workflow"), &limits)?;
+        self.lock_wait |= !acquired;
+        Ok(acquired)
     }
 
     pub fn lock_template(&mut self, index: usize, processed: &Processed) -> Result<bool> {
@@ -189,8 +222,9 @@ impl Run {
             &processed.context.path,
             &self.globals["workflow.namespace"],
         )?;
-        let owner = self.nodes[index].id.clone();
-        let acquired = self.locks.borrow_mut().acquire(&owner, &limits)?;
+        let owner = self.lock_owner(&self.nodes[index].id);
+        let acquired = self.locks.lock().acquire(&owner, &limits)?;
+        self.lock_wait |= !acquired;
         if !acquired {
             self.set_phase(
                 index,

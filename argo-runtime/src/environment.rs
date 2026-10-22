@@ -52,7 +52,12 @@ impl Run {
                     )),
                 }
             } else if let Some(reference) = from.get("configMapKeyRef").map(KeyRef::of) {
-                let found = config_map_value(&self.library, &self.document.path, &reference);
+                let found = config_map_value(
+                    &self.library,
+                    &self.document.path,
+                    self.document.namespace(),
+                    &reference,
+                );
                 match found {
                     Some(value) => {
                         environment.insert(name.clone(), value);
@@ -87,7 +92,7 @@ impl Run {
         environment: &mut BTreeMap<String, String>,
     ) -> Result<()> {
         if let Some(reference) = source.get("configMapRef").map(KeyRef::of) {
-            match config_map(&self.library, &self.document.path, &reference.name) {
+            match config_map(&self.library, &self.document.path, self.document.namespace(), &reference.name) {
                 Some(entries) => {
                     for (key, value) in entries {
                         environment.insert(format!("{prefix}{key}"), value);

@@ -93,7 +93,14 @@ impl Run {
             }
             name => name,
         };
-        let known = self.children.iter().position(|child| child.name == name);
+        let namespace = match text("namespace") {
+            namespace if namespace.is_empty() => self.document.namespace().to_owned(),
+            namespace => namespace,
+        };
+        let known = self
+            .children
+            .iter()
+            .position(|child| child.name == name && child.run.document.namespace() == namespace);
         let child = match (resource.action.as_str(), known) {
             ("get" | "apply", Some(child)) => child,
             ("get", None) => {
@@ -125,6 +132,11 @@ impl Run {
                         metadata,
                         "name",
                         Node::new(Yaml::String(name.clone()), position),
+                    );
+                    set(
+                        metadata,
+                        "namespace",
+                        Node::new(Yaml::String(namespace.clone()), position),
                     );
                 }
                 let mut node = manifest.clone();
@@ -164,7 +176,7 @@ impl Run {
                 }
                 run.inbound = self.nodes[index].inbound.clone();
                 run.files = self.files.clone();
-                run.locks = Rc::clone(&self.locks);
+                run.locks = self.locks.clone();
                 self.children.push(Child {
                     name,
                     manifest,

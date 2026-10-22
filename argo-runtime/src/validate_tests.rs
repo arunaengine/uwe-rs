@@ -37,6 +37,24 @@ fn workflow_template(name: &str, templates: &str) -> String {
 const PRINT: &str = "  - name: print\n    inputs: {parameters: [{name: message}]}\n    container: {image: busybox}\n";
 
 #[test]
+fn checks_joined_templates() {
+    let workflow = "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {name: joined}\nspec: {workflowTemplateRef: {name: lib}}\n";
+    assert!(check(workflow, &[]).unwrap_err().contains("lib"));
+    let template = "apiVersion: argoproj.io/v1alpha1\nkind: WorkflowTemplate\nmetadata: {name: lib}\nspec:\n  entrypoint: main\n  templates:\n  - name: main\n    container: {image: alpine}\n";
+    assert!(check(workflow, &[template]).is_ok());
+    assert!(
+        check(
+            workflow,
+            &[&template.replace("entrypoint: main", "entrypoint: absent")]
+        )
+        .unwrap_err()
+        .contains("absent")
+    );
+    let cycle = "apiVersion: argoproj.io/v1alpha1\nkind: WorkflowTemplate\nmetadata: {name: lib}\nspec: {workflowTemplateRef: {name: lib}}\n";
+    assert!(check(workflow, &[cycle]).unwrap_err().contains("cycle"));
+}
+
+#[test]
 fn reads_document_entrypoints() {
     let entry = |templates: &str| {
         format!(

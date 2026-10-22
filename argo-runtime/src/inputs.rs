@@ -78,7 +78,12 @@ impl Run {
                 }
                 let what = format!("input {} of template {}", input.name, typed.name);
                 value = Some(AnyString(
-                    match config_map_value(&self.library, &self.document.path, &reference) {
+                    match config_map_value(
+                        &self.library,
+                        &self.document.path,
+                        self.document.namespace(),
+                        &reference,
+                    ) {
                         Some(found) => found,
                         None => match from.default {
                             Some(default) => default.0,

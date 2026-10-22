@@ -185,3 +185,36 @@ fn workflows_share_locks() {
     }
     assert_eq!(right.operate().unwrap().len(), 3);
 }
+
+#[test]
+fn resolves_namespace_limits() {
+    let library = Library::new();
+    for (namespace, value) in [("a", "1"), ("b", "2")] {
+        library.add_documents(
+            0,
+            [Rc::new(Document {
+                path: "capacity.yaml".into(),
+                index: usize::from(namespace == "b"),
+                kind: Kind::ConfigMap,
+                name: "capacity".into(),
+                node: argo_parser::parse_yaml(&format!(
+                    "metadata: {{namespace: {namespace}}}\ndata: {{jobs: '{value}'}}\n"
+                ))
+                .unwrap()
+                .unwrap(),
+            })],
+        );
+    }
+    let node =
+        argo_parser::parse_yaml("{semaphores: [{configMapKeyRef: {name: capacity, key: jobs}}]}")
+            .unwrap()
+            .unwrap();
+    for (namespace, expected) in [("a", 1), ("b", 2)] {
+        let limits =
+            super::limits(&node, &library, std::path::Path::new("run.yaml"), namespace).unwrap();
+        assert_eq!(
+            limits,
+            vec![(format!("{namespace}/semaphore/capacity/jobs"), expected)]
+        );
+    }
+}

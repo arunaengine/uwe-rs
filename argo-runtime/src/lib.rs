@@ -55,7 +55,16 @@ use workflow_graph::{
 
 pub use git::{Checkout, GitClient, GitSource};
 pub use library::{Document, Kind, Library, load_file, repository_of};
+pub use sync::SharedLocks;
 pub use validate::{Rejection, validate};
+
+/// Host-authorized paths; absent roots retain trusted local CLI behavior.
+#[derive(Clone, Debug, Default)]
+pub struct Policy {
+    pub host_roots: Option<Vec<PathBuf>>,
+    /// Explicit local backing directories, keyed by declared volume name.
+    pub volumes: std::collections::BTreeMap<String, PathBuf>,
+}
 
 /// How a run behaves, besides its document and library.
 #[derive(Clone, Debug, Default)]
@@ -84,6 +93,8 @@ pub struct Options {
     pub resume: Option<PathBuf>,
     /// The Git client that checks out git artifacts in a real run.
     pub git: Option<GitClient>,
+    pub policy: Policy,
+    pub locks: SharedLocks,
 }
 
 /// What a run of the command line gets from its host: the S3 providers of the config file,
@@ -93,6 +104,8 @@ pub struct Services {
     pub endpoints: Vec<Endpoint>,
     pub resume: Option<PathBuf>,
     pub git: Option<GitClient>,
+    pub policy: Policy,
+    pub locks: SharedLocks,
 }
 
 /// An S3 storage provider: its name, the addresses it serves and its service, `None` for AWS.
@@ -256,6 +269,7 @@ impl Driver for ArgoDriver {
                         .to_string_lossy()
                         .into_owned(),
                     mode: DeliveryMode::Copy,
+                    overwrite: true,
                 });
             }
         }
@@ -343,6 +357,8 @@ pub fn driver_with(launch: &Launch, services: Services) -> Result<Box<dyn Driver
         endpoints: services.endpoints,
         resume: services.resume,
         git: services.git,
+        policy: services.policy,
+        locks: services.locks,
     };
     let mut driver = ArgoDriver::new(document, Rc::new(library), options);
     if !launch.simulated {

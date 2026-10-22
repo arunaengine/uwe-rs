@@ -438,9 +438,9 @@ impl<B: Backend> Runner<B> {
             let found = self
                 .phase(None, admission.as_ref(), Some(cancel), lookup)
                 .await?;
-            if let Some(found) = found {
+            if let Some((namespace, found)) = found {
                 let candidate = deferred.then(|| Candidate {
-                    namespace: namespace.to_owned(),
+                    namespace,
                     key,
                     source: CandidateSource::Hit(found.snapshot),
                 });
@@ -595,15 +595,19 @@ impl<B: Backend> Runner<B> {
                 milliseconds: Some(milliseconds),
                 containers: result.containers.clone(),
             };
+            let namespace = match request.scope {
+                ReuseScope::Lineage => lineage_namespace(namespace, &self.run),
+                _ => namespace.to_owned(),
+            };
             if deferred {
                 candidate = Some(Candidate {
-                    namespace: namespace.to_owned(),
+                    namespace,
                     key,
                     source: CandidateSource::Publish(entry),
                 });
             } else {
                 let bytes = entry.to_bytes(&key)?;
-                let put = self.store.put_entry(namespace, &key, bytes.into());
+                let put = self.store.put_entry(&namespace, &key, bytes.into());
                 let limited = async {
                     let limit = Duration::from_secs(10);
                     match tokio::time::timeout(limit, put).await {
@@ -706,14 +710,22 @@ impl<B: Backend> Runner<B> {
         &self,
         namespace: &str,
         key: &Digest,
-    ) -> Result<Option<entry::Observed>, RunnerError> {
-        let found = entry::observed(&self.store, namespace, key, Stale::Remove).await?;
-        let Some(found) = found.filter(|found| self.lineage.contains(&found.entry.run)) else {
-            return Ok(None);
-        };
-        self.authority(None, None).await?;
-        self.store.mark_used(namespace, key, &self.run).await?;
-        Ok(Some(found))
+    ) -> Result<Option<(String, entry::Observed)>, RunnerError> {
+        let namespaces = self
+            .lineage
+            .iter()
+            .map(|run| lineage_namespace(namespace, run))
+            .chain(std::iter::once(namespace.to_owned()));
+        for namespace in namespaces {
+            let found = entry::observed(&self.store, &namespace, key, Stale::Remove).await?;
+            let Some(found) = found.filter(|found| self.lineage.contains(&found.entry.run)) else {
+                continue;
+            };
+            self.authority(None, None).await?;
+            self.store.mark_used(&namespace, key, &self.run).await?;
+            return Ok(Some((namespace, found)));
+        }
+        Ok(None)
     }
 
     /// Waits until this run may run the task of `key`: while another run, or another task of
@@ -884,6 +896,12 @@ impl<B: Backend> Runner<B> {
         let _ = work.await;
         Err(error)
     }
+}
+
+/// Separates create-only lineage entries without changing task keys.
+fn lineage_namespace(namespace: &str, run: &str) -> String {
+    let bytes = serde_json::to_vec(&(namespace, run)).expect("strings serialize as JSON");
+    format!("lineage-{}", Digest::sha256(&bytes).hex())
 }
 
 /// An error of a file operation on this machine, with the path of the file.

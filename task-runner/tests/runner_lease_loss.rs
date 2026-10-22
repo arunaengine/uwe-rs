@@ -134,6 +134,7 @@ async fn rejects_late_success() {
             .await
             .unwrap();
         let key = prepared.request.spec.cache_key().unwrap();
+        let namespace = layout::namespace_name(&prepared.request.spec.namespace);
         let cancel = CancellationToken::new();
         let (owned, prepared, stop) = (runner.clone(), prepared.clone(), cancel.clone());
         let execution = tokio::spawn(async move { owned.execute(&prepared, &stop).await });
@@ -143,7 +144,7 @@ async fn rejects_late_success() {
         let name = if case == "memory-takeover" {
             "runs/run".to_owned()
         } else {
-            format!("tasks/default/{}", key.hex())
+            format!("tasks/{namespace}/{}", key.hex())
         };
         let location = layout::lease(&name).unwrap();
         if case == "user-cancel" {

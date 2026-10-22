@@ -13,7 +13,7 @@ use opendal::{ErrorKind, Operator};
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
-use crate::{Store, StoreError, layout};
+use crate::{Inventory, Store, StoreError, layout};
 
 /// How long a lease in an object store lasts when its holder does not renew it.
 pub const LEASE_TIME: Duration = Duration::from_secs(60);
@@ -40,6 +40,34 @@ pub struct Holder {
     pub process: u32,
     /// When the run took the lease, in milliseconds since the Unix epoch.
     pub since: i64,
+}
+
+/// Reads one active holder at a time without collecting all run leases.
+pub struct LeaseInventory {
+    store: Store,
+    objects: Inventory,
+}
+
+impl LeaseInventory {
+    pub async fn next(&mut self) -> Result<Option<Holder>, StoreError> {
+        while let Some(object) = self.objects.next().await? {
+            if object.folder {
+                continue;
+            }
+            let holder = match self.store.local_path(&object.location) {
+                Some(path) => blocking(move || file_holder(&path)).await?,
+                None => read_record(&self.store.operator, &object.location)
+                    .await?
+                    .map(|(record, _)| record)
+                    .filter(|record| record.expires > milliseconds_now())
+                    .map(|record| record.holder),
+            };
+            if holder.is_some() {
+                return Ok(holder);
+            }
+        }
+        Ok(None)
+    }
 }
 
 impl Holder {
@@ -189,23 +217,23 @@ impl Store {
 
     /// Who holds the leases whose names start with `prefix`, like `runs/`, now.
     pub async fn held_leases(&self, prefix: &str) -> Result<Vec<Holder>, StoreError> {
-        if let Some(shared) = &self.shared {
-            return Box::pin(shared.held_leases(prefix)).await;
-        }
-        let folder = layout::lease(prefix.trim_end_matches('/'))?;
         let mut held = Vec::new();
-        for object in self.objects(&format!("{folder}/")).await? {
-            let holder = match self.local_path(&object.location) {
-                Some(path) => blocking(move || file_holder(&path)).await?,
-                None => read_record(&self.operator, &object.location)
-                    .await?
-                    .map(|(record, _)| record)
-                    .filter(|record| record.expires > milliseconds_now())
-                    .map(|record| record.holder),
-            };
-            held.extend(holder);
+        let mut leases = self.lease_inventory(prefix).await?;
+        while let Some(holder) = leases.next().await? {
+            held.push(holder);
         }
         Ok(held)
+    }
+
+    pub async fn lease_inventory(&self, prefix: &str) -> Result<LeaseInventory, StoreError> {
+        if let Some(shared) = &self.shared {
+            return Box::pin(shared.lease_inventory(prefix)).await;
+        }
+        let folder = layout::lease(prefix.trim_end_matches('/'))?;
+        Ok(LeaseInventory {
+            store: self.clone(),
+            objects: self.inventory(&format!("{folder}/")).await?,
+        })
     }
 
     /// Removes the leases that nobody holds, and gives how many there were.
@@ -214,7 +242,8 @@ impl Store {
             return Box::pin(shared.remove_free_leases()).await;
         }
         let mut removed = 0;
-        for object in self.objects(&format!("{}/", layout::LEASES)).await? {
+        let mut objects = self.inventory(&format!("{}/", layout::LEASES)).await?;
+        while let Some(object) = objects.next().await? {
             if object.folder {
                 continue;
             }
@@ -791,6 +820,9 @@ mod tests {
         assert!(second.expect("asks").is_none());
         let held = store.held_leases("tasks/").await.expect("lists");
         assert_eq!(held, std::slice::from_ref(&holder));
+        let mut cursor = store.lease_inventory("tasks/").await.expect("a cursor");
+        assert_eq!(cursor.next().await.expect("a holder"), Some(holder.clone()));
+        assert_eq!(cursor.next().await.expect("the end"), None);
         // A lease that is not held can be removed, a held one not.
         assert_eq!(store.remove_free_leases().await.expect("removes"), 0);
         drop(first);

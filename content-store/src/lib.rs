@@ -10,8 +10,8 @@ mod objects;
 mod store;
 mod transfer;
 
-pub use lease::{Holder, LEASE_TIME, Lease};
-pub use objects::{FileIdentity, Object};
+pub use lease::{Holder, LEASE_TIME, Lease, LeaseInventory};
+pub use objects::{FileIdentity, Inventory, Object};
 pub use store::{
     EntrySnapshot, S3Options, Store, StoreError, StoredDirectory, StoredOutput, hash_file,
 };

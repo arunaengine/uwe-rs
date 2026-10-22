@@ -87,7 +87,13 @@ fn origin(url: &reqwest::Url) -> (String, Option<String>, Option<u16>) {
 fn builder() -> Result<reqwest::ClientBuilder, String> {
     let mut builder = reqwest::Client::builder()
         .user_agent(concat!("uwe/", env!("CARGO_PKG_VERSION")))
-        .connect_timeout(Duration::from_secs(30));
+        .connect_timeout(Duration::from_secs(30))
+        // Files arrive as their bytes: a decoded body would not match the size and version
+        // of its `HEAD` answer, and a `.gz` file served as `gzip` would arrive unpacked.
+        .no_gzip()
+        .no_brotli()
+        .no_zstd()
+        .no_deflate();
     if MOZILLA_ROOTS.get().is_some() {
         let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
             .iter()

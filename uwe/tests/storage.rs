@@ -372,3 +372,46 @@ fn separates_s3_providers() {
         assert_eq!(files_with(path, secret), Vec::<String>::new());
     }
 }
+
+/// Downloads keep the bytes that the server sends: uwe asks for no compressed encoding, as a
+/// decoded body would not match the size of its `HEAD` answer.
+#[test]
+fn requests_raw_bytes() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a free port");
+    let address = format!("http://{}/data.gz", listener.local_addr().unwrap());
+    let (sender, asked) = std::sync::mpsc::channel::<String>();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line.trim().is_empty() {
+                    break;
+                }
+                let _ = sender.send(line.to_ascii_lowercase());
+            }
+            let answer = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\nETag: \"raw\"\r\n\
+                          Connection: close\r\n\r\nGZIP";
+            stream.write_all(answer.as_bytes()).unwrap();
+        }
+    });
+    let root = tempfile::tempdir().expect("a folder");
+    let runtime = tokio::runtime::Runtime::new().expect("a runtime");
+    let copy = runtime
+        .block_on(storage::Storage::default().fetch(&address, root.path()))
+        .expect("a copy");
+    assert_eq!(std::fs::read(copy).unwrap(), b"GZIP");
+    let asked: Vec<String> = asked.try_iter().collect();
+    assert!(
+        asked.iter().any(|line| line.starts_with("get ")),
+        "{asked:?}"
+    );
+    assert!(
+        !asked
+            .iter()
+            .any(|line| line.starts_with("accept-encoding:")),
+        "{asked:?}"
+    );
+}

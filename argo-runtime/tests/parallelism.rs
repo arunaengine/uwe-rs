@@ -323,3 +323,60 @@ fn propagates_volume_updates() {
         assert!(run.finish().is_ok());
     });
 }
+
+#[test]
+fn shares_root_mutexes() {
+    let folder = tempfile::tempdir().unwrap();
+    let target = folder.path().join("shared.yaml");
+    std::fs::write(&target, "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {name: same}\nspec:\n  synchronization: {mutexes: [{name: publish}]}\n  entrypoint: main\n  templates:\n  - name: main\n    container: {image: alpine}\n").unwrap();
+    for abandon in [false, true] {
+        let locks = argo_runtime::SharedLocks::default();
+        let create = || {
+            argo_runtime::driver_with(
+                &Launch {
+                    target: target.clone(),
+                    ..Launch::default()
+                },
+                argo_runtime::Services {
+                    locks: locks.clone(),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        };
+        let create = &create;
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let (ended_tx, ended_rx) = std::sync::mpsc::channel();
+        let timeout = std::time::Duration::from_secs(5);
+        std::thread::scope(|scope| {
+            let first = scope.spawn(move || {
+                let mut first = create();
+                let tasks = first.start().unwrap();
+                assert_eq!(tasks.len(), 1);
+                started_tx.send(()).unwrap();
+                release_rx.recv_timeout(timeout).unwrap();
+                if !abandon {
+                    assert!(complete(first.as_mut(), tasks.into_iter().next().unwrap()).is_empty());
+                    first.finish().unwrap();
+                }
+                drop(first);
+                ended_tx.send(()).unwrap();
+            });
+            let second = scope.spawn(move || {
+                started_rx.recv_timeout(timeout).unwrap();
+                let mut second = create();
+                assert!(second.start().unwrap().is_empty());
+                assert!(second.wake_at().is_some());
+                release_tx.send(()).unwrap();
+                ended_rx.recv_timeout(timeout).unwrap();
+                let tasks = second.wake().unwrap();
+                assert_eq!(tasks.len(), 1);
+                assert!(complete(second.as_mut(), tasks.into_iter().next().unwrap()).is_empty());
+                second.finish().unwrap();
+            });
+            first.join().unwrap();
+            second.join().unwrap();
+        });
+    }
+}

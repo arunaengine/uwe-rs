@@ -27,8 +27,8 @@ use crate::images::{
 use crate::queue::{Look, Queue};
 use crate::remote::{NodeStaging, records};
 use crate::script::{
-    CONTAINER_EXIT, Container, LOG, NOT_SEEN, PullResources, SCRIPT, TIMED_OUT, container_script,
-    job_script, pull_options, sbatch_options,
+    CONTAINER_EXIT, Container, ENGINE_EXIT, LOG, NOT_SEEN, PullResources, SCRIPT, TIMED_OUT,
+    container_script, job_script, pull_options, sbatch_options,
 };
 
 /// How often the queue is asked about the jobs, by default.
@@ -116,7 +116,7 @@ pub struct SlurmBackend {
     pub archives: Option<PathBuf>,
     queue: Queue,
     made: Images,
-    recovery: Mutex<()>,
+    recovery: Mutex<executor::history::Scan>,
     /// The nodes where a job of this run left no log, as they do not see the scratch folder.
     excluded: Mutex<BTreeSet<String>>,
 }
@@ -153,9 +153,15 @@ enum Ended {
 /// What `sbatch` did with a job.
 enum Submission {
     /// It took the job, which got this id.
-    Taken(String),
+    Taken(Scheduled),
     /// It refused the time of the job, as more than the partition allows.
     OverTime,
+}
+
+#[derive(Clone)]
+struct Scheduled {
+    id: String,
+    cluster: Option<String>,
 }
 
 impl SlurmBackend {
@@ -222,6 +228,7 @@ impl Backend for SlurmBackend {
         if cancel.is_cancelled() {
             return Err(ExecutorError::Cancelled);
         }
+        crate::script::check_gpus(job.placement)?;
         if job.placement.accelerators.iter().any(|gpu| gpu.count > 0)
             && matches!(&self.container, Container::Engine(_))
         {
@@ -237,7 +244,7 @@ impl Backend for SlurmBackend {
             ));
         }
         tokio::select! {
-            result = self.reconcile() => result?,
+            result = self.admit() => result?,
             () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
         }
         let root = self.scratch.join(job.name);
@@ -252,6 +259,7 @@ impl Backend for SlurmBackend {
                 .await
                 .map_err(|error| std::io::Error::other(error.to_string()))?
         };
+        let _ownership = placed.as_ref().ok().map(|_| ownership(&root)).transpose()?;
         let mut staged = None;
         let result = match placed {
             // Another attempt has this name; its directory is not ours to remove.
@@ -261,14 +269,29 @@ impl Backend for SlurmBackend {
             Err(error) => Err(error.into()),
             Ok(mounts) => self.attempt(job, &root, &mounts, &mut staged, cancel).await,
         };
-        // Without a journal no job of the attempt can run any more. A job that may still run
-        // keeps its journal, and the recovery of the attempt cleans the staging root.
-        let ended = !root.join("remote.json").try_exists().unwrap_or(true);
-        if let (Some(remote), Some(staged), true) = (&self.remote, &staged, ended) {
-            remote.stage.clean(&staged.prefix, &staged.plan).await;
+        if let (Some(remote), Some(staged)) = (&self.remote, &staged)
+            && !root.join("remote.json").try_exists()?
+        {
+            let journal = serde_json::json!({"backend":"SLURM", "locked":true,
+                "configuration":self.configuration(), "stopped":true,
+                "staging":{"prefix":staged.prefix,"plan":staged.plan,
+                    "root":remote.stage.objects.url(""),"cleanup":remote.stage.cleanup}});
+            journal_at(&root, &journal)?;
         }
+        if root.join("remote.json").try_exists()? {
+            let journal: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(root.join("remote.json"))?)
+                    .map_err(|error| unresolved(&root, error))?;
+            if journal["stopped"] == true && journal["collect"] != true {
+                self.settle_journal(&root, &journal).await?;
+            }
+        }
+        let ended = !root.join("remote.json").try_exists().unwrap_or(true);
         if result.is_err() && ended {
             let _ = tokio::fs::remove_dir_all(&root).await;
+        }
+        if ended {
+            let _ = tokio::fs::remove_file(crate::script::engine_marker(&root)).await;
         }
         result
     }
@@ -390,8 +413,8 @@ impl SlurmBackend {
         staged: &mut Option<Staged>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
-        let _ownership = ownership(root)?;
         let mut spec = job.spec.clone();
+        let shm = crate::script::shared_memory(&self.container, &spec)?;
         let image = spec.image.as_mut().ok_or(ExecutorError::NoImage)?;
         self.locate(image)?;
         let replaces = spec.replaces_entrypoint;
@@ -445,6 +468,13 @@ impl SlurmBackend {
             (None, _) => self.runnable(image, cancel).await?,
         };
         let control = root.join(CONTROL);
+        if matches!(&self.container, Container::Engine(_)) && self.remote.is_none() {
+            // The container can write its scratch tree, so its removal proof stays outside it.
+            let marker = crate::script::engine_marker(root);
+            tokio::fs::write(&marker, "0\n").await?;
+            File::open(marker)?.sync_all()?;
+            File::open(root.parent().unwrap_or(root))?.sync_all()?;
+        }
         let owner = tokio::fs::metadata(root).await?;
         let access = match &self.container {
             // Apptainer runs every container as the user who runs uwe.
@@ -531,6 +561,20 @@ impl SlurmBackend {
                     plan: &planned.location,
                     binary: binary.as_deref(),
                     log: log.as_ref(),
+                    engine: None,
+                };
+                let engine = if matches!(&self.container, Container::Engine(_)) {
+                    remote
+                        .stage
+                        .write_record(&planned.prefix, ENGINE_EXIT, b"0\n")
+                        .await?;
+                    Some(remote.stage.record(&planned.prefix, ENGINE_EXIT).await?)
+                } else {
+                    None
+                };
+                let links = crate::remote::Links {
+                    engine: engine.as_ref(),
+                    ..links
                 };
                 let time = job.placement.time_seconds;
                 crate::remote::job_script(&self.container, &run, remote, gpus, time, links)
@@ -594,6 +638,7 @@ impl SlurmBackend {
                 container_script(&self.container, &runs, &exits, gpus, time, &sizes)
             }
         };
+        let script = crate::script::size_memory(&self.container, script, shm);
         tokio::fs::write(control.join(SCRIPT), script).await?;
         // The node reads the wrappers, the copied inputs and the standard input as soon as the
         // job starts.
@@ -611,15 +656,16 @@ impl SlurmBackend {
             let options = self.job_options(job, root, margin).await;
             let submitted = self.submit(options, &script, root, staged.as_ref(), cancel);
             let ended = match submitted.await? {
-                Submission::Taken(id) => {
-                    self.queue.add(&id).await;
-                    let ended = self.wait(&id, &control, prefix, cancel).await;
-                    last = Some(id.clone());
+                Submission::Taken(job) => {
+                    let id = &job.id;
+                    self.queue.add(id, job.cluster.as_deref()).await;
+                    let ended = self.wait(&job, &control, prefix, cancel).await;
+                    last = Some(job.clone());
                     let held = matches!(ended, Ok(Ended::Held(_) | Ended::OverTime));
                     let stopped = self
                         .stop(&id, root, self.settle(), ended.is_err() || held)
                         .await;
-                    self.queue.remove(&id).await;
+                    self.queue.remove(id, job.cluster.as_deref()).await;
                     stopped?;
                     ended?
                 }
@@ -652,8 +698,20 @@ impl SlurmBackend {
         {
             // The objects stay, as they are the only copy of the results.
             tracing::warn!(prefix, %error, "cannot collect the results of an attempt; they stay in the staging root");
-            *staged = None;
             return Err(error);
+        }
+        if self.remote.is_some()
+            && matches!(ended, Ended::Done(0))
+            && read_number(&control.join(CONTAINER_EXIT)).await.is_none()
+        {
+            return Err(unresolved(root, "the staged completion record is missing"));
+        }
+        if self.remote.is_some() && root.join("remote.json").try_exists()? {
+            let mut journal: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(root.join("remote.json"))?)
+                    .map_err(|error| unresolved(root, error))?;
+            journal["collect"] = serde_json::json!(false);
+            journal_at(root, &journal)?;
         }
         // A job that left no log at all ran on a node that does not see the scratch folder.
         let lost = self.remote.is_none()
@@ -670,6 +728,7 @@ impl SlurmBackend {
             root.to_owned(),
             time,
             job.spec,
+            job.staging,
             self.remote.is_none(),
         )
         .await
@@ -702,13 +761,14 @@ impl SlurmBackend {
     }
 
     /// Asks SLURM for the node of a job, and leaves that node out of the later jobs.
-    async fn leave_out(&self, id: &str) -> Option<String> {
+    async fn leave_out(&self, job: &Scheduled) -> Option<String> {
         let node = self
             .queue
             .node(
                 &self.command("squeue"),
                 &self.command("sacct"),
-                id,
+                &job.id,
+                job.cluster.as_deref(),
                 self.query_grace,
             )
             .await?;
@@ -849,14 +909,15 @@ impl SlurmBackend {
             .await;
         let script = control.join(SCRIPT);
         let ended = match self.submit(options, &script, &root, None, cancel).await? {
-            Submission::Taken(id) => {
-                self.queue.add(&id).await;
-                let ended = self.wait(&id, &control, None, cancel).await;
+            Submission::Taken(job) => {
+                let id = &job.id;
+                self.queue.add(id, job.cluster.as_deref()).await;
+                let ended = self.wait(&job, &control, None, cancel).await;
                 let held = matches!(ended, Ok(Ended::Held(_) | Ended::OverTime));
                 let stopped = self
                     .stop(&id, &root, self.settle(), ended.is_err() || held)
                     .await;
-                self.queue.remove(&id).await;
+                self.queue.remove(id, job.cluster.as_deref()).await;
                 stopped?;
                 ended
             }
@@ -886,6 +947,11 @@ impl SlurmBackend {
             Ok(path) => Ok(path),
             Err(message) => Err(machine(explain(message, &root, true).await)),
         };
+        if root.join("remote.json").try_exists()? {
+            let journal = serde_json::from_slice(&std::fs::read(root.join("remote.json"))?)
+                .map_err(|error| unresolved(&root, error))?;
+            self.settle_journal(&root, &journal).await?;
+        }
         let _ = tokio::fs::remove_dir_all(&root).await;
         pulled
     }
@@ -916,11 +982,15 @@ impl SlurmBackend {
         })?;
         let script = std::path::absolute(script)?;
         let mut journal = serde_json::json!({"backend":"SLURM", "commands":self.commands,
-            "options":options, "working_directory":std::path::absolute(root)?, "id":null, "cluster":null,
+            "options":options, "working_directory":std::path::absolute(root)?, "id":null, "cluster":clusters(&options),
             "owner":std::process::id(), "host":host, "started":started, "locked":true,
-            "script":script, "identity":null, "configuration":self.configuration()});
+            "script":script, "identity":null, "configuration":self.configuration(),
+            "engine":matches!(&self.container, Container::Engine(_))});
         if let Some(staged) = staged {
-            journal["staging"] = serde_json::json!({"prefix":staged.prefix, "plan":staged.plan});
+            journal["collect"] = serde_json::json!(true);
+            journal["staging"] = serde_json::json!({"prefix":staged.prefix, "plan":staged.plan,
+                "root":self.remote.as_ref().map(|remote| remote.stage.objects.url("")),
+                "cleanup":self.remote.as_ref().map(|remote| remote.stage.cleanup)});
         }
         journal_at(root, &journal)?;
         let mut sbatch = Command::new(self.command("sbatch"));
@@ -947,7 +1017,8 @@ impl SlurmBackend {
             let error = String::from_utf8_lossy(&output.stderr);
             // With EnforcePartLimits sbatch refuses such a job at once, so none is left.
             if !output.status.success() && error.contains("Requested time limit is invalid") {
-                std::fs::remove_file(root.join("remote.json"))?;
+                journal["stopped"] = serde_json::json!(true);
+                journal_at(root, &journal)?;
                 return Ok(Submission::OverTime);
             }
             return Err(unresolved(
@@ -956,12 +1027,14 @@ impl SlurmBackend {
             ));
         }
         journal["id"] = serde_json::json!(id);
-        journal["cluster"] = serde_json::json!(
-            text.trim()
-                .split(';')
-                .nth(1)
-                .filter(|cluster| !cluster.is_empty())
-        );
+        if let Some(cluster) = text
+            .trim()
+            .split(';')
+            .nth(1)
+            .filter(|cluster| !cluster.is_empty())
+        {
+            journal["cluster"] = serde_json::json!(cluster);
+        }
         journal_at(root, &journal).map_err(|error| unresolved(root, error))?;
         let squeue = self.command("squeue");
         let (_, identity) = tokio::select! {
@@ -978,7 +1051,10 @@ impl SlurmBackend {
             journal["identity"] = identity;
             journal_at(root, &journal).map_err(|error| unresolved(root, error))?;
         }
-        Ok(Submission::Taken(id.to_owned()))
+        Ok(Submission::Taken(Scheduled {
+            id: id.to_owned(),
+            cluster: journal["cluster"].as_str().map(str::to_owned),
+        }))
     }
 
     /// How long the end of a job may take to confirm: a few queries, which a slow controller
@@ -1000,35 +1076,28 @@ impl SlurmBackend {
 
     /// Recovers matching orphaned tasks and skips proven active local owners.
     pub async fn reconcile(&self) -> Result<(), ExecutorError> {
-        // Each journal may need a whole stop on a slow controller.
-        let journals = std::fs::read_dir(&self.scratch).map_or(0, |entries| {
-            (entries.flatten())
-                .filter(|entry| entry.path().join("remote.json").exists())
-                .count()
-        });
-        let count = u32::try_from(journals + 1).unwrap_or(u32::MAX);
-        let limit = self.settle().checked_mul(count).unwrap_or(Duration::MAX);
-        tokio::time::timeout(limit, async {
-            let _gate = self.recovery.lock().await;
-            self.reconcile_records().await
-        })
-        .await
-        .map_err(|_| unresolved(&self.scratch, "admission recovery timed out"))?
+        let mut scan = self.recovery.lock().await;
+        scan.reset();
+        while !scan.complete() {
+            let entries = scan.page(&self.scratch, 128)?;
+            self.reconcile_records(entries).await?;
+        }
+        Ok(())
     }
 
-    async fn reconcile_records(&self) -> Result<(), ExecutorError> {
-        let entries = match std::fs::read_dir(&self.scratch) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error.into()),
-        };
-        for entry in entries {
+    async fn admit(&self) -> Result<(), ExecutorError> {
+        let mut scan = self.recovery.lock().await;
+        let entries = scan.page(&self.scratch, 128)?;
+        let result = self.reconcile_records(entries).await;
+        if result.is_err() {
+            scan.reset();
+        }
+        result
+    }
+
+    async fn reconcile_records(&self, entries: Vec<PathBuf>) -> Result<(), ExecutorError> {
+        for root in entries {
             tokio::task::yield_now().await;
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() {
-                continue;
-            }
-            let root = entry.path();
             let path = root.join("remote.json");
             if path.try_exists()? {
                 let bytes = match std::fs::read(&path) {
@@ -1038,9 +1107,7 @@ impl SlurmBackend {
                 };
                 let mut journal: serde_json::Value =
                     serde_json::from_slice(&bytes).map_err(|error| unresolved(&root, error))?;
-                let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
-                if journal["backend"] != "SLURM" || journal["host"].as_str() != Some(host.as_str())
-                {
+                if journal["backend"] != "SLURM" {
                     return Err(unresolved(
                         &root,
                         "the original backend or coordinator host changed",
@@ -1051,26 +1118,9 @@ impl SlurmBackend {
                     Err(_) if !path.try_exists()? => continue,
                     Err(error) => return Err(unresolved(&root, error)),
                 };
-                let live_owner = journal["locked"] == true
-                    && journal["started"].is_string()
-                    && journal["owner"]
-                        .as_u64()
-                        .and_then(|pid| u32::try_from(pid).ok())
-                        .and_then(owner_start)
-                        .as_deref()
-                        == journal["started"].as_str();
-                let mut locked = lock.try_lock();
-                // A process that this one starts holds a copy of the lock until it runs its
-                // program, so a lock without a live owner gets a moment to go away.
-                for _ in 0..100 {
-                    if live_owner || !matches!(locked, Err(TryLockError::WouldBlock)) {
-                        break;
-                    }
-                    tokio::time::sleep(Duration::from_millis(10)).await;
-                    locked = lock.try_lock();
-                }
-                match locked {
-                    Err(TryLockError::WouldBlock) if live_owner => continue,
+                // The shared lock fences a coordinator across boots and PID namespaces.
+                match lock.try_lock() {
+                    Err(TryLockError::WouldBlock) if journal["locked"] == true => continue,
                     Err(TryLockError::Error(error)) => return Err(unresolved(&root, error)),
                     Err(TryLockError::WouldBlock) => {
                         return Err(unresolved(
@@ -1087,7 +1137,6 @@ impl SlurmBackend {
                 journal = serde_json::from_slice(&std::fs::read(&path)?)
                     .map_err(|error| unresolved(&root, error))?;
                 if journal["backend"] != "SLURM"
-                    || journal["host"].as_str() != Some(host.as_str())
                     || journal["locked"] != true
                     || journal["configuration"] != self.configuration()
                 {
@@ -1096,19 +1145,26 @@ impl SlurmBackend {
                         "the original ownership or configuration is insufficient",
                     ));
                 }
+                if journal["stopped"] == true {
+                    self.settle_journal(&root, &journal).await?;
+                    continue;
+                }
                 // A submission without an answer must not block every later run.
                 if !journal["identity"].is_object() {
                     match self.identify(&root, &journal).await {
-                        Submitted::Found(id, identity) => {
-                            journal["id"] = serde_json::json!(id);
+                        Submitted::Found(job, identity) => {
+                            journal["id"] = serde_json::json!(job.id);
+                            journal["cluster"] = serde_json::json!(job.cluster);
                             journal["identity"] = identity;
                             journal_at(&root, &journal)?;
                         }
                         Submitted::Absent => {
+                            self.engine_stopped(&root, &journal).await?;
                             tracing::warn!(attempt = %root.display(),
                                 "the job of an unclear submission is not in the queue; the attempt is lost");
-                            std::fs::remove_file(&path)?;
-                            self.clean_staging(&journal).await;
+                            journal["stopped"] = serde_json::json!(true);
+                            journal_at(&root, &journal)?;
+                            self.settle_journal(&root, &journal).await?;
                             continue;
                         }
                         Submitted::Unclear(reason) => {
@@ -1155,19 +1211,44 @@ impl SlurmBackend {
                     )?);
                 journal_at(&root, &journal)?;
                 self.stop(&id, &root, self.settle(), true).await?;
-                self.clean_staging(&journal).await;
+                let journal = serde_json::from_slice(&std::fs::read(&path)?)
+                    .map_err(|error| unresolved(&root, error))?;
+                self.settle_journal(&root, &journal).await?;
             }
         }
         Ok(())
     }
 
     /// Removes the objects in the staging root that the journal of an attempt names.
-    async fn clean_staging(&self, journal: &serde_json::Value) {
+    async fn settle_journal(
+        &self,
+        root: &Path,
+        journal: &serde_json::Value,
+    ) -> Result<(), ExecutorError> {
         let staging = &journal["staging"];
         let (prefix, plan) = (staging["prefix"].as_str(), staging["plan"].as_str());
-        if let (Some(remote), Some(prefix), Some(plan)) = (&self.remote, prefix, plan) {
-            remote.stage.clean(prefix, plan).await;
+        if let (Some(prefix), Some(plan)) = (prefix, plan) {
+            let remote = self
+                .remote
+                .as_ref()
+                .ok_or_else(|| unresolved(root, "the staging configuration is missing"))?;
+            if staging["root"].as_str() != Some(remote.stage.objects.url("").as_str()) {
+                return Err(unresolved(root, "the staging root changed"));
+            }
+            let mut stage = remote.stage.clone();
+            stage.cleanup = staging["cleanup"].as_bool().unwrap_or(stage.cleanup);
+            if journal["collect"] == true {
+                stage.collect(prefix, root, &records()).await?;
+                let mut journal = journal.clone();
+                journal["collect"] = serde_json::json!(false);
+                journal_at(root, &journal)?;
+            }
+            stage.try_clean(prefix, plan).await?;
         }
+        std::fs::remove_file(root.join("remote.json"))?;
+        File::open(root)?.sync_all()?;
+        let _ = std::fs::remove_file(crate::script::engine_marker(root));
+        Ok(())
     }
 
     /// Finds the job of a journal whose submission left no scheduler identity: by its recorded
@@ -1190,6 +1271,33 @@ impl SlurmBackend {
 
     /// One answer of the queue about the job of a journal.
     async fn look_up(&self, root: &Path, journal: &serde_json::Value) -> Submitted {
+        let choices: Vec<_> = match journal["cluster"].as_str() {
+            Some(cluster) => cluster.split(',').map(Some).collect(),
+            None => vec![None],
+        };
+        let mut found = None;
+        for cluster in choices {
+            match self.look_cluster(root, journal, cluster).await {
+                Submitted::Absent => {}
+                Submitted::Found(job, identity) if found.is_none() => found = Some((job, identity)),
+                Submitted::Found(_, _) => {
+                    return Submitted::Unclear("several clusters have the job");
+                }
+                unclear => return unclear,
+            }
+        }
+        match found {
+            Some((job, identity)) => Submitted::Found(job, identity),
+            None => Submitted::Absent,
+        }
+    }
+
+    async fn look_cluster(
+        &self,
+        root: &Path,
+        journal: &serde_json::Value,
+        cluster: Option<&str>,
+    ) -> Submitted {
         let squeue = self.command("squeue");
         let options = journal["options"].as_array().into_iter().flatten();
         let name = (options.filter_map(|option| option.as_str()))
@@ -1204,7 +1312,8 @@ impl SlurmBackend {
                     return Submitted::Unclear("the folder of the attempt is gone");
                 };
                 let grace = self.query_grace;
-                match crate::queue::named(&squeue, name, script, folder.uid(), grace).await {
+                match crate::queue::named(&squeue, name, script, folder.uid(), cluster, grace).await
+                {
                     None => return Submitted::Unclear("squeue cannot list the jobs of the name"),
                     Some(ids) if ids.is_empty() => return Submitted::Absent,
                     Some(ids) if ids.len() == 1 => ids[0].clone(),
@@ -1212,10 +1321,15 @@ impl SlurmBackend {
                 }
             }
         };
-        let cluster = journal["cluster"].as_str();
         match crate::queue::identified(&squeue, &id, cluster, self.query_grace).await {
             (_, Some(identity)) if identity["name"] == name && identity["script"] == script => {
-                Submitted::Found(id, identity)
+                Submitted::Found(
+                    Scheduled {
+                        id,
+                        cluster: cluster.map(str::to_owned),
+                    },
+                    identity,
+                )
             }
             (_, Some(_)) => Submitted::Unclear("the job has another name or script"),
             (Look::Gone, None) => Submitted::Absent,
@@ -1227,11 +1341,13 @@ impl SlurmBackend {
     /// its records to `prefix` of the staging root shows its end there.
     async fn wait(
         &self,
-        id: &str,
+        job: &Scheduled,
         control: &Path,
         prefix: Option<&str>,
         cancel: &CancellationToken,
     ) -> Result<Ended, ExecutorError> {
+        let id = job.id.as_str();
+        let cluster = job.cluster.as_deref();
         let squeue = self.command("squeue");
         let sacct = self.command("sacct");
         let mut poll = Poll::new(self.poll);
@@ -1258,7 +1374,7 @@ impl SlurmBackend {
                 continue;
             }
             let look = tokio::select! {
-                look = self.queue.look(id, self.poll, &squeue, self.query_grace) => look,
+                look = self.queue.look(id, cluster, self.poll, &squeue, self.query_grace) => look,
                 () = cancel.cancelled() => {
                     return Err(ExecutorError::Cancelled);
                 }
@@ -1269,7 +1385,7 @@ impl SlurmBackend {
                 Look::OverTime => return Ok(Ended::OverTime),
                 Look::Ended(state) => Some(state),
                 Look::Gone => tokio::select! {
-                    state = self.queue.accounted(&sacct, id, self.query_grace) => state,
+                    state = self.queue.accounted(&sacct, id, cluster, self.query_grace) => state,
                     () = cancel.cancelled() => {
                         return Err(ExecutorError::Cancelled);
                     }
@@ -1287,7 +1403,7 @@ impl SlurmBackend {
         }
     }
 
-    /// Releases a journal only after an independent single-job query confirms termination.
+    /// Records termination after an independent query, retaining pending data obligations.
     async fn stop(
         &self,
         id: &str,
@@ -1295,20 +1411,62 @@ impl SlurmBackend {
         grace: Duration,
         cancel: bool,
     ) -> Result<(), ExecutorError> {
-        let journal: serde_json::Value = serde_json::from_slice(
+        let mut journal: serde_json::Value = serde_json::from_slice(
             &std::fs::read(root.join("remote.json")).map_err(|error| unresolved(root, error))?,
         )
         .map_err(|error| unresolved(root, error))?;
-        let cluster = journal["cluster"].as_str();
+        if journal["stopped"] == true {
+            return Ok(());
+        }
         if journal["configuration"] != self.configuration() {
             return Err(unresolved(root, "the scheduler configuration changed"));
         }
         if !journal["identity"].is_object() {
-            return Err(unresolved(
-                root,
-                "the scheduler identity was not recorded; confirm the original job ended before removing its journal",
-            ));
+            let identity = executor::poll::until_stopped(
+                grace,
+                self.poll.min(Duration::from_secs(1)),
+                || async {
+                    let cluster = journal["cluster"].as_str();
+                    let (look, identity) = crate::queue::identified(
+                        &self.command("squeue"),
+                        id,
+                        cluster,
+                        self.query_grace,
+                    )
+                    .await;
+                    if let Some(identity) = identity {
+                        return Some(if identity["script"] == journal["script"] {
+                            Ok(Some(identity))
+                        } else {
+                            Err(unresolved(
+                                root,
+                                "the scheduler returned a different script",
+                            ))
+                        });
+                    }
+                    if look == Look::Gone
+                        && crate::queue::look_one(
+                            &self.command("squeue"),
+                            id,
+                            cluster,
+                            self.query_grace,
+                        )
+                        .await
+                            == Look::Gone
+                    {
+                        return Some(Ok(None));
+                    }
+                    None
+                },
+            )
+            .await
+            .map_err(|_| unresolved(root, "scheduler identity acquisition timed out"))??;
+            if let Some(identity) = identity {
+                journal["identity"] = identity;
+                journal_at(root, &journal)?;
+            }
         }
+        let cluster = journal["cluster"].as_str();
         executor::poll::until_stopped(grace, self.poll.min(Duration::from_secs(1)), || async {
             let (look, identity) =
                 crate::queue::identified(&self.command("squeue"), id, cluster, self.query_grace)
@@ -1349,7 +1507,50 @@ impl SlurmBackend {
         })
         .await
         .map_err(|_| unresolved(root, format!("job {id} termination was not confirmed")))??;
-        std::fs::remove_file(root.join("remote.json"))?;
+        self.engine_stopped(root, &journal).await?;
+        journal["stopped"] = serde_json::json!(true);
+        journal_at(root, &journal)?;
+        Ok(())
+    }
+
+    async fn engine_stopped(
+        &self,
+        root: &Path,
+        journal: &serde_json::Value,
+    ) -> Result<(), ExecutorError> {
+        if let Some(recorded) = journal["staging"]["root"].as_str()
+            && self
+                .remote
+                .as_ref()
+                .map(|remote| remote.stage.objects.url(""))
+                .as_deref()
+                != Some(recorded)
+        {
+            return Err(unresolved(
+                root,
+                "the original staging root is not configured",
+            ));
+        }
+        if journal["engine"] == true {
+            let mut marker = crate::script::engine_marker(root);
+            if let (Some(remote), Some(prefix)) =
+                (&self.remote, journal["staging"]["prefix"].as_str())
+            {
+                if !remote.stage.fetch(prefix, ENGINE_EXIT, root).await? {
+                    return Err(unresolved(
+                        root,
+                        "the node has not confirmed container removal",
+                    ));
+                }
+                marker = root.join(CONTROL).join(ENGINE_EXIT);
+            }
+            if read_number(&marker).await != Some(0) {
+                return Err(unresolved(
+                    root,
+                    "the node has not confirmed container removal",
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -1357,11 +1558,27 @@ impl SlurmBackend {
 /// What became of a submission whose answer was lost.
 enum Submitted {
     /// The job with this id and identity.
-    Found(String, serde_json::Value),
+    Found(Scheduled, serde_json::Value),
     /// SLURM has no such job: it never took it, or it ended long ago.
     Absent,
     /// The queue cannot tell yet, for this reason.
     Unclear(&'static str),
+}
+
+fn clusters(options: &[String]) -> Option<String> {
+    let mut cluster = std::env::var("SLURM_CLUSTERS").ok();
+    let mut words = options.iter();
+    while let Some(word) = words.next() {
+        if matches!(word.as_str(), "--clusters" | "-M") {
+            cluster = words.next().cloned();
+        } else if let Some(value) = word
+            .strip_prefix("--clusters=")
+            .or_else(|| word.strip_prefix("-M"))
+        {
+            cluster = Some(value.to_owned());
+        }
+    }
+    cluster
 }
 
 /// The lock of an attempt. It lets go of the lock before it closes the file, as a process that
@@ -1418,6 +1635,7 @@ async fn finish(
     root: PathBuf,
     time: Option<u64>,
     spec: &task_model::TaskSpec,
+    staging: &Staging,
     shared: bool,
 ) -> Result<Finished, ExecutorError> {
     let control = root.join(CONTROL);
@@ -1447,13 +1665,17 @@ async fn finish(
         }
         _ => Vec::new(),
     };
-    Ok(Finished {
+    let mut finished = Finished {
         address: None,
         exit_code: Some(exit_code),
         files,
         usage: executor::Usage::of(&root),
         root,
-    })
+    };
+    if shared {
+        finished.collect_outputs(spec, staging)?;
+    }
+    Ok(finished)
 }
 
 /// The exit code that the wrapper of a task recorded in a container that ended well. The node

@@ -51,7 +51,8 @@ pub(crate) async fn events(
     Path(run): Path<String>,
     Query(After { after }): Query<After>,
     headers: HeaderMap,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, Failure> {
+    state.authorize(&run)?;
     // A browser that reconnects says which event it saw last.
     let seen = headers
         .get("last-event-id")
@@ -66,7 +67,7 @@ pub(crate) async fn events(
         wait: false,
     };
     let stream = futures_util::stream::unfold(start, next);
-    Sse::new(stream).keep_alive(KeepAlive::default())
+    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 
 struct Cursor {

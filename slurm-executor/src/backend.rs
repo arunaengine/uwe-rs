@@ -1800,6 +1800,80 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn retains_cleanup_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let staging = root.path().join("staging");
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("cas"), "blocks deletion").unwrap();
+        let objects = content_store::Store::local(&staging).unwrap();
+        let attempt = root.path().join("attempt");
+        std::fs::create_dir(&attempt).unwrap();
+        let mut backend =
+            SlurmBackend::new(root.path().into(), Container::Apptainer("apptainer".into()));
+        backend.remote = Some(NodeStaging {
+            stage: executor::remote::RemoteStage {
+                objects,
+                expiry: Duration::from_secs(60),
+                max_outputs: 1,
+                credentials: false,
+                cleanup: true,
+            },
+            helper: crate::Helper::Path("/bin/false".into()),
+            folder: None,
+            secret_file: None,
+        });
+        let journal = serde_json::json!({"stopped":true,"staging":{"prefix":"attempts/test",
+            "plan":"cas/plan","root":backend.remote.as_ref().unwrap().stage.objects.url(""),"cleanup":true}});
+        journal_at(&attempt, &journal).unwrap();
+        assert!(backend.settle_journal(&attempt, &journal).await.is_err());
+        assert!(attempt.join("remote.json").exists());
+        std::fs::remove_file(staging.join("cas")).unwrap();
+        std::fs::create_dir(staging.join("cas")).unwrap();
+        std::fs::write(staging.join("cas/plan"), "plan").unwrap();
+        backend.settle_journal(&attempt, &journal).await.unwrap();
+        assert!(!attempt.join("remote.json").exists());
+        assert!(!staging.join("cas/plan").exists());
+    }
+
+    #[tokio::test]
+    async fn recovers_selected_cluster() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let mut backend = SlurmBackend::new(
+            root.path().to_owned(),
+            Container::Apptainer("apptainer".into()),
+        );
+        backend.commands = Some(root.path().to_owned());
+        let tool = root.path().join("squeue");
+        std::fs::write(&tool, r#"#!/bin/bash
+case "$*" in *'--clusters=alpha'*) [ -e "$0.duplicate" ] || exit 0 ;; *'--clusters=beta'*) ;; *) exit 1 ;; esac
+case "$*" in
+    *'--format=%i|%o'*) echo '7|/script' ;;
+    *) echo '7|RUNNING|uwe-owner|2026-10-03T00:00:00|/script' ;;
+esac
+"#).unwrap();
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let journal = serde_json::json!({"id":null, "cluster":"alpha,beta", "script":"/script", "options":["--job-name=uwe-owner"]});
+        match backend.look_up(root.path(), &journal).await {
+            Submitted::Found(job, _) => {
+                assert_eq!(job.id, "7");
+                assert_eq!(job.cluster.as_deref(), Some("beta"));
+            }
+            _ => panic!("the selected cluster must retain the lost submission"),
+        }
+        std::fs::write(root.path().join("squeue.duplicate"), "").unwrap();
+        assert!(matches!(
+            backend.look_up(root.path(), &journal).await,
+            Submitted::Unclear(_)
+        ));
+        assert_eq!(
+            clusters(&["--clusters".into(), "alpha,beta".into()]).as_deref(),
+            Some("alpha,beta")
+        );
+        assert_eq!(clusters(&["-Mbeta".into()]).as_deref(), Some("beta"));
+    }
+
+    #[tokio::test]
     async fn preserves_replacement_identity() {
         use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
@@ -1852,7 +1926,7 @@ esac"#,
     }
 
     #[tokio::test]
-    async fn waits_for_locks() {
+    async fn preserves_foreign_lock() {
         let folder = tempfile::tempdir().unwrap();
         let backend = SlurmBackend::new(
             folder.path().to_owned(),
@@ -1860,19 +1934,16 @@ esac"#,
         );
         let root = folder.path().join("orphan");
         std::fs::create_dir(&root).unwrap();
-        let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap();
-        let journal = serde_json::json!({"backend":"SLURM", "host":host, "locked":true,
+        let journal = serde_json::json!({"backend":"SLURM", "host":"foreign-boot", "locked":true,
             "owner":0, "started":"0", "id":null});
         journal_at(&root, &journal).unwrap();
-        // Another handle stands in for a process that holds a copy of the lock for a moment.
         let held = File::create(root.join("remote.lock")).unwrap();
         held.try_lock().unwrap();
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(200));
-            drop(held);
-        });
-        let error = backend.reconcile().await.unwrap_err();
-        assert!(!error.to_string().contains("live coordinator"), "{error}");
+        backend.reconcile().await.unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.join("remote.json")).unwrap(),
+            journal.to_string()
+        );
     }
 
     #[tokio::test]
@@ -1992,6 +2063,7 @@ esac"#,
             environment: Default::default(),
             inputs: Vec::new(),
             outputs: Vec::new(),
+            output_manifest: None,
             stdin: None,
             containers: Vec::new(),
             replaces_entrypoint: false,

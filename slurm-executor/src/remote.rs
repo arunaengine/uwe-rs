@@ -12,7 +12,10 @@ use executor::helper::Request;
 use executor::remote::RemoteStage;
 use executor::wrapper::quote;
 
-use crate::script::{CONTAINER_EXIT, Container, LOG, NOT_SEEN, clock, command, timed_out, timeout};
+use crate::script::{
+    CONTAINER_EXIT, Container, ENGINE_EXIT, LOG, NOT_SEEN, clock, command, engine_finish,
+    engine_guard, engine_launch, timed_out, timeout,
+};
 
 /// How the jobs of a backend get their files when the nodes share no folders with this machine.
 #[derive(Clone, Debug)]
@@ -56,7 +59,7 @@ pub enum Helper {
 /// last the exit code of the container, which tells this machine that the rest is there.
 pub fn records() -> Vec<&'static str> {
     let mut records = executor::capture::RECORDS.to_vec();
-    records.extend([LOG, CONTAINER_EXIT]);
+    records.extend([LOG, ENGINE_EXIT, CONTAINER_EXIT]);
     records
 }
 
@@ -69,6 +72,7 @@ pub struct Links<'a> {
     pub binary: Option<&'a str>,
     /// The upload of the log of the job, when the helper did not send it.
     pub log: Option<&'a Request>,
+    pub engine: Option<&'a Request>,
 }
 
 /// The job script that runs `run` with its folder on the node instead of at its scratch
@@ -97,6 +101,12 @@ pub fn job_script(
         ),
         None => (keep, String::new()),
     };
+    let cleanup = match container {
+        Container::Engine(_) => {
+            "if declare -F engine_clean > /dev/null; then engine_clean || return 1; fi\n    "
+        }
+        _ => "",
+    };
     // Without its folder the job has no log yet, as SLURM writes its output nowhere, so it
     // sends the reason alone. A signal ends the script through its exit trap, which ignores
     // more of them and removes the data of the task first, as a SIGKILL may cut it short.
@@ -106,6 +116,7 @@ pub fn job_script(
          then\n    early=\"uwe: cannot make a private folder in \"{base}\" on $(hostname): \
          $node\"\n{early}    exit 1\nfi\n\
          exec >> \"$node/{LOG}\" 2>&1\nsent=\nfinish() {{\n    trap '' TERM INT HUP\n    \
+         {cleanup}\
          rm -rf \"$node/data\"\n    [ -n \"$sent\" ] || {send}\n    rm -rf \"$node\"\n}}\n\
          trap finish EXIT\ntrap 'exit 143' TERM INT HUP\n",
         quote(&format!("uwe-{name}.XXXXXXXX"))
@@ -145,15 +156,33 @@ pub fn job_script(
         script.push_str("umask 000\n");
     }
     let words = node_words(&command(container, run, gpus), &run.root.to_string_lossy());
+    let publish = links
+        .engine
+        .map(|request| {
+            send_log(request, false).replace(
+                &format!("\"$node/{LOG}\""),
+                &format!("\"$node/{ENGINE_EXIT}\""),
+            )
+        })
+        .unwrap_or_default();
+    let guard = engine_guard(
+        container,
+        &[run.name],
+        &format!("\"$node/{ENGINE_EXIT}\""),
+        &publish,
+    )
+    .replace("trap engine_clean EXIT\n", "");
     script.push_str(&format!(
         "status={NOT_SEEN}\nif \"$helper\" __stage in \"$node/data\" {} \"$node\"; then\n    \
-         {}{}{}\n    status=$?\n    {}fi\necho \"$status\" > \"$node/{CONTAINER_EXIT}\"\n\
+         {}{}{}{}\n    status=$?\n    {}{}fi\necho \"$status\" > \"$node/{CONTAINER_EXIT}\"\n\
          \"$helper\" __stage out \"$node/data\" \"$node\" || exit 1\nsent=1\n",
         quote(links.plan),
+        guard,
         clock(time).replace('\n', "\n    "),
         timeout(time),
-        words.join(" "),
+        engine_launch(container, words.join(" "), 0),
         timed_out(time),
+        engine_finish(container),
     ));
     script
 }
@@ -270,6 +299,7 @@ mod tests {
             plan: "https://plan",
             binary: None,
             log: None,
+            engine: None,
         };
         let script = job_script(&apptainer, &run, &staging, false, Some(60), links);
         let expected = "umask 077\nif ! node=$(mkdir -p \"${TMPDIR:-/tmp}\" 2>&1 && \

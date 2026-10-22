@@ -172,6 +172,7 @@ pub(crate) async fn named(
     name: &str,
     script: &str,
     user: u32,
+    cluster: Option<&str>,
     grace: Duration,
 ) -> Option<Vec<String>> {
     let mut command = Command::new(squeue);
@@ -179,6 +180,9 @@ pub(crate) async fn named(
         .args(["--noheader", "--states=all", "--format=%i|%o"])
         .arg(format!("--name={name}"))
         .arg(format!("--user={user}"));
+    if let Some(cluster) = cluster {
+        command.arg(format!("--clusters={cluster}"));
+    }
     let output = output(&mut command, grace).await.ok()?;
     if !output.status.success() {
         return None;
@@ -261,7 +265,7 @@ pub enum Look {
 /// The jobs of a backend and what `squeue` last said about them.
 #[derive(Debug, Default)]
 pub struct Queue {
-    inner: Mutex<Snapshot>,
+    inner: Mutex<HashMap<Option<String>, Snapshot>>,
     refresh: Mutex<()>,
     json: Json,
 }
@@ -298,27 +302,49 @@ struct Snapshot {
 }
 
 impl Queue {
-    pub async fn add(&self, id: &str) {
-        self.inner.lock().await.jobs.insert(id.to_owned());
+    pub async fn add(&self, id: &str, cluster: Option<&str>) {
+        self.inner
+            .lock()
+            .await
+            .entry(cluster.map(str::to_owned))
+            .or_default()
+            .jobs
+            .insert(id.to_owned());
     }
 
-    pub async fn remove(&self, id: &str) {
-        self.inner.lock().await.jobs.remove(id);
+    pub async fn remove(&self, id: &str, cluster: Option<&str>) {
+        self.inner
+            .lock()
+            .await
+            .entry(cluster.map(str::to_owned))
+            .or_default()
+            .jobs
+            .remove(id);
     }
 
     /// What the queue says about a job, asking `squeue` when its last answer is older than
     /// `poll`, or longer after failed asks, so that a slow controller gets fewer of them.
-    pub async fn look(&self, id: &str, poll: Duration, squeue: &Path, grace: Duration) -> Look {
+    pub async fn look(
+        &self,
+        id: &str,
+        cluster: Option<&str>,
+        poll: Duration,
+        squeue: &Path,
+        grace: Duration,
+    ) -> Look {
         let Ok(_refresh) = tokio::time::timeout(grace, self.refresh.lock()).await else {
             return Look::Unknown;
         };
-        let mut snapshot = self.inner.lock().await;
+        let key = cluster.map(str::to_owned);
+        let mut snapshots = self.inner.lock().await;
+        let snapshot = snapshots.entry(key.clone()).or_default();
         let pause = (poll * 2u32.pow(snapshot.failures.min(10))).min(MOST_BACKOFF.max(poll));
         if snapshot.taken.is_none_or(|taken| taken.elapsed() >= pause) {
             let jobs = snapshot.jobs.clone();
-            drop(snapshot);
-            let states = ask(squeue, &jobs, &self.json, grace).await;
-            snapshot = self.inner.lock().await;
+            drop(snapshots);
+            let states = ask(squeue, &jobs, cluster, &self.json, grace).await;
+            snapshots = self.inner.lock().await;
+            let snapshot = snapshots.entry(key.clone()).or_default();
             snapshot.failures = match states {
                 Some(_) => 0,
                 None => snapshot.failures + 1,
@@ -327,6 +353,7 @@ impl Queue {
             snapshot.taken = Some(Instant::now());
             snapshot.asked = jobs;
         }
+        let snapshot = snapshots.entry(key).or_default();
         if !snapshot.asked.contains(id) {
             return Look::Unknown;
         }
@@ -351,6 +378,7 @@ impl Queue {
 async fn ask(
     squeue: &Path,
     jobs: &BTreeSet<String>,
+    cluster: Option<&str>,
     json: &Json,
     grace: Duration,
 ) -> Option<HashMap<String, Seen>> {
@@ -358,9 +386,14 @@ async fn ask(
         return Some(HashMap::new());
     }
     let list: Vec<&str> = jobs.iter().map(String::as_str).collect();
+    let clusters: Vec<_> = cluster
+        .map(|cluster| format!("--clusters={cluster}"))
+        .into_iter()
+        .collect();
     if json.maybe() {
         let output = output(
             Command::new(squeue)
+                .args(&clusters)
                 .args(["--json", "--states=all"])
                 .arg(format!("--jobs={}", list.join(","))),
             grace,
@@ -383,6 +416,7 @@ async fn ask(
     }
     let output = output(
         Command::new(squeue)
+            .args(&clusters)
             .args(["--noheader", "--states=all", "--format=%i %T %r"])
             .arg(format!("--jobs={}", list.join(","))),
         grace,
@@ -453,10 +487,18 @@ fn states(text: &str) -> HashMap<String, Seen> {
 impl Queue {
     /// The state in which a job ended, from the accounting of SLURM, like `OUT_OF_MEMORY`;
     /// `None` when the cluster keeps no accounting or does not know the job.
-    pub async fn accounted(&self, sacct: &Path, id: &str, grace: Duration) -> Option<String> {
+    pub async fn accounted(
+        &self,
+        sacct: &Path,
+        id: &str,
+        cluster: Option<&str>,
+        grace: Duration,
+    ) -> Option<String> {
+        let clusters = cluster.map(|cluster| format!("--clusters={cluster}"));
         if self.json.maybe() {
             let output = output(
                 Command::new(sacct)
+                    .args(clusters)
                     .arg("--json")
                     .arg(format!("--jobs={id}")),
                 grace,
@@ -470,7 +512,7 @@ impl Queue {
                 return first_word(&answer["jobs"][0]["state"]["current"]);
             }
         }
-        accounted(sacct, id, grace).await
+        accounted(sacct, id, cluster, grace).await
     }
 }
 
@@ -482,6 +524,7 @@ impl Queue {
         squeue: &Path,
         sacct: &Path,
         id: &str,
+        cluster: Option<&str>,
         grace: Duration,
     ) -> Option<String> {
         let asked = [
@@ -503,6 +546,7 @@ impl Queue {
         for (program, arguments) in asked {
             let output = output(
                 Command::new(program)
+                    .args(cluster.map(|cluster| format!("--clusters={cluster}")))
                     .args(arguments)
                     .arg(format!("--jobs={id}")),
                 grace,
@@ -525,9 +569,15 @@ fn node_name(text: &str) -> bool {
 }
 
 /// The state in which a job ended, from the text of the accounting of SLURM.
-async fn accounted(sacct: &Path, id: &str, grace: Duration) -> Option<String> {
+async fn accounted(
+    sacct: &Path,
+    id: &str,
+    cluster: Option<&str>,
+    grace: Duration,
+) -> Option<String> {
     let output = output(
         Command::new(sacct)
+            .args(cluster.map(|cluster| format!("--clusters={cluster}")))
             .args([
                 "--allocations",
                 "--noheader",
@@ -611,13 +661,77 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn queries_selected_clusters() {
+        let folder = tempfile::tempdir().unwrap();
+        let tool = folder.path().join("scheduler");
+        write_tool(
+            &tool,
+            r#"#!/bin/bash
+cluster=
+for word in "$@"; do
+    case "$word" in --clusters=*) cluster=${word#--clusters=} ;; --json) exit 1 ;; esac
+done
+case "$cluster" in alpha) state=RUNNING ;; beta) state=COMPLETED ;; *) exit 1 ;; esac
+case "$*" in
+    *'--format=%i|%o'*) echo '7|/script' ;;
+    *'--format=State'*) echo "$state" ;;
+    *'--format=%N'*) echo "node-$cluster" ;;
+    *) echo "7 $state None" ;;
+esac
+"#,
+        );
+        let queue = Queue::default();
+        queue.add("7", Some("alpha")).await;
+        queue.add("7", Some("beta")).await;
+        assert_eq!(
+            queue
+                .look("7", Some("alpha"), Duration::ZERO, &tool, QUERY_GRACE)
+                .await,
+            Look::Active
+        );
+        assert_eq!(
+            queue
+                .look("7", Some("beta"), Duration::ZERO, &tool, QUERY_GRACE)
+                .await,
+            Look::Ended("COMPLETED".into())
+        );
+        assert_eq!(
+            queue
+                .accounted(&tool, "7", Some("beta"), QUERY_GRACE)
+                .await
+                .as_deref(),
+            Some("COMPLETED")
+        );
+        assert_eq!(
+            named(
+                &tool,
+                "attempt",
+                "/script",
+                1000,
+                Some("alpha"),
+                QUERY_GRACE
+            )
+            .await
+            .unwrap(),
+            ["7"]
+        );
+        assert_eq!(
+            queue
+                .node(&tool, &tool, "7", Some("beta"), QUERY_GRACE)
+                .await
+                .as_deref(),
+            Some("node-beta")
+        );
+    }
+
+    #[tokio::test]
     async fn poll_releases_lock() {
         let folder = tempfile::tempdir().unwrap();
         let tool = folder.path().join("squeue");
         write_tool(&tool, "#!/bin/bash\necho $$ > \"$0.pid\"\nexec sleep 30\n");
         let queue = Queue::default();
-        queue.add("1").await;
-        let poll = queue.look("1", Duration::ZERO, &tool, QUERY_GRACE);
+        queue.add("1", None).await;
+        let poll = queue.look("1", None, Duration::ZERO, &tool, QUERY_GRACE);
         // A busy machine may take a while to start the tool, so the waits are long; the query
         // sleeps longer still.
         let admission = async {
@@ -629,8 +743,8 @@ mod tests {
             }
             assert!(tool.with_extension("pid").is_file());
             tokio::time::timeout(Duration::from_secs(5), async {
-                queue.add("2").await;
-                queue.remove("2").await;
+                queue.add("2", None).await;
+                queue.remove("2", None).await;
             })
             .await
             .expect("a scheduler query must not block the snapshot lock");
@@ -650,14 +764,14 @@ mod tests {
         let text = format!("#!/bin/bash\necho >> '{}'\nexit 1\n", calls.display());
         write_tool(&tool, &text);
         let queue = Queue::default();
-        queue.add("1").await;
+        queue.add("1", None).await;
         // Without a pause the queue would be asked about ten times in this second, with growing
         // pauses about three times.
         let poll = Duration::from_millis(100);
         let begun = Instant::now();
         while begun.elapsed() < Duration::from_secs(1) {
             assert_eq!(
-                queue.look("1", poll, &tool, QUERY_GRACE).await,
+                queue.look("1", None, poll, &tool, QUERY_GRACE).await,
                 Look::Unknown
             );
             tokio::time::sleep(Duration::from_millis(10)).await;

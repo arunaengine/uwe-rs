@@ -163,6 +163,7 @@ mod tests {
             size: text.len() as u64,
             text,
             whole: true,
+            location: None,
         });
         tail(&mut log);
         let log = log.expect("a log");

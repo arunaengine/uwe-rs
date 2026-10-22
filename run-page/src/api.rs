@@ -109,7 +109,22 @@ async fn authenticate(State(state): State<Shared>, request: Request, next: Next)
 }
 
 async fn runs(State(state): State<Shared>) -> Result<Json<serde_json::Value>, Failure> {
-    public(&query(&state, |database| Ok(database.runs(RUNS)?)).await?)
+    let allowed = state.runs.clone();
+    public(
+        &query(&state, move |database| {
+            let Some(allowed) = allowed else {
+                return Ok(database.runs(RUNS)?);
+            };
+            let mut runs = Vec::new();
+            for run in allowed {
+                runs.extend(database.run(&run)?);
+            }
+            runs.sort_by(|a, b| b.started.cmp(&a.started).then_with(|| b.id.cmp(&a.id)));
+            runs.truncate(RUNS as usize);
+            Ok(runs)
+        })
+        .await?,
+    )
 }
 
 fn public<T: Serialize>(value: &T) -> Result<Json<serde_json::Value>, Failure> {
@@ -132,6 +147,7 @@ async fn run(
     State(state): State<Shared>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, Failure> {
+    state.authorize(&id)?;
     let view = query(&state, move |database| {
         run_view(database, &id)?.ok_or_else(|| Failure::not_found(format!("no run `{id}`")))
     })
@@ -172,11 +188,13 @@ async fn task(
     State(state): State<Shared>,
     Path((id, task)): Path<(String, u64)>,
 ) -> Result<Json<serde_json::Value>, Failure> {
-    let view = query(&state, move |database| {
+    state.authorize(&id)?;
+    let mut view = query(&state, move |database| {
         task_view(database, &id, task)?
             .ok_or_else(|| Failure::not_found(format!("no task {task} in run `{id}`")))
     })
     .await?;
+    view.replays.retain(|run| state.permits(&run.id));
     public(&view)
 }
 
@@ -221,8 +239,9 @@ async fn why(
     State(state): State<Shared>,
     Path((id, task)): Path<(String, u64)>,
 ) -> Result<Json<serde_json::Value>, Failure> {
+    state.authorize(&id)?;
     let why = query(&state, move |database| Ok(database.why(&id, task)?)).await?;
-    public(&why)
+    public(&why.filter(|why| state.permits(&why.run)))
 }
 
 /// Where the time of a run went: the critical path, waiting and running, and the steps.
@@ -230,6 +249,7 @@ async fn time(
     State(state): State<Shared>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, Failure> {
+    state.authorize(&id)?;
     let spent = query(&state, move |database| match database.time_spent(&id)? {
         Some(spent) => Ok(spent),
         None => Err(Failure::not_found(format!("no run `{id}`"))),
@@ -243,6 +263,8 @@ async fn compare(
     State(state): State<Shared>,
     Path((first, second)): Path<(String, String)>,
 ) -> Result<Json<serde_json::Value>, Failure> {
+    state.authorize(&first)?;
+    state.authorize(&second)?;
     let comparison = query(&state, move |database| {
         match database.compare(&first, &second)? {
             Some(comparison) => Ok(comparison),
@@ -275,6 +297,7 @@ async fn graph(
     Path(id): Path<String>,
     Query(asked): Query<GraphView>,
 ) -> Result<impl IntoResponse, Failure> {
+    state.authorize(&id)?;
     let view = match asked.view.as_deref() {
         None => View::Tasks,
         Some(name) => View::parse(name)

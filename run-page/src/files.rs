@@ -21,6 +21,7 @@ pub(crate) async fn log(
     State(state): State<Shared>,
     Path((run, task, attempt, stream)): Path<(String, u64, u32, String)>,
 ) -> Result<Response, Failure> {
+    state.authorize(&run)?;
     if stream != "stdout" && stream != "stderr" {
         return Err(Failure::not_found("a log is `stdout` or `stderr`"));
     }
@@ -33,6 +34,18 @@ pub(crate) async fn log(
     let Some(log) = log else {
         return Ok(text(String::new()));
     };
+    if !log.whole
+        && let Some(location) = &log.location
+    {
+        if !location.contains("://") {
+            return send(FilePath::new(location), None).await;
+        }
+        if log.text.is_empty() {
+            return Err(Failure::not_found(
+                "the full log is retained in the remote store",
+            ));
+        }
+    }
     if !log.whole
         && let (Some(store), Ok(digest)) = (store, log.digest.parse::<Digest>())
     {
@@ -69,6 +82,7 @@ pub(crate) async fn file(
     Path((run, task, role, index)): Path<(String, u64, String, usize)>,
     Query(inside): Query<Inside>,
 ) -> Result<Response, Failure> {
+    state.authorize(&run)?;
     let file = query(&state, move |database| {
         let Some(detail) = database.task(&run, task)? else {
             return Err(Failure::not_found(format!("no task {task} in run `{run}`")));

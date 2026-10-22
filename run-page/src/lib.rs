@@ -8,6 +8,7 @@ mod files;
 mod live;
 mod report;
 
+use std::collections::BTreeSet;
 use std::future::IntoFuture;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::PathBuf;
@@ -86,6 +87,22 @@ impl Server {
     /// Opens the database and starts serving. The address is bound before this returns, so
     /// the page can be opened at once.
     pub fn start(settings: &Settings) -> Result<Server, PageError> {
+        Self::start_with(settings, None)
+    }
+
+    /// The host authorizes this token for exactly these run IDs, including related views.
+    /// Use a distinct token for each tenant; local viewers retain `start` behavior.
+    pub fn start_hosted(settings: &Settings, runs: BTreeSet<String>) -> Result<Server, PageError> {
+        if settings.token.is_none() {
+            return Err(PageError::TokenRequired);
+        }
+        Self::start_with(settings, Some(runs))
+    }
+
+    fn start_with(
+        settings: &Settings,
+        runs: Option<BTreeSet<String>>,
+    ) -> Result<Server, PageError> {
         if let Some(token) = &settings.token {
             if token.is_empty()
                 || !token
@@ -114,6 +131,7 @@ impl Server {
             database: Mutex::new(database),
             stop: CancellationToken::new(),
             token: settings.token.clone(),
+            runs,
         });
         let (stop, stopped) = oneshot::channel();
         let thread = std::thread::Builder::new()
@@ -180,6 +198,21 @@ pub(crate) struct State {
     database: Mutex<Database>,
     stop: CancellationToken,
     token: Option<String>,
+    runs: Option<BTreeSet<String>>,
+}
+
+impl State {
+    fn permits(&self, run: &str) -> bool {
+        self.runs.as_ref().is_none_or(|runs| runs.contains(run))
+    }
+
+    pub(crate) fn authorize(&self, run: &str) -> Result<(), Failure> {
+        if self.permits(run) {
+            Ok(())
+        } else {
+            Err(Failure::not_found("no authorized run"))
+        }
+    }
 }
 
 pub(crate) type Shared = Arc<State>;

@@ -18,14 +18,15 @@ use executor::{
 };
 use k8s_openapi::api::core::v1::Event;
 use kube::api::{
-    DeleteParams, ListParams, LogParams, PostParams, Preconditions, PropagationPolicy,
+    DeleteParams, ListParams, LogParams, Patch, PatchParams, PostParams, Preconditions,
+    PropagationPolicy,
 };
 use task_model::TaskSpec;
 use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
 use crate::cluster::Cluster;
-use crate::manifest::{Limits, Volumes, job_name};
+use crate::manifest::{Limits, SharedVolume, Volumes, job_name};
 use crate::pods::{Look, Pods};
 use crate::staging::{PodStaging, Prepared};
 
@@ -58,9 +59,13 @@ pub struct KubernetesBackend {
     pub configs: ImageConfigs,
     /// Where the containers see the folders of an attempt.
     pub volumes: Volumes,
+    /// Host-approved reference volumes, mounted read-only independently of task scratch.
+    pub references: Vec<SharedVolume>,
     /// How the pods get their files when the nodes share no folders with this machine; `None`
     /// when they see the scratch folder.
     pub remote: Option<PodStaging>,
+    /// Trusted CLI workloads may receive reusable staging credentials; hosted workloads cannot.
+    pub trusted: bool,
     /// How much longer than its task a pod may run: for image pulls, staging and the start of
     /// its containers. The task itself keeps its time.
     pub staging_time: Duration,
@@ -75,6 +80,8 @@ pub struct KubernetesBackend {
     pub(crate) pods: Pods,
     /// Whether the warning that events cannot be listed was logged.
     warned: AtomicBool,
+    indexed: AtomicBool,
+    pending: tokio::sync::Mutex<Option<std::fs::ReadDir>>,
     /// The tasks that stop the daemons of the run when it asks them to.
     pub(crate) daemons: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>,
 }
@@ -102,13 +109,17 @@ impl KubernetesBackend {
             poll: POLL,
             configs: ImageConfigs::default(),
             volumes: Volumes::Host,
+            references: Vec::new(),
             remote: None,
+            trusted: true,
             staging_time: STAGING_TIME,
             start_grace: GRACE,
             unschedulable_time: UNSCHEDULABLE_TIME,
             label: format!("{}-{millis}", std::process::id()),
             pods: Pods::default(),
             warned: AtomicBool::new(false),
+            indexed: AtomicBool::new(false),
+            pending: tokio::sync::Mutex::new(None),
             daemons: std::sync::Mutex::default(),
         }
     }
@@ -134,6 +145,11 @@ impl Backend for KubernetesBackend {
         if job.placement.offline {
             return Err(ExecutorError::Unsupported(
                 "the Kubernetes executor cannot run a task without network".into(),
+            ));
+        }
+        if !self.trusted && self.remote.as_ref().is_some_and(PodStaging::credentials) {
+            return Err(ExecutorError::Unsupported(
+                "untrusted Kubernetes tasks require presigned or CSI staging".into(),
             ));
         }
         tokio::select! {
@@ -193,6 +209,30 @@ impl KubernetesBackend {
         // The command runs through the entrypoint of the image, as `docker run` and the local
         // executor run it; a task without one runs the image's default command.
         let mut spec = job.spec.clone();
+        let shm = match spec.environment.remove("UWE_CONTAINER_FLAGS") {
+            None => None,
+            Some(task_model::EnvironmentValue::Literal(text)) => {
+                let flags: std::collections::BTreeMap<String, i64> = serde_json::from_str(&text)
+                    .map_err(|_| {
+                        ExecutorError::Unsupported("invalid Kubernetes container flags".into())
+                    })?;
+                if flags.get("shm").is_some_and(|size| *size < 0) {
+                    return Err(ExecutorError::Unsupported(
+                        "Kubernetes shared-memory size must be nonnegative".into(),
+                    ));
+                }
+                flags
+                    .get("shm")
+                    .copied()
+                    .filter(|size| *size > 0)
+                    .map(|size| size as u64)
+            }
+            Some(_) => {
+                return Err(ExecutorError::Unsupported(
+                    "Kubernetes container flags must be literal".into(),
+                ));
+            }
+        };
         let daemon = match spec.environment.remove(executor::daemon::DAEMON_ENV) {
             Some(task_model::EnvironmentValue::Literal(text)) => Some(
                 serde_json::from_str::<executor::daemon::Daemon>(&text)
@@ -211,6 +251,11 @@ impl KubernetesBackend {
             .filter_map(|image| image.platform.as_deref())
             .collect();
         if let Some(platform) = platforms.first() {
+            if let Some(remote) = &self.remote
+                && (spec.output_manifest.is_some() || matches!(&remote.via, crate::Via::Helper(_)))
+            {
+                remote.platform(platform)?;
+            }
             if platforms.iter().any(|other| other != platform) {
                 return Err(ExecutorError::Unsupported(
                     "Kubernetes image groups require the same platform".into(),
@@ -274,12 +319,44 @@ impl KubernetesBackend {
             executor::access::open(root)?;
         }
         let name = job_name(job.name);
+        let mut mounts = mounts.to_vec();
+        if self.remote.is_none() {
+            mounts.retain(|mount| {
+                !mount.read_only
+                    || !self
+                        .references
+                        .iter()
+                        .any(|reference| mount.source.starts_with(&reference.path))
+            });
+            for input in &job.staging.inputs {
+                if !input.copy
+                    && !input.in_place
+                    && self
+                        .references
+                        .iter()
+                        .any(|reference| input.source.starts_with(&reference.path))
+                {
+                    mounts.push(Mount {
+                        source: input.source.clone(),
+                        target: input.source.to_string_lossy().into_owned(),
+                        read_only: true,
+                    });
+                    if input.path.starts_with('/') && Path::new(&input.path) != input.source {
+                        mounts.push(Mount {
+                            source: input.source.clone(),
+                            target: input.path.clone(),
+                            read_only: true,
+                        });
+                    }
+                }
+            }
+        }
         let run = ContainerRun {
             name: &name,
             image,
             root,
             workdir: job.spec.workdir.as_deref(),
-            mounts,
+            mounts: &mounts,
             owner: (owner.uid(), owner.gid()),
             cpus: job.placement.cpus.max(1),
             memory: job.placement.memory_bytes,
@@ -295,7 +372,63 @@ impl KubernetesBackend {
                         .into(),
                 ));
             }
-            Some(remote) => *prepared = Some(remote.prepare(job, &run, &spec).await?),
+            Some(remote) => {
+                let mut staging = job.staging.clone();
+                let mut references = Vec::new();
+                staging.inputs.retain(|input| {
+                    if !input.copy
+                        && !input.in_place
+                        && self
+                            .references
+                            .iter()
+                            .any(|reference| input.source.starts_with(&reference.path))
+                    {
+                        references.push(Mount {
+                            source: input.source.clone(),
+                            target: input.path.clone(),
+                            read_only: true,
+                        });
+                        references.push(Mount {
+                            source: input.source.clone(),
+                            target: input.source.to_string_lossy().into_owned(),
+                            read_only: true,
+                        });
+                        false
+                    } else {
+                        true
+                    }
+                });
+                for reference in &references {
+                    if reference.target.contains('\0')
+                        || Path::new(&reference.target)
+                            .components()
+                            .any(|part| matches!(part, std::path::Component::ParentDir))
+                    {
+                        return Err(ExecutorError::Unsupported(
+                            "reference input path leaves its folder".into(),
+                        ));
+                    }
+                }
+                staging.directories.retain(|directory| {
+                    !self
+                        .references
+                        .iter()
+                        .any(|reference| Path::new(directory).starts_with(&reference.path))
+                });
+                let mut staged = remote
+                    .prepare(
+                        Job {
+                            staging: &staging,
+                            ..job
+                        },
+                        &run,
+                        &spec,
+                        job.staging,
+                    )
+                    .await?;
+                staged.mounts.extend(references);
+                *prepared = Some(staged);
+            }
             None => {}
         }
         let staged = &*prepared;
@@ -353,13 +486,24 @@ impl KubernetesBackend {
             ));
         }
         let volumes = (staged.as_ref()).map_or(&self.volumes, |staged| &staged.volumes);
-        let mut manifest = crate::manifest::job(&name, &self.label, &runs, &limits, volumes)
-            .map_err(ExecutorError::Unsupported)?;
+        let mut manifest = crate::manifest::job_with(
+            &name,
+            &self.label,
+            &runs,
+            &limits,
+            volumes,
+            &self.references,
+        )
+        .map_err(ExecutorError::Unsupported)?;
         if let (Some(remote), Some(staged)) = (&self.remote, staged) {
             remote.complete(&mut manifest, staged, root, limits.seconds);
         }
         if let Some(probe) = daemon.as_ref().and_then(crate::daemons::readiness) {
             manifest["spec"]["template"]["spec"]["containers"][0]["readinessProbe"] = probe;
+        }
+        if let Some(size) = shm {
+            crate::manifest::shared_memory(&mut manifest, size)
+                .map_err(ExecutorError::Unsupported)?;
         }
         let platforms: Vec<&str> = runs
             .iter()
@@ -372,6 +516,11 @@ impl KubernetesBackend {
                 "kubernetes.io/arch": parts.next().unwrap_or_default(),
             });
         }
+        let resources = manifest["spec"]["template"]["spec"]["resources"].clone();
+        if !resources.is_null() {
+            manifest["spec"]["suspend"] = serde_json::json!(true);
+        }
+        self.validate(&manifest).await?;
         if cancel.is_cancelled() {
             return Err(ExecutorError::Cancelled);
         }
@@ -384,15 +533,48 @@ impl KubernetesBackend {
             "owner": std::process::id(), "host": host, "started": started, "locked": true});
         // The recovery of the attempt removes its objects from the staging root.
         if let Some(staged) = staged {
-            journal["staging"] = serde_json::json!({"prefix": staged.prefix, "plan": staged.plan});
+            let remote = self.remote.as_ref().expect("staged backend");
+            journal["staging"] = serde_json::json!({"prefix": staged.prefix, "plan": staged.plan,
+                "root": remote.stage.objects.url(""), "cleanup": remote.stage.cleanup});
+            journal["collect"] = serde_json::json!(daemon.is_none());
         }
         journal_at(root, &journal)?;
-        let uid = tokio::select! {
+        track(root)?;
+        let (uid, retained) = tokio::select! {
             result = self.create(manifest) => result.map_err(|error| unresolved(root, error))?,
             () = cancel.cancelled() => return Err(unresolved(root, "cancelled during submission; the response was not recorded")),
         };
         journal["uid"] = serde_json::json!(uid);
         journal_at(root, &journal)?;
+        let retained = if retained && !resources.is_null() {
+            let patch = Patch::Merge(serde_json::json!({"metadata": {"uid": journal["uid"]},
+                "spec": {"suspend": false}}));
+            let activated = tokio::time::timeout(
+                SUBMIT_GRACE,
+                self.cluster
+                    .jobs()
+                    .patch(&name, &PatchParams::default(), &patch),
+            )
+            .await
+            .map_err(|error| unresolved(root, error))?
+            .map_err(|error| unresolved(root, error))?;
+            let activated =
+                serde_json::to_value(activated).map_err(|error| unresolved(root, error))?;
+            resources_match(
+                &resources,
+                &activated["spec"]["template"]["spec"]["resources"],
+            )
+        } else {
+            retained
+        };
+        if !retained {
+            Self::stop(&self.cluster, self.poll, root, &journal, CANCEL_GRACE).await?;
+            Self::settle(self.remote.as_ref(), root, &journal).await?;
+            *prepared = None;
+            return Err(ExecutorError::Unsupported(
+                "Kubernetes admission changed aggregate task caps".into(),
+            ));
+        }
         if daemon.is_some() {
             return self
                 .serve(&name, journal, root.to_owned(), ownership, cancel)
@@ -424,7 +606,34 @@ impl KubernetesBackend {
             *prepared = None;
             return Err(error);
         }
-        let finished = finish(ended?, root.to_owned(), limits.seconds, &spec).await;
+        if journal["collect"] == true && ended.is_ok() {
+            if Finished::from_control(root.to_owned())?.exit_code.is_none() {
+                return Err(unresolved(
+                    root,
+                    "the output capture has no valid exit record",
+                ));
+            }
+            journal["collect"] = serde_json::json!(false);
+            journal["stopped"] = serde_json::json!(true);
+            journal_at(root, &journal)?;
+        }
+        let finished = match ended {
+            Ok(ended) => finish(ended, root.to_owned(), limits.seconds, &spec).await,
+            Err(error) => Err(error),
+        };
+        let finished = finished.and_then(|mut finished| {
+            if self.remote.is_none() {
+                finished.collect_outputs(&spec, job.staging)?;
+            }
+            Ok(finished)
+        });
+        if let Err(error) = Self::settle(self.remote.as_ref(), root, &journal).await {
+            return match finished {
+                Err(original) => Err(original),
+                Ok(_) => Err(error),
+            };
+        }
+        *prepared = None;
         match (finished, log) {
             (Err(ExecutorError::Engine { engine, message }), Some(log)) => {
                 Err(ExecutorError::Engine {
@@ -437,7 +646,8 @@ impl KubernetesBackend {
     }
 
     /// Creates a Job from its manifest.
-    async fn create(&self, manifest: serde_json::Value) -> Result<String, ExecutorError> {
+    async fn create(&self, manifest: serde_json::Value) -> Result<(String, bool), ExecutorError> {
+        let resources = manifest["spec"]["template"]["spec"]["resources"].clone();
         let job = serde_json::from_value(manifest)
             .map_err(|error| machine(format!("the Job is not valid: {error}")))?;
         let jobs = self.cluster.jobs();
@@ -446,11 +656,49 @@ impl KubernetesBackend {
                 .await
                 .map_err(|_| machine("the Job submission response timed out".into()))?
                 .map_err(|error| machine(format!("the cluster did not take the Job: {error}")))?;
+        let value = serde_json::to_value(&accepted).map_err(|error| machine(error.to_string()))?;
+        let retained = resources.is_null()
+            || resources_match(&resources, &value["spec"]["template"]["spec"]["resources"]);
         accepted
             .metadata
             .uid
             .filter(|uid| !uid.is_empty())
+            .map(|uid| (uid, retained))
             .ok_or_else(|| machine("the Job submission response has no UID".into()))
+    }
+
+    /// A dry run must retain aggregate limits before multi-container work can start.
+    async fn validate(&self, manifest: &serde_json::Value) -> Result<(), ExecutorError> {
+        let resources = &manifest["spec"]["template"]["spec"]["resources"];
+        if resources.is_null() {
+            return Ok(());
+        }
+        let job = serde_json::from_value(manifest.clone())
+            .map_err(|error| machine(format!("the Job is not valid: {error}")))?;
+        let parameters = PostParams {
+            dry_run: true,
+            ..PostParams::default()
+        };
+        let accepted =
+            tokio::time::timeout(SUBMIT_GRACE, self.cluster.jobs().create(&parameters, &job))
+                .await
+                .map_err(|_| machine("pod resource admission timed out".into()))?
+                .map_err(|error| {
+                    ExecutorError::Unsupported(format!(
+                        "multi-container task caps require Kubernetes PodLevelResources: {error}",
+                    ))
+                })?;
+        let accepted =
+            serde_json::to_value(accepted).map_err(|error| machine(error.to_string()))?;
+        if !resources_match(
+            resources,
+            &accepted["spec"]["template"]["spec"]["resources"],
+        ) {
+            return Err(ExecutorError::Unsupported(
+                "the Kubernetes server did not retain aggregate task resource caps (PodLevelResources required)".into(),
+            ));
+        }
+        Ok(())
     }
 
     /// Resolves accepted work whose original coordinator is no longer running.
@@ -478,34 +726,52 @@ impl KubernetesBackend {
     }
 
     async fn reconcile_records(&self) -> Result<(), ExecutorError> {
-        let entries = match std::fs::read_dir(&self.scratch) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error.into()),
-        };
+        let pending = self.scratch.join("remote-pending");
+        std::fs::create_dir_all(&pending)?;
+        if !self.indexed.load(Ordering::Acquire) {
+            // Import old journals once; later admissions visit only the bounded pending index.
+            for entry in std::fs::read_dir(&self.scratch)? {
+                let entry = entry?;
+                if entry.file_type()?.is_dir() && entry.path().join("remote.json").try_exists()? {
+                    track(&entry.path())?;
+                }
+            }
+            self.indexed.store(true, Ordering::Release);
+        }
+        let mut entries = Vec::new();
+        {
+            let mut cursor = self.pending.lock().await;
+            if cursor.is_none() {
+                *cursor = Some(std::fs::read_dir(&pending)?);
+            }
+            for _ in 0..64 {
+                let Some(entry) = cursor.as_mut().expect("pending index").next() else {
+                    *cursor = None;
+                    break;
+                };
+                entries.push(entry?);
+            }
+        }
         let host = std::fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
         for entry in entries {
             tokio::task::yield_now().await;
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() {
-                continue;
-            }
-            let root = entry.path();
+            let root = self.scratch.join(entry.file_name());
             let path = root.join("remote.json");
             if !path.try_exists()? {
+                match std::fs::remove_file(entry.path()) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.into()),
+                }
                 continue;
             }
             let mut journal: serde_json::Value = serde_json::from_slice(&std::fs::read(&path)?)
                 .map_err(|error| unresolved(&root, error))?;
             if journal["backend"] != "Kubernetes"
-                || journal["host"].as_str() != Some(host.as_str())
                 || journal["server"].as_str() != Some(self.cluster.server())
                 || journal["namespace"].as_str() != Some(self.cluster.namespace())
             {
-                return Err(unresolved(
-                    &root,
-                    "the original coordinator host or cluster settings changed",
-                ));
+                return Err(unresolved(&root, "the original cluster settings changed"));
             }
             let live_owner = journal["owner"]
                 .as_u64()
@@ -513,6 +779,7 @@ impl KubernetesBackend {
                 .and_then(owner_start)
                 .as_deref()
                 == journal["started"].as_str()
+                && journal["host"].as_str() == Some(host.as_str())
                 && journal["started"].is_string();
             let _ownership = if journal["locked"] == true {
                 let lock = match File::options().write(true).open(root.join("remote.lock")) {
@@ -520,28 +787,19 @@ impl KubernetesBackend {
                     Err(_) if !path.try_exists()? => continue,
                     Err(error) => return Err(unresolved(&root, error)),
                 };
-                let mut locked = lock.try_lock();
-                // A process that this one starts holds a copy of the lock until it runs its
-                // program, so a lock without a live owner gets a moment to go away.
-                for _ in 0..100 {
-                    if live_owner || !matches!(locked, Err(TryLockError::WouldBlock)) {
-                        break;
-                    }
-                    tokio::time::sleep(Duration::from_millis(10)).await;
-                    locked = lock.try_lock();
-                }
-                match locked {
-                    Err(TryLockError::WouldBlock) if live_owner => continue,
-                    Err(TryLockError::WouldBlock) => {
-                        return Err(unresolved(
-                            &root,
-                            "the journal lock has no matching live coordinator",
-                        ));
-                    }
+                // The shared lock fences foreign processes too; PID namespaces cannot prove death.
+                match lock.try_lock() {
+                    Err(TryLockError::WouldBlock) => continue,
                     Err(TryLockError::Error(error)) => return Err(unresolved(&root, error)),
                     Ok(()) => Owned(lock),
                 }
             } else {
+                if journal["host"].as_str() != Some(host.as_str()) {
+                    return Err(unresolved(
+                        &root,
+                        "a legacy journal has no transferable lock",
+                    ));
+                }
                 if live_owner {
                     continue;
                 }
@@ -553,17 +811,12 @@ impl KubernetesBackend {
             journal = serde_json::from_slice(&std::fs::read(&path)?)
                 .map_err(|error| unresolved(&root, error))?;
             if journal["backend"] != "Kubernetes"
-                || journal["host"].as_str() != Some(host.as_str())
                 || journal["server"].as_str() != Some(self.cluster.server())
                 || journal["namespace"].as_str() != Some(self.cluster.namespace())
             {
-                return Err(unresolved(
-                    &root,
-                    "the original coordinator host or cluster settings changed",
-                ));
+                return Err(unresolved(&root, "the original cluster settings changed"));
             }
-            // A submission without an answer must not block every later run.
-            if journal["uid"].as_str().is_none_or(str::is_empty) {
+            if journal["stopped"] != true && journal["uid"].as_str().is_none_or(str::is_empty) {
                 match self.identify(&root, &journal).await {
                     Submitted::Found(uid) => {
                         journal["uid"] = serde_json::json!(uid);
@@ -572,9 +825,8 @@ impl KubernetesBackend {
                     Submitted::Absent => {
                         tracing::warn!(attempt = %root.display(),
                             "the Job of an unclear submission is not in the cluster; the attempt is lost");
-                        std::fs::remove_file(&path)?;
-                        Self::clean_staging(self.remote.as_ref(), &journal).await;
-                        continue;
+                        journal["stopped"] = serde_json::json!(true);
+                        journal_at(&root, &journal)?;
                     }
                     Submitted::Unclear(reason) => {
                         tracing::warn!(attempt = %root.display(), reason,
@@ -583,19 +835,59 @@ impl KubernetesBackend {
                     }
                 }
             }
-            Self::stop(&self.cluster, self.poll, &root, &journal, CANCEL_GRACE).await?;
-            Self::clean_staging(self.remote.as_ref(), &journal).await;
+            if journal["stopped"] != true {
+                Self::stop(&self.cluster, self.poll, &root, &journal, CANCEL_GRACE).await?;
+            }
+            if let Err(error) = Self::settle(self.remote.as_ref(), &root, &journal).await {
+                if journal["collect"] != true {
+                    return Err(error);
+                }
+                tracing::warn!(attempt = %root.display(), %error,
+                    "stopped attempt retains its pending output capture");
+            }
         }
         Ok(())
     }
 
     /// Removes the objects in the staging root that the journal of an attempt names.
-    pub(crate) async fn clean_staging(remote: Option<&PodStaging>, journal: &serde_json::Value) {
+    pub(crate) async fn settle(
+        remote: Option<&PodStaging>,
+        root: &Path,
+        journal: &serde_json::Value,
+    ) -> Result<(), ExecutorError> {
         let staging = &journal["staging"];
         let (prefix, plan) = (staging["prefix"].as_str(), staging["plan"].as_str());
-        if let (Some(remote), Some(prefix), Some(plan)) = (remote, prefix, plan) {
-            remote.stage.clean(prefix, plan).await;
+        if let (Some(prefix), Some(plan)) = (prefix, plan) {
+            let remote =
+                remote.ok_or_else(|| unresolved(root, "the staging configuration is missing"))?;
+            if staging["root"]
+                .as_str()
+                .is_some_and(|value| value != remote.stage.objects.url(""))
+            {
+                return Err(unresolved(root, "the staging root changed"));
+            }
+            let mut stage = remote.stage.clone();
+            stage.cleanup = staging["cleanup"].as_bool().unwrap_or(stage.cleanup);
+            if journal["collect"] == true {
+                if !stage.fetch(prefix, "exit", root).await? {
+                    return Err(unresolved(root, "the output capture is not available"));
+                }
+                stage
+                    .collect(prefix, root, executor::capture::RECORDS)
+                    .await?;
+                if Finished::from_control(root.to_owned())?.exit_code.is_none() {
+                    return Err(unresolved(
+                        root,
+                        "the output capture has no valid exit record",
+                    ));
+                }
+                let mut collected = journal.clone();
+                collected["collect"] = serde_json::json!(false);
+                journal_at(root, &collected)?;
+            }
+            stage.try_clean(prefix, plan).await?;
         }
+        forget(root)
     }
 
     /// Finds the Job of a journal whose submission left no UID, by its name, which only this
@@ -841,6 +1133,9 @@ impl KubernetesBackend {
         journal: &serde_json::Value,
         grace: Duration,
     ) -> Result<(), ExecutorError> {
+        if journal["stopped"] == true {
+            return Ok(());
+        }
         let name = journal["name"]
             .as_str()
             .filter(|name| !name.is_empty())
@@ -896,7 +1191,9 @@ impl KubernetesBackend {
         })
         .await
         .map_err(|_| unresolved(root, format!("Job {name} termination was not confirmed")))??;
-        std::fs::remove_file(root.join("remote.json"))?;
+        let mut journal = journal.clone();
+        journal["stopped"] = serde_json::json!(true);
+        journal_at(root, &journal)?;
         Ok(())
     }
 }
@@ -971,6 +1268,80 @@ fn journal_at(root: &Path, journal: &serde_json::Value) -> Result<(), ExecutorEr
     file.sync_all()?;
     std::fs::rename(path, root.join("remote.json"))?;
     std::fs::File::open(root)?.sync_all()?;
+    Ok(())
+}
+
+fn forget(root: &Path) -> Result<(), ExecutorError> {
+    std::fs::remove_file(root.join("remote.json"))?;
+    File::open(root)?.sync_all()?;
+    let pending = marker(root)?;
+    match std::fs::remove_file(&pending) {
+        Ok(()) => File::open(pending.parent().expect("index folder"))?.sync_all()?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    Ok(())
+}
+
+fn marker(root: &Path) -> Result<PathBuf, ExecutorError> {
+    let parent = root
+        .parent()
+        .ok_or_else(|| unresolved(root, "attempt has no parent"))?;
+    let name = root
+        .file_name()
+        .ok_or_else(|| unresolved(root, "attempt has no name"))?;
+    Ok(parent.join("remote-pending").join(name))
+}
+
+fn resources_match(expected: &serde_json::Value, actual: &serde_json::Value) -> bool {
+    ["requests", "limits"].into_iter().all(|kind| {
+        ["cpu", "memory"].into_iter().all(|name| {
+            let Some(expected) = expected[kind][name].as_str() else {
+                return true;
+            };
+            let actual = actual[kind][name].as_str().and_then(quantity);
+            actual.is_some() && actual == quantity(expected)
+        })
+    })
+}
+
+fn quantity(text: &str) -> Option<u128> {
+    let index = text
+        .find(|letter: char| !letter.is_ascii_digit())
+        .unwrap_or(text.len());
+    let number = text[..index].parse::<u128>().ok()?;
+    let suffix = &text[index..];
+    let scale = match suffix {
+        "m" => 1,
+        "" => 1000,
+        "k" => 1_000_000,
+        "M" => 1_000_000_000,
+        "G" => 1_000_000_000_000,
+        "T" => 1_000_000_000_000_000,
+        "P" => 1_000_000_000_000_000_000,
+        "E" => 1_000_000_000_000_000_000_000,
+        "Ki" => 1024 * 1000,
+        "Mi" => 1024u128.pow(2) * 1000,
+        "Gi" => 1024u128.pow(3) * 1000,
+        "Ti" => 1024u128.pow(4) * 1000,
+        "Pi" => 1024u128.pow(5) * 1000,
+        "Ei" => 1024u128.pow(6) * 1000,
+        _ => return None,
+    };
+    number.checked_mul(scale)
+}
+
+fn track(root: &Path) -> Result<(), ExecutorError> {
+    let pending = marker(root)?;
+    let parent = pending.parent().expect("index folder");
+    std::fs::create_dir_all(parent)?;
+    match File::options().write(true).create_new(true).open(&pending) {
+        Ok(file) => file.sync_all()?,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error.into()),
+    }
+    File::open(parent)?.sync_all()?;
+    File::open(root.parent().expect("attempt parent"))?.sync_all()?;
     Ok(())
 }
 

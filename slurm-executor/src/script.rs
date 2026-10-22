@@ -810,7 +810,8 @@ esac
         let command = (script.lines())
             .find(|line| line.starts_with("'podman'"))
             .expect("the command");
-        let expected = "'podman' 'run' '--init' '--rm' '--name' 'uwe-run-P-1-1' \
+        let expected = "'podman' 'run' '--init' '--label' \"org.uwe.invocation=$engine_tag\" \
+            '--cidfile' \"$engine_dir/0\" '--rm' '--name' 'uwe-run-P-1-1' \
             '--entrypoint' 'sh' '--userns=keep-id' '--user' '1000:100' \
             '--cap-drop' 'ALL' '--security-opt' 'no-new-privileges' \
             '--volume' '/shared/scratch/run-P-1-1:/shared/scratch/run-P-1-1' \

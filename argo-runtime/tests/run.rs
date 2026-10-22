@@ -131,6 +131,7 @@ fn keep_given(task: &Task, outcome: &Outcome) {
 
 #[derive(Default)]
 struct Setup {
+    policy: argo_runtime::Policy,
     library: Vec<&'static str>,
     parameters: Vec<(&'static str, &'static str)>,
     stdout: Vec<(&'static str, Vec<&'static str>)>,
@@ -281,6 +282,7 @@ fn build(directory: &std::path::Path, workflow: &str, setup: &Setup) -> ArgoDriv
         assume_inputs: !setup.real_inputs,
         keep_going: setup.keep_going,
         resume: setup.resume.clone(),
+        policy: setup.policy.clone(),
         ..Options::default()
     };
     ArgoDriver::new(document, Rc::new(library), options)
@@ -1667,7 +1669,19 @@ fn shares_volume_files() {
             .any(|warning| warning.contains("volume claim shared exists only in a cluster"))
     );
     // A real run needs the host path.
-    let real = run_with(&workflow(text), real());
+    let backing = tempfile::tempdir().unwrap();
+    let real = run_with(
+        &workflow(text),
+        Setup {
+            policy: argo_runtime::Policy {
+                volumes: ["work", "data"]
+                    .map(|name| (name.into(), backing.path().to_owned()))
+                    .into(),
+                ..Default::default()
+            },
+            ..real()
+        },
+    );
     assert!(
         real.error()
             .contains("mounts the host path /no/such/folder, which does not exist on this machine"),

@@ -425,7 +425,7 @@ mod tests {
                 Reply::Json(204, serde_json::Value::Null)
             } else if request.path.ends_with("/networks/create") {
                 network = request.body["Name"].as_str().unwrap().into();
-                Reply::Json(201, serde_json::json!({"Id": "network-id"}))
+                Reply::Json(201, serde_json::json!({"Id": "network-id", "Warning": ""}))
             } else if request.method == "DELETE" {
                 deleting.take().unwrap().send(()).unwrap();
                 released.recv().unwrap();

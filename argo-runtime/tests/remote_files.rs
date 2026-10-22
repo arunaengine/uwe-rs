@@ -148,6 +148,7 @@ fn propagates_remote_volumes() {
 #[test]
 fn avoids_init_replay() {
     let folder = tempfile::tempdir().unwrap();
+    let backing = tempfile::tempdir().unwrap();
     for (name, content) in [("old", "old"), ("new", "new")] {
         std::fs::create_dir(folder.path().join(name)).unwrap();
         std::fs::write(folder.path().join(name).join("x"), content).unwrap();
@@ -173,7 +174,25 @@ fn avoids_init_replay() {
       command: [echo]
       volumeMounts: [{name: data, mountPath: /data}]
 "#;
-    let mut run = driver(folder.path(), spec);
+    let target = folder.path().join("workflow.yaml");
+    std::fs::write(&target, format!(
+        "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {{name: remote}}\nspec:\n{spec}"
+    )).unwrap();
+    let mut run = argo_runtime::driver_with(
+        &Launch {
+            target,
+            ..Launch::default()
+        },
+        argo_runtime::Services {
+            policy: argo_runtime::Policy {
+                volumes: [("data".into(), backing.path().to_owned())].into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    run.use_files(Arc::new(Elsewhere(folder.path().to_owned())));
     let tasks = run.start().unwrap();
     let init = tasks
         .iter()

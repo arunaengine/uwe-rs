@@ -3,7 +3,6 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -264,7 +263,9 @@ fn record_of(fields: Vec<(Value, Value)>) -> Value {
 }
 
 fn tuple_of(items: Vec<Value>) -> Value {
-    Value::List(Rc::new(RefCell::new(List::new(ListKind::Tuple, items))))
+    Value::List(Rc::new(nextflow_evaluator::value::ListCell::new(
+        List::new(ListKind::Tuple, items),
+    )))
 }
 
 /// Nextflow's `ScriptRuntimeException`.

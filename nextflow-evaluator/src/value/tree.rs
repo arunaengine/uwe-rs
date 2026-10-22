@@ -3,7 +3,6 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use super::{Key, List, Map, Value};
@@ -96,7 +95,7 @@ fn deep_copy_body(value: &Value) -> Value {
                 .iter()
                 .map(|(key, value)| (key.clone(), deep_copy(value)))
                 .collect();
-            Value::Map(Rc::new(RefCell::new(Map {
+            Value::Map(Rc::new(crate::value::MapCell::new(Map {
                 kind: map.kind,
                 entries,
                 default: None,
@@ -105,7 +104,7 @@ fn deep_copy_body(value: &Value) -> Value {
         Value::List(list) => {
             let list = list.borrow();
             let items = list.items.iter().map(deep_copy).collect();
-            Value::List(Rc::new(RefCell::new(List {
+            Value::List(Rc::new(crate::value::ListCell::new(List {
                 kind: list.kind,
                 items,
                 range: list.range.clone(),

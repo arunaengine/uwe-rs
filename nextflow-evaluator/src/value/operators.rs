@@ -103,6 +103,9 @@ impl Value {
                 similar_list(left, (0..times).flat_map(|_| items.clone()).collect())?
             }
             (LeftShift, Value::List(list), item) => {
+                if list.readonly {
+                    return Err(unsupported_change());
+                }
                 let mut list_ref = list.borrow_mut();
                 if matches!(
                     list_ref.kind,
@@ -153,6 +156,9 @@ impl Value {
                 new_map(left_map.kind, entries)
             }
             (LeftShift, Value::Map(map), Value::Map(other)) => {
+                if map.readonly {
+                    return Err(unsupported_change());
+                }
                 let entries = other.borrow().entries.clone();
                 let mut map_ref = map.borrow_mut();
                 if map_ref.kind == MapKind::Record {
@@ -240,7 +246,11 @@ impl Value {
                 _ => crate::interpreter::instance_of(item, super::simple_class_name(class)),
             },
             Value::List(list) => {
-                let list = list.borrow();
+                let list = if list.peek().range.is_some() {
+                    list.peek()
+                } else {
+                    list.borrow()
+                };
                 match &list.range {
                     Some(range) => range.contains(&list.items, item),
                     None => list.items.iter().any(|other| other.java_equals(item)),
@@ -256,7 +266,7 @@ impl Value {
                 !matches!(item, Value::Null) && item.to_java_string() == **text
             }
             Value::Pattern(pattern) => {
-                !matches!(item, Value::Null) && pattern.matches(&item.to_java_string())
+                !matches!(item, Value::Null) && pattern.matches(&item.to_java_string())?
             }
             Value::Number(number) => match item {
                 Value::Number(other) => number.compare(other).is_eq(),
@@ -310,17 +320,22 @@ fn remove_all(items: Vec<Value>, removed: &Value) -> Vec<Value> {
 
 /// A new list of the same class, as Groovy's `createSimilarList` makes it. A tuple copy
 /// rejects the elements added to it.
-fn similar_list(original: &Rc<RefCell<List>>, items: Vec<Value>) -> Result<Value, Exception> {
+fn similar_list(
+    original: &Rc<crate::value::ListCell>,
+    items: Vec<Value>,
+) -> Result<Value, Exception> {
     let kind = match original.borrow().kind {
         ListKind::Tuple => return Err(unsupported_change()),
         ListKind::Array | ListKind::Range => ListKind::ArrayList,
         kind => kind,
     };
-    Ok(Value::List(Rc::new(RefCell::new(List::new(kind, items)))))
+    Ok(Value::List(Rc::new(crate::value::ListCell::new(
+        List::new(kind, items),
+    ))))
 }
 
 fn new_map(kind: MapKind, entries: indexmap::IndexMap<Key, Value>) -> Value {
-    Value::Map(Rc::new(RefCell::new(Map {
+    Value::Map(Rc::new(crate::value::MapCell::new(Map {
         kind,
         entries,
         default: None,

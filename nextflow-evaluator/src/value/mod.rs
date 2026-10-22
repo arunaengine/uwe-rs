@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod cell;
 mod class;
 mod compare;
 mod format;
@@ -21,6 +22,7 @@ use crate::exception::Exception;
 use crate::lowered::{Code, Module};
 use crate::number::Number;
 
+pub use cell::{ListCell, MapCell};
 pub use class::{assignable, class_text, qualified_class_name, simple_class_name};
 pub use compare::Relation;
 pub use key::Key;
@@ -42,8 +44,8 @@ pub enum Value {
     /// A GString written inside the `${...}` of another GString, which Nextflow does not turn
     /// into a `String`. It prints like its text, but is never Java-equal to a `String`.
     GString(Rc<str>),
-    List(Rc<RefCell<List>>),
-    Map(Rc<RefCell<Map>>),
+    List(Rc<crate::value::ListCell>),
+    Map(Rc<crate::value::MapCell>),
     Set(Rc<RefCell<Set>>),
     /// A `Map.Entry`, as `find` and `each` on a map give it.
     MapEntry(Rc<(Value, Value)>),
@@ -114,7 +116,7 @@ impl std::fmt::Debug for Closure {
 pub struct List {
     pub kind: ListKind,
     pub items: Vec<Value>,
-    /// The bounds of a range, whose elements are in `items`.
+    /// The bounds of a range, whose exact numeric elements may not yet be materialized.
     pub range: Option<Rc<Range>>,
     /// Groovy's `withDefault`: the closure that gives the element of an index past the end.
     pub default: Option<Rc<Closure>>,
@@ -275,7 +277,10 @@ impl Value {
 
     /// A new `ArrayList`.
     pub fn list(items: Vec<Value>) -> Value {
-        Value::List(Rc::new(RefCell::new(List::new(ListKind::ArrayList, items))))
+        Value::List(Rc::new(crate::value::ListCell::new(List::new(
+            ListKind::ArrayList,
+            items,
+        ))))
     }
 
     /// A new `LinkedHashMap`; a later entry with an equal key replaces the value in place.
@@ -284,7 +289,7 @@ impl Value {
             .into_iter()
             .map(|(key, value)| (Key(key), value))
             .collect();
-        Value::Map(Rc::new(RefCell::new(Map {
+        Value::Map(Rc::new(crate::value::MapCell::new(Map {
             kind: MapKind::LinkedHashMap,
             entries,
             default: None,
@@ -308,7 +313,7 @@ impl Value {
             Value::Character(_) => "Character",
             Value::String(_) => "String",
             Value::GString(_) => "GStringImpl",
-            Value::List(list) => match list.borrow().kind {
+            Value::List(list) => match list.peek().kind {
                 ListKind::ArrayList => "ArrayList",
                 ListKind::Tuple => "ArrayTuple",
                 ListKind::LinkedList => "LinkedList",
@@ -316,7 +321,7 @@ impl Value {
                 ListKind::BlankSeparated => "BlankSeparatedList",
                 ListKind::Stream => "Head",
                 ListKind::Range => list
-                    .borrow()
+                    .peek()
                     .range
                     .as_ref()
                     .map_or("IntRange", |r| r.class.name()),
@@ -365,14 +370,14 @@ impl Value {
             Value::Character(_) => "java.lang.Character",
             Value::String(_) => "java.lang.String",
             Value::GString(_) => "org.codehaus.groovy.runtime.GStringImpl",
-            Value::List(list) => match list.borrow().kind {
+            Value::List(list) => match list.peek().kind {
                 ListKind::ArrayList => "java.util.ArrayList",
                 ListKind::Tuple => "nextflow.util.ArrayTuple",
                 ListKind::LinkedList => "java.util.LinkedList",
                 ListKind::Array => "[Ljava.lang.String;",
                 ListKind::BlankSeparated => "nextflow.util.BlankSeparatedList",
                 ListKind::Stream => "java.util.stream.ReferencePipeline$Head",
-                ListKind::Range => match list.borrow().range.as_ref().map(|range| range.class) {
+                ListKind::Range => match list.peek().range.as_ref().map(|range| range.class) {
                     Some(RangeClass::Number) => "groovy.lang.NumberRange",
                     Some(RangeClass::Object) => "groovy.lang.ObjectRange",
                     Some(RangeClass::Empty) => "groovy.lang.EmptyRange",
@@ -437,7 +442,7 @@ impl Value {
             Value::String(text) | Value::GString(text) => !text.is_empty(),
             // Groovy's `Character.asBoolean()` is false only for the character 0.
             Value::Character(unit) => *unit != 0,
-            Value::List(list) => !list.borrow().items.is_empty(),
+            Value::List(list) => !list.is_empty(),
             Value::Map(map) => !map.borrow().entries.is_empty(),
             Value::Set(set) => !set.borrow().items.is_empty(),
             Value::MapEntry(_) => true,
@@ -456,7 +461,7 @@ impl Value {
             | Value::Namespace(_)
             | Value::Operator(_) => true,
             // Groovy's `Matcher.asBoolean()` is `find(0)`: the pattern occurs somewhere.
-            Value::Matcher(matcher) => !matcher.matches.is_empty(),
+            Value::Matcher(matcher) => matcher.first.is_some(),
         }
     }
 }

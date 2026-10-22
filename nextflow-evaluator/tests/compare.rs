@@ -2,7 +2,6 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use nextflow_evaluator::number::Number;
@@ -30,7 +29,9 @@ fn less(left: &Value, right: &Value) -> Result<bool, String> {
 }
 
 fn kind_list(kind: ListKind, items: Vec<Value>) -> Value {
-    Value::List(Rc::new(RefCell::new(List::new(kind, items))))
+    Value::List(Rc::new(nextflow_evaluator::value::ListCell::new(
+        List::new(kind, items),
+    )))
 }
 
 #[test]

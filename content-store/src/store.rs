@@ -119,9 +119,41 @@ pub struct Store {
     /// there too, and it serves what the folder lacks (see `layers.rs`).
     pub(crate) shared: Option<std::sync::Arc<Store>>,
     pub(crate) cache_reads: bool,
+    pub(crate) repair_reads: bool,
+    staging: Option<std::path::PathBuf>,
+    pub(crate) verified: std::sync::Arc<std::sync::Mutex<crate::layers::Verified>>,
 }
 
 impl Store {
+    /// Reads without publishing cached copies, creating entry locks, or repairing corruption.
+    pub fn read_only(&self) -> Self {
+        let mut store = self.without_read_cache();
+        store.repair_reads = false;
+        store.shared = self
+            .shared
+            .as_ref()
+            .map(|shared| std::sync::Arc::new(shared.read_only()));
+        store
+    }
+
+    /// Selects storage for private import snapshots instead of the system temporary folder.
+    pub fn with_staging(mut self, path: std::path::PathBuf) -> Self {
+        self.shared = self
+            .shared
+            .as_ref()
+            .map(|shared| std::sync::Arc::new(shared.as_ref().clone().with_staging(path.clone())));
+        self.staging = Some(path);
+        self
+    }
+
+    /// The local layer alone, for eviction protected by local reader leases.
+    pub fn front(&self) -> Option<Self> {
+        self.root.as_ref()?;
+        let mut store = self.clone();
+        store.shared = None;
+        Some(store)
+    }
+
     /// Clones this store without publishing read-through data into its front layer.
     pub fn without_read_cache(&self) -> Self {
         let mut store = self.clone();
@@ -203,6 +235,9 @@ impl Store {
             base: None,
             shared: None,
             cache_reads: true,
+            repair_reads: true,
+            staging: None,
+            verified: Default::default(),
         })
     }
 
@@ -253,7 +288,7 @@ impl Store {
 
     /// Copies a local file, then hashes and stores those same bytes.
     pub async fn put_file(&self, file: &std::path::Path) -> Result<(Digest, u64), StoreError> {
-        let snapshot = tempfile::NamedTempFile::new()?;
+        let snapshot = self.import_snapshot()?;
         tokio::fs::copy(file, snapshot.path())
             .await
             .map_err(at(file))?;
@@ -268,7 +303,7 @@ impl Store {
         file: &std::path::Path,
         digest: &Digest,
     ) -> Result<(), StoreError> {
-        let snapshot = tempfile::NamedTempFile::new()?;
+        let snapshot = self.import_snapshot()?;
         tokio::fs::copy(file, snapshot.path())
             .await
             .map_err(at(file))?;
@@ -280,6 +315,16 @@ impl Store {
             });
         }
         self.publish_file_as(snapshot.path(), digest).await
+    }
+
+    fn import_snapshot(&self) -> Result<tempfile::NamedTempFile, StoreError> {
+        let folder = self
+            .staging
+            .clone()
+            .or_else(|| self.root.as_ref().map(|root| root.join("imports")))
+            .unwrap_or_else(std::env::temp_dir);
+        std::fs::create_dir_all(&folder).map_err(at(&folder))?;
+        Ok(tempfile::NamedTempFile::new_in(&folder).map_err(at(&folder))?)
     }
 
     async fn publish_file_as(
@@ -471,14 +516,16 @@ impl Store {
         Ok(bytes)
     }
 
-    /// Removes the copies of a content or a manifest that no longer match its digest, here
-    /// and in the shared store behind, so that the next write of the digest stores it again.
+    /// Removes corrupt copies only when deletion can preserve a concurrent replacement.
+    /// Read-only views and remote providers without conditional deletion retain them.
     pub async fn repair(&self, location: &str, digest: &Digest) -> Result<(), StoreError> {
+        if !self.repair_reads {
+            return Ok(());
+        }
         match self.local_path(location) {
             Some(path) => repair_file(&path, digest).await?,
-            None => match hash_object(&self.operator, location).await {
-                Ok((actual, _)) if &actual != digest => self.remove(location).await?,
-                Ok(_) => {}
+            None => match repair_object(&self.operator, location, digest).await {
+                Ok(()) => {}
                 Err(error) if error.missing() => {}
                 Err(error) => return Err(error),
             },
@@ -792,6 +839,9 @@ impl Store {
         key: &Digest,
         observed: &EntrySnapshot,
     ) -> Result<bool, StoreError> {
+        if !self.repair_reads {
+            return Ok(false);
+        }
         let location = layout::entry(namespace, key)?;
         if observed.location != location {
             return Err(StoreError::Location(
@@ -862,6 +912,9 @@ impl Store {
             _file: None,
             _memory: None,
         };
+        if !self.repair_reads {
+            return Ok(guard);
+        }
         if self.root.is_some() {
             let mut local = self.clone();
             local.shared = None;
@@ -962,6 +1015,57 @@ fn plain(error: &opendal::Error) -> String {
 /// Whether a location names its object by the digest of its bytes: a content or a manifest.
 fn addressed(location: &str) -> bool {
     location.starts_with("cas/") || location.starts_with("trees/")
+}
+
+async fn repair_object(
+    operator: &Operator,
+    location: &str,
+    digest: &Digest,
+) -> Result<(), StoreError> {
+    let capability = operator.info().capability();
+    if !(capability.read_with_if_match && capability.delete_with_if_match) {
+        return Ok(());
+    }
+    let metadata = operator.stat(location).await?;
+    let Some(tag) = metadata
+        .etag()
+        .filter(|tag| !tag.is_empty() && !tag.starts_with("W/"))
+    else {
+        return Ok(());
+    };
+    let result = async {
+        let reader = operator.reader_with(location).if_match(tag).await?;
+        let mut hasher = Sha256::new();
+        let mut offset = 0;
+        while offset < metadata.content_length() {
+            let end = (offset + PART_SIZE as u64).min(metadata.content_length());
+            let bytes = reader.read(offset..end).await?.to_bytes();
+            if bytes.len() as u64 != end - offset {
+                return Err(opendal::Error::new(
+                    ErrorKind::Unexpected,
+                    "incomplete repair read",
+                ));
+            }
+            hasher.update(&bytes);
+            offset = end;
+        }
+        if Digest::from_sha256(&hasher.finalize()) != *digest {
+            operator.delete_with(location).if_match(tag).await?;
+        }
+        Ok(())
+    }
+    .await;
+    match result {
+        Err(error)
+            if matches!(
+                error.kind(),
+                ErrorKind::ConditionNotMatch | ErrorKind::NotFound
+            ) =>
+        {
+            Ok(())
+        }
+        result => Ok(result?),
+    }
 }
 
 /// The digest and size of an object, read in parts.

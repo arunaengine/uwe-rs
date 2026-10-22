@@ -1,0 +1,384 @@
+//! Persists local container ownership until deletion is confirmed.
+// Copyright (c) 2026 The uwe Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::collections::BTreeMap;
+use std::fs::{File, TryLockError};
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::Duration;
+
+use bollard::Docker;
+use bollard::errors::Error as ApiError;
+use serde::{Deserialize, Serialize};
+
+pub(crate) const OWNER: &str = "org.uwe.create";
+
+pub(crate) struct Journal {
+    root: PathBuf,
+    socket: String,
+    daemon: String,
+    active: Mutex<BTreeMap<String, Pending>>,
+}
+
+pub(crate) struct Pending {
+    folder: PathBuf,
+    _lock: File,
+    record: Record,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Record {
+    socket: String,
+    daemon: String,
+    name: String,
+    owner: String,
+    id: Option<String>,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Queue {
+    next: u64,
+    cursor: u64,
+}
+
+impl Journal {
+    #[cfg(test)]
+    pub(crate) fn empty(&self) -> bool {
+        !self.root.join("0/record.json").exists()
+    }
+    pub(crate) fn new(base: &Path, socket: String, daemon: String) -> Self {
+        let key = task_model::Digest::sha256(format!("{socket}\0{daemon}").as_bytes());
+        let root = if base.as_os_str().is_empty() {
+            PathBuf::new()
+        } else if base.is_absolute() {
+            base.join(key.hex())
+        } else {
+            std::env::current_dir()
+                .unwrap_or_default()
+                .join(base)
+                .join(key.hex())
+        };
+        Self {
+            root,
+            socket,
+            daemon,
+            active: Mutex::default(),
+        }
+    }
+
+    pub(crate) fn at(&self, base: &Path) -> Self {
+        Self::new(base, self.socket.clone(), self.daemon.clone())
+    }
+
+    pub(crate) async fn verify(&self, client: &Docker) -> Result<(), String> {
+        verify(client, &self.daemon).await
+    }
+
+    pub(crate) async fn begin(&self, name: &str, owner: &str) -> Result<Pending, String> {
+        if self.daemon.is_empty() {
+            return Err("the engine did not report its immutable daemon ID".into());
+        }
+        if !self.root.is_absolute() {
+            return Err("container creation requires a persistent operator cache directory".into());
+        }
+        let record = Record {
+            socket: self.socket.clone(),
+            daemon: self.daemon.clone(),
+            name: name.into(),
+            owner: owner.into(),
+            id: None,
+        };
+        let root = self.root.clone();
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        tokio::task::spawn_blocking(move || {
+            if let Err(Ok(pending)) = sender.send(create_record(&root, record)) {
+                let _ = pending.reject();
+            }
+        });
+        receiver.await.map_err(|error| error.to_string())?
+    }
+
+    pub(crate) fn bind(&self, mut pending: Pending, id: &str) -> Result<(), (String, Pending)> {
+        pending.record.id = Some(id.into());
+        if let Err(error) = pending.save() {
+            return Err((error, pending));
+        }
+        let mut active = self
+            .active
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if active.contains_key(id) {
+            return Err(("the engine reused a live container ID".into(), pending));
+        }
+        active.insert(id.into(), pending);
+        Ok(())
+    }
+
+    pub(crate) fn release(&self, id: &str, removed: bool) {
+        let pending = self
+            .active
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(id);
+        if removed
+            && let Some(pending) = pending
+            && let Err(error) = pending.finish()
+        {
+            eprintln!("uwe: warning: retained container cleanup record: {error}");
+        }
+    }
+
+    pub(crate) async fn recover(&self, client: &Docker) -> Result<(), String> {
+        if !self.root.is_absolute() {
+            return Ok(());
+        }
+        if !self.root.try_exists().map_err(|error| error.to_string())? {
+            return Ok(());
+        }
+        let root = self.root.clone();
+        let slots = tokio::task::spawn_blocking(move || {
+            let _lock = queue_lock(&root)?;
+            let mut queue = read_queue(&root)?;
+            let start = if queue.cursor < queue.next {
+                queue.cursor
+            } else {
+                0
+            };
+            let end = start.saturating_add(16).min(queue.next);
+            queue.cursor = end;
+            save_json(&root, "queue.json", &queue)?;
+            Ok::<_, String>(start..end)
+        })
+        .await
+        .map_err(|error| error.to_string())??;
+        for slot in slots {
+            let folder = self.root.join(slot.to_string());
+            let lock = match File::options().write(true).open(folder.join("lock")) {
+                Ok(lock) => lock,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error.to_string()),
+            };
+            match lock.try_lock() {
+                Ok(()) => {}
+                Err(TryLockError::WouldBlock) => continue,
+                Err(TryLockError::Error(error)) => return Err(error.to_string()),
+            }
+            let file = match File::open(folder.join("record.json")) {
+                Ok(file) => file,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error.to_string()),
+            };
+            let mut bytes = Vec::new();
+            file.take(65_537)
+                .read_to_end(&mut bytes)
+                .map_err(|error| error.to_string())?;
+            if bytes.len() > 65_536 {
+                return Err("a container ownership record exceeds 64 KiB".into());
+            }
+            let record: Record =
+                serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+            if record.socket != self.socket || record.daemon != self.daemon {
+                return Err("a container ownership record has a different engine or owner".into());
+            }
+            let pending = Pending {
+                folder,
+                _lock: lock,
+                record,
+            };
+            // A slow engine cannot turn historical cleanup into an unbounded admission wait.
+            if tokio::time::timeout(Duration::from_secs(2), pending.reconcile(client))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+        Ok(())
+    }
+}
+
+fn create_record(root: &Path, record: Record) -> Result<Pending, String> {
+    make_folder(root)?;
+    let _queue = queue_lock(root)?;
+    let mut queue = read_queue(root)?;
+    let folder = root.join(queue.next.to_string());
+    queue.next = queue
+        .next
+        .checked_add(1)
+        .ok_or("the container ownership queue is full")?;
+    save_json(root, "queue.json", &queue)?;
+    std::fs::create_dir(&folder).map_err(|error| error.to_string())?;
+    File::open(root)
+        .and_then(|file| file.sync_all())
+        .map_err(|error| error.to_string())?;
+    let lock = File::options()
+        .write(true)
+        .create_new(true)
+        .open(folder.join("lock"))
+        .map_err(|error| error.to_string())?;
+    lock.try_lock().map_err(|error| error.to_string())?;
+    let pending = Pending {
+        folder,
+        _lock: lock,
+        record,
+    };
+    pending.save()?;
+    Ok(pending)
+}
+
+fn queue_lock(root: &Path) -> Result<File, String> {
+    let lock = File::options()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(root.join("queue.lock"))
+        .map_err(|error| error.to_string())?;
+    let started = std::time::Instant::now();
+    loop {
+        match lock.try_lock() {
+            Ok(()) => return Ok(lock),
+            Err(TryLockError::WouldBlock) if started.elapsed() < Duration::from_secs(5) => {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            Err(error) => {
+                return Err(format!(
+                    "cannot lock the container ownership queue: {error}"
+                ));
+            }
+        }
+    }
+}
+
+fn read_queue(root: &Path) -> Result<Queue, String> {
+    let mut bytes = Vec::new();
+    match File::open(root.join("queue.json")) {
+        Ok(file) => {
+            file.take(4097)
+                .read_to_end(&mut bytes)
+                .map_err(|error| error.to_string())?;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Queue::default());
+        }
+        Err(error) => return Err(error.to_string()),
+    }
+    match bytes {
+        bytes if bytes.len() <= 4096 => {
+            serde_json::from_slice(&bytes).map_err(|error| error.to_string())
+        }
+        _ => Err("the container ownership queue exceeds 4 KiB".into()),
+    }
+}
+
+impl Pending {
+    fn save(&self) -> Result<(), String> {
+        save_json(&self.folder, "record.json", &self.record)
+    }
+
+    pub(crate) fn reject(self) -> Result<(), String> {
+        self.finish()
+    }
+
+    fn finish(self) -> Result<(), String> {
+        std::fs::remove_file(self.folder.join("record.json")).map_err(|error| error.to_string())?;
+        File::open(&self.folder)
+            .and_then(|file| file.sync_all())
+            .map_err(|error| error.to_string())?;
+        std::fs::remove_file(self.folder.join("lock")).map_err(|error| error.to_string())?;
+        std::fs::remove_dir(&self.folder).map_err(|error| error.to_string())?;
+        File::open(
+            self.folder
+                .parent()
+                .ok_or("an ownership record has no parent")?,
+        )
+        .and_then(|file| file.sync_all())
+        .map_err(|error| error.to_string())
+    }
+
+    pub(crate) async fn reconcile(mut self, client: &Docker) -> bool {
+        if verify(client, &self.record.daemon).await.is_err() {
+            return false;
+        }
+        let target = self.record.id.as_deref().unwrap_or(&self.record.name);
+        let found = match client.inspect_container(target, None).await {
+            Ok(found) => found,
+            Err(ApiError::DockerResponseServerError {
+                status_code: 404, ..
+            }) if self.record.id.is_some() => {
+                return self.finish().is_ok();
+            }
+            // Absence by name cannot settle a creation that the engine may still accept later.
+            Err(_) => return false,
+        };
+        let owner = found
+            .config
+            .and_then(|config| config.labels)
+            .and_then(|labels| labels.get(OWNER).cloned());
+        let Some(id) = found.id.filter(|id| !id.is_empty()) else {
+            return false;
+        };
+        if owner.as_deref() != Some(self.record.owner.as_str())
+            || self
+                .record
+                .id
+                .as_ref()
+                .is_some_and(|expected| *expected != id)
+        {
+            return false;
+        }
+        self.record.id = Some(id.clone());
+        if self.save().is_err() {
+            return false;
+        }
+        super::remove(client, &id).await && self.finish().is_ok()
+    }
+}
+
+async fn verify(client: &Docker, daemon: &str) -> Result<(), String> {
+    let info = tokio::time::timeout(Duration::from_secs(2), client.info())
+        .await
+        .map_err(|_| "the container engine identity request timed out")?
+        .map_err(|error| error.to_string())?;
+    if daemon.is_empty() || info.id.as_deref() != Some(daemon) {
+        return Err("the container engine identity changed; reconnect before creating or deleting containers".into());
+    }
+    Ok(())
+}
+
+fn save_json(folder: &Path, name: &str, value: &impl Serialize) -> Result<(), String> {
+    let bytes = serde_json::to_vec(value).map_err(|error| error.to_string())?;
+    if bytes.len() > 65_536 {
+        return Err("a container ownership record exceeds 64 KiB".into());
+    }
+    let mut file = tempfile::NamedTempFile::new_in(folder).map_err(|error| error.to_string())?;
+    std::io::Write::write_all(file.as_file_mut(), &bytes).map_err(|error| error.to_string())?;
+    file.as_file()
+        .sync_all()
+        .map_err(|error| error.to_string())?;
+    file.persist(folder.join(name))
+        .map_err(|error| error.to_string())?;
+    File::open(folder)
+        .and_then(|file| file.sync_all())
+        .map_err(|error| error.to_string())
+}
+
+fn make_folder(path: &Path) -> Result<(), String> {
+    if path.is_dir() {
+        return Ok(());
+    }
+    let parent = path
+        .parent()
+        .ok_or("the ownership directory has no parent")?;
+    make_folder(parent)?;
+    match std::fs::create_dir(path) {
+        Ok(()) => File::open(parent)
+            .and_then(|file| file.sync_all())
+            .map_err(|error| error.to_string()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && path.is_dir() => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}

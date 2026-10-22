@@ -169,6 +169,33 @@ pub(super) fn read(
     mut args: Args,
     default_separator: &str,
 ) -> Result<Value, Error> {
+    for (name, default) in [
+        ("dayfirst", Value::Bool(false)),
+        ("cache_dates", Value::Bool(true)),
+        ("compression", Value::str("infer")),
+        ("lineterminator", Value::None),
+        ("doublequote", Value::Bool(true)),
+        ("escapechar", Value::None),
+        ("dialect", Value::None),
+        ("on_bad_lines", Value::str("error")),
+        ("low_memory", Value::Bool(true)),
+        ("memory_map", Value::Bool(false)),
+        ("float_precision", Value::None),
+        ("storage_options", Value::None),
+        ("dtype_backend", Value::None),
+    ] {
+        if let Some(value) = args.take_keyword(name)
+            && !crate::value::key_equal(&value, &default)
+        {
+            return Err(Error::unsupported(format!("pandas.read_csv {name}")));
+        }
+    }
+    if let Some(engine) = args.take_keyword("engine")
+        && !engine.is_none()
+        && engine.as_str() != Some("c")
+    {
+        return Err(Error::unsupported("pandas.read_csv engine"));
+    }
     for name in ["parse_dates", "date_format", "iterator", "chunksize"] {
         if let Some(value) = args.take_keyword(name) {
             let requested = if name == "chunksize" || name == "date_format" {
@@ -252,13 +279,7 @@ pub(super) fn read(
                 Some(0)
             }
         }
-        Some(value) => match seq_values(interpreter, &value)?
-            .first()
-            .and_then(Value::as_int)
-        {
-            Some(row) => Some(row.max(0) as usize),
-            None => Some(0),
-        },
+        Some(_) => return Err(Error::unsupported("pandas.read_csv multi-row header")),
         None => {
             if names.is_some() {
                 None
@@ -286,7 +307,8 @@ pub(super) fn read(
     };
     let quote = match args.take_keyword("quoting") {
         Some(Value::Int(3)) => None,
-        _ => quote,
+        None | Some(Value::Int(0)) => quote,
+        Some(_) => return Err(Error::unsupported("pandas.read_csv quoting mode")),
     };
     let comment = text_option(interpreter, args.take_keyword("comment"))?
         .and_then(|text| text.chars().next());
@@ -299,6 +321,7 @@ pub(super) fn read(
         skip_rows,
         skip_first,
         skip_initial_space: flag(interpreter, &mut args, "skipinitialspace", false)?,
+        skip_blank: flag(interpreter, &mut args, "skip_blank_lines", true)?,
         rows: args
             .take_keyword("nrows")
             .and_then(|value| value.as_int())

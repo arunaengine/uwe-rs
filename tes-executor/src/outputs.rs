@@ -131,6 +131,17 @@ impl ObjectStage {
         status: &Status,
         root: &Path,
     ) -> Result<Finished, ExecutorError> {
+        let prefix = executor::capture::attempt_prefix(job)?;
+        self.collect_prefix(&prefix, task, status, root).await
+    }
+
+    pub(crate) async fn collect_prefix(
+        &self,
+        prefix: &str,
+        task: &Task,
+        status: &Status,
+        root: &Path,
+    ) -> Result<Finished, ExecutorError> {
         let control = root.join(executor::CONTROL);
         tokio::fs::create_dir_all(&control).await?;
         let log = status.logs.last().and_then(|log| log.logs.last());
@@ -156,7 +167,6 @@ impl ObjectStage {
                 usage: None,
             });
         }
-        let prefix = executor::capture::attempt_prefix(job)?;
         let mut outputs: BTreeMap<String, (Option<u64>, Option<String>)> = BTreeMap::new();
         if let Some(log) = status.logs.last() {
             for file in &log.outputs {

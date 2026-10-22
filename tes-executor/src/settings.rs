@@ -7,6 +7,7 @@ use config_file::{ConfigError, Secret, Table};
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub staging_root: Option<String>,
+    pub helper_file: Option<executor::binary::Binary>,
     pub idempotency_tag: Option<String>,
     pub user: Option<Secret>,
     pub password: Option<Secret>,
@@ -24,6 +25,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             staging_root: None,
+            helper_file: None,
             idempotency_tag: None,
             user: None,
             password: None,
@@ -51,6 +53,7 @@ impl Settings {
     pub const KEYS: &'static [&'static str] = &[
         "staging",
         "staging_root",
+        "helper_file",
         "idempotency_tag",
         "user",
         "password",
@@ -138,6 +141,13 @@ impl Settings {
             return Err(table.invalid("staging_cleanup", "requires staging = \"object-store\""));
         }
         Ok(Self {
+            helper_file: table
+                .text("helper_file")?
+                .map(|file| {
+                    executor::binary::Binary::open(std::path::Path::new(&file))
+                        .map_err(|error| table.invalid("helper_file", error))
+                })
+                .transpose()?,
             staging_cleanup,
             staging_minutes,
             staging_root,
@@ -191,5 +201,6 @@ mod tests {
     fn bounds_file_counts() {
         assert!(read("[executor.tes]\nmax_inputs = 513").is_err());
         assert!(read("[executor.tes]\nmax_outputs = 0").is_err());
+        assert!(read("[executor.tes]\nhelper_file = '/missing/uwe'").is_err());
     }
 }

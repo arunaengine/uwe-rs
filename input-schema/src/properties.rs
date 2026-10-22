@@ -27,6 +27,11 @@ pub fn properties(schema: &Json) -> Vec<Property<'_>> {
         }
     }
     collect(schema, None, &mut found);
+    let mut required = Vec::new();
+    requirements(schema, schema, &mut required, &mut Vec::new());
+    for property in &mut found {
+        property.required = required.contains(&property.name);
+    }
     found
 }
 
@@ -49,10 +54,6 @@ fn collect<'a>(schema: &'a Json, group: Option<&'a str>, found: &mut Vec<Propert
     let Some(Json::Object(properties)) = schema.get("properties") else {
         return;
     };
-    let required: Vec<&str> = match schema.get("required") {
-        Some(Json::Array(names)) => names.iter().filter_map(Json::as_str).collect(),
-        _ => Vec::new(),
-    };
     for (name, definition) in properties {
         if found.iter().any(|known| known.name == name) {
             continue;
@@ -60,10 +61,35 @@ fn collect<'a>(schema: &'a Json, group: Option<&'a str>, found: &mut Vec<Propert
         found.push(Property {
             name,
             schema: definition,
-            required: required.contains(&name.as_str()),
+            required: false,
             group,
         });
     }
+}
+
+fn requirements<'a>(
+    root: &'a Json,
+    schema: &'a Json,
+    found: &mut Vec<&'a str>,
+    active: &mut Vec<&'a Json>,
+) {
+    if active.iter().any(|seen| std::ptr::eq(*seen, schema)) {
+        return;
+    }
+    active.push(schema);
+    if let Some(names) = schema.get("required").and_then(Json::as_array) {
+        found.extend(names.iter().filter_map(Json::as_str));
+    }
+    let resolved = resolve(root, schema).0;
+    if !std::ptr::eq(resolved, schema) {
+        requirements(root, resolved, found, active);
+    }
+    if let Some(parts) = schema.get("allOf").and_then(Json::as_array) {
+        for part in parts {
+            requirements(root, part, found, active);
+        }
+    }
+    active.pop();
 }
 
 #[cfg(test)]

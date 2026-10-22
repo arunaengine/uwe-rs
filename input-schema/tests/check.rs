@@ -349,3 +349,54 @@ fn warns_missing_alternatives() {
     let given = inputs(schema, json!({"input": "absent"}), folder.path());
     assert_eq!(check(&given, true)[0].severity, Severity::Warning);
 }
+
+#[test]
+fn preserves_numeric_integers() {
+    for kind in ["number", "integer"] {
+        for number in [
+            json!(9007199254740993u64),
+            json!(i64::MIN),
+            json!(i64::MAX),
+            json!(u64::MAX),
+        ] {
+            let inputs = inputs(
+                json!({"type": kind}),
+                json!(number.to_string()),
+                Path::new("/"),
+            );
+            let validated = validate(&inputs, false);
+            assert_eq!(validated.values, number);
+            assert!(validated.diagnostics.is_empty());
+        }
+    }
+}
+
+#[test]
+fn combines_required_declarations() {
+    for schema in [
+        json!({
+            "allOf": [
+                {"properties": {"x": {"type": "string"}}},
+                {"required": ["x"]}
+            ]
+        }),
+        json!({
+            "$defs": {"group": {"properties": {"x": {"type": "string"}}}},
+            "allOf": [{"$ref": "#/$defs/group"}],
+            "required": ["x"]
+        }),
+        json!({
+            "properties": {"x": {"type": "string"}},
+            "allOf": [{"allOf": [{"required": ["x"]}, {"$ref": "#"}]}]
+        }),
+    ] {
+        assert!(input_schema::text(&schema).contains("--x <text> (required)"));
+        let inputs = inputs(schema, json!({}), Path::new("/"));
+        assert_eq!(input_schema::Counts::of(&inputs, false).required, 1);
+        assert!(
+            check(&inputs, false)
+                .iter()
+                .any(|problem| problem.severity == Severity::Error)
+        );
+    }
+}

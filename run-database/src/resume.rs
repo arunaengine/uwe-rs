@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use rusqlite::{OptionalExtension, params};
-use workflow_graph::{Outcome, OutputFile, TaskId};
+use workflow_graph::{Outcome, OutputFile, Stream, TaskId};
 
 use crate::{Database, DatabaseError, Run};
 
@@ -86,14 +86,27 @@ impl Database {
         task: u64,
         attempt: u32,
     ) -> Result<Option<Outcome>, DatabaseError> {
-        let text = |stream| -> Result<Option<String>, DatabaseError> {
+        let deferred: bool = self.connection.query_row(
+            "SELECT COALESCE(json_extract(description, '$.defer_logs'), 0) FROM tasks WHERE run = ?1 AND id = ?2",
+            params![run, task], |row| row.get(0),
+        )?;
+        let text = |stream| -> Result<Option<(String, Option<Stream>)>, DatabaseError> {
             Ok(match self.log(run, task, attempt, stream)? {
-                Some(log) if !log.whole => None,
-                Some(log) => Some(log.text),
-                None => Some(String::new()),
+                Some(log) if !log.whole && (!deferred || log.location.is_none()) => None,
+                Some(log) => Some((
+                    log.text,
+                    log.location.map(|location| Stream {
+                        location,
+                        digest: log.digest,
+                        size: log.size,
+                    }),
+                )),
+                None => Some((String::new(), None)),
             })
         };
-        let (Some(stdout), Some(stderr)) = (text("stdout")?, text("stderr")?) else {
+        let (Some((stdout, stdout_log)), Some((stderr, stderr_log))) =
+            (text("stdout")?, text("stderr")?)
+        else {
             return Ok(None);
         };
         let recorded = self.files(run, Some(task))?;
@@ -135,6 +148,8 @@ impl Database {
             files,
             stdout,
             stderr,
+            stdout_log,
+            stderr_log,
             cached: true,
             image,
             inputs,

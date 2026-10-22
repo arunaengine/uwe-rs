@@ -61,6 +61,8 @@ pub struct Log {
     /// The whole text, or its end when `whole` is false.
     pub text: String,
     pub whole: bool,
+    /// Retained bytes for a deferred or truncated log; absent in historical records.
+    pub location: Option<String>,
 }
 
 /// One event of a run.
@@ -73,11 +75,90 @@ pub struct Event {
     pub attempt: Option<u32>,
 }
 
+/// An observed owner and event cursor used to fence an explicit stopped-owner reconciliation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Owner {
+    pub run: String,
+    pub process: u32,
+    pub host: Option<String>,
+    pub boot: Option<String>,
+    pub start: Option<String>,
+    pub sequence: i64,
+}
+
 const RUN_COLUMNS: &str = "id, lineage, resumes, workflow, language, revision, arguments,
     parameters, executor, simulated, store, process, started, ended, state, error, program,
     launch, workflow_folder, repeats, replays, replays_task";
 
 impl Database {
+    /// Captures the owner of a running record without guessing whether a foreign host is alive.
+    pub fn owner(&self, run: &str) -> Result<Option<Owner>, DatabaseError> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT process, process_host, process_boot, process_start,
+                (SELECT COALESCE(MAX(sequence), 0) FROM events WHERE run = ?1)
+             FROM runs WHERE id = ?1 AND state = 'running'",
+                [run],
+                |row| {
+                    Ok(Owner {
+                        run: run.to_owned(),
+                        process: row.get(0)?,
+                        host: row.get(1)?,
+                        boot: row.get(2)?,
+                        start: row.get(3)?,
+                        sequence: row.get(4)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    /// The caller must independently confirm the exact foreign owner has stopped.
+    /// A changed owner/cursor is refused, and a provably live local owner is always protected.
+    pub fn reconcile(&mut self, owner: &Owner, reason: &str) -> Result<bool, DatabaseError> {
+        if let Some((host, boot, start)) = process_identity(owner.process)
+            && owner.host.as_deref() == Some(host.as_str())
+            && owner.boot.as_deref() == Some(boot.as_str())
+            && owner.start.as_deref() == Some(start.as_str())
+        {
+            return Err(DatabaseError::LiveOwner(owner.run.clone()));
+        }
+        let transaction = self
+            .connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let time = crate::now();
+        let changed = transaction.execute(
+            "UPDATE runs SET state = 'stopped', ended = ?7, error = ?8
+             WHERE id = ?1 AND state = 'running' AND process = ?2
+                AND process_host IS ?3 AND process_boot IS ?4 AND process_start IS ?5
+                AND (SELECT COALESCE(MAX(sequence), 0) FROM events WHERE run = ?1) = ?6",
+            params![
+                owner.run,
+                owner.process,
+                owner.host,
+                owner.boot,
+                owner.start,
+                owner.sequence,
+                time,
+                reason
+            ],
+        )?;
+        if changed == 0 {
+            return Ok(false);
+        }
+        transaction.execute(
+            "UPDATE tasks SET state = 'stopped' WHERE run = ?1 AND state IN ('waiting', 'running')",
+            [&owner.run],
+        )?;
+        transaction.execute(
+            "INSERT INTO events (run, sequence, time, kind) VALUES (?1, ?2, ?3, 'ended')",
+            params![owner.run, owner.sequence + 1, time],
+        )?;
+        transaction.commit()?;
+        Ok(true)
+    }
+
     /// The latest runs first, at most `limit` of them.
     pub fn runs(&self, limit: u32) -> Result<Vec<Run>, DatabaseError> {
         let mut statement = self.connection.prepare(&format!(
@@ -154,7 +235,7 @@ impl Database {
         let log = self
             .connection
             .query_row(
-                "SELECT digest, size, text FROM logs
+                "SELECT digest, size, text, location FROM logs
                  WHERE run = ?1 AND task = ?2 AND attempt = ?3 AND stream = ?4",
                 params![run, task, attempt, stream],
                 |row| {
@@ -165,6 +246,7 @@ impl Database {
                         whole: text.len() as u64 == size,
                         size,
                         text,
+                        location: row.get(3)?,
                     })
                 },
             )

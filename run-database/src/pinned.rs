@@ -16,6 +16,8 @@ pub struct Source {
     /// `sha256:<hex>`.
     pub digest: String,
     pub size: u64,
+    /// Historical records without a mode retain their non-executable restoration behavior.
+    pub executable: bool,
 }
 
 /// Why a file is a source of a run.
@@ -97,7 +99,7 @@ impl Database {
     /// they were recorded.
     pub fn sources(&self, run: &str) -> Result<Vec<Source>, DatabaseError> {
         let mut statement = self.connection.prepare(
-            "SELECT kind, path, digest, size FROM sources WHERE run = ?1 ORDER BY rowid",
+            "SELECT kind, path, digest, size, executable FROM sources WHERE run = ?1 ORDER BY rowid",
         )?;
         let sources = statement
             .query_map([run], |row| {
@@ -106,6 +108,7 @@ impl Database {
                     path: row.get(1)?,
                     digest: row.get(2)?,
                     size: row.get(3)?,
+                    executable: row.get(4)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;

@@ -61,12 +61,14 @@ fn record(path: &Path) {
             path: "main.nf".into(),
             digest: "sha256:aa".into(),
             size: 12,
+            executable: true,
         },
         Source {
             kind: SourceKind::Named,
             path: "/work/extra.config".into(),
             digest: "sha256:bb".into(),
             size: 3,
+            executable: false,
         },
     ]);
     for (id, image, ran) in [
@@ -121,6 +123,7 @@ fn retains_run_pins() {
     assert_eq!(run.repeats.as_deref(), Some("run-0"));
     let sources = database.sources("run-1").expect("reads the sources");
     assert_eq!(sources.len(), 2);
+    assert!(sources[0].executable);
     assert_eq!(sources[1].kind, SourceKind::Named);
     let remote = database
         .remote_files("run-1")
@@ -171,7 +174,8 @@ fn migrates_run_pins() {
              ALTER TABLE runs DROP COLUMN replays_task; DROP TABLE deliveries;
              ALTER TABLE runs DROP COLUMN process_host; ALTER TABLE runs DROP COLUMN process_boot;
              ALTER TABLE runs DROP COLUMN process_start;
-             ALTER TABLE attempts DROP COLUMN accepted;
+             ALTER TABLE attempts DROP COLUMN accepted; DROP INDEX events_task;
+             ALTER TABLE logs DROP COLUMN location;
              PRAGMA user_version = 3;",
         )
         .expect("goes back to version 3");
@@ -180,4 +184,23 @@ fn migrates_run_pins() {
     let database = Database::open(&path).expect("opens again");
     assert_eq!(database.version().expect("reads the version"), VERSION);
     assert_eq!(database.sources("run-1").expect("reads").len(), 2);
+}
+
+#[test]
+fn migrates_source_modes() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("runs.sqlite");
+    record(&path);
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    raw.execute_batch(
+        "ALTER TABLE sources DROP COLUMN executable;
+        DROP INDEX events_task; ALTER TABLE logs DROP COLUMN location; PRAGMA user_version = 8;",
+    )
+    .unwrap();
+    drop(raw);
+    let database = Database::open(&path).unwrap();
+    let sources = database.sources("run-1").unwrap();
+    assert_eq!(sources.len(), 2);
+    assert!(sources.iter().all(|source| !source.executable));
+    assert_eq!(sources[0].digest, "sha256:aa");
 }

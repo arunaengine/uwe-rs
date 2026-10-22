@@ -123,6 +123,7 @@ pub fn log_tail(log: &mut Log, files: &dyn Files, limit: usize) -> io::Result<()
     let mut size = 0;
     let mut kept = Vec::new();
     let mut buffer = [0; 8192];
+    let retained = limit.saturating_add(3);
     loop {
         let read = file.read(&mut buffer)?;
         if read == 0 {
@@ -130,11 +131,11 @@ pub fn log_tail(log: &mut Log, files: &dyn Files, limit: usize) -> io::Result<()
         }
         hasher.update(&buffer[..read]);
         size += read as u64;
-        if read >= limit {
+        if read >= retained {
             kept.clear();
-            kept.extend_from_slice(&buffer[read - limit..read]);
+            kept.extend_from_slice(&buffer[read - retained..read]);
         } else {
-            let remove = (kept.len() + read).saturating_sub(limit);
+            let remove = (kept.len() + read).saturating_sub(retained);
             kept.drain(..remove);
             kept.extend_from_slice(&buffer[..read]);
         }
@@ -147,14 +148,7 @@ pub fn log_tail(log: &mut Log, files: &dyn Files, limit: usize) -> io::Result<()
             "retained log bytes do not match their recorded digest and size",
         ));
     }
-    let start = if size > kept.len() as u64 {
-        kept.iter()
-            .position(|byte| byte & 0xc0 != 0x80)
-            .unwrap_or(kept.len())
-    } else {
-        0
-    };
-    let text = String::from_utf8_lossy(&kept[start..]);
+    let text = String::from_utf8_lossy(&kept);
     let mut start = text.len().saturating_sub(limit);
     while !text.is_char_boundary(start) {
         start += 1;
@@ -251,13 +245,17 @@ mod tests {
         assert!(log.text.is_empty());
         std::fs::write(file.path(), "short").unwrap();
         assert!(log_tail(&mut log, &LocalFiles, LOG_TAIL).is_err());
-        let bytes = vec![0xff; 2 * LOG_TAIL];
-        std::fs::write(file.path(), &bytes).unwrap();
-        log.digest = task_model::Digest::sha256(&bytes).to_string();
-        log.size = bytes.len() as u64;
-        log_tail(&mut log, &LocalFiles, LOG_TAIL).unwrap();
-        assert!(log.text.len() <= LOG_TAIL);
-        assert!(!log.whole);
+        for byte in [0xff, 0x80] {
+            let bytes = vec![byte; 2 * LOG_TAIL];
+            std::fs::write(file.path(), &bytes).unwrap();
+            log.digest = task_model::Digest::sha256(&bytes).to_string();
+            log.size = bytes.len() as u64;
+            log.text.clear();
+            log_tail(&mut log, &LocalFiles, LOG_TAIL).unwrap();
+            assert!(!log.text.is_empty());
+            assert!(log.text.len() <= LOG_TAIL);
+            assert!(!log.whole);
+        }
     }
 
     #[test]

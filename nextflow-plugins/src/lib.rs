@@ -13,6 +13,33 @@ use nextflow_config::Config;
 use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::value::Value;
 
+/// Parameters as nf-schema validates them, according to the selected plugin version.
+pub fn schema_params(params: &Value, config: &Config) -> Value {
+    let old = nf_schema::schema_version(config)
+        .is_some_and(|parts| parts.as_slice() < [2, 7, 0].as_slice());
+    clean_params(params, old)
+}
+
+/// Removes absent parameter values using the selected nf-schema cleaning rules.
+pub fn clean_params(params: &Value, old: bool) -> Value {
+    clean_value(params, old).unwrap_or_else(|| Value::map([]))
+}
+
+pub(crate) fn clean_value(value: &Value, old: bool) -> Option<Value> {
+    let zero = matches!(value, Value::Number(number) if number.is_zero());
+    if matches!(value, Value::Null) || old && !value.truth() && !zero {
+        return None;
+    }
+    Some(match value {
+        Value::Map(_) => Value::map(
+            nf_schema::entries(value)
+                .into_iter()
+                .filter_map(|(key, value)| Some((Value::string(key), clean_value(&value, old)?))),
+        ),
+        other => other.clone(),
+    })
+}
+
 /// The functions of nf-schema that scripts can include.
 const NF_SCHEMA: &[&str] = &[
     "paramsHelp",
@@ -73,6 +100,30 @@ pub fn functions(plugin: &str) -> Option<&'static [&'static str]> {
         "nf-validation" => Some(nf_validation::FUNCTIONS),
         _ => None,
     }
+}
+
+/// Native plugin coverage, including functions recognized but not implemented.
+pub fn capabilities() -> serde_json::Value {
+    let core = [
+        "getGenomeAttribute",
+        "getWorkflowVersion",
+        "checkConfigProvided",
+        "checkProfileProvided",
+        "completionSummary",
+        "dumpParametersToJSON",
+        "softwareVersionsToYAML",
+    ];
+    let unavailable: Vec<_> = NF_CORE_UTILS
+        .iter()
+        .filter(|name| !core.contains(name))
+        .collect();
+    serde_json::json!({
+        "nf-schema": {"supported": NF_SCHEMA, "unavailable": []},
+        "nf-validation": {"supported": nf_validation::FUNCTIONS, "unavailable": []},
+        "nf-fgbio": {"supported": ["readStructure"], "unavailable": []},
+        "nf-core-utils": {"supported": core, "unavailable": unavailable},
+        "nf-anndata": {"supported": [], "unavailable": ["anndata"]}
+    })
 }
 
 /// The plugin of a channel factory that a plugin adds, like `Channel.fromSamplesheet`.

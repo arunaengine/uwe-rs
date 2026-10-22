@@ -163,7 +163,11 @@ pub(crate) fn json(value: &Value) -> serde_json::Value {
 
 /// The version of nf-schema that the config asks for, if it names one; else the latest runs.
 pub(crate) fn version(context: &Context) -> Option<Vec<u32>> {
-    let Some(Value::Set(plugins)) = context.config.get(&["plugins"]) else {
+    schema_version(context.config)
+}
+
+pub(crate) fn schema_version(config: &nextflow_config::Config) -> Option<Vec<u32>> {
+    let Some(Value::Set(plugins)) = config.get(&["plugins"]) else {
         return None;
     };
     let plugins = plugins.borrow();

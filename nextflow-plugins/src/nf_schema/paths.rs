@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use jsonschema::{Keyword, ValidationError};
 use nextflow_evaluator::interpreter::glob::{GlobOptions, glob, is_glob};
@@ -22,7 +22,13 @@ enum Named {
     Failed(String),
 }
 
-type Lookup = Arc<HashMap<String, Named>>;
+#[derive(Default)]
+struct Paths {
+    known: HashMap<String, Named>,
+    pending: HashSet<String>,
+}
+
+type Lookup = Arc<Mutex<Paths>>;
 
 /// A validator with nf-schema's path keywords. Other formats are not checked, as before.
 /// With `path_exists`, `exists` only checks values whose format is a path, as nf-validation
@@ -33,20 +39,11 @@ pub(crate) fn validator(
     context: &mut Context,
     path_exists: bool,
 ) -> Result<jsonschema::Validator, String> {
-    let mut texts = HashSet::new();
-    path_texts(instance, &mut texts);
     let launch = context.host.launch_dir();
-    let lookup: Lookup = Arc::new(
-        texts
-            .into_iter()
-            .map(|text| {
-                let named = look_up(&text, &launch, context);
-                (text, named)
-            })
-            .collect(),
-    );
+    let lookup: Lookup = Arc::default();
     let formats = lookup.clone();
-    jsonschema::options()
+    let exists = lookup.clone();
+    let validator = jsonschema::options()
         .with_keyword("format", move |_, value, _| {
             Ok(Box::new(PathFormat {
                 format: value.as_str().unwrap_or_default().to_owned(),
@@ -61,11 +58,28 @@ pub(crate) fn validator(
             let checked = !path_exists || ["file-path", "directory-path", "path"].contains(&format);
             Ok(Box::new(Exists {
                 wanted: value.as_bool().filter(|_| checked),
-                lookup: lookup.clone(),
+                lookup: exists.clone(),
             }))
         })
         .build(schema)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    // Deferred keyword lookups let the validator itself resolve references and branches.
+    loop {
+        for _ in validator.iter_errors(instance) {}
+        let pending = std::mem::take(&mut lookup.lock().expect("path lookup lock").pending);
+        if pending.is_empty() {
+            break;
+        }
+        for text in pending {
+            let named = look_up(&text, &launch, context);
+            lookup
+                .lock()
+                .expect("path lookup lock")
+                .known
+                .insert(text, named);
+        }
+    }
+    Ok(validator)
 }
 
 fn look_up(text: &str, launch: &str, context: &mut Context) -> Named {
@@ -98,18 +112,6 @@ fn look_up(text: &str, launch: &str, context: &mut Context) -> Named {
     }
 }
 
-/// All string leaves, so schema references and branches remain the validator's concern.
-fn path_texts(instance: &Json, texts: &mut HashSet<String>) {
-    match instance {
-        Json::String(text) => {
-            texts.insert(text.clone());
-        }
-        Json::Array(items) => items.iter().for_each(|item| path_texts(item, texts)),
-        Json::Object(map) => map.values().for_each(|value| path_texts(value, texts)),
-        _ => {}
-    }
-}
-
 struct PathFormat {
     format: String,
     lookup: Lookup,
@@ -126,7 +128,9 @@ impl PathFormat {
             "file-path-pattern" => "",
             _ => return None,
         };
-        let Some(named) = self.lookup.get(text) else {
+        let mut lookup = self.lookup.lock().expect("path lookup lock");
+        let Some(named) = lookup.known.get(text) else {
+            lookup.pending.insert(text.to_owned());
             return Some(format!(
                 "could not validate file format of '{text}': missing path lookup"
             ));
@@ -186,13 +190,15 @@ impl Exists {
     fn problem(&self, instance: &Json) -> Option<String> {
         let wanted = self.wanted?;
         let text = instance.as_str()?;
-        let exists = match self.lookup.get(text) {
+        let mut lookup = self.lookup.lock().expect("path lookup lock");
+        let exists = match lookup.known.get(text) {
             Some(Named::Failed(message)) => {
                 return Some(format!("could not check existence of '{text}': {message}"));
             }
             Some(Named::Pattern(files)) => !files.is_empty(),
             Some(Named::Path(_, found)) => found.is_some(),
             None => {
+                lookup.pending.insert(text.to_owned());
                 return Some(format!(
                     "could not check existence of '{text}': missing path lookup"
                 ));
@@ -235,6 +241,53 @@ mod tests {
         fn launch_dir(&self) -> String {
             self.0.clone()
         }
+    }
+
+    #[test]
+    fn skips_plain_strings() {
+        #[derive(Default)]
+        struct Counting(Vec<String>);
+        impl Host for Counting {
+            fn print(&mut self, _: &str) {}
+            fn metadata(
+                &mut self,
+                path: &PathValue,
+            ) -> Result<
+                Option<nextflow_evaluator::interpreter::FileMetadata>,
+                nextflow_evaluator::interpreter::Error,
+            > {
+                self.0.push(path.uri());
+                Ok(None)
+            }
+            fn list(
+                &mut self,
+                _: &PathValue,
+            ) -> Result<Vec<(String, bool)>, nextflow_evaluator::interpreter::Error> {
+                panic!("plain strings must not expand globs");
+            }
+        }
+        let mut host = Counting::default();
+        let config = Config::default();
+        let mut context = Context {
+            host: &mut host,
+            config: &config,
+            params: Value::map([]),
+            project_dir: "/",
+            cli_params: &[],
+        };
+        let schema = json!({
+            "$defs": {"file": {"$anchor": "file", "format": "file-path", "exists": true}},
+            "properties": {"label": {"type": "string"}, "url": {"format": "uri"},
+                "files": {"type": "array", "items": {"$ref": "#file"}}}
+        });
+        let instance = json!({"label": "**", "url": "https://example.invalid/metadata", "files": ["needed.txt", "needed.txt"]});
+        assert!(
+            !validator(&schema, &instance, &mut context, false)
+                .unwrap()
+                .is_valid(&instance)
+        );
+        assert_eq!(host.0.len(), 1);
+        assert!(host.0[0].ends_with("/needed.txt"));
     }
 
     #[test]

@@ -32,6 +32,38 @@ output {
 "#;
 
 #[test]
+fn preserves_modern_false() {
+    for (version, valid) in [("2.6.0", false), ("2.7.2", true)] {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::write(folder.path().join("main.nf"),
+            "include { validateParameters } from 'plugin/nf-schema'\nworkflow { validateParameters() }").unwrap();
+        std::fs::write(folder.path().join("nextflow.config"), format!(
+            "plugins {{ id 'nf-schema@{version}' }}\nparams {{ skip = false; label = ''; items = [] }}"
+        )).unwrap();
+        std::fs::write(folder.path().join("nextflow_schema.json"), json!({
+            "type": "object", "required": ["skip", "label", "items"],
+            "properties": {"skip": {"type": "boolean"}, "label": {"type": "string"}, "items": {"type": "array"}}
+        }).to_string()).unwrap();
+        let mut driver = nextflow_runtime::driver(&Launch {
+            target: folder.path().to_owned(),
+            ..Launch::default()
+        })
+        .unwrap();
+        let inputs = driver.inputs().unwrap().unwrap();
+        assert_eq!(
+            input_schema::check(&inputs, false).is_empty(),
+            valid,
+            "{version}"
+        );
+        assert_eq!(
+            driver.start().is_ok(),
+            valid,
+            "plugin and preflight disagree for {version}"
+        );
+    }
+}
+
+#[test]
 fn infers_pipeline_schema() {
     let folder = tempfile::tempdir().expect("a folder");
     std::fs::write(folder.path().join("main.nf"), SCRIPT).expect("writes the script");

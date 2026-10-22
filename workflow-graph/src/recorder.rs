@@ -19,7 +19,6 @@ pub(crate) struct Recorder {
     producers: HashMap<PathBuf, (TaskId, String)>,
     /// The paths of the output files of each finished task.
     outputs: HashMap<TaskId, Vec<String>>,
-    seen: HashSet<TaskId>,
     /// The position of each task's node in the graph, so that a run of many tasks stays fast.
     positions: HashMap<TaskId, usize>,
 }
@@ -34,7 +33,6 @@ impl Recorder {
             },
             producers: HashMap::new(),
             outputs: HashMap::new(),
-            seen: HashSet::new(),
             positions: HashMap::new(),
         }
     }
@@ -46,7 +44,7 @@ impl Recorder {
         task: &Task,
         completed: Option<TaskId>,
     ) -> Result<&[Edge], ExecuteError> {
-        if self.seen.contains(&task.id) {
+        if self.positions.contains_key(&task.id) {
             let node = (self.positions.get(&task.id))
                 .and_then(|position| self.graph.nodes.get_mut(*position))
                 .filter(|node| {
@@ -60,14 +58,19 @@ impl Recorder {
             node.reused = false;
             return Ok(&[]);
         }
-        if let Some(&after) = task.after.iter().find(|id| !self.seen.contains(id)) {
+        if let Some(&after) = task
+            .after
+            .iter()
+            .find(|id| !self.positions.contains_key(id))
+        {
             return Err(ExecuteError::UnknownAfter {
                 task: task.id,
                 after,
             });
         }
-        self.seen.insert(task.id);
         let mut edges: Vec<Edge> = Vec::new();
+        let mut files = HashSet::new();
+        let mut sources = HashSet::new();
         // An input with literal content comes from no task.
         for input in task.inputs.iter().filter(|input| input.content.is_none()) {
             if let Some((from, _)) = self.producer(Path::new(&input.source)) {
@@ -78,13 +81,14 @@ impl Recorder {
                         path: input.path.clone(),
                     },
                 };
-                if !edges.contains(&edge) {
+                sources.insert(from);
+                if files.insert((from, input.path.as_str())) {
                     edges.push(edge);
                 }
             }
         }
         for &from in &task.after {
-            if !edges.iter().any(|edge| edge.from == from) {
+            if sources.insert(from) {
                 edges.push(Edge {
                     from,
                     to: task.id,
@@ -251,4 +255,77 @@ fn normalize(path: &Path) -> PathBuf {
         }
     }
     normal
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Input, OutputFile};
+
+    #[test]
+    fn preserves_gather_edges() {
+        let mut recorder = Recorder::new("gather", Language::Cwl);
+        for id in [1, 2] {
+            recorder
+                .add(
+                    &Task {
+                        id: TaskId(id),
+                        ..Task::default()
+                    },
+                    None,
+                )
+                .unwrap();
+        }
+        let files: Vec<_> = (0..512)
+            .map(|id| OutputFile {
+                path: format!("{id}.txt"),
+                location: format!("/gather/{id}.txt"),
+                ..OutputFile::default()
+            })
+            .collect();
+        recorder.finished(&Outcome {
+            id: TaskId(1),
+            files: files.clone(),
+            ..Outcome::default()
+        });
+        let inputs: Vec<_> = files
+            .iter()
+            .flat_map(|file| {
+                let input = Input {
+                    path: file.path.clone(),
+                    source: file.location.clone(),
+                    ..Input::default()
+                };
+                [input.clone(), input]
+            })
+            .collect();
+        let task = Task {
+            id: TaskId(3),
+            inputs,
+            after: vec![TaskId(1), TaskId(2), TaskId(2)],
+            ..Task::default()
+        };
+        let edges = recorder.add(&task, None).unwrap();
+        assert_eq!(edges.len(), 513);
+        for (index, edge) in edges[..512].iter().enumerate() {
+            assert_eq!(
+                edge,
+                &Edge {
+                    from: TaskId(1),
+                    to: TaskId(3),
+                    kind: EdgeKind::File {
+                        path: format!("{index}.txt")
+                    },
+                }
+            );
+        }
+        assert_eq!(
+            edges[512],
+            Edge {
+                from: TaskId(2),
+                to: TaskId(3),
+                kind: EdgeKind::Order
+            }
+        );
+    }
 }

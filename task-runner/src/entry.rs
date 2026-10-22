@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::BTreeSet;
 use std::os::unix::fs::PermissionsExt;
 
 use content_store::{EntrySnapshot, Store, StoreError, layout};
@@ -74,6 +75,7 @@ impl CacheEntry {
     /// Whether the store still has every file of the entry: each output, the manifest of each
     /// directory, and the captured streams. Each output is read once.
     pub async fn complete(&self, store: &Store) -> Result<bool, RunnerError> {
+        let mut checked = BTreeSet::new();
         for file in &self.files {
             // In an object store, the location of a directory is only the prefix of its files,
             // no object itself; its manifest stands for it there.
@@ -83,16 +85,17 @@ impl CacheEntry {
             if !present {
                 return Ok(false);
             }
-            if file.directory && !directory_complete(store, file).await? {
+            if file.directory && !directory_complete(store, file, &mut checked).await? {
                 return Ok(false);
             }
             if !file.directory
-                && !stored_file(store, &file.location, &file.digest, file.size).await?
+                && !stored_file(store, &file.location, &file.digest, file.size, &mut checked)
+                    .await?
             {
                 return Ok(false);
             }
         }
-        for digest in self.logs() {
+        for digest in self.logs().collect::<BTreeSet<_>>() {
             match store.verify_object(&layout::content(digest), digest).await {
                 Ok(_) => {}
                 Err(error) if damaged(&error) => return Ok(false),
@@ -110,7 +113,12 @@ async fn stored_file(
     location: &str,
     digest: &Digest,
     size: u64,
+    checked: &mut BTreeSet<(String, Digest, u64)>,
 ) -> Result<bool, RunnerError> {
+    let identity = (location.to_owned(), digest.clone(), size);
+    if checked.contains(&identity) {
+        return Ok(true);
+    }
     match store.verify_object(location, digest).await {
         Ok(found) if found == size => {}
         Ok(_) => return Ok(false),
@@ -122,7 +130,11 @@ async fn stored_file(
         }
         Err(error) => return Err(error.into()),
     }
-    Ok(store.content_size(digest).await? == Some(size))
+    if store.content_size(digest).await? != Some(size) {
+        return Ok(false);
+    }
+    checked.insert(identity);
+    Ok(true)
 }
 
 fn damaged(error: &StoreError) -> bool {
@@ -132,7 +144,11 @@ fn damaged(error: &StoreError) -> bool {
     }
 }
 
-async fn directory_complete(store: &Store, file: &StoredFile) -> Result<bool, RunnerError> {
+async fn directory_complete(
+    store: &Store,
+    file: &StoredFile,
+    checked: &mut BTreeSet<(String, Digest, u64)>,
+) -> Result<bool, RunnerError> {
     let tree = match store.get_tree(&file.digest).await {
         Ok(tree) => tree,
         Err(error) if damaged(&error) => return Ok(false),
@@ -224,7 +240,7 @@ async fn directory_complete(store: &Store, file: &StoredFile) -> Result<bool, Ru
                     }
                 }
                 let location = format!("{}/{path}", file.location.trim_end_matches('/'));
-                if !stored_file(store, &location, &digest, size).await? {
+                if !stored_file(store, &location, &digest, size, checked).await? {
                     return Ok(false);
                 }
             }

@@ -4,11 +4,15 @@
 
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use bollard::errors::Error as ApiError;
 use bollard::query_parameters::RemoveContainerOptions;
 use bollard::{API_DEFAULT_VERSION, Docker};
+
+#[path = "journal.rs"]
+pub(crate) mod journal;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EngineKind {
@@ -23,7 +27,7 @@ const TIMEOUT_SECONDS: u64 = 600;
 /// Removal must finish before the runner's one-minute cancellation drain expires.
 const REMOVE_GRACE: Duration = Duration::from_secs(10);
 
-pub(crate) async fn remove(client: &Docker, id: &str) {
+pub(crate) async fn remove(client: &Docker, id: &str) -> bool {
     let result = tokio::time::timeout(REMOVE_GRACE, async {
         loop {
             let options = RemoveContainerOptions {
@@ -45,11 +49,24 @@ pub(crate) async fn remove(client: &Docker, id: &str) {
     })
     .await;
     let reason = match result {
-        Ok(Ok(())) => return,
+        Ok(Ok(())) => return true,
         Ok(Err(reason)) => reason,
         Err(_) => "removal was not confirmed within 10 seconds".into(),
     };
     eprintln!("uwe: warning: could not remove container {id}: {reason}");
+    false
+}
+
+pub(crate) async fn remove_owned(engine: &ContainerEngine, id: &str) -> bool {
+    let removed = match engine.journal.verify(engine.client()).await {
+        Ok(()) => remove(engine.client(), id).await,
+        Err(reason) => {
+            eprintln!("uwe: warning: retained container {id}: {reason}");
+            false
+        }
+    };
+    engine.journal.release(id, removed);
+    removed
 }
 
 /// A created container that is removed when the guard goes, so that a run whose future is
@@ -57,20 +74,41 @@ pub(crate) async fn remove(client: &Docker, id: &str) {
 pub(crate) struct Created {
     client: Docker,
     id: String,
+    engine: Option<ContainerEngine>,
 }
 
 impl Created {
+    #[cfg(test)]
     pub(crate) fn new(client: &Docker, id: &str) -> Created {
         Created {
             client: client.clone(),
             id: id.to_owned(),
+            engine: None,
         }
     }
 
+    pub(crate) fn owned(engine: &ContainerEngine, id: &str) -> Self {
+        Self {
+            client: engine.client().clone(),
+            id: id.into(),
+            engine: Some(engine.clone()),
+        }
+    }
+
+    pub(crate) fn take_id(mut self) -> String {
+        std::mem::take(&mut self.id)
+    }
+
     /// Removes the container while the run goes on.
-    pub(crate) async fn remove(mut self) {
-        let id = std::mem::take(&mut self.id);
-        remove(&self.client, &id).await;
+    pub(crate) async fn remove(mut self) -> bool {
+        let removed = match &self.engine {
+            Some(engine) => remove_owned(engine, &self.id).await,
+            None => remove(&self.client, &self.id).await,
+        };
+        if removed {
+            self.id.clear();
+        }
+        removed
     }
 }
 
@@ -81,13 +119,22 @@ impl Drop for Created {
         if self.id.is_empty() {
             return;
         }
-        let (client, id) = (self.client.clone(), std::mem::take(&mut self.id));
+        let (client, id, engine) = (
+            self.client.clone(),
+            std::mem::take(&mut self.id),
+            self.engine.take(),
+        );
         let removal = std::thread::spawn(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build();
             if let Ok(runtime) = runtime {
-                runtime.block_on(remove(&client, &id));
+                runtime.block_on(async {
+                    match engine {
+                        Some(engine) => remove_owned(&engine, &id).await,
+                        None => remove(&client, &id).await,
+                    }
+                });
             }
         });
         let _ = removal.join();
@@ -103,6 +150,9 @@ pub struct ContainerEngine {
     /// Whether the engine runs without root, as Podman usually does.
     pub rootless: bool,
     client: Docker,
+    pub(crate) cpus: Option<u32>,
+    pub(crate) memory: Option<u64>,
+    pub(crate) journal: Arc<journal::Journal>,
 }
 
 impl fmt::Debug for ContainerEngine {
@@ -162,6 +212,22 @@ impl ContainerEngine {
         let podman = (version.components.iter().flatten())
             .any(|component| component.name.to_lowercase().contains("podman"));
         let info = client.info().await.map_err(|error| error.to_string())?;
+        let endpoint = std::fs::canonicalize(socket.trim_start_matches("unix://"))
+            .map_err(|error| error.to_string())?;
+        let endpoint = endpoint
+            .to_str()
+            .ok_or("the engine socket path is not UTF-8")?
+            .to_owned();
+        let base = std::env::var_os("XDG_CACHE_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+            .map(|base| base.join("uwe/containers"))
+            .unwrap_or_default();
+        let journal = Arc::new(journal::Journal::new(
+            &base,
+            endpoint,
+            info.id.clone().unwrap_or_default(),
+        ));
         let rootless =
             (info.security_options.iter().flatten()).any(|option| option.contains("rootless"));
         let kind = if podman {
@@ -178,7 +244,22 @@ impl ContainerEngine {
             kind,
             rootless,
             client,
+            cpus: info
+                .ncpu
+                .and_then(|cpus| u32::try_from(cpus).ok())
+                .filter(|&cpus| cpus > 0),
+            memory: info
+                .mem_total
+                .and_then(|memory| u64::try_from(memory).ok())
+                .filter(|&memory| memory > 0),
+            journal,
         })
+    }
+
+    /// Selects the operator's persistent cache root for container ownership records.
+    pub fn with_journal_root(mut self, root: PathBuf) -> Self {
+        self.journal = Arc::new(self.journal.at(&root));
+        self
     }
 
     /// The client of the engine's API.
@@ -305,6 +386,32 @@ impl EngineCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn retains_removal_owner() {
+        use crate::test_engine::{Reply, Server};
+        let (deleted, reached) = tokio::sync::oneshot::channel();
+        let mut deleted = Some(deleted);
+        let mut calls = 0;
+        let server = Server::start(2, move |request| {
+            assert_eq!(request.method, "DELETE");
+            assert!(request.path.contains("/containers/owned-id?"));
+            calls += 1;
+            if calls == 1 {
+                deleted.take().unwrap().send(()).unwrap();
+                Reply::Hold
+            } else {
+                Reply::Json(204, serde_json::Value::Null)
+            }
+        })
+        .await;
+        let created = Created::new(server.engine.client(), "owned-id");
+        let cleanup = tokio::spawn(created.remove());
+        reached.await.unwrap();
+        cleanup.abort();
+        assert!(cleanup.await.unwrap_err().is_cancelled());
+        server.finish();
+    }
 
     /// A future that runs a container and is dropped before it removed the container, like
     /// the task of a run that failed meanwhile, still removes it.

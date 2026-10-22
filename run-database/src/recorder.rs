@@ -344,31 +344,32 @@ impl Recorder {
             // The other containers of a task that runs several have streams of their own,
             // named after the container, like `prepare/stdout`.
             let mut streams = vec![
-                ("stdout".to_owned(), &outcome.stdout),
-                ("stderr".to_owned(), &outcome.stderr),
+                ("stdout".to_owned(), &outcome.stdout, outcome.stdout_log.as_ref()),
+                ("stderr".to_owned(), &outcome.stderr, outcome.stderr_log.as_ref()),
             ];
             // The streams of the main container, the first, are those of the task.
             for container in outcome.containers.iter().skip(1) {
-                streams.push((format!("{}/stdout", container.name), &container.stdout));
-                streams.push((format!("{}/stderr", container.name), &container.stderr));
+                streams.push((format!("{}/stdout", container.name), &container.stdout, container.stdout_log.as_ref()));
+                streams.push((format!("{}/stderr", container.name), &container.stderr, container.stderr_log.as_ref()));
             }
-            for (stream, text) in streams {
-                if text.is_empty() {
+            for (stream, text, retained) in streams {
+                if text.is_empty() && retained.is_none() {
                     continue;
                 }
                 connection
                     .prepare_cached(
-                        "INSERT INTO logs (run, task, attempt, stream, digest, size, text)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                        "INSERT INTO logs (run, task, attempt, stream, digest, size, text, location)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                     )?
                     .execute(params![
                         run,
                         task,
                         attempt,
                         stream,
-                        Digest::sha256(text.as_bytes()).to_string(),
-                        text.len(),
-                        tail(text)
+                        retained.map_or_else(|| Digest::sha256(text.as_bytes()).to_string(), |log| log.digest.clone()),
+                        retained.map_or(text.len() as u64, |log| log.size),
+                        tail(text),
+                        retained.map(|log| &log.location)
                     ])?;
             }
             event(
@@ -477,7 +478,7 @@ impl Recorder {
     pub fn sources(&mut self, sources: &[Source]) {
         self.update(|connection, run| {
             let mut insert = connection.prepare_cached(
-                "INSERT INTO sources (run, kind, path, digest, size) VALUES (?1, ?2, ?3, ?4, ?5)",
+                "INSERT INTO sources (run, kind, path, digest, size, executable) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             )?;
             for source in sources {
                 insert.execute(params![
@@ -485,7 +486,8 @@ impl Recorder {
                     source.kind.name(),
                     source.path,
                     source.digest,
-                    source.size
+                    source.size,
+                    source.executable
                 ])?;
             }
             Ok(())
@@ -535,17 +537,13 @@ impl Recorder {
 
     /// The run replays one task of an earlier run. It is no event of the engine.
     pub fn replays(&mut self, run: &str, task: u64) {
-        let mut writer = lock(&self.writer);
-        if writer.error.is_some() {
-            return;
-        }
-        let written = writer.connection.execute(
-            "UPDATE runs SET replays = ?2, replays_task = ?3 WHERE id = ?1",
-            params![self.run, run, task],
-        );
-        if let Err(error) = written {
-            writer.error = Some(error.into());
-        }
+        self.update(|connection, id| {
+            connection.execute(
+                "UPDATE runs SET replays = ?2, replays_task = ?3 WHERE id = ?1",
+                params![id, run, task],
+            )?;
+            Ok(())
+        });
     }
 
     /// The run ended, with the error that stopped it if one did. Tasks that did not finish are
@@ -621,7 +619,7 @@ impl Writer {
         run: &str,
         action: impl FnOnce(&Connection, &str) -> rusqlite::Result<()>,
     ) {
-        if !self.begin() {
+        if !self.begin(run) {
             return;
         }
         let mut rollback_failed = false;
@@ -647,14 +645,30 @@ impl Writer {
     }
 
     /// Opens a transaction when none is open; false after an error.
-    fn begin(&mut self) -> bool {
+    fn begin(&mut self, run: &str) -> bool {
         if self.error.is_some() {
             return false;
         }
         if self.batch.is_none() {
-            if let Err(error) = self.connection.execute_batch("BEGIN") {
+            if let Err(error) = self.connection.execute_batch("BEGIN IMMEDIATE") {
                 self.error = Some(error.into());
                 return false;
+            }
+            let stopped = self.connection.query_row(
+                "SELECT state = 'stopped' FROM runs WHERE id = ?1",
+                [run],
+                |row| row.get::<_, bool>(0),
+            );
+            match stopped {
+                Ok(false) => {}
+                result => {
+                    let _ = self.connection.execute_batch("ROLLBACK");
+                    self.error = Some(match result {
+                        Err(error) => error.into(),
+                        _ => DatabaseError::Stopped(run.to_owned()),
+                    });
+                    return false;
+                }
             }
             self.batch = Some(Instant::now());
         }
@@ -794,6 +808,7 @@ mod tests {
                 path: format!("tests/{number}.cwl"),
                 digest: format!("sha256:{number:064}"),
                 size: 1,
+                executable: false,
             })
             .collect();
         recorder.sources(&sources);
@@ -863,6 +878,7 @@ mod tests {
                 path: "prior.cwl".into(),
                 digest: format!("sha256:{}", "0".repeat(64)),
                 size: 1,
+                executable: false,
             };
             recorder.sources(std::slice::from_ref(&source));
             if failure == "ROLLBACK" {

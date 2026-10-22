@@ -597,7 +597,8 @@ fn migrates_run_inputs() {
              ALTER TABLE runs DROP COLUMN replays; ALTER TABLE runs DROP COLUMN replays_task;
              DROP TABLE deliveries; ALTER TABLE runs DROP COLUMN process_host;
              ALTER TABLE runs DROP COLUMN process_boot; ALTER TABLE runs DROP COLUMN process_start;
-             ALTER TABLE attempts DROP COLUMN accepted;
+             ALTER TABLE attempts DROP COLUMN accepted; DROP INDEX events_task;
+             ALTER TABLE logs DROP COLUMN location;
              PRAGMA user_version = 1;",
         )
         .expect("goes back to version 1");
@@ -727,6 +728,8 @@ fn migrates_legacy_ownership() {
             "ALTER TABLE runs DROP COLUMN process_host;
         ALTER TABLE runs DROP COLUMN process_boot; ALTER TABLE runs DROP COLUMN process_start;
         ALTER TABLE attempts DROP COLUMN accepted;
+        ALTER TABLE sources DROP COLUMN executable; DROP INDEX events_task;
+        ALTER TABLE logs DROP COLUMN location;
         UPDATE runs SET process = 4294967295; PRAGMA user_version = 6;",
         )
         .expect("old recorded row");
@@ -763,7 +766,12 @@ fn migrates_attempt_acceptance() {
 
     let connection = rusqlite::Connection::open(&path).expect("opens raw");
     connection
-        .execute_batch("ALTER TABLE attempts DROP COLUMN accepted; PRAGMA user_version = 7;")
+        .execute_batch(
+            "ALTER TABLE attempts DROP COLUMN accepted;
+            ALTER TABLE sources DROP COLUMN executable; DROP INDEX events_task;
+            ALTER TABLE logs DROP COLUMN location;
+            PRAGMA user_version = 7;",
+        )
         .expect("makes a version seven database");
     drop(connection);
 
@@ -786,6 +794,118 @@ fn migrates_attempt_acceptance() {
             .expect("checks reuse")
             .is_empty(),
         "historical unknown acceptance is not reusable"
+    );
+}
+
+#[test]
+fn reconciles_exact_owner() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("runs.sqlite");
+    let mut recorder = Database::open(&path)
+        .unwrap()
+        .record(&start("owned", None))
+        .unwrap();
+    let mut database = Database::open(&path).unwrap();
+    let owner = database.owner("owned").unwrap().unwrap();
+    assert!(matches!(
+        database.reconcile(&owner, "still alive"),
+        Err(DatabaseError::LiveOwner(_))
+    ));
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    raw.execute(
+        "UPDATE runs SET process_host = 'stopped-remote' WHERE id = 'owned'",
+        [],
+    )
+    .unwrap();
+    let owner = database.owner("owned").unwrap().unwrap();
+    raw.execute(
+        "INSERT INTO events (run, sequence, time, kind) VALUES ('owned', 1, 1, 'requested')",
+        [],
+    )
+    .unwrap();
+    assert!(!database.reconcile(&owner, "stale observation").unwrap());
+    let owner = database.owner("owned").unwrap().unwrap();
+    raw.execute(
+        "UPDATE runs SET process_start = 'replacement' WHERE id = 'owned'",
+        [],
+    )
+    .unwrap();
+    assert!(!database.reconcile(&owner, "replaced owner").unwrap());
+    let owner = database.owner("owned").unwrap().unwrap();
+    assert!(
+        database
+            .reconcile(&owner, "host confirmed stopped")
+            .unwrap()
+    );
+    recorder.ended(None);
+    assert!(matches!(recorder.close(), Err(DatabaseError::Stopped(_))));
+    let run = database.run("owned").unwrap().unwrap();
+    assert_eq!(run.state, "stopped");
+    assert_eq!(run.error.as_deref(), Some("host confirmed stopped"));
+    assert_eq!(database.events("owned", 1, 1).unwrap()[0].kind, "ended");
+    assert!(!database.reconcile(&owner, "duplicate").unwrap());
+}
+
+#[test]
+fn indexes_task_events() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("runs.sqlite");
+    drop(Database::open(&path).unwrap());
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    let detail: String = raw
+        .query_row(
+            "EXPLAIN QUERY PLAN SELECT sequence, time, kind, task, attempt FROM events
+         WHERE run = ?1 AND task IS ?2 ORDER BY sequence",
+            rusqlite::params!["run", 1],
+            |row| row.get(3),
+        )
+        .unwrap();
+    assert!(detail.contains("events_task"), "{detail}");
+    assert!(detail.contains("task=?"), "{detail}");
+}
+
+#[test]
+fn retains_deferred_logs() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("runs.sqlite");
+    let stream = workflow_graph::Stream {
+        location: root.path().join("stdout").to_string_lossy().into_owned(),
+        digest: task_model::Digest::sha256(b"retained stdout").to_string(),
+        size: 15,
+    };
+    let mut task = task(1, "DEFERRED", vec![]);
+    task.defer_logs = true;
+    let mut recorder = Database::open(&path)
+        .unwrap()
+        .record(&start("deferred", None))
+        .unwrap();
+    recorder.requested(&task, &[]);
+    recorder.started(task.id, 1);
+    recorder.finished(
+        &Outcome {
+            id: task.id,
+            stdout_log: Some(stream.clone()),
+            accepted: Some(true),
+            ..Outcome::default()
+        },
+        1,
+        false,
+    );
+    recorder.ended(None);
+    recorder.close().unwrap();
+    let database = Database::open(&path).unwrap();
+    let log = database.log("deferred", 1, 1, "stdout").unwrap().unwrap();
+    assert_eq!(log.digest, stream.digest);
+    assert_eq!(log.size, stream.size);
+    assert!(!log.whole);
+    assert_eq!(log.location.as_deref(), Some(stream.location.as_str()));
+    let references = database.references(&["deferred".into()]).unwrap();
+    assert!(references.digests.contains(&stream.digest));
+    assert!(references.locations.contains(&stream.location));
+    let reusable = database.reusable(&["deferred".into()]).unwrap();
+    assert_eq!(
+        reusable.values().next().unwrap().outcome.stdout_log,
+        Some(stream)
     );
 }
 

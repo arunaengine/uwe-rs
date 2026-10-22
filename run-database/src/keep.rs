@@ -53,9 +53,10 @@ impl Database {
     /// tasks, the files of their workflows and command lines, and the remote files they read.
     pub fn references(&self, runs: &[String]) -> Result<References, DatabaseError> {
         let mut references = References::default();
-        let mut files = self
-            .connection
-            .prepare("SELECT location, digest FROM files WHERE run = ?1")?;
+        let mut files = self.connection.prepare(
+            "SELECT location, digest FROM files WHERE run = ?1
+                UNION SELECT location, digest FROM logs WHERE run = ?1 AND location IS NOT NULL",
+        )?;
         let mut contents = self.connection.prepare(
             "SELECT digest FROM logs WHERE run = ?1
              UNION SELECT digest FROM sources WHERE run = ?1

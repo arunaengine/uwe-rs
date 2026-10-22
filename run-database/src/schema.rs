@@ -8,11 +8,12 @@ use crate::DatabaseError;
 
 /// The version of the schema that this build writes. SQLite keeps it in `PRAGMA user_version`.
 /// A change to the tables adds a step to [`MIGRATIONS`] and raises this number.
-pub const VERSION: u32 = 8;
+pub const VERSION: u32 = 9;
 
 /// The steps from each version to the next: the first creates version 1 in an empty file.
 const MIGRATIONS: [&str; VERSION as usize] = [
     VERSION_1, VERSION_2, VERSION_3, VERSION_4, VERSION_5, VERSION_6, VERSION_7, VERSION_8,
+    VERSION_9,
 ];
 
 /// Version 1. Times are milliseconds since the Unix epoch (UTC). Text in JSON is marked as such.
@@ -271,6 +272,12 @@ ALTER TABLE runs ADD COLUMN process_start TEXT;
 /// the unknown verdict of rows written before acceptance was recorded.
 const VERSION_8: &str = "
 ALTER TABLE attempts ADD COLUMN accepted INTEGER CHECK (accepted IN (0, 1));
+";
+
+const VERSION_9: &str = "
+ALTER TABLE sources ADD COLUMN executable INTEGER NOT NULL DEFAULT 0 CHECK (executable IN (0, 1));
+ALTER TABLE logs ADD COLUMN location TEXT;
+CREATE INDEX events_task ON events (run, task, sequence);
 ";
 
 /// Brings the schema of a database to [`VERSION`]: creates it in a new file, and runs the

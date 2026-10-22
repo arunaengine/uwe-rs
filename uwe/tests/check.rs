@@ -270,3 +270,22 @@ fn checks_pinned_revisions() {
         }
     }
 }
+
+/// Workflow code that fails on made-up outputs is a warning: a real run makes two reports
+/// where the simulator makes one, as for `logs[-1]` in nf-core's Trim Galore subworkflow.
+#[test]
+fn warns_made_outputs() {
+    let source = "process TRIM {\n    container 'debian:stable-slim'\n    \
+                  output: path('*report.txt'), emit: logs\n    \
+                  script: 'trim_galore --paired a.fq b.fq'\n}\n\
+                  workflow {\n    TRIM()\n    TRIM.out.logs.map { logs -> logs[-1].text }.view()\n}\n";
+    let directory = folder(&[("main.nf", source)]);
+    let (code, text) = check(directory.path(), &["main.nf"]);
+    assert_eq!(code, 0, "{text}");
+    assert!(text.contains("warning: "), "{text}");
+    assert!(text.contains("stopped on made-up task outputs"), "{text}");
+    let early = source.replace("    TRIM()\n", "    error 'stop'\n    TRIM()\n");
+    let directory = folder(&[("main.nf", early.as_str())]);
+    let (code, text) = check(directory.path(), &["main.nf"]);
+    assert_eq!(code, 1, "{text}");
+}

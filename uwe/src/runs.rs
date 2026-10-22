@@ -35,6 +35,41 @@ pub fn open(arguments: &Arguments) -> Result<Database, Failure> {
     })
 }
 
+/// Stops a run only when its recorded owner is provably stopped on this machine.
+pub fn reconcile(arguments: &Arguments) -> Result<(), Failure> {
+    let run = arguments
+        .target
+        .as_deref()
+        .filter(|run| !run.as_os_str().is_empty() && arguments.targets.is_empty())
+        .ok_or_else(|| Failure::usage("uwe: use `uwe reconcile <run> -reason <text>`"))?
+        .to_string_lossy();
+    let reason = arguments
+        .reason
+        .as_deref()
+        .filter(|reason| !reason.trim().is_empty())
+        .ok_or_else(|| Failure::usage("uwe: reconciliation requires a nonempty -reason"))?;
+    let mut database = open(arguments)?;
+    let (owner, observed) = database
+        .snapshot(|database| Ok((database.owner(&run)?, database.run(&run)?)))
+        .map_err(|error| failure(error.to_string()))?;
+    let owner = owner.ok_or_else(|| failure(format!("uwe: {run} has no running owner")))?;
+    if !observed.is_some_and(|run| run.state == "stopped") {
+        return Err(failure(format!(
+            "uwe: the owner of {run} is not confirmed stopped on this machine; foreign or unknown owners cannot be reconciled here"
+        )));
+    }
+    if !database
+        .reconcile(&owner, reason)
+        .map_err(|error| failure(error.to_string()))?
+    {
+        return Err(failure(format!(
+            "uwe: the owner or event cursor of {run} changed; inspect the run again"
+        )));
+    }
+    println!("reconciled {run}: {reason}");
+    Ok(())
+}
+
 /// `uwe runs`: the latest runs, one line each.
 pub fn list(arguments: &Arguments) -> Result<(), Failure> {
     let runs = open(arguments)?
@@ -195,7 +230,11 @@ fn kept_sources(
     Ok(kept)
 }
 
-async fn kept_tree(store: &content_store::Store, digest: &str, folder: &Path) -> Option<PathBuf> {
+pub(crate) async fn kept_tree(
+    store: &content_store::Store,
+    digest: &str,
+    folder: &Path,
+) -> Option<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
     use task_model::TreeEntry;
     let digest: task_model::Digest = digest.parse().ok()?;
@@ -792,6 +831,7 @@ mod tests {
             path: "a.nf".into(),
             digest: task_model::Digest::sha256(b"process MODULE {}\n").to_string(),
             size: b"process MODULE {}\n".len() as u64,
+            executable: false,
         }];
         let path = root.path().join("runs.sqlite");
         let start = run_database::RunStart {
@@ -830,6 +870,7 @@ mod tests {
             path: "main.nf".into(),
             digest: task_model::Digest::sha256(b"workflow {}\n").to_string(),
             size: b"workflow {}\n".len() as u64,
+            executable: false,
         };
         let mut historical = start.clone();
         historical.id = "retained-main".into();

@@ -20,6 +20,26 @@ use workflow_graph::render::{Format, Options, render};
 pub const HELP: &str = "`uwe help` lists the commands and their options";
 
 pub fn command(command: &str, arguments: &Arguments, usage: &str) -> Result<(), Failure> {
+    if command == "presets" {
+        let catalogue = crate::catalogue::Catalogue::load(arguments.config_file.as_deref())?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&catalogue.list())
+                .map_err(|error| failure(error.to_string()))?
+        );
+        return Ok(());
+    }
+    let mut resolved = arguments.clone();
+    let _prepared =
+        if arguments.preset.is_some() && matches!(command, "check" | "inputs" | "outputs") {
+            let prepared = crate::catalogue::Catalogue::load(arguments.config_file.as_deref())?
+                .prepare(&mut resolved)?;
+            Defaults::load(arguments)?.apply(command, &mut resolved);
+            prepared
+        } else {
+            None
+        };
+    let arguments = &resolved;
     match command {
         "run" => run(arguments),
         "graph" => graph(arguments),
@@ -32,6 +52,8 @@ pub fn command(command: &str, arguments: &Arguments, usage: &str) -> Result<(), 
         "why" => runs::why(arguments),
         "resume" => runs::resume(arguments),
         "origin" => runs::origin(arguments),
+        "digest" => digest(arguments),
+        "reconcile" => runs::reconcile(arguments),
         "inputs" => inputs::command(arguments),
         "outputs" => inputs::outputs(arguments),
         "clean" => clean::command(arguments),
@@ -52,6 +74,20 @@ pub fn command(command: &str, arguments: &Arguments, usage: &str) -> Result<(), 
             "unknown command `{command}`; {HELP}"
         ))),
     }
+}
+
+fn digest(arguments: &Arguments) -> Result<(), Failure> {
+    let path = arguments
+        .target
+        .as_deref()
+        .filter(|path| !path.as_os_str().is_empty() && arguments.targets.is_empty())
+        .ok_or_else(|| Failure::usage("uwe: use `uwe digest <path>`"))?;
+    let digest = workflow_graph::runtime()
+        .map_err(|error| failure(error.to_string()))?
+        .block_on(task_runner::reference_digest(path))
+        .map_err(|error| failure(format!("uwe: {error}")))?;
+    println!("{digest}");
+    Ok(())
 }
 
 /// `uwe run`: runs the workflow and writes its graph to `-graph` if given. With `-page`,
@@ -104,6 +140,7 @@ fn graph(arguments: &Arguments) -> Result<(), Failure> {
 /// `uwe config`: the config of a Nextflow project, by default the launch directory.
 fn config(arguments: &Arguments) -> Result<(), Failure> {
     let setup = Setup::load(arguments)?;
+    let _registry = setup.registry.enter().map_err(Failure::setup)?;
     let project = arguments.target.clone().unwrap_or_else(|| ".".into());
     nextflow::print_config(&launch(arguments, project), &setup)?;
     Ok(())

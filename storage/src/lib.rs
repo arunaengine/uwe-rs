@@ -104,6 +104,18 @@ struct Inner {
     held: Mutex<HashMap<PathBuf, std::fs::File>>,
 }
 
+impl Drop for Inner {
+    fn drop(&mut self) {
+        let held = self
+            .held
+            .get_mut()
+            .unwrap_or_else(|poison| poison.into_inner());
+        for file in held.values() {
+            let _ = file.unlock();
+        }
+    }
+}
+
 struct Observed {
     metadata: Metadata,
     stamp: String,

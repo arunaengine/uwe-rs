@@ -110,6 +110,7 @@ fn simple_spec() -> TaskSpec {
         environment: Default::default(),
         inputs: Vec::new(),
         outputs: Vec::new(),
+        output_manifest: None,
         stdin: None,
         containers: Vec::new(),
         replaces_entrypoint: true,
@@ -157,6 +158,7 @@ fn returns_server_outputs() {
         outputs: vec![OutputRule {
             pattern: "out.txt".into(),
         }],
+        output_manifest: None,
         stdin: None,
         containers: Vec::new(),
         replaces_entrypoint: false,
@@ -280,6 +282,7 @@ fn refuses_multiple_executors() {
         outputs: vec![OutputRule {
             pattern: "out.txt".into(),
         }],
+        output_manifest: None,
         stdin: None,
         containers: vec![
             container("main", "debian:stable-slim", &["prepare"]),
@@ -372,6 +375,7 @@ fn bounds_accepted_tasks() {
             environment: Default::default(),
             inputs: Vec::new(),
             outputs: Vec::new(),
+            output_manifest: None,
             stdin: None,
             containers: Vec::new(),
         };
@@ -649,6 +653,112 @@ fn recovers_lost_submissions() {
 }
 
 #[test]
+fn refuses_identity_modes() {
+    let folder = tempfile::tempdir().unwrap();
+    let source = content_store::Store::memory().unwrap();
+    let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
+    let objects = content_store::Store::remote(operator, "s3://bucket/stage").unwrap();
+    let stage = tes_executor::ObjectStage::new(source, objects, Default::default()).unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    for staging in [None, Some(stage)] {
+        let backend = TesBackend {
+            client: Client::new("http://127.0.0.1:1", None).unwrap(),
+            scratch: folder.path().join("scratch"),
+            staging,
+            configs: Default::default(),
+            settings: Default::default(),
+        };
+        let mut spec = simple_spec();
+        spec.run_as = Some(task_model::RunAs {
+            user: Some(1000),
+            group: Some(100),
+        });
+        let result = runtime.block_on(backend.run(
+            Job {
+                name: "identity",
+                spec: &spec,
+                staging: &Staging::default(),
+                placement: &Placement::default(),
+            },
+            &CancellationToken::new(),
+        ));
+        assert!(matches!(result, Err(ExecutorError::Unsupported(_))));
+        assert!(!backend.scratch.exists());
+        spec.run_as = None;
+        spec.environment.insert(
+            "UWE_CONTAINER_FLAGS".into(),
+            task_model::EnvironmentValue::Literal("{\"shm\":1073741824}".into()),
+        );
+        let result = runtime.block_on(backend.run(
+            Job {
+                name: "shared-memory",
+                spec: &spec,
+                staging: &Staging::default(),
+                placement: &Placement::default(),
+            },
+            &CancellationToken::new(),
+        ));
+        assert!(matches!(result, Err(ExecutorError::Unsupported(_))));
+        assert!(!backend.scratch.exists());
+        spec.environment.clear();
+        spec.output_manifest = Some("cwl.output.json".into());
+        let result = runtime.block_on(backend.run(
+            Job {
+                name: "manifest",
+                spec: &spec,
+                staging: &Staging::default(),
+                placement: &Placement::default(),
+            },
+            &CancellationToken::new(),
+        ));
+        assert!(matches!(result, Err(ExecutorError::Unsupported(_))));
+        assert!(!backend.scratch.exists());
+    }
+}
+
+#[test]
+fn preserves_other_sites() {
+    let folder = tempfile::tempdir().unwrap();
+    let scratch = folder.path().join("scratch");
+    let orphan = scratch.join("other-site");
+    std::fs::create_dir_all(&orphan).unwrap();
+    std::fs::File::create(orphan.join("remote.lock")).unwrap();
+    let journal = serde_json::json!({ "backend":"TES", "server":"http://other/ga4gh/tes/v1", "locked":true, "host":"previous-boot", "id":null });
+    std::fs::write(orphan.join("remote.json"), journal.to_string()).unwrap();
+    let task = Arc::new(Mutex::new(None));
+    let backend = TesBackend {
+        client: Client::new(&serve(task.clone()), None).unwrap(),
+        scratch,
+        staging: None,
+        configs: Default::default(),
+        settings: Default::default(),
+    };
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime
+        .block_on(backend.run(
+            Job {
+                name: "our-site",
+                spec: &simple_spec(),
+                staging: &Staging::default(),
+                placement: &Placement::default(),
+            },
+            &CancellationToken::new(),
+        ))
+        .unwrap();
+    assert!(task.lock().unwrap().is_some());
+    assert_eq!(
+        std::fs::read_to_string(orphan.join("remote.json")).unwrap(),
+        journal.to_string()
+    );
+}
+
+#[test]
 fn recovers_dropped_attempts() {
     let folder = tempfile::tempdir().unwrap();
     let scratch = folder.path().join("scratch");
@@ -669,7 +779,7 @@ fn recovers_dropped_attempts() {
         serde_json::json!({
             "backend": "TES", "server": backend.client.server(), "name": "orphan",
             "id": "task-1", "owner": std::process::id(), "started": process_start(),
-            "host": std::fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap(),
+            "host": "previous-boot",
             "locked": true,
         })
         .to_string(),
@@ -716,7 +826,7 @@ fn preserves_active_attempts() {
         serde_json::json!({
             "backend": "TES", "server": backend.client.server(), "name": "active",
             "id": "task-1", "owner": std::process::id(), "started": process_start(),
-            "host": std::fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap(),
+            "host": "foreign-owner-boot",
             "locked": true,
         })
         .to_string(),

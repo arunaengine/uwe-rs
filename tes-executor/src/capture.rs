@@ -4,10 +4,54 @@
 
 use executor::{ExecutorError, Job, wrapper};
 
-use crate::backend::{CONTROL, HOME, OUTBOX};
+use crate::backend::{CONTROL, HELPER, HOME, OUTBOX};
 use crate::staging::{container_path, unsupported};
 
 pub(crate) const TRANSFER: &str = "/uwe/transfer";
+
+pub(crate) fn discover(
+    script: String,
+    job: Job<'_>,
+    work: &str,
+    settings: &crate::Settings,
+) -> Result<String, ExecutorError> {
+    let Some(mut discovery) = executor::manifest::Discovery::of(job.spec, job.staging) else {
+        return Ok(script);
+    };
+    if [CONTROL, OUTBOX, TRANSFER].iter().any(|path| {
+        std::path::Path::new(work).starts_with(path) || std::path::Path::new(path).starts_with(work)
+    }) {
+        return Err(unsupported("TES workdir overlaps output capture folders"));
+    }
+    let helper = settings.helper_file.as_ref().ok_or_else(|| {
+        unsupported("TES output manifests require a static uwe binary configured with helper_file")
+    })?;
+    discovery.work = Some(work.into());
+    let config = serde_json::to_string(&discovery).map_err(unsupported)?;
+    let guard = format!(
+        "[ \"$(uname -m)\" = {} ] && echo {}'  '{} | sha256sum -c --status - && chmod +x {} || \
+         {{ echo 'uwe: TES helper architecture or digest mismatch' >&2; exit 1; }}\n",
+        wrapper::quote(helper.machine.uname()),
+        wrapper::quote(helper.digest.hex()),
+        wrapper::quote(HELPER),
+        wrapper::quote(HELPER),
+    );
+    let script = script.replacen("#!/bin/sh\n", &format!("#!/bin/sh\n{guard}"), 1);
+    let ending = if script.ends_with("exit \"$status\"\n") {
+        "exit \"$status\"\n"
+    } else {
+        "exit 0\n"
+    };
+    let script = script
+        .strip_suffix(ending)
+        .ok_or_else(|| unsupported("invalid TES wrapper"))?;
+    Ok(format!(
+        "{script}if [ \"$status\" -eq 0 ]; then\n    {} __stage discover /uwe {} || \
+         {{ echo 1 > \"$control/exit\"; exit 1; }}\nfi\n{ending}",
+        wrapper::quote(HELPER),
+        wrapper::quote(&config),
+    ))
+}
 
 pub(crate) fn script(
     job: Job<'_>,
@@ -31,6 +75,7 @@ pub(crate) fn script(
         let path = container_path(directory, work)?;
         if super::staging::wildcard(&path)
             || path == super::backend::WRAPPER
+            || job.spec.output_manifest.is_some() && std::path::Path::new(&path).starts_with(HELPER)
             || path == CONTROL
             || path.starts_with(&format!("{CONTROL}/"))
             || path == TRANSFER
@@ -68,6 +113,7 @@ mod tests {
                 environment: Default::default(),
                 inputs: Vec::new(),
                 outputs: Vec::new(),
+                output_manifest: None,
                 stdin: None,
                 containers: Vec::new(),
                 replaces_entrypoint: true,

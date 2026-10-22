@@ -1056,6 +1056,7 @@ name = "content-store"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "futures-util",
  "opendal",
  "serde",
  "serde_json",
@@ -3995,6 +3996,7 @@ dependencies = [
 name = "nextflow-evaluator"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "fancy-regex 0.19.2",
  "flate2",
  "indexmap 2.14.2",
@@ -4003,6 +4005,7 @@ dependencies = [
  "nextflow-parser",
  "num-bigint 0.5.1",
  "num-traits",
+ "regex-syntax",
  "saphyr-parser",
  "sha2 0.11.0",
  "stacker",
@@ -4954,6 +4957,7 @@ dependencies = [
  "jiff",
  "num-bigint 0.5.1",
  "num-traits",
+ "pep440_rs",
  "ruff_python_ast",
  "ruff_python_parser",
  "ruff_text_size",
@@ -6929,6 +6933,7 @@ dependencies = [
  "opendal",
  "run-database",
  "rusqlite",
+ "rustix 1.1.5",
  "serde",
  "serde_json",
  "storage",
@@ -7886,6 +7891,7 @@ name = "workflow-graph"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "rustix 1.1.5",
  "serde",
  "serde_json",
  "sha2 0.11.0",

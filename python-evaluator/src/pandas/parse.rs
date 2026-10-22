@@ -23,6 +23,7 @@ pub(super) struct Options {
     pub(super) skip_rows: Vec<usize>,
     pub(super) skip_first: usize,
     pub(super) skip_initial_space: bool,
+    pub(super) skip_blank: bool,
     pub(super) rows: Option<usize>,
     pub(super) skip_footer: usize,
 }
@@ -59,34 +60,57 @@ fn records(text: &str, options: &Options) -> Vec<(usize, String)> {
     let mut records = Vec::new();
     let mut pending = String::new();
     let mut first_line = 0;
+    let mut quoted = false;
+    let mut field_start = true;
     for (number, line) in text.lines().enumerate() {
         if pending.is_empty() {
             first_line = number;
         } else {
             pending.push('\n');
         }
-        pending.push_str(line);
-        if let Some(quote) = options.quote
-            && pending.matches(quote).count() % 2 == 1
-        {
+        let mut characters = line.chars().peekable();
+        let mut commented = false;
+        while let Some(character) = characters.next() {
+            if !quoted && Some(character) == options.comment {
+                commented = true;
+                break;
+            }
+            if Some(character) == options.quote && (quoted || field_start) {
+                if quoted && characters.peek() == Some(&character) {
+                    pending.push(character);
+                    pending.push(characters.next().expect("escaped quote"));
+                    continue;
+                }
+                quoted = !quoted;
+            }
+            if field_start && options.skip_initial_space && character == ' ' {
+                pending.push(character);
+                continue;
+            }
+            field_start = !quoted
+                && match &options.separator {
+                    Separator::Char(separator) => character == *separator,
+                    Separator::Whitespace => character.is_whitespace(),
+                    Separator::Pattern(_) => false,
+                };
+            pending.push(character);
+        }
+        if quoted {
             continue;
         }
         let record = std::mem::take(&mut pending);
+        field_start = true;
+        if record.is_empty() && commented {
+            continue;
+        }
         if first_line < options.skip_first || options.skip_rows.contains(&first_line) {
             continue;
         }
-        let record = match options.comment {
-            Some(comment) => match record.find(comment) {
-                Some(cut) => record[..cut].to_owned(),
-                None => record,
-            },
-            None => record,
-        };
         let blank = match options.separator {
             Separator::Whitespace => record.trim().is_empty(),
             _ => record.is_empty(),
         };
-        if !blank {
+        if !blank || !options.skip_blank {
             records.push((first_line + 1, record));
         }
     }

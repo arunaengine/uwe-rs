@@ -49,12 +49,195 @@ fn rejects_csv_options() {
         "chunksize=1",
         "iterator=True",
         "encoding='utf-16'",
+        "escapechar='~'",
+        "doublequote=False",
+        "lineterminator=';'",
+        "on_bad_lines='skip'",
+        "compression='zip'",
+        "engine='pyarrow'",
+        "dtype_backend='pyarrow'",
+        "header=[0, 1]",
+        "quoting=2",
     ] {
         let error = evaluate(&format!("import pandas as pd\nfrom io import StringIO\npd.read_csv(StringIO('date\\n2026\\n'), {option})\n"))
             .expect_err("unsupported option");
         assert!(error.is_unsupported(), "{option}: {error}");
     }
     assert!(evaluate("import pandas as pd\nfrom io import StringIO\npd.read_csv(StringIO('date\\n2026\\n'), parse_dates=False, chunksize=None, iterator=False)\n").is_ok());
+}
+
+#[test]
+fn propagates_numpy_nan() {
+    let output = evaluate(
+        r#"
+import numpy as np
+import pandas as pd
+for values in [[1, np.nan], [np.nan, 1], [np.nan]]:
+    array = np.array(values)
+    print(np.isnan(np.sum(values)), np.isnan(np.min(values)), np.isnan(np.max(values)))
+    print(np.isnan(array.sum()), np.isnan(array.min()), np.isnan(array.max()))
+print(np.sum([]), np.sum([1, 2]), pd.Series([1, np.nan]).sum())
+for operation in [np.min, np.max]:
+    try:
+        operation([])
+    except ValueError:
+        print('empty rejected')
+"#,
+    )
+    .expect("NumPy missing-value policy");
+    assert_eq!(
+        output,
+        format!(
+            "{}0 3 1\nempty rejected\nempty rejected\n",
+            "True True True\n".repeat(6)
+        )
+    );
+}
+
+#[test]
+fn preserves_csv_comments() {
+    let output = evaluate(
+        r##"
+import pandas as pd
+from io import StringIO
+text = 'id,n\n"sample#1",7\n"a""#b",8\n"line\n#tag",9\n# ignored "\nplain,10# comment\n'
+frame = pd.read_csv(StringIO(text), comment='#')
+print(frame['id'].tolist() == ['sample#1', 'a"#b', 'line\n#tag', 'plain'])
+print(frame['n'].tolist() == [7, 8, 9, 10])
+"##,
+    )
+    .expect("comments respect quoted fields");
+    assert_eq!(output, "True\nTrue\n");
+}
+
+#[test]
+fn retains_blank_records() {
+    let output = evaluate(
+        r#"
+import pandas as pd
+from io import StringIO
+frame = pd.read_csv(StringIO('id\n1\n\n2\n'), skip_blank_lines=False)
+print(len(frame), pd.isna(frame['id'].iloc[1]))
+print(len(pd.read_csv(StringIO('id\n1\n\n2\n'), skip_blank_lines=True)))
+"#,
+    )
+    .expect("blank-record option");
+    assert_eq!(output, "3 True\n2\n");
+}
+
+#[test]
+fn checks_array_truth() {
+    let output = evaluate(
+        r#"
+import numpy as np
+for values in [[0], [0.0], [False], [2], [True]]:
+    array = np.array(values)
+    print(bool(array), 'yes' if array else 'no')
+try:
+    bool(np.array([0, 1]))
+except ValueError:
+    print('bool ambiguous')
+try:
+    if np.array([False, False]):
+        print('wrong')
+except ValueError:
+    print('branch ambiguous')
+"#,
+    )
+    .expect("array truth semantics");
+    assert_eq!(
+        output,
+        "False no\nFalse no\nFalse no\nTrue yes\nTrue yes\nbool ambiguous\nbranch ambiguous\n"
+    );
+}
+
+#[test]
+fn generates_numeric_ranges() {
+    let output = evaluate(
+        r#"
+import numpy as np
+print(np.arange(0, 1, 0.25).tolist())
+print(np.arange(start=1.0, stop=0.0, step=-0.25).tolist())
+print(np.arange(3).tolist(), np.arange(3, 0, -1).tolist())
+print(np.arange(0, stop=1, step=0.5).tolist())
+print(np.arange(9223372036854775805, 9223372036854775807, 2).tolist())
+try:
+    np.arange(0, 1, 0.0)
+except ZeroDivisionError:
+    print('zero rejected')
+try:
+    np.arange(0, 1, 'bad')
+except TypeError:
+    print('type rejected')
+"#,
+    )
+    .expect("integer and fractional ranges");
+    assert_eq!(
+        output,
+        "[0.0, 0.25, 0.5, 0.75]\n[1.0, 0.75, 0.5, 0.25]\n[0, 1, 2] [3, 2, 1]\n[0.0, 0.5]\n[9223372036854775805]\nzero rejected\ntype rejected\n"
+    );
+}
+
+#[test]
+fn compares_packaging_versions() {
+    let output = evaluate(
+        r#"
+from packaging.version import Version, InvalidVersion
+print(Version('1.0rc1') < Version('1.0'), Version('1.0') == Version('1.0.0'))
+print(Version('1.0.dev1') < Version('1.0a1'), Version('1.0.post1') > Version('1.0'))
+print(Version('1!0') > Version('999'), Version('1.0+abc') > Version('1.0'))
+print(Version('1.0rc1+ABC').public, Version('1!1.0rc1+ABC').base_version)
+print(Version('1').minor, Version('1').micro, Version('1.0rc1').is_prerelease)
+try:
+    Version('not a version')
+except InvalidVersion:
+    print('invalid rejected')
+"#,
+    )
+    .expect("PEP 440 semantics");
+    assert_eq!(
+        output,
+        "True True\nTrue True\nTrue True\n1.0rc1 1!1.0\n0 0 True\ninvalid rejected\n"
+    );
+}
+
+#[test]
+fn maintains_stringio_state() {
+    let output = evaluate(
+        r#"
+from io import StringIO
+buffer = StringIO('äbc\ndef\n')
+print(buffer.read(1), buffer.tell(), buffer.readline())
+print(buffer.read(), repr(buffer.read()))
+buffer.seek(0)
+buffer.write('Z')
+print(repr(buffer.getvalue()))
+buffer.seek(2)
+print(buffer.truncate(), repr(buffer.getvalue()), buffer.tell())
+buffer.seek(4)
+buffer.write('Q')
+print(repr(buffer.getvalue()))
+buffer.seek(0)
+print(buffer.truncate(1), buffer.tell(), repr(buffer.getvalue()))
+buffer.close()
+print(buffer.closed)
+try:
+    buffer.read()
+except ValueError:
+    print('closed rejected')
+with StringIO('a\nb\n') as lines:
+    for line in lines:
+        print(repr(line))
+        break
+    print(repr(lines.readline()))
+print(lines.closed)
+"#,
+    )
+    .expect("stateful Unicode buffer");
+    assert_eq!(
+        output,
+        "ä 1 bc\n\ndef\n ''\n'Zbc\\ndef\\n'\n2 'Zb' 2\n'Zb\\x00\\x00Q'\n1 0 'Z'\nTrue\nclosed rejected\n'a\\n'\n'b\\n'\nTrue\n"
+    );
 }
 
 #[test]

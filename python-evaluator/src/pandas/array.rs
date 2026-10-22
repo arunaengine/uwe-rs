@@ -117,12 +117,16 @@ impl Native for Array {
                 Ok(Value::Bool(true))
             }),
             "sum" => array_method(this, name, |interpreter, values, _| {
-                super::sum(interpreter, &values)
+                super::numpy::reduce(interpreter, &values, "sum")
             }),
             "min" | "max" => {
                 let largest = name == "max";
                 method::<Array>(this, name, move |interpreter, array, _| {
-                    super::extreme(interpreter, &array.values(), largest)
+                    super::numpy::reduce(
+                        interpreter,
+                        &array.values(),
+                        if largest { "max" } else { "min" },
+                    )
                 })
             }
             _ => return Ok(None),
@@ -169,15 +173,6 @@ impl Native for Array {
     /// Whether any element equals the item, in rows too, as NumPy's `(array == item).any()`.
     fn contains(&self, _: &mut Interpreter, item: &Value) -> Result<Option<bool>, Error> {
         Ok(Some(self.holds(item)))
-    }
-
-    fn truthy(&self) -> Option<bool> {
-        let values = self.values.borrow();
-        match values.as_slice() {
-            [] => Some(false),
-            [Value::Bool(value)] => Some(*value),
-            _ => None,
-        }
     }
 
     fn binary(

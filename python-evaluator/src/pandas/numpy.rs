@@ -113,28 +113,7 @@ pub fn module() -> Vec<(&'static str, Value)> {
                 Ok(Array::value(sorted))
             }),
         ),
-        (
-            "arange",
-            function("arange", |_, args| {
-                let numbers: Vec<i64> = args.positional.iter().filter_map(Value::as_int).collect();
-                let (start, stop, step) = match numbers.as_slice() {
-                    [stop] => (0, *stop, 1),
-                    [start, stop] => (*start, *stop, 1),
-                    [start, stop, step, ..] => (*start, *stop, *step),
-                    [] => return Err(Error::unsupported("numpy.arange of other than integers")),
-                };
-                if step == 0 {
-                    return Err(Error::value_error("Maximum allowed size exceeded"));
-                }
-                let mut values = Vec::new();
-                let mut next = start;
-                while (step > 0 && next < stop) || (step < 0 && next > stop) {
-                    values.push(Value::Int(next));
-                    next += step;
-                }
-                Ok(Array::value(values))
-            }),
-        ),
+        ("arange", function("arange", arange)),
         (
             "concatenate",
             function("concatenate", |interpreter, args| {
@@ -163,21 +142,21 @@ pub fn module() -> Vec<(&'static str, Value)> {
             "sum",
             function("sum", |interpreter, args| {
                 let values = seq_values(interpreter, args.get(0).unwrap_or(&Value::None))?;
-                super::sum(interpreter, &values)
+                reduce(interpreter, &values, "sum")
             }),
         ),
         (
             "max",
             function("max", |interpreter, args| {
                 let values = seq_values(interpreter, args.get(0).unwrap_or(&Value::None))?;
-                super::extreme(interpreter, &values, true)
+                reduce(interpreter, &values, "max")
             }),
         ),
         (
             "min",
             function("min", |interpreter, args| {
                 let values = seq_values(interpreter, args.get(0).unwrap_or(&Value::None))?;
-                super::extreme(interpreter, &values, false)
+                reduce(interpreter, &values, "min")
             }),
         ),
         ("mean", function("mean", mean)),
@@ -202,4 +181,97 @@ fn mean(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
     let total = super::sum(interpreter, &values)?;
     let total = crate::number::to_f64(&total).unwrap_or(f64::NAN);
     Ok(Value::Float(total / values.len() as f64))
+}
+
+fn arange(_: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    args.expect("arange", 0, 4)?;
+    for (position, name) in ["start", "stop", "step", "dtype"].iter().enumerate() {
+        if position < args.positional.len() && args.keyword(name).is_some() {
+            return Err(Error::type_error(format!(
+                "arange() got multiple values for '{name}'"
+            )));
+        }
+    }
+    let start = args.take(0, "start");
+    let stop = args.take(1, "stop");
+    let step = args.take(2, "step").unwrap_or(Value::Int(1));
+    if args.take(3, "dtype").is_some_and(|value| !value.is_none()) || !args.keywords.is_empty() {
+        return Err(Error::unsupported(
+            "numpy.arange dtype or additional options",
+        ));
+    }
+    let (start, stop) = match (start, stop) {
+        (Some(start), Some(stop)) => (start, stop),
+        (Some(stop), None) | (None, Some(stop)) => (Value::Int(0), stop),
+        (None, None) => return Err(Error::type_error("arange() requires a stop argument")),
+    };
+    let mut values = Vec::new();
+    if let (Some(start), Some(stop), Some(step)) = (start.as_int(), stop.as_int(), step.as_int()) {
+        if step == 0 {
+            return Err(Error::new("ZeroDivisionError", "division by zero"));
+        }
+        let (start, stop, step) = (i128::from(start), i128::from(stop), i128::from(step));
+        let distance = if step > 0 { stop - start } else { start - stop };
+        let count = (distance.max(0) + step.abs() - 1) / step.abs();
+        let count = usize::try_from(count)
+            .map_err(|_| Error::value_error("Maximum allowed size exceeded"))?;
+        values
+            .try_reserve(count)
+            .map_err(|_| Error::value_error("Maximum allowed size exceeded"))?;
+        values.extend((0..count).map(|index| Value::Int((start + index as i128 * step) as i64)));
+    } else {
+        let number = |value: &Value| {
+            crate::number::to_f64(value)
+                .ok_or_else(|| Error::type_error("arange requires real numbers"))
+        };
+        let (start, stop, step) = (number(&start)?, number(&stop)?, number(&step)?);
+        if step == 0.0 {
+            return Err(Error::new("ZeroDivisionError", "division by zero"));
+        }
+        if !start.is_finite() || !stop.is_finite() || !step.is_finite() {
+            return Err(Error::value_error("arange requires finite bounds and step"));
+        }
+        let count = ((stop - start) / step).ceil().max(0.0);
+        if !count.is_finite() || count >= usize::MAX as f64 {
+            return Err(Error::value_error("Maximum allowed size exceeded"));
+        }
+        let count = count as usize;
+        values
+            .try_reserve(count)
+            .map_err(|_| Error::value_error("Maximum allowed size exceeded"))?;
+        let stride = (start + step) - start;
+        values.extend((0..count).map(|index| Value::Float(start + index as f64 * stride)));
+    }
+    Ok(Array::value(values))
+}
+
+pub(super) fn reduce(
+    interpreter: &mut Interpreter,
+    values: &[Value],
+    operation: &str,
+) -> Result<Value, Error> {
+    if values
+        .iter()
+        .any(|value| matches!(value.plain(), Value::Float(number) if number.is_nan()))
+    {
+        return Ok(super::nan());
+    }
+    if operation == "sum" {
+        let mut total = Value::Int(0);
+        for value in values {
+            total = interpreter.binary(crate::interpreter::Operator::Add, &total, value)?;
+        }
+        return Ok(total);
+    }
+    if values.is_empty() {
+        return Err(Error::value_error(
+            "zero-size array to reduction operation which has no identity",
+        ));
+    }
+    if values.iter().any(Value::is_none) {
+        return Err(Error::type_error(
+            "cannot compare None in a NumPy reduction",
+        ));
+    }
+    super::extreme(interpreter, values, operation == "max")
 }

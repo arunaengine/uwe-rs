@@ -127,14 +127,12 @@ pub(crate) fn deliveries(
                 continue;
             }
             let target = rule.path.join(path_text(&saved));
-            if !rule.overwrite && target.exists() {
-                continue;
-            }
             deliveries.push(Delivery {
                 // The address of a remote file, like one in a store on S3.
                 location: location.uri(),
                 target: target.to_string_lossy().into_owned(),
                 mode: rule.mode,
+                overwrite: rule.overwrite,
             });
         }
     }

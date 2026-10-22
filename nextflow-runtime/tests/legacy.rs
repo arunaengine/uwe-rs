@@ -22,6 +22,25 @@ fn write(root: &Path, name: &str, text: &str) {
 }
 
 #[test]
+fn resolves_compound_include() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join("a")).unwrap();
+    write(root.path(), "a.nf", "workflow SHOW { println 'stale' }");
+    write(root.path(), "a/b.nf", "workflow SHOW { println 'updated' }");
+    write(
+        root.path(),
+        "main.nf",
+        "def source = './a'\nsource += '/b'\ninclude { SHOW } from source\nworkflow { SHOW() }",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .unwrap();
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).unwrap();
+    assert_eq!(output.0, "updated\n");
+}
+
+#[test]
 fn executes_module_statements() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(

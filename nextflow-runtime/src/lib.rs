@@ -42,6 +42,15 @@ pub use loader::{LoadError, Loader};
 pub use network::Network;
 pub use process::{TaskId, TaskOutcome, TaskRequest};
 
+/// Declares native coverage for profile qualification; parsing and simulation do not prove compatibility.
+pub fn capabilities() -> serde_json::Value {
+    serde_json::json!({
+        "directives": process::capabilities(),
+        "plugins": nextflow_plugins::capabilities(),
+        "compatibility_verified": false
+    })
+}
+
 use session::Session;
 
 /// How a run behaves.

@@ -187,6 +187,7 @@ impl Reports {
                 location: written.to_string_lossy().into_owned(),
                 target: target.to_string_lossy().into_owned(),
                 mode: DeliveryMode::Copy,
+                overwrite: true,
             });
         }
         Ok(deliveries)

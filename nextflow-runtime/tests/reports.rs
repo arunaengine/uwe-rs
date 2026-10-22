@@ -134,6 +134,33 @@ fn skips_simulated_reports() {
 }
 
 #[test]
+fn delivers_failure_reports() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(
+        directory.path().join("main.nf"),
+        "process FAIL {\n script:\n 'exit 7'\n}\nworkflow { FAIL() }",
+    )
+    .unwrap();
+    std::fs::write(directory.path().join("nextflow.config"), CONFIG).unwrap();
+    let mut driver = nextflow_runtime::driver(&Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    })
+    .unwrap();
+    let mut executor = Simulator::new(directory.path().join("simulator"));
+    let mut deliveries = Deliveries::default();
+    let execution = Engine::new(&mut executor)
+        .observer(&mut deliveries)
+        .run("main.nf", driver.as_mut());
+    assert!(execution.error.is_some());
+    assert!(execution.failure_hook_error.is_none());
+    assert_eq!(deliveries.0.len(), 4);
+    let trace = std::fs::read_to_string(&deliveries.0[0].location).unwrap();
+    assert!(trace.contains("FAILED\t7"), "{trace}");
+}
+
+#[test]
 fn fills_measured_columns() {
     use std::time::{Duration, UNIX_EPOCH};
     use workflow_graph::{Outcome, Usage};

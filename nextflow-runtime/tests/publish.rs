@@ -5,6 +5,46 @@
 
 use workflow_graph::{DeliveryMode, Engine, Event, Launch, Observer, Simulator};
 
+#[test]
+fn carries_remote_guard() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(
+        directory.path().join("main.nf"),
+        r#"
+process MAKE {
+    publishDir 's3://bucket/results', mode: 'copy', overwrite: false
+    output:
+    path 'result.txt'
+    script:
+    'touch result.txt'
+}
+workflow { MAKE() }
+"#,
+    )
+    .unwrap();
+    let mut driver = nextflow_runtime::driver(&Launch {
+        target: directory.path().to_owned(),
+        ..Launch::default()
+    })
+    .unwrap();
+    let tasks = driver.start().unwrap();
+    driver
+        .complete(workflow_graph::Outcome {
+            id: tasks[0].id,
+            files: vec![workflow_graph::OutputFile {
+                path: "result.txt".into(),
+                location: "/work/result.txt".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+    let deliveries = driver.deliveries();
+    assert_eq!(deliveries.len(), 1);
+    assert_eq!(deliveries[0].target, "s3://bucket/results/result.txt");
+    assert!(!deliveries[0].overwrite);
+}
+
 const PIPELINE: &str = r#"
 process MAKE {
     publishDir "${params.outdir}/made", mode: 'copy', pattern: '*.txt'

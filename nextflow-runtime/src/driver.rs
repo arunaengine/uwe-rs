@@ -257,7 +257,11 @@ impl Nextflow {
         let host = self.settings.host.as_mut();
         let params = crate::declared_params(&loaded.module, &options, host)
             .map_or_else(|_| loaded.config.params(), |(params, _)| params);
-        let mut values = crate::inputs::values(&params);
+        let mut values = if crate::inputs::schema_validation(&loaded.module) {
+            crate::inputs::to_json(&nextflow_plugins::schema_params(&params, &loaded.config))
+        } else {
+            crate::inputs::values(&params)
+        };
         // The params that nf-schema ignores are left out of its check and of the schema on
         // purpose.
         let ignored: BTreeSet<String> =
@@ -369,6 +373,19 @@ impl Nextflow {
                 Ok(task)
             })
             .collect()
+    }
+
+    /// Writes report artifacts for either successful or failed runs.
+    fn write_reports(&mut self) -> Result<(), DriverError> {
+        if let Some(reports) = &self.reports {
+            // The reports go to a folder of this run, from where the engine delivers them.
+            let run = format!("{}-{}", std::process::id(), self.settings.run_name);
+            let folder = self.launch.scratch.join("nextflow-reports").join(run);
+            self.report_deliveries = reports.write(&folder).map_err(|error| {
+                DriverError::new(format!("cannot write the reports of the run: {error}"))
+            })?;
+        }
+        Ok(())
     }
 
     /// The error of a failed run, remembering the message of its first exception.
@@ -489,15 +506,7 @@ impl Driver for Nextflow {
     fn finish(&mut self) -> Result<(), DriverError> {
         let run = self.run.as_mut().ok_or_else(not_started)?;
         run.finish(self.settings.host.as_mut()).map_err(error)?;
-        if let Some(reports) = &self.reports {
-            // The reports go to a folder of this run, from where the engine delivers them.
-            let run = format!("{}-{}", std::process::id(), self.settings.run_name);
-            let folder = self.launch.scratch.join("nextflow-reports").join(run);
-            self.report_deliveries = reports.write(&folder).map_err(|error| {
-                DriverError::new(format!("cannot write the reports of the run: {error}"))
-            })?;
-        }
-        Ok(())
+        self.write_reports()
     }
 
     fn failed(&mut self, failure: &workflow_graph::ExecuteError) -> Result<(), DriverError> {
@@ -509,13 +518,21 @@ impl Driver for Nextflow {
             (workflow_graph::ExecuteError::Driver(_), Some(cause)) => cause.clone(),
             _ => failure.to_string(),
         };
-        run.failed(
-            &message,
-            if cancelled { 130 } else { 1 },
-            matches!(failure, workflow_graph::ExecuteError::Driver(_)),
-            self.settings.host.as_mut(),
-        )
-        .map_err(error)
+        let handled = run
+            .failed(
+                &message,
+                if cancelled { 130 } else { 1 },
+                matches!(failure, workflow_graph::ExecuteError::Driver(_)),
+                self.settings.host.as_mut(),
+            )
+            .map_err(error);
+        run.take_deliveries();
+        let reports = self.write_reports();
+        match (handled, reports) {
+            (Err(handled), Err(reports)) => Err(DriverError::new(format!("{handled}; {reports}"))),
+            (Err(error), _) | (_, Err(error)) => Err(error),
+            _ => Ok(()),
+        }
     }
 
     fn notes(&mut self) -> Vec<Note> {
@@ -691,6 +708,7 @@ fn load_config(
         params: params(launch, typed)?,
         project_dir: project.to_string_lossy().into_owned(),
         launch_dir: launch_dir.to_string_lossy().into_owned(),
+        work_dir: launch_dir.join("work").to_string_lossy().into_owned(),
     };
     let config = nextflow_config::load(&files, &options, host).map_err(|error| DriverError {
         unsupported: error.unsupported(),
@@ -906,7 +924,9 @@ pub fn task(
         command.splice(0..0, ["/bin/bash".into(), ".command.hooks".into()]);
     }
     Ok(Task {
+        output_manifest: None,
         run_as: None,
+        defer_logs: false,
         id: workflow_graph::TaskId(request.id.0),
         name: request.name.clone(),
         step: request.process.to_string(),
@@ -948,7 +968,9 @@ fn exec_task(
         })
         .collect();
     Task {
+        output_manifest: None,
         run_as: None,
+        defer_logs: false,
         id: workflow_graph::TaskId(request.id.0),
         name: request.name.clone(),
         step: request.process.to_string(),

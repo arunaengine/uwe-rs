@@ -78,6 +78,50 @@ fn stores_completed_outputs() {
 }
 
 #[test]
+fn simulation_keeps_store() {
+    let root = tempfile::tempdir().unwrap();
+    let store = root.path().join("stored");
+    let source = format!(
+        "process P {{\n storeDir '{}'\n output:\n path 'out.txt'\n script:\n 'true'\n}}\nworkflow {{ P(); P.out.view {{ it.text }} }}",
+        store.display()
+    );
+    let parsed = parse_script(&source);
+    let module = Rc::new(lower_module(&parsed.tree, &source).unwrap());
+    let options = Options {
+        simulated: true,
+        ..Options::default()
+    };
+    let mut output = Output::default();
+    let (mut run, requests) = Run::start(&module, &options, &mut output).unwrap();
+    let original = root.path().join("simulated.txt");
+    std::fs::write(&original, "simulated").unwrap();
+    run.complete(
+        TaskOutcome {
+            id: requests[0].id,
+            files: vec![(
+                "out.txt".into(),
+                PathValue::parse(&original.to_string_lossy(), "/"),
+            )],
+            ..TaskOutcome::default()
+        },
+        &mut output,
+    )
+    .unwrap();
+    run.finish(&mut output).unwrap();
+    assert_eq!(output.0, "simulated\n");
+    assert!(
+        !store.exists(),
+        "simulation must leave persistent storage alone"
+    );
+    let (_, requests) = Run::start(&module, &Options::default(), &mut output).unwrap();
+    assert_eq!(
+        requests.len(),
+        1,
+        "a real run must still compute the output"
+    );
+}
+
+#[test]
 fn optional_outputs_skip() {
     let root = tempfile::tempdir().unwrap();
     let source = format!(

@@ -245,7 +245,9 @@ impl Behaviour for ProcessNode {
             };
             return self.failed(context, flight, &outcome, failure);
         }
-        if let Some(directory) = &flight.store {
+        if !context.interpreter.host().simulated()
+            && let Some(directory) = &flight.store
+        {
             crate::store::save(&mut outcome.files, directory, context.interpreter.host())?;
         }
         context.remember_task_files(&outcome.files);

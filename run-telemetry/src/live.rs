@@ -5,6 +5,10 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -20,6 +24,7 @@ const DRAIN_LIMIT: Duration = Duration::from_secs(5);
 pub struct Live {
     done: Receiver<()>,
     thread: Option<JoinHandle<()>>,
+    stop: Arc<AtomicBool>,
 }
 
 impl Live {
@@ -34,12 +39,14 @@ impl Live {
         let run = recorder.run().to_owned();
         let path = path.to_owned();
         let (done, completed) = mpsc::channel();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopping = stop.clone();
         let dispatch = tracing::dispatcher::get_default(Clone::clone);
         let thread = std::thread::Builder::new()
             .name("uwe-telemetry".into())
             .spawn(move || {
                 let result = tracing::dispatcher::with_default(&dispatch, || {
-                    export(path, &run, committed, client, endpoint, headers)
+                    export(path, &run, committed, client, endpoint, headers, stopping)
                 });
                 if let Err(error) = result {
                     tracing::warn!("live telemetry stopped: {error}");
@@ -49,23 +56,28 @@ impl Live {
         Ok(Self {
             done: completed,
             thread: Some(thread),
+            stop,
         })
     }
 
-    /// Waits at most five seconds for pending spans; export never changes the run result.
+    /// Allows five seconds to drain, then cancels remaining work and joins the worker.
     pub fn finish(mut self) {
         self.drain();
     }
 
     fn drain(&mut self) {
+        self.drain_for(DRAIN_LIMIT);
+    }
+
+    fn drain_for(&mut self, limit: Duration) {
         let Some(thread) = self.thread.take() else {
             return;
         };
-        if self.done.recv_timeout(DRAIN_LIMIT).is_ok() {
-            let _ = thread.join();
-        } else {
+        if self.done.recv_timeout(limit).is_err() {
             tracing::warn!("live telemetry drain deadline elapsed; pending spans may be lost");
+            self.stop.store(true, Ordering::Release);
         }
+        let _ = thread.join();
     }
 }
 
@@ -83,6 +95,7 @@ struct Exporter {
     cursor: i64,
     tasks: HashSet<u64>,
     pending: Vec<Span>,
+    stop: Arc<AtomicBool>,
 }
 
 fn export(
@@ -92,8 +105,9 @@ fn export(
     client: reqwest::Client,
     endpoint: String,
     headers: Vec<(String, String)>,
+    stop: Arc<AtomicBool>,
 ) -> Result<(), DatabaseError> {
-    let database = Database::open(&path)?;
+    let database = Database::open_with_wait(&path, INTERVAL)?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
@@ -105,10 +119,14 @@ fn export(
         cursor: 0,
         tasks: HashSet::new(),
         pending: Vec::new(),
+        stop,
     };
     loop {
         let deadline = Instant::now() + INTERVAL;
         let finalizing = loop {
+            if exporter.stopping() {
+                return Ok(());
+            }
             match committed.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
                 Ok(()) => continue,
                 Err(RecvTimeoutError::Timeout) => break false,
@@ -119,6 +137,9 @@ fn export(
         if finalizing {
             // The recorder commits before closing its notification sender.
             for task in database.tasks(run)? {
+                if exporter.stopping() {
+                    return Ok(());
+                }
                 exporter.task(&database, run, task.id, true)?;
             }
             exporter.flush();
@@ -133,10 +154,17 @@ fn export(
 }
 
 impl Exporter {
+    fn stopping(&self) -> bool {
+        self.stop.load(Ordering::Acquire)
+    }
+
     fn collect(&mut self, database: &Database, run: &str) -> Result<(), DatabaseError> {
         loop {
             let events = database.events(run, self.cursor, SPANS_PER_REQUEST as u32)?;
             for event in &events {
+                if self.stopping() {
+                    return Ok(());
+                }
                 if matches!(event.kind.as_str(), "finished" | "validated")
                     && let Some(task) = event.task
                 {
@@ -180,7 +208,7 @@ impl Exporter {
     }
 
     fn flush(&mut self) {
-        if self.pending.is_empty() {
+        if self.pending.is_empty() || self.stopping() {
             return;
         }
         let requests = [request(std::mem::take(&mut self.pending))];
@@ -202,5 +230,49 @@ impl Exporter {
             }
             Err(_) => tracing::warn!("live telemetry export deadline elapsed; batch dropped"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn joins_cancelled_worker() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("runs.sqlite");
+        let start = run_database::RunStart {
+            id: "live".into(),
+            resumes: None,
+            workflow: "/work/main.nf".into(),
+            language: workflow_graph::Language::Nextflow,
+            revision: None,
+            arguments: vec![],
+            parameters: vec![],
+            executor: "local".into(),
+            simulated: false,
+            store: None,
+            program: None,
+            launch: None,
+            workflow_folder: None,
+            repeats: None,
+        };
+        let mut recorder = Database::open(&path).unwrap().record(&start).unwrap();
+        let mut live = Live::start(
+            &path,
+            &mut recorder,
+            reqwest::Client::new(),
+            "http://unused".into(),
+            vec![],
+        )
+        .unwrap();
+        live.drain_for(Duration::ZERO);
+        assert!(live.thread.is_none());
+        assert!(live.stop.load(Ordering::Acquire));
+        assert!(
+            live.done.try_recv().is_ok(),
+            "worker completion precedes shutdown return"
+        );
+        recorder.close().unwrap();
     }
 }

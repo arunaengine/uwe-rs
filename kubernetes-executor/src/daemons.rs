@@ -62,11 +62,14 @@ impl KubernetesBackend {
         let watcher = tokio::spawn(async move {
             let (root, stop) = watched;
             stop.cancelled().await;
-            let stopped = Self::stop(&cluster, poll, &root, &journal, CANCEL_GRACE).await;
+            let stopped = async {
+                Self::stop(&cluster, poll, &root, &journal, CANCEL_GRACE).await?;
+                Self::settle(remote.as_ref(), &root, &journal).await
+            }
+            .await;
             // Without a confirmed end the journal stays, and the recovery of a run finishes it.
             match stopped {
                 Ok(()) => {
-                    Self::clean_staging(remote.as_ref(), &journal).await;
                     let _ = tokio::fs::remove_dir_all(&root).await;
                 }
                 Err(error) => tracing::warn!(%error, "cannot confirm that a daemon stopped"),

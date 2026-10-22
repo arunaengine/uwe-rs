@@ -43,6 +43,8 @@ pub struct Kubedal {
     pub namespace: Option<String>,
     /// How long kubedal may take to upload the outputs after the pod ended.
     pub upload: Duration,
+    /// An explicit helper source for discovering JSON-selected outputs before CSI upload.
+    pub helper: Option<Helper>,
 }
 
 /// What an attempt staged: where it sends its outputs back, and how its pod sees its folder.
@@ -60,20 +62,46 @@ pub struct Prepared {
     group: Option<u32>,
     /// Where the pod downloads the binary of [`crate::Helper::binary`].
     binary: Option<String>,
+    discovery: bool,
 }
 
 /// The folder of the attempt that kubedal uploads to the attempt prefix.
 const UPLOAD: &str = "upload";
 
 impl PodStaging {
+    /// Whether staging exposes reusable credentials to the workload container.
+    pub fn credentials(&self) -> bool {
+        matches!(&self.via, Via::Helper(helper) if self.stage.credentials || helper.secret.is_some())
+    }
+
+    /// Rejects an uploaded helper that cannot execute on the task's selected platform.
+    pub fn platform(&self, platform: &str) -> Result<(), ExecutorError> {
+        let helper = match &self.via {
+            Via::Helper(helper) => Some(helper),
+            Via::Kubedal(kubedal) => kubedal.helper.as_ref(),
+        };
+        if let Some(binary) = helper.and_then(|helper| helper.binary.as_ref())
+            && (platform.split('/').next() != Some("linux")
+                || platform.split('/').nth(1) != Some(binary.machine.kubernetes()))
+        {
+            return Err(ExecutorError::Unsupported(format!(
+                "Kubernetes helper architecture {} does not match task platform {platform}",
+                binary.machine.kubernetes(),
+            )));
+        }
+        Ok(())
+    }
+
     /// Uploads the inputs and the captured wrapper of `spec`, which runs as `run`.
     pub async fn prepare(
         &self,
         job: Job<'_>,
         run: &ContainerRun<'_>,
         spec: &TaskSpec,
+        staging: &executor::Staging,
     ) -> Result<Prepared, ExecutorError> {
         let root = run.root;
+        let discovery = executor::helper::Discovery::of(spec, staging);
         let text = |path: &Path| path.to_string_lossy().into_owned();
         let (control, home) = (text(&root.join(CONTROL)), text(&root.join(HOME)));
         let (outbox, owner) = (text(&root.join("outbox")), run.access.owner());
@@ -97,7 +125,7 @@ impl PodStaging {
                 let open = spec.run_as.is_some_and(|run_as| run_as.user.is_none());
                 let planned = self
                     .stage
-                    .plan(job, root, &extra, &[], RECORDS, open)
+                    .plan_discovery(job, root, &extra, &[], RECORDS, open, discovery)
                     .await?;
                 return Ok(Prepared {
                     prefix: planned.prefix,
@@ -110,27 +138,59 @@ impl PodStaging {
                     plan: planned.plan,
                     group: None,
                     binary,
+                    discovery: false,
                 });
             }
             Via::Kubedal(kubedal) => kubedal,
         };
         let files = text(&root.join(UPLOAD).join("files"));
         let records = text(&root.join(UPLOAD).join(CONTROL));
+        let helper = match &discovery {
+            Some(_) => Some(kubedal.helper.as_ref().ok_or_else(|| {
+                ExecutorError::Unsupported(
+                    "kubedal JSON outputs require a configured helper_image or helper_file".into(),
+                )
+            })?),
+            None => None,
+        };
         let script = capture(&script, &files)?;
         let script = script
             .strip_suffix("exit \"$status\"\n")
             .expect("a final exit");
         let names: Vec<String> = RECORDS.iter().map(|name| quote(name)).collect();
+        let discover = match &discovery {
+            Some(discovery) => format!(
+                "if [ \"$status\" -eq 0 ]; then\n    {} __stage discover {} {} || exit 125\n    \
+                 rm -rf {} && mv {} {} || exit 125\nfi\n",
+                quote(&text(&root.join(CONTROL).join("discover"))),
+                quote(&text(root)),
+                quote(&serde_json::to_string(discovery).map_err(failed)?),
+                quote(&files),
+                quote(&text(&root.join(executor::helper::TRANSFER))),
+                quote(&files),
+            ),
+            None => String::new(),
+        };
         let script = format!(
-            "{script}mkdir -p {records}\nfor name in {}; do\n    [ ! -f \"$control/$name\" ] || \
+            "{script}{discover}mkdir -p {records}\nfor name in {}; do\n    [ ! -f \"$control/$name\" ] || \
              cp \"$control/$name\" {records}/\ndone\nexit \"$status\"\n",
             names.join(" "),
             records = quote(&records),
         );
         let prefix = executor::capture::attempt_prefix(job)?;
-        let layout = (self.stage)
-            .upload(job, root, &[("control/wrapper.sh", script)], &[])
+        let binary = helper.and_then(|helper| helper.binary.as_ref());
+        let binaries: Vec<_> = binary
+            .map(|binary| ("control/discover", binary.file.as_path()))
+            .into_iter()
+            .collect();
+        let mut layout = (self.stage)
+            .upload(job, root, &[("control/wrapper.sh", script)], &binaries)
             .await?;
+        for file in &mut layout.files {
+            if file.path == "control/discover" {
+                file.executable = true;
+            }
+        }
         let mut directories = layout.directories;
         directories.push(UPLOAD.into());
         let files: Vec<Value> = (layout.files.iter())
@@ -176,6 +236,7 @@ impl PodStaging {
                 Some(run_as) => run_as.group,
             },
             binary: None,
+            discovery: discovery.is_some(),
         })
     }
 
@@ -193,9 +254,38 @@ impl PodStaging {
                 let (root, binary) = (root.to_string_lossy(), prepared.binary.as_deref());
                 stage(job, helper, &root, &prepared.location, binary, seconds)
             }
-            Via::Kubedal(_) => {
+            Via::Kubedal(kubedal) => {
                 if let Some(group) = prepared.group {
                     job["spec"]["template"]["spec"]["securityContext"] = json!({"fsGroup": group});
+                }
+                if prepared.discovery
+                    && let Some(binary) = kubedal
+                        .helper
+                        .as_ref()
+                        .and_then(|helper| helper.binary.as_ref())
+                {
+                    job["spec"]["template"]["spec"]["nodeSelector"] = json!({
+                        "kubernetes.io/os": "linux", "kubernetes.io/arch": binary.machine.kubernetes(),
+                    });
+                }
+                if prepared.discovery
+                    && let Some(helper) = &kubedal.helper
+                    && helper.binary.is_none()
+                {
+                    let pod = &mut job["spec"]["template"]["spec"];
+                    let mut resources = pod["containers"][0]["resources"].clone();
+                    for kind in ["limits", "requests"] {
+                        if let Some(resources) = resources[kind].as_object_mut() {
+                            resources.remove("nvidia.com/gpu");
+                        }
+                    }
+                    pod["initContainers"] = json!([{
+                        "name": "discover", "image": helper.image,
+                        "command": ["/uwe", "__stage", "install", root.join(CONTROL).join("discover")],
+                        "resources": resources,
+                        "securityContext": pod["containers"][0]["securityContext"],
+                        "volumeMounts": [{"name": crate::manifest::FOLDERS, "mountPath": root}],
+                    }]);
                 }
             }
         }

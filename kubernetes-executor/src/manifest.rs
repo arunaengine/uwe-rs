@@ -88,8 +88,31 @@ pub enum Volumes {
     Under { root: PathBuf, source: Value },
 }
 
+/// A host-approved read-only volume, mounted at the same absolute path as its local reference.
+#[derive(Clone, Debug)]
+pub struct SharedVolume {
+    pub path: PathBuf,
+    pub source: Value,
+}
+
 /// The name of the volume of [`Volumes::Under`].
 pub const FOLDERS: &str = "folders";
+
+/// Mounts a bounded memory volume for tools that require a larger shared-memory segment.
+pub(crate) fn shared_memory(job: &mut Value, size: u64) -> Result<(), String> {
+    let pod = &mut job["spec"]["template"]["spec"];
+    for container in pod["containers"].as_array_mut().expect("containers") {
+        let mounts = container["volumeMounts"].as_array_mut().expect("mounts");
+        if mounts.iter().any(|mount| mount["mountPath"] == "/dev/shm") {
+            return Err("shared-memory size conflicts with a task mount at /dev/shm".into());
+        }
+        mounts.push(json!({"name": "shared-memory", "mountPath": "/dev/shm"}));
+    }
+    pod["volumes"].as_array_mut().expect("volumes").push(json!({
+        "name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": size.to_string()},
+    }));
+    Ok(())
+}
 
 /// How the pods of object-store staging get the static uwe binary: from an image that holds
 /// only the binary, at `/uwe`.
@@ -219,15 +242,74 @@ pub fn job(
     limits: &Limits,
     place: &Volumes,
 ) -> Result<Value, String> {
+    job_with(name, label, runs, limits, place, &[])
+}
+
+pub(crate) fn job_with(
+    name: &str,
+    label: &str,
+    runs: &[ContainerRun<'_>],
+    limits: &Limits,
+    place: &Volumes,
+    references: &[SharedVolume],
+) -> Result<Value, String> {
     let run = &runs[0];
     let mut mounts = Vec::new();
     let mut volumes = Vec::new();
+    for (index, reference) in references.iter().enumerate() {
+        if !reference.path.is_absolute()
+            || reference.path.components().any(|part| {
+                matches!(
+                    part,
+                    std::path::Component::ParentDir | std::path::Component::CurDir
+                )
+            })
+        {
+            return Err("reference volume paths must be absolute without dot segments".into());
+        }
+        if references[..index].iter().any(|other| {
+            other.path.starts_with(&reference.path) || reference.path.starts_with(&other.path)
+        }) {
+            return Err("reference volume paths overlap".into());
+        }
+    }
     if let Volumes::Under { source, .. } = place {
         let mut volume = source.clone();
         volume["name"] = json!(FOLDERS);
         volumes.push(volume);
     }
     for (index, bind) in run.binds().iter().enumerate() {
+        if let Some((position, reference)) = references
+            .iter()
+            .enumerate()
+            .find(|(_, reference)| bind.source.starts_with(&reference.path))
+        {
+            if !bind.read_only {
+                return Err("a task cannot write a reference volume".into());
+            }
+            let name = format!("reference-{position}");
+            if !volumes.iter().any(|volume| volume["name"] == name) {
+                let mut volume = reference.source.clone();
+                volume
+                    .as_object_mut()
+                    .ok_or("reference volume source must be an object")?
+                    .insert("name".into(), json!(name));
+                volumes.push(volume);
+            }
+            let inside = bind
+                .source
+                .strip_prefix(&reference.path)
+                .expect("reference source");
+            let mut mount = json!({"name": name,
+                "mountPath": bind.target, "readOnly": true});
+            if !inside.as_os_str().is_empty() {
+                mount["subPath"] = json!(inside.to_string_lossy());
+            }
+            if !mounts.contains(&mount) {
+                mounts.push(mount);
+            }
+            continue;
+        }
         let Volumes::Under { root, .. } = place else {
             let volume = format!("folder-{index}");
             mounts.push(json!({
@@ -257,13 +339,16 @@ pub fn job(
         mounts.push(mount);
     }
     let mut requests = json!({"cpu": run.cpus.max(1).to_string()});
-    let mut limits_of_container = json!({});
     if let Some(memory) = run.memory {
         requests["memory"] = json!(memory.to_string());
-        limits_of_container["memory"] = json!(memory.to_string());
+    }
+    let budget = json!({"requests": requests, "limits": requests});
+    let mut allocation = requests.clone();
+    if runs.len() > 1 {
+        allocation.as_object_mut().expect("resources").remove("cpu");
     }
     if limits.gpus > 0 {
-        limits_of_container["nvidia.com/gpu"] = json!(limits.gpus.to_string());
+        allocation["nvidia.com/gpu"] = json!(limits.gpus.to_string());
     }
     let labels = json!({"app.kubernetes.io/managed-by": "uwe", LABEL: label});
     let containers: Vec<Value> = (runs.iter().enumerate())
@@ -284,7 +369,7 @@ pub fn job(
                 "name": name,
                 "image": run.image.reference,
                 "command": command,
-                "resources": {"requests": requests, "limits": limits_of_container},
+                "resources": {"requests": requests, "limits": allocation},
                 "volumeMounts": mounts,
                 "securityContext": security(run),
             });
@@ -307,6 +392,9 @@ pub fn job(
             },
         },
     });
+    if runs.len() > 1 {
+        spec["template"]["spec"]["resources"] = budget;
+    }
     // The time counts on the pod, from its start, so that waiting for a node does not count.
     // Image pulls and staging count too, so the pod gets a margin and the wrapper the time.
     if let Some(seconds) = limits.seconds {
@@ -396,6 +484,7 @@ mod tests {
         assert!(text.contains("( sleep 60 && kill -TERM \"$pid\""), "{text}");
         assert_eq!(container["workingDir"], "/data");
         assert_eq!(container["resources"]["limits"]["memory"], "1073741824");
+        assert_eq!(container["resources"]["limits"]["cpu"], "2");
         assert_eq!(container["resources"]["limits"]["nvidia.com/gpu"], "1");
         let paths: Vec<(&str, &str)> = (pod["volumes"].as_array().expect("volumes").iter())
             .zip(container["volumeMounts"].as_array().expect("mounts"))
@@ -411,6 +500,25 @@ mod tests {
         ];
         assert_eq!(paths, expected);
         assert_eq!(job["spec"]["template"]["metadata"]["labels"][LABEL], "7-9");
+        let grouped = super::job(
+            "groups",
+            "7-9",
+            &[run, run, run],
+            &Limits::default(),
+            &Volumes::Host,
+        )
+        .unwrap();
+        let containers = grouped["spec"]["template"]["spec"]["containers"]
+            .as_array()
+            .unwrap();
+        let budget = &grouped["spec"]["template"]["spec"]["resources"];
+        assert_eq!(budget["limits"]["cpu"], "2");
+        assert_eq!(budget["limits"]["memory"], "1073741824");
+        assert_eq!(budget["requests"], budget["limits"]);
+        for container in containers {
+            assert!(container["resources"]["limits"].get("cpu").is_none());
+            assert_eq!(container["resources"]["limits"]["memory"], "1073741824");
+        }
         // A container that runs as its image says starts in its `workdir`, as root with only
         // CHOWN, and the work directory stays in the scratch directory.
         let access = Access::of((1000, 100), false, Some(task_model::RunAs::default()), "");
@@ -569,5 +677,61 @@ mod tests {
         };
         let error = job("uwe-run-p-1-1", "7-9", &[run], &limits, &elsewhere);
         assert!(error.unwrap_err().contains("is not in the folder /shared"));
+        let references = [SharedVolume {
+            path: "/refs/database".into(),
+            source: json!({"persistentVolumeClaim": {"claimName": "database-v1"}}),
+        }];
+        let inputs = [
+            Mount {
+                source: "/refs/database/index".into(),
+                target: "/refs/database/index".into(),
+                read_only: true,
+            },
+            Mount {
+                source: "/refs/database/index".into(),
+                target: "/index".into(),
+                read_only: true,
+            },
+        ];
+        let reference_run = ContainerRun {
+            mounts: &inputs,
+            ..run
+        };
+        let manifest = job_with(
+            "reference",
+            "7-9",
+            &[reference_run],
+            &limits,
+            &claim,
+            &references,
+        )
+        .unwrap();
+        let pod = &manifest["spec"]["template"]["spec"];
+        assert!(
+            pod["volumes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|volume| { volume["persistentVolumeClaim"]["claimName"] == "database-v1" })
+        );
+        let mounts = pod["containers"][0]["volumeMounts"].as_array().unwrap();
+        assert!(
+            !mounts
+                .iter()
+                .any(|mount| mount["mountPath"] == "/refs/database")
+        );
+        assert!(
+            mounts
+                .iter()
+                .any(|mount| mount["mountPath"] == "/index" && mount["subPath"] == "index")
+        );
+        assert!(mounts.iter().any(
+            |mount| mount["mountPath"] == "/refs/database/index" && mount["subPath"] == "index"
+        ));
+        let conflict = [SharedVolume {
+            path: "/data".into(),
+            source: references[0].source.clone(),
+        }];
+        assert!(job_with("unused", "7-9", &[run], &limits, &claim, &conflict).is_ok());
     }
 }

@@ -1,4 +1,4 @@
-//! Connects to the Kubernetes API using only the explicitly selected kubeconfig.
+//! Selects a Kubernetes API client from explicit host configuration or pod credentials.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -10,7 +10,7 @@ use k8s_openapi::api::core::v1::{Event, Pod};
 use kube::config::{KubeConfigOptions, Kubeconfig};
 use kube::{Api, Client, Config};
 
-/// The cluster of a kubeconfig, and the namespace of the Jobs.
+/// An authenticated cluster client, its server identity and the namespace of the Jobs.
 #[derive(Clone)]
 pub struct Cluster {
     client: Client,
@@ -25,6 +25,24 @@ impl fmt::Debug for Cluster {
 }
 
 impl Cluster {
+    /// Uses the host's authenticated client and explicit server identity for journal fencing.
+    pub fn new(client: Client, namespace: String, server: String) -> Cluster {
+        Cluster {
+            client,
+            namespace,
+            server,
+        }
+    }
+
+    /// Uses the pod's service account without consulting a host kubeconfig.
+    pub fn in_cluster(namespace: Option<String>) -> Result<Cluster, String> {
+        let config = Config::incluster().map_err(|error| error.to_string())?;
+        let namespace = namespace.unwrap_or_else(|| config.default_namespace.clone());
+        let server = config.cluster_url.to_string();
+        let client = Client::try_from(config).map_err(|error| error.to_string())?;
+        Ok(Self::new(client, namespace, server))
+    }
+
     /// The cluster of the current context of the kubeconfig `file`, with the Jobs in
     /// `namespace`, else in the namespace of that context, else in `default`. The client runs
     /// on the Tokio runtime that calls this.
@@ -40,11 +58,7 @@ impl Cluster {
         let namespace = namespace.unwrap_or_else(|| config.default_namespace.clone());
         let server = config.cluster_url.to_string();
         let client = Client::try_from(config).map_err(|error| failed(&error))?;
-        Ok(Cluster {
-            client,
-            namespace,
-            server,
-        })
+        Ok(Self::new(client, namespace, server))
     }
 
     pub fn namespace(&self) -> &str {

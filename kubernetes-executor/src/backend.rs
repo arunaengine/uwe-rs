@@ -1071,6 +1071,18 @@ pub(crate) fn machine(message: String) -> ExecutorError {
 mod tests {
     use super::*;
 
+    #[test]
+    fn accepts_canonical_quantities() {
+        let expected = serde_json::json!({"limits": {"cpu": "2", "memory": "1073741824"},
+            "requests": {"cpu": "2", "memory": "1073741824"}});
+        let mut actual = serde_json::json!({"limits": {"cpu": "2000m", "memory": "1Gi"},
+            "requests": {"cpu": "2", "memory": "1024Mi"}});
+        assert!(resources_match(&expected, &actual));
+        actual["limits"]["memory"] = serde_json::json!("2Gi");
+        assert!(!resources_match(&expected, &actual));
+        assert!(!resources_match(&expected, &serde_json::Value::Null));
+    }
+
     #[tokio::test]
     async fn termination_preserves_journal() {
         let folder = tempfile::tempdir().unwrap();

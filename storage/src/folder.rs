@@ -133,6 +133,26 @@ impl Folder {
             version: None,
         })
     }
+
+    pub async fn upload_absent(&self, file: &Path, path: &Path) -> Result<bool, Problem> {
+        let parent = path
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|error| Problem::local(parent, error))?;
+        let part =
+            tempfile::NamedTempFile::new_in(parent).map_err(|error| Problem::local(path, error))?;
+        let part = copied(file, part)
+            .await
+            .map_err(|error| Problem::local(file, error))?;
+        match part.persist_noclobber(path) {
+            Ok(_) => Ok(true),
+            Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+            Err(error) => Err(Problem::local(path, error.error)),
+        }
+    }
 }
 
 fn download_copy(

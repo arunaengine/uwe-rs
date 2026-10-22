@@ -340,19 +340,41 @@ impl Objects {
             ));
         }
         Ok(Downloaded {
-            version: Some(version.to_owned()),
+            version: location
+                .version
+                .clone()
+                .or_else(|| metadata.version().map(str::to_owned))
+                .or_else(|| Some(version.to_owned())),
         })
     }
 
     /// Uploads a local file in parts.
     pub async fn upload(&self, file: &Path, target: &str) -> Result<Written, Problem> {
+        self.upload_if(file, target, false).await
+    }
+
+    pub async fn upload_absent(&self, file: &Path, target: &str) -> Result<bool, Problem> {
+        match self.upload_if(file, target, true).await {
+            Ok(_) => Ok(true),
+            Err(error) if error.existing => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn upload_if(&self, file: &Path, target: &str, absent: bool) -> Result<Written, Problem> {
         let location = location(target)?;
         if location.version.is_some() {
             return Err(Problem::fixed("cannot write to a selected object version"));
         }
         let operator = self.operator(location.bucket)?;
+        if absent && !operator.info().capability().write_with_if_not_exists {
+            return Err(Problem::fixed(
+                "the object service cannot publish without replacing existing content",
+            ));
+        }
         let mut writer = operator
             .writer_with(&location.key)
+            .if_not_exists(absent)
             .chunk(PART_SIZE)
             .await
             .map_err(problem)?;
@@ -423,6 +445,12 @@ fn directory(key: &str) -> String {
 fn problem(error: opendal::Error) -> Problem {
     let message = match error.kind() {
         ErrorKind::NotFound => return Problem::missing(),
+        ErrorKind::ConditionNotMatch | ErrorKind::AlreadyExists => {
+            return Problem {
+                existing: true,
+                ..Problem::fixed("the object already exists")
+            };
+        }
         ErrorKind::PermissionDenied => {
             "the service refused access; check the credentials of the provider".to_owned()
         }

@@ -86,6 +86,12 @@ impl Blocking {
         run(async move { storage.upload(&file, &target).await })
     }
 
+    /// Creates a destination atomically; see [`Storage::upload_absent`].
+    pub fn upload_absent(&self, file: &Path, target: &str) -> Result<bool, StorageError> {
+        let (storage, target, file) = self.owned(target, file);
+        run(async move { storage.upload_absent(&file, &target).await })
+    }
+
     fn owned(&self, target: &str, path: &Path) -> (Storage, String, PathBuf) {
         (self.storage.clone(), target.to_owned(), path.to_owned())
     }

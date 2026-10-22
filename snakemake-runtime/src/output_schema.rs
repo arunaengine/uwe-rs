@@ -46,10 +46,14 @@ pub fn schema(
     // A file that several target rules ask for is one output.
     let mut seen = std::collections::HashSet::new();
     loose.retain(|(path, _)| seen.insert(path.clone()));
-    if !loose.is_empty() && !properties.contains_key("targets") {
+    if !loose.is_empty() {
+        let mut name = "targets".to_owned();
+        while properties.contains_key(&name) {
+            name.push('_');
+        }
         let mut schema = output(&loose, true);
         schema["description"] = json!("the files that the target rules make or ask for");
-        properties.insert("targets".into(), schema);
+        properties.insert(name, schema);
     }
     Ok(json!({"$schema": DRAFT, "title": title, "type": "object", "properties": properties}))
 }

@@ -11,7 +11,7 @@ use nextflow_evaluator::interpreter::TaskDirective;
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_runtime::driver::{task, task_outcome};
-use nextflow_runtime::task::{command_script, read_environment};
+use nextflow_runtime::task::{command, command_script, read_environment};
 use nextflow_runtime::{TaskId, TaskRequest};
 use workflow_graph::{Outcome, OutputFile};
 
@@ -63,6 +63,25 @@ fn captures_task_outputs() {
     assert_eq!(variables["nxf_out_eval_1"], ("v'1".to_owned(), 0));
     assert_eq!(variables["nxf_out_eval_2"], ("bad".to_owned(), 2));
     assert!(!root.path().join(".command.eval").exists());
+}
+
+/// A script with a shebang of its own, like a Python template, runs with that interpreter,
+/// as Nextflow's `.command.run` does; the shebang of the shell stays the shell.
+#[test]
+fn runs_script_shebangs() {
+    let mut request = request(&[], &[], None);
+    assert_eq!(command(&request), ["/bin/bash", "-ue", ".command.sh"]);
+    request.script = "#!/usr/bin/env python\nimport sys\n".into();
+    assert_eq!(command(&request), ["/usr/bin/env", "python", ".command.sh"]);
+    request.directives.push(TaskDirective {
+        name: "shell".into(),
+        arguments: vec![Value::list(vec![
+            Value::string("bash"),
+            Value::string("-eu"),
+        ])],
+    });
+    request.script = "#!/usr/bin/env bash -eu\necho hi\n".into();
+    assert_eq!(command(&request), ["bash", "-eu", ".command.sh"]);
 }
 
 #[test]

@@ -12,11 +12,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.dont_write_bytecode = True
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import real_runs_snakemake as local  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import snakemake as local  # noqa: E402
 
 UWE = os.environ.get("UWE") or "uwe"
-OUTPUT = Path(os.environ.get("RECORD") or Path(__file__).with_name("real_runs_slurm_snakemake.txt"))
+OUTPUT = Path(os.environ.get("RECORD") or Path(__file__).resolve().parents[2].joinpath("real_runs_slurm_snakemake.txt"))
 IMAGE = "python:3-slim"
 ALLOWED = {"python:3-slim", "docker.io/python:3-slim", "debian:stable-slim",
            "docker.io/debian:stable-slim"}
@@ -91,7 +91,7 @@ def run_stopped(command, cwd):
 def native_records():
     """How each test ran in Snakemake and uwe on a machine with Docker, by name."""
     found = {}
-    record = Path(__file__).with_name("real_runs_snakemake.txt")
+    record = Path(__file__).resolve().parents[2].joinpath("real_runs_snakemake.txt")
     for line in record.read_text().splitlines() if record.exists() else []:
         name, _, rest = line.partition("\t")
         found[name] = rest
@@ -136,7 +136,7 @@ def main():
     tests = Path(sys.argv[1])
     wanted = set(sys.argv[2:])
     local.LAUNCHES = Path(os.environ.get("LAUNCHES")
-                          or Path(__file__).with_name("run_test_workflows_launches.txt"))
+                          or Path(__file__).resolve().parents[2].joinpath("run_test_workflows_launches.txt"))
     launched = local.launches()
     names = [folder.name for folder in sorted(tests.iterdir())
              if (folder / "Snakefile").is_file() and (not wanted or folder.name in wanted)]
@@ -155,7 +155,7 @@ def main():
         counts[kind] = counts.get(kind, 0) + 1
     summary = ", ".join(f"{count} {kind}" for kind, count in sorted(counts.items()))
     header = ("# The tests of Snakemake run for real on a SLURM cluster with Apptainer, checked "
-              "against their expected-results; written by real_runs_slurm_snakemake.py. A tab "
+              "against their expected-results; written by real_runs/slurm/snakemake.py. A tab "
               "ends the name.\n"
               f"# {len(records)} tests: {summary}.\n")
     OUTPUT.write_text(header + "".join(f"{name}\t{record}\n"

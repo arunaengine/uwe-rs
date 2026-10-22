@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(os.environ.get("REAL_RUNS") or Path.home() / ".cache/uwe/real-runs")
 UWE = Path(os.environ.get("UWE") or "target/release/uwe").resolve()
-OUTPUT = Path(__file__).with_name("real_runs.txt")
+OUTPUT = Path(__file__).resolve().parents[1].joinpath("real_runs.txt")
 TIMEOUT = 3600
 
 # The config of the native Nextflow runs: at most 4 CPUs of tasks at once.
@@ -25,14 +25,8 @@ NEXTFLOW_LIMITS = """executor {
 }
 """
 
-# Each case names its workflow, how to fetch it (`repository` at `revision` into
-# `<ROOT>/sources/<name>`), and the commands of the native tool and of uwe, where
-# `{workflow}` is the fetched folder, `{out}` the folder of the results, and `{limits}` the
-# config of the native Nextflow runs. `results` is the folder to compare, `{out}` unless
-# given. `notes` says in plain words what differs on purpose.
-# The config of the native Nextflow runs on SLURM: at most 4 jobs at once, named so that they
-# can be told from other jobs of the user. Containers get the proxy of the cluster, which
-# Nextflow does not pass on by itself (the jobs of uwe inherit it).
+# Recorder fields and native runtime requirements are documented in ../README.md.
+# Native SLURM jobs inherit the cluster proxy through the Apptainer whitelist.
 NEXTFLOW_SLURM = """process.executor = 'slurm'
 executor {
     queueSize = 4
@@ -263,7 +257,7 @@ def main():
             records[case["name"]] = compare(case)
             print(records[case["name"]], end="", flush=True)
     header = ("# Real runs of uwe against the native tool, by the names and digests of the "
-              "delivered files; written by real_runs.py.\n")
+              "delivered files; written by real_runs/nextflow.py.\n")
     text = header + "".join("\n" + records[case["name"]] for case in CASES
                             if case["name"] in records)
     OUTPUT.write_text(text)

@@ -13,17 +13,18 @@ import sys
 import tempfile
 from pathlib import Path
 
-# The helper next to this script; Python keeps no compiled copy of it in the repository.
+# The helper beside the recorder family; Python keeps no compiled copy of it in the repository.
 sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from docker_no_pull import NoPull  # noqa: E402
 
 HOME = Path.home() / ".cache/uwe/test-workflows/snakemake"
 TESTS = Path(os.environ.get("SNAKEMAKE_TESTS") or HOME / "snakemake-tests") / "tests"
-REPOSITORY = Path(__file__).resolve().parents[3]
+REPOSITORY = Path(__file__).resolve().parents[4]
 LAUNCHES = REPOSITORY / "snakemake-runtime/tests/fixtures/run_test_workflows_launches.txt"
 UWE = Path(os.environ.get("UWE") or "target/release/uwe").resolve()
 SNAKEMAKE = os.environ.get("SNAKEMAKE") or "snakemake"
-OUTPUT = Path(__file__).with_name("real_runs_snakemake.txt")
+OUTPUT = Path(__file__).resolve().parents[1].joinpath("real_runs_snakemake.txt")
 IMAGE = "pandas/pandas:pip-all"
 TIMEOUT = 300
 JOBS = "3"
@@ -341,7 +342,7 @@ def main():
         counts[kind] = counts.get(kind, 0) + 1
     summary = ", ".join(f"{count} {kind}" for kind, count in sorted(counts.items()))
     header = ("# The tests of Snakemake run for real by uwe and by Snakemake 9.27.0, compared "
-              "by the files each run made; written by real_runs_snakemake.py. A tab ends the "
+              "by the files each run made; written by real_runs/snakemake.py. A tab ends the "
               "name.\n"
               f"# {len(records)} tests: {summary}.\n")
     OUTPUT.write_text(header + "".join(f"{name}\t{record}\n"

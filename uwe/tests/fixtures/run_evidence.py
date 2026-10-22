@@ -21,10 +21,7 @@ OUTPUT = Path(__file__).with_name("run_evidence.txt")
 # The Java libraries that Nextflow releases before 24 shipped, which the `lib/` classes of older
 # pipelines use, like `NfcoreSchema` with org.json and everit (decision 14).
 JARS = Path.home() / ".nextflow/plugins/nf-validation-1.1.3/lib"
-# Earlier Nextflow releases, for pipelines that name one: the launcher of the release runs the
-# release of NXF_VER, which it downloads into a folder of its own below this one (NXF_HOME). Releases
-# before 23.10 need Java 17 or earlier, from JAVA17_HOME, and releases before 21.10 Java 11,
-# from JAVA11_HOME.
+# Earlier releases use isolated NXF_HOME folders; Java requirements are in README.md.
 RELEASES = Path(os.environ.get("NXF_RELEASES") or "/tmp/nextflow-releases")
 JAVA17 = os.environ.get("JAVA17_HOME")
 JAVA11 = os.environ.get("JAVA11_HOME")
@@ -32,26 +29,7 @@ VERSION = "26.04.6"
 TIMEOUT = 1200
 JOBS = 4
 
-# Each case says why the pipelines cannot run, in one plain sentence, and how Nextflow shows
-# it: `expect` has patterns of the lines of the output to keep, each the first line after the
-# one before that matches. The kind is `invalid` (the stub run of the test profile fails on its
-# own, and the sentence says whether the pipeline, its stubs or its test profile are the
-# cause) unless the case gives `kind`: `missing` (it needs something that is not public or not
-# in its repository) or `unsupported (decision N)` (uwe leaves the feature out on purpose,
-# as decision N says). A case may give `release` for the Nextflow release
-# that the pipeline names, whose meaning uwe keeps (decision 14), `parser: "v2"` for the
-# strict parser (the legacy parser is the default, as uwe accepts legacy syntax), `jars:
-# True` to put the old Java libraries into `lib/`, `args` for more arguments of the run, where
-# `{launch}` and `{pipeline}` name the folders of the run, `profile: False` to run a workflow
-# that has no `test` profile without one, `config` for settings of an extra config file
-# (`-c extra.config`), `tools` for commands that print a given text, like a version that a
-# stub reads, and `stubs` for stand-in stub scripts, so that Nextflow reaches the point where
-# uwe fails: for processes that have no stub, which a stub run of Nextflow runs for real,
-# and for stubs that fail before that point. A stand-in makes the files that the simulator
-# of uwe makes for the process, or the files that the process makes. A case whose failure
-# Nextflow does not reach, because it stops earlier at a tool that this machine lacks, gives
-# `reproduce`: the files of a small script with the failing part of the pipeline, which
-# Nextflow runs instead.
+# README.md documents case fields, native-version selection and stand-in stub semantics.
 
 # The versions.yml that a stand-in stub writes.
 VERSIONS = "printf '\"${task.process}\": {stub: \"1.0\"}\\n' > versions.yml"
@@ -1340,10 +1318,8 @@ def stand_ins(directory, case):
 
 
 def add_stubs(copy, stubs):
-    """Gives each process that `stubs` names the stub script there, in the copy of the pipeline,
-    so that a stub run passes a process without a stub, as the simulator of uwe does, or one
-    whose stub is broken. A stub with `\"\"\"` is the whole stub section, with the statements
-    before its script."""
+    """Replace named stubs so the native run reaches the recorded failure.
+    A script containing three quote characters replaces the whole stub section."""
     for name, script in stubs.items():
         for path in sorted(copy.rglob("*.nf")):
             text = path.read_text(errors="replace")

@@ -15,7 +15,7 @@ from pathlib import Path
 import yaml
 
 UWE = os.environ.get("UWE") or "uwe"
-OUTPUT = Path(os.environ.get("RECORD") or Path(__file__).with_name("real_runs_slurm_cwl.txt"))
+OUTPUT = Path(os.environ.get("RECORD") or Path(__file__).resolve().parents[2].joinpath("real_runs_slurm_cwl.txt"))
 IMAGE = "debian:stable-slim"
 # The images that tests may name; others are left out to keep the downloads small.
 ALLOWED = {"debian:stable-slim", "docker.io/debian:stable-slim", "debian:stable",
@@ -149,7 +149,7 @@ def main():
         counts[kind] = counts.get(kind, 0) + 1
     summary = ", ".join(f"{count} {kind}" for kind, count in sorted(counts.items()))
     header = ("# CWL conformance tests (v1.2) run for real on a SLURM cluster with Apptainer, "
-              "compared with the output each test expects; written by real_runs_slurm_cwl.py.\n"
+              "compared with the output each test expects; written by real_runs/slurm/cwl.py.\n"
               f"# {len(records)} tests: {summary}.\n")
     OUTPUT.write_text(header + "".join(f"{name} {record}\n"
                                        for name, record in sorted(records.items())))

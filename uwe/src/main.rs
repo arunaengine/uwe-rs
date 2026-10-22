@@ -102,15 +102,17 @@ usage: uwe run <workflow file, directory or repository> [<targets>] [options]
        uwe export <run> [-output <folder>] [-license <url>]
        uwe why <run> <task>
        uwe origin <file>
+       uwe digest <path>
        uwe time <run> [-format text|json]
        uwe compare <run> [<run>] [-format text|json]
        uwe replay <run> <task> [-executor local|tes|slurm|kubernetes] [-store <place>]
        uwe telemetry <run> [-output <file>]
        uwe report <run> [-output <file>]
        uwe resume <run> [<step>] [<name>=<value>]...
+       uwe reconcile <run> -reason <text> [-database <file>]
        uwe inputs <workflow file or directory> [-format json|text] [-check] [options]
        uwe outputs <workflow file or directory> [-format json|text] [options]
-       uwe clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove]
+       uwe clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove] [-front]
        uwe check-order <workflow file or directory> [options]
        uwe changes <run>
        uwe repeat <run> [-executor <executor>] [-store <folder or address>] [options]
@@ -176,6 +178,8 @@ options:
                                       without running its finished tasks again
   -no-cache                           takes no result from the cache and keeps none there:
                                       every task runs
+  -strict-provenance                  `run` stops if durable provenance cannot be recorded
+  -reason <text>                      explains why a stopped local owner is reconciled
   -no-right-sizing                    tasks ask for the CPUs and memory that the workflow
                                       names, not for what earlier runs of their step used
   -no-grouping                        runs each task in a container of its own; without it,
@@ -204,6 +208,7 @@ options:
                                       like 90s, 10m, 2h or 1d
   -remove                             `clean` removes what it lists; without it, it only lists
                                       what it would remove
+  -front                              `clean` evicts only the configured local front store
   -no-network                         runs the tasks without network whose workflow does not
                                       say that they need it; `[network] allowed_steps` of the
                                       config file names steps that get it anyway

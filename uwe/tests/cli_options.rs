@@ -39,6 +39,14 @@ fn discovery_skips_configuration() {
     let output = common::command().arg("help").output().unwrap();
     assert!(output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("local (the default for run)"));
+    for token in [
+        "uwe digest",
+        "uwe reconcile",
+        "-strict-provenance",
+        "-front",
+    ] {
+        assert!(String::from_utf8_lossy(&output.stdout).contains(token));
+    }
     for flag in ["version", "-version", "--version"] {
         let output = common::command().arg(flag).output().unwrap();
         assert!(output.status.success());
@@ -58,6 +66,122 @@ fn discovery_skips_configuration() {
         .output()
         .unwrap();
     assert!(output.status.success());
+}
+
+#[test]
+fn digests_writable_candidates() {
+    let root = tempfile::tempdir().unwrap();
+    let tree = root.path().join("reference");
+    std::fs::create_dir(&tree).unwrap();
+    let file = tree.join("data");
+    std::fs::write(&file, "before").unwrap();
+    let digest = |path: &std::path::Path| {
+        let output = common::command()
+            .arg("digest")
+            .arg(path)
+            .env("XDG_CACHE_HOME", root.path().join("cache"))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap().trim().to_owned()
+    };
+    assert_eq!(
+        digest(&file),
+        task_model::Digest::sha256(b"before").to_string()
+    );
+    let before = digest(&tree);
+    std::fs::write(&file, "after").unwrap();
+    assert_ne!(digest(&tree), before);
+    assert!(!std::fs::metadata(&tree).unwrap().permissions().readonly());
+    assert!(!std::fs::metadata(&file).unwrap().permissions().readonly());
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "after");
+    assert!(!root.path().join("cache").exists());
+}
+
+fn owner_record(path: &std::path::Path) -> run_database::Recorder {
+    run_database::Database::open(path)
+        .unwrap()
+        .record(&run_database::RunStart {
+            id: "owned".into(),
+            resumes: None,
+            workflow: "/workflow/main.nf".into(),
+            language: workflow_graph::Language::Nextflow,
+            revision: None,
+            arguments: Vec::new(),
+            parameters: Vec::new(),
+            executor: "local".into(),
+            simulated: false,
+            store: None,
+            program: None,
+            launch: None,
+            workflow_folder: None,
+            repeats: None,
+        })
+        .unwrap()
+}
+
+#[test]
+fn leaves_running_owner() {
+    if let Some(path) = std::env::var_os("UWE_RECONCILE_DATABASE") {
+        std::mem::forget(owner_record(std::path::Path::new(&path)));
+    }
+}
+
+#[test]
+fn reconciles_stopped_owner() {
+    let root = tempfile::tempdir().unwrap();
+    let live = root.path().join("live.sqlite");
+    let mut recorder = owner_record(&live);
+    let command = |path: &std::path::Path, reason: Option<&str>| {
+        let mut command = common::command();
+        command.args(["reconcile", "owned", "-database"]).arg(path);
+        if let Some(reason) = reason {
+            command.args(["-reason", reason]);
+        }
+        command.output().unwrap()
+    };
+    assert_eq!(command(&live, None).status.code(), Some(2));
+    assert_eq!(command(&live, Some("  ")).status.code(), Some(2));
+    let rejected = command(&live, Some("owner exited"));
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("not confirmed stopped"));
+    assert_eq!(
+        run_database::Database::open(&live)
+            .unwrap()
+            .run("owned")
+            .unwrap()
+            .unwrap()
+            .state,
+        "running"
+    );
+    recorder.ended(None);
+    recorder.close().unwrap();
+    let dead = root.path().join("dead.sqlite");
+    assert!(
+        std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "leaves_running_owner"])
+            .env("UWE_RECONCILE_DATABASE", &dead)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let reconciled = command(&dead, Some("owner process exited"));
+    assert!(
+        reconciled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&reconciled.stderr)
+    );
+    let database = run_database::Database::open(&dead).unwrap();
+    assert!(database.owner("owned").unwrap().is_none());
+    assert_eq!(
+        database.run("owned").unwrap().unwrap().error.as_deref(),
+        Some("owner process exited")
+    );
+    assert!(!command(&dead, Some("duplicate")).status.success());
 }
 
 #[test]

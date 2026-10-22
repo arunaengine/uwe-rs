@@ -34,6 +34,8 @@ pub struct Arguments {
     pub config_file: Option<PathBuf>,
     /// `-profile a,b`
     pub profiles: Option<Vec<String>>,
+    /// `-preset name`: a configured workflow and its reference inputs.
+    pub preset: Option<String>,
     /// `-c file`, `-configfile file`
     pub configs: Vec<PathBuf>,
     /// `--name value` and `--config name=value`, in the order given.
@@ -106,6 +108,7 @@ pub struct Arguments {
     pub license: Option<String>,
     /// `-resume [run]`: continue a run, by default the last run of the workflow.
     pub resume: Option<Resume>,
+    pub reason: Option<String>,
     /// `-page`: serve the web page of the run while it goes on.
     pub page: bool,
     /// `-address ip`: where the web page listens; only this machine by default.
@@ -121,12 +124,14 @@ pub struct Arguments {
     pub keep_slower_than: Option<std::time::Duration>,
     /// `-remove`: `uwe clean` removes what it lists, instead of only listing it.
     pub remove: bool,
+    pub front: bool,
     /// `-check-reproducibility percent`, like `10%`: the share of the tasks whose results come
     /// from the cache that run again, to check that their tools give the same bytes; from 0 to 1.
     pub check_reproducibility: Option<f64>,
     /// `-no-cache`: the run takes no result from the cache and keeps none there; every task
     /// runs.
     pub no_cache: bool,
+    pub strict_provenance: bool,
     /// `-no-network`: tasks whose workflow does not say that they need the network run
     /// without it.
     pub no_network: bool,
@@ -159,6 +164,7 @@ impl Arguments {
             executor: self.executor.clone(),
             resume: self.resume.clone(),
             cache: !self.no_cache,
+            strict_provenance: self.strict_provenance,
             targets: self.targets.clone(),
             until: self.until.clone(),
             omit_from: self.omit_from.clone(),
@@ -187,8 +193,8 @@ pub fn parse_command(command: &str, arguments: &[String]) -> Result<Arguments, S
         return Err(format!("unknown command `{command}`"));
     }
     let parsed = parse_for(Some(command), arguments)?;
-    if command == "version" && parsed.target.is_some() {
-        return Err("`uwe version` takes no target".into());
+    if matches!(command, "version" | "presets") && parsed.target.is_some() {
+        return Err(format!("`uwe {command}` takes no target"));
     }
     Ok(parsed)
 }
@@ -242,6 +248,14 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
             }
             "-stub" | "-stub-run" => parsed.stub = true,
             "-keep-going" => parsed.keep_going = true,
+            "-strict-provenance" => parsed.strict_provenance = true,
+            "-reason" => {
+                let reason = value()?;
+                if reason.trim().is_empty() || reason.starts_with('-') {
+                    return Err("-reason needs nonempty explanatory text".into());
+                }
+                parsed.reason = Some(reason);
+            }
             "-forceall" => parsed.forceall = true,
             "-rerun-triggers" => {
                 let triggers = value()?;
@@ -277,6 +291,7 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
                 });
             }
             "-uwe-config" => parsed.config_file = Some(value()?.into()),
+            "-preset" => parsed.preset = Some(value()?),
             "-profile" => {
                 // Groovy's `tokenize(',')`: empty names are dropped, spaces are kept.
                 let names = value()?;
@@ -369,6 +384,7 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
                 ))?);
             }
             "-remove" => parsed.remove = true,
+            "-front" => parsed.front = true,
             "-no-network" => parsed.no_network = true,
             "-check-reproducibility" => {
                 let text = value()?;
@@ -504,6 +520,7 @@ pub const COMMANDS: &[&str] = &[
     "page",
     "why",
     "origin",
+    "digest",
     "inputs",
     "outputs",
     "clean",
@@ -517,6 +534,8 @@ pub const COMMANDS: &[&str] = &[
     "telemetry",
     "report",
     "resume",
+    "reconcile",
+    "presets",
     "version",
 ];
 const WORKFLOW: &[&str] = &[
@@ -532,6 +551,7 @@ const CONFIGURED: &[&str] = COMMANDS.split_at(COMMANDS.len() - 1).0;
 const EXECUTION: &[&str] = &["run", "graph", "check-order", "repeat", "replay"];
 const BACKEND: &[&str] = &[
     "run",
+    "check",
     "graph",
     "check-order",
     "repeat",
@@ -539,7 +559,10 @@ const BACKEND: &[&str] = &[
     "check-machine",
 ];
 const OPTIONS: &[(&str, &[&str])] = &[
-    ("-r,-revision <tag|branch|commit>", &["run", "graph"]),
+    (
+        "-r,-revision <tag|branch|commit>",
+        &["run", "graph", "check", "inputs", "outputs"],
+    ),
     ("-latest", &["run", "graph"]),
     ("-help", COMMANDS),
     ("-version,--version", COMMANDS),
@@ -566,6 +589,7 @@ const OPTIONS: &[(&str, &[&str])] = &[
             "replay",
             "telemetry",
             "report",
+            "reconcile",
         ],
     ),
     (
@@ -573,6 +597,7 @@ const OPTIONS: &[(&str, &[&str])] = &[
         &["run", "graph", "check", "inputs", "outputs", "check-order"],
     ),
     ("-profile <a,b>", WORKFLOW),
+    ("-preset <name>", &["run", "check", "inputs", "outputs"]),
     ("-c,-config,-configfile,--configfile <file>", WORKFLOW),
     ("-inputs,-params-file <file>", WORKFLOW),
     (
@@ -652,6 +677,8 @@ const OPTIONS: &[(&str, &[&str])] = &[
     ("-platform <name>", &["lock-environment"]),
     ("-license <url>", &["export"]),
     ("-resume [run]", &["run", "graph"]),
+    ("-reason <text>", &["reconcile"]),
+    ("-strict-provenance", &["run"]),
     ("-page", &["run", "repeat"]),
     ("-address <ip>", &["run", "repeat", "page"]),
     ("-port <number>", &["run", "repeat", "page"]),
@@ -659,6 +686,7 @@ const OPTIONS: &[(&str, &[&str])] = &[
     ("-keep-run <run>", &["clean"]),
     ("-keep-slower-than <time>", &["clean"]),
     ("-remove", &["clean"]),
+    ("-front", &["clean"]),
     (
         "-check-reproducibility <percent>",
         &["run", "graph", "check-order", "repeat", "replay"],
@@ -680,7 +708,7 @@ pub fn help(command: &str) -> Result<String, String> {
     }
     let mut help = format!("usage: uwe {command} [options]");
     let target = match command {
-        "runs" | "clean" | "check-machine" | "version" => "",
+        "runs" | "presets" | "clean" | "check-machine" | "version" => "",
         "page" => " [run]",
         "compare" => " <run> [run]",
         "why" => " [run [task]]",
@@ -688,6 +716,7 @@ pub fn help(command: &str) -> Result<String, String> {
         "replay" => " <run> <task>",
         "config" => " [project] [--param value]",
         "origin" => " <file>",
+        "digest" => " <path>",
         _ if WORKFLOW.contains(&command) => " <workflow> [targets] [--param value]",
         "lock-environment" => " <environment.yml>",
         _ => " <run>",
@@ -866,6 +895,52 @@ mod tests {
         for words in [["-r", "-latest"], ["-r", ""]] {
             assert!(parse(&words.map(str::to_owned)).is_err());
         }
+    }
+
+    #[test]
+    fn parses_workflow_presets() {
+        let words = ["-preset", "lab"].map(str::to_owned);
+        for command in ["run", "check", "inputs", "outputs"] {
+            assert_eq!(
+                parse_command(command, &words).unwrap().preset.as_deref(),
+                Some("lab")
+            );
+        }
+        assert!(parse_command("runs", &words).is_err());
+    }
+
+    #[test]
+    fn scopes_safety_options() {
+        let parsed =
+            parse_command("run", &["main.nf".into(), "-strict-provenance".into()]).unwrap();
+        assert!(parsed.run_settings().strict_provenance);
+        assert!(!Arguments::default().run_settings().strict_provenance);
+        assert!(parse_command("graph", &["-strict-provenance".into()]).is_err());
+        assert!(help("run").unwrap().contains("-strict-provenance"));
+        assert!(parse_command("clean", &["-front".into()]).unwrap().front);
+        assert!(parse_command("run", &["-front".into()]).is_err());
+        assert!(help("clean").unwrap().contains("-front"));
+        let words = [
+            "run-id",
+            "-reason",
+            "owner process exited",
+            "-database",
+            "runs.sqlite",
+        ]
+        .map(str::to_owned);
+        assert_eq!(
+            parse_command("reconcile", &words)
+                .unwrap()
+                .reason
+                .as_deref(),
+            Some("owner process exited")
+        );
+        assert!(parse_command("run", &words).is_err());
+        for reason in ["", "  ", "-database"] {
+            assert!(parse_command("reconcile", &["-reason".into(), reason.into()]).is_err());
+        }
+        assert!(help("reconcile").unwrap().contains("-reason <text>"));
+        assert!(help("digest").unwrap().contains("<path>"));
     }
 
     #[test]

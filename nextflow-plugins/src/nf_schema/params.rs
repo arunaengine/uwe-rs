@@ -25,10 +25,7 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
     // From 2.7.0 on, nf-schema leaves out only null params instead of all false ones.
     let cleans = version(context).is_some_and(|parts| parts.as_slice() < [2, 7, 0].as_slice());
     for (name, value) in entries(&context.params) {
-        let value = match cleans {
-            true => cleaned(&value),
-            false => without_nulls(&value),
-        };
+        let value = crate::clean_value(&value, cleans);
         let Some(value) = value else {
             continue;
         };
@@ -127,20 +124,6 @@ fn shown(value: &serde_json::Value) -> String {
     }
 }
 
-/// A param as nf-schema checks it from 2.7.0 on: left out if null, with nulls left out of
-/// its maps.
-fn without_nulls(value: &Value) -> Option<Value> {
-    Some(match value {
-        Value::Null => return None,
-        Value::Map(_) => Value::map(
-            entries(value)
-                .into_iter()
-                .filter_map(|(key, value)| Some((Value::string(key), without_nulls(&value)?))),
-        ),
-        other => other.clone(),
-    })
-}
-
 /// Reads the texts of command-line params as Nextflow's legacy parser did, in every map of
 /// the params, as nf-schema's JSON converter does.
 fn cast(instance: &mut serde_json::Value, names: &[String]) {
@@ -190,24 +173,6 @@ fn typed(text: &str) -> serde_json::Value {
         }
     }
     serde_json::Value::String(text.to_owned())
-}
-
-/// A param as nf-schema's `cleanParameters` leaves it for validation: a value that Groovy
-/// counts as false, like `false`, `''` or `[]`, is left out unless it is zero, and a map is
-/// cleaned inside.
-fn cleaned(value: &Value) -> Option<Value> {
-    let zero = matches!(value, Value::Number(number) if number.is_zero());
-    if !value.truth() && !zero {
-        return None;
-    }
-    Some(match value {
-        Value::Map(_) => Value::map(
-            entries(value)
-                .into_iter()
-                .filter_map(|(key, value)| Some((Value::string(key), cleaned(&value)?))),
-        ),
-        other => other.clone(),
-    })
 }
 
 /// `paramsSummaryMap`: the core options of the run, then for each group of the schema the

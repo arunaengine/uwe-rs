@@ -49,6 +49,7 @@ fn loaded(text: &str) -> Config {
         params: Value::map([]),
         project_dir: "/project".into(),
         launch_dir: "/launch".into(),
+        work_dir: "/work".into(),
     };
     let mut host = Fixtures(String::new());
     nextflow_config::load(&[file], &options, &mut host).expect("loads")
@@ -419,6 +420,7 @@ fn coerces_lenient_strings() {
         params: Value::map([]),
         project_dir: "/project".into(),
         launch_dir: "/launch".into(),
+        work_dir: "/work".into(),
     };
     let mut host = Fixtures(String::new());
     let config = nextflow_config::load(&[file], &options, &mut host).expect("loads");
@@ -444,6 +446,7 @@ fn casts_command_line() {
             params: Value::map([]),
             project_dir: "/project".into(),
             launch_dir: "/launch".into(),
+            work_dir: "/work".into(),
         };
         let mut host = Fixtures(directory.clone());
         let config = nextflow_config::load(&[file], &options, &mut host).expect("loads");

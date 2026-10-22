@@ -216,22 +216,7 @@ fn typed_schema(class: &str) -> Json {
 /// The params of a run as nf-schema checks them: a value that Groovy counts as false, like
 /// `null`, `false`, `''` or `[]`, is left out unless it is zero, and a map is cleaned inside.
 pub fn values(params: &Value) -> Json {
-    cleaned(to_json(params)).unwrap_or_else(|| json!({}))
-}
-
-fn cleaned(value: Json) -> Option<Json> {
-    match value {
-        Json::Null | Json::Bool(false) => None,
-        Json::String(text) if text.is_empty() => None,
-        Json::Array(items) if items.is_empty() => None,
-        Json::Object(map) if map.is_empty() => None,
-        Json::Object(map) => Some(Json::Object(
-            map.into_iter()
-                .filter_map(|(key, value)| Some((key, cleaned(value)?)))
-                .collect(),
-        )),
-        other => Some(other),
-    }
+    to_json(&nextflow_plugins::clean_params(params, true))
 }
 
 /// A value of a script or config as JSON: paths as their text, durations and memory units as
@@ -271,16 +256,25 @@ pub fn validates(module: &Rc<Module>, params: &Value) -> bool {
         Some(Value::String(text)) => text.eq_ignore_ascii_case("false"),
         _ => false,
     };
-    !switched_off && validates_from(module, &mut Vec::new())
+    !switched_off && validates_from(module, None, &mut Vec::new())
 }
 
-fn validates_from(module: &Rc<Module>, seen: &mut Vec<*const Module>) -> bool {
+pub(crate) fn schema_validation(module: &Rc<Module>) -> bool {
+    validates_from(module, Some("plugin/nf-schema"), &mut Vec::new())
+}
+
+fn validates_from(
+    module: &Rc<Module>,
+    plugin: Option<&str>,
+    seen: &mut Vec<*const Module>,
+) -> bool {
     if seen.contains(&Rc::as_ptr(module)) {
         return false;
     }
     seen.push(Rc::as_ptr(module));
     let includes = module.includes.iter().any(|include| {
         &*include.name == "validateParameters"
+            && plugin.is_none_or(|plugin| include.source.as_ref() == plugin)
             && matches!(
                 &*include.source,
                 "plugin/nf-schema" | "plugin/nf-validation"
@@ -293,7 +287,9 @@ fn validates_from(module: &Rc<Module>, seen: &mut Vec<*const Module>) -> bool {
         .chain(module.conditional_links.borrow().values())
         .map(|link| link.module.clone())
         .collect();
-    linked.iter().any(|module| validates_from(module, seen))
+    linked
+        .iter()
+        .any(|module| validates_from(module, plugin, seen))
 }
 
 /// Whether the check of the pipeline takes types leniently, as nf-schema's
@@ -691,7 +687,10 @@ mod tests {
 
     #[test]
     fn normalizes_schema_values() {
-        let params = json!({"input": null, "skip": false, "name": "", "zero": 0, "list": [], "map": {"a": null, "b": 1}});
-        assert_eq!(cleaned(params), Some(json!({"zero": 0, "map": {"b": 1}})));
+        let params = nextflow_evaluator::interpreter::parse_json(
+            r#"{"input":null,"skip":false,"name":"","zero":0,"list":[],"map":{"a":null,"b":1}}"#,
+        )
+        .unwrap();
+        assert_eq!(values(&params), json!({"zero": 0, "map": {"b": 1}}));
     }
 }

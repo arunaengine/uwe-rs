@@ -153,7 +153,12 @@ impl PodStaging {
             })?),
             None => None,
         };
-        let script = capture(&script, &files)?;
+        let transfer = if discovery.is_some() {
+            text(&root.join(executor::helper::TRANSFER))
+        } else {
+            files.clone()
+        };
+        let script = capture(&script, &transfer)?;
         let script = script
             .strip_suffix("exit \"$status\"\n")
             .expect("a final exit");

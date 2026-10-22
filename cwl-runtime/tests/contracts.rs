@@ -113,7 +113,7 @@ fn checks_expression_outputs() {
 
 #[test]
 fn preserves_nullable_items() {
-    let source = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: 'true'\ninputs:\n  values: {type: array, items: ['null', string]}\n  nested: {type: array, items: {type: array, items: ['null', int]}}\noutputs: []\n";
+    let source = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: 'true'\ninputs:\n  values: {type: {type: array, items: ['null', string]}}\n  nested: {type: {type: array, items: {type: array, items: ['null', int]}}}\noutputs: []\n";
     let (_root, mut driver) = loaded(
         source,
         r#"{"values":[null,"x"],"nested":[[null,2],[]]}"#,

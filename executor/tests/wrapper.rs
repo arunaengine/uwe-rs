@@ -18,6 +18,7 @@ fn spec(outputs: &[&str]) -> TaskSpec {
     );
     environment.insert("TASK_DIR".to_owned(), EnvironmentValue::WorkDirectory);
     TaskSpec {
+        output_manifest: None,
         run_as: None,
         format: FORMAT,
         namespace: String::new(),

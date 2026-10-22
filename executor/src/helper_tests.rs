@@ -122,6 +122,122 @@ fn sends_captured_outputs() {
 }
 
 #[test]
+fn sends_discovered_outputs() {
+    let store = tempfile::tempdir().unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    std::fs::create_dir_all(root.join("work/result/empty")).unwrap();
+    std::fs::create_dir_all(root.join("control")).unwrap();
+    std::fs::create_dir_all(root.join("transfer")).unwrap();
+    std::fs::write(root.join("control/exit"), "0\n").unwrap();
+    std::fs::write(
+        root.join("control/manifest"),
+        "file declared\nfile cwl.output.json\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("work/declared"), "declared").unwrap();
+    std::fs::write(root.join("work/.hidden"), "hidden").unwrap();
+    std::fs::write(root.join("work/result/.child"), "child").unwrap();
+    std::fs::write(root.join("work/unrelated"), "not selected").unwrap();
+    std::fs::write(
+        root.join("work/cwl.output.json"),
+        r#"{
+        "file":{"class":"File","path":"/work/.hidden"},
+        "dir":{"class":"Directory","path":"result"},
+        "input":{"class":"File","path":"input"}
+    }"#,
+    )
+    .unwrap();
+    std::fs::copy(root.join("work/declared"), root.join("transfer/1")).unwrap();
+    std::fs::copy(root.join("work/cwl.output.json"), root.join("transfer/2")).unwrap();
+    std::fs::write(
+        root.join("control/objects"),
+        "1 declared\n2 cwl.output.json\n",
+    )
+    .unwrap();
+    let plan = Plan {
+        discovery: Some(Discovery {
+            manifest: "cwl.output.json".into(),
+            workdir: Some("/work".into()),
+            work: None,
+            read_only: vec!["input".into()],
+            aliases: Vec::new(),
+        }),
+        files: (1..=4)
+            .map(|number| request("PUT", &store.path().join(number.to_string())))
+            .collect(),
+        records: ["manifest", "objects"]
+            .into_iter()
+            .map(|name| Record {
+                name: name.into(),
+                request: request("PUT", &store.path().join(name)),
+            })
+            .collect(),
+        ..Plan::default()
+    };
+    stage_out(root, None, &plan).unwrap();
+    let index = std::fs::read_to_string(store.path().join("objects")).unwrap();
+    assert_eq!(
+        index,
+        "1 declared\n2 cwl.output.json\n3 .hidden\n4 result/.child\n"
+    );
+    assert_eq!(std::fs::read(store.path().join("3")).unwrap(), b"hidden");
+    assert_eq!(std::fs::read(store.path().join("4")).unwrap(), b"child");
+    assert!(!index.contains("input"));
+    assert!(!index.contains("unrelated"));
+    let manifest = std::fs::read_to_string(store.path().join("manifest")).unwrap();
+    assert!(manifest.contains("directory result\n"));
+    assert!(manifest.contains("directory result/empty\n"));
+    let mut limited = plan.clone();
+    limited.files.truncate(3);
+    assert!(
+        stage_out(root, None, &limited)
+            .unwrap_err()
+            .contains("more than 3")
+    );
+}
+
+#[test]
+fn keeps_captured_links() {
+    let folder = tempfile::tempdir().unwrap();
+    let outside = tempfile::NamedTempFile::new().unwrap();
+    let root = folder.path();
+    std::fs::write(outside.path(), "host secret").unwrap();
+    std::fs::create_dir_all(root.join("work")).unwrap();
+    std::fs::create_dir_all(root.join("control")).unwrap();
+    std::fs::create_dir_all(root.join("transfer")).unwrap();
+    std::fs::write(root.join("work/cwl.output.json"), "{}").unwrap();
+    std::fs::write(root.join("control/exit"), "0\n").unwrap();
+    std::fs::write(root.join("control/manifest"), "file result\n").unwrap();
+    std::fs::write(root.join("control/objects"), "1 ./result\n").unwrap();
+    std::fs::write(root.join("transfer/1"), "container snapshot").unwrap();
+    std::os::unix::fs::symlink(outside.path(), root.join("work/result")).unwrap();
+    let discovery = Discovery {
+        manifest: "cwl.output.json".into(),
+        workdir: None,
+        work: None,
+        read_only: Vec::new(),
+        aliases: Vec::new(),
+    };
+    discover(root, &discovery, 1).unwrap();
+    assert_eq!(
+        std::fs::read(root.join("transfer/1")).unwrap(),
+        b"container snapshot"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("control/objects")).unwrap(),
+        "1 ./result\n"
+    );
+    std::fs::remove_file(root.join("transfer/1")).unwrap();
+    std::os::unix::fs::symlink(outside.path(), root.join("transfer/1")).unwrap();
+    assert!(
+        discover(root, &discovery, 1)
+            .unwrap_err()
+            .contains("symbolic link")
+    );
+}
+
+#[test]
 fn installs_this_program() {
     let folder = tempfile::tempdir().unwrap();
     let file = folder.path().join("uwe");

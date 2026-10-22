@@ -492,3 +492,116 @@ fn rare_collection_helpers() {
         assert_eq!(value(code), expected, "{code}");
     }
 }
+
+#[test]
+fn readonly_collections() {
+    assert_eq!(
+        value(
+            "def a=[3,1,1].asImmutable(); def b=a.asUnmodifiable(); [a.sort(false),b.unique(false),a,b]"
+        ),
+        "[[1, 1, 3], [3, 1], [3, 1, 1], [3, 1, 1]]"
+    );
+    assert_eq!(
+        value(
+            "def a=[1]; def copy=a.asImmutable(); def view=a.asUnmodifiable(); a.add(2); [a, copy, view]"
+        ),
+        "[[1, 2], [1], [1, 2]]"
+    );
+    assert_eq!(
+        value(
+            "def a=[x:1]; def copy=a.asImmutable(); def view=a.asUnmodifiable(); a.x=2; [a, copy, view]"
+        ),
+        "[[x:2], [x:1], [x:2]]"
+    );
+    for source in [
+        "[1].asImmutable().add(2)",
+        "[1].asUnmodifiable().clear()",
+        "def a=[1].asImmutable(); a[0]=2",
+        "def a=[1].asUnmodifiable(); a << 2",
+        "[x:1].asImmutable().put('x',2)",
+        "[x:1].asUnmodifiable().remove('x')",
+        "def a=[x:1].asImmutable(); a.x=2",
+        "def a=[x:1].asUnmodifiable(); a['x']=2",
+        "def a=[x:1].asUnmodifiable(); a << [y:2]",
+    ] {
+        assert!(
+            eval(source)
+                .unwrap_err()
+                .contains("UnsupportedOperationException"),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn backed_slices() {
+    assert_eq!(
+        value("def a=[1,2,3]; def b=a.subList(1,3); \"b=$b\""),
+        "b=[2, 3]"
+    );
+    assert_eq!(
+        value(
+            "def a=(1..1000000000).subList(1,999999999); def b=a.subList(2,999999997); [b.size(),b.get(0),b.get(-1+999999995)]"
+        ),
+        "[999999995, 4, 999999998]"
+    );
+    assert_eq!(
+        value(
+            "def a=[1,2,3,4]; def b=a.subList(1,3); b.set(0,20); a.set(2,30); def seen=b.toList(); b.clear(); [a, seen, b]"
+        ),
+        "[[1, 4], [20, 30], []]"
+    );
+    assert_eq!(
+        value(
+            "def a=[1,2,3,4]; def b=a.subList(1,3); b.add(5); def c=b.subList(1,3); c.set(0,30); [a,b,c]"
+        ),
+        "[[1, 2, 30, 5, 4], [2, 30, 5], [30, 5]]"
+    );
+    assert!(
+        eval("[1,2].asUnmodifiable().subList(0,1).clear()")
+            .unwrap_err()
+            .contains("UnsupportedOperationException")
+    );
+}
+
+#[test]
+fn collection_access() {
+    assert_eq!(
+        value(
+            "def a=[]; def m=[:]; (1..100).each { a.add(it); m.put(it,it) }; [a.size(),a.get(99),m.size(),m.get(100),m.containsKey(100)]"
+        ),
+        "[100, 100, 100, 100, true]"
+    );
+}
+
+#[test]
+fn removal_change_flags() {
+    assert_eq!(
+        value(
+            "def a=[1,2,3]; def first=a.retainAll([1,2]); def second=a.removeAll([2]); [first,second,a,a.removeAll([9]),a.retainAll([1])]"
+        ),
+        "[true, true, [1], false, false]"
+    );
+}
+
+#[test]
+fn readonly_default_get() {
+    assert_eq!(value("[x:1].asUnmodifiable().get('x',2)"), "1");
+    assert!(
+        eval("[x:1].asUnmodifiable().get('y',2)")
+            .unwrap_err()
+            .contains("UnsupportedOperationException")
+    );
+}
+
+#[test]
+fn immutable_default_snapshot() {
+    assert_eq!(
+        value("def a=[:].withDefault { 9 }; def b=a.asImmutable(); [b['x'],a['x'],b]"),
+        "[null, 9, [:]]"
+    );
+    assert_eq!(
+        value("def a=[1].withDefault { 9 }; def b=a.asImmutable(); [b[2],a[2],b]"),
+        "[null, 9, [1]]"
+    );
+}

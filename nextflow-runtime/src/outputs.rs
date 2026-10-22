@@ -85,17 +85,17 @@ impl Publish {
                 },
             };
             places.insert(file.path.clone(), place.clone());
-            if !self.overwrite && place.exists() {
-                continue;
-            }
             deliveries.push(Delivery {
                 location: file.uri(),
                 target: place.to_string_lossy().into_owned(),
                 mode: self.mode,
+                overwrite: self.overwrite,
             });
         }
         context.deliver(deliveries);
-        self.published.push(normalized(&value, &places));
+        if self.options.index("path").is_some() {
+            self.published.push(normalized(&value, &places));
+        }
         Ok(())
     }
 
@@ -340,5 +340,53 @@ pub(crate) fn output_directory(configured: Option<&str>, launch: &Path) -> PathB
         // An address of a storage provider, like `s3://bucket/results`, stays as it is.
         address if address.contains("://") => PathBuf::from(address),
         folder => launch.join(folder),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nextflow_evaluator::interpreter::{Host, Interpreter};
+
+    #[test]
+    fn bounds_unindexed_publication() {
+        struct Silent;
+        impl Host for Silent {
+            fn print(&mut self, _: &str) {}
+        }
+        struct Checked(Publish);
+        impl Behaviour for Checked {
+            fn run(&mut self, context: &mut Context) -> Result<State, Error> {
+                let state = self.0.run(context)?;
+                assert!(self.0.published.is_empty());
+                Ok(state)
+            }
+        }
+        let mut network = crate::Network::default();
+        let output = network.channel(false);
+        network.add(
+            "source",
+            &[],
+            Box::new(crate::operator::Factory {
+                values: vec![Value::integer(1); 10_000],
+                output,
+                close: true,
+                failure: None,
+            }),
+        );
+        network.add(
+            "publish",
+            &[output],
+            Box::new(Checked(Publish {
+                name: "results".into(),
+                options: OutputOptions::default(),
+                directory: "results".into(),
+                mode: DeliveryMode::Copy,
+                overwrite: true,
+                published: Vec::new(),
+            })),
+        );
+        network.ignite(&mut Interpreter::new(&mut Silent)).unwrap();
+        assert!(network.running().is_empty());
     }
 }

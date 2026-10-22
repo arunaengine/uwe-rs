@@ -428,6 +428,7 @@ fn config(text: &str) -> nextflow_config::Config {
         params: nextflow_evaluator::value::Value::map([]),
         project_dir: "/project".into(),
         launch_dir: "/launch".into(),
+        work_dir: "/work".into(),
     };
     nextflow_config::load(&[file], &options, &mut Output::default()).expect("loads")
 }

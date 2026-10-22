@@ -321,17 +321,17 @@ fn set_defaults(
 }
 
 /// Builds a validator for a schema, as Draft 2020-12 like Snakemake, else by its `$schema`.
-fn validator(schema: &Json) -> Option<jsonschema::Validator> {
+fn validator(schema: &Json) -> Result<jsonschema::Validator, String> {
     let strict = jsonschema::options()
         .with_draft(jsonschema::Draft::Draft202012)
         .with_retriever(FileRetriever)
         .build(schema);
     match strict {
-        Ok(validator) => Some(validator),
+        Ok(validator) => Ok(validator),
         Err(_) => jsonschema::options()
             .with_retriever(FileRetriever)
             .build(schema)
-            .ok(),
+            .map_err(|error| format!("SchemaError: {error}")),
     }
 }
 
@@ -383,8 +383,9 @@ pub fn validate_record(
         };
         set_defaults(interpreter, schema, &context, record, 0)?;
     }
-    let Some(validator) = validator(schema) else {
-        return Ok(Ok(()));
+    let validator = match validator(schema) {
+        Ok(validator) => validator,
+        Err(message) => return Ok(Err(message)),
     };
     let instance = to_json(interpreter, record)?;
     let first = validator

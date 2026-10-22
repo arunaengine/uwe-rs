@@ -122,3 +122,26 @@ fn explains_invalid_configs() {
         );
     }
 }
+
+#[test]
+fn rejects_invalid_schemas() {
+    let folder = tempfile::tempdir().expect("a folder");
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        "from snakemake.utils import validate\nvalidate(config, 'schema.yaml', set_default=False)\nrule a:\n    output: 'o'\n    shell: 'touch o'\n",
+    )
+    .expect("a Snakefile");
+    for schema in ["type: invalid\n", "$ref: missing.yaml\n"] {
+        std::fs::write(folder.path().join("schema.yaml"), schema).expect("a schema");
+        let launch = Launch {
+            target: folder.path().to_owned(),
+            simulated: true,
+            ..Launch::default()
+        };
+        let error = snakemake_runtime::driver(&launch)
+            .expect("a driver")
+            .start()
+            .expect_err("an unusable schema must reject the workflow");
+        assert!(error.message.contains("SchemaError:"), "{error}");
+    }
+}

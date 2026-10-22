@@ -486,3 +486,21 @@ fn rare_text_helpers() {
         assert_eq!(value(code), expected, "{code}");
     }
 }
+
+#[test]
+fn negative_padding() {
+    assert_eq!(
+        value("['x'.padLeft(-1), 'x'.padRight(-1), 'x'.center(-1)]"),
+        "[x, x, x]"
+    );
+}
+
+#[test]
+fn base64_vectors() {
+    assert_eq!(
+        value(
+            "['', 'f', 'fo', 'foo', 'foob', 'fooba', 'foobar', 'ü'].collect { it.bytes.encodeBase64().toString() }"
+        ),
+        "[, Zg==, Zm8=, Zm9v, Zm9vYg==, Zm9vYmE=, Zm9vYmFy, w7w=]"
+    );
+}

@@ -39,7 +39,7 @@ impl Interpreter<'_> {
             ("Pattern", "quote", [text]) => Value::string(format!("\\Q{text}\\E")),
             ("Pattern", "matches", [regex, text]) => {
                 let pattern = crate::regex::Pattern::new(&regex.to_string()).at(span)?;
-                Value::Boolean(pattern.matches(&text.to_string()))
+                Value::Boolean(pattern.matches(&text.to_string()).at(span)?)
             }
             // Numbers are formatted as the root locale does, whatever locale is given.
             ("String", "format", [Value::Object(locale), pattern, rest @ ..])

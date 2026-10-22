@@ -89,14 +89,16 @@ impl Interpreter<'_> {
                     }
                 },
             },
-            Value::Pattern(pattern) => regex::pattern_method(pattern, name, arguments),
-            Value::Matcher(matcher) => match regex::matcher_method(matcher, name, arguments) {
-                Some(value) => Some(value),
-                None => {
-                    let items = regex::matcher_items(matcher);
-                    self.iterable_method(object, &items, name, arguments, span)?
+            Value::Pattern(pattern) => regex::pattern_method(pattern, name, arguments).at(span)?,
+            Value::Matcher(matcher) => {
+                match regex::matcher_method(matcher, name, arguments).at(span)? {
+                    Some(value) => Some(value),
+                    None => {
+                        let items = regex::matcher_items(matcher).at(span)?;
+                        self.iterable_method(object, &items, name, arguments, span)?
+                    }
                 }
-            },
+            }
             Value::MemoryUnit(_) | Value::Duration(_) => {
                 number::unit_method(object, name, arguments)
             }
@@ -261,7 +263,7 @@ pub(super) fn iterator(items: Vec<Value>) -> Value {
 /// A new map with the entries of a map, as `toMap()` gives it.
 pub(in crate::interpreter) fn copy_map(map: &Value) -> Value {
     match map {
-        Value::Map(map) => Value::Map(std::rc::Rc::new(std::cell::RefCell::new(
+        Value::Map(map) => Value::Map(std::rc::Rc::new(crate::value::MapCell::new(
             crate::value::Map {
                 kind: crate::value::MapKind::LinkedHashMap,
                 entries: map.borrow().entries.clone(),

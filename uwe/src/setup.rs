@@ -1053,9 +1053,11 @@ mod tests {
             executor: Some("slurm".into()),
             ..super::Defaults::default()
         };
-        let mut arguments = crate::arguments::parse(&["main.nf".into()]).expect("arguments");
-        slurm().apply("run", &mut arguments);
-        assert_eq!(arguments.executor.as_deref(), Some("slurm"));
+        for command in ["run", "check"] {
+            let mut arguments = crate::arguments::parse(&["main.nf".into()]).expect("arguments");
+            slurm().apply(command, &mut arguments);
+            assert_eq!(arguments.executor.as_deref(), Some("slurm"));
+        }
         let words = ["main.nf".into(), "-executor".into(), "local".into()];
         let mut arguments = crate::arguments::parse(&words).expect("arguments");
         slurm().apply("run", &mut arguments);
@@ -1063,12 +1065,12 @@ mod tests {
         let mut arguments = crate::arguments::parse(&["main.nf".into()]).expect("arguments");
         slurm().apply("graph", &mut arguments);
         assert_eq!(arguments.executor.as_deref(), Some("simulator"));
-        for command in ["run", "check-machine"] {
+        for command in ["run", "check", "check-machine"] {
             let mut arguments = crate::arguments::Arguments::default();
             super::Defaults::default().apply(command, &mut arguments);
             assert_eq!(arguments.executor.as_deref(), Some("local"));
         }
-        for command in ["graph", "check", "check-order", "inputs", "outputs"] {
+        for command in ["graph", "check-order", "inputs", "outputs"] {
             let mut arguments = crate::arguments::Arguments::default();
             slurm().apply(command, &mut arguments);
             assert_eq!(arguments.executor.as_deref(), Some("simulator"));

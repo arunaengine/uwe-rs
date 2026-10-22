@@ -190,7 +190,7 @@ fn explains_missing_prerequisites() {
     );
     assert_eq!(code, 3, "{stderr}");
     assert!(
-        stderr.contains("name it with -kubeconfig <file>"),
+        stderr.contains("requires -kubeconfig, an injected client or explicit in_cluster configuration"),
         "{stderr}"
     );
 }

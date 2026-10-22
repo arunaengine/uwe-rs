@@ -151,14 +151,19 @@ fn assert_recorded(database: &Path, run: &str, accepted: bool, resumable: bool) 
         ("stdout", "preserved stdout\n"),
         ("stderr", "preserved stderr\n"),
     ] {
-        assert_eq!(
-            database
-                .log(run, 1, 1, stream)
-                .expect("reads a log")
-                .expect("a log")
-                .text,
-            expected
-        );
+        let log = database
+            .log(run, 1, 1, stream)
+            .expect("reads a log")
+            .expect("a log");
+        let bytes = if log.whole {
+            log.text.into_bytes()
+        } else {
+            std::fs::read(log.location.as_ref().expect("a retained log location"))
+                .expect("reads the retained log")
+        };
+        assert_eq!(bytes.len() as u64, log.size);
+        assert_eq!(task_model::Digest::sha256(&bytes).to_string(), log.digest);
+        assert_eq!(bytes, expected.as_bytes());
     }
     let reusable = database
         .reusable(&[run.to_owned()])
@@ -175,6 +180,7 @@ fn exercise(
     let store = Store::local(&root.join("store")).expect("a store");
     let database = root.join("runs.sqlite");
     let mut executor = executor(root, store.clone(), flavor);
+    executor.network.none_by_default = true;
 
     let rejected = run(
         &database,

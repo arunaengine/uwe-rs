@@ -330,6 +330,7 @@ fn bounds_accepted_tasks() {
                     (503, "unavailable"),
                     (200, r#"{"id":"task-1","state":"RUNNING"}"#),
                     (200, r#"{"id":"task-1","state":"COMPLETE"}"#),
+                    (200, r#"{"id":"task-1","state":"COMPLETE"}"#),
                 ]
             };
             for (status, answer) in answers {
@@ -416,6 +417,19 @@ fn bounds_accepted_tasks() {
             1
         );
         assert_eq!(calls.iter().any(|line| line.contains(":cancel")), timed_out);
+        assert!(
+            calls
+                .iter()
+                .filter(|line| line.starts_with("GET "))
+                .all(|line| { line.starts_with("GET /ga4gh/tes/v1/tasks/task-1?view=") })
+        );
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|line| line.contains("?view=FULL"))
+                .count(),
+            1
+        );
     }
 }
 
@@ -440,9 +454,17 @@ fn stop_task(own: bool) {
     // The wrapper of the task ran out of its time, and its timer ended it with 124.
     let ended = r#"{"id":"task-1","state":"EXECUTOR_ERROR","logs":[{"logs":[{"exit_code":124}]}]}"#;
     let server = std::thread::spawn(move || {
-        for answer in [r#"{"id":"task-1"}"#, ended] {
+        for (expected, answer) in [
+            ("POST /ga4gh/tes/v1/tasks ", r#"{"id":"task-1"}"#),
+            (
+                "GET /ga4gh/tes/v1/tasks/task-1?view=MINIMAL ",
+                r#"{"id":"task-1","state":"EXECUTOR_ERROR"}"#,
+            ),
+            ("GET /ga4gh/tes/v1/tasks/task-1?view=FULL ", ended),
+        ] {
             let (mut stream, _) = listener.accept().unwrap();
             let (first, body) = request(&mut stream);
+            assert!(first.starts_with(expected), "{first}");
             if first.starts_with("POST /ga4gh/tes/v1/tasks ") {
                 let document: serde_json::Value = serde_json::from_str(&body).unwrap();
                 for output in document["outputs"].as_array().unwrap() {

@@ -165,7 +165,7 @@ fn retains_backend_context() {
     let directory = folder(&[
         (
             "main.nf",
-            "process A { container 'alpine:3.21'; script: 'true' }\nworkflow { if (workflow.containerEngine != 'apptainer') { error 'wrong engine' }; A() }\n",
+            "process A {\ncontainer 'alpine:3.21'\nscript:\n 'true'\n}\nworkflow { if (workflow.containerEngine != 'apptainer') { error 'wrong engine' }; A() }\n",
         ),
         ("lab.toml", "[executor]\ndefault = 'slurm'\n"),
     ]);
@@ -192,7 +192,7 @@ fn retains_preset_context() {
         .join(&revision);
     std::fs::create_dir_all(&project).unwrap();
     std::fs::write(project.join(".uwe-revision"), &revision).unwrap();
-    std::fs::write(project.join("main.nf"), "process A { container 'alpine:3.21'; script: 'true' }\nworkflow { if (workflow.containerEngine != 'apptainer') { error 'wrong engine' }; A() }\n").unwrap();
+    std::fs::write(project.join("main.nf"), "process A {\ncontainer 'alpine:3.21'\nscript:\n 'true'\n}\nworkflow { if (workflow.containerEngine != 'apptainer') { error 'wrong engine' }; A() }\n").unwrap();
     for (preset, explicit, expected) in [
         ("", None, 0),
         ("executor='local'\n", None, 1),
@@ -220,7 +220,7 @@ fn requires_conda_setup() {
     let directory = folder(&[
         (
             "main.nf",
-            "process A { conda 'samtools=1.20'; script: 'true' }\nworkflow { A() }\n",
+            "process A {\nconda 'samtools=1.20'\nscript:\n 'true'\n}\nworkflow { A() }\n",
         ),
         ("nextflow.config", "conda.enabled = true\n"),
     ]);
@@ -250,9 +250,9 @@ fn checks_pinned_revisions() {
         });
         std::fs::write(project.join("nextflow_schema.json"), schema.to_string()).unwrap();
         let (code, stdout) = check(directory.path(), &["team/pipeline", "-r", &commit]);
-        assert_eq!(code, 1, "{stdout}");
+        assert_eq!(code, 0, "{stdout}");
         assert!(
-            stdout.contains(&format!("`{name}` is required")),
+            stdout.contains(&format!("warning: the input `{name}` is required")),
             "{stdout}"
         );
         for command in ["inputs", "outputs"] {

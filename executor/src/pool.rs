@@ -2,9 +2,10 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::borrow::Cow;
 use std::cmp::Reverse;
 use std::collections::BTreeSet;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
@@ -12,14 +13,14 @@ use tokio_util::sync::CancellationToken;
 const MIB: u64 = 1024 * 1024;
 
 /// The CPUs and memory of this machine, or the part of them that tasks may use.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Pool {
     total_cpus: u32,
     total_memory: u64,
     /// What is free, and the tasks that wait for their share.
-    state: Mutex<State>,
+    state: Arc<Mutex<State>>,
     /// Wakes the waiting tasks when a share comes free or a task leaves the queue.
-    changed: Notify,
+    changed: Arc<Notify>,
     /// Fires when the run starts no more tasks, so that the tasks that wait give up.
     held: CancellationToken,
 }
@@ -56,11 +57,25 @@ impl Drop for Place<'_> {
 /// A task's share of the pool, given back when it is dropped.
 #[derive(Debug)]
 pub struct Share<'a> {
-    pool: &'a Pool,
+    pool: Cow<'a, Pool>,
     /// The CPUs and bytes of memory that the task may use: what it asked for, but at most all
     /// of the pool.
     pub cpus: u32,
     pub memory: Option<u64>,
+}
+
+impl Share<'_> {
+    pub(crate) fn owned(mut self) -> Share<'static> {
+        Share {
+            pool: Cow::Owned(self.pool.as_ref().clone()),
+            cpus: std::mem::take(&mut self.cpus),
+            memory: self.memory.take(),
+        }
+    }
+
+    pub(crate) fn hold(&self) {
+        self.pool.hold();
+    }
 }
 
 impl Drop for Share<'_> {
@@ -81,13 +96,13 @@ impl Pool {
         Pool {
             total_cpus,
             total_memory,
-            state: Mutex::new(State {
+            state: Arc::new(Mutex::new(State {
                 free_cpus: total_cpus,
                 free_memory: mebibytes(total_memory),
                 waiting: BTreeSet::new(),
                 came: 0,
-            }),
-            changed: Notify::new(),
+            })),
+            changed: Arc::new(Notify::new()),
             held: CancellationToken::new(),
         }
     }
@@ -138,7 +153,7 @@ impl Pool {
                     drop(state);
                     drop(place);
                     return Share {
-                        pool: self,
+                        pool: Cow::Borrowed(self),
                         cpus,
                         memory,
                     };

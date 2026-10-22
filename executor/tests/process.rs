@@ -28,6 +28,25 @@ fn exchanges_container_lines() {
 
 #[test]
 #[ignore = "needs Docker or Podman and the debian:stable-slim image"]
+fn mounts_colon_paths() {
+    let folder = tempfile::tempdir().unwrap();
+    let path = folder.path().join("input:2026");
+    std::fs::create_dir(&path).unwrap();
+    std::fs::write(path.join("value"), "reference").unwrap();
+    let mut settings = spec(
+        "colon-mount",
+        "test \"$(cat /data:input/value)\" = reference",
+    );
+    settings.mounts.push(executor::process::Mount {
+        source: path,
+        target: "/data:input".into(),
+        read_only: true,
+    });
+    run_to_end(&settings).unwrap();
+}
+
+#[test]
+#[ignore = "needs Docker or Podman and the debian:stable-slim image"]
 fn preserves_conflicting_container() {
     let settings = spec("conflict", "while read line; do echo \"got $line\"; done");
     let mut first = ContainerProcess::start(&settings).expect("starts");

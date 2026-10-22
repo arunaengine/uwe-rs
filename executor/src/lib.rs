@@ -39,7 +39,7 @@ pub use image::ImageSource;
 pub use job::{CONTROL, ExecutorError, Finished, HOME, Job, Staged, Staging, Usage, WORK};
 pub use local::{ContainerRun, LocalContainer};
 pub use pool::{Pool, Share};
-pub use stage::place;
+pub use stage::{place, place_cancellable};
 
 /// Runs the attempts of tasks in containers: on this machine, on a TES server or on a cluster.
 pub trait Backend: Send + Sync + 'static {

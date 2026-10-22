@@ -59,7 +59,6 @@ jobs:
           package="uwe-${GITHUB_SHA}-x86_64-unknown-linux-musl"
           mkdir -p "dist/$package"
           cp target/x86_64-unknown-linux-musl/release/uwe README.md LICENSE-MIT LICENSE-APACHE Cargo.lock rust-toolchain.toml "dist/$package/"
-          cp -r docs "dist/$package/"
           cp -r scripts containers "dist/$package/"
           cp dist/CWL_JS_IMAGE_ID "dist/$package/"
           printf '%s\n' "$GITHUB_SHA" > "dist/$package/SOURCE_REVISION"

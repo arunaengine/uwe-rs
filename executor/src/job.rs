@@ -113,6 +113,22 @@ impl Usage {
 }
 
 impl Finished {
+    /// Adds the files selected by the task's optional JSON output manifest.
+    pub fn collect_outputs(
+        &mut self,
+        spec: &TaskSpec,
+        staging: &Staging,
+    ) -> Result<(), ExecutorError> {
+        if self.exit_code == Some(0)
+            && let Some(discovery) = crate::manifest::Discovery::of(spec, staging)
+        {
+            discovery
+                .collect_staged(&self.root, &mut self.files, staging)
+                .map_err(ExecutorError::Unsupported)?;
+        }
+        Ok(())
+    }
+
     /// When the tool of the task started and ended, as the wrapper wrote it in the control
     /// folder: seconds since the Unix epoch, with a fraction where Bash has one. `None` when
     /// the tool did not get that far.

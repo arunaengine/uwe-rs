@@ -424,23 +424,11 @@ impl Planner {
             .is_none_or(|allowed| checkpoints != running || allowed.contains(name))
     }
 
-    /// Whether a job would repeat a rule of the jobs that ask for it with growing wildcard
-    /// values, like `{x}` from `{x}.gz` from `{x}.gz.gz`, or with values that repeat.
-    fn pumps(&self, rule: usize, wildcards: &Wildcards) -> bool {
-        if wildcards
+    /// Whether wildcard values contain a repeated suffix from unbounded dependency growth.
+    fn pumps(wildcards: &Wildcards) -> bool {
+        wildcards
             .values()
             .any(|value| pattern::is_periodic(value, 20))
-        {
-            return true;
-        }
-        self.stack.iter().any(|(other, values)| {
-            *other == rule
-                && wildcards.iter().any(|(name, value)| {
-                    values.get(name).is_some_and(|previous| {
-                        value != previous && value.contains(previous.as_str())
-                    })
-                })
-        })
     }
 
     /// The job that makes a file, `None` for a file that no rule makes.
@@ -482,7 +470,7 @@ impl Planner {
                 .stack
                 .iter()
                 .any(|(other, values)| *other == rule && *values == wildcards)
-                || self.pumps(rule, &wildcards)
+                || Self::pumps(&wildcards)
             {
                 failures.push(Failure::Cycle(format!(
                     "Cyclic dependency on rule {} for file {file}",

@@ -111,6 +111,7 @@ impl CommandRunner {
         let shown: String = shown.chars().take(60).collect();
         let workdir: PathBuf = command.cwd.clone();
         Task {
+            output_manifest: None,
             run_as: None,
             id,
             name: format!("command {shown}"),
@@ -137,6 +138,7 @@ impl CommandRunner {
             .collect(),
             outputs: Vec::new(),
             stdin: None,
+            defer_logs: false,
             resources: Default::default(),
             network: workflow_graph::Network::Unstated,
             after: Vec::new(),

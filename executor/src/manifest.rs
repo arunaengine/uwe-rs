@@ -450,6 +450,251 @@ pub fn parse(text: &str) -> Result<Vec<Collected>, ManifestError> {
 
 #[cfg(test)]
 mod tests {
+    fn discovery() -> super::Discovery {
+        super::Discovery {
+            manifest: "cwl.output.json".into(),
+            workdir: Some("/work".into()),
+            work: None,
+            read_only: vec!["input".into(), "/inputs/original".into()],
+            aliases: vec!["/scratch/result".into()],
+        }
+    }
+
+    #[test]
+    fn discovers_nested_outputs() {
+        let folder = tempfile::tempdir().unwrap();
+        let root = folder.path();
+        std::fs::create_dir_all(root.join("work/result")).unwrap();
+        std::fs::write(root.join("work/.hidden"), "hidden").unwrap();
+        std::fs::write(root.join("work/result/.child"), "child").unwrap();
+        std::fs::write(root.join("work/unrelated"), "not selected").unwrap();
+        std::fs::write(
+            root.join("work/cwl.output.json"),
+            r#"{
+            "nested": [{"class":"File","location":"file:///work/.hidden"},
+                {"class":"File","path":".hidden"}],
+            "directory":{"class":"Directory","path":"result"},
+            "input":{"class":"File","path":"/inputs/original"},
+            "relative":{"class":"File","path":"input"}
+        }"#,
+        )
+        .unwrap();
+        let mut files = super::parse("file cwl.output.json\n").unwrap();
+        discovery().collect(root, &mut files).unwrap();
+        assert_eq!(
+            files
+                .iter()
+                .map(|file| file.path.as_str())
+                .collect::<Vec<_>>(),
+            ["cwl.output.json", ".hidden", "result"]
+        );
+        assert!(files[2].directory);
+        assert!(root.join("work/result/.child").is_file());
+    }
+
+    #[test]
+    fn confines_json_outputs() {
+        let folder = tempfile::tempdir().unwrap();
+        let root = folder.path();
+        std::fs::create_dir_all(root.join("work")).unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.join("work/link")).unwrap();
+        for path in [
+            "../secret",
+            "/etc/passwd",
+            "link",
+            "https://example.com/file",
+        ] {
+            let json = serde_json::json!({"file":{"class":"File","path":path}});
+            std::fs::write(root.join("work/cwl.output.json"), json.to_string()).unwrap();
+            assert!(
+                discovery().collect(root, &mut Vec::new()).is_err(),
+                "{path}"
+            );
+        }
+        std::fs::create_dir_all(root.join("mounts/scratch")).unwrap();
+        std::fs::write(root.join("mounts/scratch/result"), "absolute").unwrap();
+        std::fs::write(
+            root.join("work/cwl.output.json"),
+            r#"{"file":{"class":"File","path":"/scratch/result"}}"#,
+        )
+        .unwrap();
+        let mut files = Vec::new();
+        discovery().collect(root, &mut files).unwrap();
+        assert_eq!(files[0].path, "/scratch/result");
+        assert_eq!(
+            std::fs::read(root.join("control/root/scratch/result")).unwrap(),
+            b"absolute"
+        );
+    }
+
+    #[test]
+    fn rejects_linked_bases() {
+        let outside = tempfile::tempdir().unwrap();
+        let json = r#"{"file":{"class":"File","path":"/passwd"}}"#;
+        std::fs::write(outside.path().join("passwd"), "outside").unwrap();
+        std::fs::write(outside.path().join("cwl.output.json"), json).unwrap();
+        for base in ["work", "mounts", "control", "control/root"] {
+            let folder = tempfile::tempdir().unwrap();
+            let root = folder.path();
+            std::fs::create_dir_all(root.join("work")).unwrap();
+            std::fs::create_dir_all(root.join("control")).unwrap();
+            std::fs::write(root.join("work/cwl.output.json"), json).unwrap();
+            let target = root.join(base);
+            if target.is_dir() {
+                std::fs::remove_dir_all(&target).unwrap();
+            }
+            std::os::unix::fs::symlink(outside.path(), target).unwrap();
+            let error = discovery().collect(root, &mut Vec::new()).unwrap_err();
+            assert!(error.contains("symbolic link"), "{base}: {error}");
+        }
+    }
+
+    #[test]
+    fn rejects_linked_targets() {
+        let outside = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let root = folder.path();
+        std::fs::create_dir_all(root.join("work")).unwrap();
+        std::fs::create_dir_all(root.join("mounts/scratch")).unwrap();
+        std::fs::create_dir_all(root.join("control/root/scratch")).unwrap();
+        std::fs::write(root.join("mounts/scratch/result"), "safe").unwrap();
+        std::fs::write(
+            root.join("work/cwl.output.json"),
+            r#"{"file":{"class":"File","path":"/scratch/result"}}"#,
+        )
+        .unwrap();
+        let target = outside.path().join("new");
+        std::os::unix::fs::symlink(&target, root.join("control/root/scratch/result")).unwrap();
+        assert!(
+            discovery()
+                .collect(root, &mut Vec::new())
+                .unwrap_err()
+                .contains("symbolic link")
+        );
+        assert!(!target.exists());
+        std::fs::remove_file(root.join("control/root/scratch/result")).unwrap();
+        std::fs::write(root.join("control/root/passwd"), "captured").unwrap();
+        std::fs::write(
+            root.join("work/cwl.output.json"),
+            r#"{"file":{"class":"File","path":"/passwd"}}"#,
+        )
+        .unwrap();
+        let mut files = Vec::new();
+        discovery().collect(root, &mut files).unwrap();
+        assert_eq!(files[0].path, "/passwd");
+    }
+
+    #[test]
+    fn collects_inplace_aliases() {
+        let folder = tempfile::tempdir().unwrap();
+        let approved = tempfile::tempdir().unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        let root = folder.path();
+        std::fs::create_dir_all(root.join("work")).unwrap();
+        std::fs::write(approved.path().join("new"), "output").unwrap();
+        std::fs::write(
+            root.join("work/cwl.output.json"),
+            r#"{"file":{"class":"File","path":"/data/new"}}"#,
+        )
+        .unwrap();
+        let mut staging = crate::Staging {
+            inputs: vec![crate::Staged {
+                path: "/data".into(),
+                source: approved.path().to_owned(),
+                in_place: true,
+                directory: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut discovery = discovery();
+        discovery.aliases = vec!["/data".into()];
+        let metadata = serde_json::to_string(&discovery).unwrap();
+        assert!(!metadata.contains(approved.path().to_str().unwrap()));
+        let mut files = Vec::new();
+        discovery
+            .collect_staged(root, &mut files, &staging)
+            .unwrap();
+        assert_eq!(files[0].path, "/data/new");
+        assert_eq!(
+            std::fs::read(root.join("control/root/data/new")).unwrap(),
+            b"output"
+        );
+        std::os::unix::fs::symlink(outside.path(), approved.path().join("escape")).unwrap();
+        std::fs::write(
+            root.join("work/cwl.output.json"),
+            r#"{"file":{"class":"File","path":"/data/escape"}}"#,
+        )
+        .unwrap();
+        assert!(
+            discovery
+                .collect_staged(root, &mut Vec::new(), &staging)
+                .is_err()
+        );
+        assert!(!root.join("control/root/data/escape").exists());
+        staging.inputs[0].path = "data".into();
+        discovery.aliases = vec!["data".into()];
+        std::fs::write(
+            root.join("work/cwl.output.json"),
+            r#"{"file":{"class":"File","path":"data/new"}}"#,
+        )
+        .unwrap();
+        let mut files = Vec::new();
+        discovery
+            .collect_staged(root, &mut files, &staging)
+            .unwrap();
+        assert_eq!(files[0].path, "data/new");
+        assert_eq!(
+            std::fs::read(root.join("work/data/new")).unwrap(),
+            b"output"
+        );
+    }
+
+    #[test]
+    fn bounds_json_manifest() {
+        let folder = tempfile::tempdir().unwrap();
+        let root = folder.path();
+        std::fs::create_dir_all(root.join("work")).unwrap();
+        let deep = format!("{}0{}", "[".repeat(66), "]".repeat(66));
+        for json in ["invalid".to_owned(), deep, " ".repeat((16 << 20) + 1)] {
+            std::fs::write(root.join("work/cwl.output.json"), json).unwrap();
+            assert!(discovery().collect(root, &mut Vec::new()).is_err());
+        }
+        let mut paths = std::collections::BTreeSet::new();
+        for index in 0..100_000 {
+            paths.insert(index.to_string());
+        }
+        let value = serde_json::json!({"class":"File","path":"overflow"});
+        assert!(super::references(&value, 0, &mut paths).is_err());
+    }
+
+    #[test]
+    fn skips_literal_locations() {
+        let folder = tempfile::tempdir().unwrap();
+        let root = folder.path();
+        std::fs::create_dir_all(root.join("work")).unwrap();
+        std::fs::write(root.join("work/.hidden"), "secondary").unwrap();
+        std::fs::write(
+            root.join("work/cwl.output.json"),
+            r#"{
+            "directory":{"class":"Directory","location":"_:literal","listing":[
+                {"class":"File","location":"_:contents","contents":"inline",
+                 "secondaryFiles":[{"class":"File","location":".hidden"}]}]}
+        }"#,
+        )
+        .unwrap();
+        let mut files = Vec::new();
+        discovery().collect(root, &mut files).unwrap();
+        assert_eq!(
+            files,
+            vec![super::Collected {
+                path: ".hidden".into(),
+                directory: false
+            }]
+        );
+    }
+
     #[test]
     fn rejects_escaping_outputs() {
         for path in ["../secret", "a/../../secret", "/a/../secret", "bad\0path"] {

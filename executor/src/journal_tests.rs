@@ -114,6 +114,30 @@ async fn preserves_foreign_owner() {
 }
 
 #[tokio::test]
+async fn retains_replaced_daemon() {
+    let server = Server::start(1, |request| {
+        assert!(
+            request.path.ends_with("/_ping"),
+            "a replaced daemon must not be inspected or deleted"
+        );
+        Reply::Json(200, serde_json::Value::String("OK".into()))
+    })
+    .await;
+    let folder = tempfile::tempdir().unwrap();
+    let journal = Journal::new(folder.path(), "socket".into(), "original-daemon".into());
+    let mut pending = journal.begin("task", "owner").await.unwrap();
+    pending.record.id = Some("original-id".into());
+    assert!(!pending.reconcile(server.engine.client()).await);
+    let saved = journal.root.join("0/record.json");
+    assert!(saved.is_file());
+    let record: serde_json::Value = serde_json::from_slice(&std::fs::read(saved).unwrap()).unwrap();
+    assert_eq!(record["daemon"], "original-daemon");
+    assert!(record["id"].is_null());
+    server.engine.client().ping().await.unwrap();
+    server.finish();
+}
+
+#[tokio::test]
 async fn retries_failed_removal() {
     let mut deletes = 0;
     let server = Server::start(3, move |request| {

@@ -272,6 +272,34 @@ fn renders_task_templates() {
     assert_eq!(requests[0].script, "#!/bin/bash -ue\necho a P\n");
 }
 
+/// The files of one input go into a template as their names, separated by blanks, as in
+/// Nextflow 26.04.6: nf-core's R templates split `'$files'` at blanks.
+#[test]
+fn renders_template_files() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "templates/files.r",
+        "x <- '$files' # ${files}\n",
+    );
+    write(
+        root.path(),
+        "main.nf",
+        "process P {\n    input:\n    path(files)\n    script:\n    template 'files.r'\n}\n\
+         workflow {\n    P(channel.of([file('/data/a.tsv'), file('/data/b.tsv')]))\n}\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let options = nextflow_runtime::Options::default();
+    let (_, requests) =
+        nextflow_runtime::Run::start(&module, &options, &mut Output::default()).expect("starts");
+    assert_eq!(
+        requests[0].script,
+        "#!/bin/bash -ue\nx <- 'a.tsv b.tsv' # a.tsv b.tsv\n"
+    );
+}
+
 /// Templates take the escapes of Groovy strings, as a probe of Nextflow 26.04.6 rendered
 /// them: nf-core's Python templates write `"\\t"` for a tab in Python.
 #[test]

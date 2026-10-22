@@ -20,6 +20,20 @@ pub struct Recording {
     pub reusable: Option<HashMap<String, Reusable>>,
 }
 
+/// Strict runs publish their terminal state only after provenance retention succeeds.
+pub(crate) struct Terminal<'a> {
+    pub observer: &'a mut dyn workflow_graph::Observer,
+    pub defer: bool,
+}
+
+impl workflow_graph::Observer for Terminal<'_> {
+    fn event(&mut self, event: workflow_graph::Event<'_>) {
+        if !self.defer || !matches!(event, workflow_graph::Event::Ended { .. }) {
+            self.observer.event(event);
+        }
+    }
+}
+
 /// What the run is, besides the command line.
 pub struct Started<'a> {
     pub id: &'a str,
@@ -34,6 +48,7 @@ pub struct Started<'a> {
     pub repeats: Option<&'a str>,
     /// Explicit invocation for an embedded run; CLI runs retain their original arguments.
     pub invocation: Option<&'a [String]>,
+    pub strict_provenance: bool,
 }
 
 /// Opens the run database and starts the record of a run. With `-resume`, the run joins the
@@ -41,6 +56,11 @@ pub struct Started<'a> {
 pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure> {
     let broken = |error: run_database::DatabaseError| Failure::setup(format!("uwe: {error}"));
     let database = runs::open(arguments)?;
+    let database = if run.strict_provenance {
+        database.durable().map_err(broken)?
+    } else {
+        database
+    };
     let workflow = if storage::address::scheme(&run.target.to_string_lossy()).is_some() {
         run.target.to_owned()
     } else {
@@ -218,6 +238,55 @@ fn resumed(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn defers_terminal_state() {
+        use workflow_graph::{Event, Observer};
+        for error in [None, Some("retention failed")] {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join("runs.sqlite");
+            let start = RunStart {
+                id: "strict".into(),
+                resumes: None,
+                workflow: "/workflow/main.nf".into(),
+                language: Language::Nextflow,
+                revision: None,
+                arguments: vec![],
+                parameters: vec![],
+                executor: "local".into(),
+                simulated: false,
+                store: None,
+                program: None,
+                launch: None,
+                workflow_folder: None,
+                repeats: None,
+            };
+            let mut recorder = Database::open(&path).unwrap().record(&start).unwrap();
+            Terminal {
+                observer: &mut recorder,
+                defer: true,
+            }
+            .event(Event::Ended { error: None });
+            let database = Database::open(&path).unwrap();
+            assert_eq!(database.run("strict").unwrap().unwrap().state, "running");
+            assert!(database.events("strict", 0, 100).unwrap().is_empty());
+            recorder.ended(error);
+            recorder.close().unwrap();
+            let run = database.run("strict").unwrap().unwrap();
+            assert_eq!(
+                run.state,
+                if error.is_some() {
+                    "failed"
+                } else {
+                    "succeeded"
+                }
+            );
+            assert_eq!(run.error.as_deref(), error);
+            let events = database.events("strict", 0, 100).unwrap();
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].kind, "ended");
+        }
+    }
 
     #[test]
     fn repeat_options_roundtrip() {

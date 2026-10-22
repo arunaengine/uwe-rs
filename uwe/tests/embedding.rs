@@ -129,6 +129,40 @@ async fn shares_configured_driver() {
 }
 
 #[tokio::test]
+async fn isolates_reused_storage() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("old-input"), "previous request").unwrap();
+    let config = config_file::ConfigFile::parse(
+        &format!(
+            "[storage.mirror]\ntype='folder'\nprefixes='s3://bucket/'\npath='{}'",
+            root.path().display()
+        ),
+        &root.path().join("config.toml"),
+    )
+    .unwrap();
+    let shared = storage::Storage::from_config(&config).unwrap();
+    shared
+        .fetch("s3://bucket/old-input", &root.path().join("old-downloads"))
+        .await
+        .unwrap();
+    let previous = shared.fetched();
+    assert_eq!(previous.len(), 1);
+    shared.pin(previous[0].clone());
+    let mut described = request(root.path());
+    described.settings.setup.as_mut().unwrap().storage = shared.clone();
+    described.describe().await.unwrap();
+    for _ in 0..2 {
+        let mut submission = request(root.path());
+        submission.settings.setup.as_mut().unwrap().storage = shared.clone();
+        let run = submission.run().await.unwrap();
+        assert!(run.execution.error.is_none());
+        let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
+        assert!(database.remote_files(&run.id).unwrap().is_empty());
+        assert_eq!(shared.fetched(), previous);
+    }
+}
+
+#[tokio::test]
 async fn validates_then_runs() {
     use uwe::application::Policy;
     use uwe::forms::{Form, ValidationResponse};

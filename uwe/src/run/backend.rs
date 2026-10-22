@@ -5,10 +5,7 @@
 use crate::arguments::Arguments;
 use crate::repeat::Pinned;
 use crate::setup::Setup;
-use crate::{
-    Failure, cache_directory, failure, kubernetes, local, preview, resources, runner_settings,
-    runs, slurm, tes,
-};
+use crate::{Failure, cache_directory, kubernetes, local, preview, resources, runs, slurm, tes};
 use workflow_graph::{Attempt, ExecuteError, Executor, Files, Running, Simulator, TaskId};
 
 /// Caps task requests before backend placement, retaining completion and cleanup ownership.
@@ -276,21 +273,35 @@ pub(crate) fn recorded_workflow(arguments: &Arguments) -> Option<String> {
     Some(workflow.to_string_lossy().into_owned())
 }
 
-/// The simulator with the preview of the cache: tasks whose results the store holds, as a real
-/// run would find them, come from there (see [`preview`]). Without a store or a run database
-/// to read, every task is simulated.
+/// Previews cached tasks using recorded pins for mutable images and simulates cache misses.
 fn previewed(simulator: Simulator, arguments: &Arguments, setup: &Setup) -> Box<dyn Executor> {
     // A real run without the cache would run every task.
     if arguments.no_cache {
         return Box::new(simulator);
     }
-    let pins = runs::open(arguments)
-        .and_then(|database| (database.pins()).map_err(|error| failure(format!("uwe: {error}"))));
-    let (Ok(pins), Ok(store)) = (pins, setup.store(arguments)) else {
+    let pins = run_database::Database::read_only(&runs::database_path(arguments))
+        .and_then(|database| database.pins())
+        .unwrap_or_default();
+    let location = setup.store_location(arguments);
+    if matches!(setup.storage.store(&location), Ok(storage::StoreLocation::Folder(folder)) if !folder.is_dir())
+        || setup
+            .storage
+            .local_store()
+            .is_some_and(|folder| !std::path::Path::new(folder).is_dir())
+    {
+        return Box::new(simulator);
+    }
+    let Ok(store) = setup.store(arguments) else {
         return Box::new(simulator);
     };
-    let settings = runner_settings(setup.storage.clone(), false);
-    let lookup = task_runner::Lookup::new(store, settings);
+    let settings = task_runner::Settings {
+        downloads: cache_directory().join("downloads"),
+        import_inputs: false,
+        storage: setup.storage.clone(),
+        digests: None,
+    };
+    let mut lookup = task_runner::Lookup::new(store, settings);
+    lookup.references(setup.references.clone());
     let default_image = arguments.default_image.clone();
     Box::new(preview::Previewed::new(
         simulator,
@@ -308,6 +319,106 @@ mod tests {
     use workflow_graph::{Attempt, CancellationToken, Executor, Outcome, Resources, Running, Task};
 
     struct Observed(Arc<Mutex<Resources>>);
+
+    #[test]
+    fn preserves_preview_files() {
+        for database_exists in [false, true] {
+            for store_exists in [false, true] {
+                let root = tempfile::tempdir().unwrap();
+                let _scope = crate::run::support::CacheScope::new(false);
+                let cache = root.path().join("cache");
+                crate::run::support::use_cache_folder(cache.clone());
+                let path = root.path().join("database/runs.sqlite");
+                let _database =
+                    database_exists.then(|| run_database::Database::open(&path).unwrap());
+                let store = root.path().join("store");
+                if store_exists {
+                    std::fs::create_dir(&store).unwrap();
+                }
+                let arguments = crate::arguments::Arguments {
+                    database: Some(path.clone()),
+                    store: Some(store.to_string_lossy().into_owned()),
+                    ..Default::default()
+                };
+                let _executor = super::previewed(
+                    workflow_graph::Simulator::new(root.path().join("simulator")),
+                    &arguments,
+                    &crate::setup::Setup::default(),
+                );
+                assert_eq!(path.exists(), database_exists);
+                assert_eq!(store.exists(), store_exists);
+                assert!(!cache.exists(), "preview must not open the digest database");
+                if store_exists {
+                    assert_eq!(std::fs::read_dir(&store).unwrap().count(), 0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn previews_pinned_images() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("database/runs.sqlite");
+        let database = run_database::Database::open(&path).unwrap();
+        drop(database);
+        let before = std::fs::read(&path).unwrap();
+        let store = content_store::Store::local(&root.path().join("store")).unwrap();
+        let task = Task {
+            id: workflow_graph::TaskId(1),
+            image: Some(format!("image@sha256:{}", "a".repeat(64))),
+            command: vec!["true".into()],
+            network: workflow_graph::Network::Denied,
+            ..Default::default()
+        };
+        let request = task_runner::request(&task, task.image.clone(), Vec::new(), None);
+        let key = request.spec.cache_key().unwrap();
+        let entry = task_runner::CacheEntry {
+            run: "prior".into(),
+            task: "task".into(),
+            exit_code: 0,
+            files: Vec::new(),
+            stdout: None,
+            stderr: None,
+            milliseconds: None,
+            containers: Vec::new(),
+        };
+        workflow_graph::runtime()
+            .unwrap()
+            .block_on(store.put_entry(
+                &request.spec.namespace,
+                &key,
+                entry.to_bytes(&key).unwrap().into(),
+            ))
+            .unwrap();
+        let task = Arc::new(task);
+        for database in [path.clone(), root.path().join("missing/runs.sqlite")] {
+            let arguments = crate::arguments::Arguments {
+                database: Some(database),
+                store: Some(root.path().join("store").to_string_lossy().into_owned()),
+                ..Default::default()
+            };
+            let mut executor = super::previewed(
+                workflow_graph::Simulator::new(root.path().join("simulator")),
+                &arguments,
+                &crate::setup::Setup::default(),
+            );
+            let outcome = workflow_graph::runtime()
+                .unwrap()
+                .block_on(executor.run(Attempt {
+                    task: task.clone(),
+                    number: 1,
+                    cancel: CancellationToken::new(),
+                }))
+                .unwrap();
+            assert!(outcome.cached);
+        }
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(
+            std::fs::read_dir(path.parent().unwrap()).unwrap().count(),
+            1
+        );
+        assert!(!root.path().join("missing").exists());
+    }
 
     impl Executor for Observed {
         fn run(&mut self, attempt: Attempt) -> Running {

@@ -44,6 +44,10 @@ impl Value {
     fn write_groovy_body(&self, out: &mut String) {
         match self {
             Value::List(list) if list.peek().range.is_some() => self.write_java(out),
+            // The files of one task input, as in a template: their names, separated by blanks.
+            Value::List(list) if list.peek().kind == ListKind::BlankSeparated => {
+                self.write_java(out)
+            }
             Value::List(list) => write_items(out, list, |item, out| item.write_groovy(out)),
             Value::Set(set) => {
                 out.push('[');

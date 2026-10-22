@@ -151,6 +151,7 @@ fn task(root: &Path, command: &str) -> Task {
         id: TaskId(1),
         name: "P (1)".into(),
         step: "P".into(),
+        network: workflow_graph::Network::Denied,
         image: Some("debian".into()),
         command: vec!["/bin/bash".into(), "-c".into(), command.into()],
         inputs: vec![Input {
@@ -1348,7 +1349,7 @@ fn disabled_skips_cache() {
     let store = Store::local(&root.path().join("store")).expect("a store");
     assert!(!execute(&runner, &prepared).reused);
     assert!(
-        block_on(store.get_entry("", &key))
+        block_on(store.get_entry(&prepared.request.spec.namespace, &key))
             .expect("reads")
             .is_none()
     );
@@ -1426,7 +1427,7 @@ fn records_entry_times() {
     execute(&runner, &prepared);
     let key = prepared.request.spec.cache_key().expect("a key");
     let store = Store::local(&root.path().join("store")).expect("a store");
-    let bytes = block_on(store.get_entry("", &key))
+    let bytes = block_on(store.get_entry(&prepared.request.spec.namespace, &key))
         .expect("reads")
         .expect("an entry");
     let entry = task_runner::CacheEntry::parse(&key, &bytes).expect("an entry");
@@ -1435,7 +1436,7 @@ fn records_entry_times() {
     let used = root
         .path()
         .join("store")
-        .join(content_store::layout::used("", &key).unwrap());
+        .join(content_store::layout::used(&prepared.request.spec.namespace, &key).unwrap());
     assert!(!used.exists());
     execute(&runner, &prepared);
     assert_eq!(std::fs::read_to_string(used).expect("a mark"), "run1");
@@ -2087,4 +2088,343 @@ fn overwrite(path: &std::path::Path, bytes: &[u8]) {
     use std::os::unix::fs::PermissionsExt;
     let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644));
     std::fs::write(path, bytes).unwrap();
+}
+
+#[tokio::test]
+async fn online_limits_reuse() {
+    let root = tempfile::tempdir().unwrap();
+    let mut task = task(root.path(), "fetch latest");
+    task.network = workflow_graph::Network::Allowed;
+    let first = runner_of(root.path(), "first", std::time::Duration::ZERO, 0);
+    let prepared = first
+        .request(&task, Some("image@sha256:00".into()))
+        .await
+        .unwrap();
+    assert!(
+        !first
+            .execute(&prepared, &CancellationToken::new())
+            .await
+            .unwrap()
+            .reused
+    );
+    let second = runner_of(root.path(), "second", std::time::Duration::ZERO, 0);
+    let prepared = second
+        .request(&task, Some("image@sha256:00".into()))
+        .await
+        .unwrap();
+    assert!(
+        !second
+            .execute(&prepared, &CancellationToken::new())
+            .await
+            .unwrap()
+            .reused
+    );
+    let mut resumed = runner_of(root.path(), "resumed", std::time::Duration::ZERO, 0);
+    resumed.resume_from(["second".to_owned()].into());
+    assert!(
+        resumed
+            .execute(&prepared, &CancellationToken::new())
+            .await
+            .unwrap()
+            .reused
+    );
+}
+
+#[tokio::test]
+async fn corrupt_preview_preserves() {
+    for damaged in ["output", "tree", "log"] {
+        let root = tempfile::tempdir().unwrap();
+        let runner = runner(root.path(), 0);
+        let mut task = task(root.path(), "a");
+        task.outputs = vec!["directory/".into()];
+        let prepared = runner
+            .request(&task, Some("image@sha256:00".into()))
+            .await
+            .unwrap();
+        let result = runner
+            .execute(&prepared, &CancellationToken::new())
+            .await
+            .unwrap();
+        let store = Store::local(&root.path().join("store")).unwrap();
+        let location = match damaged {
+            "tree" => content_store::layout::tree(&result.files[0].digest),
+            "log" => content_store::layout::content(result.stdout.as_ref().unwrap()),
+            _ => format!("{}/a.txt", result.files[0].location),
+        };
+        overwrite(&store.local_path(&location).unwrap(), b"broken");
+        let before = store.objects("").await.unwrap();
+        let lookup = task_runner::Lookup::new(
+            store.clone(),
+            Settings {
+                downloads: root.path().join("downloads"),
+                import_inputs: false,
+                storage: storage::Storage::default(),
+                digests: None,
+            },
+        );
+        assert!(
+            lookup
+                .find(&task, Some("image@sha256:00".into()))
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(store.objects("").await.unwrap(), before, "{damaged}");
+        assert_eq!(
+            std::fs::read(store.local_path(&location).unwrap()).unwrap(),
+            b"broken"
+        );
+    }
+}
+
+#[tokio::test]
+async fn references_reuse_installation() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let task = task(root.path(), "a");
+    let source = Path::new(&task.inputs[0].source);
+    std::fs::set_permissions(source, std::fs::Permissions::from_mode(0o444)).unwrap();
+    let mut references = task_runner::References::default();
+    references
+        .register(source, task_model::Digest::sha256(b"data\n"))
+        .await
+        .unwrap();
+    let mut runner = runner(root.path(), 0);
+    runner.references(references);
+    for _ in 0..2 {
+        let prepared = runner
+            .request(&task, Some("image@sha256:00".into()))
+            .await
+            .unwrap();
+        assert_eq!(
+            prepared.request.spec.inputs[0].digest,
+            task_model::Digest::sha256(b"data\n")
+        );
+        runner
+            .execute(&prepared, &CancellationToken::new())
+            .await
+            .unwrap();
+    }
+    let staged = runner.backend().staged.lock().unwrap();
+    assert_eq!(
+        staged[0].inputs[0].source,
+        std::fs::canonicalize(source).unwrap()
+    );
+    assert!(!staged[0].inputs[0].copy);
+    assert!(!root.path().join("downloads/input-snapshots").exists());
+    drop(staged);
+    overwrite(source, b"edit\n");
+    std::fs::set_permissions(source, std::fs::Permissions::from_mode(0o444)).unwrap();
+    assert!(
+        runner
+            .request(&task, Some("image@sha256:00".into()))
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn validates_reference_trees() {
+    use std::os::unix::fs::PermissionsExt;
+    use task_model::{Digest, Tree, TreeEntry};
+    let root = tempfile::tempdir().unwrap();
+    let directory = root.path().join("reference");
+    std::fs::create_dir(&directory).unwrap();
+    std::fs::write(directory.join("genome"), b"ACGT").unwrap();
+    let tree = Tree {
+        entries: vec![TreeEntry::File {
+            path: "genome".into(),
+            digest: Digest::sha256(b"ACGT"),
+            size: 4,
+            executable: false,
+        }],
+    };
+    let mut references = task_runner::References::default();
+    assert!(
+        references
+            .register(&directory, tree.digest().unwrap())
+            .await
+            .is_err()
+    );
+    std::fs::set_permissions(
+        directory.join("genome"),
+        std::fs::Permissions::from_mode(0o444),
+    )
+    .unwrap();
+    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o555)).unwrap();
+    assert!(
+        references
+            .register(&directory, Digest::sha256(b"wrong"))
+            .await
+            .is_err()
+    );
+    references
+        .register(&directory, tree.digest().unwrap())
+        .await
+        .unwrap();
+    let mut runner = runner(root.path(), 0);
+    runner.references(references);
+    let task = Task {
+        command: vec!["true".into()],
+        network: workflow_graph::Network::Denied,
+        inputs: vec![Input {
+            path: "reference".into(),
+            source: directory.to_string_lossy().into_owned(),
+            directory: true,
+            ..Input::default()
+        }],
+        ..Task::default()
+    };
+    let prepared = runner
+        .request(&task, Some("image@sha256:00".into()))
+        .await
+        .unwrap();
+    assert_eq!(
+        prepared.request.spec.inputs[0].digest,
+        tree.digest().unwrap()
+    );
+    let store = Store::local(&root.path().join("store")).unwrap();
+    assert!(store.has_tree(&tree.digest().unwrap()).await.unwrap());
+    let mut member = task.clone();
+    member.inputs[0].source = directory.join("genome").to_string_lossy().into_owned();
+    member.inputs[0].directory = false;
+    let member = runner
+        .request(&member, Some("image@sha256:00".into()))
+        .await
+        .unwrap();
+    assert_eq!(
+        member.request.spec.inputs[0].digest,
+        Digest::sha256(b"ACGT")
+    );
+    assert!(!root.path().join("downloads/input-snapshots").exists());
+    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::write(directory.join("extra"), b"extra").unwrap();
+    std::fs::set_permissions(
+        directory.join("extra"),
+        std::fs::Permissions::from_mode(0o444),
+    )
+    .unwrap();
+    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o555)).unwrap();
+    assert!(
+        runner
+            .request(&task, Some("image@sha256:00".into()))
+            .await
+            .is_err()
+    );
+    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let outside = root.path().join("outside");
+    std::fs::write(&outside, b"external").unwrap();
+    std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o444)).unwrap();
+    std::fs::remove_file(directory.join("genome")).unwrap();
+    std::os::unix::fs::symlink(&outside, directory.join("genome")).unwrap();
+    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let mut escaped = task.clone();
+    escaped.inputs[0].source = directory.join("genome").to_string_lossy().into_owned();
+    escaped.inputs[0].directory = false;
+    assert!(
+        runner
+            .request(&escaped, Some("image@sha256:00".into()))
+            .await
+            .is_err()
+    );
+    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+#[tokio::test]
+async fn defers_successful_logs() {
+    use workflow_graph::{Attempt, Executor, Files};
+    for code in [0, 3] {
+        let root = tempfile::tempdir().unwrap();
+        let mut executor = task_runner::RunnerExecutor::new(runner(root.path(), code), None);
+        let mut task = task(root.path(), "a");
+        task.defer_logs = true;
+        let outcome = executor
+            .run(Attempt {
+                task: std::sync::Arc::new(task),
+                number: 1,
+                cancel: CancellationToken::new(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(outcome.stdout, if code == 0 { "" } else { "said\n" });
+        let stream = outcome.stdout_log.as_ref().unwrap();
+        assert_eq!(
+            stream.digest,
+            task_model::Digest::sha256(b"said\n").to_string()
+        );
+        assert_eq!(stream.size, 5);
+        let file = workflow_graph::LocalFiles.local(&stream.location).unwrap();
+        assert_eq!(std::fs::read_to_string(file).unwrap(), "said\n");
+    }
+}
+
+#[tokio::test]
+async fn rejects_corrupt_deferred() {
+    use std::os::unix::fs::PermissionsExt;
+    use workflow_graph::{Attempt, Executor};
+
+    let root = tempfile::tempdir().unwrap();
+    let store = Store::local(&root.path().join("store")).unwrap();
+    let digest = store
+        .put_content(bytes::Bytes::from_static(b"said\n"))
+        .await
+        .unwrap();
+    let log = store
+        .local_path(&content_store::layout::content(&digest))
+        .unwrap();
+    overwrite(&log, b"evil\n");
+    std::fs::set_permissions(&log, std::fs::Permissions::from_mode(0o444)).unwrap();
+    let mut executor = task_runner::RunnerExecutor::new(runner(root.path(), 0), None);
+    let mut task = task(root.path(), "a");
+    task.defer_logs = true;
+    let result = executor
+        .run(Attempt {
+            task: std::sync::Arc::new(task),
+            number: 1,
+            cancel: CancellationToken::new(),
+        })
+        .await;
+    let error = result.unwrap_err().to_string();
+    assert!(
+        error.contains(&format!(
+            "stored content of {digest} has digest {}",
+            task_model::Digest::sha256(b"evil\n")
+        )),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn front_eviction_waits() {
+    let root = tempfile::tempdir().unwrap();
+    let front = Store::local(&root.path().join("front")).unwrap();
+    let shared = Store::memory().unwrap();
+    let store = Store::layered(front.clone(), shared.clone()).unwrap();
+    let runner = runner_with(
+        store.clone(),
+        root.path(),
+        "reader",
+        std::time::Duration::ZERO,
+        0,
+        false,
+    );
+    let digest = runner.import_bytes(b"keep remotely").await.unwrap();
+    assert!(
+        task_runner::clean::evict_front(&store, &Default::default())
+            .await
+            .is_err()
+    );
+    drop(runner);
+    assert!(
+        task_runner::clean::evict_front(&store, &Default::default())
+            .await
+            .unwrap()
+            .objects
+            > 0
+    );
+    assert!(!front.has_content(&digest).await.unwrap());
+    assert_eq!(
+        shared.get_content(&digest).await.unwrap(),
+        b"keep remotely".as_slice()
+    );
 }

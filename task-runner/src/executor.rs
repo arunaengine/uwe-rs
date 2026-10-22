@@ -374,13 +374,15 @@ pub(crate) async fn outcome_of(
     result: TaskResult,
     image: Option<String>,
 ) -> Result<Outcome, RunnerError> {
+    let deferred = task.defer_logs && result.exit_code == Some(0);
+    let verify = deferred && !result.reused;
     let text = async |digest: &Option<Digest>| -> Result<String, RunnerError> {
         match digest {
-            Some(digest) => {
+            Some(digest) if !deferred => {
                 let bytes = store.get_content(digest).await?;
                 Ok(String::from_utf8_lossy(&bytes).into_owned())
             }
-            None => Ok(String::new()),
+            _ => Ok(String::new()),
         }
     };
     let files = result
@@ -402,6 +404,8 @@ pub(crate) async fn outcome_of(
         files,
         stdout: text(&result.stdout).await?,
         stderr: text(&result.stderr).await?,
+        stdout_log: stream(store, result.stdout.as_ref(), verify).await?,
+        stderr_log: stream(store, result.stderr.as_ref(), verify).await?,
         cached: result.reused,
         image,
         // The time of the tool itself: waiting for a free CPU and staging come before it.
@@ -414,7 +418,7 @@ pub(crate) async fn outcome_of(
             write_bytes: usage.write_bytes,
         }),
         reproducibility: result.check,
-        containers: containers(store, &result.containers).await?,
+        containers: containers(store, &result.containers, deferred, verify).await?,
         address: result.address.clone(),
         ..Outcome::default()
     })
@@ -424,14 +428,16 @@ pub(crate) async fn outcome_of(
 async fn containers(
     store: &Store,
     results: &[crate::ContainerResult],
+    deferred: bool,
+    verify: bool,
 ) -> Result<Vec<ContainerOutcome>, RunnerError> {
     let text = async |digest: &Option<Digest>| -> Result<String, RunnerError> {
         match digest {
-            Some(digest) => {
+            Some(digest) if !deferred => {
                 let bytes = store.get_content(digest).await?;
                 Ok(String::from_utf8_lossy(&bytes).into_owned())
             }
-            None => Ok(String::new()),
+            _ => Ok(String::new()),
         }
     };
     let mut outcomes = Vec::new();
@@ -441,9 +447,36 @@ async fn containers(
             exit_code: result.exit_code,
             stdout: text(&result.stdout).await?,
             stderr: text(&result.stderr).await?,
+            stdout_log: stream(store, result.stdout.as_ref(), verify).await?,
+            stderr_log: stream(store, result.stderr.as_ref(), verify).await?,
         });
     }
     Ok(outcomes)
+}
+
+async fn stream(
+    store: &Store,
+    digest: Option<&Digest>,
+    verify: bool,
+) -> Result<Option<workflow_graph::Stream>, RunnerError> {
+    let Some(digest) = digest else {
+        return Ok(None);
+    };
+    let location = content_store::layout::content(digest);
+    let size = match verify {
+        true => store.verify_object(&location, digest).await?,
+        false => store.content_size(digest).await?.ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("captured stream {digest} is missing"),
+            )
+        })?,
+    };
+    Ok(Some(workflow_graph::Stream {
+        location: store.url(&location),
+        digest: digest.to_string(),
+        size,
+    }))
 }
 
 /// An error of the runner as an error of the run: a feature that is not supported yet, a

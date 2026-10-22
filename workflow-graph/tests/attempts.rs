@@ -271,6 +271,75 @@ fn cancels_retry_backoff() {
 }
 
 #[test]
+fn backoff_allows_progress() {
+    struct Progress {
+        cancel: CancellationToken,
+        deadline: Option<Instant>,
+        heard: Vec<TaskId>,
+        woke: bool,
+    }
+    impl Driver for Progress {
+        fn language(&self) -> Language {
+            Language::Cwl
+        }
+        fn start(&mut self) -> Result<Vec<Task>, DriverError> {
+            Ok(vec![task(1, &[]), task(2, &[])])
+        }
+        fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+            self.heard.push(outcome.id);
+            self.deadline = Some(Instant::now());
+            Ok(Vec::new())
+        }
+        fn wake_at(&self) -> Option<Instant> {
+            self.deadline
+        }
+        fn wake(&mut self) -> Result<Vec<Task>, DriverError> {
+            self.woke = true;
+            self.deadline = None;
+            self.cancel.cancel();
+            Ok(Vec::new())
+        }
+        fn finish(&mut self) -> Result<(), DriverError> {
+            Ok(())
+        }
+    }
+    struct FailFirst(Vec<(TaskId, u32)>);
+    impl Executor for FailFirst {
+        fn run(&mut self, attempt: Attempt) -> Running {
+            self.0.push((attempt.task.id, attempt.number));
+            Running::ended(if attempt.task.id == TaskId(1) && attempt.number == 1 {
+                Err(ExecuteError::Machine {
+                    task: "one".into(),
+                    message: "retry".into(),
+                })
+            } else {
+                Ok(Outcome {
+                    id: attempt.task.id,
+                    ..Outcome::default()
+                })
+            })
+        }
+    }
+    let cancel = CancellationToken::new();
+    let mut driver = Progress {
+        cancel: cancel.clone(),
+        deadline: None,
+        heard: Vec::new(),
+        woke: false,
+    };
+    let mut executor = FailFirst(Vec::new());
+    let execution = Engine::new(&mut executor)
+        .cancel(cancel)
+        .options(options(2, Order::AsAsked))
+        .retry_delay(Duration::from_secs(60))
+        .run("backoff progress", &mut driver);
+    assert!(matches!(execution.error, Some(ExecuteError::Cancelled)));
+    assert_eq!(driver.heard, [TaskId(2)]);
+    assert!(driver.woke);
+    assert_eq!(executor.0, [(TaskId(1), 1), (TaskId(2), 1)]);
+}
+
+#[test]
 fn retry_blocks_dependents() {
     let mut driver = Tasks {
         first: vec![task(1, &[]), task(2, &[1])],

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::hash::BuildHasher;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
@@ -103,9 +103,6 @@ pub fn execute_with(
 /// How often the engine runs a task again after the machine failed, by default.
 const MACHINE_RETRIES: u32 = 2;
 
-/// How long the engine waits for the attempts in flight to stop when a run stops.
-const STOP_GRACE: Duration = Duration::from_secs(60);
-
 /// A run of a driver against an executor, with its options and an observer that hears what
 /// happens, like the run database.
 pub struct Engine<'a> {
@@ -167,7 +164,7 @@ impl<'a> Engine<'a> {
 
     /// Runs the driver to its end and returns the graph of what ran, and the error that
     /// stopped the run if there is one. On an error, the attempts in flight stop and the engine
-    /// waits for them a while. The observer hears the end of every run.
+    /// waits for their cleanup to complete. The observer hears the end of every run.
     pub fn run(mut self, workflow: &str, driver: &mut dyn Driver) -> Execution {
         let mut recorder = Recorder::new(workflow, driver.language());
         let result = Attempts::new(self.cancel.clone()).and_then(|mut attempts| {
@@ -186,7 +183,21 @@ impl<'a> Engine<'a> {
             runtime.block_on(self.executor.release());
         }
         let error = result.err();
-        let failure_hook_error = error.as_ref().and_then(|error| driver.failed(error).err());
+        let failure_hook_error = error.as_ref().and_then(|error| {
+            let hook = driver.failed(error).err();
+            let files = self.executor.files();
+            let delivery = self
+                .deliver_pending(driver, files.as_deref(), true)
+                .err()
+                .map(|error| DriverError::new(error.to_string()));
+            match (hook, delivery) {
+                (Some(hook), Some(delivery)) => Some(DriverError::new(format!(
+                    "{}; failure report delivery: {}",
+                    hook.message, delivery.message
+                ))),
+                (hook, delivery) => hook.or(delivery),
+            }
+        });
         self.report(Event::Ended {
             error: error.as_ref(),
         });
@@ -264,6 +275,7 @@ impl<'a> Engine<'a> {
         self.check_cancel()?;
         driver.use_cancel(self.cancel.clone());
         let mut queue = Queue::default();
+        let mut retries: BTreeMap<(Instant, TaskId), Arc<Task>> = BTreeMap::new();
         let files = self.executor.files();
         if let Some(files) = &files {
             driver.use_files(files.clone());
@@ -291,7 +303,17 @@ impl<'a> Engine<'a> {
             if !draining && driver.draining() {
                 draining = true;
                 queue.clear();
+                retries.clear();
                 self.executor.hold();
+            }
+            while !draining
+                && pending.len() < self.options.max_pending.max(1)
+                && retries
+                    .first_key_value()
+                    .is_some_and(|(&(time, _), _)| time <= Instant::now())
+            {
+                let (_, task) = retries.pop_first().unwrap();
+                self.start(task, pending, attempts)?;
             }
             while !draining
                 && pending.len() < self.options.max_pending.max(1)
@@ -302,7 +324,11 @@ impl<'a> Engine<'a> {
             self.check_cancel()?;
             let slot = match pending.take() {
                 Take::Empty | Take::Wait => {
-                    let ended = match driver.wake_at() {
+                    let retry = (pending.len() < self.options.max_pending.max(1))
+                        .then(|| retries.first_key_value().map(|(&(time, _), _)| time))
+                        .flatten();
+                    let deadline = driver.wake_at().into_iter().chain(retry).min();
+                    let ended = match deadline {
                         Some(deadline) => attempts.next_wake(deadline)?,
                         None if pending.len() == 0 => break,
                         None => Some(attempts.next()?),
@@ -339,14 +365,7 @@ impl<'a> Engine<'a> {
                     if retried {
                         let pause = retry_pause(self.retry_delay, attempt);
                         tracing::debug!(task = %task.name, attempt, delay_ms = pause.as_millis(), "waiting to retry after a machine failure");
-                        crate::runtime()?.block_on(async {
-                            tokio::select! {
-                                biased;
-                                () = self.cancel.cancelled() => Err(ExecuteError::Cancelled),
-                                () = tokio::time::sleep(pause) => Ok(()),
-                            }
-                        })?;
-                        self.start(task, pending, attempts)?;
+                        retries.insert((Instant::now() + pause, task.id), task);
                         continue;
                     }
                     if draining && (error.retryable() || matches!(error, ExecuteError::Cancelled)) {
@@ -409,9 +428,22 @@ impl<'a> Engine<'a> {
         driver: &mut dyn Driver,
         files: Option<&dyn Files>,
     ) -> Result<(), ExecuteError> {
-        self.check_cancel()?;
-        for delivery in driver.deliveries() {
+        self.deliver_pending(driver, files, false)
+    }
+
+    fn deliver_pending(
+        &mut self,
+        driver: &mut dyn Driver,
+        files: Option<&dyn Files>,
+        finalizing: bool,
+    ) -> Result<(), ExecuteError> {
+        if !finalizing {
             self.check_cancel()?;
+        }
+        for delivery in driver.deliveries() {
+            if !finalizing {
+                self.check_cancel()?;
+            }
             self.report(Event::Delivered {
                 delivery: &delivery,
             });
@@ -426,7 +458,11 @@ impl<'a> Engine<'a> {
                 driver.delivered(&delivery)?;
             }
         }
-        self.check_cancel()
+        if finalizing {
+            Ok(())
+        } else {
+            self.check_cancel()
+        }
     }
 
     /// Starts the next attempt of a task.
@@ -461,17 +497,15 @@ impl<'a> Engine<'a> {
         Ok(())
     }
 
-    /// Stops the attempts in flight and waits a while for them to end. The observer hears how
+    /// Stops the attempts in flight and waits for them to end. The observer hears how
     /// each one ended; the driver does not.
     fn stop(&mut self, recorder: &mut Recorder, pending: &mut Pending, attempts: &mut Attempts) {
         attempts.cancel.cancel();
-        let deadline = Instant::now() + STOP_GRACE;
         while pending.running()
-            && let Some(ended) = attempts.next_until(deadline)
+            && let Some(ended) = attempts.next_stopped()
         {
             pending.end(ended.id, ended.attempt, ended.result);
         }
-        pending.cancel_remaining();
         while let Take::Ended(slot) = pending.take_any() {
             let Some(end) = &slot.end else { continue };
             let mut outcome = match &end.result {

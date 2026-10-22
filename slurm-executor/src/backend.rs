@@ -663,7 +663,7 @@ impl SlurmBackend {
                     last = Some(job.clone());
                     let held = matches!(ended, Ok(Ended::Held(_) | Ended::OverTime));
                     let stopped = self
-                        .stop(&id, root, self.settle(), ended.is_err() || held)
+                        .stop(id, root, self.settle(), ended.is_err() || held)
                         .await;
                     self.queue.remove(id, job.cluster.as_deref()).await;
                     stopped?;
@@ -915,7 +915,7 @@ impl SlurmBackend {
                 let ended = self.wait(&job, &control, None, cancel).await;
                 let held = matches!(ended, Ok(Ended::Held(_) | Ended::OverTime));
                 let stopped = self
-                    .stop(&id, &root, self.settle(), ended.is_err() || held)
+                    .stop(id, &root, self.settle(), ended.is_err() || held)
                     .await;
                 self.queue.remove(id, job.cluster.as_deref()).await;
                 stopped?;

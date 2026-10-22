@@ -90,6 +90,10 @@ impl RemoteStage {
     }
 
     /// Keeps discovery metadata independent of reference inputs omitted from the upload.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Discovery retains original input aliases when the upload job omits references."
+    )]
     pub async fn plan_discovery(
         &self,
         job: Job<'_>,

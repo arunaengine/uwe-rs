@@ -5,21 +5,23 @@
 
 use std::io::ErrorKind as IoErrorKind;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use bytes::Bytes;
+use futures_util::TryStreamExt;
 use opendal::ErrorKind;
 use task_model::Digest;
 
 use crate::{Store, StoreError, layout};
 
 /// An object of a store: a file of a store on this machine, or an object of an object store.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Object {
     /// Its location in the store, like `cas/sha256/ab/...`.
     pub location: String,
     pub size: u64,
     /// When it was last written, when the store tells.
+    #[serde(serialize_with = "encode_time", deserialize_with = "decode_time")]
     pub modified: Option<SystemTime>,
     /// For a store on this machine, the file on disk. A task output and its content in `cas/`
     /// are two names of one file, which takes its space once.
@@ -28,44 +30,148 @@ pub struct Object {
     pub folder: bool,
 }
 
-/// A file on disk: its device and inode, and how many names it has.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// An object on disk: its device and inode, and how many names it has.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FileIdentity {
     pub device: u64,
     pub inode: u64,
     pub names: u64,
 }
 
-impl Store {
-    /// Every object whose location starts with `prefix`, like `runs/`, in no particular order.
-    pub async fn objects(&self, prefix: &str) -> Result<Vec<Object>, StoreError> {
-        match &self.root {
-            Some(root) => {
-                let root = root.clone();
-                let prefix = prefix.to_owned();
-                tokio::task::spawn_blocking(move || walk(&root, &prefix))
-                    .await
-                    .map_err(|error| std::io::Error::other(error.to_string()))?
-            }
-            None => {
-                let mut objects = Vec::new();
-                let entries = self.operator.list_with(prefix).recursive(true).await?;
-                for entry in entries {
+/// Traverses inventory without retaining all objects or recursive provider pages.
+pub struct Inventory {
+    cursor: Cursor,
+}
+
+enum Cursor {
+    Local {
+        directories: Vec<Directory>,
+        start: String,
+    },
+    Remote(opendal::Lister),
+}
+
+struct Directory {
+    entries: tokio::fs::ReadDir,
+    path: PathBuf,
+    location: String,
+    first: bool,
+    empty: bool,
+}
+
+impl Inventory {
+    pub async fn next(&mut self) -> Result<Option<Object>, StoreError> {
+        use std::os::unix::fs::MetadataExt;
+        match &mut self.cursor {
+            Cursor::Remote(entries) => {
+                while let Some(entry) = entries.try_next().await? {
                     let metadata = entry.metadata();
-                    if metadata.is_dir() {
+                    if !metadata.is_dir() {
+                        return Ok(Some(Object {
+                            location: entry.path().to_owned(),
+                            size: metadata.content_length(),
+                            modified: metadata.last_modified().map(SystemTime::from),
+                            file: None,
+                            folder: false,
+                        }));
+                    }
+                }
+            }
+            Cursor::Local { directories, start } => {
+                while let Some(directory) = directories.last_mut() {
+                    let Some(entry) = directory.entries.next_entry().await? else {
+                        let directory = directories.pop().expect("an active directory");
+                        if directory.empty && !directory.first {
+                            let metadata = tokio::fs::symlink_metadata(directory.path).await?;
+                            return Ok(Some(Object {
+                                location: directory.location,
+                                size: 0,
+                                modified: metadata.modified().ok(),
+                                file: Some(FileIdentity {
+                                    device: metadata.dev(),
+                                    inode: metadata.ino(),
+                                    names: metadata.nlink(),
+                                }),
+                                folder: true,
+                            }));
+                        }
+                        continue;
+                    };
+                    directory.empty = false;
+                    let Ok(name) = entry.file_name().into_string() else {
+                        continue;
+                    };
+                    if directory.first && !name.starts_with(start.as_str()) {
                         continue;
                     }
-                    objects.push(Object {
-                        location: entry.path().to_owned(),
-                        size: metadata.content_length(),
-                        modified: metadata.last_modified().map(SystemTime::from),
-                        file: None,
-                        folder: false,
-                    });
+                    let location = if directory.location.is_empty() {
+                        name
+                    } else {
+                        format!("{}/{name}", directory.location)
+                    };
+                    let metadata = tokio::fs::symlink_metadata(entry.path()).await?;
+                    if metadata.is_dir() {
+                        directories.push(Directory {
+                            entries: tokio::fs::read_dir(entry.path()).await?,
+                            path: entry.path(),
+                            location,
+                            first: false,
+                            empty: true,
+                        });
+                    } else {
+                        return Ok(Some(Object {
+                            location,
+                            size: metadata.len(),
+                            modified: metadata.modified().ok(),
+                            file: Some(FileIdentity {
+                                device: metadata.dev(),
+                                inode: metadata.ino(),
+                                names: metadata.nlink(),
+                            }),
+                            folder: false,
+                        }));
+                    }
                 }
-                Ok(objects)
             }
         }
+        Ok(None)
+    }
+}
+
+impl Store {
+    pub async fn inventory(&self, prefix: &str) -> Result<Inventory, StoreError> {
+        let cursor = if let Some(root) = &self.root {
+            let (folder, start) = prefix.rsplit_once('/').unwrap_or(("", prefix));
+            let path = root.join(folder);
+            let directories = match tokio::fs::read_dir(&path).await {
+                Ok(entries) => vec![Directory {
+                    entries,
+                    path,
+                    location: folder.to_owned(),
+                    first: true,
+                    empty: true,
+                }],
+                Err(error) if error.kind() == IoErrorKind::NotFound => Vec::new(),
+                Err(error) => return Err(StoreError::File { path, error }),
+            };
+            Cursor::Local {
+                directories,
+                start: start.to_owned(),
+            }
+        } else {
+            Cursor::Remote(self.operator.lister_with(prefix).recursive(true).await?)
+        };
+        Ok(Inventory { cursor })
+    }
+
+    /// Every object whose location starts with `prefix`, like `runs/`, in no particular order.
+    pub async fn objects(&self, prefix: &str) -> Result<Vec<Object>, StoreError> {
+        let mut entries = self.inventory(prefix).await?;
+        let mut objects = Vec::new();
+        while let Some(object) = entries.next().await? {
+            objects.push(object);
+        }
+        Ok(objects)
     }
 
     /// Removes an object; one that is gone already is no error. In a store on this machine, the
@@ -96,6 +202,37 @@ impl Store {
             folder = current.parent();
         }
         Ok(())
+    }
+
+    /// Removes only the inventoried local inode, under the caller's maintenance authority.
+    pub async fn remove_observed(&self, object: &Object) -> Result<bool, StoreError> {
+        if !self.matches_object(object).await? {
+            return Ok(false);
+        }
+        self.remove(&object.location).await?;
+        Ok(true)
+    }
+
+    async fn matches_object(&self, object: &Object) -> Result<bool, StoreError> {
+        use std::os::unix::fs::MetadataExt;
+        let Some(path) = self.local_path(&object.location) else {
+            return Err(std::io::Error::new(
+                IoErrorKind::Unsupported,
+                "observed cleanup requires local maintenance authority",
+            )
+            .into());
+        };
+        let metadata = match tokio::fs::symlink_metadata(&path).await {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == IoErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(StoreError::File { path, error }),
+        };
+        Ok(object
+            .file
+            .is_some_and(|file| (file.device, file.inode) == (metadata.dev(), metadata.ino()))
+            && object.folder == metadata.is_dir()
+            && (object.folder || object.size == metadata.len())
+            && object.modified == metadata.modified().ok())
     }
 
     /// Whether the store has an object, or a folder of a store on this machine. A store in
@@ -185,74 +322,66 @@ impl Store {
         }
         Ok(())
     }
+
+    /// Keeps replacement entries and use marks; observations contain at most those two files.
+    pub async fn remove_entry_observed(
+        &self,
+        namespace: &str,
+        key: &Digest,
+        objects: &[Object],
+    ) -> Result<bool, StoreError> {
+        let entry = layout::entry(namespace, key)?;
+        let used = layout::used(namespace, key)?;
+        if objects.len() > 2
+            || objects
+                .iter()
+                .any(|object| object.location != entry && object.location != used)
+        {
+            return Err(StoreError::Location(
+                "cleanup observations belong to another entry".into(),
+            ));
+        }
+        let _guard = self.entry_guard(&entry).await?;
+        for location in [entry, used] {
+            match objects.iter().find(|object| object.location == location) {
+                Some(object) if self.matches_object(object).await? => {}
+                Some(_) => return Ok(false),
+                None if self.operator.exists(&location).await? => return Ok(false),
+                None => {}
+            }
+        }
+        for object in objects {
+            self.remove(&object.location).await?;
+        }
+        Ok(!objects.is_empty())
+    }
 }
 
-/// The files and empty folders below `root/prefix`, by their locations in the store.
-fn walk(root: &Path, prefix: &str) -> Result<Vec<Object>, StoreError> {
-    use std::os::unix::fs::MetadataExt;
-    let mut objects = Vec::new();
-    // The prefix may end inside a name, like `ac/v1/default/ab`; the walk starts at its folder.
-    let (folder, start) = match prefix.rsplit_once('/') {
-        Some((folder, start)) => (folder.to_owned(), start.to_owned()),
-        None => (String::new(), prefix.to_owned()),
-    };
-    let mut pending: Vec<(PathBuf, String)> = vec![(root.join(&folder), folder)];
-    let mut first = true;
-    while let Some((directory, location)) = pending.pop() {
-        let entries = match std::fs::read_dir(&directory) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == IoErrorKind::NotFound => continue,
-            Err(error) => {
-                return Err(StoreError::File {
-                    path: directory,
-                    error,
-                });
+fn encode_time<S: serde::Serializer>(
+    value: &Option<SystemTime>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    let offset = value.map(|time| match time.duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(duration) => (false, duration),
+        Err(error) => (true, error.duration()),
+    });
+    serde::Serialize::serialize(&offset, serializer)
+}
+
+fn decode_time<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<SystemTime>, D::Error> {
+    let offset: Option<(bool, Duration)> = serde::Deserialize::deserialize(deserializer)?;
+    offset
+        .map(|(before, duration)| {
+            if before {
+                SystemTime::UNIX_EPOCH.checked_sub(duration)
+            } else {
+                SystemTime::UNIX_EPOCH.checked_add(duration)
             }
-        };
-        let mut empty = true;
-        for entry in entries {
-            let entry = entry?;
-            empty = false;
-            let Ok(name) = entry.file_name().into_string() else {
-                continue;
-            };
-            if first && !name.starts_with(&start) {
-                continue;
-            }
-            let inside = match location.is_empty() {
-                true => name,
-                false => format!("{location}/{name}"),
-            };
-            let metadata = std::fs::symlink_metadata(entry.path())?;
-            if metadata.is_dir() {
-                pending.push((entry.path(), inside));
-                continue;
-            }
-            objects.push(Object {
-                location: inside,
-                size: metadata.len(),
-                modified: metadata.modified().ok(),
-                file: Some(FileIdentity {
-                    device: metadata.dev(),
-                    inode: metadata.ino(),
-                    names: metadata.nlink(),
-                }),
-                folder: false,
-            });
-        }
-        if empty && !first {
-            let modified = std::fs::metadata(&directory).and_then(|metadata| metadata.modified());
-            objects.push(Object {
-                location,
-                size: 0,
-                modified: modified.ok(),
-                file: None,
-                folder: true,
-            });
-        }
-        first = false;
-    }
-    Ok(objects)
+            .ok_or_else(|| serde::de::Error::custom("object time is out of range"))
+        })
+        .transpose()
 }
 
 #[cfg(test)]
@@ -309,5 +438,57 @@ mod tests {
         assert_eq!(objects.len(), 2);
         store.remove_entry("", &key).await.expect("removes");
         assert!(store.objects("ac/").await.expect("lists").is_empty());
+    }
+
+    #[tokio::test]
+    async fn retains_replacement_inode() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Store::local(root.path()).unwrap();
+        let digest = store.put_content("data".into()).await.unwrap();
+        let object = store.objects("cas/").await.unwrap().remove(0);
+        let replacement = root.path().join("replacement");
+        std::fs::write(&replacement, b"data").unwrap();
+        std::fs::File::open(&replacement)
+            .unwrap()
+            .set_modified(object.modified.unwrap())
+            .unwrap();
+        std::fs::rename(&replacement, root.path().join(&object.location)).unwrap();
+        assert!(!store.remove_observed(&object).await.unwrap());
+        assert!(store.has_content(&digest).await.unwrap());
+        let current = store.objects("cas/").await.unwrap().remove(0);
+        assert!(store.remove_observed(&current).await.unwrap());
+        assert!(!store.has_content(&digest).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn retains_replaced_entries() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Store::local(root.path()).unwrap();
+        let key = Digest::sha256(b"key");
+        store.put_entry("", &key, "old".into()).await.unwrap();
+        let first = store.objects("ac/").await.unwrap();
+        store.mark_used("", &key, "reader").await.unwrap();
+        assert!(!store.remove_entry_observed("", &key, &first).await.unwrap());
+        let second = store.objects("ac/").await.unwrap();
+        store.put_entry("", &key, "new".into()).await.unwrap();
+        assert!(
+            !store
+                .remove_entry_observed("", &key, &second)
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            store.get_entry("", &key).await.unwrap().unwrap(),
+            b"new".as_slice()
+        );
+        assert_eq!(store.objects("ac/").await.unwrap().len(), 2);
+        let current = store.objects("ac/").await.unwrap();
+        assert!(
+            store
+                .remove_entry_observed("", &key, &current)
+                .await
+                .unwrap()
+        );
+        assert!(store.objects("ac/").await.unwrap().is_empty());
     }
 }

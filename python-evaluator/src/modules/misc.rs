@@ -1211,7 +1211,33 @@ pub fn random() -> Vec<(&'static str, Value)> {
 }
 
 /// `io.StringIO`.
-struct StringIo(RefCell<String>);
+struct StringIo(RefCell<StringBuffer>);
+
+struct StringBuffer {
+    text: Vec<char>,
+    position: usize,
+    closed: bool,
+}
+
+impl StringBuffer {
+    fn read(&mut self, size: i64, line: bool) -> String {
+        let start = self.position.min(self.text.len());
+        let mut end = if size < 0 {
+            self.text.len()
+        } else {
+            start.saturating_add(size as usize).min(self.text.len())
+        };
+        if line
+            && let Some(newline) = self.text[start..end]
+                .iter()
+                .position(|character| *character == '\n')
+        {
+            end = start + newline + 1;
+        }
+        self.position = self.position.max(end);
+        self.text[start..end].iter().collect()
+    }
+}
 
 impl Native for StringIo {
     fn type_name(&self) -> &str {
@@ -1223,8 +1249,17 @@ impl Native for StringIo {
     }
 
     fn iterate(&self, _: &mut Interpreter) -> Result<Option<Vec<Value>>, Error> {
-        let text = self.0.borrow();
-        Ok(Some(text.split_inclusive('\n').map(Value::str).collect()))
+        let mut buffer = self.0.borrow_mut();
+        if buffer.closed {
+            return Err(Error::value_error("I/O operation on closed file"));
+        }
+        Ok(Some(
+            buffer
+                .read(-1, false)
+                .split_inclusive('\n')
+                .map(Value::str)
+                .collect(),
+        ))
     }
 
     fn get_attribute(
@@ -1233,33 +1268,152 @@ impl Native for StringIo {
         this: &Value,
         name: &str,
     ) -> Result<Option<Value>, Error> {
+        if name == "closed" {
+            return Ok(Some(Value::Bool(self.0.borrow().closed)));
+        }
+        if !matches!(
+            name,
+            "write"
+                | "getvalue"
+                | "read"
+                | "readline"
+                | "readlines"
+                | "seek"
+                | "tell"
+                | "truncate"
+                | "close"
+                | "flush"
+                | "__enter__"
+                | "__exit__"
+                | "__iter__"
+                | "__next__"
+        ) {
+            return Ok(None);
+        }
         let this = this.clone();
-        Ok(match name {
-            "write" => Some(Value::builtin("write", move |interpreter, args| {
-                let text = interpreter.to_str(&args.positional[0])?;
-                let buffer = this.as_native::<StringIo>().expect("a buffer");
-                buffer.0.borrow_mut().push_str(&text);
-                Ok(Value::Int(text.chars().count() as i64))
-            })),
-            "getvalue" | "read" => Some(Value::builtin(name, move |_, _| {
-                let buffer = this.as_native::<StringIo>().expect("a buffer");
-                let text = buffer.0.borrow().clone();
-                Ok(Value::str(text))
-            })),
-            "readlines" => Some(Value::builtin(name, move |_, _| {
-                let buffer = this.as_native::<StringIo>().expect("a buffer");
-                let text = buffer.0.borrow().clone();
-                Ok(Value::list(
-                    text.split_inclusive('\n').map(Value::str).collect(),
-                ))
-            })),
-            "seek" | "close" | "flush" | "truncate" => {
-                Some(Value::builtin(name, |_, _| Ok(Value::None)))
+        let operation = name.to_owned();
+        Ok(Some(Value::builtin(name, move |_, mut args| {
+            let object = this.as_native::<StringIo>().expect("a buffer");
+            let mut buffer = object.0.borrow_mut();
+            if operation == "close" || operation == "__exit__" {
+                buffer.closed = true;
+                return Ok(if operation == "close" {
+                    Value::None
+                } else {
+                    Value::Bool(false)
+                });
             }
-            "__enter__" => Some(Value::builtin("__enter__", move |_, _| Ok(this.clone()))),
-            "__exit__" => Some(Value::builtin("__exit__", |_, _| Ok(Value::Bool(false)))),
-            _ => None,
-        })
+            if buffer.closed {
+                return Err(Error::value_error("I/O operation on closed file"));
+            }
+            let integer = |value: Value| {
+                value
+                    .as_int()
+                    .ok_or_else(|| Error::type_error("an integer is required"))
+            };
+            match operation.as_str() {
+                "write" => {
+                    args.expect("write", 1, 1)?;
+                    args.no_keywords("write")?;
+                    let text = args.positional[0]
+                        .as_str()
+                        .ok_or_else(|| Error::type_error("string argument expected"))?;
+                    let characters: Vec<char> = text.chars().collect();
+                    if characters.is_empty() {
+                        return Ok(Value::Int(0));
+                    }
+                    let start = buffer.position;
+                    let end = start
+                        .checked_add(characters.len())
+                        .ok_or_else(|| Error::new("OverflowError", "buffer position overflow"))?;
+                    if end > buffer.text.len() {
+                        buffer.text.resize(end, '\0');
+                    }
+                    buffer.text[start..end].copy_from_slice(&characters);
+                    buffer.position = end;
+                    Ok(Value::Int(characters.len() as i64))
+                }
+                "read" | "readline" | "__next__" => {
+                    args.expect(&operation, 0, usize::from(operation != "__next__"))?;
+                    let size = args
+                        .take(0, "size")
+                        .filter(|value| !value.is_none())
+                        .map(integer)
+                        .transpose()?
+                        .unwrap_or(-1);
+                    args.no_keywords(&operation)?;
+                    let text = buffer.read(size, operation != "read");
+                    if operation == "__next__" && text.is_empty() {
+                        return Err(Error::new("StopIteration", ""));
+                    }
+                    Ok(Value::str(text))
+                }
+                "readlines" => {
+                    args.expect("readlines", 0, 1)?;
+                    let hint = args.take(0, "hint").map(integer).transpose()?.unwrap_or(-1);
+                    args.no_keywords("readlines")?;
+                    let mut lines = Vec::new();
+                    let mut count = 0;
+                    while buffer.position < buffer.text.len() {
+                        let line = buffer.read(-1, true);
+                        count += line.chars().count() as i64;
+                        lines.push(Value::str(line));
+                        if hint > 0 && count > hint {
+                            break;
+                        }
+                    }
+                    Ok(Value::list(lines))
+                }
+                "seek" => {
+                    args.expect("seek", 1, 2)?;
+                    let offset = integer(args.positional[0].clone())?;
+                    let whence = args
+                        .take(1, "whence")
+                        .map(integer)
+                        .transpose()?
+                        .unwrap_or(0);
+                    args.no_keywords("seek")?;
+                    buffer.position = match (whence, offset) {
+                        (0, offset) if offset >= 0 => offset as usize,
+                        (1, 0) => buffer.position,
+                        (2, 0) => buffer.text.len(),
+                        (1 | 2, _) => {
+                            return Err(Error::new(
+                                "OSError",
+                                "Can't do nonzero cur-relative seeks",
+                            ));
+                        }
+                        _ => return Err(Error::value_error("invalid seek position or whence")),
+                    };
+                    Ok(Value::Int(buffer.position as i64))
+                }
+                "truncate" => {
+                    args.expect("truncate", 0, 1)?;
+                    let size = args
+                        .take(0, "size")
+                        .filter(|value| !value.is_none())
+                        .map(integer)
+                        .transpose()?
+                        .unwrap_or(buffer.position as i64);
+                    args.no_keywords("truncate")?;
+                    if size < 0 {
+                        return Err(Error::value_error("negative size value"));
+                    }
+                    buffer.text.truncate(size as usize);
+                    Ok(Value::Int(size))
+                }
+                _ => {
+                    args.expect(&operation, 0, 0)?;
+                    args.no_keywords(&operation)?;
+                    Ok(match operation.as_str() {
+                        "getvalue" => Value::str(buffer.text.iter().collect::<String>()),
+                        "tell" => Value::Int(buffer.position as i64),
+                        "__enter__" | "__iter__" => this.clone(),
+                        _ => Value::None,
+                    })
+                }
+            }
+        })))
     }
 }
 
@@ -1267,12 +1421,30 @@ pub fn io() -> Vec<(&'static str, Value)> {
     vec![
         (
             "StringIO",
-            function("StringIO", |interpreter, args| {
-                let initial = match args.positional.first() {
-                    Some(value) => interpreter.to_str(value)?,
-                    None => String::new(),
+            function("StringIO", |_, mut args| {
+                args.expect("StringIO", 0, 2)?;
+                let initial = args
+                    .take(0, "initial_value")
+                    .unwrap_or_else(|| Value::str(""));
+                if args
+                    .take(1, "newline")
+                    .is_some_and(|value| value.as_str() != Some("\n"))
+                {
+                    return Err(Error::unsupported("StringIO newline translation"));
+                }
+                args.no_keywords("StringIO")?;
+                let text = if initial.is_none() {
+                    ""
+                } else {
+                    initial
+                        .as_str()
+                        .ok_or_else(|| Error::type_error("initial_value must be str or None"))?
                 };
-                Ok(Value::native(StringIo(RefCell::new(initial))))
+                Ok(Value::native(StringIo(RefCell::new(StringBuffer {
+                    text: text.chars().collect(),
+                    position: 0,
+                    closed: false,
+                }))))
             }),
         ),
         (
@@ -2087,7 +2259,7 @@ pub fn classes_of(name: &str) -> Vec<(&'static str, Value)> {
         .collect()
 }
 
-/// A version number that compares by its numeric parts, like `packaging.version.Version`.
+/// The legacy version stand-in, kept separate from PEP 440 versions.
 struct Version(String, Vec<i64>);
 
 impl Version {
@@ -2172,6 +2344,117 @@ pub fn version_module() -> Vec<(&'static str, Value)> {
         ("LooseVersion", function("LooseVersion", make)),
         ("StrictVersion", function("StrictVersion", make)),
         ("parse_version", function("parse_version", make)),
+    ]
+}
+
+struct PepVersion(pep440_rs::Version);
+
+impl Native for PepVersion {
+    fn type_name(&self) -> &str {
+        "Version"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn to_str(&self, _: &mut Interpreter) -> Result<Option<String>, Error> {
+        Ok(Some(self.0.to_string()))
+    }
+
+    fn binary(
+        &self,
+        _: &mut Interpreter,
+        operator: crate::interpreter::Operator,
+        other: &Value,
+        reflected: bool,
+    ) -> Result<Option<Value>, Error> {
+        use crate::interpreter::Operator;
+        let Some(other) = other.as_native::<PepVersion>() else {
+            return Ok(None);
+        };
+        let order = if reflected {
+            other.0.cmp(&self.0)
+        } else {
+            self.0.cmp(&other.0)
+        };
+        Ok(Some(Value::Bool(match operator {
+            Operator::Eq => order.is_eq(),
+            Operator::NotEq => !order.is_eq(),
+            Operator::Lt => order.is_lt(),
+            Operator::LtE => !order.is_gt(),
+            Operator::Gt => order.is_gt(),
+            Operator::GtE => !order.is_lt(),
+            _ => return Ok(None),
+        })))
+    }
+
+    fn key_equal(&self, other: &dyn Native) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|other| self.0 == other.0)
+    }
+
+    fn key_hash(&self, mut state: &mut dyn std::hash::Hasher) {
+        std::hash::Hash::hash(&self.0, &mut state);
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let integer = |number: u64| Value::from_bigint(num_bigint::BigInt::from(number));
+        let release = self.0.release();
+        Ok(Some(match name {
+            "major" => integer(release[0]),
+            "minor" => integer(*release.get(1).unwrap_or(&0)),
+            "micro" => integer(*release.get(2).unwrap_or(&0)),
+            "release" => Value::tuple(release.iter().copied().map(integer).collect()),
+            "epoch" => integer(self.0.epoch()),
+            "base_version" => Value::str(
+                pep440_rs::Version::new(release)
+                    .with_epoch(self.0.epoch())
+                    .to_string(),
+            ),
+            "public" => Value::str(self.0.clone().with_local(Vec::new()).to_string()),
+            "is_prerelease" => Value::Bool(self.0.any_prerelease()),
+            "is_postrelease" => Value::Bool(self.0.is_post()),
+            "is_devrelease" => Value::Bool(self.0.is_dev()),
+            _ => return Ok(None),
+        }))
+    }
+}
+
+pub fn packaging_version() -> Vec<(&'static str, Value)> {
+    fn make(_: &mut Interpreter, args: Args) -> Result<Value, Error> {
+        args.expect("Version", 1, 1)?;
+        args.no_keywords("Version")?;
+        let text = args.positional[0]
+            .as_str()
+            .ok_or_else(|| Error::type_error("version must be a string"))?;
+        let version = text.parse::<pep440_rs::Version>().map_err(|error| {
+            Error::from_value(crate::error::exception(
+                &types::library_exception("InvalidVersion", "packaging.version", "ValueError"),
+                vec![Value::str(error.to_string())],
+            ))
+        })?;
+        Ok(Value::native(PepVersion(version)))
+    }
+    vec![
+        ("Version", function("Version", make)),
+        ("parse", function("parse", make)),
+        ("parse_version", function("parse_version", make)),
+        (
+            "InvalidVersion",
+            Value::Class(types::library_exception(
+                "InvalidVersion",
+                "packaging.version",
+                "ValueError",
+            )),
+        ),
     ]
 }
 

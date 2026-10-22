@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Read;
+use std::io::{Read, Seek};
 use std::path::{Component, Path, PathBuf};
 
 use config_file::{ConfigFile, Table};
@@ -233,12 +233,13 @@ impl Catalogue {
                 Value::String(root.to_string_lossy().into_owned()),
             );
         }
-        let inputs = tempfile::Builder::new()
+        let mut inputs = tempfile::Builder::new()
             .prefix("uwe-preset-")
             .suffix(".json")
             .tempfile()
             .map_err(failed)?;
         serde_json::to_writer(inputs.as_file(), &values).map_err(failed)?;
+        inputs.as_file_mut().rewind().map_err(failed)?;
         arguments.target = Some(workflow.source.clone());
         arguments.revision = workflow.revision.clone();
         arguments.language = workflow.language;

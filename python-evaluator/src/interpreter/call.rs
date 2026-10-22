@@ -970,6 +970,9 @@ impl Interpreter {
 
     /// `len(value)`.
     pub fn length(&mut self, value: &Value) -> Result<usize, Error> {
+        if let Some(object) = value.as_native::<crate::packages::PackageObject>() {
+            return object.size();
+        }
         if let Value::Class(class) = value.plain()
             && let Some(members) = crate::modules::enums::members(class)
         {

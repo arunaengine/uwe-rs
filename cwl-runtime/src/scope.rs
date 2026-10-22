@@ -12,11 +12,11 @@ use crate::javascript::helper::JavaScriptSettings;
 use crate::types::Types;
 
 /// Extension requirements that change nothing a task needs, so they can be satisfied by
-/// ignoring them; by the last part of their class IRI.
+/// ignoring them, identified by their complete extension IRI.
 const IGNORED_EXTENSIONS: [&str; 3] = [
-    "IntermediateOutput",
-    "ProcessProperties",
-    "OutputStorageClass",
+    "http://arvados.org/cwl#IntermediateOutput",
+    "http://arvados.org/cwl#ProcessProperties",
+    "http://arvados.org/cwl#OutputStorageClass",
 ];
 
 #[derive(Clone, Debug, Default)]
@@ -129,21 +129,20 @@ impl Scope {
         .map(|(listing, _)| listing)
     }
 
-    /// Fails for requirements that uwe cannot satisfy: unknown classes, and software
-    /// packages, which need a package resolver. Hints may always be ignored.
-    pub fn check_supported(&self) -> Result<(), DriverError> {
+    /// Rejects unknown requirements and software without a configured resolver.
+    /// Hints may always be ignored.
+    pub fn check_supported(&self, software: bool) -> Result<(), DriverError> {
         for entry in self.requirements.iter().chain(self.overrides.iter()) {
             match &entry.class {
-                RequirementClass::Software { .. } => {
+                RequirementClass::Software { .. } if !software => {
                     return Err(DriverError::unsupported(format!(
                         "{}: SoftwareRequirement as a requirement needs a package resolver, \
-                         which uwe does not have; give it as a hint",
+                         configure native Conda preparation to resolve it",
                         entry.location
                     )));
                 }
                 RequirementClass::Other { class, value } => {
-                    let name = class.rsplit(['#', ':']).next().unwrap_or(class);
-                    if name == "CUDARequirement" {
+                    if class == "http://commonwl.org/cwltool#CUDARequirement" {
                         let min = value.get("cudaDeviceCountMin");
                         let max = value.get("cudaDeviceCountMax");
                         let count = |node: &cwl_parser::Node| match node.value {
@@ -166,8 +165,12 @@ impl Scope {
                             )));
                         }
                     }
-                    if !IGNORED_EXTENSIONS.contains(&name)
-                        && !matches!(name, "CUDARequirement" | "ShmSize")
+                    if !IGNORED_EXTENSIONS.contains(&class.as_str())
+                        && !matches!(
+                            class.as_str(),
+                            "http://commonwl.org/cwltool#CUDARequirement"
+                                | "http://commonwl.org/cwltool#ShmSize"
+                        )
                     {
                         return Err(DriverError::unsupported(format!(
                             "{}: the requirement `{class}` is not supported",
@@ -184,7 +187,9 @@ impl Scope {
     /// The GPUs of a `cwltool:CUDARequirement`, a requirement or a hint.
     pub fn gpus(&self) -> Option<u32> {
         self.find(|class| match class {
-            RequirementClass::Other { class, value } if class.ends_with("CUDARequirement") => {
+            RequirementClass::Other { class, value }
+                if class == "http://commonwl.org/cwltool#CUDARequirement" =>
+            {
                 let count = value
                     .get("cudaDeviceCountMin")
                     .and_then(|node| match node.value {

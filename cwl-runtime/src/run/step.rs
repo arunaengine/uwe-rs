@@ -9,7 +9,9 @@ use std::sync::Arc;
 use cwl_parser::model::{ScatterMethod, Step, short_name};
 
 use super::links::assemble;
-use super::{Event, Job, JobId, Names, Parent, Run, ScatterRun, State, expression_runtime};
+use super::{
+    Event, Job, JobId, Names, Parent, Run, ScatterCursor, ScatterRun, State, expression_runtime,
+};
 use crate::expression::{Evaluator, Variables};
 use crate::files;
 use crate::placeholder;
@@ -102,45 +104,36 @@ impl Run {
             }
         }
         let method = step.scatter_method.unwrap_or(ScatterMethod::Dotproduct);
-        let combinations: Vec<Vec<usize>> = match method {
+        let count = match method {
             ScatterMethod::Dotproduct if self.placeholders.is_some() => {
-                // Placeholder lists have one item, where the document may expect as many as
-                // another list has: shorter lists repeat their items.
-                let longest = lengths.iter().copied().max().unwrap_or(0);
-                let shortest = lengths.iter().copied().min().unwrap_or(0);
-                let count = if shortest == 0 { 0 } else { longest };
-                (0..count)
-                    .map(|index| lengths.iter().map(|length| index % length).collect())
-                    .collect()
+                if lengths.contains(&0) {
+                    0
+                } else {
+                    lengths.iter().copied().max().unwrap_or(0)
+                }
             }
             ScatterMethod::Dotproduct => {
                 if lengths.iter().any(|length| *length != lengths[0]) {
                     return Err(at("dotproduct scatter needs lists of equal length".into()));
                 }
-                (0..lengths[0])
-                    .map(|index| vec![index; keys.len()])
-                    .collect()
+                lengths[0]
             }
-            ScatterMethod::NestedCrossproduct | ScatterMethod::FlatCrossproduct => {
-                let mut combinations = vec![Vec::new()];
-                for length in &lengths {
-                    let mut next = Vec::new();
-                    for combination in &combinations {
-                        for index in 0..*length {
-                            let mut extended = combination.clone();
-                            extended.push(index);
-                            next.push(extended);
-                        }
-                    }
-                    combinations = next;
-                }
-                combinations
-            }
+            ScatterMethod::NestedCrossproduct | ScatterMethod::FlatCrossproduct => lengths
+                .iter()
+                .try_fold(1usize, |count, length| count.checked_mul(*length))
+                .ok_or_else(|| at("scatter size exceeds the supported range".into()))?,
         };
         let shape = match method {
             ScatterMethod::NestedCrossproduct => lengths.clone(),
-            _ => vec![combinations.len()],
+            _ => vec![count],
         };
+        let mut columns = Vec::new();
+        for key in &keys {
+            let Some(Value::List(items)) = gathered.shift_remove(key) else {
+                return Err(at("a scatter input lost its array".into()));
+            };
+            columns.push(items);
+        }
         let scatter = self.jobs.len();
         self.jobs.push(Job {
             parent: Parent::Step {
@@ -154,37 +147,26 @@ impl Run {
                     .map(|id| short_name(id).to_owned())
                     .collect(),
                 shape,
-                results: vec![None; combinations.len()],
-                remaining: combinations.len(),
+                results: Vec::new(),
+                remaining: count,
+                cursor: (count > 0).then(|| {
+                    Box::new(ScatterCursor {
+                        step,
+                        scope: step_scope,
+                        names,
+                        common: gathered,
+                        keys,
+                        columns,
+                        lengths,
+                        count,
+                        next: 0,
+                        method,
+                    })
+                }),
             }),
         });
-        for (element, combination) in combinations.iter().enumerate() {
-            let mut inputs = gathered.clone();
-            for (key, item) in keys.iter().zip(combination) {
-                let value = match gathered.get(key) {
-                    Some(Value::List(items)) => items[*item].clone(),
-                    _ => Value::Null,
-                };
-                inputs.insert(key.clone(), value);
-            }
-            let shown = if method == ScatterMethod::Dotproduct {
-                vec![element]
-            } else {
-                combination.clone()
-            };
-            let element_names = names.indexed(&shown);
-            let parent = Parent::Element {
-                scatter,
-                index: element,
-            };
-            self.launch(
-                process,
-                inputs,
-                &step_scope,
-                parent,
-                element_names,
-                Some(Arc::clone(&step)),
-            )?;
+        if count > 0 {
+            self.deferred.push_back(scatter);
         }
         if let State::Scatter(run) = &mut self.jobs[scatter].state
             && run.remaining == 0
@@ -193,6 +175,55 @@ impl Run {
             self.events.push_back(Event::Finished(scatter, assembled));
         }
         Ok(())
+    }
+
+    pub(super) fn scatter_next(&mut self, scatter: JobId) -> Result<(), String> {
+        let State::Scatter(run) = &mut self.jobs[scatter].state else {
+            return Err("a scatter cursor lost its job".into());
+        };
+        let Some(cursor) = &mut run.cursor else {
+            return Ok(());
+        };
+        let index = cursor.next;
+        let mut remainder = index;
+        let mut combination = vec![0; cursor.lengths.len()];
+        for (position, length) in cursor.lengths.iter().enumerate().rev() {
+            combination[position] = match cursor.method {
+                ScatterMethod::Dotproduct => index % length,
+                _ => {
+                    let selected = remainder % length;
+                    remainder /= length;
+                    selected
+                }
+            };
+        }
+        let mut inputs = cursor.common.clone();
+        for ((key, column), selected) in cursor.keys.iter().zip(&cursor.columns).zip(&combination) {
+            inputs.insert(key.clone(), column[*selected].clone());
+        }
+        let shown = if cursor.method == ScatterMethod::Dotproduct {
+            vec![index]
+        } else {
+            combination
+        };
+        let names = cursor.names.indexed(&shown);
+        let step = Arc::clone(&cursor.step);
+        let scope = cursor.scope.clone();
+        cursor.next += 1;
+        if cursor.next < cursor.count {
+            self.deferred.push_front(scatter);
+        } else {
+            run.cursor = None;
+        }
+        run.results.push(None);
+        self.launch(
+            &step.run.process.clone(),
+            inputs,
+            &scope,
+            Parent::Element { scatter, index },
+            names,
+            Some(step),
+        )
     }
 
     /// [`Run::element`], and on placeholder inputs, with placeholders for the null inputs

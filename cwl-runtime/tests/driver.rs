@@ -1021,7 +1021,10 @@ fn retains_evaluated_folder() {
     let mut driver = CwlDriver::new(&launch, options.clone()).expect("a driver");
     let mut executor = Patterns::default();
     let _ = execute("main.cwl", &mut driver, &mut executor);
-    assert_eq!(executor.0, [vec!["*".to_owned()]]);
+    assert_eq!(
+        executor.0,
+        [vec!["cwl.output.json".to_owned(), "*".to_owned()]]
+    );
     // As initial_workdir_secondary_files_expr: expressions name secondary files.
     let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: touch\n\
         requirements: {InlineJavascriptRequirement: {}}\ninputs: []\narguments: [a.fa]\n\
@@ -1031,7 +1034,10 @@ fn retains_evaluated_folder() {
     let mut driver = CwlDriver::new(&launch, options).expect("a driver");
     let mut executor = Patterns::default();
     let _ = execute("main.cwl", &mut driver, &mut executor);
-    assert_eq!(executor.0, [vec!["a.fa.fai", "a.fa", "*"]]);
+    assert_eq!(
+        executor.0,
+        [vec!["a.fa.fai", "a.fa", "cwl.output.json", "*"]]
+    );
 }
 
 /// Makes each output that a task asks for, as a file with the task's id, in a folder of its
@@ -1046,7 +1052,9 @@ impl Executor for Making {
         let task = &attempt.task;
         self.tasks.push(task.as_ref().clone());
         let mut files = Vec::new();
-        for output in task.outputs.iter().filter(|output| !output.contains('*')) {
+        for output in task.outputs.iter().filter(|output| {
+            !output.contains('*') && !matches!(output.as_str(), "." | "cwl.output.json")
+        }) {
             let location = self.folder.join(task.id.to_string()).join(output);
             std::fs::create_dir_all(location.parent().expect("a parent")).expect("makes");
             std::fs::write(&location, format!("{}\n", task.id)).expect("writes");

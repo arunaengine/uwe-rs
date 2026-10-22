@@ -149,8 +149,7 @@ fn copy_tree(source: &PathValue, target: &PathValue, host: &mut dyn Host) -> Res
         if let Some(parent) = target.parent() {
             host.create_directories(&parent)?;
         }
-        let bytes = host.read(source)?;
-        host.write(target, &bytes)?;
+        host.copy_file(source, target)?;
     }
     Ok(())
 }
@@ -160,6 +159,33 @@ mod tests {
     use super::*;
     use nextflow_evaluator::interpreter::FileMetadata;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn streams_local_files() {
+        struct Streaming;
+        impl Host for Streaming {
+            fn print(&mut self, _: &str) {}
+            fn read(&mut self, _: &PathValue) -> Result<Vec<u8>, Error> {
+                panic!("store copies must not read whole files");
+            }
+        }
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("database");
+        std::fs::File::create(&source)
+            .unwrap()
+            .set_len(16 * 1024 * 1024)
+            .unwrap();
+        let store = PathValue::parse(&root.path().join("stored").to_string_lossy(), "/");
+        let mut files = vec![(
+            "database".into(),
+            PathValue::parse(&source.to_string_lossy(), "/"),
+        )];
+        save(&mut files, &store, &mut Streaming).unwrap();
+        assert_eq!(
+            std::fs::metadata(&files[0].1.path).unwrap().len(),
+            16 * 1024 * 1024
+        );
+    }
 
     struct Remote(BTreeMap<String, Vec<u8>>);
     impl Host for Remote {
@@ -190,6 +216,11 @@ mod tests {
         }
         fn write(&mut self, path: &PathValue, bytes: &[u8]) -> Result<(), Error> {
             self.0.insert(path.uri(), bytes.to_vec());
+            Ok(())
+        }
+        fn copy_file(&mut self, source: &PathValue, target: &PathValue) -> Result<(), Error> {
+            let bytes = self.0[&source.uri()].clone();
+            self.0.insert(target.uri(), bytes);
             Ok(())
         }
         fn create_directories(&mut self, _: &PathValue) -> Result<(), Error> {
@@ -247,17 +278,18 @@ mod tests {
     struct Failing(&'static str);
     impl Host for Failing {
         fn print(&mut self, _: &str) {}
-        fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {
-            if path.name() == self.0 {
+        fn copy_file(&mut self, source: &PathValue, target: &PathValue) -> Result<(), Error> {
+            if source.name() == self.0 {
                 return Err(Error::Unsupported {
                     message: "stopped".into(),
                     span: Default::default(),
                 });
             }
-            std::fs::read(&path.path).map_err(|error| Error::Unsupported {
+            std::fs::copy(&source.path, &target.path).map_err(|error| Error::Unsupported {
                 message: error.to_string(),
                 span: Default::default(),
-            })
+            })?;
+            Ok(())
         }
     }
 

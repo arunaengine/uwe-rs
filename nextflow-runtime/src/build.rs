@@ -129,6 +129,10 @@ impl Host for Builder<'_> {
         self.base.write(path, bytes)
     }
 
+    fn copy_file(&mut self, source: &PathValue, target: &PathValue) -> Result<(), Error> {
+        self.base.copy_file(source, target)
+    }
+
     fn delete(&mut self, path: &PathValue) -> Result<bool, Error> {
         self.base.delete(path)
     }

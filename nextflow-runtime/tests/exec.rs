@@ -6,6 +6,78 @@ use std::path::{Path, PathBuf};
 
 use workflow_graph::{Launch, Simulator, execute};
 
+#[test]
+fn skips_exec_effects() {
+    for stored in [false, true] {
+        let folder = tempfile::tempdir().unwrap();
+        let sentinel = folder.path().join("sentinel");
+        let store = folder.path().join("store");
+        if stored {
+            std::fs::create_dir(&store).unwrap();
+            std::fs::write(store.join("result.txt"), "stored").unwrap();
+        }
+        let source = format!(
+            "process P {{\n storeDir '{}'\n output:\n path 'result.txt'\n when:\n {stored}\n exec:\n file('{}').text = 'ran'\n task.workDir.resolve('result.txt').text = 'new'\n}}\nworkflow {{ P() }}",
+            store.display(),
+            sentinel.display()
+        );
+        std::fs::write(folder.path().join("main.nf"), source).unwrap();
+        let mut driver = nextflow_runtime::driver(&Launch {
+            target: folder.path().to_owned(),
+            scratch: folder.path().join("scratch"),
+            ..Launch::default()
+        })
+        .unwrap();
+        assert!(driver.start().unwrap().is_empty());
+        driver.finish().unwrap();
+        assert!(!sentinel.exists());
+        assert!(!folder.path().join("scratch/nextflow-exec").exists());
+        if stored {
+            assert_eq!(
+                std::fs::read_to_string(store.join("result.txt")).unwrap(),
+                "stored"
+            );
+        }
+    }
+}
+
+#[test]
+fn probes_pure_outputs() {
+    for stored in [false, true] {
+        let folder = tempfile::tempdir().unwrap();
+        let sentinel = folder.path().join("sentinel");
+        let store = folder.path().join("store");
+        if stored {
+            std::fs::create_dir(&store).unwrap();
+            std::fs::write(store.join("2.txt"), "stored").unwrap();
+        }
+        let pattern = if stored { "${x}.txt" } else { "${x++}.txt" };
+        let source = format!(
+            "process P {{\n storeDir '{}'\n input:\n val x\n output:\n path \"{pattern}\"\n when:\n x++ > 0\n exec:\n file('{}').text = \"$x\"\n task.workDir.resolve(\"${{x}}.txt\").text = 'new'\n}}\nworkflow {{ P(1) }}",
+            store.display(),
+            sentinel.display()
+        );
+        std::fs::write(folder.path().join("main.nf"), source).unwrap();
+        let mut driver = nextflow_runtime::driver(&Launch {
+            target: folder.path().to_owned(),
+            scratch: folder.path().join("scratch"),
+            ..Launch::default()
+        })
+        .unwrap();
+        assert!(driver.start().unwrap().is_empty());
+        driver.finish().unwrap();
+        if stored {
+            assert!(!sentinel.exists());
+        } else {
+            assert_eq!(std::fs::read_to_string(sentinel).unwrap(), "2");
+        }
+        assert_eq!(
+            std::fs::read_to_string(store.join("2.txt")).unwrap(),
+            if stored { "stored" } else { "new" }
+        );
+    }
+}
+
 /// The files below a folder, by their paths there.
 fn files(folder: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();

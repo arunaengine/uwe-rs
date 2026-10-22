@@ -69,6 +69,15 @@ const HINT_DIRECTIVES: &[&str] = &[
     "scratch",
 ];
 
+pub(crate) fn capabilities() -> serde_json::Value {
+    serde_json::json!({
+        "supported": HANDLED_DIRECTIVES,
+        "unsupported": REFUSED_DIRECTIVES,
+        "placement_ignored": HINT_DIRECTIVES,
+        "placement_source": "uwe executor settings"
+    })
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TaskId(pub u64);
 
@@ -458,7 +467,11 @@ impl ProcessNode {
         let (id, work_dir) = match exec {
             true => {
                 let id = id.unwrap_or_else(|| context.task_id());
-                (Some(id), Some(self.exec_work_dir(id, attempt)?))
+                let folder = self
+                    .exec_folder
+                    .as_ref()
+                    .map(|folder| folder.join(format!("{}-{attempt}", id.0)));
+                (Some(id), folder)
             }
             false => (id, None),
         };
@@ -497,16 +510,36 @@ impl ProcessNode {
             (map.borrow_mut().entries)
                 .insert(Key(Value::string("workDir")), Value::Path(Rc::new(path)));
         }
-        let rendered = interpreter.render(&mut frame, &self.process, &task, self.stub)?;
-        if !rendered.run {
+        if !interpreter.task_guard(&mut frame, &self.process, &task)? {
             return Ok(());
         }
         let publish = publish::rules(interpreter, &frame, &task, &directives)?;
         let store = crate::store::directory(&directives, interpreter.host());
-        let stored = if let Some(directory) = &store {
-            crate::store::files(&rendered.outputs, directory, interpreter.host())?
-        } else {
-            None
+        let mut reused = None;
+        if exec
+            && let Some(directory) = &store
+            && let Ok(Some(probe)) = interpreter.render_probe(&mut frame, &self.process, &task)
+            && let Some(files) = crate::store::files(&probe.outputs, directory, interpreter.host())?
+            && self.stored_outputs(&probe.outputs, &files, &self.name)
+        {
+            reused = Some((probe, files));
+        }
+        let (rendered, stored) = match reused {
+            Some((probe, files)) => (probe, Some(files)),
+            None => {
+                if exec {
+                    self.exec_work_dir(id.expect("exec task id"), attempt)?;
+                }
+                let rendered =
+                    interpreter.render_body(&mut frame, &self.process, &task, self.stub)?;
+                let stored = match &store {
+                    Some(directory) if !exec => {
+                        crate::store::files(&rendered.outputs, directory, interpreter.host())?
+                    }
+                    _ => None,
+                };
+                (rendered, stored)
+            }
         };
         let id = id.unwrap_or_else(|| context.task_id());
         let mut request = TaskRequest {
@@ -522,7 +555,7 @@ impl ProcessNode {
             output_patterns: Vec::new(),
             env: Vec::new(),
             eval: Vec::new(),
-            made: match &work_dir {
+            made: match work_dir.as_ref().filter(|_| stored.is_none()) {
                 Some(folder) => Some(made_files(folder).map_err(|error| {
                     thrown(Exception::new(
                         "IOException",
@@ -557,22 +590,8 @@ impl ProcessNode {
             publish,
             store,
         };
-        let stored = stored.filter(|files| {
-            let outcome = TaskOutcome {
-                files: files.clone(),
-                ..TaskOutcome::default()
-            };
-            let mut bound = Bound {
-                staged: Vec::new(),
-                files: Vec::new(),
-                simulated: false,
-            };
-            let mut eval_index = 0;
-            flight.outputs.iter().all(|output| {
-                self.output_value(output, &outcome, &flight.name, &mut eval_index, &mut bound)
-                    .is_ok()
-            })
-        });
+        let stored =
+            stored.filter(|files| self.stored_outputs(&flight.outputs, files, &flight.name));
         self.pending.insert(id, flight);
         if let Some(files) = stored {
             self.complete(
@@ -594,6 +613,28 @@ impl ProcessNode {
     fn runs_exec(&self) -> bool {
         let exec = (self.process.body.as_ref()).is_some_and(|body| body.kind == BodyKind::Exec);
         exec && !(self.stub && self.process.stub.is_some())
+    }
+
+    fn stored_outputs(
+        &self,
+        outputs: &[RenderedOutput],
+        files: &[(String, PathValue)],
+        name: &str,
+    ) -> bool {
+        let outcome = TaskOutcome {
+            files: files.to_vec(),
+            ..TaskOutcome::default()
+        };
+        let mut bound = Bound {
+            staged: Vec::new(),
+            files: Vec::new(),
+            simulated: false,
+        };
+        let mut eval_index = 0;
+        outputs.iter().all(|output| {
+            self.output_value(output, &outcome, name, &mut eval_index, &mut bound)
+                .is_ok()
+        })
     }
 
     /// The folder of an attempt of an `exec:` section, made empty.

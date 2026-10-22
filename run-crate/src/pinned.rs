@@ -67,7 +67,18 @@ pub(crate) fn gather(
                 let from = kept.unwrap_or_else(|| folder.join(&source.path));
                 let id = format!("{WORKFLOW_FOLDER}{}", source.path);
                 match copy_checked(&from, &directory.join(&id), &source.digest)? {
-                    true => pinned.workflow.push((encode(&id), source)),
+                    true => {
+                        use std::os::unix::fs::PermissionsExt;
+                        std::fs::set_permissions(
+                            directory.join(&id),
+                            std::fs::Permissions::from_mode(if source.executable {
+                                0o755
+                            } else {
+                                0o644
+                            }),
+                        )?;
+                        pinned.workflow.push((encode(&id), source));
+                    }
                     false => pinned.changed.push(source),
                 }
             }

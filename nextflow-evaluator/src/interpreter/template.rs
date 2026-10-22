@@ -84,16 +84,21 @@ impl Interpreter<'_> {
         }
         let mut result = String::new();
         let mut rest = text;
-        while let Some(dollar) = rest.find('$') {
-            // `\$` is a plain dollar sign.
-            if rest[..dollar].ends_with('\\') {
-                result.push_str(&rest[..dollar - 1]);
-                result.push('$');
-                rest = &rest[dollar + 1..];
+        while let Some(index) = rest.find(['$', '\\']) {
+            result.push_str(&rest[..index]);
+            let after = &rest[index + 1..];
+            if rest[index..].starts_with('\\') {
+                let Some((text, length)) = escape(after) else {
+                    let message = "Failed to parse template script: an invalid escape sequence";
+                    return Err(super::thrown(
+                        crate::exception::Exception::new("ProcessTemplateException", message),
+                        span,
+                    ));
+                };
+                result.push_str(&text);
+                rest = &after[length..];
                 continue;
             }
-            result.push_str(&rest[..dollar]);
-            let after = &rest[dollar + 1..];
             let (expression, length) = if let Some(inner) = after.strip_prefix('{') {
                 let end = closing_brace(inner)
                     .ok_or_else(|| unsupported("a template with an unclosed `${`", span))?;
@@ -182,6 +187,40 @@ fn push_text(source: &mut String, text: &str) {
         source.push(character);
     }
     source.push_str("\"\"\"\n");
+}
+
+/// The text of the escape after a backslash in a template and how long it is, as in a
+/// Groovy string: `\$` is a plain dollar sign, `\t` a tab, a backslash at the end of a
+/// line joins the next one, and `\"` stays as it is. Other escapes are errors.
+fn escape(after: &str) -> Option<(String, usize)> {
+    let next = after.chars().next()?;
+    let plain = |text: &str| Some((text.to_owned(), 1));
+    match next {
+        '\\' => plain("\\"),
+        '$' => plain("$"),
+        't' => plain("\t"),
+        'n' => plain("\n"),
+        'r' => plain("\r"),
+        'b' => plain("\u{8}"),
+        'f' => plain("\u{c}"),
+        '\'' => plain("'"),
+        '"' => plain("\\\""),
+        '\n' => plain(""),
+        '\r' if after[1..].starts_with('\n') => Some((String::new(), 2)),
+        'u' => {
+            let code = u32::from_str_radix(after.get(1..5)?, 16).ok()?;
+            Some((char::from_u32(code)?.to_string(), 5))
+        }
+        '0'..='7' => {
+            let most = if next <= '3' { 3 } else { 2 };
+            let length = (after.bytes().take(most))
+                .take_while(|byte| (b'0'..=b'7').contains(byte))
+                .count();
+            let code = u32::from_str_radix(&after[..length], 8).ok()?;
+            Some((char::from_u32(code)?.to_string(), length))
+        }
+        _ => None,
+    }
 }
 
 /// Where the `}` that closes a `${` is: braces nest, and braces in quotes do not count.

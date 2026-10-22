@@ -272,6 +272,48 @@ fn renders_task_templates() {
     assert_eq!(requests[0].script, "#!/bin/bash -ue\necho a P\n");
 }
 
+/// Templates take the escapes of Groovy strings, as a probe of Nextflow 26.04.6 rendered
+/// them: nf-core's Python templates write `"\\t"` for a tab in Python.
+#[test]
+fn renders_template_escapes() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "templates/t.py",
+        "#!/usr/bin/env python\nsplit(\"\\\\t\") a\\\\b c\\td \\$e \\\\${x} k\\\"l q\\'r \\101\\u00e9 o\\\np\n",
+    );
+    write(root.path(), "templates/bad.sh", "grep '\\d'\n");
+    write(
+        root.path(),
+        "main.nf",
+        "process P {\n    input:\n    val x\n    script:\n    template 't.py'\n}\n\
+         workflow {\n    P(channel.of('X'))\n}\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let options = nextflow_runtime::Options::default();
+    let (_, requests) =
+        nextflow_runtime::Run::start(&module, &options, &mut Output::default()).expect("starts");
+    assert_eq!(
+        requests[0].script,
+        "#!/usr/bin/env python\nsplit(\"\\t\") a\\b c\td $e \\X k\\\"l q'r A\u{e9} op\n"
+    );
+    write(
+        root.path(),
+        "main.nf",
+        "process Q {\n    script:\n    template 'bad.sh'\n}\nworkflow {\n    Q()\n}\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let error = nextflow_runtime::Run::start(&module, &options, &mut Output::default())
+        .err()
+        .expect("an invalid escape fails")
+        .to_string();
+    assert!(error.contains("Failed to parse template script"), "{error}");
+}
+
 /// Nextflow 26.04.6 calls included functions, and functions called from a workflow or
 /// process, by reflection, which wraps what they throw in an `InvocationTargetException`.
 #[test]

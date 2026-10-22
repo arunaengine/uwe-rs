@@ -90,6 +90,23 @@ impl Service for Counted {
     ) -> opendal::Result<Self::Copier> {
         self.inner.copy(ctx, from, to, args)
     }
+    async fn rename(
+        &self,
+        ctx: &OperationContext,
+        from: &str,
+        to: &str,
+        args: OpRename,
+    ) -> opendal::Result<RpRename> {
+        self.inner.rename(ctx, from, to, args).await
+    }
+    async fn presign(
+        &self,
+        ctx: &OperationContext,
+        path: &str,
+        args: OpPresign,
+    ) -> opendal::Result<RpPresign> {
+        self.inner.presign(ctx, path, args).await
+    }
     fn compose(
         &self,
         ctx: &OperationContext,
@@ -157,16 +174,23 @@ async fn verifies_overlaps_once() {
         "test://outputs",
     )
     .unwrap();
-    let output = store
-        .put_output(
-            "run",
-            "task",
-            1,
-            "directory/file",
-            Bytes::from_static(b"result"),
-        )
-        .await
-        .unwrap();
+    let output = content_store::StoredOutput {
+        location: store
+            .put_output(
+                "run",
+                "task",
+                1,
+                "directory/file",
+                Bytes::from_static(b"result"),
+            )
+            .await
+            .unwrap(),
+        digest: store
+            .put_content(Bytes::from_static(b"result"))
+            .await
+            .unwrap(),
+        size: 6,
+    };
     let tree = task_model::Tree {
         entries: vec![task_model::TreeEntry::File {
             path: "file".into(),

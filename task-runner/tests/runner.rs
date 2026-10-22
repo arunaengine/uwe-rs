@@ -371,8 +371,8 @@ fn resumes_tagged_images() {
     let mut foreign = runner_of(root.path(), "foreign", std::time::Duration::ZERO, 0);
     foreign.resume_from(["other".to_owned()].into());
     assert!(
-        !tagged(&foreign).reused,
-        "the result belongs to another lineage"
+        tagged(&foreign).reused,
+        "the other lineage retains its own result"
     );
 }
 
@@ -2112,22 +2112,77 @@ async fn online_limits_reuse() {
         .request(&task, Some("image@sha256:00".into()))
         .await
         .unwrap();
-    assert!(
-        !second
-            .execute(&prepared, &CancellationToken::new())
-            .await
-            .unwrap()
-            .reused
-    );
+    let own = second
+        .execute(&prepared, &CancellationToken::new())
+        .await
+        .unwrap();
+    assert!(!own.reused);
     let mut resumed = runner_of(root.path(), "resumed", std::time::Duration::ZERO, 0);
     resumed.resume_from(["second".to_owned()].into());
+    let reused = resumed
+        .execute(&prepared, &CancellationToken::new())
+        .await
+        .unwrap();
+    assert!(reused.reused);
+    assert_eq!(reused.files[0].location, own.files[0].location);
+}
+
+#[tokio::test]
+async fn resumes_legacy_lineage() {
+    use workflow_graph::{Attempt, Executor, Network};
+
+    let root = tempfile::tempdir().unwrap();
+    let task = Task {
+        id: TaskId(1),
+        image: Some("debian".into()),
+        command: vec!["true".into()],
+        network: Network::Allowed,
+        ..Task::default()
+    };
+    let mut runner = runner_of(root.path(), "resumed", std::time::Duration::ZERO, 0);
+    let prepared = runner
+        .request(&task, Some("debian@sha256:00".into()))
+        .await
+        .unwrap();
+    let key = prepared.request.spec.cache_key().unwrap();
+    let namespace = &prepared.request.spec.namespace;
+    let store = Store::local(&root.path().join("store")).unwrap();
+    let entry = task_runner::CacheEntry {
+        run: "legacy".into(),
+        task: prepared.request.identity.clone(),
+        exit_code: 0,
+        files: Vec::new(),
+        stdout: None,
+        stderr: None,
+        milliseconds: None,
+        containers: Vec::new(),
+    };
+    store
+        .put_entry(namespace, &key, entry.to_bytes(&key).unwrap().into())
+        .await
+        .unwrap();
+    let mut foreign = runner_of(root.path(), "foreign", std::time::Duration::ZERO, 0);
+    foreign.resume_from(["unrelated".to_owned()].into());
     assert!(
-        resumed
+        !foreign
             .execute(&prepared, &CancellationToken::new())
             .await
             .unwrap()
             .reused
     );
+    runner.resume_from(["legacy".to_owned()].into());
+    let mut executor = task_runner::RunnerExecutor::new(runner, None);
+    let outcome = executor
+        .run(Attempt {
+            task: std::sync::Arc::new(task),
+            number: 1,
+            cancel: CancellationToken::new(),
+        })
+        .await
+        .unwrap();
+    assert!(outcome.cached);
+    executor.settle(TaskId(1), 1, false).await.unwrap();
+    assert!(store.get_entry(namespace, &key).await.unwrap().is_none());
 }
 
 #[tokio::test]

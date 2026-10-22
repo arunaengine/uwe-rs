@@ -213,8 +213,17 @@ async fn removes_observed_version() {
         let mut executor = executor(root.path(), store.clone(), "consumer");
         let cancel = CancellationToken::new();
         assert!(executor.run(attempt(1, 1, &cancel)).await.unwrap().cached);
-        let observed = store.observe_entry("", &key()).await.unwrap().unwrap();
-        assert!(store.invalidate_entry("", &key(), &observed).await.unwrap());
+        let observed = store
+            .observe_entry("network-denied", &key())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            store
+                .invalidate_entry("network-denied", &key(), &observed)
+                .await
+                .unwrap()
+        );
         let replacement = CacheEntry {
             run: "replacement".into(),
             ..original

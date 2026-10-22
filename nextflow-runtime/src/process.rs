@@ -741,6 +741,7 @@ impl ProcessNode {
         bound: &mut Bound,
     ) -> Result<Option<Value>, Error> {
         let mut parts = Vec::new();
+        let mut missing = false;
         for part in &output.parts {
             let value = match part {
                 RenderedPart::Value(value) => value.clone(),
@@ -833,10 +834,12 @@ impl ProcessNode {
                     }
                 }
             };
+            // An optional output is missing when a part that the task makes is, like a
+            // pattern without files; a value, like an empty `meta` map, never is.
+            missing |= !matches!(part, RenderedPart::Value(_)) && !value.truth();
             parts.push(value);
         }
-        // An optional output is missing when a part of it is, like a pattern without files.
-        let missing = output.optional && parts.iter().any(|part| !part.truth());
+        let missing = output.optional && missing;
         let value = if output.tuple {
             Value::list(parts)
         } else {

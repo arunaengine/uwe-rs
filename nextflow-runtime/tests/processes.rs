@@ -1286,3 +1286,15 @@ fn strings_among_directives() {
     let (tasks, _) = run(source, &Options::default()).expect("runs");
     assert_eq!(tasks[0].name, "P (1)");
 }
+
+/// An optional tuple output with an empty `meta` map is emitted when its files exist, as in
+/// Nextflow 26.04.6: nf-core's SAMTOOLS_FAIDX emits `[[:], fai]` this way.
+#[test]
+fn emits_optional_tuples() {
+    let source = "process FAI {\n    input: val x\n    \
+                  output: tuple val([:]), path(\"*.fai\"), emit: fai, optional: true\n    \
+                  script: \"touch x.fai\"\n}\n\
+                  workflow {\n    FAI(1)\n    FAI.out.fai.view { \"fai ${it}\" }\n}\n";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "fai [[:], /work/1/*.fai]\n");
+}

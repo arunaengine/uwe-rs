@@ -39,10 +39,14 @@ fn record(directory: &std::path::Path) -> Database {
             step: step.into(),
             command: vec!["bash".into(), "-c".into(), "echo hi".into()],
             outputs: vec!["out.txt".into()],
+            defer_logs: id == 1,
             ..Task::default()
         };
         recorder.requested(&task, &[]);
         recorder.started(TaskId(id), 1);
+        let stdout = format!("{}</script><b>the end\n", "x".repeat(3 * LOG_TAIL));
+        let log = directory.join("stdout");
+        std::fs::write(&log, &stdout).expect("writes the retained log");
         let outcome = Outcome {
             id: TaskId(id),
             exit_code: if id == 1 { 0 } else { 3 },
@@ -51,7 +55,16 @@ fn record(directory: &std::path::Path) -> Database {
                 location: format!("/cache/store/{id}/out.txt"),
                 ..OutputFile::default()
             }],
-            stdout: format!("{}</script><b>the end\n", "x".repeat(3 * LOG_TAIL)),
+            stdout: if id == 1 {
+                String::new()
+            } else {
+                stdout.clone()
+            },
+            stdout_log: (id == 1).then(|| workflow_graph::Stream {
+                location: log.to_string_lossy().into_owned(),
+                digest: task_model::Digest::sha256(stdout.as_bytes()).to_string(),
+                size: stdout.len() as u64,
+            }),
             stderr: "a warning\n".into(),
             ..Outcome::default()
         };
@@ -102,6 +115,10 @@ fn embeds_report_data() {
     let data = data(&html);
     assert_eq!(data["run"], "report-run");
     let answers = &data["answers"];
+    let deferred = &answers["/api/runs/report-run/tasks/1"]["stdout"];
+    assert_eq!(deferred["whole"], false);
+    let text = deferred["text"].as_str().expect("retained log text");
+    assert!(text.len() <= LOG_TAIL && text.ends_with("</script><b>the end\n"));
     let run = &answers["/api/runs/report-run"];
     assert_eq!(run["run"]["state"], "failed");
     assert_eq!(run["tasks"].as_array().map(Vec::len), Some(2));

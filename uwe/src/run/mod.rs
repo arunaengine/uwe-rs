@@ -381,7 +381,8 @@ fn execute_with(
     if let Some(telemetry) = telemetry {
         telemetry.finish();
     }
-    let report = report::after_run(arguments, &run);
+    let files = executor.files();
+    let report = report::after_run(arguments, &run, files.as_deref());
     match progress {
         Some(progress) => progress.finish(&run, Some(&store), report.as_deref()),
         None => {

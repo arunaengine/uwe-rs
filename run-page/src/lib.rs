@@ -20,7 +20,7 @@ use run_database::{Database, DatabaseError};
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
-pub use report::{LOG_TAIL, report};
+pub use report::{LOG_TAIL, log_tail, report, report_with_files};
 
 /// Where the page serves and what it reads.
 #[derive(Clone)]

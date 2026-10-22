@@ -184,6 +184,9 @@ impl workflow_graph::Executor for Store {
         let task = &attempt.task;
         let mut files = Vec::new();
         for (number, output) in task.outputs.iter().enumerate() {
+            if task.output_manifest.as_ref() == Some(output) {
+                continue;
+            }
             let location = self.0.join(format!("{}-{number}", task.id));
             std::fs::write(&location, "a 1\nb 2\n").unwrap();
             let mut permissions = std::fs::metadata(&location).unwrap().permissions();
@@ -232,6 +235,12 @@ fn writes_cwl_outputs() {
     let mut executor = Store(store);
     let run = workflow_graph::Engine::new(&mut executor).run("cwl", driver.as_mut());
     assert!(run.error.is_none(), "{:?}", run.error);
+    assert!(
+        run.graph
+            .nodes
+            .iter()
+            .any(|node| { node.task.output_manifest.as_deref() == Some("cwl.output.json") })
+    );
     let sorted = std::fs::metadata(work.join("sorted.txt")).expect("the output");
     assert!(!sorted.permissions().readonly());
 }

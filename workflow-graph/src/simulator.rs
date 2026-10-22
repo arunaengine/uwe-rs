@@ -38,7 +38,17 @@ impl Executor for Simulator {
     /// Simulates the task on the thread of the driver, so that simulated runs keep the order
     /// in which the engine starts tasks.
     fn run(&mut self, attempt: Attempt) -> Running {
-        Running::ended(self.simulate(&attempt.task))
+        if attempt.number <= 1 {
+            return Running::ended(self.simulate(&attempt.task));
+        }
+        let retry = Simulator {
+            directory: self
+                .directory
+                .join("attempts")
+                .join(attempt.number.to_string()),
+            verbose: self.verbose,
+        };
+        Running::ended(retry.simulate(&attempt.task))
     }
 }
 

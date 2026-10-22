@@ -132,6 +132,41 @@ fn shows_simulated_containers() {
     assert_eq!(tes["executors"][1]["command"][1], "first");
 }
 
+#[test]
+fn isolates_simulated_attempts() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut simulator = Simulator::new(directory.path());
+    let mut files = Vec::new();
+    for (number, word) in [(1, "first"), (2, "second")] {
+        let task = Task {
+            id: TaskId(1),
+            script: Some(format!("echo {word} > result.txt")),
+            outputs: vec!["result.txt".into()],
+            ..Task::default()
+        };
+        let running = simulator.run(Attempt {
+            task: std::sync::Arc::new(task),
+            number,
+            cancel: workflow_graph::CancellationToken::new(),
+        });
+        let outcome = workflow_graph::runtime()
+            .unwrap()
+            .block_on(running)
+            .unwrap();
+        files.push(outcome.files[0].clone());
+    }
+    assert_ne!(files[0].location, files[1].location);
+    assert_ne!(files[0].digest, files[1].digest);
+    assert_eq!(
+        std::fs::read_to_string(&files[0].location).unwrap(),
+        "first\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&files[1].location).unwrap(),
+        "second\n"
+    );
+}
+
 /// The simulator, except that an earlier result answers task 2.
 struct Reusing(Simulator);
 

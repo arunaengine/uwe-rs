@@ -16,6 +16,7 @@ pub(crate) struct Queue {
 
 impl Queue {
     pub(crate) fn push(&mut self, task: Task) {
+        self.finished.remove(&task.id);
         self.waiting.push_back(task);
     }
 
@@ -59,6 +60,19 @@ mod tests {
         assert_eq!(first, Some(TaskId(1)));
         // Task 1 has started but not finished, so task 3 goes first.
         assert_eq!(queue.next().map(|task| task.id), Some(TaskId(3)));
+        assert!(queue.next().is_none());
+        queue.finished(TaskId(1));
+        assert_eq!(queue.next().map(|task| task.id), Some(TaskId(2)));
+    }
+
+    #[test]
+    fn retry_closes_gate() {
+        let mut queue = Queue::default();
+        queue.finished(TaskId(1));
+        queue.push(task(1, &[]));
+        queue.push(task(2, &[1]));
+
+        assert_eq!(queue.next().map(|task| task.id), Some(TaskId(1)));
         assert!(queue.next().is_none());
         queue.finished(TaskId(1));
         assert_eq!(queue.next().map(|task| task.id), Some(TaskId(2)));

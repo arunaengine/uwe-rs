@@ -533,6 +533,14 @@ class FolderTest(TreeTest):
         tree = [("pkg/Cargo.toml", ""), ("pkg/src/lib.rs", ""), ("pkg/src/asset/one.toml", "")]
         self.assertEqual(self.folders(tree), [("folder", "pkg/src/asset", 0, "1 of 5 direct files besides mod.rs")])
 
+    def test_asset_prefix(self):
+        tree = [("pkg/Cargo.toml", ""), ("pkg/src/lib.rs", "")] + [
+            (f"pkg/src/render_{name}.html", "") for name in ("graph", "task", "run")
+        ]
+        self.assertEqual(self.folders(tree), [
+            ("prefix", "pkg/src", 0, "3 siblings share prefix 'render'; group them into 'render/'")
+        ])
+
     def test_fixtures(self):
         tree = [
             ("pkg/Cargo.toml", ""),
@@ -576,6 +584,15 @@ class FolderTest(TreeTest):
             ("pkg/src/fixtures/two.bin", ""),
         ]
         self.assertEqual(self.folders(tree), [])
+
+    def test_fixture_templates(self):
+        tree = [("pkg/Cargo.toml", ""), ("pkg/src/lib.rs", "")] + [
+            (f"pkg/src/fixtures/render_{part}.html", "") for part in ("one", "two", "three")
+        ]
+        self.assertIn(
+            ("prefix", "pkg/src/fixtures", 0, "3 siblings share prefix 'render'; group them into 'render/'"),
+            self.folders(tree),
+        )
 
     def test_singleton_tests(self):
         tree = [
@@ -657,6 +674,39 @@ class FolderTest(TreeTest):
         )
 
 
+class AssetTest(TreeTest):
+    def assets(self, names):
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in names:
+                self.write(tmp, name, "# Maintained fixture.\n" + HASH_NOTICES)
+            return list(check_style.asset_findings(tmp))
+
+    def test_fixture_prefix(self):
+        names = [f"pkg/tests/fixtures/domain_{part}.yaml" for part in ("one", "two", "three")]
+        self.assertEqual(self.assets(names[:2]), [])
+        self.assertEqual(self.assets(names), [
+            ("prefix", "pkg/tests/fixtures", 0, "3 siblings share prefix 'domain'; group them into 'domain/'")
+        ])
+
+    def test_grouped_assets(self):
+        folder = "pkg/tests/fixtures/domain"
+        check_style.ASSET_DOMAINS[folder] = "grouped domain_* fixtures"
+        try:
+            names = [f"{folder}/{part}.yaml" for part in ("one", "two", "three")]
+            self.assertEqual(self.assets(names), [])
+            self.assertEqual(self.assets(names[:1]), [
+                ("folder", folder, 0, "1 of 5 maintained direct files")
+            ])
+        finally:
+            del check_style.ASSET_DOMAINS[folder]
+
+    def test_copied_assets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for part in ("one", "two", "three"):
+                self.write(tmp, f"pkg/tests/fixtures/domain_{part}.yaml", "upstream: original\n")
+            self.assertEqual(list(check_style.asset_findings(tmp)), [])
+
+
 class FixtureSourceTest(TreeTest):
     def sources(self, tree):
         with tempfile.TemporaryDirectory() as tmp:
@@ -726,6 +776,25 @@ class PythonToolTest(TreeTest):
         self.assertEqual(
             findings, [("pydecl", "scripts/dev/tool.py", 1, "def 'load_bucket_config_now' has 4 terms")]
         )
+
+    def test_owned_paths(self):
+        for path in ("pkg/src/worker.py", ".github/scripts/check.py", "pkg/tests/fixtures/record.py"):
+            with self.subTest(path=path):
+                findings = self.python([(path, "def load_bucket_config_now():\n    pass\n")])
+                self.assertEqual(findings, [
+                    ("pydecl", path, 1, "def 'load_bucket_config_now' has 4 terms")
+                ])
+
+    def test_copied_python(self):
+        findings = self.python([("demo/snakemake/scripts/plot-quals.py",
+                                 "def load_bucket_config_now():\n    pass\n")])
+        self.assertEqual(findings, [])
+
+    def test_scoped_constant(self):
+        path = "snakemake-runtime/src/embedded/snakemake/iocontainers.py"
+        source = "FILE_HASH_PREFIX_LEN = 16\n"
+        self.assertEqual(self.python([(path, source)]), [])
+        self.assertEqual(len(self.python([("pkg/src/worker.py", source)])), 1)
 
     def test_class_name(self):
         findings = self.python([("scripts/dev/tool.py", "class MaximumRetryCountValue:\n    pass\n")])

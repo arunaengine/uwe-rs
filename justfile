@@ -10,6 +10,7 @@ lint:
 # Static structure, naming, comment and header check from STYLE.md; no build.
 style:
 	python3 scripts/dev/check_style_tests.py
+	python3 -I -m unittest discover -s scripts/tests
 	python3 scripts/dev/check_style.py
 
 # Workspace tests and doctests.
@@ -49,6 +50,10 @@ kind-staging-test: release-binary
 container-runs:
 	nice -n 19 cargo build --offline --locked -p uwe -j 8
 	nice -n 19 python3 -I scripts/container-runs.py target/debug/uwe
+
+# Measures simulator graph planning and shared-reference binding counts with an existing binary.
+qualify binary="target/release/uwe" *arguments:
+	python3 -I scripts/qualify.py "{{binary}}" {{arguments}}
 
 # Fetches the text-only nf-core test workflows at the commits the test-workflows tests expect.
 test-workflows:

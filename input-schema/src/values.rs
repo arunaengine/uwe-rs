@@ -61,10 +61,13 @@ fn typed(root: &Json, schema: &Json, text: String) -> Json {
         return Json::String(text);
     }
     let trimmed = text.trim();
-    if types.contains(&"integer")
-        && let Ok(number) = trimmed.parse::<i64>()
-    {
-        return Json::from(number);
+    if types.contains(&"integer") || types.contains(&"number") {
+        if let Ok(number) = trimmed.parse::<i64>() {
+            return Json::from(number);
+        }
+        if let Ok(number) = trimmed.parse::<u64>() {
+            return Json::from(number);
+        }
     }
     if types.contains(&"number")
         && let Some(number) = trimmed

@@ -45,7 +45,15 @@ fn request(eval: &[&str], env: &[&str], container: Option<&str>) -> TaskRequest 
 
 #[test]
 fn captures_task_outputs() {
-    let request = request(&["echo \"v'1\"", "echo bad >&2; exit 2"], &["FOO"], None);
+    let request = request(
+        &[
+            "echo \"v'1\"",
+            "echo bad >&2; exit 2",
+            "printf '\\n\\n2.1.1\\n'",
+        ],
+        &["FOO"],
+        None,
+    );
     let script = command_script(&request);
     assert!(script.starts_with(&request.script));
     let root = tempfile::tempdir().expect("a temporary directory");
@@ -62,6 +70,8 @@ fn captures_task_outputs() {
     assert_eq!(variables["FOO"], ("a b".to_owned(), 0));
     assert_eq!(variables["nxf_out_eval_1"], ("v'1".to_owned(), 0));
     assert_eq!(variables["nxf_out_eval_2"], ("bad".to_owned(), 2));
+    // Leading newlines go, as `featureCounts -v` prints its version after a blank line.
+    assert_eq!(variables["nxf_out_eval_3"], ("2.1.1".to_owned(), 0));
     assert!(!root.path().join(".command.eval").exists());
 }
 

@@ -70,6 +70,8 @@ pub fn command_script(request: &TaskRequest) -> String {
         "    output=$(bash -c \"$2\" 2> .command.eval)\n",
         "    status=$?\n",
         "    if [ \"$status\" -ne 0 ]; then output=$(cat .command.eval); fi\n",
+        // Nextflow reads the output with `IFS=$'\n' read`, which drops leading newlines too.
+        "    output=\"${output#\"${output%%[!$'\\n']*}\"}\"\n",
         "    rm -f .command.eval\n",
         "    printf '%s=%s\\n/%s/=exit:%s\\n' \"$1\" \"$output\" \"$1\" \"$status\" >> .command.env\n",
         "}\n",

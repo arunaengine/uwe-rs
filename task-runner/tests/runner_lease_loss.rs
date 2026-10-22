@@ -65,6 +65,7 @@ fn runner(root: &Path, store: Store) -> Runner<Waiting> {
 fn task() -> Task {
     Task {
         id: TaskId(1),
+        network: workflow_graph::Network::Denied,
         command: vec!["true".into()],
         ..Task::default()
     }
@@ -86,7 +87,7 @@ async fn detachment_blocks_admission() {
     )
     .unwrap();
     store
-        .put_entry("", &key, entry.to_bytes(&key).unwrap().into())
+        .put_entry("network-denied", &key, entry.to_bytes(&key).unwrap().into())
         .await
         .unwrap();
     let reused = runner
@@ -183,7 +184,14 @@ async fn rejects_late_success() {
             }),
             "{case}: {error}"
         );
-        assert!(store.get_entry("", &key).await.unwrap().is_none(), "{case}");
+        assert!(
+            store
+                .get_entry("network-denied", &key)
+                .await
+                .unwrap()
+                .is_none(),
+            "{case}"
+        );
         let scratch = root.path().join("backend/run-1-1");
         assert!(scratch.join("remote.json").is_file(), "{case}");
         assert!(scratch.join("cleanup-observed").is_file(), "{case}");

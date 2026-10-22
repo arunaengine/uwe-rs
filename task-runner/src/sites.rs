@@ -197,6 +197,7 @@ mod tests {
         };
         let spec = TaskSpec {
             run_as: None,
+            output_manifest: None,
             format: FORMAT,
             namespace: String::new(),
             image: None,

@@ -29,6 +29,9 @@ pub struct TaskSpec {
     pub environment: BTreeMap<String, EnvironmentValue>,
     pub inputs: Vec<InputFile>,
     pub outputs: Vec<OutputRule>,
+    /// Optional JSON manifest naming additional File and Directory outputs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_manifest: Option<String>,
     /// The digest of the text that the task reads on standard input.
     pub stdin: Option<Digest>,
     /// Containers sharing work, inputs and outputs; the first owns stdin, stdout and outputs.
@@ -173,6 +176,9 @@ impl TaskSpec {
         }
         for output in &self.outputs {
             check_path(&output.pattern)?;
+        }
+        if let Some(manifest) = &self.output_manifest {
+            check_path(manifest)?;
         }
         self.check_containers()
     }

@@ -72,7 +72,7 @@ fn task(id: u64) -> Task {
         image: Some(format!("image@sha256:{}", "a".repeat(64))),
         command: vec!["true".into()],
         outputs: vec!["out".into()],
-        network: Network::Allowed,
+        network: Network::Denied,
         ..Task::default()
     }
 }
@@ -95,7 +95,7 @@ fn key() -> Digest {
 
 async fn cached(store: &Store) -> Option<CacheEntry> {
     store
-        .get_entry("", &key())
+        .get_entry("network-denied", &key())
         .await
         .unwrap()
         .map(|bytes| CacheEntry::parse(&key(), &bytes).unwrap())
@@ -220,7 +220,11 @@ async fn removes_observed_version() {
             ..original
         };
         store
-            .put_entry("", &key(), replacement.to_bytes(&key()).unwrap().into())
+            .put_entry(
+                "network-denied",
+                &key(),
+                replacement.to_bytes(&key()).unwrap().into(),
+            )
             .await
             .unwrap();
         executor.settle(TaskId(1), 1, false).await.unwrap();
@@ -266,7 +270,11 @@ async fn releases_build_leases() {
     let cancel = CancellationToken::new();
     // The later ordered outcome is buffered while the earlier task still needs this key.
     let later = executor.run(attempt(2, 1, &cancel)).await.unwrap();
-    let name = format!("tasks/{}/{}", layout::namespace_name(""), key().hex());
+    let name = format!(
+        "tasks/{}/{}",
+        layout::namespace_name("network-denied"),
+        key().hex()
+    );
     let free = store
         .try_lease(&name, &Holder::new("probe", "released"))
         .await
@@ -294,7 +302,11 @@ async fn skips_contended_settlement() {
         .run(attempt(1, 1, &CancellationToken::new()))
         .await
         .unwrap();
-    let name = format!("tasks/{}/{}", layout::namespace_name(""), key().hex());
+    let name = format!(
+        "tasks/{}/{}",
+        layout::namespace_name("network-denied"),
+        key().hex()
+    );
     let _owner = store
         .try_lease(&name, &Holder::new("other", "build"))
         .await

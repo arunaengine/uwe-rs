@@ -138,6 +138,7 @@ pub fn request(
             })
             .collect(),
         stdin,
+        output_manifest: task.output_manifest.clone(),
         containers,
         replaces_entrypoint: task.replaces_entrypoint,
         run_as: (task.run_as).map(|run_as| task_model::RunAs {
@@ -147,7 +148,7 @@ pub fn request(
     };
     let scope = if task.reuse == Reuse::Disabled {
         ReuseScope::None
-    } else if spec.image_pinned() {
+    } else if spec.image_pinned() && task.network == Network::Denied {
         ReuseScope::Shared
     } else {
         ReuseScope::Lineage
@@ -197,10 +198,12 @@ mod tests {
             id: TaskId(12),
             name: "P (1)".into(),
             step: "NFCORE:P".into(),
+            network: Network::Denied,
             command: vec!["/bin/bash".into(), "-ue".into(), ".command.sh".into()],
             workdir: Some("/work".into()),
             environment: [("A".to_owned(), "1".to_owned())].into(),
             outputs: vec!["out.txt".into(), "db/".into()],
+            output_manifest: Some("cwl.output.json".into()),
             resources: Resources {
                 cpus: Some(2.0),
                 gpus: Some(1),
@@ -228,6 +231,7 @@ mod tests {
         assert_eq!(tagged.spec.arguments, task.command);
         assert_eq!(tagged.spec.workdir.as_deref(), Some("/work"));
         assert_eq!(tagged.spec.outputs[1].pattern, "db/");
+        assert_eq!(tagged.spec.output_manifest, task.output_manifest);
         assert_eq!(tagged.spec.stdin, stdin);
         assert_eq!(tagged.placement.cpus, 2);
         assert_eq!(tagged.placement.accelerators[0].count, 1);
@@ -274,7 +278,8 @@ mod tests {
             online.spec.cache_key().expect("an online key"),
             offline.spec.cache_key().expect("an offline key")
         );
-        assert_eq!(online.scope, ReuseScope::Shared);
+        assert_eq!(online.scope, ReuseScope::Lineage);
+        assert_eq!(explicitly_online.scope, ReuseScope::Lineage);
         assert_eq!(offline.scope, ReuseScope::Shared);
     }
 

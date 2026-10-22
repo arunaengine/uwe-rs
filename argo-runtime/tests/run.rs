@@ -2229,6 +2229,45 @@ spec:
 }
 
 #[test]
+fn scopes_child_workflows() {
+    const LIBRARY: &str = "apiVersion: argoproj.io/v1alpha1\nkind: WorkflowTemplate\nmetadata: {name: greeter, namespace: team}\nspec:\n  entrypoint: main\n  templates:\n  - name: main\n    container: {image: alpine, command: [echo, team]}\n---\napiVersion: argoproj.io/v1alpha1\nkind: WorkflowTemplate\nmetadata: {name: greeter, namespace: other}\nspec:\n  entrypoint: main\n  templates:\n  - name: main\n    container: {image: alpine, command: [echo, other]}\n";
+    let mut templates = "  - name: main\n    steps:\n    - - {name: team, template: team}\n    - - {name: other, template: other}\n    - - {name: get-team, template: get-team}\n    - - {name: get-other, template: get-other}\n    - - name: show\n        template: print\n        arguments:\n          parameters:\n          - {name: message, value: '{{steps.get-team.outputs.parameters.namespace}} {{steps.get-other.outputs.parameters.namespace}}'}\n".to_owned();
+    for (name, action, namespace) in [
+        ("team", "create", ""),
+        ("other", "create", ", namespace: other"),
+        ("get-team", "get", ""),
+        ("get-other", "get", ", namespace: other"),
+    ] {
+        templates.push_str(&format!("  - name: {name}\n    resource:\n      action: {action}\n      successCondition: status.phase == Succeeded\n      manifest: |\n        apiVersion: argoproj.io/v1alpha1\n        kind: Workflow\n        metadata: {{name: same{namespace}}}\n        spec: {{workflowTemplateRef: {{name: greeter}}}}\n    outputs:\n      parameters:\n      - {{name: namespace, valueFrom: {{jsonPath: '{{.metadata.namespace}}'}}}}\n"));
+    }
+    let source = workflow(&templates).replace(
+        "  generateName: test-\n",
+        "  generateName: test-\n  namespace: team\n",
+    );
+    let ran = run_with(
+        &source,
+        Setup {
+            library: vec![LIBRARY],
+            ..Setup::default()
+        },
+    );
+    ran.succeeded();
+    let commands: Vec<_> = ran
+        .tasks()
+        .iter()
+        .map(|task| task.command.clone())
+        .collect();
+    assert_eq!(
+        commands,
+        [
+            vec!["echo", "team"],
+            vec!["echo", "other"],
+            vec!["echo", "team other"]
+        ]
+    );
+}
+
+#[test]
 fn writes_host_paths() {
     let host = tempfile::tempdir().expect("a temporary directory");
     let templates = format!(

@@ -257,3 +257,21 @@ fn preserves_aggregate_strings() {
         assert!(run.finish().is_ok());
     }
 }
+
+#[test]
+fn bounds_sequence_expansion() {
+    let folder = tempfile::tempdir().unwrap();
+    for sequence in [
+        "{count: '1000000000000'}",
+        "{start: '-9223372036854775808', end: '9223372036854775807'}",
+        "{count: 1, format: '%999999999999999999999999d'}",
+    ] {
+        let spec = format!(
+            "  entrypoint: main\n  parallelism: 1\n  templates:\n  - name: main\n    steps:\n    - - name: work\n        template: leaf\n        withSequence: {sequence}\n  - name: leaf\n    container: {{image: alpine}}\n"
+        );
+        let mut run = driver(folder.path(), &spec, false);
+        let tasks = run.start().unwrap();
+        assert!(tasks.is_empty());
+        assert!(run.finish().unwrap_err().message.contains("limit"));
+    }
+}

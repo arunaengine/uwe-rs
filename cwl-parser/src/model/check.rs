@@ -19,6 +19,19 @@ pub fn check_workflows(process: &Process, inherited: &[&Requirement]) -> Result<
     };
     let mut scope: Vec<&Requirement> = inherited.to_vec();
     scope.extend(process.requirements.iter().chain(&process.hints));
+    if process
+        .outputs
+        .iter()
+        .any(|output| output.output_source.len() > 1)
+        && !scope
+            .iter()
+            .any(|entry| matches!(entry.class, RequirementClass::MultipleInputFeature))
+    {
+        return Err(Error::new(
+            &process.location,
+            "multiple output sources need MultipleInputFeatureRequirement",
+        ));
+    }
     for step in &workflow.steps {
         let mut step_scope = scope.clone();
         step_scope.extend(step.requirements.iter().chain(&step.hints));
@@ -34,6 +47,22 @@ fn check_step(step: &Step, scope: &[&Requirement]) -> Result<(), Error> {
     let has = |wanted: fn(&RequirementClass) -> bool| {
         scope.iter().any(|requirement| wanted(&requirement.class))
     };
+    if step.inputs.iter().any(|input| input.value_from.is_some())
+        && !has(|class| matches!(class, RequirementClass::StepInputExpression))
+    {
+        return Err(Error::new(
+            &step.location,
+            "valueFrom needs StepInputExpressionRequirement",
+        ));
+    }
+    if step.inputs.iter().any(|input| input.source.len() > 1)
+        && !has(|class| matches!(class, RequirementClass::MultipleInputFeature))
+    {
+        return Err(Error::new(
+            &step.location,
+            "multiple sources need MultipleInputFeatureRequirement",
+        ));
+    }
     if tool.kind() == Kind::Workflow
         && !has(|class| matches!(class, RequirementClass::SubworkflowFeature))
     {

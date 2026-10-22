@@ -1083,6 +1083,52 @@ async fn refetches_changed_files() {
 }
 
 #[tokio::test]
+async fn isolates_storage_sessions() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("database");
+    std::fs::write(&source, b"first").unwrap();
+    let providers = storage(&format!(
+        "[storage.mirror]\ntype='folder'\nprefixes='s3://bucket/'\npath='{}'",
+        root.path().display()
+    ));
+    let first = providers.session();
+    let second = providers.session();
+    let cloned = first.clone();
+    let address = "s3://bucket/database";
+    let downloads = root.path().join("first");
+    let copy = first.fetch(address, &downloads).await.unwrap();
+    let original = first.fetched();
+    first.pin(original[0].clone());
+    assert_eq!(cloned.fetched(), original);
+    assert!(second.fetched().is_empty());
+    assert!(providers.fetched().is_empty());
+
+    std::fs::write(&source, b"other").unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&source)
+        .unwrap()
+        .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000))
+        .unwrap();
+    let changed = second
+        .fetch(address, &root.path().join("second"))
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(changed).unwrap(), b"other");
+    assert_ne!(second.fetched()[0].version, original[0].version);
+    assert_ne!(second.fetched()[0].digest, original[0].digest);
+    assert_eq!(cloned.fetch(address, &downloads).await.unwrap(), copy);
+    assert_eq!(std::fs::read(copy).unwrap(), b"first");
+    assert_eq!(first.fetched(), original);
+    assert_eq!(cloned.fetched(), original);
+    assert!(providers.fetched().is_empty());
+    drop(first);
+    assert!(storage::hold_downloads(&downloads).unwrap().is_none());
+    drop(cloned);
+    assert!(storage::hold_downloads(&downloads).unwrap().is_some());
+}
+
+#[tokio::test]
 async fn holds_read_downloads() {
     let root = tempfile::tempdir().unwrap();
     let downloads = tempfile::tempdir().unwrap();
@@ -1168,11 +1214,13 @@ fn identity_excludes_secrets() {
 async fn publishes_immutable_versions() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = format!("http://{}/data", listener.local_addr().unwrap());
-    let barrier = Arc::new(std::sync::Barrier::new(2));
+    let (observed, second_head) = tokio::sync::oneshot::channel();
     let (ready, first_request) = tokio::sync::oneshot::channel();
     let (release, second_response) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let mut ready = Some(ready);
+        let mut observed = Some(observed);
+        let mut heads = 0;
         let mut second_response = Some(second_response);
         let mut versions = ["A", "B"].into_iter();
         for stream in listener.incoming() {
@@ -1191,6 +1239,10 @@ async fn publishes_immutable_versions() {
             if request.starts_with("HEAD") {
                 let head = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\nETag: \"A\"\r\nConnection: close\r\n\r\n";
                 stream.write_all(head.as_bytes()).unwrap();
+                heads += 1;
+                if heads == 2 {
+                    observed.take().unwrap().send(()).unwrap();
+                }
                 continue;
             }
             let Some(version) = versions.next() else {
@@ -1199,15 +1251,13 @@ async fn publishes_immutable_versions() {
             if version == "A" {
                 ready.take().unwrap().send(()).unwrap();
             }
-            let delayed = if version == "B" {
+            let delayed = if version == "A" {
                 second_response.take()
             } else {
                 None
             };
-            let barrier = barrier.clone();
             std::thread::spawn(move || {
-                // Both callers already observed no completed cache before either can publish.
-                barrier.wait();
+                // The first transfer waits until the other process observes the same identity.
                 if let Some(delayed) = delayed {
                     delayed.recv().unwrap();
                 }
@@ -1226,9 +1276,10 @@ async fn publishes_immutable_versions() {
     let a = fetch(first.clone());
     first_request.await.unwrap();
     let b = fetch(second.clone());
+    second_head.await.unwrap();
+    release.send(()).unwrap();
     let a = a.await.unwrap().unwrap();
     assert_eq!(std::fs::read_to_string(&a).unwrap(), "AAAA");
-    release.send(()).unwrap();
     let b = b.await.unwrap().unwrap();
     assert_eq!(a, b);
     let bytes = std::fs::read_to_string(&a).unwrap();
@@ -1250,8 +1301,8 @@ async fn publishes_immutable_versions() {
     assert_eq!(repeat.fetch(&address, downloads.path()).await.unwrap(), a);
     assert_eq!(std::fs::read_to_string(b).unwrap(), bytes);
     assert_eq!(repeat.fetched(), first.fetched());
-    // The one bundle, and the lock that readers of downloads hold.
-    assert_eq!(std::fs::read_dir(downloads.path()).unwrap().count(), 2);
+    // The bundle, its transfer lock, and the downloads reader lock.
+    assert_eq!(std::fs::read_dir(downloads.path()).unwrap().count(), 3);
 }
 
 #[tokio::test]
@@ -1354,5 +1405,186 @@ async fn redirects_drop_headers() {
     assert!(
         !keyed(&elsewhere, "/file"),
         "another server never gets the header"
+    );
+}
+
+#[test]
+fn download_process() {
+    let Ok(address) = std::env::var("UWE_TEST_DOWNLOAD") else {
+        return;
+    };
+    let folder = std::path::PathBuf::from(std::env::var("UWE_TEST_DOWNLOADS").unwrap());
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let copy = runtime
+        .block_on(Storage::default().fetch(&address, &folder))
+        .unwrap();
+    assert_eq!(std::fs::read(copy).unwrap(), b"shared database");
+}
+
+#[test]
+fn shares_process_downloads() {
+    let server = WebServer::start(&[("/database", "shared database")], None);
+    let address = format!("{}/database", server.address);
+    let downloads = tempfile::tempdir().unwrap();
+    let start = || {
+        std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "download_process"])
+            .env("UWE_TEST_DOWNLOAD", &address)
+            .env("UWE_TEST_DOWNLOADS", downloads.path())
+            .spawn()
+            .unwrap()
+    };
+    let mut first = start();
+    let mut second = start();
+    assert!(first.wait().unwrap().success());
+    assert!(second.wait().unwrap().success());
+    let requests = server.requests.lock().unwrap();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.as_str() == "GET /database")
+            .count(),
+        1
+    );
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.as_str() == "HEAD /database")
+            .count(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn rejects_changed_observation() {
+    use std::io::{BufRead, BufReader, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!("http://{}/database", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        for (mut stream, version) in listener
+            .incoming()
+            .map(Result::unwrap)
+            .zip(["A", "B", "A", "A"])
+        {
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut request = String::new();
+            reader.read_line(&mut request).unwrap();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line.trim().is_empty() {
+                    break;
+                }
+            }
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: 1\r\nETag: \"{version}\"\r\nConnection: close\r\n\r\n").unwrap();
+            if request.starts_with("GET ") {
+                stream.write_all(version.as_bytes()).unwrap();
+            }
+        }
+    });
+    let downloads = tempfile::tempdir().unwrap();
+    assert!(
+        Storage::default()
+            .fetch(&address, downloads.path())
+            .await
+            .unwrap_err()
+            .retryable()
+    );
+    let copy = Storage::default()
+        .fetch(&address, downloads.path())
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(copy).unwrap(), b"A");
+    server.join().unwrap();
+}
+
+#[tokio::test]
+async fn publication_keeps_existing() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    let target = root.path().join("destination");
+    std::fs::write(&source, b"first").unwrap();
+    let address = format!("file://{}", target.display());
+    let storage = Storage::default();
+    assert!(storage.upload_absent(&source, &address).await.unwrap());
+    std::fs::write(&source, b"replacement").unwrap();
+    assert!(!storage.upload_absent(&source, &address).await.unwrap());
+    assert_eq!(std::fs::read(target).unwrap(), b"first");
+}
+
+#[test]
+fn download_owner() {
+    use std::io::Read;
+    let Ok(path) = std::env::var("UWE_TEST_OWNER") else {
+        return;
+    };
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(path)
+        .unwrap();
+    file.lock().unwrap();
+    println!("owner-ready");
+    std::io::stdout().flush().unwrap();
+    let _ = std::io::stdin().read(&mut [0]);
+}
+
+#[tokio::test]
+async fn recovers_download_owner() {
+    let server = WebServer::start(&[("/database", "shared database")], None);
+    let address = format!("{}/database", server.address);
+    let downloads = tempfile::tempdir().unwrap();
+    let storage = Storage::default();
+    storage.current(&address).await.unwrap();
+    let lock = downloads
+        .path()
+        .join(storage.download_name(&address).unwrap())
+        .with_extension("lock");
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "download_owner", "--nocapture"])
+        .env("UWE_TEST_OWNER", lock)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut output = BufReader::new(child.stdout.take().unwrap());
+    loop {
+        let mut line = String::new();
+        assert_ne!(output.read_line(&mut line).unwrap(), 0);
+        if line.contains("owner-ready") {
+            break;
+        }
+    }
+    child.kill().unwrap();
+    child.wait().unwrap();
+    let copy = storage.fetch(&address, downloads.path()).await.unwrap();
+    assert_eq!(std::fs::read(copy).unwrap(), b"shared database");
+}
+
+#[tokio::test]
+async fn creates_one_destination() {
+    let root = tempfile::tempdir().unwrap();
+    let first = root.path().join("first");
+    let second = root.path().join("second");
+    let target = root.path().join("destination");
+    std::fs::write(&first, b"first").unwrap();
+    std::fs::write(&second, b"second").unwrap();
+    let address = format!("file://{}", target.display());
+    let storage = Storage::default();
+    let (a, b) = tokio::join!(
+        storage.upload_absent(&first, &address),
+        storage.upload_absent(&second, &address)
+    );
+    let (a, b) = (a.unwrap(), b.unwrap());
+    assert_ne!(a, b);
+    assert_eq!(
+        std::fs::read(target).unwrap(),
+        if a {
+            b"first".to_vec()
+        } else {
+            b"second".to_vec()
+        }
     );
 }

@@ -80,7 +80,7 @@ pub enum StoreLocation {
     Objects(opendal::Operator),
 }
 
-/// The storage providers of a process. Clones share the providers and their clients.
+/// Storage providers and read state. Clones share both within a session.
 #[derive(Clone)]
 pub struct Storage {
     inner: Arc<Inner>,
@@ -88,9 +88,9 @@ pub struct Storage {
 
 struct Inner {
     /// The providers of the config file.
-    configured: Vec<Provider>,
+    configured: Arc<Vec<Provider>>,
     /// The providers of what the config file does not serve.
-    built_in: Vec<Provider>,
+    built_in: Arc<Vec<Provider>>,
     store: Option<String>,
     /// A folder of this machine in front of the store (`[store] local`).
     local_store: Option<String>,
@@ -206,10 +206,26 @@ impl Storage {
         ];
         Storage {
             inner: Arc::new(Inner {
-                configured,
-                built_in,
+                configured: Arc::new(configured),
+                built_in: Arc::new(built_in),
                 store: settings.store,
                 local_store: settings.local_store,
+                journal: journal::Journal::default(),
+                downloading: Mutex::default(),
+                observed: Mutex::default(),
+                held: Mutex::default(),
+            }),
+        }
+    }
+
+    /// Shares provider clients with fresh read history, pins, versions and download ownership.
+    pub fn session(&self) -> Storage {
+        Storage {
+            inner: Arc::new(Inner {
+                configured: self.inner.configured.clone(),
+                built_in: self.inner.built_in.clone(),
+                store: self.inner.store.clone(),
+                local_store: self.inner.local_store.clone(),
                 journal: journal::Journal::default(),
                 downloading: Mutex::default(),
                 observed: Mutex::default(),
@@ -410,6 +426,24 @@ impl Storage {
         self.upload_with_receipt(file, target).await.map(|_| ())
     }
 
+    /// Creates a destination atomically, returning false when existing content stays.
+    pub async fn upload_absent(&self, file: &Path, target: &str) -> Result<bool, StorageError> {
+        let served = self.serve(target)?;
+        let result = match &served.connection.backend {
+            Backend::Objects(objects) => objects.upload_absent(file, target).await,
+            Backend::Folder(folder) => match folder.path(served.prefix, target) {
+                Ok(path) => folder.upload_absent(file, &path).await,
+                Err(error) => Err(error),
+            },
+            _ => {
+                return Err(StorageError::Unsupported(
+                    "the provider cannot create destinations conditionally".into(),
+                ));
+            }
+        };
+        result.map_err(|problem| served.failed("write", target, problem))
+    }
+
     /// Uploads a local file and returns the identity reported by that completed write.
     pub async fn upload_with_receipt(
         &self,
@@ -463,10 +497,10 @@ impl Storage {
     }
 }
 
-/// What names the downloads of one version of a file. Without a version or a time of change
-/// nothing tells an unchanged file from a changed one, so each process downloads it anew.
+/// Reuse requires an identity that the transfer also reports; stat-only modification times
+/// cannot bind downloaded bytes, so those copies stay private to one process.
 fn stamp(metadata: &Metadata) -> String {
-    if metadata.directory || (metadata.version.is_none() && metadata.modified.is_none()) {
+    if metadata.directory || metadata.version.is_none() {
         return format!("fresh {:?}", std::time::SystemTime::now());
     }
     format!("{metadata:?}")

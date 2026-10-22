@@ -95,15 +95,28 @@ impl StorageFiles {
     }
 
     /// Uploads a local file, or each file of a local directory below the address.
-    fn upload(&self, local: &Path, target: &str) -> io::Result<()> {
+    fn upload(&self, local: &Path, target: &str, overwrite: bool) -> io::Result<()> {
         if !local.is_dir() {
-            return self.storage.upload(local, target).map_err(other);
+            return match overwrite {
+                true => self.storage.upload(local, target).map_err(other),
+                false => self
+                    .storage
+                    .upload_absent(local, target)
+                    .map(|_| ())
+                    .map_err(other),
+            };
+        }
+        if !overwrite {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "remote directory publication cannot atomically preserve an existing destination",
+            ));
         }
         for entry in std::fs::read_dir(local)? {
             let entry = entry?;
             let name = entry.file_name().to_string_lossy().into_owned();
             let inside = format!("{}/{name}", target.trim_end_matches('/'));
-            self.upload(&entry.path(), &inside)?;
+            self.upload(&entry.path(), &inside, overwrite)?;
         }
         Ok(())
     }
@@ -127,13 +140,14 @@ impl Files for StorageFiles {
         }
         let local = self.local(&delivery.location)?;
         if remote(&delivery.target) {
-            return self.upload(&local, &delivery.target);
+            return self.upload(&local, &delivery.target, delivery.overwrite);
         }
         // A link to the copy of a remote file would break when the copy goes.
         LocalFiles.deliver(&Delivery {
             location: local.to_string_lossy().into_owned(),
             target: delivery.target.clone(),
             mode: DeliveryMode::Copy,
+            overwrite: delivery.overwrite,
         })
     }
 }
@@ -369,6 +383,7 @@ mod tests {
                 location,
                 target: target.to_owned(),
                 mode,
+                overwrite: true,
             };
             files.deliver(&delivery).expect("delivers");
         };
@@ -421,5 +436,42 @@ mod tests {
         // Drivers read a remote location through a local copy.
         let copy = files.local("s3://store/runs/1/x.txt").unwrap();
         assert_eq!(std::fs::read_to_string(copy).unwrap(), "x\n");
+    }
+
+    #[test]
+    fn preserves_existing_delivery() {
+        let root = tempfile::tempdir().unwrap();
+        let files = StorageFiles::new(&folders(root.path()), root.path().join("downloads"));
+        let source = root.path().join("made");
+        std::fs::write(&source, b"new").unwrap();
+        std::fs::create_dir(root.path().join("results")).unwrap();
+        std::fs::write(root.path().join("results/existing"), b"old").unwrap();
+        let mut delivery = Delivery {
+            location: source.to_string_lossy().into_owned(),
+            target: "s3://results/existing".into(),
+            mode: DeliveryMode::Copy,
+            overwrite: false,
+        };
+        files.deliver(&delivery).unwrap();
+        assert_eq!(
+            std::fs::read(root.path().join("results/existing")).unwrap(),
+            b"old"
+        );
+        delivery.target = "s3://results/missing".into();
+        files.deliver(&delivery).unwrap();
+        assert_eq!(
+            std::fs::read(root.path().join("results/missing")).unwrap(),
+            b"new"
+        );
+        let directory = root.path().join("directory");
+        std::fs::create_dir(&directory).unwrap();
+        std::fs::write(directory.join("extra"), b"extra").unwrap();
+        delivery.location = directory.to_string_lossy().into_owned();
+        delivery.target = "s3://results/folder".into();
+        assert_eq!(
+            files.deliver(&delivery).unwrap_err().kind(),
+            io::ErrorKind::Unsupported
+        );
+        assert!(!root.path().join("results/folder").exists());
     }
 }

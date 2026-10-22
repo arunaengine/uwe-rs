@@ -74,6 +74,7 @@ pub(crate) struct Problem {
     pub retryable: bool,
     /// Whether the file is not there.
     pub missing: bool,
+    pub existing: bool,
 }
 
 impl Problem {
@@ -83,6 +84,7 @@ impl Problem {
             message: message.into(),
             retryable: false,
             missing: false,
+            existing: false,
         }
     }
 

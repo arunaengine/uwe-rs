@@ -47,6 +47,19 @@ fn lock_file(path: &Path) -> std::io::Result<std::fs::File> {
         .open(path)
 }
 
+async fn lock_download(path: &Path) -> Result<std::fs::File, StorageError> {
+    let file = lock_file(path).map_err(local(path))?;
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(file),
+            Err(std::fs::TryLockError::WouldBlock) => {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await
+            }
+            Err(std::fs::TryLockError::Error(error)) => return Err(local(path)(error)),
+        }
+    }
+}
+
 impl Storage {
     /// Locks a folder of downloads shared until this process ends, so that `uwe clean`
     /// removes nothing that it reads; waits while clean-up holds it alone.
@@ -84,6 +97,10 @@ impl Storage {
 
     /// The ready-bundle name for this provider and address, excluding provider credentials.
     pub fn download_name(&self, target: &str) -> Result<String, StorageError> {
+        self.download_identity(target).map(|(name, _)| name)
+    }
+
+    fn download_identity(&self, target: &str) -> Result<(String, Option<Metadata>), StorageError> {
         let (provider, prefix) = crate::longest(&self.inner.configured, target)
             .or_else(|| crate::longest(&self.inner.built_in, target))
             .ok_or_else(|| StorageError::NoProvider {
@@ -114,6 +131,7 @@ impl Storage {
         if let Some(entry) = entry {
             identity.push(entry.stamp.clone());
         }
+        let metadata = entry.map(|entry| entry.metadata.clone());
         drop(observed);
         let mut hasher = Sha256::new();
         for field in identity {
@@ -125,7 +143,7 @@ impl Storage {
             .iter()
             .map(|byte| format!("{byte:02x}"))
             .collect();
-        Ok(format!("v2-{hex}"))
+        Ok((format!("v2-{hex}"), metadata))
     }
 
     /// Where a fetched file lives; calculating it performs no I/O or credential lookup.
@@ -172,16 +190,32 @@ impl Storage {
         }
         self.hold(downloads).await?;
         self.observe(target).await;
-        let bundle = downloads.join(self.download_name(target)?);
+        let (name, expected) = self.download_identity(target)?;
+        let bundle = downloads.join(name);
         let copy = bundle.join("content");
         // Tasks of a run that read the same file at once would write the same part.
         let turn = self.turn(&copy.to_string_lossy());
         let _turn = turn.lock().await;
+        let _owner = lock_download(&bundle.with_extension("lock")).await?;
         if !tokio::fs::try_exists(&copy).await.map_err(local(&copy))? {
             tokio::fs::create_dir_all(downloads)
                 .await
                 .map_err(local(downloads))?;
             let (temporary, downloaded) = self.download_private(target, &bundle).await?;
+            if let Some(expected) = expected.as_ref()
+                && expected.version.is_some()
+                && (expected.version != downloaded.version
+                    || expected.size != temporary.as_file().metadata().map_err(local(&copy))?.len())
+            {
+                let served = self.serve(target)?;
+                return Err(served.failed(
+                    "read",
+                    target,
+                    crate::error::Problem::passing(
+                        "the source changed after its cache identity was observed",
+                    ),
+                ));
+            }
             // Create the bundle only after transfer I/O, so queued work cannot outlive it.
             let ready = tempfile::tempdir_in(downloads).map_err(local(downloads))?;
             let content = ready.path().join("content");
@@ -201,6 +235,17 @@ impl Storage {
             {
                 return Err(local(&bundle)(error));
             }
+        }
+        if let Some(expected) = expected
+            .as_ref()
+            .and_then(|metadata| metadata.version.as_ref())
+            && std::fs::read_to_string(copy.with_extension("version"))
+                .ok()
+                .as_ref()
+                != Some(expected)
+        {
+            let served = self.serve(target)?;
+            return Err(served.failed("read", target, crate::error::Problem::fixed("cached content belongs to another observed version; remove the stale download before retrying")));
         }
         self.inner
             .journal

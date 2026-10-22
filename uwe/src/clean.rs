@@ -2,13 +2,12 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Write as _;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use run_database::Database;
-use task_runner::clean::{Keep, Plan, maintenance_within, plan, remove_guarded};
+use task_runner::clean::{Keep, Report, apply_guarded, maintenance_within, scan};
 
 use crate::arguments::Arguments;
 use crate::setup::Setup;
@@ -61,8 +60,17 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     };
     let broken = |error: &dyn std::fmt::Display| failure(format!("uwe: {error}"));
     let setup = Setup::load(arguments)?;
-    let location = setup.store_location(arguments);
+    let mut location = setup.store_location(arguments);
     let store = setup.store(arguments)?;
+    let store = if arguments.front {
+        let front = store
+            .front()
+            .ok_or_else(|| Failure::usage("-front requires a layered store with a local front"))?;
+        location = front.url("");
+        front
+    } else {
+        store
+    };
     let database = runs::open(arguments)?;
     for run in &arguments.keep_runs {
         if database.run(run).map_err(|error| broken(&error))?.is_none() {
@@ -94,8 +102,8 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     if arguments.remove {
         remote_attempts_finished(&cache_directory().join("scratch"))?;
     }
-    let leases = runtime
-        .block_on(store.held_leases("runs/"))
+    let mut leases = runtime
+        .block_on(store.lease_inventory("runs/"))
         .map_err(|error| broken(&error))?;
     let now = SystemTime::now();
     let used_since = (arguments.keep_days)
@@ -118,8 +126,13 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         active_since = Some(active_since.map_or(run.started, |since| since.min(run.started)));
     }
     // Runs of other machines, or of another run database, that use the store now.
-    for holder in &leases {
-        kept.insert(holder.run.clone());
+    let mut lease_ids = BTreeSet::new();
+    while let Some(holder) = runtime
+        .block_on(leases.next())
+        .map_err(|error| broken(&error))?
+    {
+        lease_ids.insert(holder.run.clone());
+        kept.insert(holder.run);
         active_since = Some(active_since.map_or(holder.since, |since| since.min(holder.since)));
     }
     let listed: Vec<String> = kept.iter().cloned().collect();
@@ -145,19 +158,18 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         active_since: active_since.map(time),
     };
     let planned = runtime
-        .block_on(plan(&store, &keep))
+        .block_on(scan(&store, &keep, &cache_directory().join("cleanup")))
         .map_err(|error| broken(&error))?;
-    let scratch = scratch_folders(&database, &kept, &running_ids(&running, &leases))?;
+    let scratch = scratch_folders(&database, &kept, &running_ids(&running, &lease_ids))?;
     let (_reading, mut downloads) =
         old_downloads(&cache_directory().join("downloads"), used_since)?;
     let needed = needed_images(&database, &kept)?;
     let (_saving, archives) = old_archives(&crate::cwl_archives(), used_since, &needed)?;
     downloads.extend(archives);
-    let active = running.len().max(leases.len());
-    let listed = listing(
+    let active = running.len().max(lease_ids.len());
+    listing(
         &location, &rules, active, &planned, &scratch, &downloads, &database,
-    );
-    print!("{listed}");
+    )?;
     if !arguments.remove {
         if !planned.is_empty() || !scratch.is_empty() || !downloads.is_empty() {
             println!("Nothing was removed; add -remove to remove it.");
@@ -166,9 +178,10 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     }
     remote_attempts_finished(&cache_directory().join("scratch"))?;
     let removed = runtime
-        .block_on(remove_guarded(
+        .block_on(apply_guarded(
             &store,
-            &planned,
+            &keep,
+            &cache_directory().join("cleanup"),
             maintenance.as_ref().expect("removal holds maintenance"),
         ))
         .map_err(|error| broken(&error))?;
@@ -381,13 +394,9 @@ struct Scratch {
 }
 
 /// The ids of the runs that go on.
-fn running_ids(
-    running: &[run_database::Run],
-    leases: &[content_store::Holder],
-) -> BTreeSet<String> {
+fn running_ids(running: &[run_database::Run], leases: &BTreeSet<String>) -> BTreeSet<String> {
     let ids = running.iter().map(|run| run.id.clone());
-    ids.chain(leases.iter().map(|holder| holder.run.clone()))
-        .collect()
+    ids.chain(leases.iter().cloned()).collect()
 }
 
 /// The scratch folders of runs that ended: the made-up files of simulated runs that no rule
@@ -477,18 +486,17 @@ fn listing(
     location: &str,
     rules: &[String],
     active: usize,
-    planned: &Plan,
+    planned: &Report,
     scratch: &[Scratch],
     downloads: &[Scratch],
     database: &Database,
-) -> String {
-    let mut text = String::new();
-    let _ = writeln!(
-        text,
+) -> Result<(), Failure> {
+    let summary = &planned.summary;
+    println!(
         "The store {location} holds {} and {} ({}).",
-        count(planned.stored_results, "result"),
-        count(planned.stored_objects, "file"),
-        bytes(planned.stored_bytes),
+        count(summary.stored_results, "result"),
+        count(summary.stored_objects, "file"),
+        bytes(summary.stored_bytes),
     );
     let mut keeps = rules.to_vec();
     match active {
@@ -498,63 +506,47 @@ fn listing(
     }
     match keeps.is_empty() {
         true => {
-            let _ = writeln!(text, "It keeps nothing: no run goes on.");
+            println!("It keeps nothing: no run goes on.");
         }
         false => {
-            let _ = writeln!(text, "It keeps {}.", words(&keeps));
+            println!("It keeps {}.", words(&keeps));
         }
     }
     if planned.is_empty() && scratch.is_empty() && downloads.is_empty() {
-        let _ = writeln!(text, "Nothing else is there to remove.");
-        return text;
+        println!("Nothing else is there to remove.");
+        return Ok(());
     }
-    let _ = writeln!(
-        text,
+    println!(
         "It would remove {} and {}{}:",
-        count(planned.results.len(), "result"),
-        count(planned.objects.len(), "file"),
+        count(summary.results, "result"),
+        count(summary.objects, "file"),
         space(planned.freed()),
     );
-    // Results and files by the run that made them; contents that nothing needs apart.
-    let mut by_run: BTreeMap<String, (usize, usize)> = BTreeMap::new();
-    for result in &planned.results {
-        let run = result.run.clone().unwrap_or_default();
-        by_run.entry(run).or_default().0 += 1;
-    }
-    let mut contents = 0;
-    for object in &planned.objects {
-        match object.location.strip_prefix("runs/") {
-            Some(rest) => {
-                let run = rest.split('/').next().unwrap_or_default().to_owned();
-                by_run.entry(run).or_default().1 += 1;
-            }
-            None => contents += 1,
-        }
-    }
-    for (run, (results, files)) in &by_run {
-        let about = match database.run(run).ok().flatten() {
-            Some(found) => format!(" ({}, {})", runs::local_time(found.started), found.workflow),
-            None if run.is_empty() => " (results that cannot be read)".to_owned(),
-            None => String::new(),
-        };
-        let _ = writeln!(
-            text,
-            "  run {run}{about}: {}, {}",
-            count(*results, "result"),
-            count(*files, "file")
-        );
-    }
-    if contents > 0 {
-        let _ = writeln!(
-            text,
+    planned
+        .visit_runs(|run, results, files| {
+            let about = match database.run(run).ok().flatten() {
+                Some(found) => {
+                    format!(" ({}, {})", runs::local_time(found.started), found.workflow)
+                }
+                None if run.is_empty() => " (results that cannot be read)".to_owned(),
+                None => String::new(),
+            };
+            println!(
+                "  run {run}{about}: {}, {}",
+                count(results, "result"),
+                count(files, "file")
+            );
+        })
+        .map_err(|error| failure(error.to_string()))?;
+    if summary.contents > 0 {
+        println!(
             "  contents and directory manifests that nothing needs: {}",
-            count(contents, "file")
+            count(summary.contents, "file")
         );
     }
     if !scratch.is_empty() {
         let size: u64 = scratch.iter().map(|folder| folder.size).sum();
-        let _ = writeln!(
-            text,
+        println!(
             "  scratch folders of runs that ended: {} ({})",
             count(scratch.len(), "folder"),
             bytes(size)
@@ -562,14 +554,13 @@ fn listing(
     }
     if !downloads.is_empty() {
         let size: u64 = downloads.iter().map(|download| download.size).sum();
-        let _ = writeln!(
-            text,
+        println!(
             "  downloads and image archives that runs make again when they need them: {} ({})",
             count(downloads.len(), "file"),
             bytes(size)
         );
     }
-    text
+    Ok(())
 }
 
 /// `a`, `a and b`, `a, b and c`.
@@ -815,7 +806,9 @@ mod tests {
             ..Keep::default()
         };
         let runtime = workflow_graph::runtime().expect("a runtime");
-        let planned = runtime.block_on(plan(&store, &keep)).expect("plans");
+        let planned = runtime
+            .block_on(task_runner::clean::plan(&store, &keep))
+            .expect("plans");
         let removed: BTreeSet<&str> = (planned.objects.iter())
             .map(|object| object.location.as_str())
             .collect();

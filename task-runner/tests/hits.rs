@@ -228,10 +228,11 @@ async fn verifies_overlaps_once() {
     };
     counted.reads.lock().unwrap().clear();
     assert!(entry.complete(&store).await.unwrap());
-    let reads = counted.reads.lock().unwrap();
-    assert_eq!(reads[&output.location], 1);
-    assert_eq!(reads[&layout::content(&log)], 1);
-    drop(reads);
+    {
+        let reads = counted.reads.lock().unwrap();
+        assert_eq!(reads[&output.location], 1);
+        assert_eq!(reads[&layout::content(&log)], 1);
+    }
     inner
         .write(&output.location, b"broken".as_slice())
         .await

@@ -66,41 +66,6 @@ pub struct Settings {
     pub(crate) cli: Option<Arguments>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn preserves_preset_defaults() {
-        let root = tempfile::tempdir().unwrap();
-        let config = root.path().join("config.toml");
-        for (preset, explicit, expected) in [
-            ("", None, "slurm"),
-            ("executor='local'\n", None, "local"),
-            ("executor='local'\n", Some("simulator"), "simulator"),
-        ] {
-            std::fs::write(&config, format!(
-                "[executor]\ndefault='slurm'\n[workflows.demo]\nsource='team/pipeline'\nrevision='{}'\n{preset}",
-                "a".repeat(40)
-            )).unwrap();
-            let arguments = Arguments {
-                preset: Some("demo".into()),
-                config_file: Some(config.clone()),
-                executor: explicit.map(str::to_owned),
-                ..Arguments::default()
-            };
-            let mut embedded = Settings::default();
-            embedded.preset = arguments.preset.clone();
-            embedded.config_file = arguments.config_file.clone();
-            embedded.executor = arguments.executor.clone();
-            for settings in [arguments.run_settings(), embedded] {
-                let (resolved, _, _inputs) = settings.prepare().unwrap();
-                assert_eq!(resolved.executor.as_deref(), Some(expected));
-            }
-        }
-    }
-}
-
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -289,5 +254,42 @@ impl Settings {
             self.setup = Some(setup);
         }
         Ok((arguments, self.setup, file))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preserves_preset_defaults() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config.toml");
+        for (preset, explicit, expected) in [
+            ("", None, "slurm"),
+            ("executor='local'\n", None, "local"),
+            ("executor='local'\n", Some("simulator"), "simulator"),
+        ] {
+            std::fs::write(&config, format!(
+                "[executor]\ndefault='slurm'\n[workflows.demo]\nsource='team/pipeline'\nrevision='{}'\n{preset}",
+                "a".repeat(40)
+            )).unwrap();
+            let arguments = Arguments {
+                preset: Some("demo".into()),
+                config_file: Some(config.clone()),
+                executor: explicit.map(str::to_owned),
+                ..Arguments::default()
+            };
+            let embedded = Settings {
+                preset: arguments.preset.clone(),
+                config_file: arguments.config_file.clone(),
+                executor: arguments.executor.clone(),
+                ..Settings::default()
+            };
+            for settings in [arguments.run_settings(), embedded] {
+                let (resolved, _, _inputs) = settings.prepare().unwrap();
+                assert_eq!(resolved.executor.as_deref(), Some(expected));
+            }
+        }
     }
 }

@@ -189,32 +189,6 @@ pub fn pretend(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
     Ok(pretend_run(task, work)?.unwrap_or_default())
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn optional_output_manifest() {
-        for made in [false, true] {
-            let root = tempfile::tempdir().unwrap();
-            let task = crate::Task {
-                script: Some(
-                    if made {
-                        "touch cwl.output.json"
-                    } else {
-                        "true"
-                    }
-                    .into(),
-                ),
-                outputs: vec!["cwl.output.json".into()],
-                output_manifest: Some("cwl.output.json".into()),
-                ..Default::default()
-            };
-            let files = super::pretend(&task, root.path()).unwrap();
-            assert_eq!(files.len(), usize::from(made));
-            assert_eq!(root.path().join("cwl.output.json").exists(), made);
-        }
-    }
-}
-
 /// The same as [`pretend`], but a script that surely fails, like one that runs `gzip x` when
 /// `x.gz` exists, gives its failure instead of files, as it would end so when it ran.
 pub fn pretend_run(task: &Task, work: &Path) -> std::io::Result<Result<Vec<OutputFile>, Failure>> {
@@ -602,4 +576,30 @@ pub fn glob_matches(pattern: &str, text: &str) -> bool {
     let pattern: Vec<char> = pattern.chars().collect();
     let text: Vec<char> = text.chars().collect();
     go(&pattern, &text)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn optional_output_manifest() {
+        for made in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let task = crate::Task {
+                script: Some(
+                    if made {
+                        "touch cwl.output.json"
+                    } else {
+                        "true"
+                    }
+                    .into(),
+                ),
+                outputs: vec!["cwl.output.json".into()],
+                output_manifest: Some("cwl.output.json".into()),
+                ..Default::default()
+            };
+            let files = super::pretend(&task, root.path()).unwrap();
+            assert_eq!(files.len(), usize::from(made));
+            assert_eq!(root.path().join("cwl.output.json").exists(), made);
+        }
+    }
 }

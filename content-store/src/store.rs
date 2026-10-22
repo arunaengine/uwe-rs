@@ -324,7 +324,7 @@ impl Store {
             .or_else(|| self.root.as_ref().map(|root| root.join("imports")))
             .unwrap_or_else(std::env::temp_dir);
         std::fs::create_dir_all(&folder).map_err(at(&folder))?;
-        Ok(tempfile::NamedTempFile::new_in(&folder).map_err(at(&folder))?)
+        tempfile::NamedTempFile::new_in(&folder).map_err(at(&folder))
     }
 
     async fn publish_file_as(

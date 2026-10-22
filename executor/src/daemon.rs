@@ -123,6 +123,10 @@ impl LocalContainer {
 
     /// Starts the container of a daemon, waits until it is ready and leaves it running until
     /// `cancel` fires or its `time` is over. Its outcome is the address on the network of the run.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "The watcher owns its resource share alongside the daemon execution context."
+    )]
     pub(crate) async fn serve(
         &self,
         name: &str,

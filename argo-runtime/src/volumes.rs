@@ -151,18 +151,17 @@ impl Run {
         }
         if let Some(host) = volume.get("hostPath") {
             let path = text(host, "path");
-            if let Some(roots) = &self.options.policy.host_roots {
-                if Path::new(&path)
+            if let Some(roots) = &self.options.policy.host_roots
+                && (Path::new(&path)
                     .components()
                     .any(|part| part == Component::ParentDir)
                     || !roots
                         .iter()
-                        .any(|root| confined(root, Path::new(&path)).is_ok())
-                {
-                    return Err(Failure::unsupported(format!(
-                        "volume {name}: hostPath {path} is outside authorized roots"
-                    )));
-                }
+                        .any(|root| confined(root, Path::new(&path)).is_ok()))
+            {
+                return Err(Failure::unsupported(format!(
+                    "volume {name}: hostPath {path} is outside authorized roots"
+                )));
             }
             let kind = text(host, "type");
             return Ok(Some(Source::Shared {

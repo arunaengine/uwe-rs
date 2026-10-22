@@ -2260,14 +2260,15 @@ async fn references_reuse_installation() {
             .await
             .unwrap();
     }
-    let staged = runner.backend().staged.lock().unwrap();
-    assert_eq!(
-        staged[0].inputs[0].source,
-        std::fs::canonicalize(source).unwrap()
-    );
-    assert!(!staged[0].inputs[0].copy);
+    {
+        let staged = runner.backend().staged.lock().unwrap();
+        assert_eq!(
+            staged[0].inputs[0].source,
+            std::fs::canonicalize(source).unwrap()
+        );
+        assert!(!staged[0].inputs[0].copy);
+    }
     assert!(!root.path().join("downloads/input-snapshots").exists());
-    drop(staged);
     overwrite(source, b"edit\n");
     std::fs::set_permissions(source, std::fs::Permissions::from_mode(0o444)).unwrap();
     assert!(

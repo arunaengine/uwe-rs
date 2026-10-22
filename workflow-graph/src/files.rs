@@ -29,9 +29,23 @@ pub struct Delivery {
     /// The location of the output, as its outcome gives it.
     pub location: String,
     /// Where it goes: a path on this machine, or an address of a storage provider, like
-    /// `s3://bucket/results/out.txt`. What is there is replaced.
+    /// `s3://bucket/results/out.txt`.
     pub target: String,
     pub mode: DeliveryMode,
+    /// Whether existing destinations may be replaced.
+    #[serde(
+        default = "overwrite_default",
+        skip_serializing_if = "overwrite_enabled"
+    )]
+    pub overwrite: bool,
+}
+
+fn overwrite_default() -> bool {
+    true
+}
+
+fn overwrite_enabled(value: &bool) -> bool {
+    *value
 }
 
 /// The files that the tasks of a run made, wherever the executor keeps them.
@@ -58,6 +72,12 @@ impl Files for LocalFiles {
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
         }
+        if !delivery.overwrite {
+            return match create_delivery(source, target, delivery.mode) {
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(()),
+                result => result,
+            };
+        }
         remove(target)?;
         match delivery.mode {
             DeliveryMode::Copy => copy(source, target),
@@ -69,6 +89,37 @@ impl Files for LocalFiles {
             DeliveryMode::HardLink => hard_link(source, target),
         }
     }
+}
+
+fn create_delivery(source: &Path, target: &Path, mode: DeliveryMode) -> io::Result<()> {
+    match mode {
+        DeliveryMode::Link => return std::os::unix::fs::symlink(source, target),
+        DeliveryMode::RelativeLink => {
+            let base = target.parent().unwrap_or(Path::new("/"));
+            return std::os::unix::fs::symlink(relative(source, base), target);
+        }
+        _ => {}
+    }
+    match std::fs::symlink_metadata(target) {
+        Ok(_) => return Err(io::ErrorKind::AlreadyExists.into()),
+        Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+        _ => {}
+    }
+    let parent = target.parent().filter(|path| !path.as_os_str().is_empty());
+    let directory = tempfile::tempdir_in(parent.unwrap_or(Path::new(".")))?;
+    let staged = directory.path().join("output");
+    match mode {
+        DeliveryMode::HardLink => hard_link(source, &staged)?,
+        _ => copy(source, &staged)?,
+    }
+    rustix::fs::renameat_with(
+        rustix::fs::CWD,
+        &staged,
+        rustix::fs::CWD,
+        target,
+        rustix::fs::RenameFlags::NOREPLACE,
+    )
+    .map_err(Into::into)
 }
 
 /// The content of a location that a task made: through `files` when the run has them, as a
@@ -147,6 +198,69 @@ mod tests {
     use super::*;
 
     #[test]
+    fn preserves_existing_targets() {
+        let folder = tempfile::tempdir().unwrap();
+        let source = folder.path().join("source");
+        let target = folder.path().join("target");
+        std::fs::write(&source, "new").unwrap();
+        for mode in [
+            DeliveryMode::Copy,
+            DeliveryMode::Link,
+            DeliveryMode::RelativeLink,
+            DeliveryMode::HardLink,
+        ] {
+            std::fs::write(&target, "existing").unwrap();
+            let delivery = Delivery {
+                location: source.to_string_lossy().into_owned(),
+                target: target.to_string_lossy().into_owned(),
+                mode,
+                overwrite: false,
+            };
+            LocalFiles.deliver(&delivery).unwrap();
+            assert_eq!(std::fs::read_to_string(&target).unwrap(), "existing");
+            std::fs::remove_file(&target).unwrap();
+            LocalFiles.deliver(&delivery).unwrap();
+            assert_eq!(std::fs::read_to_string(&target).unwrap(), "new");
+            std::fs::remove_file(&target).unwrap();
+        }
+        let old: Delivery =
+            serde_json::from_value(serde_json::json!({"location":"a","target":"b","mode":"copy"}))
+                .unwrap();
+        assert!(old.overwrite);
+    }
+
+    #[test]
+    fn retries_failed_delivery() {
+        for mode in [DeliveryMode::Copy, DeliveryMode::HardLink] {
+            let folder = tempfile::tempdir().unwrap();
+            let source = folder.path().join("source");
+            let target = folder.path().join("target");
+            std::fs::create_dir(&source).unwrap();
+            std::fs::write(source.join("good"), b"complete").unwrap();
+            std::os::unix::fs::symlink("missing", source.join("bad")).unwrap();
+            let delivery = Delivery {
+                location: source.to_string_lossy().into_owned(),
+                target: target.to_string_lossy().into_owned(),
+                mode,
+                overwrite: false,
+            };
+            assert!(LocalFiles.deliver(&delivery).is_err());
+            assert!(!target.exists());
+            assert_eq!(std::fs::read_dir(folder.path()).unwrap().count(), 1);
+            std::fs::remove_file(source.join("bad")).unwrap();
+            std::fs::write(source.join("bad"), b"repaired").unwrap();
+            LocalFiles.deliver(&delivery).unwrap();
+            assert_eq!(std::fs::read(target.join("good")).unwrap(), b"complete");
+            assert_eq!(std::fs::read(target.join("bad")).unwrap(), b"repaired");
+            std::fs::remove_dir_all(&target).unwrap();
+            std::fs::write(&target, b"another owner").unwrap();
+            std::fs::remove_dir_all(&source).unwrap();
+            LocalFiles.deliver(&delivery).unwrap();
+            assert_eq!(std::fs::read(&target).unwrap(), b"another owner");
+        }
+    }
+
+    #[test]
     fn finds_common_folder() {
         let path = relative(Path::new("/s/runs/a/out.txt"), Path::new("/home/results/x"));
         assert_eq!(path, PathBuf::from("../../../s/runs/a/out.txt"));
@@ -169,6 +283,7 @@ mod tests {
                 location: location.to_string_lossy().into_owned(),
                 target: folder.path().join(target).to_string_lossy().into_owned(),
                 mode,
+                overwrite: true,
             };
             LocalFiles.deliver(&delivery).expect("delivers");
             folder.path().join(target)
@@ -214,6 +329,7 @@ mod tests {
                     location: source.to_string_lossy().into_owned(),
                     target: target.to_string_lossy().into_owned(),
                     mode,
+                    overwrite: true,
                 })
                 .expect("delivers an alias");
             assert!(
@@ -250,6 +366,7 @@ mod tests {
                     location: source.to_string_lossy().into_owned(),
                     target: target.to_string_lossy().into_owned(),
                     mode,
+                    overwrite: true,
                 })
                 .expect("delivers a cycle");
             assert!(

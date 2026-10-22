@@ -35,6 +35,7 @@ impl Driver for Chain {
             TaskId(1) => {
                 if let Some(source) = &self.delivered {
                     self.asked.push(Delivery {
+                        overwrite: true,
                         location: source.to_string_lossy().into_owned(),
                         target: source
                             .with_extension("delivered")

@@ -23,12 +23,12 @@ pub(super) fn symbols() -> String {
     }
     let dots: String = [6.4, 10.0, 13.6]
         .iter()
-        .map(|x| format!("<circle cx=\"{x}\" cy=\"10\" r=\"1.3\" style=\"fill:#b7791f\"/>"))
+        .map(|x| format!("<circle cx=\"{x}\" cy=\"10\" r=\"1.3\" style=\"fill:#8a857a\"/>"))
         .collect();
     let _ = writeln!(
         defs,
         "<symbol id=\"icon-open\" viewBox=\"0 0 20 20\"><circle cx=\"10\" cy=\"10\" r=\"8.6\" \
-         style=\"fill:#fff8e1;stroke:#b7791f;stroke-width:1.5;stroke-dasharray:2.4 1.9\"/>\
+         style=\"fill:#efeee9;stroke:#8a857a;stroke-width:1.5;stroke-dasharray:2.4 1.9\"/>\
          {dots}</symbol>"
     );
     defs

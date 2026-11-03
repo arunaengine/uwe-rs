@@ -130,12 +130,12 @@ impl State {
     pub fn colour(self) -> &'static str {
         match self {
             State::Simulated => "#718096",
-            State::Succeeded => "#2e7d4f",
-            State::Reused => "#6b4fbb",
+            State::Succeeded => "#277a58",
+            State::Reused => "#b97a12",
             State::Failed => "#c0392b",
             State::Running => "#1f6fd1",
             State::Waiting => "#8a939e",
-            State::Stopped => "#b7791f",
+            State::Stopped => "#7d4a9e",
         }
     }
 
@@ -144,11 +144,11 @@ impl State {
         match self {
             State::Simulated => "#eef1f6",
             State::Succeeded => "#e6f4ea",
-            State::Reused => "#efeafb",
+            State::Reused => "#fbf1de",
             State::Failed => "#fdecea",
             State::Running => "#e8f0fe",
             State::Waiting => "#ffffff",
-            State::Stopped => "#fdf3e1",
+            State::Stopped => "#f3ebf7",
         }
     }
 

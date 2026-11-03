@@ -691,6 +691,24 @@ impl Store {
         }
     }
 
+    /// The last `limit` bytes of the stored content of a digest, without reading the rest.
+    /// They are not checked against the digest, which covers all bytes.
+    pub async fn content_tail(&self, digest: &Digest, limit: u64) -> Result<Bytes, StoreError> {
+        let location = layout::content(digest);
+        match self.operator.stat(&location).await {
+            Ok(metadata) => {
+                let start = metadata.content_length().saturating_sub(limit);
+                let read = self.operator.read_with(&location).range(start..).await?;
+                Ok(read.to_bytes())
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => match &self.shared {
+                Some(shared) => Box::pin(shared.content_tail(digest, limit)).await,
+                None => Err(error.into()),
+            },
+            Err(error) => Err(error.into()),
+        }
+    }
+
     pub async fn has_content(&self, digest: &Digest) -> Result<bool, StoreError> {
         self.exists(&layout::content(digest)).await
     }

@@ -366,7 +366,7 @@ async fn outcome<B: Backend>(
 }
 
 /// The outcome of an attempt from its result in the store: each output at its path on this
-/// machine for a local store, else at its address, and the captured streams as text.
+/// machine for a local store, else at its address, and as much of each stream as [`Text`] says.
 pub(crate) async fn outcome_of(
     store: &Store,
     task: &Task,
@@ -374,17 +374,12 @@ pub(crate) async fn outcome_of(
     result: TaskResult,
     image: Option<String>,
 ) -> Result<Outcome, RunnerError> {
-    let deferred = task.defer_logs && result.exit_code == Some(0);
-    let verify = deferred && !result.reused;
-    let text = async |digest: &Option<Digest>| -> Result<String, RunnerError> {
-        match digest {
-            Some(digest) if !deferred => {
-                let bytes = store.get_content(digest).await?;
-                Ok(String::from_utf8_lossy(&bytes).into_owned())
-            }
-            _ => Ok(String::new()),
-        }
+    let keep = match (task.defer_logs, result.exit_code == Some(0)) {
+        (true, true) => Text::None,
+        (true, false) => Text::Tail,
+        (false, _) => Text::Whole,
     };
+    let verify = keep == Text::None && !result.reused;
     let files = result
         .files
         .iter()
@@ -402,8 +397,8 @@ pub(crate) async fn outcome_of(
         attempt,
         exit_code: result.exit_code.unwrap_or(-1),
         files,
-        stdout: text(&result.stdout).await?,
-        stderr: text(&result.stderr).await?,
+        stdout: text(store, result.stdout.as_ref(), keep).await?,
+        stderr: text(store, result.stderr.as_ref(), keep).await?,
         stdout_log: stream(store, result.stdout.as_ref(), verify).await?,
         stderr_log: stream(store, result.stderr.as_ref(), verify).await?,
         cached: result.reused,
@@ -418,7 +413,7 @@ pub(crate) async fn outcome_of(
             write_bytes: usage.write_bytes,
         }),
         reproducibility: result.check,
-        containers: containers(store, &result.containers, deferred, verify).await?,
+        containers: containers(store, &result.containers, keep, verify).await?,
         address: result.address.clone(),
         ..Outcome::default()
     })
@@ -428,30 +423,56 @@ pub(crate) async fn outcome_of(
 async fn containers(
     store: &Store,
     results: &[crate::ContainerResult],
-    deferred: bool,
+    keep: Text,
     verify: bool,
 ) -> Result<Vec<ContainerOutcome>, RunnerError> {
-    let text = async |digest: &Option<Digest>| -> Result<String, RunnerError> {
-        match digest {
-            Some(digest) if !deferred => {
-                let bytes = store.get_content(digest).await?;
-                Ok(String::from_utf8_lossy(&bytes).into_owned())
-            }
-            _ => Ok(String::new()),
-        }
-    };
     let mut outcomes = Vec::new();
     for result in results {
         outcomes.push(ContainerOutcome {
             name: result.name.clone(),
             exit_code: result.exit_code,
-            stdout: text(&result.stdout).await?,
-            stderr: text(&result.stderr).await?,
+            stdout: text(store, result.stdout.as_ref(), keep).await?,
+            stderr: text(store, result.stderr.as_ref(), keep).await?,
             stdout_log: stream(store, result.stdout.as_ref(), verify).await?,
             stderr_log: stream(store, result.stderr.as_ref(), verify).await?,
         });
     }
     Ok(outcomes)
+}
+
+/// How much of a captured stream an outcome holds as text: none for a successful task that
+/// defers its logs, the end for a failed one, all for a task whose driver reads its streams.
+#[derive(Clone, Copy, PartialEq)]
+enum Text {
+    None,
+    Tail,
+    Whole,
+}
+
+/// The most bytes of a stream that a tail holds, as much as the run database keeps of a log.
+const TAIL_LIMIT: usize = 64 * 1024;
+
+async fn text(store: &Store, digest: Option<&Digest>, keep: Text) -> Result<String, RunnerError> {
+    let Some(digest) = digest else {
+        return Ok(String::new());
+    };
+    match keep {
+        Text::None => Ok(String::new()),
+        Text::Whole => {
+            let bytes = store.get_content(digest).await?;
+            Ok(String::from_utf8_lossy(&bytes).into_owned())
+        }
+        Text::Tail => {
+            // Three more bytes complete a character that the cut would split.
+            let bytes = store.content_tail(digest, TAIL_LIMIT as u64 + 3).await?;
+            let text = String::from_utf8_lossy(&bytes);
+            let mut start = text.len().saturating_sub(TAIL_LIMIT);
+            while !text.is_char_boundary(start) {
+                start += 1;
+            }
+            Ok(text[start..].to_owned())
+        }
+    }
 }
 
 async fn stream(
@@ -516,6 +537,39 @@ mod tests {
             outputs: vec!["out.txt".into()],
             ..Task::default()
         })
+    }
+
+    #[tokio::test]
+    async fn failed_logs_tail() {
+        let store = Store::memory().expect("a store");
+        let mut log = vec![b'a'; 64 << 20];
+        log.extend_from_slice("end \u{e9}\n".as_bytes());
+        let size = log.len() as u64;
+        let digest = store.put_content(log.into()).await.expect("stored");
+        let task = Task {
+            defer_logs: true,
+            ..Task::default()
+        };
+        for (code, loaded) in [(0, 0), (1, TAIL_LIMIT)] {
+            let result = TaskResult {
+                exit_code: Some(code),
+                files: Vec::new(),
+                stdout: Some(digest.clone()),
+                stderr: Some(digest.clone()),
+                reused: false,
+                usage: None,
+                started: None,
+                ended: None,
+                check: None,
+                containers: Vec::new(),
+                address: None,
+            };
+            let outcome = outcome_of(&store, &task, 1, result, None).await.unwrap();
+            assert_eq!(outcome.stdout.len(), loaded, "exit {code}");
+            assert_eq!(outcome.stderr.len(), loaded, "exit {code}");
+            assert!(loaded == 0 || outcome.stdout.ends_with("end \u{e9}\n"));
+            assert_eq!(outcome.stdout_log.expect("a log").size, size);
+        }
     }
 
     #[test]

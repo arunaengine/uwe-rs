@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use rattler_conda_types::package::BuildString;
 use rattler_conda_types::{
     Flag, GenericVirtualPackage, Matches, ParseMatchSpecOptions, RepoDataRecord, RepodataRevision,
     StringMatcher,
@@ -32,7 +33,7 @@ pub(crate) fn solve(
                         reason: "invalid virtual package version",
                     })?
                     .0,
-                build_string: record.build.clone(),
+                build_string: BuildString::new_unchecked(record.build.clone()),
             })
         })
         .collect::<Result<Vec<_>, LockError>>()?;

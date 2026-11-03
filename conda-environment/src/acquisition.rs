@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use rattler_conda_types::package::BuildString;
 use rattler_conda_types::{Channel, ChannelConfig, GenericVirtualPackage, Subdir};
 use rattler_repodata_gateway::{ChannelRelationsMode, Gateway, fetch::CacheAction};
 use sha2::{Digest as _, Sha256};
@@ -120,7 +121,7 @@ impl Acquisition {
                     .version
                     .parse()
                     .expect("validated virtual package version"),
-                build_string: package.build.clone(),
+                build_string: BuildString::new_unchecked(package.build.clone()),
             })
             .collect();
         let records = crate::solve::resolve(

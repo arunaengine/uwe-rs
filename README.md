@@ -128,16 +128,18 @@ uwe run nf-core/demo -r 1.2.0 -profile test,docker --outdir results
 | Page | Read it when |
 | --- | --- |
 | [Installing uwe](docs/install.md) | You set up uwe on Linux, macOS or Windows |
+| [What uwe supports](docs/support.md) | You want to know which versions, executors and providers work |
 | [Known pitfalls](docs/pitfalls.md) | A workflow behaves differently than on its original engine |
 | [Remote executors and staging](docs/remote-executors.md) | You run on SLURM, Kubernetes or TES |
 | [Workflow presets and installed references](docs/presets.md) | You offer fixed workflows and reference data to users |
 | [Embedding uwe in a service](docs/embedding.md) | You start runs from your own Rust service |
+| [Operating uwe](docs/operations.md) | You back up, restore or upgrade uwe for a team |
 | [The demo](demo/README.md) | You want to try every language on a laptop or a cluster |
 | [Style guide](STYLE.md) | You change the code |
 
 ## Status
 
-uwe is young. It runs real pipelines such as nf-core/demo, locally and on SLURM, but each language is a subset of the original, so check a workflow with `uwe check` before you rely on it. Not every combination of executor, storage provider and container engine has been tested on live systems yet.
+uwe is young. It runs real pipelines such as nf-core/demo, locally and on SLURM, but each language is a subset of the original, so check a workflow with `uwe check` before you rely on it. [What uwe supports](docs/support.md) lists what is tested and how. Not every combination of executor, storage provider and container engine has been tested on live systems yet.
 
 ## License
 

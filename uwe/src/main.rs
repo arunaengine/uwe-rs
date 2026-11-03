@@ -46,7 +46,7 @@ fn main() -> ExitCode {
         });
     }
     if matches!(command.as_str(), "-version" | "--version" | "version") && rest.is_empty() {
-        println!("uwe {}", env!("CARGO_PKG_VERSION"));
+        println!("{}", env!("UWE_IDENTITY"));
         return ExitCode::SUCCESS;
     }
     let mut arguments = match cli::parse_command(command, rest) {
@@ -61,7 +61,7 @@ fn main() -> ExitCode {
         );
     }
     if arguments.version || command == "version" {
-        println!("uwe {}", env!("CARGO_PKG_VERSION"));
+        println!("{}", env!("UWE_IDENTITY"));
         return ExitCode::SUCCESS;
     }
     if let Err(failure) = cli::init(&arguments) {

@@ -1,4 +1,4 @@
-# Checks source formatting, lints, tests, container runs and documentation tests.
+# Checks source formatting, lints, tests, dependency policy, container runs and documentation tests.
 # Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [format, clippy, tests, doctests]
+        check: [format, clippy, tests, doctests, deny]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -66,6 +66,11 @@ jobs:
           path: target/container-runs/
           if-no-files-found: error
           retention-days: 1
+      - name: Dependency policy
+        if: matrix.check == 'deny'
+        run: |
+          cargo +1.97.1 install --locked cargo-deny --version 0.20.2
+          cargo +1.97.1 deny --locked check
       - name: Doctests
         if: matrix.check == 'doctests'
         run: cargo +1.97.1 test --offline --locked --workspace --all-features --doc -j 2

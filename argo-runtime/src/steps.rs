@@ -9,7 +9,7 @@ use argo_parser::model::{Artifact, TemplateRef, WorkflowStep};
 use argo_parser::{Node, Value as Yaml, decode};
 use workflow_graph::TaskId;
 
-use crate::cursor::Cursor;
+use crate::cursor::{Cursor, Entries};
 use crate::items::{items, items_unless_skipped, loops};
 use crate::node::{ArtifactValue, NodeKind, Phase};
 use crate::run::{Args, Call, Context, Expanded, Holder, Result, Run};
@@ -114,85 +114,106 @@ impl Run {
                 index
             }
         };
-        let expanded = match self.nodes[index].expanded.clone() {
-            Some(expanded) => expanded,
-            None => {
-                let expanded = Rc::new(self.expand_steps(index, name, group, scope, steps)?);
-                self.nodes[index].expanded = Some(Rc::clone(&expanded));
-                expanded
-            }
+        let mut entries = match self.nodes[index].entries.take() {
+            Some(entries) => entries,
+            None => Box::new(self.expand_steps(index, name, group, scope, steps)?),
         };
+        let result = self.walk_steps(index, name, scope, context, &mut entries);
+        self.nodes[index].entries = Some(entries);
+        result.map(|()| index)
+    }
+
+    /// Goes on with the entries of a step group that may still change, and ends the group when
+    /// every step, and its hooks, ended.
+    fn walk_steps(
+        &mut self,
+        index: usize,
+        name: &str,
+        scope: &Scope,
+        context: &Rc<Context>,
+        entries: &mut Entries,
+    ) -> Result<()> {
         let call = Call {
-            boundary: Some(steps),
+            boundary: self.nodes[index].boundary,
             inbound: self.nodes[index].inbound.clone(),
-            depth: depth + 1,
+            depth: self.nodes[index].depth + 1,
         };
-        for step in expanded.iter() {
-            let child_name = format!("{name}.{}", step.name);
-            if let Some(error) = &step.error {
-                let child = self.end_node(&child_name, Phase::Error, &call, error.clone());
-                self.add_child(index, child);
-                continue;
-            }
-            match self.decide_when(&step.when, &child_name) {
-                Err(message) => {
-                    let child = self.end_node(&child_name, Phase::Error, &call, message.clone());
-                    self.add_child(index, child);
-                    self.fail(index, Phase::Error, message);
-                    return Ok(index);
+        let mut open = Vec::new();
+        for &position in &entries.open.clone() {
+            let step = Rc::clone(&entries.list[position]);
+            let child = match entries.nodes[position] {
+                Some(child) => {
+                    if !self.nodes[child].phase.fulfilled() {
+                        self.reenter(child)?;
+                    }
+                    child
                 }
-                Ok(false) => {
-                    let message = format!("when '{}' evaluated false", step.when);
-                    let child = self.end_node(&child_name, Phase::Skipped, &call, message);
-                    self.skipped_outputs(child, &step.holder, context, true);
-                    self.add_child(index, child);
-                    continue;
+                None => {
+                    let child_name = format!("{name}.{}", step.name);
+                    let made = self.start_step(index, &step, &child_name, &call, context)?;
+                    let Some((child, runs)) = made else {
+                        return Ok(());
+                    };
+                    entries.nodes[position] = Some(child);
+                    entries.runs[position] = runs;
+                    child
                 }
-                Ok(true) => {}
+            };
+            let runs = entries.runs[position];
+            if runs && (!step.hooks.is_empty() || !step.on_exit.is_empty()) {
+                let prefix = format!("steps.{}", base_name(&step.name));
+                self.lifecycle_hooks(child, &step.hooks, scope, &prefix, context)?;
+                if self.nodes[child].phase.fulfilled() {
+                    let hook = exit_hook(&step);
+                    self.exit_hook(child, hook.as_ref(), scope, &prefix, context)?;
+                }
             }
-            let child =
-                self.execute_template(&child_name, &step.holder, context, &step.args, &call)?;
-            self.add_child(index, child);
-            let prefix = format!("steps.{}", base_name(&step.name));
-            self.lifecycle_hooks(child, &step.hooks, scope, &prefix, context)?;
-            if self.nodes[child].phase.fulfilled() {
-                let hook = exit_hook(step);
-                self.exit_hook(child, hook.as_ref(), scope, &prefix, context)?;
+            // A step that ended with nothing left to start for it needs no more passes.
+            let node = &self.nodes[child];
+            let hooks_done = step.hooks.is_empty()
+                && (step.on_exit.is_empty()
+                    || node
+                        .exit_hook
+                        .is_some_and(|exit| self.nodes[exit].phase.fulfilled()));
+            if !node.phase.fulfilled() || (runs && !hooks_done) {
+                open.push(position);
             }
         }
+        entries.open = open;
         // The group ends when every step, and its hooks, ended.
-        for &child in &self.nodes[index].children {
+        for &position in &entries.open {
+            let Some(child) = entries.nodes[position] else {
+                return Ok(());
+            };
             let node = &self.nodes[child];
             if !node.phase.fulfilled() {
-                return Ok(index);
+                return Ok(());
             }
             if let Some(exit) = node.exit_hook
                 && !self.nodes[exit].phase.fulfilled()
             {
-                return Ok(index);
+                return Ok(());
             }
             if node
                 .hooks
                 .iter()
                 .any(|&hook| !self.nodes[hook].phase.fulfilled())
             {
-                return Ok(index);
+                return Ok(());
             }
         }
         // Steps with an exit hook that did not start yet start it in the next pass.
-        for step in expanded.iter() {
-            let child_name = format!("{name}.{}", step.name);
-            if let Some(&child) = self.names.get(&child_name)
+        for (step, child) in entries.list.iter().zip(&entries.nodes) {
+            if let Some(child) = *child
                 && exit_hook(step).is_some()
                 && self.nodes[child].exit_hook.is_none()
                 && self.nodes[child].kind != NodeKind::Skipped
             {
-                return Ok(index);
+                return Ok(());
             }
         }
-        for step in expanded.iter() {
-            let child_name = format!("{name}.{}", step.name);
-            let Some(&child) = self.names.get(&child_name) else {
+        for (step, child) in entries.list.iter().zip(&entries.nodes) {
+            let Some(child) = *child else {
                 continue;
             };
             let phase = self.nodes[child].phase;
@@ -204,11 +225,47 @@ impl Run {
             if !continues {
                 let message = format!("child '{}' failed", self.nodes[child].id);
                 self.set_phase(index, Phase::Failed, message);
-                return Ok(index);
+                return Ok(());
             }
         }
         self.set_phase(index, Phase::Succeeded, String::new());
-        Ok(index)
+        Ok(())
+    }
+
+    /// Makes the node of a step, and says whether the step runs; none when its `when` cannot
+    /// be decided, which fails the group.
+    fn start_step(
+        &mut self,
+        group: usize,
+        step: &Expanded,
+        child_name: &str,
+        call: &Call,
+        context: &Rc<Context>,
+    ) -> Result<Option<(usize, bool)>> {
+        if let Some(error) = &step.error {
+            let child = self.end_node(child_name, Phase::Error, call, error.clone());
+            self.add_child(group, child);
+            return Ok(Some((child, false)));
+        }
+        match self.decide_when(&step.when, child_name) {
+            Err(message) => {
+                let child = self.end_node(child_name, Phase::Error, call, message.clone());
+                self.add_child(group, child);
+                self.fail(group, Phase::Error, message);
+                return Ok(None);
+            }
+            Ok(false) => {
+                let message = format!("when '{}' evaluated false", step.when);
+                let child = self.end_node(child_name, Phase::Skipped, call, message);
+                self.skipped_outputs(child, &step.holder, context, true);
+                self.add_child(group, child);
+                return Ok(Some((child, false)));
+            }
+            Ok(true) => {}
+        }
+        let child = self.execute_template(child_name, &step.holder, context, &step.args, call)?;
+        self.add_child(group, child);
+        Ok(Some((child, true)))
     }
 
     pub fn add_child(&mut self, parent: usize, child: usize) {
@@ -248,11 +305,11 @@ impl Run {
         steps: &[Node],
         scope: &Scope,
         parent: usize,
-    ) -> Result<Vec<Expanded>> {
+    ) -> Result<Entries> {
         let variables = self.variables(scope);
         let depth = self.nodes[parent].depth;
-        let mut expanded = Vec::new();
-        for step in steps {
+        let mut entries = Entries::default();
+        for (slot, step) in steps.iter().enumerate() {
             let step_name = step
                 .get("name")
                 .and_then(Node::as_str)
@@ -261,13 +318,13 @@ impl Run {
             self.note_deciding_outputs(step, &format!("step `{step_name}`"), scope);
             let mut node = step.clone();
             if let Err(message) = replace_node(&mut node, &variables, true) {
-                expanded.push(Expanded::error(step_name, message));
+                entries.push(slot, Expanded::error(step_name, message));
                 continue;
             }
             let typed = match decode::<WorkflowStep>(&node) {
                 Ok((typed, _)) => typed,
                 Err(error) => {
-                    expanded.push(Expanded::error(step_name, error.to_string()));
+                    entries.push(slot, Expanded::error(step_name, error.to_string()));
                     continue;
                 }
             };
@@ -277,7 +334,7 @@ impl Run {
                 match self.step_artifacts(&typed.arguments.artifacts, scope) {
                     Ok(artifacts) => artifacts,
                     Err(message) => {
-                        expanded.push(Expanded::error(step_name, message));
+                        entries.push(slot, Expanded::error(step_name, message));
                         continue;
                     }
                 }
@@ -285,7 +342,7 @@ impl Run {
                 Vec::new()
             };
             if !looping {
-                expanded.push(expanded_step(step_name, node, &typed, artifacts));
+                entries.push(slot, expanded_step(step_name, node, &typed, artifacts));
                 continue;
             }
             let mut warnings = Vec::new();
@@ -301,7 +358,7 @@ impl Run {
             let list = match items_unless_skipped(&typed.when, list) {
                 Ok(list) => list,
                 Err(message) => {
-                    expanded.push(Expanded::error(step_name, message));
+                    entries.push(slot, Expanded::error(step_name, message));
                     continue;
                 }
             };
@@ -332,6 +389,7 @@ impl Run {
             }
             let mut cursor = Cursor {
                 name: step_name,
+                slot,
                 node,
                 template: typed.template.clone(),
                 artifacts,
@@ -344,10 +402,10 @@ impl Run {
             while let Some(entry) = self.next_entry(&mut cursor) {
                 let entry =
                     entry.unwrap_or_else(|message| Expanded::error(cursor.name.clone(), message));
-                expanded.push(entry);
+                entries.push(cursor.slot, entry);
             }
         }
-        Ok(expanded)
+        Ok(entries)
     }
 
     /// The artifact arguments of a step or task.

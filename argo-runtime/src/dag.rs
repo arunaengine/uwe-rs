@@ -12,7 +12,7 @@ use argo_parser::{Node, Value as Yaml, decode};
 use regex::Regex;
 use workflow_graph::TaskId;
 
-use crate::cursor::Cursor;
+use crate::cursor::{Cursor, Entries};
 use crate::items::{items, items_unless_skipped, loops};
 use crate::node::{ArtifactValue, NodeKind, Phase};
 use crate::run::{Args, Call, Expanded, Processed, Result, Run};
@@ -349,8 +349,8 @@ impl Run {
                 self.reenter(node)?;
                 self.update_task_group(node);
             }
-            if let Some(expanded) = self.nodes[node].expanded.clone() {
-                self.task_hooks(node, &expanded, &context, &prefix, dag, tasks)?;
+            if let Some(first) = self.first_entry(node) {
+                self.task_hooks(node, &first, &context, &prefix, dag, tasks)?;
             }
             return Ok(());
         }
@@ -432,7 +432,7 @@ impl Run {
                 self.task_scope(&mut scope, ancestor, node);
             }
         }
-        let (expanded, group) = match self.expand_task(processed, &task, &scope) {
+        let node = match self.expand_task(processed, &task, &scope) {
             Expansion::Ended(phase, message) => {
                 let node = self.end_node(&node_name, phase, &call, message);
                 self.add_child(dag, node);
@@ -443,71 +443,129 @@ impl Run {
                 self.add_child(dag, node);
                 return Ok(());
             }
-            Expansion::Single(entry) => (Rc::new(vec![*entry]), None),
+            Expansion::Single(entry) => {
+                let node = self.task_child(dag, dag, &entry, &call, &context)?;
+                let mut entries = Entries::default();
+                entries.push(0, *entry);
+                entries.open.clear();
+                self.nodes[node].entries = Some(Box::new(entries));
+                node
+            }
             Expansion::Loop(entries) => {
                 let group = self.new_node(&node_name, NodeKind::TaskGroup, "", &call);
                 self.add_child(dag, group);
-                (Rc::new(entries), Some(group))
+                self.nodes[group].entries = Some(entries);
+                self.continue_group(group)?;
+                self.update_task_group(group);
+                group
             }
         };
-        for entry in expanded.iter() {
-            let child_name = format!("{dag_name}.{}", entry.name);
-            let child_call = Call {
-                boundary: Some(dag),
-                inbound: call.inbound.clone(),
-                depth: call.depth,
-            };
-            let child = if let Some(error) = &entry.error {
-                self.end_node(&child_name, Phase::Error, &child_call, error.clone())
-            } else {
-                match self.decide_when(&entry.when, &child_name) {
-                    Err(message) => self.end_node(&child_name, Phase::Error, &child_call, message),
-                    Ok(false) => {
-                        let child = self.end_node(
-                            &child_name,
-                            Phase::Skipped,
-                            &child_call,
-                            format!("when '{}' evaluated false", entry.when),
-                        );
-                        self.skipped_outputs(child, &entry.holder, &context, false);
-                        child
-                    }
-                    Ok(true) => self.execute_template(
+        if let Some(first) = self.first_entry(node) {
+            self.task_hooks(node, &first, &context, &prefix, dag, tasks)?;
+        }
+        Ok(())
+    }
+
+    /// Makes the node of one entry of a task, as a child of the DAG or of the task group.
+    fn task_child(
+        &mut self,
+        dag: usize,
+        parent: usize,
+        entry: &Expanded,
+        call: &Call,
+        context: &Rc<crate::run::Context>,
+    ) -> Result<usize> {
+        let dag_name = self.nodes[dag].name.clone();
+        let child_name = format!("{dag_name}.{}", entry.name);
+        let child = if let Some(error) = &entry.error {
+            self.end_node(&child_name, Phase::Error, call, error.clone())
+        } else {
+            match self.decide_when(&entry.when, &child_name) {
+                Err(message) => self.end_node(&child_name, Phase::Error, call, message),
+                Ok(false) => {
+                    let child = self.end_node(
                         &child_name,
-                        &entry.holder,
-                        &context,
-                        &entry.args,
-                        &child_call,
-                    )?,
+                        Phase::Skipped,
+                        call,
+                        format!("when '{}' evaluated false", entry.when),
+                    );
+                    self.skipped_outputs(child, &entry.holder, context, false);
+                    child
+                }
+                Ok(true) => {
+                    self.execute_template(&child_name, &entry.holder, context, &entry.args, call)?
+                }
+            }
+        };
+        self.add_child(parent, child);
+        Ok(child)
+    }
+
+    /// Goes on with the entries of a looping task that may still change: makes the nodes of
+    /// new entries and goes on with those that run.
+    pub(crate) fn continue_group(&mut self, group: usize) -> Result<()> {
+        let Some(mut entries) = self.nodes[group].entries.take() else {
+            return Ok(());
+        };
+        let result = self.walk_group(group, &mut entries);
+        self.nodes[group].entries = Some(entries);
+        result
+    }
+
+    fn walk_group(&mut self, group: usize, entries: &mut Entries) -> Result<()> {
+        let Some(dag) = self.nodes[group].boundary else {
+            return Ok(());
+        };
+        let Some(context) =
+            (self.nodes[dag].processed.as_ref()).map(|processed| Rc::clone(&processed.context))
+        else {
+            return Ok(());
+        };
+        let call = Call {
+            boundary: Some(dag),
+            inbound: self.nodes[group].inbound.clone(),
+            depth: self.nodes[group].depth,
+        };
+        let mut open = Vec::new();
+        for &position in &entries.open.clone() {
+            let child = match entries.nodes[position] {
+                Some(child) => {
+                    if !self.nodes[child].phase.fulfilled() {
+                        self.reenter(child)?;
+                    }
+                    child
+                }
+                None => {
+                    let entry = Rc::clone(&entries.list[position]);
+                    let child = self.task_child(dag, group, &entry, &call, &context)?;
+                    entries.nodes[position] = Some(child);
+                    child
                 }
             };
-            match group {
-                Some(group) => self.add_child(group, child),
-                None => self.add_child(dag, child),
+            if !self.nodes[child].phase.fulfilled() {
+                open.push(position);
             }
         }
-        let node = group.unwrap_or_else(|| self.names[&node_name]);
-        self.nodes[node].expanded = Some(Rc::clone(&expanded));
-        if let Some(group) = group {
-            self.update_task_group(group);
-        }
-        self.task_hooks(node, &expanded, &context, &prefix, dag, tasks)?;
+        entries.open = open;
         Ok(())
+    }
+
+    /// The first entry of a task, whose hooks and `continueOn` stand for the whole loop.
+    fn first_entry(&self, node: usize) -> Option<Rc<Expanded>> {
+        let entries = self.nodes[node].entries.as_ref()?;
+        entries.list.first().cloned()
     }
 
     /// Runs the lifecycle and exit hooks of a task.
     fn task_hooks(
         &mut self,
         node: usize,
-        expanded: &Rc<Vec<crate::run::Expanded>>,
+        entry: &Expanded,
         context: &Rc<crate::run::Context>,
         prefix: &str,
         dag: usize,
         tasks: &[DagTask],
     ) -> Result<()> {
-        let Some(entry) = expanded.first() else {
-            return Ok(());
-        };
         if entry.hooks.is_empty() && entry.on_exit.is_empty() {
             return Ok(());
         }
@@ -537,7 +595,16 @@ impl Run {
         if self.nodes[group].kind != NodeKind::TaskGroup || self.nodes[group].phase.fulfilled() {
             return;
         }
-        let expanded = self.nodes[group].expanded.clone();
+        let Some(entries) = &self.nodes[group].entries else {
+            return;
+        };
+        if !entries.open.is_empty() {
+            return;
+        }
+        let continue_on = entries
+            .list
+            .first()
+            .map_or((false, false), |entry| entry.continue_on);
         let mut phase = Phase::Succeeded;
         for &child in &self.nodes[group].children {
             let status = &self.nodes[child];
@@ -545,10 +612,6 @@ impl Run {
                 return;
             }
             if status.phase.failed_or_error() {
-                let continue_on = expanded
-                    .as_ref()
-                    .and_then(|expanded| expanded.first())
-                    .map_or((false, false), |entry| entry.continue_on);
                 let continues = match status.phase {
                     Phase::Failed => continue_on.1,
                     _ => continue_on.0,
@@ -671,6 +734,7 @@ impl Run {
         };
         let mut cursor = Cursor {
             name: task.name.clone(),
+            slot: 0,
             node,
             template: typed.template.clone(),
             artifacts,
@@ -680,14 +744,14 @@ impl Run {
             next: 0,
             build: task_entry,
         };
-        let mut expanded = Vec::new();
+        let mut entries = Entries::default();
         while let Some(entry) = self.next_entry(&mut cursor) {
             match entry {
-                Ok(entry) => expanded.push(entry),
+                Ok(entry) => entries.push(cursor.slot, entry),
                 Err(message) => return Expansion::Ended(Phase::Error, message),
             }
         }
-        Expansion::Loop(expanded)
+        Expansion::Loop(Box::new(entries))
     }
 }
 
@@ -698,7 +762,7 @@ enum Expansion {
     /// A loop over no items.
     Empty(Box<crate::run::Holder>),
     Single(Box<Expanded>),
-    Loop(Vec<Expanded>),
+    Loop(Box<Entries>),
 }
 
 /// A task and all tasks it depends on, dependencies first.

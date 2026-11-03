@@ -10,7 +10,8 @@ use argo_parser::model::RetryStrategy;
 use jiff::Timestamp;
 use workflow_graph::{Outcome, TaskId};
 
-use crate::run::{Expanded, Processed};
+use crate::cursor::Entries;
+use crate::run::Processed;
 use crate::volumes::Written;
 
 /// The phase of a node, as Argo names it.
@@ -111,7 +112,7 @@ pub(crate) struct NodeStatus {
     pub tasks: Vec<TaskId>,
     pub outcomes: Vec<Option<Outcome>>,
     pub processed: Option<Rc<Processed>>,
-    pub expanded: Option<Rc<Vec<Expanded>>>,
+    pub entries: Option<Box<Entries>>,
     pub exit_hook: Option<usize>,
     pub hooks: Vec<usize>,
     pub depth: usize,

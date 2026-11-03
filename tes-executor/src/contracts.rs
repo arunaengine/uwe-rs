@@ -427,6 +427,30 @@ async fn omits_unconfigured_idempotency() {
 }
 
 #[tokio::test]
+async fn adds_static_tags() {
+    let folder = tempfile::tempdir().unwrap();
+    let (operator, objects, source) = stores();
+    let server = server(operator, objects.clone(), "COMPLETE").await;
+    let mut backend = backend(&server, folder.path(), &source, &objects);
+    backend.settings.tags = BTreeMap::from([("example.org/network".into(), "open".into())]);
+    backend
+        .run(
+            Job {
+                name: "tagged-1",
+                spec: &spec(false),
+                staging: &Staging::default(),
+                placement: &Placement::default(),
+            },
+            &CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    let tags = &server.documents.lock().unwrap()[0]["tags"];
+    assert_eq!(tags["example.org/network"], "open");
+    assert_eq!(tags["uwe-attempt"], "tagged-1");
+}
+
+#[tokio::test]
 async fn preserves_encoded_paths() {
     let folder = tempfile::tempdir().unwrap();
     let (operator, objects, source) = stores();

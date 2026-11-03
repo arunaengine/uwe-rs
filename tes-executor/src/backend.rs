@@ -238,6 +238,7 @@ impl TesBackend {
                 "TES task exceeds the configured input or output limit".into(),
             ));
         }
+        task.tags.extend(self.settings.tags.clone());
         if let Some(tag) = &self.settings.idempotency_tag {
             task.tags.insert(tag.clone(), attempt_key);
         }

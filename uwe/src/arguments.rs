@@ -89,6 +89,9 @@ pub struct Arguments {
     pub max_pending: Option<usize>,
     pub machine_retries: Option<u32>,
     pub retry_delay_ms: Option<u64>,
+    /// `-task-minutes n` or `[executor] task_minutes`, in seconds: the time limit of tasks
+    /// that set none of their own.
+    pub task_seconds: Option<u64>,
     /// `-order asked|reversed|finished|shuffled[:seed]`: the order in which pending tasks
     /// finish.
     pub order: Option<Order>,
@@ -174,6 +177,7 @@ impl Arguments {
             max_pending: self.max_pending,
             retries: self.machine_retries,
             retry_delay: self.retry_delay_ms.map(std::time::Duration::from_millis),
+            default_time: self.task_seconds.map(std::time::Duration::from_secs),
             output_dir: self.output_dir.clone(),
             database: self.database.clone(),
             store: self.store.clone(),
@@ -429,6 +433,13 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
                             "`-machine-retry-delay-ms` needs a number above zero, not `{number}`"
                         )
                     })?);
+            }
+            "-task-minutes" => {
+                let number = value()?;
+                let minutes: u64 = number.parse().ok().filter(|n| *n > 0).ok_or_else(|| {
+                    format!("`-task-minutes` needs a number above zero, not `{number}`")
+                })?;
+                parsed.task_seconds = Some(minutes.saturating_mul(60));
             }
             "-order" => {
                 let name = value()?;
@@ -696,6 +707,10 @@ const OPTIONS: &[(&str, &[&str])] = &[
     ("-machine-retries <n>", EXECUTION),
     ("-machine-retry-delay-ms <milliseconds>", EXECUTION),
     (
+        "-task-minutes <minutes>",
+        &["run", "graph", "check-order", "repeat"],
+    ),
+    (
         "-no-right-sizing",
         &["run", "graph", "check-order", "replay"],
     ),
@@ -948,7 +963,12 @@ mod tests {
         let parsed = parse_all(&["-machine-retries", "0", "-machine-retry-delay-ms", "250"]);
         assert_eq!(parsed.machine_retries, Some(0));
         assert_eq!(parsed.retry_delay_ms, Some(250));
-        for pair in [["-machine-retries", "-1"], ["-machine-retry-delay-ms", "0"]] {
+        assert_eq!(parse_all(&["-task-minutes", "90"]).task_seconds, Some(5400));
+        for pair in [
+            ["-machine-retries", "-1"],
+            ["-machine-retry-delay-ms", "0"],
+            ["-task-minutes", "0"],
+        ] {
             assert!(parse(&pair.map(str::to_owned)).is_err());
         }
     }

@@ -335,7 +335,8 @@ fn execute_with(
         }
         None => executor,
     };
-    let mut executor = backend::limited(executor, cpus, memory);
+    let time = arguments.task_seconds;
+    let mut executor = backend::limited(executor, cpus, memory, time);
     // A real executor runs every task that can run, and the pool of its machine or cluster
     // sets how many run at once. The simulator runs one at a time, in the order asked.
     let options = RunOptions {

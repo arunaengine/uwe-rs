@@ -59,6 +59,9 @@ pub struct Settings {
     pub retries: Option<u32>,
     /// Initial retry delay, defaulting to configuration or one second.
     pub retry_delay: Option<Duration>,
+    /// The time limit of tasks that set none of their own, at least one second; a task's own
+    /// time wins. `None` uses `[executor] task_minutes` of the configuration, else no limit.
+    pub default_time: Option<Duration>,
     /// Completion cancels a child token and leaves this host token untouched.
     pub cancel: CancellationToken,
     pub output_dir: Option<PathBuf>,
@@ -108,6 +111,7 @@ impl Default for Settings {
             max_pending: None,
             retries: None,
             retry_delay: None,
+            default_time: None,
             cancel: CancellationToken::new(),
             output_dir: None,
             database: None,
@@ -156,6 +160,11 @@ impl Settings {
                 "uwe: resource limits require at least one CPU and 6 MiB of memory",
             ));
         }
+        if self.default_time.is_some_and(|time| time.is_zero()) {
+            return Err(Failure::usage(
+                "uwe: the default task time must be at least one second",
+            ));
+        }
         if self
             .revision
             .as_ref()
@@ -189,6 +198,9 @@ impl Settings {
         arguments.retry_delay_ms = self
             .retry_delay
             .map(|delay| u64::try_from(delay.as_millis()).unwrap_or(u64::MAX));
+        // A part of a second counts as a whole one, so that no limit becomes zero.
+        arguments.task_seconds =
+            (self.default_time).map(|time| time.as_secs() + u64::from(time.subsec_nanos() > 0));
         arguments.output_dir = self.output_dir;
         arguments.database = self.database;
         arguments.store = self.store;

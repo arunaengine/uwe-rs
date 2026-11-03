@@ -144,7 +144,15 @@ impl Executors {
         let Some(section) = config.section("executor")? else {
             return Ok(settings);
         };
-        section.only(&["default", "local", "tes", "slurm", "kubernetes"])?;
+        let keys = [
+            "default",
+            "task_minutes",
+            "local",
+            "tes",
+            "slurm",
+            "kubernetes",
+        ];
+        section.only(&keys)?;
         if let Some(local) = section.table("local")? {
             local.only(&["engine", "cpus", "memory_bytes"])?;
             settings.engine = local.text("engine")?;
@@ -539,6 +547,8 @@ pub struct Defaults {
     pub report: Option<PathBuf>,
     pub machine_retries: Option<u32>,
     pub retry_delay_ms: Option<u64>,
+    /// `[executor] task_minutes`, in seconds: the time limit of tasks that set none.
+    pub task_seconds: Option<u64>,
 }
 
 impl Defaults {
@@ -553,6 +563,11 @@ impl Defaults {
         let mut defaults = Defaults::default();
         if let Some(executor) = config.section("executor")? {
             defaults.executor = executor.text("default")?;
+            defaults.task_seconds = match executor.integer("task_minutes")? {
+                None => None,
+                Some(minutes) if minutes > 0 => Some((minutes as u64).saturating_mul(60)),
+                Some(_) => return Err(executor.invalid("task_minutes", "use a number above 0")),
+            };
             if let Some(name) = &defaults.executor
                 && !EXECUTORS.contains(&name.as_str())
             {
@@ -608,6 +623,7 @@ impl Defaults {
         ) {
             arguments.machine_retries = arguments.machine_retries.or(self.machine_retries);
             arguments.retry_delay_ms = arguments.retry_delay_ms.or(self.retry_delay_ms);
+            arguments.task_seconds = arguments.task_seconds.or(self.task_seconds);
         }
         if matches!(command, "run" | "check" | "check-machine")
             && arguments.executor.is_none()
@@ -1045,6 +1061,11 @@ mod tests {
         assert!(error.contains("place"), "{error}");
         // `default` is no unknown executor for the settings of the executors.
         assert!(read("[executor]\ndefault = \"slurm\"\n").is_ok());
+        let timed = "[executor]\ntask_minutes = 90\n";
+        assert_eq!(defaults(timed).expect("a time").task_seconds, Some(5400));
+        assert!(read(timed).is_ok());
+        let error = defaults("[executor]\ntask_minutes = 0\n").expect_err("an error");
+        assert!(error.contains("task_minutes"), "{error}");
     }
 
     #[test]

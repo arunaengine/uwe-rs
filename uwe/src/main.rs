@@ -129,6 +129,7 @@ options:
   -machine-retries <n>                retries a task after a machine failure (default: 2)
   -machine-retry-delay-ms <n>         base retry delay in milliseconds (default: 1000),
                                       doubled with jitter and capped at one minute
+  -task-minutes <n>                   the time limit of tasks that set none of their own
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
   -r <tag|branch|commit>, -latest     repository revision and refresh of its cached reference
   -executor <executor>                local (the default for run) runs Docker or Podman

@@ -8,19 +8,22 @@ use crate::setup::Setup;
 use crate::{Failure, cache_directory, kubernetes, local, preview, resources, runs, slurm, tes};
 use workflow_graph::{Attempt, ExecuteError, Executor, Files, Running, Simulator, TaskId};
 
-/// Caps task requests before backend placement, retaining completion and cleanup ownership.
+/// Caps task requests and gives tasks without a time the default `time` in seconds, before
+/// backend placement, retaining completion and cleanup ownership.
 pub(crate) fn limited(
     executor: Box<dyn Executor>,
     cpus: Option<u32>,
     memory: Option<u64>,
+    time: Option<u64>,
 ) -> Box<dyn Executor> {
-    if cpus.is_none() && memory.is_none() {
+    if cpus.is_none() && memory.is_none() && time.is_none() {
         return executor;
     }
     Box::new(Limited {
         executor,
         cpus,
         memory,
+        time,
     })
 }
 
@@ -28,6 +31,7 @@ struct Limited {
     executor: Box<dyn Executor>,
     cpus: Option<u32>,
     memory: Option<u64>,
+    time: Option<u64>,
 }
 
 impl Executor for Limited {
@@ -39,6 +43,8 @@ impl Executor for Limited {
         if let Some(memory) = self.memory {
             resources.memory_bytes = Some(resources.memory_bytes.unwrap_or(memory).min(memory));
         }
+        // Each executor then limits this time as a task's own, with its staging margin.
+        resources.time_seconds = resources.time_seconds.or(self.time);
         self.executor.run(attempt)
     }
 
@@ -436,7 +442,8 @@ mod tests {
     #[tokio::test]
     async fn forwards_daemon_release() {
         let observed = Arc::new(Mutex::new(Resources::default()));
-        let mut executor = super::limited(Box::new(Observed(observed.clone())), Some(2), None);
+        let mut executor =
+            super::limited(Box::new(Observed(observed.clone())), Some(2), None, None);
         executor.release().await;
         assert_eq!(observed.lock().unwrap().cpus, Some(-1.0), "released");
     }
@@ -459,6 +466,7 @@ mod tests {
                 Box::new(Observed(observed.clone())),
                 Some(2),
                 Some(16 << 20),
+                None,
             );
             executor
                 .run(Attempt {
@@ -475,5 +483,123 @@ mod tests {
             assert_eq!(observed.cpus, Some(cpus));
             assert_eq!(observed.memory_bytes, Some(16 << 20));
         }
+    }
+
+    /// The time that a task gets: the default only when it sets none.
+    fn timed(own: Option<u64>, default: Option<u64>) -> Arc<Task> {
+        let observed = Arc::new(Mutex::new(Resources::default()));
+        let mut executor =
+            super::limited(Box::new(Observed(observed.clone())), None, None, default);
+        let resources = Resources {
+            time_seconds: own,
+            ..Resources::default()
+        };
+        let task = Arc::new(Task {
+            command: vec!["true".into()],
+            resources,
+            ..Task::default()
+        });
+        let attempt = Attempt {
+            task: task.clone(),
+            number: 1,
+            cancel: CancellationToken::new(),
+        };
+        workflow_graph::runtime()
+            .unwrap()
+            .block_on(executor.run(attempt))
+            .unwrap();
+        let resources = observed.lock().unwrap().clone();
+        Arc::new(Task {
+            resources,
+            ..Task::clone(&task)
+        })
+    }
+
+    #[test]
+    fn defaults_task_time() {
+        assert_eq!(timed(None, Some(90)).resources.time_seconds, Some(90));
+        assert_eq!(timed(Some(30), Some(90)).resources.time_seconds, Some(30));
+        assert_eq!(timed(None, None).resources.time_seconds, None);
+    }
+
+    /// A TES server whose task runs until it is cancelled, like one that never tells its end;
+    /// it keeps the task document it got.
+    fn running_server(sent: Arc<Mutex<Option<serde_json::Value>>>) -> String {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let mut state = "RUNNING";
+            for mut stream in listener.incoming().map_while(Result::ok) {
+                let mut reader = BufReader::new(&mut stream);
+                let (mut first, mut length) = (String::new(), 0);
+                reader.read_line(&mut first).unwrap();
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    match line.split_once(':') {
+                        _ if line.trim().is_empty() => break,
+                        Some((name, value)) if name.eq_ignore_ascii_case("content-length") => {
+                            length = value.trim().parse().unwrap();
+                        }
+                        _ => {}
+                    }
+                }
+                let mut body = vec![0; length];
+                reader.read_exact(&mut body).unwrap();
+                if first.starts_with("POST /ga4gh/tes/v1/tasks ") {
+                    *sent.lock().unwrap() = serde_json::from_slice(&body).ok();
+                } else if first.contains(":cancel") {
+                    state = "CANCELED";
+                }
+                let answer = format!(r#"{{"id":"task-1","state":"{state}"}}"#);
+                let reply = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
+                    answer.len()
+                );
+                stream.write_all(reply.as_bytes()).unwrap();
+            }
+        });
+        address
+    }
+
+    #[test]
+    fn tes_task_timed() {
+        use executor::Backend;
+        let root = tempfile::tempdir().unwrap();
+        let task = timed(None, Some(1));
+        let request = task_runner::request(&task, Some("test".into()), Vec::new(), None);
+        assert_eq!(request.placement.time_seconds, Some(1));
+        let sent = Arc::new(Mutex::new(None));
+        let address = running_server(sent.clone());
+        let config = executor::registry::ImageConfig::default();
+        let backend = tes_executor::TesBackend {
+            client: tes_executor::Client::new(&address, None).unwrap(),
+            scratch: root.path().join("scratch"),
+            staging: None,
+            // Without a staging margin the task stops right after its time.
+            settings: tes_executor::Settings {
+                staging_minutes: Some(0),
+                ..Default::default()
+            },
+            configs: executor::registry::ImageConfigs::known([("test".into(), config)]),
+        };
+        let staging = executor::Staging::default();
+        let job = executor::Job {
+            name: "run-P-1-1",
+            spec: &request.spec,
+            staging: &staging,
+            placement: &request.placement,
+        };
+        let finished = workflow_graph::runtime()
+            .unwrap()
+            .block_on(backend.run(job, &CancellationToken::new()))
+            .unwrap();
+        assert_eq!(finished.exit_code, Some(143));
+        let stderr = std::fs::read_to_string(finished.stderr()).unwrap();
+        assert!(stderr.contains("after its time of 1 seconds"), "{stderr}");
+        let sent = sent.lock().unwrap().clone().unwrap();
+        let command = sent["executors"][0]["command"][2].as_str().unwrap();
+        assert!(command.contains("( sleep 1 && kill"), "{command}");
     }
 }

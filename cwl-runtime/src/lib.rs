@@ -16,6 +16,7 @@ mod run;
 mod schema;
 mod scope;
 mod shm;
+mod texts;
 pub mod tool;
 pub mod types;
 pub mod value;

@@ -23,6 +23,7 @@ use crate::files;
 use crate::results;
 use crate::run::Run;
 use crate::schema;
+use crate::texts;
 use crate::tool::{Options, UNSUPPORTED};
 use crate::types::Types;
 use crate::value::{Map, Value};
@@ -35,6 +36,8 @@ pub struct CwlDriver {
     launch: Launch,
     /// Whether the run is simulated, so that its output object names made-up files.
     simulated: bool,
+    /// Whether a real run prints its output object.
+    print: bool,
     /// The files of the output object to deliver, once the run finished for real.
     deliveries: Vec<Delivery>,
     literals: Option<tempfile::TempDir>,
@@ -63,6 +66,7 @@ impl CwlDriver {
         let document = cwl_parser::load_file(&reference, options.remote.clone())
             .map_err(|error| DriverError::new(error.to_string()))?;
         let simulated = options.simulated;
+        let print = options.print;
         let mut run = Run::new(options, launch.keep_going);
         run.name_ontologies(document.schemas);
         let mut warnings = Vec::new();
@@ -73,6 +77,7 @@ impl CwlDriver {
         Ok(CwlDriver {
             launch: launch.clone(),
             simulated,
+            print,
             deliveries: Vec::new(),
             literals: None,
             run,
@@ -106,6 +111,15 @@ impl CwlDriver {
             None => Map::new(),
         };
         let types = self.types();
+        if let Some(path) = &self.launch.inputs {
+            let absolute = std::path::absolute(path).unwrap_or_else(|_| path.clone());
+            let base = iri::file_url(&absolute);
+            for input in &self.process.inputs {
+                if let Some(value) = job.get_mut(short_name(&input.id)) {
+                    texts::read(&types, &input.value_type, value, &base);
+                }
+            }
+        }
         let mut given: Vec<(String, Vec<String>)> = Vec::new();
         for (name, text) in &self.launch.params {
             match given.iter_mut().find(|(known, _)| known == name) {
@@ -352,7 +366,9 @@ impl Driver for CwlDriver {
                 }
                 self.deliveries
                     .extend(results::deliver(&mut outputs, &folder).map_err(error)?);
-                println!("{}", Value::Map(outputs).to_pretty_json());
+                if self.print {
+                    println!("{}", Value::Map(outputs).to_pretty_json());
+                }
             }
             return Ok(());
         }

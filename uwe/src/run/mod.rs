@@ -4,9 +4,11 @@
 
 pub(crate) mod backend;
 pub(crate) mod driver;
+mod events;
 mod settings;
 pub(crate) mod support;
 
+pub use events::{Event, Listener, TaskEvent, TaskState};
 pub use settings::Settings;
 pub use task_runner::NetworkRule;
 pub use workflow_graph::Language;
@@ -126,6 +128,12 @@ fn execute_with(
     let cpus = settings.cpus;
     let memory = settings.memory_bytes;
     let chosen = settings.run_id.take();
+    let listener = settings.listener.take();
+    let tell = |event: Event| {
+        if let Some(listener) = &listener {
+            listener(event);
+        }
+    };
     if let Some(id) = &chosen {
         settings::check_id(id)?;
     }
@@ -225,6 +233,10 @@ fn execute_with(
     } else {
         None
     };
+    tell(Event::Started {
+        run: run.clone(),
+        time: events::milliseconds(std::time::SystemTime::now()),
+    });
     // The inputs are checked before any task starts (decision 24).
     let prepared = executor(
         arguments,
@@ -275,6 +287,7 @@ fn execute_with(
         Ok(prepared) => prepared,
         Err(failure) => {
             recorder.ended(Some(&failure.message));
+            tell(events::ended(&run, Some(&failure.message)));
             close_checked(recorder, strict)?;
             return Err(failure);
         }
@@ -291,6 +304,7 @@ fn execute_with(
     {
         if strict {
             recorder.ended(Some(&message));
+            tell(events::ended(&run, Some(&message)));
             close_checked(recorder, true)?;
             return Err(Failure::setup(format!(
                 "workflow provenance was not retained: {message}"
@@ -354,13 +368,21 @@ fn execute_with(
         observer,
         defer: strict,
     };
+    let mut forward;
+    let observer: &mut dyn workflow_graph::Observer = match &listener {
+        Some(listener) => {
+            forward = events::Forward::new(listener, &run, &mut terminal);
+            &mut forward
+        }
+        None => &mut terminal,
+    };
     let mut execution = Engine::new(executor.as_mut())
         .options(options)
         .retries(arguments.machine_retries.unwrap_or(2))
         .retry_delay(std::time::Duration::from_millis(
             arguments.retry_delay_ms.unwrap_or(1_000),
         ))
-        .observer(&mut terminal)
+        .observer(observer)
         .cancel(interrupt.clone())
         .run(&workflow, driver.as_mut());
     if !real {
@@ -375,6 +397,7 @@ fn execute_with(
     {
         if strict {
             recorder.ended(Some(&message));
+            tell(events::ended(&run, Some(&message)));
             close_checked(recorder, true)?;
             return Err(Failure::setup(format!(
                 "remote input provenance was not retained: {message}"
@@ -385,7 +408,10 @@ fn execute_with(
     if strict {
         recorder.ended(execution.error.as_ref().map(ToString::to_string).as_deref());
     }
-    close_checked(recorder, strict)?;
+    if let Err(failure) = close_checked(recorder, strict) {
+        tell(events::ended(&run, Some(&failure.message)));
+        return Err(failure);
+    }
     // A failed run leaves its error as the first line on standard error.
     if execution.error.is_none() && !arguments.no_right_sizing {
         for line in resources::notes(&execution.graph, &measured, !real) {
@@ -406,6 +432,8 @@ fn execute_with(
             }
         }
     }
+    let error = execution.error.as_ref().map(ToString::to_string);
+    tell(events::ended(&run, error.as_deref()));
     Ok(Ran {
         execution,
         page,

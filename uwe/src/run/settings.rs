@@ -8,6 +8,7 @@ use std::time::Duration;
 use serde_json::{Map, Value};
 use workflow_graph::{CancellationToken, Language};
 
+use super::Listener;
 use crate::Failure;
 use crate::arguments::{Arguments, Resume};
 use crate::setup::{Defaults, Setup};
@@ -65,6 +66,8 @@ pub struct Settings {
     /// The run id chosen by the host instead of a new one: 1 to 64 ASCII letters, digits, `-`
     /// or `_`, starting and ending with a letter or digit, and new to the run database.
     pub run_id: Option<String>,
+    /// Hears the run and its tasks as they change; see [`Listener`] for what it must do.
+    pub listener: Option<Listener>,
     // The CLI retains its input syntax and presentation without exposing them to hosts.
     pub(crate) cli: Option<Arguments>,
 }
@@ -104,6 +107,7 @@ impl Default for Settings {
             store: None,
             cache_folder: None,
             run_id: None,
+            listener: None,
             cli: None,
         }
     }

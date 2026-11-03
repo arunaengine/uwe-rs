@@ -301,3 +301,54 @@ async fn uses_chosen_id() {
     }
     assert_eq!(database.runs(10).unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn reports_task_states() {
+    use uwe::run::{Event, TaskState};
+    let root = tempfile::tempdir().unwrap();
+    let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut request = request(root.path());
+    let sink = heard.clone();
+    request.settings.listener = Some(std::sync::Arc::new(move |event: Event| {
+        sink.lock().unwrap().push(event);
+    }));
+    let run = request.run().await.unwrap();
+    assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+    let heard = heard.lock().unwrap().clone();
+    assert!(matches!(&heard[0], Event::Started { run: id, .. } if *id == run.id));
+    assert!(
+        matches!(heard.last().unwrap(), Event::Ended { run: id, error: None, .. } if *id == run.id)
+    );
+    let tasks: Vec<_> = heard[1..heard.len() - 1]
+        .iter()
+        .map(|event| match event {
+            Event::Task(task) => task,
+            other => panic!("only task events come between start and end: {other:?}"),
+        })
+        .collect();
+    let states: Vec<_> = tasks.iter().map(|task| task.state).collect();
+    assert_eq!(
+        states,
+        [
+            TaskState::Requested,
+            TaskState::Started,
+            TaskState::Finished
+        ]
+    );
+    let node = &run.execution.graph.nodes[0].task;
+    for task in &tasks {
+        assert_eq!((task.run.as_str(), task.task), (run.id.as_str(), node.id.0));
+        assert_eq!(task.name, node.name);
+    }
+    assert_eq!(tasks[0].attempt, None);
+    assert_eq!(tasks[1].attempt, Some(1));
+    let finished = tasks[2];
+    assert_eq!((finished.attempt, finished.exit_code), (Some(1), Some(0)));
+    assert!(!finished.cached && finished.error.is_none());
+    assert!(finished.started.is_some() && finished.ended >= finished.started);
+    let json = serde_json::to_value(&heard[3]).unwrap();
+    assert_eq!(
+        (json["kind"].as_str(), json["state"].as_str()),
+        (Some("task"), Some("finished"))
+    );
+}

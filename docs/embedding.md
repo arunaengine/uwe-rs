@@ -25,6 +25,35 @@ let run = uwe::RunRequest::new(settings).run().await?;
 assert_eq!(run.id, "01JBXQ5Z7C2W9M");
 ```
 
+## Following a run live
+
+Set `run::Settings.listener` to a `run::Listener`, which is an `Arc<dyn Fn(run::Event) + Send + Sync>`. uwe calls it for every change of the run and its tasks:
+
+- `Event::Started` comes once the run is in the run database. It carries the run id.
+- `Event::Task` carries a `TaskEvent`: the task number, name and step, its `TaskState`, the attempt, times, whether a cached result answered it, the exit code and an error message.
+- `Event::Ended` comes last, after uwe recorded the whole run. Its `error` is set when the run failed or stopped.
+
+A task goes from `requested` to `started` to `finished`, `reused` or `failed`. A machine failure gives `retried`, then `started` again. Tasks that did not end when the run ended become `stopped`. The workflow's own output checks can still turn a `finished` attempt into `failed`.
+
+Times are milliseconds since the Unix epoch, as in the run database. All event types are `Clone`, `Debug` and `serde::Serialize`.
+
+uwe calls the listener on its own worker thread, while the engine waits. So the listener must return fast and must not block. Send the event on, for example into a Tokio unbounded channel:
+
+```rust
+let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+let mut settings = uwe::run::Settings::new("/srv/workflows/main.cwl");
+settings.listener = Some(std::sync::Arc::new(move |event: uwe::run::Event| {
+    let _ = sender.send(event);
+}));
+let running = tokio::spawn(uwe::RunRequest::new(settings).run());
+while let Some(event) = receiver.recv().await {
+    println!("{}", serde_json::to_string(&event)?);
+}
+let run = running.await??;
+```
+
+The channel closes when uwe drops the settings at the end of the run, so the loop ends then.
+
 ## The hosted policy
 
 The policy limits which presets are allowed and which cache, database and output paths a tenant gets. It also limits Argo host roots and volume mappings. Its authorization callback sees the merged inputs before planning, and the normalized inputs before execution.

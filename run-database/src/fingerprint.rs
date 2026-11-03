@@ -7,7 +7,7 @@ use std::time::UNIX_EPOCH;
 
 use sha2::{Digest as _, Sha256};
 use task_model::Digest;
-use workflow_graph::{Resources, Task, TaskId};
+use workflow_graph::{Resources, Task, TaskId, Writable};
 
 /// The size and modification time of a local input when the task was asked for, as Nextflow's
 /// standard cache mode compares them.
@@ -19,12 +19,17 @@ pub struct InputState {
 }
 
 /// The state of each input of a task, in the order of its inputs: `None` for literal content,
-/// a URL, or a path that does not exist.
+/// a URL, a shared folder, or a path that does not exist.
 pub fn input_states(task: &Task) -> Vec<Option<InputState>> {
     task.inputs
         .iter()
         .map(|input| {
-            if input.content.is_some() || input.source.contains("://") {
+            // A shared folder counts by its path, as the runner keys it; its time changes
+            // whenever a file in it comes or goes.
+            if input.content.is_some()
+                || input.source.contains("://")
+                || input.writable == Writable::Shared
+            {
                 return None;
             }
             let metadata = std::fs::metadata(&input.source).ok()?;
@@ -109,5 +114,19 @@ mod tests {
             fingerprint(&first, &states),
             fingerprint(&elsewhere, &input_states(&elsewhere))
         );
+    }
+
+    /// A shared folder of Snakemake jobs keeps its fingerprint when files in it come and go.
+    #[test]
+    fn ignores_shared_folders() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let folder = directory.path().to_string_lossy().into_owned();
+        let mut shared = task(1, &folder);
+        shared.inputs[0].directory = true;
+        shared.inputs[0].writable = Writable::Shared;
+        let before = fingerprint(&shared, &input_states(&shared));
+        std::fs::create_dir(directory.path().join("hello")).expect("makes a folder");
+        assert_eq!(input_states(&shared), [None]);
+        assert_eq!(before, fingerprint(&shared, &input_states(&shared)));
     }
 }

@@ -311,13 +311,14 @@ impl Run {
             .iter()
             .flat_map(|(task, _)| dependencies(task, &dag.tasks).names)
             .collect();
+        let mut seen = HashSet::new();
         let mut tasks = Vec::new();
         for (task, node) in ran {
             if depended.contains(&task.name) {
                 continue;
             }
             for id in self.outbound(node) {
-                if !tasks.contains(&id) {
+                if seen.insert(id) {
                     tasks.push(id);
                 }
             }
@@ -380,10 +381,11 @@ impl Run {
         }
         let depth = self.nodes[dag].depth;
         let mut inbound: Vec<TaskId> = Vec::new();
+        let mut seen = HashSet::new();
         for dependency in &deps.names {
             if let Some(&node) = self.names.get(&format!("{dag_name}.{dependency}")) {
                 for id in self.outbound(node) {
-                    if !inbound.contains(&id) {
+                    if seen.insert(id) {
                         inbound.push(id);
                     }
                 }

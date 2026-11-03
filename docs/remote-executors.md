@@ -184,3 +184,7 @@ tags = { "aruna-engine.org/network" = "open", "aruna-engine.org/group" = "lab" }
 A `[executor.tes.sites.<name>]` table takes its own `tags`. Like every other key of a site, it does not inherit from `[executor.tes]`. A site without `tags` adds none.
 
 uwe sets `uwe-attempt`, `uwe-submission` and the `idempotency_tag` itself. A tag with one of these names, or with an empty name, is a config error. Values may be empty.
+
+## Read-only TES inputs
+
+Some TES servers stage input files as read-only and owned by another user, and run the task as a user without rights to change them. uwe makes executable inputs and the helper executable with `chmod +x`. When `chmod` fails, uwe copies the file next to itself, makes the copy executable and moves it over the original. This needs a folder the task user may write to. If the copy fails too, the task stops with an error, as before. When `chmod` works, nothing changes.

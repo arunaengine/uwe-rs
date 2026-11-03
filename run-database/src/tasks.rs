@@ -109,6 +109,32 @@ impl Database {
         Ok(rows)
     }
 
+    /// At most `limit` tasks of a run that come after the row `after`, in the order they were
+    /// asked for, and the row of the last of them, to start the next page from; start with 0.
+    /// The row of the next page is `after` again when there are no more tasks.
+    pub fn task_page(
+        &self,
+        run: &str,
+        after: i64,
+        limit: u32,
+    ) -> Result<(Vec<TaskRow>, i64), DatabaseError> {
+        let mut statement = self.connection.prepare(&format!(
+            "{TASK_ROW} WHERE t.run = ?1 AND t.rowid > ?2 ORDER BY t.rowid LIMIT ?3"
+        ))?;
+        let rows = statement
+            .query_map(params![run, after, limit], task_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        let Some(last) = rows.last() else {
+            return Ok((rows, after));
+        };
+        let next = self.connection.query_row(
+            "SELECT rowid FROM tasks WHERE run = ?1 AND id = ?2",
+            params![run, last.id],
+            |row| row.get(0),
+        )?;
+        Ok((rows, next))
+    }
+
     pub fn task_row(&self, run: &str, task: u64) -> Result<Option<TaskRow>, DatabaseError> {
         let query = format!("{TASK_ROW} WHERE t.run = ?1 AND t.id = ?2");
         let row = self
@@ -152,6 +178,17 @@ impl Database {
             outputs,
             checks: self.checks(run, Some(task))?,
         }))
+    }
+
+    /// The attempts of one task, by number.
+    pub fn task_attempts(&self, run: &str, task: u64) -> Result<Vec<Attempt>, DatabaseError> {
+        let mut statement = self.connection.prepare_cached(&format!(
+            "SELECT {ATTEMPT_COLUMNS} FROM attempts WHERE run = ?1 AND task = ?2 ORDER BY number"
+        ))?;
+        let attempts = statement
+            .query_map(params![run, task], attempt_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(attempts)
     }
 
     /// Every attempt of a run with the task it belongs to, by task and number.

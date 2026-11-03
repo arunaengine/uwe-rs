@@ -2,11 +2,11 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::io::BufWriter;
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
 use config_file::{ConfigError, ConfigFile, Secret};
-use run_telemetry::{Request, SPANS_PER_REQUEST, Sent, traces_address};
+use run_telemetry::{SPANS_PER_REQUEST, Sender, Sent, TelemetryError, traces_address};
 
 use crate::arguments::Arguments;
 use crate::setup::Setup;
@@ -59,20 +59,15 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let setup = Setup::load(arguments)?;
     let database = runs::open(arguments)?;
     super::run(&database, &run)?;
-    let requests = traces(&database, &run)?;
     let output =
         (arguments.output.clone()).unwrap_or_else(|| PathBuf::from(format!("{run}-traces.jsonl")));
-    let written = std::fs::File::create(&output)
-        .map_err(run_telemetry::TelemetryError::from)
-        .and_then(|file| run_telemetry::write_lines(&requests, BufWriter::new(file)));
-    written.map_err(|error| failure(format!("uwe: cannot write {}: {error}", output.display())))?;
-    let spans: usize = requests.iter().map(|request| request.spans().count()).sum();
+    let spans = write_trace(&database, &run, &output)?;
     println!(
         "wrote the trace of run {run} to {}: {spans} spans in OTLP JSON lines",
         output.display()
     );
     if let Some(telemetry) = &setup.telemetry {
-        let sent = send(telemetry, &requests)?;
+        let sent = send(telemetry, &database, &run)?;
         println!("{}", said(telemetry, &sent));
     }
     Ok(())
@@ -113,26 +108,54 @@ impl Telemetry {
     }
 }
 
-/// The trace of a run in export requests.
-fn traces(database: &run_database::Database, run: &str) -> Result<Vec<Request>, Failure> {
-    run_telemetry::requests(database, run, SPANS_PER_REQUEST)
-        .map_err(|error| failure(format!("uwe: {error}")))?
-        .ok_or_else(|| failure(format!("uwe: the run database has no run `{run}`")))
+/// Writes the trace of a run to a file as JSON lines, one request at a time, and gives the
+/// number of spans.
+fn write_trace(
+    database: &run_database::Database,
+    run: &str,
+    output: &std::path::Path,
+) -> Result<usize, Failure> {
+    let file = std::fs::File::create(output).map_err(|error| cannot_write(output, &error))?;
+    let mut writer = BufWriter::new(file);
+    let written = run_telemetry::stream(database, run, SPANS_PER_REQUEST, |request| {
+        run_telemetry::write_lines(&[request], &mut writer)
+    })
+    .and_then(|spans| writer.flush().map(|()| spans).map_err(TelemetryError::from));
+    match written {
+        Ok(Some(spans)) => Ok(spans),
+        Ok(None) => Err(failure(format!("uwe: the run database has no run `{run}`"))),
+        Err(error @ TelemetryError::Database(_)) => Err(failure(format!("uwe: {error}"))),
+        Err(error) => Err(cannot_write(output, &error)),
+    }
 }
 
-/// Sends export requests to the endpoint, with the headers of the config file, through the one
-/// HTTP client of the process.
-fn send(telemetry: &Telemetry, requests: &[Request]) -> Result<Sent, Failure> {
+fn cannot_write(output: &std::path::Path, error: &dyn std::fmt::Display) -> Failure {
+    failure(format!("uwe: cannot write {}: {error}", output.display()))
+}
+
+/// Sends the trace of a run to the endpoint, with the headers of the config file, through the
+/// one HTTP client of the process. Each request goes as soon as it is built.
+fn send(
+    telemetry: &Telemetry,
+    database: &run_database::Database,
+    run: &str,
+) -> Result<Sent, Failure> {
     let headers = (telemetry.headers.iter())
         .map(|(name, secret)| Ok((name.clone(), secret.reveal()?)))
         .collect::<Result<Vec<_>, ConfigError>>()
         .map_err(|error| failure(format!("uwe: {error}")))?;
     let client = storage::http_client().map_err(|message| failure(format!("uwe: {message}")))?;
     let runtime = workflow_graph::runtime().map_err(|error| failure(format!("uwe: {error}")))?;
-    let sending = run_telemetry::send(client, &telemetry.endpoint, &headers, requests);
-    runtime
-        .block_on(sending)
-        .map_err(|error| failure(format!("uwe: {error}")))
+    let mut sender = Sender::new(client, &telemetry.endpoint, &headers)
+        .map_err(|error| failure(format!("uwe: {error}")))?;
+    let streamed = run_telemetry::stream(database, run, SPANS_PER_REQUEST, |request| {
+        runtime.block_on(sender.send(&request))
+    });
+    match streamed {
+        Ok(Some(_)) => Ok(sender.sent()),
+        Ok(None) => Err(failure(format!("uwe: the run database has no run `{run}`"))),
+        Err(error) => Err(failure(format!("uwe: {error}"))),
+    }
 }
 
 /// Where the trace went, in one line.

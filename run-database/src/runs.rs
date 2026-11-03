@@ -284,6 +284,15 @@ impl Database {
         Ok(events)
     }
 
+    /// The time of the latest event of a run, if it has events.
+    pub fn last_event_time(&self, run: &str) -> Result<Option<i64>, DatabaseError> {
+        Ok(self.connection.query_row(
+            "SELECT MAX(time) FROM events WHERE run = ?1",
+            [run],
+            |row| row.get(0),
+        )?)
+    }
+
     /// Events of one task, or the root run span when `task` is absent.
     pub fn span_events(&self, run: &str, task: Option<u64>) -> Result<Vec<Event>, DatabaseError> {
         let mut statement = self.connection.prepare_cached(

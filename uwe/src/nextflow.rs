@@ -21,6 +21,8 @@ struct Console {
     downloads: PathBuf,
     /// Prints to standard error instead of standard output, which then holds only the graph.
     quiet: bool,
+    /// Whether `System.out` may write to standard output, which an embedding host keeps.
+    print: bool,
     storage: Blocking,
     secrets: std::collections::BTreeMap<String, config_file::Secret>,
     /// Where operators like `collectFile` keep their files: the folder of the run, which the
@@ -49,8 +51,12 @@ impl Host for Console {
     ) -> Result<Option<Value>, Error> {
         let end = if name == "println" { "\n" } else { "" };
         match (namespace, name, arguments.as_slice()) {
-            ("System.out", "println" | "print", [message]) => print!("{message}{end}"),
-            ("System.err", "println" | "print", [message]) => eprint!("{message}{end}"),
+            ("System.out", "println" | "print", [message]) if self.print => {
+                print!("{message}{end}")
+            }
+            ("System.out" | "System.err", "println" | "print", [message]) => {
+                eprint!("{message}{end}")
+            }
             _ => return Ok(None),
         }
         Ok(Some(Value::Null))
@@ -289,6 +295,7 @@ fn console(quiet: bool, setup: &Setup) -> Console {
     Console {
         downloads: crate::cache_directory().join("downloads"),
         quiet,
+        print: true,
         storage: setup.storage.blocking(),
         secrets: setup.secrets.clone(),
         operators: None,
@@ -305,6 +312,7 @@ pub fn driver(
 ) -> Result<Box<dyn Driver>, DriverError> {
     let console = Console {
         operators: Some(run_folder(&launch.scratch, run)),
+        print: !arguments.no_print,
         ..console(quiet, setup)
     };
     let settings = Settings {

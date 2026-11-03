@@ -70,6 +70,8 @@ pub struct Options {
     pub software: bool,
     /// Whether a remote backend enforces the shared-memory size request.
     pub shm: bool,
+    /// Whether a real run prints its output object to standard output, as cwltool does.
+    pub print: bool,
 }
 
 impl Default for Options {
@@ -85,6 +87,7 @@ impl Default for Options {
             archives: None,
             software: false,
             shm: false,
+            print: true,
         }
     }
 }

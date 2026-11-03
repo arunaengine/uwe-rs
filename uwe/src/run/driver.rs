@@ -128,6 +128,7 @@ pub(crate) fn driver(
                         "apptainer" | "singularity"
                     ))
                 .then(crate::cwl_archives),
+                print: !arguments.no_print,
                 ..cwl_runtime::Options::default()
             };
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)

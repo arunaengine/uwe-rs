@@ -92,6 +92,8 @@ pub struct Arguments {
     /// `-task-minutes n` or `[executor] task_minutes`, in seconds: the time limit of tasks
     /// that set none of their own.
     pub task_seconds: Option<u64>,
+    /// Keeps standard output free for an embedding host, without `run::Settings.print`.
+    pub no_print: bool,
     /// `-order asked|reversed|finished|shuffled[:seed]`: the order in which pending tasks
     /// finish.
     pub order: Option<Order>,
@@ -181,6 +183,7 @@ impl Arguments {
             output_dir: self.output_dir.clone(),
             database: self.database.clone(),
             store: self.store.clone(),
+            print: true,
             cli: Some(self.clone()),
             ..crate::run::Settings::default()
         }

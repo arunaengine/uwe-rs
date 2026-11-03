@@ -76,6 +76,9 @@ pub struct Settings {
     pub run_id: Option<String>,
     /// Hears the run and its tasks as they change; see [`Listener`] for what it must do.
     pub listener: Option<Listener>,
+    /// Writes to standard output what `uwe run` writes there, like the CWL output object and
+    /// what a Nextflow workflow prints. Off by default, so the host keeps its standard output.
+    pub print: bool,
     // The CLI retains its input syntax and presentation without exposing them to hosts.
     pub(crate) cli: Option<Arguments>,
 }
@@ -119,6 +122,7 @@ impl Default for Settings {
             cache_folder: None,
             run_id: None,
             listener: None,
+            print: false,
             cli: None,
         }
     }
@@ -201,6 +205,7 @@ impl Settings {
         // A part of a second counts as a whole one, so that no limit becomes zero.
         arguments.task_seconds =
             (self.default_time).map(|time| time.as_secs() + u64::from(time.subsec_nanos() > 0));
+        arguments.no_print = !self.print;
         arguments.output_dir = self.output_dir;
         arguments.database = self.database;
         arguments.store = self.store;

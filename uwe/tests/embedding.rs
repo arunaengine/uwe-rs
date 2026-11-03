@@ -262,3 +262,42 @@ async fn records_target_controls() {
     }
     assert!(recorded.arguments.iter().any(|word| word == "-forceall"));
 }
+
+#[tokio::test]
+async fn uses_chosen_id() {
+    let root = tempfile::tempdir().unwrap();
+    let mut first = request(root.path());
+    first.settings.run_id = Some("01JBHOSTRUN_7".into());
+    let run = first.run().await.unwrap();
+    assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+    assert_eq!(run.id, "01JBHOSTRUN_7");
+    assert!(
+        cache_folder()
+            .join("scratch/simulator/01JBHOSTRUN_7")
+            .is_dir()
+    );
+    let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
+    assert!(database.run("01JBHOSTRUN_7").unwrap().is_some());
+
+    let mut again = request(root.path());
+    again.settings.run_id = Some("01JBHOSTRUN_7".into());
+    let failure = again.run().await.err().unwrap();
+    assert_eq!(failure.code, 2, "{}", failure.message);
+    assert!(failure.message.contains("already in the run database"));
+    assert_eq!(database.runs(10).unwrap().len(), 1);
+
+    for invalid in [
+        "",
+        "../escape",
+        "a/b",
+        "-dash",
+        "tab\there",
+        &"a".repeat(65),
+    ] {
+        let mut request = request(root.path());
+        request.settings.run_id = Some(invalid.into());
+        let failure = request.run().await.err().unwrap();
+        assert!(failure.message.contains("is not allowed"), "{invalid:?}");
+    }
+    assert_eq!(database.runs(10).unwrap().len(), 1);
+}

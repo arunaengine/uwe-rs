@@ -125,11 +125,26 @@ fn execute_with(
     let network = settings.network.take();
     let cpus = settings.cpus;
     let memory = settings.memory_bytes;
+    let chosen = settings.run_id.take();
+    if let Some(id) = &chosen {
+        settings::check_id(id)?;
+    }
     let (mut arguments, setup, _inputs) = settings.prepare()?;
     if network.is_some() {
         arguments.no_network = false;
     }
     let arguments = &arguments;
+    // A second insert of the id would fail too, but only after the workflow was fetched.
+    if let Some(id) = &chosen
+        && crate::runs::open(arguments)?
+            .run(id)
+            .map_err(|error| Failure::setup(format!("uwe: {error}")))?
+            .is_some()
+    {
+        return Err(Failure::usage(format!(
+            "uwe: a run with the id {id} is already in the run database"
+        )));
+    }
     let mut setup = match setup {
         Some(setup) => setup,
         None => crate::setup::Setup::load(arguments)?,
@@ -139,7 +154,7 @@ fn execute_with(
     let (target, language) = target_and_language(arguments)?;
     let target = &target;
     let launch = launch(arguments, target.clone());
-    let run = run_id();
+    let run = chosen.unwrap_or_else(run_id);
     let name = arguments.executor.as_deref().unwrap_or("local");
     if let Some(network) = network {
         setup.network = network;

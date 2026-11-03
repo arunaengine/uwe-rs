@@ -62,6 +62,9 @@ pub struct Settings {
     /// The folder of downloads, scratch folders and input digests, like `[cache] folder` of
     /// the config file. Embedded submissions retain their own cache scope.
     pub cache_folder: Option<PathBuf>,
+    /// The run id chosen by the host instead of a new one: 1 to 64 ASCII letters, digits, `-`
+    /// or `_`, starting and ending with a letter or digit, and new to the run database.
+    pub run_id: Option<String>,
     // The CLI retains its input syntax and presentation without exposing them to hosts.
     pub(crate) cli: Option<Arguments>,
 }
@@ -100,6 +103,7 @@ impl Default for Settings {
             database: None,
             store: None,
             cache_folder: None,
+            run_id: None,
             cli: None,
         }
     }
@@ -255,6 +259,25 @@ impl Settings {
         }
         Ok((arguments, self.setup, file))
     }
+}
+
+/// Whether a host-chosen run id is safe in folder names, database keys and URLs: 1 to 64
+/// ASCII letters, digits, `-` or `_`, starting and ending with a letter or a digit.
+pub(crate) fn check_id(id: &str) -> Result<(), Failure> {
+    let edge = |byte: Option<&u8>| byte.is_some_and(u8::is_ascii_alphanumeric);
+    let bytes = id.as_bytes();
+    if bytes.len() <= 64
+        && edge(bytes.first())
+        && edge(bytes.last())
+        && bytes
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-_".contains(byte))
+    {
+        return Ok(());
+    }
+    Err(Failure::usage(format!(
+        "uwe: the run id {id:?} is not allowed; use 1 to 64 ASCII letters, digits, `-` or `_`, starting and ending with a letter or digit"
+    )))
 }
 
 #[cfg(test)]

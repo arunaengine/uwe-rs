@@ -466,9 +466,11 @@ funnel-server:
 		--BoltDB.Path /tmp/uwe-funnel/funnel.db --Worker.WorkDir /tmp/uwe-funnel/work \
 		--LocalStorage.AllowedDirs /tmp --LocalStorage.AllowedDirs "$HOME/.cache/uwe"
 
-# Runs the TES tests against the server from `just funnel-server`.
+# Runs the TES tests against the server from `just funnel-server`. The S3 transfer test also
+# needs UWE_TES_STAGING_ROOT and UWE_S3_ENDPOINT for a bucket the worker reaches; else it is skipped.
 tes-test:
-	UWE_TES_SERVER=http://localhost:18000 cargo test -p tes-executor --test funnel -- --ignored
+	UWE_TES_SERVER=http://localhost:18000 cargo test -p tes-executor --test funnel -- --ignored \
+		$([ -n "${UWE_TES_STAGING_ROOT:-}" ] || echo --skip transfers_s3_outputs)
 
 # Qualifies object staging with isolated MinIO, Funnel and Docker, then removes its resources.
 tes-qualification *arguments:

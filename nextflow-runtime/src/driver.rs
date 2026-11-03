@@ -926,7 +926,8 @@ pub fn task(
     Ok(Task {
         output_manifest: None,
         run_as: None,
-        defer_logs: false,
+        // Only a `stdout` output reads the standard output, from its log.
+        defer_logs: true,
         id: workflow_graph::TaskId(request.id.0),
         name: request.name.clone(),
         step: request.process.to_string(),
@@ -991,6 +992,36 @@ fn exec_task(
     }
 }
 
+/// The most bytes of standard output that a `stdout` output takes as text.
+const STDOUT_LIMIT: u64 = 16 * 1024 * 1024;
+
+/// The standard output of a task from its log, read through `files` up to [`STDOUT_LIMIT`].
+fn stdout_text(files: Option<&dyn Files>, log: &workflow_graph::Stream) -> std::io::Result<String> {
+    use std::io::Read;
+    let too_large = || {
+        std::io::Error::other(format!(
+            "it is larger than the {} MiB that a `stdout` output takes; write it to a file \
+             and use a `path` output",
+            STDOUT_LIMIT >> 20
+        ))
+    };
+    if log.size > STDOUT_LIMIT {
+        return Err(too_large());
+    }
+    let path = match files {
+        Some(files) => files.local(&log.location)?,
+        None => PathBuf::from(&log.location),
+    };
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)?
+        .take(STDOUT_LIMIT + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > STDOUT_LIMIT {
+        return Err(too_large());
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 pub fn task_outcome(
     request: &TaskRequest,
     outcome: Outcome,
@@ -1011,6 +1042,24 @@ fn task_outcome_as(
         stdout: outcome.stdout,
         ..TaskOutcome::default()
     };
+    if let Some(log) = outcome
+        .stdout_log
+        .filter(|_| request.stdout && outcome.exit_code == 0)
+    {
+        match stdout_text(files, &log) {
+            Ok(text) => result.stdout = text,
+            Err(error) => {
+                result.failure = Some(Error::Thrown {
+                    exception: Rc::new(Exception::new(
+                        "IOException",
+                        format!("{}: cannot read the standard output: {error}", request.name),
+                    )),
+                    span: Default::default(),
+                });
+                return Ok(result);
+            }
+        }
+    }
     let mut variables = HashMap::new();
     for file in outcome.files {
         if file.path == ENVIRONMENT {

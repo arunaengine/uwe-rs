@@ -39,6 +39,7 @@ fn request(eval: &[&str], env: &[&str], container: Option<&str>) -> TaskRequest 
         output_patterns: vec!["out.txt".into()],
         env: env.iter().map(|name| Rc::from(*name)).collect(),
         eval: eval.iter().map(|command| (*command).to_owned()).collect(),
+        stdout: false,
         made: None,
     }
 }
@@ -417,6 +418,39 @@ fn reads_stored_values() {
     let files = Elsewhere(directory.path().to_owned());
     let result = task_outcome(&request, outcome, Some(&files)).expect("an outcome");
     assert_eq!(result.env["FOO"], "remote");
+}
+
+/// A `stdout` output reads the deferred log up to a limit; without one, no log is read.
+#[test]
+fn bounds_stdout_reads() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(directory.path().join("small"), "said\n").expect("writes");
+    let large = std::fs::File::create(directory.path().join("large")).expect("creates");
+    large.set_len(64 << 20).expect("grows");
+    let files = Elsewhere(directory.path().to_owned());
+    let outcome = |name: &str, size: u64| Outcome {
+        id: workflow_graph::TaskId(1),
+        stdout_log: Some(workflow_graph::Stream {
+            location: format!("s3://store/{name}"),
+            digest: String::new(),
+            size,
+        }),
+        ..Outcome::default()
+    };
+    let mut request = request(&[], &[], None);
+    let result = task_outcome(&request, outcome("large", 64 << 20), Some(&files)).unwrap();
+    assert!(result.failure.is_none());
+    assert!(result.stdout.is_empty());
+    request.stdout = true;
+    let result = task_outcome(&request, outcome("small", 5), Some(&files)).unwrap();
+    assert_eq!(result.stdout, "said\n");
+    // A log larger than its recorded size still stops at the limit.
+    for size in [64 << 20, 5] {
+        let result = task_outcome(&request, outcome("large", size), Some(&files)).unwrap();
+        let error = result.failure.expect("too large").to_string();
+        assert!(error.contains("larger than the 16 MiB"), "{error}");
+        assert!(result.stdout.is_empty());
+    }
 }
 
 #[test]

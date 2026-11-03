@@ -440,6 +440,7 @@ fn execute_with(
         execution,
         page,
         id: run,
+        outputs: driver.results(),
     })
 }
 
@@ -450,6 +451,9 @@ pub struct Run {
     /// Optional local viewer requested in the settings; the host owns its lifetime.
     pub page: Option<Server>,
     pub id: String,
+    /// The result values of a real run that finished, like the output object of CWL with the
+    /// locations of its delivered files. `None` for simulated runs and other languages.
+    pub outputs: Option<serde_json::Value>,
 }
 
 pub(crate) type Ran = Run;

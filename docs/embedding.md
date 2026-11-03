@@ -53,7 +53,7 @@ let run = uwe::RunRequest::new(settings).run().await?;
 
 An embedded run writes nothing to the standard output of the host. What a Nextflow workflow prints, its banner too, goes to standard error. The CWL output object is not printed. Log messages still go through `tracing`.
 
-uwe does not keep the CWL output object itself, neither in the returned `Run` nor in the run database. A host finds the output files in `output_dir`. The run database lists each delivered file with its target and its location in the store: `run_database::Database::deliveries(run_id)`. It also keeps the JSON Schema of the outputs.
+The returned `Run` holds the CWL output object in `outputs`, as JSON, with the locations of the delivered files. It is `None` for a simulated run and for the other languages. The run database does not keep the object, but it lists each delivered file with its target and its location in the store, `run_database::Database::deliveries(run_id)`, and it keeps the JSON Schema of the outputs.
 
 Set `run::Settings.print` to `true` to write to standard output what `uwe run` writes there. `Settings::new` leaves it `false`. The command line sets it `true`.
 

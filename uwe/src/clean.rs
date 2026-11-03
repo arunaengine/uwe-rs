@@ -399,9 +399,9 @@ fn running_ids(running: &[run_database::Run], leases: &BTreeSet<String>) -> BTre
     ids.chain(leases.iter().cloned()).collect()
 }
 
-/// The scratch folders of runs that ended: the made-up files of simulated runs that no rule
-/// keeps, and the folders of attempts and input copies that a stopped run left behind, of every executor. A folder of a run that
-/// the run database does not know stays, as it may belong to another database.
+/// The scratch folders of runs that ended: made-up files of simulated runs that no rule keeps,
+/// and the attempts of every executor, input copies and Nextflow files that a stopped run left.
+/// A folder of a run that the run database does not know stays; it may be another database's.
 fn scratch_folders(
     database: &Database,
     kept: &BTreeSet<String>,
@@ -436,6 +436,10 @@ fn scratch_folders(
             }
         }
     }
+    // Older versions kept the files of `exec:` sections and the reports apart.
+    for name in ["nextflow", "nextflow-exec", "nextflow-reports"] {
+        folders.extend(ended_nextflow(&scratch.join(name), running, &known));
+    }
     let snapshots = cache_directory().join("downloads/input-snapshots");
     folders.extend(ended_snapshots(&snapshots, running, &known));
     Ok(folders
@@ -445,6 +449,23 @@ fn scratch_folders(
             path,
         })
         .collect())
+}
+
+/// The folders of Nextflow runs that ended, which a driver that stopped short left behind. A
+/// folder's name is `<process>-<run>`, as `nextflow_runtime::driver::run_folder` makes it.
+fn ended_nextflow(
+    folder: &Path,
+    running: &BTreeSet<String>,
+    known: &dyn Fn(&str) -> bool,
+) -> Vec<PathBuf> {
+    let entries = std::fs::read_dir(folder).into_iter().flatten().flatten();
+    let ended = |name: &str| {
+        (name.split_once('-')).is_some_and(|(_, run)| !running.contains(run) && known(run))
+    };
+    entries
+        .filter(|entry| ended(&entry.file_name().to_string_lossy()))
+        .map(|entry| entry.path())
+        .collect()
 }
 
 /// The private copies of inputs that runs which ended left behind, one folder per run, and
@@ -678,6 +699,21 @@ mod tests {
         };
         assert_eq!(found(&BTreeSet::from(["running".to_owned()])), ["ended"]);
         assert_eq!(found(&BTreeSet::new()), [".tmpOld", "ended", "running"]);
+    }
+
+    #[test]
+    fn removes_ended_nextflow() {
+        let folder = tempfile::tempdir().expect("run folders");
+        for name in ["7-ended", "7-running", "7-foreign", "ended"] {
+            std::fs::create_dir(folder.path().join(name)).expect("a folder");
+        }
+        let known = |run: &str| run != "foreign";
+        let running = BTreeSet::from(["running".to_owned()]);
+        let ended = ended_nextflow(folder.path(), &running, &known);
+        assert_eq!(ended, [folder.path().join("7-ended")]);
+        let folder = nextflow_runtime::driver::run_folder(folder.path(), "ended");
+        let name = folder.file_name().expect("a name").to_string_lossy();
+        assert_eq!(name.split_once('-').map(|(_, run)| run), Some("ended"));
     }
 
     #[test]

@@ -923,8 +923,12 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
     let placement = job.placement;
     let resources = Resources {
         cpu_cores: Some(placement.cpus.max(1)),
-        ram_gb: placement.memory_bytes.map(|bytes| bytes as f64 / crate::client::GB),
-        disk_gb: placement.disk_bytes.map(|bytes| bytes as f64 / crate::client::GB),
+        ram_gb: placement
+            .memory_bytes
+            .map(|bytes| bytes as f64 / crate::client::GB),
+        disk_gb: placement
+            .disk_bytes
+            .map(|bytes| bytes as f64 / crate::client::GB),
     };
     Ok(Task {
         name: job.name.to_owned(),

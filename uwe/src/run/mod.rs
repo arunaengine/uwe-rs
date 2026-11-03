@@ -56,7 +56,8 @@ impl RunRequest {
     /// Blocking equivalent of `run`. Call outside an async runtime.
     /// Workflow failures are retained in `Run::execution`, together with the partial graph.
     pub fn run_blocking(self) -> Result<Run, Failure> {
-        execute_with(self.settings, true, &Pinned::default(), Some(self.policy))
+        let quiet = !self.settings.print;
+        execute_with(self.settings, quiet, &Pinned::default(), Some(self.policy))
     }
 
     /// Builds and describes the configured driver without starting tasks or recording a run.

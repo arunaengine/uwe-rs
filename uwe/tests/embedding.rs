@@ -435,3 +435,92 @@ async fn pins_repository_revision() {
     let failure = preset.run().await.err().unwrap();
     assert!(failure.message.contains("a preset supplies its source"));
 }
+
+/// The words that an embedded run must not write to the standard output of its host.
+const SAID: &str = "said-by-the-workflow";
+
+/// One run, in a child process of this test, of a Nextflow workflow that prints and of a CWL
+/// workflow without steps whose output object holds a string; the parent reads its stdout.
+#[test]
+fn keeps_stdout_free() {
+    if let Ok(language) = std::env::var("UWE_EMBEDDED_LANGUAGE") {
+        let root = tempfile::tempdir().unwrap();
+        let print = std::env::var("UWE_EMBEDDED_PRINT").is_ok();
+        let run = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(printing(root.path(), &language, print).run())
+            .unwrap();
+        assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+        return;
+    }
+    for language in ["nextflow", "cwl"] {
+        for print in [false, true] {
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            command.args(["--exact", "keeps_stdout_free", "--nocapture"]);
+            command.env("UWE_EMBEDDED_LANGUAGE", language);
+            if print {
+                command.env("UWE_EMBEDDED_PRINT", "1");
+            }
+            let output = command.output().unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(output.status.success(), "{language}: {stdout}\n{stderr}");
+            assert_eq!(stdout.contains(SAID), print, "{language}: {stdout}");
+        }
+    }
+}
+
+/// A TES server that answers every request with an empty list, enough for a run without tasks.
+fn empty_server() -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for mut stream in listener.incoming().map_while(Result::ok) {
+            let mut request = [0; 4096];
+            let _ = stream.read(&mut request);
+            let answer = r#"{"tasks":[]}"#;
+            let reply = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
+                answer.len()
+            );
+            let _ = stream.write_all(reply.as_bytes());
+        }
+    });
+    address
+}
+
+/// A run that would print: a Nextflow workflow in the simulator, and a real CWL run on a TES
+/// server that runs nothing, since the workflow has no step.
+fn printing(root: &std::path::Path, language: &str, print: bool) -> RunRequest {
+    let (file, text, inputs, executor) = match language {
+        "nextflow" => (
+            "main.nf",
+            format!("workflow {{\n  println '{SAID}'\n  System.out.println('{SAID}')\n}}\n"),
+            None,
+            "simulator",
+        ),
+        _ => (
+            "flow.cwl",
+            "cwlVersion: v1.2\nclass: Workflow\ninputs:\n  said: string\noutputs:\n  out:\n    type: string\n    outputSource: said\nsteps: []\n".into(),
+            Some(json!({"said": SAID})),
+            "tes",
+        ),
+    };
+    std::fs::write(root.join(file), text).unwrap();
+    let mut settings = Settings::new(root.join(file));
+    settings.executor = Some(executor.into());
+    settings.database = Some(root.join("runs.sqlite"));
+    settings.store = Some(root.join("store").to_string_lossy().into_owned());
+    settings.output_dir = Some(root.join("outputs"));
+    settings.cache = false;
+    settings.cache_folder = Some(root.join("cache"));
+    let mut setup = Setup::default();
+    setup.executors.tes_server = Some(empty_server());
+    settings.setup = Some(setup);
+    settings.inputs = inputs;
+    settings.print = print;
+    let mut request = RunRequest::new(settings);
+    request.policy = uwe::application::Policy::Relaxed;
+    request
+}

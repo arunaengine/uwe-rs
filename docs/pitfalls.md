@@ -38,6 +38,10 @@
   - SLURM with Apptainer or Singularity needs no registry. uwe saves the image once as a docker-archive tar in `cwl-images` in its cache folder, named by its image ID. Tasks name the image by that ID, not by the file, so their results also serve other machines and the local executor, and `uwe changes` compares the ID. `uwe clean` removes archives that no kept run needs. On shared folders one job turns the archive into a SIF file in the images folder. With `staging = "object-store"` each job gets the archive through the staging root, and Apptainer runs it from there. With a registry, the jobs pull from the registry instead.
 - **JavaScript runs in a helper container.** The first time a CWL expression needs it, uwe builds the image `uwe-cwl-js:<digest of the binary>` from the running binary, and removes the helper images of older binaries. The helper has no network and bounded memory. To use your own image, build it with `python3 scripts/cwl-js-image.py target/release/uwe --engine docker` (or `--engine podman`) and name it in `UWE_CWL_JS_IMAGE`. The helper runs a Linux binary for the architecture of the container engine. Where uwe itself is not such a binary, for example on macOS, set `UWE_CWL_JS_BINARY` to a static Linux build of uwe (`just release-binary`), and uwe builds the helper image from that. As in cwltool, code in `$(...)` or `${...}` only runs under a required `InlineJavascriptRequirement`.
 
+## Argo Workflows
+
+- **Large loops start in parts.** A loop with more than 1024 items does not make all its steps at once. It makes new ones as earlier ones end. So one `uwe resume` releases only the suspended items that exist at that time. Deadlines and lock waits of later items also start later.
+
 ## Sources and inputs
 
 - **Repository sources.** GitHub, GitLab, Bitbucket and Gitea repositories are fetched through their APIs, without submodules. Any other server works through Git over HTTPS, with submodules, like `uwe run https://git.example.org/team/pipeline.git -r v1.0`. An address without `.git` counts as a repository only when the server answers as Git. Otherwise it is a file to download.

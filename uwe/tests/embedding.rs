@@ -352,3 +352,70 @@ async fn reports_task_states() {
         (Some("task"), Some("finished"))
     );
 }
+
+#[tokio::test]
+async fn pins_repository_revision() {
+    let root = tempfile::tempdir().unwrap();
+    let cache = root.path().join("cache");
+    let commits = [
+        ("0123456789abcdef0123456789abcdef01234567", "FIRST"),
+        ("89abcdef0123456789abcdef0123456789abcdef", "SECOND"),
+    ];
+    // A cached checkout of a full commit is used without asking the server.
+    for (commit, step) in commits {
+        let folder = cache.join("pipelines/github.com/owner/demo").join(commit);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join(".uwe-revision"), commit).unwrap();
+        std::fs::write(
+            folder.join("main.nf"),
+            format!("process {step} {{\n  script:\n  \"echo\"\n}}\nworkflow {{ {step}() }}\n"),
+        )
+        .unwrap();
+    }
+    let settings = |target: &str, revision: &str| {
+        let mut settings = Settings::new(target);
+        settings.revision = Some(revision.into());
+        settings.executor = Some("simulator".into());
+        settings.database = Some(root.path().join("runs.sqlite"));
+        settings.cache_folder = Some(cache.clone());
+        settings.setup = Some(Setup::default());
+        settings
+    };
+    let database = |run: &str| {
+        let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
+        database.run(run).unwrap().unwrap().revision
+    };
+    for (commit, step) in commits {
+        let mut request = RunRequest::new(settings("owner/demo", commit));
+        request.policy = uwe::application::Policy::Relaxed;
+        let run = request.run().await.unwrap();
+        assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+        assert_eq!(run.execution.graph.nodes[0].task.step, step);
+        assert_eq!(database(&run.id).as_deref(), Some(commit));
+    }
+
+    let local = RunRequest::new(settings(root.path().to_str().unwrap(), commits[0].0));
+    let failure = local.run().await.err().unwrap();
+    assert!(
+        failure
+            .message
+            .contains("-r and -latest require a repository")
+    );
+    let empty = RunRequest::new(settings("owner/demo", ""));
+    let failure = empty.run().await.err().unwrap();
+    assert!(failure.message.contains("needs a tag, branch or commit"));
+    let config = root.path().join("uwe.toml");
+    std::fs::write(
+        &config,
+        format!(
+            "[workflows.demo]\nsource='owner/demo'\nrevision='{}'\n",
+            commits[0].0
+        ),
+    )
+    .unwrap();
+    let mut preset = RunRequest::new(settings("", commits[0].0));
+    preset.settings.preset = Some("demo".into());
+    preset.settings.config_file = Some(config);
+    let failure = preset.run().await.err().unwrap();
+    assert!(failure.message.contains("a preset supplies its source"));
+}

@@ -12,6 +12,18 @@ Set `run::Settings.preset`, `config_file`, the typed JSON `inputs` and a `hosted
 
 `Catalogue::prepare` returns a guard for the temporary input file and the verified `task_runner::References`. Keep both alive for the whole submission.
 
+## Pinning a repository revision
+
+A `target` can name a remote Git repository, such as `nf-core/demo` or `https://github.com/nf-core/demo`. Set `run::Settings.revision` to a tag, branch or commit of it. This works like `uwe run -r`. A full commit pins the run: uwe reuses a cached checkout of that commit, or fetches that exact commit. Set `latest` to resolve a remembered branch again, like `-latest`.
+
+uwe refuses a revision for a local target, and a revision or `latest` together with a preset. A preset names its own full commit.
+
+```rust
+let mut settings = uwe::run::Settings::new("nf-core/demo");
+settings.revision = Some("0123456789abcdef0123456789abcdef01234567".into());
+let run = uwe::RunRequest::new(settings).run().await?;
+```
+
 ## Choosing the run id
 
 Set `run::Settings.run_id` to give the run an id of the host, such as its own job id. Then the host knows the id before the run starts and can read the run database at once. The same id names the scratch folders, the run page, the telemetry and the record of the run.

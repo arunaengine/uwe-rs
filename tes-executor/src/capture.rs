@@ -29,12 +29,12 @@ pub(crate) fn discover(
     discovery.work = Some(work.into());
     let config = serde_json::to_string(&discovery).map_err(unsupported)?;
     let guard = format!(
-        "[ \"$(uname -m)\" = {} ] && echo {}'  '{} | sha256sum -c --status - && chmod +x {} || \
+        "[ \"$(uname -m)\" = {} ] && echo {}'  '{} | sha256sum -c --status - && {{ {}; }} || \
          {{ echo 'uwe: TES helper architecture or digest mismatch' >&2; exit 1; }}\n",
         wrapper::quote(helper.machine.uname()),
         wrapper::quote(helper.digest.hex()),
         wrapper::quote(HELPER),
-        wrapper::quote(HELPER),
+        executable(HELPER),
     );
     let script = script.replacen("#!/bin/sh\n", &format!("#!/bin/sh\n{guard}"), 1);
     let ending = if script.ends_with("exit \"$status\"\n") {
@@ -51,6 +51,16 @@ pub(crate) fn discover(
         wrapper::quote(HELPER),
         wrapper::quote(&config),
     ))
+}
+
+/// Shell that makes `path` executable. A server may stage inputs read-only and owned by another
+/// user, so when `chmod` fails the file is copied next to itself and the copy replaces it.
+fn executable(path: &str) -> String {
+    let path = wrapper::quote(path);
+    let copy = format!("{path}.uwe-exec.$$");
+    format!(
+        "chmod +x {path} 2> /dev/null || {{ cp {path} {copy} && chmod +x {copy} && mv -f {copy} {path}; }}"
+    )
 }
 
 pub(crate) fn script(
@@ -88,7 +98,7 @@ pub(crate) fn script(
         prepare.push_str(&format!("mkdir -p {} || exit 1\n", wrapper::quote(&path)));
     }
     for program in programs {
-        prepare.push_str(&format!("chmod +x {} || exit 1\n", wrapper::quote(program)));
+        prepare.push_str(&format!("{{ {}; }} || exit 1\n", executable(program)));
     }
     script = script.replacen("#!/bin/sh\n", &format!("#!/bin/sh\n{prepare}"), 1);
     executor::capture::capture(&script, TRANSFER)
@@ -142,5 +152,52 @@ mod tests {
                 format!("{code}\n")
             );
         }
+    }
+
+    #[test]
+    fn makes_inputs_executable() {
+        let line = executable("/uwe/work/tool");
+        assert!(
+            line.starts_with("chmod +x '/uwe/work/tool' 2> /dev/null || { cp "),
+            "{line}"
+        );
+        assert!(
+            line.contains("mv -f '/uwe/work/tool'.uwe-exec.$$ '/uwe/work/tool'"),
+            "{line}"
+        );
+    }
+
+    #[test]
+    fn copies_read_only() {
+        let folder = tempfile::tempdir().unwrap();
+        let tool = folder.path().join("tool");
+        std::fs::write(&tool, "#!/bin/sh\necho ran\n").unwrap();
+        // A `chmod` that refuses the original file, as on a read-only input of another user.
+        let shim = folder.path().join("bin");
+        std::fs::create_dir(&shim).unwrap();
+        std::fs::write(
+            shim.join("chmod"),
+            "#!/bin/sh\ncase \"$2\" in *.uwe-exec.*) exec /bin/chmod \"$@\";; esac\nexit 1\n",
+        )
+        .unwrap();
+        let line = format!("{}\n", executable(tool.to_str().unwrap()));
+        let run = |command: &str| {
+            let path = format!("{}:/usr/bin:/bin", shim.display());
+            std::process::Command::new("sh")
+                .args(["-c", command])
+                .env("PATH", path)
+                .output()
+                .unwrap()
+        };
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(shim.join("chmod"), std::fs::Permissions::from_mode(0o755))
+            .unwrap();
+        let output = run(&line);
+        assert!(output.status.success(), "{output:?}");
+        let mode = std::fs::metadata(&tool).unwrap().permissions().mode();
+        assert_eq!(mode & 0o111, 0o111);
+        assert_eq!(run(tool.to_str().unwrap()).stdout, b"ran\n");
+        let names: Vec<_> = std::fs::read_dir(folder.path()).unwrap().collect();
+        assert_eq!(names.len(), 2, "no temporary file stays: {names:?}");
     }
 }

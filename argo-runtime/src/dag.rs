@@ -12,8 +12,9 @@ use argo_parser::{Node, Value as Yaml, decode};
 use regex::Regex;
 use workflow_graph::TaskId;
 
-use crate::items::{item_variables, items, items_unless_skipped, loops, substitute_item};
-use crate::node::{NodeKind, Phase};
+use crate::cursor::Cursor;
+use crate::items::{items, items_unless_skipped, loops};
+use crate::node::{ArtifactValue, NodeKind, Phase};
 use crate::run::{Args, Call, Expanded, Processed, Result, Run};
 use crate::scope::Scope;
 use crate::steps::{base_name, exit_hook, holder};
@@ -666,36 +667,22 @@ impl Run {
             Ok(list) => list,
             Err(message) => return Expansion::Ended(Phase::Error, message),
         };
-        let strict = !matches!(should_execute(&typed.when), Ok(false));
+        let mut cursor = Cursor {
+            name: task.name.clone(),
+            node,
+            template: typed.template.clone(),
+            artifacts,
+            variables,
+            items: list,
+            strict: !matches!(should_execute(&typed.when), Ok(false)),
+            next: 0,
+            build: task_entry,
+        };
         let mut expanded = Vec::new();
-        for (position, item) in list.iter().enumerate() {
-            let (item_variables, item_name) = match item_variables(&task.name, position, item) {
-                Ok(found) => found,
+        while let Some(entry) = self.next_entry(&mut cursor) {
+            match entry {
+                Ok(entry) => expanded.push(entry),
                 Err(message) => return Expansion::Ended(Phase::Error, message),
-            };
-            let strict = if self.options.assume_inputs && crate::items::unknown_item(item) {
-                self.warn(format!(
-                    "an item of the loop {item_name} is empty; tags that read its fields stay"
-                ));
-                false
-            } else {
-                strict
-            };
-            let item_variables = variables.clone().with_values(item_variables);
-            match substitute_item(&node, &item_variables, strict) {
-                Ok(item_node) => match decode::<DagTask>(&item_node) {
-                    Ok((mut item_task, _)) => {
-                        item_task.template = typed.template.clone();
-                        expanded.push(expanded_task(
-                            item_name,
-                            item_node,
-                            &item_task,
-                            artifacts.clone(),
-                        ));
-                    }
-                    Err(error) => expanded.push(Expanded::error(item_name, error.to_string())),
-                },
-                Err(message) => expanded.push(Expanded::error(item_name, message)),
             }
         }
         Expansion::Loop(expanded)
@@ -740,6 +727,17 @@ fn expanded_source(processed: &Processed, name: &str) -> Node {
             .cloned()
             .unwrap_or_else(|| Node::new(Yaml::Null, argo_parser::Position::default())),
         _ => Node::new(Yaml::Null, argo_parser::Position::default()),
+    }
+}
+
+/// The entry of one item of a looping task.
+fn task_entry(name: String, node: Node, template: &str, artifacts: Vec<ArtifactValue>) -> Expanded {
+    match decode::<DagTask>(&node) {
+        Ok((mut task, _)) => {
+            task.template = template.to_owned();
+            expanded_task(name, node, &task, artifacts)
+        }
+        Err(error) => Expanded::error(name, error.to_string()),
     }
 }
 

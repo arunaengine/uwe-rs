@@ -9,8 +9,9 @@ use argo_parser::model::{Artifact, TemplateRef, WorkflowStep};
 use argo_parser::{Node, Value as Yaml, decode};
 use workflow_graph::TaskId;
 
-use crate::items::{item_variables, items, items_unless_skipped, loops, substitute_item};
-use crate::node::{NodeKind, Phase};
+use crate::cursor::Cursor;
+use crate::items::{items, items_unless_skipped, loops};
+use crate::node::{ArtifactValue, NodeKind, Phase};
 use crate::run::{Args, Call, Context, Expanded, Holder, Result, Run};
 use crate::scope::Scope;
 use crate::tags::replace_node;
@@ -329,40 +330,21 @@ impl Run {
                 self.add_child(group, child);
                 continue;
             }
-            let strict = !matches!(should_execute(&typed.when), Ok(false));
-            for (position, item) in list.iter().enumerate() {
-                let (item_variables, item_name) = match item_variables(&step_name, position, item) {
-                    Ok(found) => found,
-                    Err(message) => {
-                        expanded.push(Expanded::error(step_name.clone(), message));
-                        break;
-                    }
-                };
-                let strict = if self.options.assume_inputs && crate::items::unknown_item(item) {
-                    self.warn(format!(
-                        "an item of the loop {item_name} is empty; tags that read its fields stay"
-                    ));
-                    false
-                } else {
-                    strict
-                };
-                let item_variables = variables.clone().with_values(item_variables);
-                match substitute_item(&node, &item_variables, strict) {
-                    Ok(item_node) => match decode::<WorkflowStep>(&item_node) {
-                        Ok((item_step, _)) => {
-                            let mut item_step = item_step;
-                            item_step.template = typed.template.clone();
-                            expanded.push(expanded_step(
-                                item_name,
-                                item_node,
-                                &item_step,
-                                artifacts.clone(),
-                            ));
-                        }
-                        Err(error) => expanded.push(Expanded::error(item_name, error.to_string())),
-                    },
-                    Err(message) => expanded.push(Expanded::error(item_name, message)),
-                }
+            let mut cursor = Cursor {
+                name: step_name,
+                node,
+                template: typed.template.clone(),
+                artifacts,
+                variables: variables.clone(),
+                items: list,
+                strict: !matches!(should_execute(&typed.when), Ok(false)),
+                next: 0,
+                build: step_entry,
+            };
+            while let Some(entry) = self.next_entry(&mut cursor) {
+                let entry =
+                    entry.unwrap_or_else(|message| Expanded::error(cursor.name.clone(), message));
+                expanded.push(entry);
             }
         }
         Ok(expanded)
@@ -396,6 +378,17 @@ impl Expanded {
             on_exit: String::new(),
             error: Some(message),
         }
+    }
+}
+
+/// The entry of one item of a looping step.
+fn step_entry(name: String, node: Node, template: &str, artifacts: Vec<ArtifactValue>) -> Expanded {
+    match decode::<WorkflowStep>(&node) {
+        Ok((mut step, _)) => {
+            step.template = template.to_owned();
+            expanded_step(name, node, &step, artifacts)
+        }
+        Err(error) => Expanded::error(name, error.to_string()),
     }
 }
 

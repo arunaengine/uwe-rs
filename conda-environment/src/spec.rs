@@ -4,6 +4,7 @@
 
 use std::fmt;
 
+use rattler_conda_types::package::BuildString;
 use rattler_conda_types::{Matches, PackageRecord, ParseMatchSpecOptions};
 
 use crate::Record;
@@ -64,7 +65,11 @@ impl MatchSpec {
         let (Some(version), Ok(name)) = (record.version(), record.name.parse()) else {
             return false;
         };
-        let mut package = PackageRecord::new(name, version.0, record.build.clone());
+        let mut package = PackageRecord::new(
+            name,
+            version.0,
+            BuildString::new_unchecked(record.build.clone()),
+        );
         package.build_number = record.build_number;
         package.subdir.clone_from(&record.subdir);
         let mut spec = self.native.clone();

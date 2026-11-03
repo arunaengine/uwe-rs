@@ -42,8 +42,8 @@ assert_eq!(run.id, "01JBXQ5Z7C2W9M");
 Set `run::Settings.listener` to a `run::Listener`, which is an `Arc<dyn Fn(run::Event) + Send + Sync>`. uwe calls it for every change of the run and its tasks:
 
 - `Event::Started` comes once the run is in the run database. It carries the run id.
-- `Event::Task` carries a `TaskEvent`: the task number, name and step, its `TaskState`, the attempt, times, whether a cached result answered it, the exit code and an error message.
-- `Event::Ended` comes last, after uwe recorded the whole run. Its `error` is set when the run failed or stopped.
+- `Event::Task` carries a `TaskEvent`: the task number, name and step, its `TaskState`, the attempt, times, whether the task reused a cached result, the exit code and an error message.
+- `Event::Ended` is the last event. Its `error` is set when the run failed or stopped. Without strict provenance, a failure to record the run is only a warning, so `Ended` does not prove that the record is complete.
 
 A task goes from `requested` to `started` to `finished`, `reused` or `failed`. A machine failure gives `retried`, then `started` again. Tasks that did not end when the run ended become `stopped`. The workflow's own output checks can still turn a `finished` attempt into `failed`.
 

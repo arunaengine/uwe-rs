@@ -40,7 +40,7 @@ Stored files are read-only. Copy them with a tool that keeps the folder structur
 ## Restore
 
 1. Put `runs.sqlite` and `store/` back where they were, or point `-database` and the `store` setting at them.
-2. Leave out `containers/` and `scratch/` from an old backup. They describe runs that are no longer active. A run that was active at backup time shows as unfinished; record what happened to it with `uwe reconcile RUN -reason TEXT`.
+2. Keep `containers/` and `scratch/` until every container and remote job of the runs that were active at backup time has stopped. uwe uses these records to find and stop such work, for example Kubernetes Jobs. A run that was active at backup time shows as unfinished. Once its work has surely stopped on this machine, record that with `uwe reconcile RUN -reason TEXT`. Work on another machine or a remote backend must be stopped there first.
 3. Check the result with `uwe check-machine` and `uwe runs`.
 
 A stored file that was damaged in the backup is found when it is read. uwe then stores it again on the next run that makes it.

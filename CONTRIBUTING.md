@@ -22,7 +22,7 @@ just lint    # formatting and Clippy, warnings are errors
 just test    # all workspace tests and doctests
 ```
 
-`just test` builds uwe first and then the JavaScript helper image of CWL with the local container engine, since the CWL tests need it. Tests that need outside services are ignored by default. The recipes that run them, like `just s3-test`, `just tes-test` and `just kind-staging-test`, are described in the justfile.
+`just test` first builds uwe and its CWL JavaScript helper image, which the CWL tests need. Building the image needs Docker or Podman. Tests that need outside services are ignored by default. The recipes that run them, like `just s3-test`, `just tes-test` and `just kind-staging-test`, are described in the justfile.
 
 Run demos from a copy outside the checkout, so their outputs do not end up in the repository.
 

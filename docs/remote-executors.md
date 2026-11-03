@@ -22,13 +22,15 @@ claim = "uwe-cache"       # a ReadWriteMany claim; or nfs_server and nfs_path of
 path = "/mnt/uwe"         # where uwe and the pods see the volume
 ```
 
-A ReadWriteMany folder that all pods share is an antipattern on Kubernetes. It is slow, it fails as one piece, and it does not scale. Prefer `object-store` or `kubedal`.
+Use `object-store` or `kubedal` when uwe and the nodes do not share a file system.
 
 The kubeconfig of a managed cluster may name an `exec` credential plugin, like `aws`, `gke-gcloud-auth-plugin` or `kubelogin`. uwe runs it to get a token. These plugins come from your kubeconfig, and they are the only external programs that uwe starts for Kubernetes.
 
 ## Object store
 
 With `staging = "object-store"`, nothing is shared. uwe uploads the inputs to the staging root and writes a plan of presigned requests. On the node, the static uwe binary downloads the inputs, checks their SHA-256, and uploads the outputs after the task. The nodes need no credentials.
+
+This helper-based staging applies to SLURM and Kubernetes. TES takes an `s3://` staging root and passes the S3 addresses of inputs and outputs to the TES server, which needs access to that storage.
 
 The staging root is an address on a configured storage provider that can sign requests:
 
@@ -52,7 +54,7 @@ node_folder = "/local/scratch"               # the default is $TMPDIR, else /tmp
 
 ### On SLURM
 
-A SLURM job makes a new private folder in the node folder. It fetches the binary there with `curl` or `wget` and checks it. It stages the inputs into the `data` folder inside, runs the container with a bind of the `data` folder only, and sends the outputs back. The task cannot change the binary, the plan or the job log, which all run or count after the task. Apptainer pulls the image on each node.
+A SLURM job makes a new private folder in the node folder. It fetches the binary there with `curl` or `wget` and checks it. It stages the inputs into the `data` folder inside, runs the container with a bind of the `data` folder only, and sends the outputs back. The binary, the plan and the job log stay outside the folder that the task can write. Apptainer pulls the image on each node.
 
 uwe cannot see the machine type of the nodes, so the binary must match it. The job checks `uname -m` and fails with a clear message when it differs.
 
@@ -157,7 +159,7 @@ uwe waits until Kubernetes has removed the pod, which only happens after kubedal
 
 On a busy cluster the tools and the API can answer late, or refuse for a while.
 
-- `query_seconds` in `[executor.slurm]` sets how long one call of `squeue`, `sacct` or `scancel` may take (default 60). A queue whose answers fail is asked less and less often. The end of a job may take four such calls before uwe treats it as unclear.
+- `query_seconds` in `[executor.slurm]` sets how long one call of `squeue`, `sacct` or `scancel` may take (default 60). After a query fails, uwe waits longer before it asks SLURM again. The end of a job may take four such calls before uwe treats it as unclear.
 - On Kubernetes, a Job whose pod the namespace quota does not allow yet waits, as in a queue.
 - A pod that finds no node fails after `unschedulable_minutes` in `[executor.kubernetes]` (default 60) with the reason from the scheduler. If the cluster autoscaler adds nodes for it, the time starts again.
 - A Job that has no pod after `start_grace_seconds` (default 120, between 10 and 3600) is checked. uwe reads the reason from the events of the namespace, so the kubeconfig account needs the right to `list` events. Without that right uwe logs one warning, and a Job without a pod waits up to `unschedulable_minutes`, as for quota, before it fails.

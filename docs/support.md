@@ -27,11 +27,11 @@ Each language is a subset that uwe implements in Rust. The exact limits are in [
 | `tes` | The runtime of the TES server, for example Funnel | Server-side, or `object-store` |
 | `simulator` | None, outputs are placeholders | None |
 
-Object-store staging needs a static Linux build of uwe for the machine type of the nodes. Tasks with several containers need `shared-path`. See [Remote executors and staging](remote-executors.md).
+Object-store staging on SLURM and Kubernetes needs a static Linux build of uwe for the machine type of the nodes. Tasks with several containers need `shared-path`. See [Remote executors and staging](remote-executors.md).
 
 ## Storage providers
 
-Inputs, outputs and the store can use S3 (and S3-compatible services), Google Cloud Storage, Azure Blob Storage, HTTPS, FTP and local folders. Any number of providers can be configured at once. Repositories come from GitHub, GitLab, Bitbucket and Gitea through their APIs, and from any Git server over HTTPS. SSH Git URLs are not supported.
+Inputs can come from S3 (and S3-compatible services), Google Cloud Storage, Azure Blob Storage, HTTPS, FTP and local folders. Outputs and the store need a provider that can be written: S3, Google Cloud Storage, Azure Blob Storage or a local folder. Any number of providers can be configured at once. Repositories come from GitHub, GitLab, Bitbucket and Gitea through their APIs, and from any Git server over HTTPS. SSH Git URLs are not supported.
 
 ## Hosts
 

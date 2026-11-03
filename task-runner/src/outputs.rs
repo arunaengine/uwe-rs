@@ -554,6 +554,7 @@ mod tests {
     fn store_all(root: &Path, finished: &Finished) -> TaskResult {
         let store = Store::local(&root.join("store")).expect("a store");
         let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
             .build()
             .expect("a runtime");
         let staged = Staging {
@@ -675,6 +676,7 @@ mod tests {
         std::os::unix::fs::symlink(&sentinel, finished.root.join("work/out")).expect("links");
         let store = Store::local(&root.path().join("store")).expect("a store");
         let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
             .build()
             .expect("runtime");
         let staging = Staging::default();

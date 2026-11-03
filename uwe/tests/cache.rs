@@ -17,7 +17,7 @@ process WORDCOUNT {
     tuple val(id), path("${id}.count"), emit: count
     script:
     """
-    wc -w < ${text} | tee ${id}.count | tee /dev/stderr
+    wc -w < ${text} > ${id}.count
     """
 }
 "#;

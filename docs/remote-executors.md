@@ -32,6 +32,8 @@ With `staging = "object-store"`, nothing is shared. uwe uploads the inputs to th
 
 This helper-based staging applies to SLURM and Kubernetes. TES takes an `s3://` staging root and passes the S3 addresses of inputs and outputs to the TES server, which needs access to that storage.
 
+uwe asks TES servers for memory and disk in gigabytes of 10^9 bytes, as the TES specification defines `ram_gb` and `disk_gb`.
+
 The staging root is an address on a configured storage provider that can sign requests:
 
 - S3.

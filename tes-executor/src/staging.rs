@@ -230,11 +230,11 @@ impl ObjectStage {
                 ram_gb: job
                     .placement
                     .memory_bytes
-                    .map(|bytes| bytes as f64 / (1u64 << 30) as f64),
+                    .map(|bytes| bytes as f64 / crate::client::GB),
                 disk_gb: job
                     .placement
                     .disk_bytes
-                    .map(|bytes| bytes as f64 / (1u64 << 30) as f64),
+                    .map(|bytes| bytes as f64 / crate::client::GB),
             }),
             executors: vec![ExecutorSpec {
                 image: spec

@@ -21,6 +21,11 @@ pub struct Settings {
     pub hosted: Option<crate::hosted::Hosted>,
     pub strict_provenance: bool,
     pub target: PathBuf,
+    /// The tag, branch or commit of a repository `target`, like `-r` of `uwe run`. A local
+    /// target or a preset takes none.
+    pub revision: Option<String>,
+    /// Resolves a remembered branch of a repository `target` again, like `-latest`.
+    pub latest: bool,
     pub language: Option<Language>,
     /// Typed input object. Use absolute paths for local file values.
     pub inputs: Option<Value>,
@@ -79,6 +84,8 @@ impl Default for Settings {
             hosted: None,
             strict_provenance: false,
             target: PathBuf::new(),
+            revision: None,
+            latest: false,
             language: None,
             inputs: None,
             params: Map::new(),
@@ -149,9 +156,21 @@ impl Settings {
                 "uwe: resource limits require at least one CPU and 6 MiB of memory",
             ));
         }
+        if self
+            .revision
+            .as_ref()
+            .is_some_and(|revision| revision.is_empty() || revision.starts_with('-'))
+        {
+            return Err(Failure::usage(
+                "uwe: the revision needs a tag, branch or commit",
+            ));
+        }
         let mut arguments = self.cli.take().unwrap_or_default();
         arguments.preset = preset;
         arguments.target = (!self.target.as_os_str().is_empty()).then_some(self.target);
+        // The CLI keeps its own `-r` and `-latest` in `cli`.
+        arguments.revision = self.revision.or(arguments.revision);
+        arguments.latest |= self.latest;
         arguments.language = self.language;
         arguments.profiles = (!self.profiles.is_empty()).then_some(self.profiles);
         arguments.configs = self.configs;

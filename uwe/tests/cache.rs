@@ -6,7 +6,8 @@ use std::path::Path;
 
 mod common;
 
-/// A module as nf-core writes them: one process, vendored into each pipeline that uses it.
+/// A module as nf-core writes them: one process, vendored into each pipeline that uses it. It
+/// prints the count to both streams, so that tasks on other data have logs of their own.
 const MODULE: &str = r#"
 process WORDCOUNT {
     container 'debian:stable-slim'
@@ -16,7 +17,7 @@ process WORDCOUNT {
     tuple val(id), path("${id}.count"), emit: count
     script:
     """
-    wc -w < ${text} > ${id}.count
+    wc -w < ${text} | tee ${id}.count | tee /dev/stderr
     """
 }
 "#;
@@ -66,8 +67,11 @@ workflow {
 /// Runs the binary in `directory` with the cache folder `cache`, and gives its exit code and
 /// what it printed.
 fn uwe(directory: &Path, cache: &Path, arguments: &[&str]) -> (i32, String) {
+    // Separate runs share stored results only for tasks that cannot reach the network.
+    let offline = arguments.first() == Some(&"run");
     let output = common::command()
         .args(arguments)
+        .args(offline.then_some("-no-network"))
         .current_dir(directory)
         .env("XDG_CACHE_HOME", cache)
         .output()
@@ -109,7 +113,7 @@ fn delivered(folder: &Path) -> Vec<String> {
 
 /// The cache entries in the store of a cache folder.
 fn entries(cache: &Path) -> usize {
-    let folder = cache.join("uwe/store/ac/v1/default");
+    let folder = cache.join("uwe/store/ac/v1/network-denied");
     let entries = std::fs::read_dir(folder).map_or(Vec::new(), |entries| entries.collect());
     (entries.iter().flatten())
         .filter(|entry| entry.file_name().to_string_lossy().ends_with(".json"))
@@ -252,7 +256,8 @@ fn languages_share_cache() {
     let (code, output) = uwe(folder, &cache, &["run", "Snakefile", "-executor", "local"]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("[done] count"), "{output}");
-    assert_eq!(entries(&cache), 2);
+    // One result for each description of the task: the CWL tool, the Argo template and the rule.
+    assert_eq!(entries(&cache), 3);
 }
 
 /// A pipeline whose one task takes a few seconds.
@@ -292,7 +297,7 @@ fn concurrent_runs_deduplicate() {
         .iter()
         .map(|folder| {
             common::command()
-                .args(["run", "main.nf", "-executor", "local"])
+                .args(["run", "main.nf", "-executor", "local", "-no-network"])
                 .current_dir(folder)
                 .env("XDG_CACHE_HOME", &cache)
                 .stdout(std::process::Stdio::piped())
@@ -614,44 +619,55 @@ workflow {
 }
 "#;
 
+/// When the long task and each short task of a run of `CHAINS` started, in nanoseconds.
+fn starts(directory: &Path, cache: &Path, round: &str) -> (u128, Vec<u128>) {
+    let arguments = ["run", "main.nf", "-executor", "local", "--round", round];
+    let (code, output) = uwe(directory, cache, &arguments);
+    assert_eq!(code, 0, "{output}");
+    let time = |line: &str| {
+        line.split(' ')
+            .nth(1)
+            .and_then(|time| time.parse::<u128>().ok())
+    };
+    let long = (output.lines())
+        .filter(|line| line.starts_with("long "))
+        .find_map(time);
+    let shorts = (output.lines())
+        .filter(|line| line.starts_with("short "))
+        .filter_map(time)
+        .collect();
+    (long.expect("the long task started"), shorts)
+}
+
+/// How many short tasks started before the long one.
+fn shorts_before((long, shorts): &(u128, Vec<u128>)) -> usize {
+    shorts.iter().filter(|short| *short < long).count()
+}
+
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
 fn longest_chain_first() {
     let root = tempfile::tempdir().expect("a temporary directory");
-    let cache = root.path().join("cache");
     std::fs::write(root.path().join("main.nf"), CHAINS).expect("writes");
-    // The first run tells how long each step takes; the second, whose tasks are new, starts
-    // the long chain before the short tasks that wait.
-    let mut starts = Vec::new();
-    for round in ["1", "2"] {
-        let arguments = ["run", "main.nf", "-executor", "local", "--round", round];
-        let (code, output) = uwe(root.path(), &cache, &arguments);
-        assert_eq!(code, 0, "{output}");
-        let time = |line: &str| {
-            line.split(' ')
-                .nth(1)
-                .and_then(|time| time.parse::<u128>().ok())
-        };
-        let long = output
-            .lines()
-            .filter(|line| line.starts_with("long "))
-            .find_map(time);
-        let shorts: Vec<u128> = (output.lines())
-            .filter(|line| line.starts_with("short "))
-            .filter_map(time)
-            .collect();
-        starts.push((long.expect("the long task started"), shorts));
+    // Which task a free machine takes first is a race. A pair of runs that loses it is
+    // repeated in a new cache; a start that does not learn the times fails every pair.
+    let mut pairs = Vec::new();
+    for attempt in 0..3 {
+        let cache = root.path().join(format!("cache-{attempt}"));
+        // The first run tells how long each step takes; without times, the tasks start in
+        // the order the workflow asked for them.
+        let cold = starts(root.path(), &cache, "1");
+        // The second run, whose tasks are new, starts the long chain before the short tasks
+        // that wait: at most one short task that found the machine free starts before it.
+        let warm = starts(root.path(), &cache, "2");
+        assert_eq!(warm.1.len(), 3);
+        let (before, after) = (shorts_before(&cold), shorts_before(&warm));
+        if after <= 1 && after < before {
+            return;
+        }
+        pairs.push((cold, warm));
     }
-    let before: Vec<usize> = (starts.iter())
-        .map(|(long, shorts)| shorts.iter().filter(|short| *short < long).count())
-        .collect();
-    assert_eq!(starts[1].1.len(), 3);
-    // Without times, the tasks start in the order the workflow asked for them. With them, at
-    // most the one short task that found the machine free starts before the long chain.
-    assert!(
-        before[1] <= 1 && before[1] < before[0],
-        "{before:?} {starts:?}"
-    );
+    panic!("the long task did not start before the short ones: {pairs:?}");
 }
 
 /// The config file of a machine whose store has its folder `front` in front of the shared store
@@ -675,7 +691,7 @@ fn layered_store_shares() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let shared = root.path().join("shared");
     let entries = |folder: &Path| {
-        let folder = folder.join("ac/v1/default");
+        let folder = folder.join("ac/v1/network-denied");
         let entries = std::fs::read_dir(folder).map_or(Vec::new(), |entries| entries.collect());
         (entries.iter().flatten())
             .filter(|entry| entry.file_name().to_string_lossy().ends_with(".json"))

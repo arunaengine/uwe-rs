@@ -800,7 +800,7 @@ fn take_job_file(parsed: &mut Arguments) {
 }
 
 /// Whether a word is a run id as uwe makes them: two hexadecimal numbers joined by `-`, the
-/// time in milliseconds and the process id.
+/// time in milliseconds and the process id with random bits.
 fn looks_like_run(text: &str) -> bool {
     text.split_once('-').is_some_and(|(time, process)| {
         let hex = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_hexdigit());

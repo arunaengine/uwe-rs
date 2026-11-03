@@ -175,3 +175,11 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 webpki-root-certs = "1.0.9"
 zip = { version = "9.0.1", default-features = false, features = ["deflate"] }
+
+# Debug and test builds keep line tables for backtraces only. With full debug info each test
+# binary was about 1.2 GB, more than the disk of a hosted CI runner holds for the workspace.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false

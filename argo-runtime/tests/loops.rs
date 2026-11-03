@@ -275,3 +275,47 @@ fn bounds_sequence_expansion() {
         assert!(run.finish().unwrap_err().message.contains("limit"));
     }
 }
+
+#[test]
+fn bounds_large_loops() {
+    let folder = tempfile::tempdir().unwrap();
+    let count = 5_000;
+    for calls in [
+        "    dag:\n      tasks:\n      - {name: use, template: leaf, withSequence: {count: '5000'}}\n",
+        "    steps:\n    - - {name: use, template: leaf, withSequence: {count: '5000'}}\n      - {name: other, template: leaf}\n",
+    ] {
+        let spec = format!(
+            "  entrypoint: main\n  templates:\n  - name: main\n{calls}  - name: leaf\n    container: {{image: alpine, command: [echo]}}\n"
+        );
+        let mut run = driver(folder.path(), &spec, false);
+        let mut pending: std::collections::VecDeque<_> = run.start().unwrap().into();
+        assert!(
+            pending.len() <= 1025,
+            "{} tasks at the start",
+            pending.len()
+        );
+        let other = pending.iter().any(|task| task.name.contains(".other"));
+        assert_eq!(other, calls.contains("other"));
+        let mut items = 0;
+        let mut most = 0;
+        while let Some(task) = pending.pop_front() {
+            most = most.max(pending.len() + 1);
+            if task.name.contains(".use(") {
+                assert!(
+                    task.name.contains(&format!(".use({items}:{items})")),
+                    "{}",
+                    task.name
+                );
+                items += 1;
+            }
+            let next = run.complete(Outcome {
+                id: task.id,
+                ..Outcome::default()
+            });
+            pending.extend(next.unwrap());
+        }
+        assert_eq!(items, count);
+        assert!(most <= 1025, "{most} tasks were out at once");
+        assert!(run.finish().is_ok());
+    }
+}

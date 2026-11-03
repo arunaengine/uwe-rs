@@ -335,6 +335,7 @@ fn separates_s3_providers() {
     let environment: Vec<(&str, &str)> = (environment.iter())
         .map(|(name, value)| (name.as_str(), value.as_str()))
         .collect();
+    // Separate runs share stored results only for tasks that cannot reach the network.
     let run = [
         "run",
         "main.nf",
@@ -342,6 +343,7 @@ fn separates_s3_providers() {
         "local",
         "-uwe-config",
         "uwe.toml",
+        "-no-network",
     ];
     let (code, first) = uwe(path, "cache", &environment, &run);
     assert_eq!(code, 0, "{first}");

@@ -1,31 +1,34 @@
-/* The style of the page of uwe: calm colours, one accent per task state, light and dark. */
+/* The style of the page of uwe: graphite and paper, one colour per task state, light and dark. */
 /* Copyright (c) 2026 The uwe Contributors */
 /* SPDX-License-Identifier: MIT or Apache-2.0 */
 
 :root {
-  --text: #1d2126;
-  --quiet: #5c6570;
-  --line: #d9dde2;
-  --ground: #f6f7f9;
+  --text: #1b1e22;
+  --quiet: #5c6168;
+  --line: #dfddd7;
+  --ground: #f6f5f2;
   --card: #ffffff;
-  --code: #eef0f3;
+  --code: #efeee9;
   --link: #1f5fbf;
-  --succeeded: #2e7d4f;
+  /* The states, checked against each other for colour vision deficiencies. Amber marks a
+     stored result, as in the icon; a darker amber keeps contrast on light surfaces. */
+  --succeeded: #277a58;
   --failed: #c0392b;
   --running: #1f6fd1;
   --waiting: #8a939e;
-  --stopped: #b7791f;
-  --reused: #6b4fbb;
-  --notice: #fff4d6;
-  --notice-line: #e2b340;
+  --stopped: #7d4a9e;
+  --reused: #b97a12;
+  --notice: #efeee9;
+  --notice-line: #b9b6ae;
   --simulated: #718096;
-  --node-line: #c3cad3;
-  --edge: #9aa4b2;
+  --node-line: #c9c6be;
+  --edge: #9a9ca0;
   /* The kinds of time on the critical path: categorical slots checked for colour vision
      deficiencies on the card, in this order. */
   --part-ran: #2a78d6;
   --part-waited: #eb6834;
   --part-between: #1baf7a;
+  --part-label: #ffffff;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;
   line-height: 1.45;
@@ -35,27 +38,28 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #e3e6ea;
-    --quiet: #9aa3ad;
-    --line: #353b43;
+    --text: #ece8df;
+    --quiet: #9fa3a8;
+    --line: #31363c;
     --ground: #15181c;
-    --card: #1d2126;
-    --code: #262b31;
+    --card: #1b1e22;
+    --code: #24282d;
     --link: #7fb0ff;
-    --succeeded: #5cbf85;
+    --succeeded: #6cc58a;
     --failed: #f07565;
     --running: #6aa8ff;
     --waiting: #7d8691;
-    --stopped: #e0a84a;
-    --reused: #a990f0;
-    --notice: #3a3020;
-    --notice-line: #b8913a;
+    --stopped: #b07fc8;
+    --reused: #e3a23b;
+    --notice: #24282d;
+    --notice-line: #5a6068;
     --simulated: #94a3b8;
-    --node-line: #4a525c;
-    --edge: #6b7480;
+    --node-line: #4a5058;
+    --edge: #6e7278;
     --part-ran: #3987e5;
     --part-waited: #d95926;
     --part-between: #199e70;
+    --part-label: #15181c;
   }
 }
 
@@ -92,13 +96,15 @@ main { padding: 24px; max-width: 110rem; margin: 0 auto; }
 .facts dt { color: var(--quiet); font-size: 0.8rem; }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
 
-.state { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; color: #fff; background: var(--waiting); }
-.state.succeeded { background: var(--succeeded); }
-.state.failed { background: var(--failed); }
-.state.running { background: var(--running); }
-.state.stopped { background: var(--stopped); }
-.state.reused { background: var(--reused); }
-.state.simulated { background: var(--simulated); }
+/* A state is a dot in its colour and its name in the text colour. */
+.state { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; line-height: 20px; white-space: nowrap; vertical-align: 2px; color: var(--text); }
+.state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--waiting); }
+.state.succeeded::before { background: var(--succeeded); }
+.state.failed::before { background: var(--failed); }
+.state.running::before { background: var(--running); }
+.state.stopped::before { background: var(--stopped); }
+.state.reused::before { background: var(--reused); }
+.state.simulated::before { background: var(--simulated); }
 
 .progress { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--code); margin: 8px 0; }
 .progress span { display: block; }
@@ -187,7 +193,7 @@ details > summary { cursor: pointer; color: var(--quiet); margin: 8px 0; }
 .timebar { display: flex; gap: 2px; height: 20px; margin: 8px 0 4px; }
 .timebar.dense { gap: 0; }
 .timebar .part { display: block; min-width: 1px; cursor: pointer; }
-.timebar .part-label { display: block; padding: 0 6px; color: #fff; font-size: 0.75rem; font-weight: 600; line-height: 20px; white-space: nowrap; width: max-content; }
+.timebar .part-label { display: block; padding: 0 6px; color: var(--part-label); font-size: 0.75rem; font-weight: 600; line-height: 20px; white-space: nowrap; width: max-content; }
 .timebar .part:first-child { border-radius: 4px 0 0 4px; }
 .timebar .part:last-child { border-radius: 0 4px 4px 0; }
 .timebar .part:hover { filter: brightness(1.15); }

@@ -7,10 +7,10 @@ use task_model::ReuseScope;
 use workflow_graph::{Outcome, Reuse, Task};
 
 use crate::entry::{self, Stale};
-use crate::executor::outcome_of;
+use crate::executor::{outcome_of, with_network};
 use crate::inputs::{Inputs, Mode, Snapshots};
 use crate::request::prepare;
-use crate::{RunnerError, Settings};
+use crate::{NetworkRule, RunnerError, Settings};
 
 /// Looks up the results of tasks in a store.
 #[derive(Clone, Debug)]
@@ -18,6 +18,7 @@ pub struct Lookup {
     store: Store,
     settings: Settings,
     references: crate::References,
+    network: NetworkRule,
 }
 
 impl Lookup {
@@ -26,7 +27,13 @@ impl Lookup {
             store,
             settings,
             references: crate::References::default(),
+            network: NetworkRule::default(),
         }
+    }
+
+    /// Decides the network of each task as the run that executes it would.
+    pub fn network(&mut self, rule: NetworkRule) {
+        self.network = rule;
     }
 
     /// Uses the same verified references as execution without creating snapshots.
@@ -52,7 +59,8 @@ impl Lookup {
             mode: Mode::Look,
             snapshots: Snapshots::new(&self.settings, "lookup"),
         };
-        let Ok(prepared) = prepare(&inputs, task, image.clone()).await else {
+        let task = with_network(std::sync::Arc::new(task.clone()), &self.network);
+        let Ok(prepared) = prepare(&inputs, &task, image.clone()).await else {
             return Ok(None);
         };
         let spec = &prepared.request.spec;
@@ -69,7 +77,7 @@ impl Lookup {
         let found = entry::stored(&store, &spec.namespace, &key, Stale::Keep).await?;
         match found {
             Some(entry) => {
-                let outcome = outcome_of(&store, task, 1, entry.result(), image).await?;
+                let outcome = outcome_of(&store, &task, 1, entry.result(), image).await?;
                 Ok(Some(outcome))
             }
             None => Ok(None),

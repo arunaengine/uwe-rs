@@ -302,6 +302,7 @@ fn previewed(simulator: Simulator, arguments: &Arguments, setup: &Setup) -> Box<
     };
     let mut lookup = task_runner::Lookup::new(store, settings);
     lookup.references(setup.references.clone());
+    lookup.network(network_rule(arguments, setup));
     let default_image = arguments.default_image.clone();
     Box::new(preview::Previewed::new(
         simulator,

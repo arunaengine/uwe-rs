@@ -270,7 +270,7 @@ fn checked(
 
 /// The task with the network that the rule gives it, which its request passes on to the
 /// backend.
-fn with_network(task: Arc<Task>, rule: &NetworkRule) -> Arc<Task> {
+pub(crate) fn with_network(task: Arc<Task>, rule: &NetworkRule) -> Arc<Task> {
     let network = match rule.offline(&task) {
         true => Network::Denied,
         false => Network::Allowed,

@@ -6,7 +6,7 @@
 
 # uwe
 
-uwe (Universal Workflow Executor) runs Nextflow, Snakemake, CWL and Argo workflows from one Rust binary. It reads all four languages itself, plans them into one task graph, runs every task in a container, and stores every result once, by its content digest. A Snakemake rule and a Nextflow process that run the same image on the same inputs, without network access, share one cache entry.
+uwe (Universal Workflow Executor) runs Nextflow, Snakemake, CWL and Argo workflows from one Rust binary. It reads all four languages itself, plans them into one task graph, runs every task in a container, and stores every result once, by its content digest. A Snakemake rule and a Nextflow process that run the same command in the same image on the same inputs, without network access, share one cache entry.
 
 The machine that runs uwe needs no Python, Groovy, JavaScript or Java. A static Linux build is a single file. The repository is called uwe-rs, the command is `uwe`.
 
@@ -32,7 +32,7 @@ Bioinformatics has many workflow languages, and each has its own strengths and w
 
 Most engines have limited or uneven support for containers and Kubernetes, or they need a shared working directory. Almost none can use several cloud storage providers at once, for example two different S3 services. Caches belong to one language or even to one workflow, so the same tool with the same inputs runs again just because a different workflow called it. So I started an experiment: can one Rust binary do all of that?
 
-So far it can. A Snakemake rule and a Nextflow process with the same image and inputs share one cache entry. A run moves from a laptop to a cluster or the cloud without changes to the workflow. Every run can be repeated later with the same inputs, images and code. And every task runs in a container, without exceptions, which makes runs reproducible and supports the FAIR principles.
+So far it can. A Snakemake rule and a Nextflow process that run the same command in the same image on the same inputs share one cache entry. A run moves from a laptop to a cluster or the cloud without changes to the workflow. Every run can be repeated later with its recorded inputs, images and code. And every task runs in a container, without exceptions, which makes runs reproducible and supports the FAIR principles.
 
 ## What it does
 
@@ -41,7 +41,7 @@ So far it can. A Snakemake rule and a Nextflow process with the same image and i
 | Language | Supported |
 | --- | --- |
 | Nextflow DSL2 | Processes, workflows, channels and operators, configs and profiles, `publishDir`, `storeDir` and `-entry`. Groovy is evaluated in Rust, without a JVM. |
-| Snakemake | Rules, wildcards, checkpoints, shadow rules, embedded Python, lifecycle hooks, yte and jinja2 templates, and `cwl:` rules, which run on the CWL runtime of uwe. Python is evaluated in Rust. |
+| Snakemake | Rules, wildcards, checkpoints, shadow rules, embedded Python, lifecycle hooks, yte and jinja2 templates, and `cwl:` rules, which use the CWL runtime of uwe. Python is evaluated in Rust. |
 | CWL | CommandLineTools and workflows with scatter, `when`, `valueFrom`, secondary files, and JavaScript expressions through the Boa engine, without Node.js. |
 | Argo Workflows | Steps, DAGs, loops, conditions, artifacts, retries, timeouts, exit hooks, mutexes, semaphores, suspend and resume, sidecars and daemon steps. |
 
@@ -74,14 +74,14 @@ Conda environments are solved in Rust (rattler and resolvo) and turned into cont
 ### Runs and provenance
 
 - Every run is recorded in a local SQLite database. `uwe runs` lists them.
-- `uwe changes <run>` shows which workflow files, inputs and images changed since a run. `uwe repeat <run>` runs it again with exactly what it used.
+- `uwe changes <run>` shows which workflow files, inputs and images changed since a run. `uwe repeat <run>` runs it again with its kept workflow files and inputs, and with the recorded image digests where it has them.
 - `uwe why` explains why a task ran. `uwe origin` tells where a result came from.
 - `uwe page` opens a local web page with all runs. `uwe run -page` shows the run live while it runs.
 - `uwe export` writes an RO-Crate. `uwe time`, `uwe compare` and `uwe report` show where the time went and how two runs differ.
 
 ### Checks before a run
 
-- `uwe check <workflow>` finds everything that would stop a real run before any task starts: unsupported features, broken references, missing files and tasks without an image.
+- `uwe check <workflow>` finds problems before any task starts: unsupported features, broken references, missing files and tasks without an image. It plans with made-up data, so it cannot see tasks that only real data creates, and it does not fetch remote inputs.
 - `uwe check-machine` checks the container engine, the store and the executor setup.
 - `uwe check-order <workflow>` finds steps whose results depend on which task finished first.
 - `uwe inputs` and `uwe outputs` print the inputs and outputs of any workflow as JSON Schema. Every run checks its inputs against that schema.
@@ -92,8 +92,11 @@ You need a Rust toolchain from [rustup](https://rustup.rs) and Docker or Podman.
 
 ```sh
 cargo build --release --locked -p uwe
+mkdir -p "$HOME/.local/bin"
 install -m 755 target/release/uwe "$HOME/.local/bin/uwe"
 ```
+
+Add `$HOME/.local/bin` to your `PATH` if it is not there yet.
 
 [Installing uwe](docs/install.md) covers macOS, Windows (WSL 2), Podman and the static Linux build.
 

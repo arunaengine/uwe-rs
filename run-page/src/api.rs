@@ -30,6 +30,7 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/runs/{run}/tasks/{task}", get(assets::page))
         .route("/compare/{first}/{second}", get(assets::page))
         .route("/page.css", get(assets::style))
+        .route("/icon.svg", get(assets::icon))
         .route("/page.js", get(assets::script))
         .route("/run.js", get(assets::run_script))
         .route("/graph.js", get(assets::graph_script))

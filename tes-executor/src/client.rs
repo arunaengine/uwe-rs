@@ -66,6 +66,9 @@ pub struct Output {
     pub kind: FileType,
 }
 
+/// TES counts memory and disk in gigabytes (GB) of 10^9 bytes, not in GiB.
+pub const GB: f64 = 1e9;
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Resources {
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -921,11 +921,10 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
     }
     outputs.extend(written_back);
     let placement = job.placement;
-    const GIB: f64 = (1u64 << 30) as f64;
     let resources = Resources {
         cpu_cores: Some(placement.cpus.max(1)),
-        ram_gb: placement.memory_bytes.map(|bytes| bytes as f64 / GIB),
-        disk_gb: placement.disk_bytes.map(|bytes| bytes as f64 / GIB),
+        ram_gb: placement.memory_bytes.map(|bytes| bytes as f64 / crate::client::GB),
+        disk_gb: placement.disk_bytes.map(|bytes| bytes as f64 / crate::client::GB),
     };
     Ok(Task {
         name: job.name.to_owned(),
@@ -1165,7 +1164,7 @@ mod tests {
         };
         let placement = Placement {
             cpus: 2,
-            memory_bytes: Some(3 << 30),
+            memory_bytes: Some(3_000_000_000),
             ..Placement::default()
         };
         let job = Job {

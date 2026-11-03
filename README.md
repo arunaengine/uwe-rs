@@ -6,7 +6,7 @@
 
 # uwe
 
-uwe (Universal Workflow Executor) runs Nextflow, Snakemake, CWL and Argo workflows from one Rust binary. It reads all four languages itself, plans them into one task graph, runs every task in a container, and stores every result once, by its content digest. A Snakemake rule and a Nextflow process that run the same pinned image on the same inputs share one cache entry.
+uwe (Universal Workflow Executor) runs Nextflow, Snakemake, CWL and Argo workflows from one Rust binary. It reads all four languages itself, plans them into one task graph, runs every task in a container, and stores every result once, by its content digest. A Snakemake rule and a Nextflow process that run the same image on the same inputs, without network access, share one cache entry.
 
 The machine that runs uwe needs no Python, Groovy, JavaScript or Java. A static Linux build is a single file. The repository is called uwe-rs, the command is `uwe`.
 
@@ -66,7 +66,7 @@ Conda environments are solved in Rust (rattler and resolvo) and turned into cont
 ### Storage and cache
 
 - A content-addressed store keeps every result once, by its digest.
-- One cache for all languages. A task whose image is pinned by digest and that has no network access (`-no-network`) reuses results from any earlier run, of any workflow. Other tasks reuse results only with `-resume`, as in Nextflow, which also covers images without a registry digest, such as locally built tags.
+- One cache for all languages. A task without network access (`-no-network`) whose image has a registry digest reuses results from any earlier run, of any workflow. uwe looks up the digest of an image tag itself. Other tasks reuse results only with `-resume`, as in Nextflow, which also covers images without a registry digest, such as locally built tags.
 - Storage providers for **S3**, **Google Cloud Storage**, **Azure Blob Storage**, **HTTPS**, **FTP** and local folders. You can configure any number of them at once, for example two S3 services side by side.
 - A remote store, for example on S3, with an optional local front store for speed.
 - `uwe clean` removes data that no run needs anymore. It shows what it would remove before it removes anything.

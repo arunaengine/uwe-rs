@@ -13,8 +13,10 @@ style:
 	python3 -I -m unittest discover -s scripts/tests
 	python3 scripts/dev/check_style.py
 
-# Workspace tests and doctests.
+# Workspace tests and doctests. The CWL tests need the JavaScript helper image, built first.
 test:
+	cargo build --locked -p uwe
+	python3 scripts/cwl-js-image.py target/debug/uwe
 	cargo test --workspace --all-targets --all-features --locked
 	cargo test --workspace --all-features --locked --doc
 

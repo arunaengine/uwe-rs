@@ -143,7 +143,7 @@ default = "tes"
 task_minutes = 1440
 ```
 
-The limit applies only to tasks without a time of their own. A task's own time always wins. The value must be above zero. Every executor treats the default like a task's own time. So a SLURM job, Kubernetes pod or TES task also gets its `staging_minutes` on top. On TES, the time and margin count from the first time the server reports the task as `RUNNING`. uwe then cancels a task that runs longer, and the attempt fails.
+The limit applies only to tasks without a time of their own. A task's own time always wins. The value must be above zero. Every executor treats the default like a task's own time. So a SLURM job, Kubernetes pod or TES task also gets its `staging_minutes` on top. On TES, the time and margin count from the first time the server reports the task as `RUNNING` or `UNKNOWN`. Some servers report `UNKNOWN` for a running task, or never leave it. uwe then cancels a task that runs longer, and the attempt fails.
 
 Tasks with a time do not run together in one container (see `-no-grouping`), so a default turns that grouping off.
 

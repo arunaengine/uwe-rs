@@ -310,17 +310,19 @@ fn refuses_multiple_executors() {
 
 #[test]
 fn bounds_accepted_tasks() {
-    for timed_out in [false, true] {
+    // A server may report UNKNOWN instead of RUNNING; the time of the task runs out all the same.
+    for (timed_out, state) in [(false, "RUNNING"), (true, "RUNNING"), (true, "UNKNOWN")] {
         let folder = tempfile::tempdir().expect("a folder");
         let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
         let address = format!("http://{}", listener.local_addr().unwrap());
         let calls = Arc::new(Mutex::new(Vec::new()));
         let recorded = calls.clone();
+        let started = format!(r#"{{"id":"task-1","state":"{state}"}}"#);
         let server = std::thread::spawn(move || {
             let answers = if timed_out {
                 vec![
                     (200, r#"{"id":"task-1"}"#),
-                    (200, r#"{"id":"task-1","state":"RUNNING"}"#),
+                    (200, started.as_str()),
                     (200, "{}"),
                     (200, r#"{"id":"task-1","state":"CANCELED"}"#),
                 ]

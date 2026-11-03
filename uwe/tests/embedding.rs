@@ -303,6 +303,22 @@ async fn uses_chosen_id() {
 }
 
 #[tokio::test]
+async fn refuses_zero_time() {
+    let root = tempfile::tempdir().unwrap();
+    let mut zero = request(root.path());
+    zero.settings.default_time = Some(std::time::Duration::ZERO);
+    let failure = zero.run().await.err().unwrap();
+    assert!(
+        failure.message.contains("at least one second"),
+        "{failure:?}"
+    );
+    let mut short = request(root.path());
+    short.settings.default_time = Some(std::time::Duration::from_millis(1));
+    let run = short.run().await.unwrap();
+    assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+}
+
+#[tokio::test]
 async fn reports_task_states() {
     use uwe::run::{Event, TaskState};
     let root = tempfile::tempdir().unwrap();

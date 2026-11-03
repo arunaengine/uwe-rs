@@ -37,6 +37,18 @@ let run = uwe::RunRequest::new(settings).run().await?;
 assert_eq!(run.id, "01JBXQ5Z7C2W9M");
 ```
 
+## Default task time
+
+Set `run::Settings.default_time` to a `std::time::Duration` to give a time limit to every task that sets none of its own. A task's own time always wins. Without it, uwe uses `task_minutes` of `[executor]` in the config file, and else no limit. A host that passes its own `setup` skips the config file, so it sets `default_time` itself. uwe refuses zero. A part of a second counts as a whole second.
+
+The default reaches every executor like a task's own time, including the `staging_minutes` margin of TES, SLURM and Kubernetes. See [Default task time](remote-executors.md#default-task-time).
+
+```rust
+let mut settings = uwe::run::Settings::new("/srv/workflows/main.cwl");
+settings.default_time = Some(std::time::Duration::from_secs(24 * 60 * 60));
+let run = uwe::RunRequest::new(settings).run().await?;
+```
+
 ## Following a run live
 
 Set `run::Settings.listener` to a `run::Listener`, which is an `Arc<dyn Fn(run::Event) + Send + Sync>`. uwe calls it for every change of the run and its tasks:

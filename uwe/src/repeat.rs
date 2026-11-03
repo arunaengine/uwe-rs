@@ -92,6 +92,7 @@ pub(crate) fn chosen_here(repeated: &mut Arguments, given: &Arguments) {
         max_pending,
         machine_retries,
         retry_delay_ms,
+        task_seconds,
         order,
         database,
         address,

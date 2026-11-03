@@ -133,6 +133,20 @@ On Kubernetes the task container holds these credentials too, because it sends t
 - Tasks with several containers need `shared-path`.
 - The uploaded binary is always downloaded through a presigned request, also with `staging_access = "credentials"`, because the job has no helper yet to read the staging root. So the staging root must be able to sign requests in that case too.
 
+## Default task time
+
+A task can set its own time limit: `time` in Nextflow, `runtime` in Snakemake, `ToolTimeLimit` in CWL and `activeDeadlineSeconds` in Argo. Give every other task a limit with `task_minutes` in `[executor]`, or with `-task-minutes` on the command line:
+
+```toml
+[executor]
+default = "tes"
+task_minutes = 1440
+```
+
+The limit applies only to tasks without a time of their own. A task's own time always wins. The value must be above zero. Every executor treats the default like a task's own time. So a SLURM job, Kubernetes pod or TES task also gets its `staging_minutes` on top. On TES, the time and margin count from the first time the server reports the task as `RUNNING`. uwe then cancels a task that runs longer, and the attempt fails.
+
+Tasks with a time do not run together in one container (see `-no-grouping`), so a default turns that grouping off.
+
 ## kubedal
 
 With `staging = "kubedal"` (Kubernetes only), the [kubedal](https://github.com/arunaengine/kubedal) CSI driver places the inputs from a file list before the pod starts, and uploads the outputs when the pod ends. The pod gets no uwe binary.

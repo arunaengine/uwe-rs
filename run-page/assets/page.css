@@ -29,6 +29,8 @@
   --part-waited: #eb6834;
   --part-between: #1baf7a;
   --part-label: #ffffff;
+  /* The one easing curve of the page. */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;
   line-height: 1.45;
@@ -68,6 +70,7 @@
 body { margin: 0; }
 a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; overflow-wrap: anywhere; }
 h2 { font-size: 16px; font-weight: 600; margin: 0 0 8px; }
 h3 { font-size: 15px; font-weight: 500; }
@@ -83,6 +86,7 @@ pre { background: var(--code); padding: 8px 12px; border-radius: 6px; overflow: 
 .live { color: var(--running); font-weight: 500; }
 .live::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--running); animation: pulse 1.6s infinite; }
 @keyframes pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .live::before { animation: none; } }
 
 main { padding: 24px; max-width: 110rem; margin: 0 auto; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
@@ -133,7 +137,8 @@ tr.chosen td:first-child { box-shadow: inset 3px 0 0 var(--link); }
 .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 input[type=search], select { font: inherit; height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); }
 input[type=search] { flex: 1; min-width: 12rem; }
-button { font: inherit; height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); cursor: pointer; }
+button { font: inherit; height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); cursor: pointer; transition: background-color 150ms var(--ease), color 150ms var(--ease); }
+button:hover { background: var(--code); }
 button[aria-pressed=true] { background: var(--text); color: var(--card); }
 .chip { display: inline-flex; gap: 8px; align-items: center; padding: 2px 8px; border-radius: 999px; background: var(--code); font-size: 13px; }
 
@@ -156,7 +161,7 @@ button[aria-pressed=true] { background: var(--text); color: var(--card); }
 .stage-message { position: absolute; left: 16px; top: 8px; }
 .stage-hint { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); margin: 0; padding: 4px 12px; border-radius: 6px; background: rgba(29, 33, 38, 0.85); color: #fff; font-size: 13px; pointer-events: none; }
 .stage .graph { transform-origin: 0 0; }
-.stage .graph.moving { transition: transform 350ms ease; }
+.stage .graph.moving { transition: transform 350ms var(--ease); }
 .stage .node { cursor: pointer; }
 .stage .node:hover > .box { stroke: var(--link); }
 .stage .node.chosen > .box { stroke: var(--link); stroke-width: 2.4; }
@@ -170,8 +175,8 @@ button[aria-pressed=true] { background: var(--text); color: var(--card); }
 .stage.far .running > .box { fill: var(--running); }
 .stage.far .waiting > .box { fill: var(--waiting); }
 .stage.far .stopped > .box { fill: var(--stopped); }
-.stage.gliding .node { transition: transform 450ms ease, opacity 450ms ease; }
-.stage.gliding .edges { transition: opacity 300ms ease 200ms; }
+.stage.gliding .node { transition: transform 450ms var(--ease), opacity 450ms var(--ease); }
+.stage.gliding .edges { transition: opacity 300ms var(--ease) 200ms; }
 .stage .arriving { opacity: 0; }
 .zoom { position: absolute; right: 12px; top: 12px; display: flex; flex-direction: column; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); border-radius: 6px; }
 .zoom button { min-width: 36px; height: 32px; border-radius: 0; margin-top: -1px; }

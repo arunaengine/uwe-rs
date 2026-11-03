@@ -411,6 +411,9 @@ impl Session {
         self.hook
             .include(&mut self.interpreter, &snakefile, true)
             .map_err(|error| self.error(&error))?;
+        // A `workdir:` directive moves the working directory; jobs run and place their files
+        // there, not in the folder that the run started in.
+        self.workdir = self.state.borrow().workdir.clone();
         // The variables of `envvars` in the profile reach the jobs, as `--envvars` does.
         let names = self.state.borrow().profile.envvars.clone();
         crate::workflow::check_envvars(&self.interpreter, &names)

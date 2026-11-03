@@ -1206,3 +1206,62 @@ fn restores_through_links() {
         "first\n"
     );
 }
+
+/// A `workdir:` directive moves the shared directory, wherever the run starts: every job
+/// runs there, and its scripts are read in place instead of copied elsewhere.
+#[test]
+fn follows_workdir_directive() {
+    let snakefile = "workdir: workflow.basedir\nrule all:\n    input: 'out/b.txt'\nrule a:\n    output: 'out/a.txt'\n    script: 'scripts/run.py'\nrule b:\n    input: 'out/a.txt'\n    output: 'out/b.txt'\n    shell: 'unused'\n";
+    let steps: [(&str, Step); 2] = [
+        ("a", |folder| {
+            std::fs::write(folder.join("out/a.txt"), "a\n").unwrap();
+            0
+        }),
+        ("b", |folder| {
+            let a = std::fs::read_to_string(folder.join("out/a.txt")).unwrap();
+            std::fs::write(folder.join("out/b.txt"), a).unwrap();
+            0
+        }),
+    ];
+    let folder = folder();
+    let flow = folder.path().join("work/flow");
+    std::fs::create_dir_all(flow.join("scripts")).unwrap();
+    std::fs::write(flow.join("scripts/run.py"), "print(1)\n").unwrap();
+    std::fs::write(flow.join("hello.smk"), snakefile).unwrap();
+    // The run starts in the folder of the tests, not in the folder of the Snakefile.
+    let launch = Launch {
+        target: flow.join("hello.smk"),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let options = snakemake_runtime::RunSettings {
+        shared_workdir: true,
+        ..Default::default()
+    };
+    let mut driver = snakemake_runtime::driver_with_options(&launch, Default::default(), options)
+        .expect("a driver");
+    let store = folder.path().join("store");
+    std::fs::create_dir_all(&store).unwrap();
+    let mut host = Host {
+        steps: steps.iter().copied().collect(),
+        store,
+        tasks: Vec::new(),
+        cached: false,
+    };
+    let execution = Engine::new(&mut host).run("hello.smk", driver.as_mut());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    assert_eq!(
+        std::fs::read_to_string(flow.join("out/b.txt")).unwrap(),
+        "a\n"
+    );
+    for task in &host.tasks {
+        assert_eq!(task.workdir.as_deref(), flow.to_str(), "{}", task.step);
+    }
+    let script = flow.join("scripts/run.py");
+    let task = host.tasks.iter().find(|task| task.step == "a").unwrap();
+    let read = (task.inputs.iter()).find(|input| input.path.ends_with("scripts/run.py"));
+    assert_eq!(
+        read.map(|input| Path::new(&input.path)),
+        Some(script.as_path())
+    );
+}

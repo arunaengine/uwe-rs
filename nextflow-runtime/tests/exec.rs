@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use workflow_graph::{Launch, Simulator, execute};
+use workflow_graph::{DeliveryMode, Launch, Simulator, execute};
 
 #[test]
 fn skips_exec_effects() {
@@ -31,7 +31,7 @@ fn skips_exec_effects() {
         assert!(driver.start().unwrap().is_empty());
         driver.finish().unwrap();
         assert!(!sentinel.exists());
-        assert!(!folder.path().join("scratch/nextflow-exec").exists());
+        assert!(!folder.path().join("scratch/nextflow").exists());
         if stored {
             assert_eq!(
                 std::fs::read_to_string(store.join("result.txt")).unwrap(),
@@ -90,6 +90,37 @@ fn probes_pure_outputs() {
     }
 }
 
+/// A file of the run's folder is published as a copy, since the folder goes with the driver.
+#[test]
+fn copies_run_files() {
+    let folder = tempfile::tempdir().unwrap();
+    let source = "process P {\n publishDir 'results'\n output:\n path 'made.txt'\n exec:\n task.workDir.resolve('made.txt').text = 'made'\n}\nworkflow { P() }";
+    std::fs::write(folder.path().join("main.nf"), source).unwrap();
+    let scratch = folder.path().join("scratch");
+    let mut driver = nextflow_runtime::driver(&Launch {
+        target: folder.path().to_owned(),
+        scratch: scratch.clone(),
+        ..Launch::default()
+    })
+    .unwrap();
+    for task in driver.start().unwrap() {
+        let outcome = workflow_graph::Outcome {
+            id: task.id,
+            ..Default::default()
+        };
+        assert!(driver.complete(outcome).unwrap().is_empty());
+    }
+    driver.finish().unwrap();
+    let deliveries = driver.deliveries();
+    assert_eq!(deliveries.len(), 1);
+    let made = Path::new(&deliveries[0].location);
+    assert!(made.starts_with(scratch.join("nextflow")), "{made:?}");
+    assert!(matches!(deliveries[0].mode, DeliveryMode::Copy));
+    assert_eq!(std::fs::read_to_string(made).unwrap(), "made");
+    drop(driver);
+    assert!(!made.exists());
+}
+
 /// The files below a folder, by their paths there.
 fn files(folder: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
@@ -138,7 +169,7 @@ fn interprets_exec_sections() {
         assert_eq!(maker.map(|maker| maker.step.as_str()), Some("MAKE_SHEET"));
     }
     // The sections made the files that Nextflow publishes.
-    let made = files(&scratch.join("nextflow-exec"));
+    let made = files(&scratch.join("nextflow"));
     for published in [
         "sheets/A.csv",
         "sheets/BB.csv",

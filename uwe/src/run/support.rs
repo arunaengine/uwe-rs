@@ -71,7 +71,8 @@ pub(crate) fn cwl_archives() -> PathBuf {
     cache_directory().join("cwl-images")
 }
 
-/// A run id from the clock and the process id.
+/// A run id from the clock, the process id and 32 random bits. The random bits keep ids apart
+/// when two hosts or process namespaces share a database or a cache and get the same process id.
 pub(crate) fn run_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static LAST: AtomicU64 = AtomicU64::new(0);
@@ -83,8 +84,22 @@ pub(crate) fn run_id() -> String {
         now.max(previous.saturating_add(1))
     });
     let now = now.max(previous.saturating_add(1));
-    format!("{now:x}-{:x}", std::process::id())
+    let suffix = (u64::from(std::process::id()) << 32) | u64::from(random_bits());
+    format!("{now:x}-{suffix:x}")
 }
+
+/// 32 random bits from the system, or from the clock when the system gives none.
+fn random_bits() -> u32 {
+    let mut bytes = [0u8; 4];
+    match rustix::rand::getrandom(&mut bytes, rustix::rand::GetRandomFlags::empty()) {
+        Ok(4) => u32::from_le_bytes(bytes),
+        _ => std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.subsec_nanos())
+            .unwrap_or_default(),
+    }
+}
+
 /// Ends a command with its run: the error of a failed run comes first, so that it is the first
 /// line on standard error, then the note of a simulated run.
 pub(crate) fn finish(execution: Execution) -> Result<(), Failure> {
@@ -177,6 +192,24 @@ mod tests {
     use super::*;
     use crate::failure;
     use workflow_graph::{DriverError, Engine, Launch};
+
+    #[test]
+    fn run_ids_vary() {
+        let ids: Vec<String> = (0..64).map(|_| run_id()).collect();
+        let mut suffixes = std::collections::HashSet::new();
+        for id in &ids {
+            let (time, suffix) = id.split_once('-').expect("two parts");
+            assert!(u64::from_str_radix(time, 16).is_ok(), "{id}");
+            let suffix = u64::from_str_radix(suffix, 16).expect("hex suffix");
+            assert_eq!(suffix >> 32, u64::from(std::process::id()), "{id}");
+            suffixes.insert(suffix);
+        }
+        assert!(suffixes.len() > 32, "the suffix must vary between ids");
+        assert_eq!(
+            ids.iter().collect::<std::collections::HashSet<_>>().len(),
+            ids.len()
+        );
+    }
 
     #[test]
     fn isolates_cache_scopes() {

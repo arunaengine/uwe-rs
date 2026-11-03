@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 use run_database::{
     Attempt, Database, DatabaseError, Event, MarkerRow, Run, TaskRow, redact_public_text,
@@ -17,54 +17,138 @@ use crate::otlp::{
 /// The name of uwe as the service and the scope of its spans.
 const SERVICE: &str = "uwe";
 
+/// How many tasks are read from the run database at a time.
+const TASK_PAGE: u32 = 256;
+
 /// The spans of a run, in export requests of at most `per_request` spans each; `None` for an
-/// unknown run. The run span comes first, then each task, followed by its attempts.
+/// unknown run. The run span comes first, then each task, followed by its attempts. This holds
+/// the whole trace in memory: [`stream`] bounds it by the size of a request.
 pub fn requests(
     database: &Database,
     run: &str,
     per_request: usize,
 ) -> Result<Option<Vec<Request>>, DatabaseError> {
+    let mut all = Vec::new();
+    let found = stream::<DatabaseError>(database, run, per_request, |request| {
+        all.push(request);
+        Ok(())
+    })?;
+    Ok(found.map(|_| all))
+}
+
+/// Gives each export request of a run to `each` as soon as it is built, in the order and with
+/// the sizes of [`requests`], and returns the number of spans; `None` for an unknown run.
+/// Tasks are read a page at a time, so memory is bounded by a page and a request, not the run.
+pub fn stream<E: From<DatabaseError>>(
+    database: &Database,
+    run: &str,
+    per_request: usize,
+    each: impl FnMut(Request) -> Result<(), E>,
+) -> Result<Option<usize>, E> {
+    stream_pages(database, run, per_request, TASK_PAGE, each)
+}
+
+fn stream_pages<E: From<DatabaseError>>(
+    database: &Database,
+    run: &str,
+    per_request: usize,
+    page: u32,
+    each: impl FnMut(Request) -> Result<(), E>,
+) -> Result<Option<usize>, E> {
     let Some(record) = database.run(run)? else {
         return Ok(None);
     };
-    let tasks = database.tasks(run)?;
-    let mut attempts: HashMap<u64, Vec<Attempt>> = HashMap::new();
-    for (task, attempt) in database.attempts(run)? {
-        attempts.entry(task).or_default().push(attempt);
-    }
-    let events = database.events(run, 0, u32::MAX)?;
-    let mut markers: HashMap<u64, VecDeque<MarkerRow>> = HashMap::new();
-    for marker in database.markers(run)? {
-        markers.entry(marker.task).or_default().push_back(marker);
-    }
-    let latest = (events.iter().map(|event| event.time)).max();
+    let latest = database.last_event_time(run)?;
     let ended = record.ended.or(latest).unwrap_or(record.started);
     let ids = Ids::of(run);
-    let mut spans = vec![run_span(&record, &ids, ended, tasks.len(), &events)];
-    let mut by_task: HashMap<(u64, Option<u32>), Vec<&Event>> = HashMap::new();
-    for event in &events {
-        if let Some(task) = event.task {
-            by_task
-                .entry((task, event.attempt))
-                .or_default()
-                .push(event);
+    let tasks = record.tasks.values().sum::<u64>() as usize;
+    let events = database.span_events(run, None)?;
+    let mut batch = Batch::new(per_request, each);
+    batch.push(run_span(&record, &ids, ended, tasks, &events))?;
+    let mut after = 0;
+    loop {
+        let (rows, next) = database.task_page(run, after, page)?;
+        if rows.is_empty() {
+            break;
+        }
+        after = next;
+        for task in &rows {
+            let attempts = database.task_attempts(run, task.id)?;
+            let events = database.span_events(run, Some(task.id))?;
+            let markers = database.span_markers(run, Some(task.id))?;
+            for span in task_spans(task, &attempts, &ids, ended, &events, markers.into()) {
+                batch.push(span)?;
+            }
         }
     }
-    for task in &tasks {
-        let tried = attempts.remove(&task.id).unwrap_or_default();
-        let mut marked = markers.remove(&task.id).unwrap_or_default();
-        let events = by_task.remove(&(task.id, None)).unwrap_or_default();
-        spans.push(task_span(task, &tried, &ids, ended, &events, &mut marked));
-        for attempt in &tried {
-            let events = (by_task.remove(&(task.id, Some(attempt.number)))).unwrap_or_default();
-            spans.push(attempt_span(task, attempt, &ids, ended, &events));
+    batch.finish().map(Some)
+}
+
+/// Spans that wait for the rest of their request.
+struct Batch<F> {
+    spans: Vec<Span>,
+    size: usize,
+    count: usize,
+    each: F,
+}
+
+impl<E, F: FnMut(Request) -> Result<(), E>> Batch<F> {
+    fn new(size: usize, each: F) -> Self {
+        Batch {
+            spans: Vec::new(),
+            size: size.max(1),
+            count: 0,
+            each,
         }
     }
-    let requests = spans
-        .chunks(per_request.max(1))
-        .map(|chunk| request(chunk.to_vec()))
-        .collect();
-    Ok(Some(requests))
+
+    /// Adds a span, and hands over the request when it is full.
+    fn push(&mut self, span: Span) -> Result<(), E> {
+        self.spans.push(span);
+        if self.spans.len() >= self.size {
+            self.send()?;
+        }
+        Ok(())
+    }
+
+    /// Hands over the last request and gives the number of spans of all requests.
+    fn finish(mut self) -> Result<usize, E> {
+        self.send()?;
+        Ok(self.count)
+    }
+
+    fn send(&mut self) -> Result<(), E> {
+        if self.spans.is_empty() {
+            return Ok(());
+        }
+        let spans = std::mem::take(&mut self.spans);
+        self.count += spans.len();
+        (self.each)(request(spans))
+    }
+}
+
+/// The span of a task followed by the spans of its attempts, each with its own events.
+fn task_spans(
+    task: &TaskRow,
+    attempts: &[Attempt],
+    ids: &Ids,
+    ended: i64,
+    events: &[Event],
+    mut markers: VecDeque<MarkerRow>,
+) -> Vec<Span> {
+    let own = events
+        .iter()
+        .filter(|event| event.attempt.is_none())
+        .collect::<Vec<_>>();
+    let mut spans = vec![task_span(task, attempts, ids, ended, &own, &mut markers)];
+    for attempt in attempts {
+        let events = events
+            .iter()
+            .filter(|event| event.attempt == Some(attempt.number))
+            .collect::<Vec<_>>();
+        spans.push(attempt_span(task, attempt, ids, ended, &events));
+    }
+    spans
 }
 
 /// One export request with these spans of uwe.
@@ -117,27 +201,15 @@ pub(crate) fn finished_spans(
     }
     .or_else(|| events.iter().map(|event| event.time).max())
     .unwrap_or(row.requested);
-    let own = events
-        .iter()
-        .filter(|event| event.attempt.is_none())
-        .collect::<Vec<_>>();
-    let mut markers = database.span_markers(run, Some(task))?.into();
-    let mut spans = vec![task_span(
+    let markers = database.span_markers(run, Some(task))?.into();
+    Ok(task_spans(
         row,
         &detail.attempts,
         &ids,
         ended,
-        &own,
-        &mut markers,
-    )];
-    for attempt in &detail.attempts {
-        let events = events
-            .iter()
-            .filter(|event| event.attempt == Some(attempt.number))
-            .collect::<Vec<_>>();
-        spans.push(attempt_span(row, attempt, &ids, ended, &events));
-    }
-    Ok(spans)
+        &events,
+        markers,
+    ))
 }
 
 pub(crate) fn finished_run(database: &Database, run: &str) -> Result<Option<Span>, DatabaseError> {
@@ -505,6 +577,87 @@ mod tests {
         assert_eq!(spans[2].status.code, OK);
         recorder.ended(None);
         recorder.close().unwrap();
+    }
+
+    #[test]
+    fn streams_task_pages() {
+        use run_database::RunStart;
+        use workflow_graph::{Language, Outcome, Task, TaskId};
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("runs.sqlite");
+        let start = RunStart {
+            id: "many".into(),
+            resumes: None,
+            workflow: "main.nf".into(),
+            language: Language::Nextflow,
+            revision: None,
+            arguments: Vec::new(),
+            parameters: Vec::new(),
+            executor: "local".into(),
+            simulated: false,
+            store: None,
+            program: None,
+            launch: None,
+            workflow_folder: None,
+            repeats: None,
+        };
+        let mut recorder = Database::open(&path).unwrap().record(&start).unwrap();
+        for id in 1..=25 {
+            let task = Task {
+                id: TaskId(id),
+                step: format!("STEP{id}"),
+                ..Task::default()
+            };
+            recorder.requested(&task, &[]);
+            recorder.started(task.id, 1);
+            let outcome = Outcome {
+                id: task.id,
+                ..Outcome::default()
+            };
+            recorder.finished(&outcome, 1, false);
+        }
+        recorder.ended(None);
+        recorder.close().unwrap();
+        let database = Database::open(&path).unwrap();
+        let collect = |page: u32| {
+            let mut requests = Vec::new();
+            let count = stream_pages::<DatabaseError>(&database, "many", 10, page, |request| {
+                requests.push(request);
+                Ok(())
+            })
+            .unwrap();
+            (count, requests)
+        };
+        let (count, paged) = collect(4);
+        assert_eq!(count, Some(51), "the run and 25 tasks with an attempt each");
+        let sizes: Vec<usize> = paged
+            .iter()
+            .map(|request| request.spans().count())
+            .collect();
+        assert_eq!(sizes, [10, 10, 10, 10, 10, 1]);
+        let names: Vec<&str> = (paged.iter().flat_map(|request| request.spans()))
+            .map(|span| span.name.as_str())
+            .collect();
+        assert_eq!(
+            names[..5],
+            ["run main.nf", "STEP1", "attempt 1", "STEP2", "attempt 1"]
+        );
+        assert_eq!(names[49..], ["STEP25", "attempt 1"]);
+        let (_, single) = collect(1000);
+        assert_eq!(
+            serde_json::to_value(&paged).unwrap(),
+            serde_json::to_value(&single).unwrap(),
+            "the page size must not change the trace"
+        );
+        assert_eq!(
+            requests(&database, "many", 10).unwrap().unwrap().len(),
+            paged.len()
+        );
+        assert!(
+            stream_pages::<DatabaseError>(&database, "none", 10, 4, |_| Ok(()))
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

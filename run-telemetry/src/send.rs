@@ -27,6 +27,8 @@ pub enum TelemetryError {
     Json(#[from] serde_json::Error),
     #[error("cannot write the traces: {0}")]
     Write(#[from] std::io::Error),
+    #[error("{0}")]
+    Database(#[from] run_database::DatabaseError),
 }
 
 /// What an endpoint took.
@@ -85,28 +87,78 @@ async fn send_requests(
     headers: &[(String, String)],
     requests: &[Request],
 ) -> Result<Sent, TelemetryError> {
-    let address = traces_address(endpoint);
-    let mut map = HeaderMap::new();
-    for (name, value) in headers {
-        let header = HeaderName::from_bytes(name.as_bytes())
-            .map_err(|_| TelemetryError::Header(name.clone()))?;
-        let mut value =
-            HeaderValue::from_str(value).map_err(|_| TelemetryError::Header(name.clone()))?;
-        value.set_sensitive(true);
-        map.insert(header, value);
-    }
-    map.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    let failed = |error: reqwest::Error| TelemetryError::Send {
-        address: address.clone(),
-        message: error.to_string(),
-    };
-    let mut sent = Sent::default();
+    let mut sender = Sender::new(client, endpoint, headers)?;
     for request in requests {
+        sender.post(request).await?;
+    }
+    Ok(sender.sent)
+}
+
+/// Posts requests to an OTLP HTTP endpoint one at a time, so that a trace can be sent while it
+/// is still being built.
+pub struct Sender {
+    client: reqwest::Client,
+    address: String,
+    headers: HeaderMap,
+    sent: Sent,
+}
+
+impl Sender {
+    /// A sender to this endpoint with these headers, whose values are marked as sensitive.
+    pub fn new(
+        client: &reqwest::Client,
+        endpoint: &str,
+        headers: &[(String, String)],
+    ) -> Result<Sender, TelemetryError> {
+        let mut map = HeaderMap::new();
+        for (name, value) in headers {
+            let header = HeaderName::from_bytes(name.as_bytes())
+                .map_err(|_| TelemetryError::Header(name.clone()))?;
+            let mut value =
+                HeaderValue::from_str(value).map_err(|_| TelemetryError::Header(name.clone()))?;
+            value.set_sensitive(true);
+            map.insert(header, value);
+        }
+        map.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        Ok(Sender {
+            client: client.clone(),
+            address: traces_address(endpoint),
+            headers: map,
+            sent: Sent::default(),
+        })
+    }
+
+    /// Sends one request within the send deadline.
+    pub async fn send(&mut self, request: &Request) -> Result<(), TelemetryError> {
+        let address = self.address.clone();
+        tokio::time::timeout(SEND_LIMIT, self.post(request))
+            .await
+            .map_err(|_| TelemetryError::Send {
+                address,
+                message: format!(
+                    "the send deadline of {} seconds elapsed",
+                    SEND_LIMIT.as_secs_f64()
+                ),
+            })?
+    }
+
+    /// What the endpoint took so far.
+    pub fn sent(&self) -> Sent {
+        self.sent
+    }
+
+    async fn post(&mut self, request: &Request) -> Result<(), TelemetryError> {
+        let address = self.address.clone();
+        let failed = |error: reqwest::Error| TelemetryError::Send {
+            address: address.clone(),
+            message: error.to_string(),
+        };
         tracing::debug!(spans = request.spans().count(), "sending telemetry request");
         let body = serde_json::to_vec(request)?;
-        let mut response = client
+        let mut response = self
+            .client
             .post(&address)
-            .headers(map.clone())
+            .headers(self.headers.clone())
             .body(body)
             .send()
             .await
@@ -138,11 +190,11 @@ async fn send_requests(
                 body: text.chars().take(300).collect(),
             });
         }
-        sent.requests += 1;
-        sent.spans += request.spans().count();
-        sent.rejected += rejected(&text);
+        self.sent.requests += 1;
+        self.sent.spans += request.spans().count();
+        self.sent.rejected += rejected(&text);
+        Ok(())
     }
-    Ok(sent)
 }
 
 /// The spans that the answer of an endpoint says it rejected: `partialSuccess.rejectedSpans`,

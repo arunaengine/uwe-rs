@@ -11,8 +11,8 @@ use std::io::Write;
 
 pub use live::Live;
 pub use otlp::{KeyValue, Request, Span, SpanEvent, Status, Value};
-pub use send::{Sent, TelemetryError, send, traces_address};
-pub use spans::requests;
+pub use send::{Sender, Sent, TelemetryError, send, traces_address};
+pub use spans::{requests, stream};
 
 /// How many spans one export request holds, so that a request of a large run stays small
 /// enough for collectors, which take a few megabytes each by default.

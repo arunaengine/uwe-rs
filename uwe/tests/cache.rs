@@ -68,7 +68,7 @@ workflow {
 /// what it printed.
 fn uwe(directory: &Path, cache: &Path, arguments: &[&str]) -> (i32, String) {
     // Separate runs share stored results only for tasks that cannot reach the network.
-    let offline = arguments.first() == Some(&"run");
+    let offline = matches!(arguments.first(), Some(&"run" | &"graph"));
     let output = common::command()
         .args(arguments)
         .args(offline.then_some("-no-network"))

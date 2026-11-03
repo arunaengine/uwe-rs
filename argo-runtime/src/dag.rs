@@ -12,7 +12,7 @@ use argo_parser::{Node, Value as Yaml, decode};
 use regex::Regex;
 use workflow_graph::TaskId;
 
-use crate::cursor::{Cursor, Entries};
+use crate::cursor::{Cursor, Entries, deferred};
 use crate::items::{items, items_unless_skipped, loops};
 use crate::node::{ArtifactValue, NodeKind, Phase};
 use crate::run::{Args, Call, Expanded, Processed, Result, Run};
@@ -497,7 +497,12 @@ impl Run {
                 }
             }
         };
-        self.add_child(parent, child);
+        // The node is new; a task group holds many, which `add_child` would search.
+        if parent == dag {
+            self.add_child(parent, child);
+        } else {
+            self.nodes[parent].children.push(child);
+        }
         Ok(child)
     }
 
@@ -535,9 +540,17 @@ impl Run {
                     }
                     child
                 }
-                None => {
+                None if position < entries.eager => {
                     let entry = Rc::clone(&entries.list[position]);
                     let child = self.task_child(dag, group, &entry, &call, &context)?;
+                    entries.nodes[position] = Some(child);
+                    child
+                }
+                None => {
+                    let entry = Rc::clone(&entries.list[position]);
+                    let child = self.with_globals(&entries.globals, |run| {
+                        run.task_child(dag, group, &entry, &call, &context)
+                    })?;
                     entries.nodes[position] = Some(child);
                     child
                 }
@@ -547,6 +560,9 @@ impl Run {
             }
         }
         entries.open = open;
+        if !entries.cursors.is_empty() && self.make_entries(entries, &[entries.open.len()]) {
+            self.changed = true;
+        }
         Ok(())
     }
 
@@ -598,7 +614,7 @@ impl Run {
         let Some(entries) = &self.nodes[group].entries else {
             return;
         };
-        if !entries.open.is_empty() {
+        if !entries.cursors.is_empty() || !entries.open.is_empty() {
             return;
         }
         let continue_on = entries
@@ -745,12 +761,21 @@ impl Run {
             build: task_entry,
         };
         let mut entries = Entries::default();
+        // An item that cannot be an entry ends the whole task, so such a loop is made at once.
+        let fail_fast = processed.template.fail_fast == Some(true);
+        let null = cursor.items.iter().any(|item| matches!(item, Value::Nil));
+        if deferred(&cursor.items, fail_fast) && !null {
+            entries.globals = self.globals.clone();
+            entries.cursors.push(cursor);
+            return Expansion::Loop(Box::new(entries));
+        }
         while let Some(entry) = self.next_entry(&mut cursor) {
             match entry {
                 Ok(entry) => entries.push(cursor.slot, entry),
                 Err(message) => return Expansion::Ended(Phase::Error, message),
             }
         }
+        entries.eager = entries.list.len();
         Expansion::Loop(Box::new(entries))
     }
 }

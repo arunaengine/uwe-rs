@@ -9,7 +9,7 @@ use argo_parser::model::{Artifact, TemplateRef, WorkflowStep};
 use argo_parser::{Node, Value as Yaml, decode};
 use workflow_graph::TaskId;
 
-use crate::cursor::{Cursor, Entries};
+use crate::cursor::{Cursor, Entries, deferred};
 use crate::items::{items, items_unless_skipped, loops};
 use crate::node::{ArtifactValue, NodeKind, Phase};
 use crate::run::{Args, Call, Context, Expanded, Holder, Result, Run};
@@ -139,6 +139,7 @@ impl Run {
             depth: self.nodes[index].depth + 1,
         };
         let mut open = Vec::new();
+        let mut busy = vec![0; entries.made.len()];
         for &position in &entries.open.clone() {
             let step = Rc::clone(&entries.list[position]);
             let child = match entries.nodes[position] {
@@ -150,10 +151,21 @@ impl Run {
                 }
                 None => {
                     let child_name = format!("{name}.{}", step.name);
-                    let made = self.start_step(index, &step, &child_name, &call, context)?;
+                    let slot = entries.slots[position];
+                    let made = if position < entries.eager {
+                        self.start_step(index, &step, &child_name, &call, context, None)?
+                    } else {
+                        let later = entries.made.iter().skip(slot + 1).sum();
+                        self.with_globals(&entries.globals, |run| {
+                            run.start_step(index, &step, &child_name, &call, context, Some(later))
+                        })?
+                    };
                     let Some((child, runs)) = made else {
                         return Ok(());
                     };
+                    if let Some(count) = entries.made.get_mut(slot) {
+                        *count += 1;
+                    }
                     entries.nodes[position] = Some(child);
                     entries.runs[position] = runs;
                     child
@@ -178,8 +190,19 @@ impl Run {
             if !node.phase.fulfilled() || (runs && !hooks_done) {
                 open.push(position);
             }
+            if !node.phase.fulfilled()
+                && let Some(count) = busy.get_mut(entries.slots[position])
+            {
+                *count += 1;
+            }
         }
         entries.open = open;
+        if !entries.cursors.is_empty() {
+            if self.make_entries(entries, &busy) {
+                self.changed = true;
+            }
+            return Ok(());
+        }
         // The group ends when every step, and its hooks, ended.
         for &position in &entries.open {
             let Some(child) = entries.nodes[position] else {
@@ -202,9 +225,13 @@ impl Run {
                 return Ok(());
             }
         }
+        // Entries made late sit after the steps declared after theirs; check in declared order.
+        let mut order: Vec<usize> = (0..entries.list.len()).collect();
+        order.sort_by_key(|&position| entries.slots[position]);
         // Steps with an exit hook that did not start yet start it in the next pass.
-        for (step, child) in entries.list.iter().zip(&entries.nodes) {
-            if let Some(child) = *child
+        for &position in &order {
+            let step = &entries.list[position];
+            if let Some(child) = entries.nodes[position]
                 && exit_hook(step).is_some()
                 && self.nodes[child].exit_hook.is_none()
                 && self.nodes[child].kind != NodeKind::Skipped
@@ -212,8 +239,9 @@ impl Run {
                 return Ok(());
             }
         }
-        for (step, child) in entries.list.iter().zip(&entries.nodes) {
-            let Some(child) = *child else {
+        for &position in &order {
+            let step = &entries.list[position];
+            let Some(child) = entries.nodes[position] else {
                 continue;
             };
             let phase = self.nodes[child].phase;
@@ -241,16 +269,17 @@ impl Run {
         child_name: &str,
         call: &Call,
         context: &Rc<Context>,
+        later: Option<usize>,
     ) -> Result<Option<(usize, bool)>> {
         if let Some(error) = &step.error {
             let child = self.end_node(child_name, Phase::Error, call, error.clone());
-            self.add_child(group, child);
+            self.place_child(group, child, later);
             return Ok(Some((child, false)));
         }
         match self.decide_when(&step.when, child_name) {
             Err(message) => {
                 let child = self.end_node(child_name, Phase::Error, call, message.clone());
-                self.add_child(group, child);
+                self.place_child(group, child, later);
                 self.fail(group, Phase::Error, message);
                 return Ok(None);
             }
@@ -258,14 +287,24 @@ impl Run {
                 let message = format!("when '{}' evaluated false", step.when);
                 let child = self.end_node(child_name, Phase::Skipped, call, message);
                 self.skipped_outputs(child, &step.holder, context, true);
-                self.add_child(group, child);
+                self.place_child(group, child, later);
                 return Ok(Some((child, false)));
             }
             Ok(true) => {}
         }
         let child = self.execute_template(child_name, &step.holder, context, &step.args, call)?;
-        self.add_child(group, child);
+        self.place_child(group, child, later);
         Ok(Some((child, true)))
+    }
+
+    /// Adds the node of a step to its group: last, or before the `later` nodes of the steps
+    /// declared after it, which a cursor made earlier.
+    fn place_child(&mut self, group: usize, child: usize, later: Option<usize>) {
+        let Some(later) = later else {
+            return self.add_child(group, child);
+        };
+        let children = &mut self.nodes[group].children;
+        children.insert(children.len().saturating_sub(later), child);
     }
 
     pub fn add_child(&mut self, parent: usize, child: usize) {
@@ -308,6 +347,8 @@ impl Run {
     ) -> Result<Entries> {
         let variables = self.variables(scope);
         let depth = self.nodes[parent].depth;
+        let fail_fast = (self.nodes[parent].processed.as_ref())
+            .is_some_and(|processed| processed.template.fail_fast == Some(true));
         let mut entries = Entries::default();
         for (slot, step) in steps.iter().enumerate() {
             let step_name = step
@@ -399,11 +440,20 @@ impl Run {
                 next: 0,
                 build: step_entry,
             };
+            if deferred(&cursor.items, fail_fast) {
+                entries.cursors.push(cursor);
+                continue;
+            }
             while let Some(entry) = self.next_entry(&mut cursor) {
                 let entry =
                     entry.unwrap_or_else(|message| Expanded::error(cursor.name.clone(), message));
                 entries.push(cursor.slot, entry);
             }
+        }
+        entries.eager = entries.list.len();
+        if !entries.cursors.is_empty() {
+            entries.globals = self.globals.clone();
+            entries.made = vec![0; steps.len()];
         }
         Ok(entries)
     }

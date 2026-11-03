@@ -59,7 +59,7 @@ function tipOf(node) {
   if (node.dataset.step !== undefined) {
     const name = node.dataset.step;
     const tally = stepTallies(new Set([name])).get(name) || tallyOf([]);
-    const hint = view.graph.view === "tasks" ? "Click to show its tasks." : "Click to show the step.";
+    const hint = view.graph.view === "tasks" ? "Click to show its tasks" : "Click to show the step";
     return [el("div", {}, el("strong", { class: "mono" }, name)),
       el("div", {}, tallyText(tally, true)), el("div", { class: "quiet" }, hint)];
   }
@@ -197,7 +197,7 @@ function drawGraphLegend() {
     entries.push(el("span", {}, el("i", { class: "stack-sign" }), "a step with several tasks"));
   }
   const hint = graph.view === "tasks" && graph.steps.size
-    ? "Drag to move, Ctrl + wheel to zoom (or click the graph first); click a step to show its tasks."
-    : "Drag to move, Ctrl + wheel to zoom (or click the graph first).";
+    ? "Drag to move, Ctrl + wheel to zoom (or click the graph first); click a step to show its tasks"
+    : "Drag to move, Ctrl + wheel to zoom (or click the graph first)";
   graph.legend.replaceChildren(...entries, el("span", { class: "quiet hint" }, hint));
 }

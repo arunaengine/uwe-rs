@@ -75,7 +75,7 @@ function renderTime() {
   const tiles = [
     ["Length of the run", duration(length)],
     ["Time of all tasks together", duration(data.ran)],
-    ["Tasks at a time, on average", length > 0 ? (data.ran / length).toFixed(1) : "0"],
+    ["Tasks at a time, on average", length > 0 ? (data.ran / length).toFixed(1) : "0.0"],
     ["Time tasks waited to start", duration(data.waited)],
     ["Time no task ran", duration(Math.max(0, length - data.busy))],
   ];

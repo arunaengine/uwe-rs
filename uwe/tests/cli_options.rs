@@ -50,10 +50,10 @@ fn discovery_skips_configuration() {
     for flag in ["version", "-version", "--version"] {
         let output = common::command().arg(flag).output().unwrap();
         assert!(output.status.success());
-        assert_eq!(
-            String::from_utf8_lossy(&output.stdout),
-            format!("uwe {}\n", env!("CARGO_PKG_VERSION"))
-        );
+        let line = String::from_utf8_lossy(&output.stdout);
+        assert_eq!(line, format!("{}\n", env!("UWE_IDENTITY")));
+        let prefix = format!("uwe {} (", env!("CARGO_PKG_VERSION"));
+        assert!(line.starts_with(&prefix) && line.ends_with(")\n"), "{line}");
     }
     let output = common::command()
         .args(["version", "unexpected"])

@@ -96,7 +96,7 @@ pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure>
         executor: run.executor.to_owned(),
         simulated: run.simulated,
         store: run.store.map(str::to_owned),
-        program: Some(format!("uwe {}", env!("CARGO_PKG_VERSION"))),
+        program: Some(env!("UWE_IDENTITY").to_owned()),
         launch: (std::env::current_dir().ok()).map(|folder| folder.to_string_lossy().into_owned()),
         workflow_folder: Some(run.sources.folder.to_string_lossy().into_owned()),
         repeats: run.repeats.map(str::to_owned),

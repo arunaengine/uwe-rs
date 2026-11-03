@@ -92,7 +92,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         executor: executor.clone(),
         simulated: false,
         store: Some(setup.store_location(&arguments)),
-        program: Some(format!("uwe {}", env!("CARGO_PKG_VERSION"))),
+        program: Some(env!("UWE_IDENTITY").to_owned()),
         launch: (std::env::current_dir().ok()).map(|folder| folder.to_string_lossy().into_owned()),
         workflow_folder: original.workflow_folder.clone(),
         repeats: None,

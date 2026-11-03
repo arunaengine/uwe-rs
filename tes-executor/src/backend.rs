@@ -708,7 +708,9 @@ impl TesBackend {
                         record_stop(root, &status)?;
                         return Ok((status, false));
                     }
-                    if status.state == State::Running {
+                    // Some servers report UNKNOWN for a task that runs, or for good, so the time
+                    // of the task starts then too.
+                    if matches!(status.state, State::Running | State::Unknown) {
                         poll.running_for(seconds);
                     }
                 }

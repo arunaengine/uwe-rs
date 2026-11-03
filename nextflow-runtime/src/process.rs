@@ -102,6 +102,8 @@ pub struct TaskRequest {
     pub env: Vec<Rc<str>>,
     /// The commands of the `eval` outputs, run after the script.
     pub eval: Vec<String>,
+    /// Whether an output takes the standard output of the task, which is then read as text.
+    pub stdout: bool,
     /// The files that an `exec:` section made in its `task.workDir`, by their names there. Such
     /// a task ran in the interpreter already; the engine only records it.
     pub made: Option<Vec<(String, PathValue)>>,
@@ -555,6 +557,7 @@ impl ProcessNode {
             output_patterns: Vec::new(),
             env: Vec::new(),
             eval: Vec::new(),
+            stdout: false,
             made: match work_dir.as_ref().filter(|_| stored.is_none()) {
                 Some(folder) => Some(made_files(folder).map_err(|error| {
                     thrown(Exception::new(
@@ -576,7 +579,8 @@ impl ProcessNode {
                 }
                 RenderedPart::Env(name) => request.env.push(name.clone()),
                 RenderedPart::Eval(command) => request.eval.push(command.clone()),
-                RenderedPart::Value(_) | RenderedPart::Stdout => {}
+                RenderedPart::Stdout => request.stdout = true,
+                RenderedPart::Value(_) => {}
             }
         }
         let flight = InFlight {

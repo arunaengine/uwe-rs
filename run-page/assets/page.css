@@ -32,6 +32,7 @@
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;
   line-height: 1.45;
+  font-variant-numeric: tabular-nums;
   color: var(--text);
   background: var(--ground);
 }
@@ -67,9 +68,10 @@
 body { margin: 0; }
 a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
-h1 { font-size: 1.35rem; margin: 0 0 4px; overflow-wrap: anywhere; }
-h2 { font-size: 1.05rem; margin: 0 0 8px; }
-code, pre, .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 0.85rem; }
+h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; overflow-wrap: anywhere; }
+h2 { font-size: 16px; font-weight: 600; margin: 0 0 8px; }
+h3 { font-size: 15px; font-weight: 500; }
+code, pre, .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 13px; }
 pre { background: var(--code); padding: 8px 12px; border-radius: 6px; overflow: auto; max-height: 28rem; margin: 4px 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .quiet { color: var(--quiet); }
 
@@ -78,7 +80,7 @@ pre { background: var(--code); padding: 8px 12px; border-radius: 6px; overflow: 
 /* The mark of uwe, the same drawing as icon.svg, inline so that a report file shows it too. */
 .brand::before { content: ""; width: 20px; height: 20px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Crect width='256' height='256' rx='56' fill='%231b1e22'/%3E%3Cpath d='M76 84V136A52 52 0 0 0 180 136V84' fill='none' stroke='%23ece8df' stroke-width='16'/%3E%3Crect x='52' y='52' width='48' height='40' rx='10' fill='%23ece8df'/%3E%3Crect x='156' y='52' width='48' height='40' rx='10' fill='%23ece8df'/%3E%3Ccircle cx='128' cy='188' r='28' fill='%23e3a23b' stroke='%231b1e22' stroke-width='8'/%3E%3C/svg%3E") center / contain no-repeat; }
 #trail { color: var(--quiet); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-.live { color: var(--running); font-weight: 600; }
+.live { color: var(--running); font-weight: 500; }
 .live::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--running); animation: pulse 1.6s infinite; }
 @keyframes pulse { 50% { opacity: 0.3; } }
 
@@ -93,7 +95,7 @@ main { padding: 24px; max-width: 110rem; margin: 0 auto; }
 
 .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 8px 24px; margin: 12px 0 0; }
 .facts div { min-width: 0; }
-.facts dt { color: var(--quiet); font-size: 0.8rem; }
+.facts dt { color: var(--quiet); font-size: 12px; }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
 
 /* A state is a dot in its colour and its name in the text colour. */
@@ -108,8 +110,8 @@ main { padding: 24px; max-width: 110rem; margin: 0 auto; }
 
 .progress { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--code); margin: 8px 0; }
 .progress span { display: block; }
-.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.85rem; color: var(--quiet); }
-.preview { margin: 8px 0 0; font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--quiet); }
+.preview { margin: 8px 0 0; font-weight: 500; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
 .succeeded-fill { background: var(--succeeded); }
 .failed-fill { background: var(--failed); }
@@ -119,9 +121,9 @@ main { padding: 24px; max-width: 110rem; margin: 0 auto; }
 .reused-fill { background: var(--reused); }
 .simulated-fill { background: var(--simulated); }
 
-table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
-th { color: var(--quiet); font-weight: 600; font-size: 0.8rem; position: sticky; top: 0; background: var(--card); }
+th { overflow-wrap: normal; color: var(--quiet); font-weight: 500; font-size: 12px; position: sticky; top: 0; background: var(--card); }
 td.number, th.number { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 tr.pick { cursor: pointer; }
 tr.pick:hover td { background: var(--code); }
@@ -133,7 +135,7 @@ input[type=search], select { font: inherit; height: 32px; padding: 0 8px; border
 input[type=search] { flex: 1; min-width: 12rem; }
 button { font: inherit; height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); cursor: pointer; }
 button[aria-pressed=true] { background: var(--text); color: var(--card); }
-.chip { display: inline-flex; gap: 8px; align-items: center; padding: 2px 8px; border-radius: 999px; background: var(--code); font-size: 0.85rem; }
+.chip { display: inline-flex; gap: 8px; align-items: center; padding: 2px 8px; border-radius: 999px; background: var(--code); font-size: 13px; }
 
 .summary-progress { margin-top: 12px; }
 .summary-progress strong { color: var(--text); }
@@ -152,7 +154,7 @@ button[aria-pressed=true] { background: var(--text); color: var(--card); }
 .stage.dragging { cursor: grabbing; }
 .stage > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .stage-message { position: absolute; left: 16px; top: 8px; }
-.stage-hint { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); margin: 0; padding: 4px 12px; border-radius: 6px; background: rgba(29, 33, 38, 0.85); color: #fff; font-size: 0.85rem; pointer-events: none; }
+.stage-hint { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); margin: 0; padding: 4px 12px; border-radius: 6px; background: rgba(29, 33, 38, 0.85); color: #fff; font-size: 13px; pointer-events: none; }
 .stage .graph { transform-origin: 0 0; }
 .stage .graph.moving { transition: transform 350ms ease; }
 .stage .node { cursor: pointer; }
@@ -174,12 +176,12 @@ button[aria-pressed=true] { background: var(--text); color: var(--card); }
 .zoom { position: absolute; right: 12px; top: 12px; display: flex; flex-direction: column; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); border-radius: 6px; }
 .zoom button { min-width: 36px; height: 32px; border-radius: 0; margin-top: -1px; }
 .zoom button:first-child { border-radius: 6px 6px 0 0; margin-top: 0; }
-.zoom button:last-child { border-radius: 0 0 6px 6px; font-size: 0.8rem; }
+.zoom button:last-child { border-radius: 0 0 6px 6px; font-size: 12px; }
 .graph-legend { margin-top: 8px; align-items: center; }
 .graph-legend .hint { margin-left: auto; }
 .state-icon { width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; }
 .stack-sign { display: inline-block; width: 12px; height: 8px; margin-right: 8px; border: 1px solid var(--quiet); border-radius: 2px; box-shadow: 2px 2px 0 -1px var(--card), 2px 2px 0 0 var(--quiet); vertical-align: -1px; }
-.graph-tip { position: fixed; z-index: 5; pointer-events: none; max-width: 28rem; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14); font-size: 0.85rem; overflow-wrap: anywhere; }
+.graph-tip { position: fixed; z-index: 5; pointer-events: none; max-width: 28rem; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14); font-size: 13px; overflow-wrap: anywhere; }
 .graph-tip ul { margin: 4px 0 0; padding-left: 16px; }
 details > summary { cursor: pointer; color: var(--quiet); margin: 8px 0; }
 .marker { border-left: 3px solid var(--notice-line); padding-left: 8px; margin: 4px 0; }
@@ -187,20 +189,20 @@ details > summary { cursor: pointer; color: var(--quiet); margin: 8px 0; }
 /* Where the time went: numbers of the run, the critical path as one bar, the steps. */
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 8px; margin: 8px 0 16px; }
 .tile { border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; }
-.tile-label { color: var(--quiet); font-size: 0.8rem; }
-.tile-value { font-size: 1.35rem; font-weight: 600; }
+.tile-label { color: var(--quiet); font-size: 12px; }
+.tile-value { font-size: 20px; font-weight: 500; }
 .timepath h3, .timepath p { margin: 8px 0; }
 .timebar { display: flex; gap: 2px; height: 20px; margin: 8px 0 4px; }
 .timebar.dense { gap: 0; }
 .timebar .part { display: block; min-width: 1px; cursor: pointer; }
-.timebar .part-label { display: block; padding: 0 6px; color: var(--part-label); font-size: 0.75rem; font-weight: 600; line-height: 20px; white-space: nowrap; width: max-content; }
+.timebar .part-label { display: block; padding: 0 6px; color: var(--part-label); font-size: 12px; font-weight: 500; line-height: 20px; white-space: nowrap; width: max-content; }
 .timebar .part:first-child { border-radius: 4px 0 0 4px; }
 .timebar .part:last-child { border-radius: 0 4px 4px 0; }
 .timebar .part:hover { filter: brightness(1.15); }
 .part.ran { background: var(--part-ran); }
 .part.waited { background: var(--part-waited); }
 .part.between { background: var(--part-between); }
-.timescale { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 8px; }
+.timescale { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px; }
 td.sorted { min-width: 112px; }
 .databar { height: 6px; margin-top: 4px; background: var(--code); border-radius: 3px; }
 .databar span { display: block; height: 100%; background: var(--part-ran); border-radius: 0 3px 3px 0; }
@@ -219,15 +221,15 @@ td.sorted { min-width: 112px; }
 pre.command { flex: 1; margin: 0; }
 
 /* The timeline of a report: one lane per task. */
-.timeline { font-size: 0.85rem; max-height: 40rem; overflow: auto; margin-top: 8px; }
+.timeline { font-size: 13px; max-height: 40rem; overflow: auto; margin-top: 8px; }
 .lane { display: grid; grid-template-columns: minmax(120px, 240px) minmax(0, 1fr) 72px; gap: 8px; align-items: center; }
 .lane-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lane-bars, .lane-ticks { position: relative; height: 16px; }
 .lane-bars i { position: absolute; top: 4px; height: 8px; border-radius: 2px; }
-.lane-ticks span { position: absolute; transform: translateX(-50%); color: var(--quiet); font-size: 0.75rem; white-space: nowrap; }
+.lane-ticks span { position: absolute; transform: translateX(-50%); color: var(--quiet); font-size: 12px; white-space: nowrap; }
 .lane-ticks span:first-child { transform: none; }
 .lane-ticks span:last-child { transform: translateX(-100%); }
 .lane-time { text-align: right; color: var(--quiet); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .lane.pick:hover { background: var(--code); }
 .waited { background: var(--line); }
-.written { color: var(--quiet); font-size: 0.85rem; white-space: nowrap; }
+.written { color: var(--quiet); font-size: 13px; white-space: nowrap; }

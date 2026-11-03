@@ -7,6 +7,7 @@ mod checks;
 mod child;
 mod claims;
 mod conditions;
+mod cursor;
 mod dag;
 mod environment;
 pub mod expr;

@@ -41,6 +41,8 @@ pub struct CwlDriver {
     /// The files of the output object to deliver, once the run finished for real.
     deliveries: Vec<Delivery>,
     literals: Option<tempfile::TempDir>,
+    /// The output object of a real run that finished, with the locations it was delivered to.
+    results: Option<serde_json::Value>,
     process: Arc<Process>,
     /// The `$namespaces` of the document, which expand prefixed formats of the job file.
     namespaces: Namespaces,
@@ -80,6 +82,7 @@ impl CwlDriver {
             print,
             deliveries: Vec::new(),
             literals: None,
+            results: None,
             run,
             namespaces: Namespaces::default().extend(document.namespaces),
             process: document.process,
@@ -312,6 +315,10 @@ impl Driver for CwlDriver {
         self.run.use_cancel(cancel);
     }
 
+    fn results(&self) -> Option<serde_json::Value> {
+        self.results.clone()
+    }
+
     fn deliveries(&mut self) -> Vec<Delivery> {
         std::mem::take(&mut self.deliveries)
     }
@@ -366,8 +373,10 @@ impl Driver for CwlDriver {
                 }
                 self.deliveries
                     .extend(results::deliver(&mut outputs, &folder).map_err(error)?);
+                let outputs = Value::Map(outputs);
+                self.results = serde_json::from_str(&outputs.to_json()).ok();
                 if self.print {
-                    println!("{}", Value::Map(outputs).to_pretty_json());
+                    println!("{}", outputs.to_pretty_json());
                 }
             }
             return Ok(());

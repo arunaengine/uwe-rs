@@ -177,6 +177,12 @@ pub trait Driver {
         Ok(None)
     }
 
+    /// The result values of a run that finished for real, like the output object of CWL, for
+    /// hosts that embed the engine. The default has none.
+    fn results(&self) -> Option<serde_json::Value> {
+        None
+    }
+
     /// During draining, running tasks finish and report outcomes, while all new admissions
     /// stop.
     fn draining(&self) -> bool {

@@ -237,6 +237,14 @@ fn copies_directory_arrays() {
             })
             .expect("records outcome");
         driver.finish().expect("collects staged directories");
+        // A host that embeds the engine gets the same output object as JSON.
+        let results = driver.results().expect("results");
+        assert_eq!(
+            results["out"].as_array().map(Vec::len),
+            Some(2),
+            "{results}"
+        );
+        assert_eq!(results["out"][0]["class"], "File", "{results}");
         let output = driver.outputs().expect("outputs")["out"]
             .as_list()
             .expect("files");

@@ -135,7 +135,7 @@ uwe run nf-core/demo -r 1.2.0 -profile test,docker --outdir results
 | [Embedding uwe in a service](docs/embedding.md) | You start runs from your own Rust service |
 | [Operating uwe](docs/operations.md) | You back up, restore or upgrade uwe for a team |
 | [The demo](demo/README.md) | You want to try every language on a laptop or a cluster |
-| [Style guide](STYLE.md) | You change the code |
+| [Contributing](CONTRIBUTING.md) | You change the code |
 
 ## Status
 

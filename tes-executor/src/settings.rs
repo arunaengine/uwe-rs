@@ -2,7 +2,13 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::BTreeMap;
+
 use config_file::{ConfigError, Secret, Table};
+
+/// Tags that uwe sets on every task itself, so `tags` may not name them. The `idempotency_tag`
+/// is refused as well.
+const RESERVED_TAGS: [&str; 2] = ["uwe-attempt", "uwe-submission"];
 
 #[derive(Clone, Debug)]
 pub struct Settings {
@@ -19,6 +25,8 @@ pub struct Settings {
     /// Whether the objects of every finished attempt go away from the staging root
     /// (`staging_cleanup = true`), once their results are collected or abandoned.
     pub staging_cleanup: bool,
+    /// Tags that go on every task (`tags`), like the ones a server reads for network access.
+    pub tags: BTreeMap<String, String>,
 }
 
 impl Default for Settings {
@@ -33,6 +41,7 @@ impl Default for Settings {
             max_outputs: 1024,
             staging_minutes: None,
             staging_cleanup: false,
+            tags: BTreeMap::new(),
         }
     }
 }
@@ -61,6 +70,7 @@ impl Settings {
         "max_outputs",
         "staging_minutes",
         "staging_cleanup",
+        "tags",
     ];
 
     /// How much longer than its task a TES task may run, as its state stays RUNNING while the
@@ -140,6 +150,18 @@ impl Settings {
         if staging_cleanup && staging_root.is_none() {
             return Err(table.invalid("staging_cleanup", "requires staging = \"object-store\""));
         }
+        let mut tags = BTreeMap::new();
+        if let Some(table) = table.table("tags")? {
+            for key in table.keys() {
+                if key.is_empty() {
+                    return Err(table.invalid(key, "needs a nonempty name"));
+                }
+                if RESERVED_TAGS.contains(&key) || idempotency_tag.as_deref() == Some(key) {
+                    return Err(table.invalid(key, "is a tag that uwe sets itself"));
+                }
+                tags.insert(key.to_owned(), table.text(key)?.unwrap_or_default());
+            }
+        }
         Ok(Self {
             helper_file: table
                 .text("helper_file")?
@@ -156,6 +178,7 @@ impl Settings {
             password,
             max_inputs: limit("max_inputs", 512)?,
             max_outputs: limit("max_outputs", 1024)?,
+            tags,
         })
     }
 }
@@ -202,5 +225,39 @@ mod tests {
         assert!(read("[executor.tes]\nmax_inputs = 513").is_err());
         assert!(read("[executor.tes]\nmax_outputs = 0").is_err());
         assert!(read("[executor.tes]\nhelper_file = '/missing/uwe'").is_err());
+    }
+
+    #[test]
+    fn refuses_reserved_tags() {
+        let settings = read("[executor.tes]\ntags = { \"aruna-engine.org/network\" = \"open\" }");
+        let tags = settings.unwrap().tags;
+        assert_eq!(tags["aruna-engine.org/network"], "open");
+        let error = read("[executor.tes]\ntags = { uwe-submission = \"x\" }").unwrap_err();
+        assert!(error.to_string().contains("uwe sets itself"), "{error}");
+        let text = "[executor.tes]\nidempotency_tag = \"key\"\ntags = { key = \"x\" }";
+        assert!(read(text).is_err());
+        assert!(read("[executor.tes]\ntags = { a = 1 }").is_err());
+    }
+
+    #[test]
+    fn separates_site_tags() {
+        let text = "[executor.tes]\ntags = { a = \"1\" }\n\
+                    [executor.tes.sites.hh]\nserver = \"https://hh\"\n\
+                    [executor.tes.sites.hh.tags]\nb = \"2\"\n";
+        let config = ConfigFile::parse(text, std::path::Path::new("tes.toml")).unwrap();
+        let tes = config.section("executor").unwrap().unwrap();
+        let tes = tes.table("tes").unwrap().unwrap();
+        let site = tes.table("sites").unwrap().unwrap().tables().unwrap();
+        let site = Settings::read(&site[0]).unwrap();
+        assert_eq!(site.tags.keys().collect::<Vec<_>>(), ["b"]);
+        assert_eq!(
+            Settings::read(&tes)
+                .unwrap()
+                .tags
+                .keys()
+                .collect::<Vec<_>>(),
+            ["a"]
+        );
+        assert!(read("[executor.tes]\ntags = { \"\" = \"x\" }").is_err());
     }
 }

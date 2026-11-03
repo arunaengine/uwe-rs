@@ -171,3 +171,16 @@ With `staging_cleanup = true`, uwe removes the results and the plan of each atte
 TES with `staging = "object-store"` takes `staging_cleanup` in `[executor.tes]` as well.
 
 uwe never removes the inputs under `cas/`, because other tasks may still use them. A lifecycle rule on the bucket can.
+
+## TES tags
+
+`tags` in `[executor.tes]` adds the same tags to every TES task. It is a table of texts. Some servers read tags as settings, for example to give a task network access or to name a group:
+
+```toml
+[executor.tes]
+tags = { "aruna-engine.org/network" = "open", "aruna-engine.org/group" = "lab" }
+```
+
+A `[executor.tes.sites.<name>]` table takes its own `tags`. Like every other key of a site, it does not inherit from `[executor.tes]`. A site without `tags` adds none.
+
+uwe sets `uwe-attempt`, `uwe-submission` and the `idempotency_tag` itself. A tag with one of these names, or with an empty name, is a config error. Values may be empty.

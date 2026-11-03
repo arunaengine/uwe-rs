@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 use super::{Direction, Drawing, Kind};
 
 /// The colours of an open point: its fill and border.
-const OPEN_POINT: (&str, &str) = ("#fff8e1", "#b7791f");
+const OPEN_POINT: (&str, &str) = ("#efeee9", "#8a857a");
 
 /// The drawing in Graphviz DOT form.
 pub fn dot(drawing: &Drawing, direction: Direction) -> String {

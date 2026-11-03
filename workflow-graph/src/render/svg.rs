@@ -119,19 +119,19 @@ const STYLE: &str = "<style>
 .graph-picture text { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 12px; fill: #1d2126; fill: var(--text, #1d2126); }
 .graph-picture .background { fill: #ffffff; }
 .graph-picture .title { font-size: 14px; font-weight: 600; }
-.graph-picture .note { fill: #7a5a12; }
+.graph-picture .note { fill: #5c6570; fill: var(--quiet, #5c6570); }
 .graph-picture .node text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; }
 .graph-picture .node .detail { font-size: 11px; fill: #5c6570; fill: var(--quiet, #5c6570); }
 .graph-picture .step .label { font-weight: 600; }
 .graph-picture .box, .graph-picture .stack { fill: #ffffff; fill: var(--card, #ffffff); stroke: #c3cad3; stroke: var(--node-line, #c3cad3); stroke-width: 1; }
 .graph-picture .failed > .box { stroke: #c0392b; stroke: var(--failed, #c0392b); }
 .graph-picture .running > .box { stroke: #1f6fd1; stroke: var(--running, #1f6fd1); }
-.graph-picture .open-point .box { fill: #fff8e1; stroke: #b7791f; stroke-dasharray: 4 3; }
-.graph-picture .open-point text { font-size: 11px; font-style: italic; fill: #7a5a12; }
+.graph-picture .open-point .box { fill: #efeee9; fill: var(--notice, #efeee9); stroke: #8a857a; stroke: var(--notice-line, #8a857a); stroke-dasharray: 4 3; }
+.graph-picture .open-point text { font-size: 11px; font-style: italic; fill: #5c6570; fill: var(--quiet, #5c6570); }
 .graph-picture .edge { fill: none; stroke: #9aa4b2; stroke: var(--edge, #9aa4b2); stroke-width: 1.3; }
 .graph-picture .edge.dashed { stroke-dasharray: 5 4; }
 .graph-picture .edge.bundle { stroke-width: 3; }
-.graph-picture .edge.open { stroke: #b7791f; stroke-dasharray: 3 3; }
+.graph-picture .edge.open { stroke: #8a857a; stroke: var(--notice-line, #8a857a); stroke-dasharray: 3 3; }
 .graph-picture .arrow { fill: #9aa4b2; fill: var(--edge, #9aa4b2); }
 @keyframes graph-turn { to { transform: rotate(360deg); } }
 </style>

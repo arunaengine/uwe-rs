@@ -14,6 +14,7 @@ pub(crate) const CAMERA_SCRIPT: &str = include_str!("../assets/camera.js");
 pub(crate) const BOXES_SCRIPT: &str = include_str!("../assets/boxes.js");
 pub(crate) const TIME_SCRIPT: &str = include_str!("../assets/time.js");
 pub(crate) const COMPARE_SCRIPT: &str = include_str!("../assets/compare.js");
+const ICON: &str = include_str!("../assets/icon.svg");
 
 /// The same page for every view; its script shows the view that the address names.
 pub(crate) async fn page() -> impl IntoResponse {
@@ -22,6 +23,11 @@ pub(crate) async fn page() -> impl IntoResponse {
 
 pub(crate) async fn style() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], STYLE)
+}
+
+/// The mark of uwe, the icon of the browser tab.
+pub(crate) async fn icon() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "image/svg+xml")], ICON)
 }
 
 /// The helpers, the navigation and the list of runs.

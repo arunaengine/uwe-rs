@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The mark of uwe: two tasks of a workflow that meet in one stored result. -->
+<!-- Copyright (c) 2026 The uwe Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">uwe</title>
+  <rect width="256" height="256" rx="56" fill="#1b1e22"/>
+  <path d="M76 84 V136 A52 52 0 0 0 180 136 V84" fill="none" stroke="#ece8df" stroke-width="16"/>
+  <rect x="52" y="52" width="48" height="40" rx="10" fill="#ece8df"/>
+  <rect x="156" y="52" width="48" height="40" rx="10" fill="#ece8df"/>
+  <circle cx="128" cy="188" r="28" fill="#e3a23b" stroke="#1b1e22" stroke-width="8"/>
+</svg>

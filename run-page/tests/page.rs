@@ -126,6 +126,9 @@ fn shows_run_details() {
     let (status, page) = get(&format!("{url}/runs/finished-run/tasks/4"));
     assert_eq!(status, 200);
     assert!(page.contains("/page.js"), "{page}");
+    let (status, icon) = get(&format!("{url}/icon.svg"));
+    assert_eq!(status, 200);
+    assert!(icon.contains("<svg"), "{icon}");
     let (status, script) = get(&format!("{url}/run.js"));
     assert_eq!(status, 200);
     assert!(script.contains("EventSource"));

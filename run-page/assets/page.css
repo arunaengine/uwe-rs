@@ -70,7 +70,9 @@ pre { background: var(--code); padding: 0.6rem 0.75rem; border-radius: 6px; over
 .quiet { color: var(--quiet); }
 
 .bar { display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1.25rem; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
-.brand { font-weight: 700; letter-spacing: 0.02em; color: var(--text); }
+.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--text); }
+/* The mark of uwe, the same drawing as icon.svg, inline so that a report file shows it too. */
+.brand::before { content: ""; width: 20px; height: 20px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Crect width='256' height='256' rx='56' fill='%231b1e22'/%3E%3Cpath d='M76 84V136A52 52 0 0 0 180 136V84' fill='none' stroke='%23ece8df' stroke-width='16'/%3E%3Crect x='52' y='52' width='48' height='40' rx='10' fill='%23ece8df'/%3E%3Crect x='156' y='52' width='48' height='40' rx='10' fill='%23ece8df'/%3E%3Ccircle cx='128' cy='188' r='28' fill='%23e3a23b' stroke='%231b1e22' stroke-width='8'/%3E%3C/svg%3E") center / contain no-repeat; }
 #trail { color: var(--quiet); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .live { color: var(--running); font-weight: 600; }
 .live::before { content: ""; display: inline-block; width: 0.55rem; height: 0.55rem; margin-right: 0.4rem; border-radius: 50%; background: var(--running); animation: pulse 1.6s infinite; }

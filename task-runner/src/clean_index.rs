@@ -250,6 +250,8 @@ pub async fn scan(store: &Store, keep: &Keep, scratch: &Path) -> Result<Report, 
             })?;
         }
     }
+    // Every quiet task has the log of no bytes, so that log says nothing about who used a result.
+    let silent = Digest::sha256(b"");
     let mut cursor = 0;
     while let Some((id, item, used)) = report.next_entry(cursor)? {
         cursor = id;
@@ -270,7 +272,8 @@ pub async fn scan(store: &Store, keep: &Keep, scratch: &Path) -> Result<Report, 
                         .files
                         .iter()
                         .any(|file| keep.locations.contains(&file.location))
-                    || entry.logs().any(|digest| keep.digests.contains(digest))
+                    || (entry.logs())
+                        .any(|digest| *digest != silent && keep.digests.contains(digest))
             }
             None => used,
         };

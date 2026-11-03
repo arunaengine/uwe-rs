@@ -1,0 +1,51 @@
+# Dependency policy that `cargo deny check` enforces: licenses, advisories, bans and sources.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml 0.37 is pinned by oxrdfxml, which has no release for 0.41. uwe parses only local ontology files of at most 16 MiB in cwl-runtime, so the worst case is slow parsing of a workflow's own file." },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml 0.37 is pinned by oxrdfxml, which has no release for 0.41. The 16 MiB input limit on local ontology files in cwl-runtime bounds the memory the namespace resolver can use." },
+    { id = "RUSTSEC-2023-0071", reason = "No fixed rsa release exists. The crate comes from reqsign and only signs JWTs with a service account key, it never decrypts, and the signing time is not exposed to an attacker." },
+    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml comes from serde_yaml in rattler_conda_types, which has no release without it. uwe parses only conda environment files that the user supplies." },
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Unlicense",
+    "Zlib",
+    "bzip2-1.0.6",
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

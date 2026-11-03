@@ -9,7 +9,7 @@ use std::rc::Rc;
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
 use nextflow_evaluator::value::{PathValue, Value};
-use nextflow_runtime::driver::{Nextflow, Settings};
+use nextflow_runtime::driver::{Nextflow, Settings, run_folder};
 use storage::{Blocking, StorageError};
 use workflow_graph::{Driver, DriverError, Launch};
 
@@ -23,6 +23,9 @@ struct Console {
     quiet: bool,
     storage: Blocking,
     secrets: std::collections::BTreeMap<String, config_file::Secret>,
+    /// Where operators like `collectFile` keep their files: the folder of the run, which the
+    /// driver removes. `None` keeps them in the system temporary folder.
+    operators: Option<PathBuf>,
 }
 
 impl Host for Console {
@@ -51,6 +54,26 @@ impl Host for Console {
             _ => return Ok(None),
         }
         Ok(Some(Value::Null))
+    }
+
+    fn operator_directory(&mut self) -> Result<PathValue, Error> {
+        let Some(folder) = &self.operators else {
+            return nextflow_evaluator::interpreter::thread_scratch();
+        };
+        let directory = std::fs::create_dir_all(folder)
+            .and_then(|()| {
+                tempfile::Builder::new()
+                    .prefix("operators-")
+                    .tempdir_in(folder)
+            })
+            .map_err(|error| Error::Thrown {
+                exception: Rc::new(Exception::new(
+                    "IOException",
+                    format!("cannot reserve operator scratch: {error}"),
+                )),
+                span: Default::default(),
+            })?;
+        Ok(PathValue::parse(&directory.keep().to_string_lossy(), "/"))
     }
 
     fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {
@@ -268,6 +291,7 @@ fn console(quiet: bool, setup: &Setup) -> Console {
         quiet,
         storage: setup.storage.blocking(),
         secrets: setup.secrets.clone(),
+        operators: None,
     }
 }
 
@@ -279,8 +303,12 @@ pub fn driver(
     arguments: &Arguments,
     setup: &Setup,
 ) -> Result<Box<dyn Driver>, DriverError> {
+    let console = Console {
+        operators: Some(run_folder(&launch.scratch, run)),
+        ..console(quiet, setup)
+    };
     let settings = Settings {
-        host: Box::new(console(quiet, setup)),
+        host: Box::new(console),
         container_engine: Some(setup.engine_kind(arguments)),
         run_name: run.to_owned(),
         command_line: std::env::args().collect::<Vec<_>>().join(" "),
@@ -314,6 +342,19 @@ mod tests {
         let value = nextflow_evaluator::value::PathValue::parse(&path.to_string_lossy(), "/");
         nextflow_evaluator::interpreter::Host::write(&mut host, &value, b"{}").unwrap();
         assert_eq!(std::fs::read(path).unwrap(), b"{}");
+    }
+
+    #[test]
+    fn reserves_run_operators() {
+        let root = tempfile::tempdir().unwrap();
+        let run = root.path().join("run");
+        let mut host = super::Console {
+            operators: Some(run.clone()),
+            ..super::console(false, &crate::setup::Setup::default())
+        };
+        let folder = nextflow_evaluator::interpreter::Host::operator_directory(&mut host).unwrap();
+        let folder = std::path::Path::new(&folder.path);
+        assert!(folder.starts_with(&run) && folder.is_dir(), "{folder:?}");
     }
 
     #[test]

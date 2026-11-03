@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use workflow_graph::{Delivery, Engine, Event, Launch, Observer, Simulator};
+use workflow_graph::{Delivery, Driver, Engine, Event, Launch, Observer, Simulator};
 
 const PIPELINE: &str = r#"
 process MAKE {
@@ -61,7 +61,8 @@ impl Observer for Deliveries {
     }
 }
 
-fn run(simulated: bool) -> (Vec<Delivery>, tempfile::TempDir) {
+/// The deliveries of a run, and its driver, which keeps the reports until it goes.
+fn run(simulated: bool) -> (Vec<Delivery>, Box<dyn Driver>, tempfile::TempDir) {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), PIPELINE).expect("writes the script");
     std::fs::write(directory.path().join("nextflow.config"), CONFIG).expect("writes the config");
@@ -78,12 +79,12 @@ fn run(simulated: bool) -> (Vec<Delivery>, tempfile::TempDir) {
         .observer(&mut deliveries)
         .run("main.nf", driver.as_mut());
     assert!(execution.error.is_none(), "{:?}", execution.error);
-    (deliveries.0, directory)
+    (deliveries.0, driver, directory)
 }
 
 #[test]
 fn delivers_enabled_reports() {
-    let (deliveries, _directory) = run(false);
+    let (deliveries, driver, _directory) = run(false);
     let launch_dir = std::env::current_dir().expect("a current directory");
     let targets: Vec<String> = (deliveries.iter())
         .map(|delivery| {
@@ -124,13 +125,15 @@ fn delivers_enabled_reports() {
         report.contains("3 completed, 0 cached, 0 failed"),
         "{report}"
     );
+    drop(driver);
+    assert!(!std::path::Path::new(&deliveries[0].location).exists());
 }
 
 #[test]
 fn skips_simulated_reports() {
-    let (deliveries, directory) = run(true);
+    let (deliveries, _driver, directory) = run(true);
     assert!(deliveries.is_empty());
-    assert!(!directory.path().join("scratch/nextflow-reports").exists());
+    assert!(!directory.path().join("scratch/nextflow").exists());
 }
 
 #[test]

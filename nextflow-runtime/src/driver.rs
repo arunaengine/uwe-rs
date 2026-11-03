@@ -14,7 +14,8 @@ use nextflow_evaluator::lowered::Module;
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{PathValue, Value};
 use workflow_graph::{
-    Delivery, Driver, DriverError, Files, Input, Inputs, Language, Launch, Note, Outcome, Task,
+    Delivery, DeliveryMode, Driver, DriverError, Files, Input, Inputs, Language, Launch, Note,
+    Outcome, Task,
 };
 
 use crate::notes::Noting;
@@ -25,6 +26,15 @@ use crate::task::{
     with_registry,
 };
 use crate::{LoadError, Loader, Options, Run, TaskId, TaskOutcome, TaskRequest};
+
+/// The folder of a run's own files in the scratch folder: what `exec:` sections and operators
+/// make, and the reports. Its name starts with the process, then the run, which `uwe clean`
+/// checks; the driver removes it when it goes.
+pub fn run_folder(scratch: &Path, run: &str) -> PathBuf {
+    scratch
+        .join("nextflow")
+        .join(format!("{}-{run}", std::process::id()))
+}
 
 /// What a Nextflow run takes besides the [`Launch`].
 pub struct Settings {
@@ -234,11 +244,7 @@ impl Nextflow {
                 .map(|file| file.to_string_lossy().into_owned())
                 .collect(),
             command_line: self.settings.command_line.clone(),
-            exec_folder: Some((self.launch.scratch.join("nextflow-exec")).join(format!(
-                "{}-{}",
-                std::process::id(),
-                self.settings.run_name
-            ))),
+            exec_folder: Some(self.folder().join("exec")),
         }
     }
 
@@ -378,14 +384,17 @@ impl Nextflow {
     /// Writes report artifacts for either successful or failed runs.
     fn write_reports(&mut self) -> Result<(), DriverError> {
         if let Some(reports) = &self.reports {
-            // The reports go to a folder of this run, from where the engine delivers them.
-            let run = format!("{}-{}", std::process::id(), self.settings.run_name);
-            let folder = self.launch.scratch.join("nextflow-reports").join(run);
+            // The reports go to the folder of this run, from where the engine delivers them.
+            let folder = self.folder().join("reports");
             self.report_deliveries = reports.write(&folder).map_err(|error| {
                 DriverError::new(format!("cannot write the reports of the run: {error}"))
             })?;
         }
         Ok(())
+    }
+
+    fn folder(&self) -> PathBuf {
+        run_folder(&self.launch.scratch, &self.settings.run_name)
     }
 
     /// The error of a failed run, remembering the message of its first exception.
@@ -394,6 +403,13 @@ impl Nextflow {
             self.cause.get_or_insert_with(|| exception.message.clone());
         }
         error(failure)
+    }
+}
+
+/// The engine has run and delivered everything once the driver goes.
+impl Drop for Nextflow {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(self.folder());
     }
 }
 
@@ -545,6 +561,18 @@ impl Driver for Nextflow {
             None => Vec::new(),
         };
         deliveries.append(&mut self.report_deliveries);
+        // The folder of the run goes with the driver, and a link into it with it.
+        let folder = self.folder();
+        for delivery in &mut deliveries {
+            if Path::new(&delivery.location).starts_with(&folder)
+                && matches!(
+                    delivery.mode,
+                    DeliveryMode::Link | DeliveryMode::RelativeLink
+                )
+            {
+                delivery.mode = DeliveryMode::Copy;
+            }
+        }
         deliveries
     }
 

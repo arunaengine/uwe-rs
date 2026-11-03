@@ -40,6 +40,23 @@ thread_local! {
     static SCRATCH: RefCell<Vec<tempfile::TempDir>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Operator scratch in the system temporary folder, which is removed when this thread ends.
+pub fn thread_scratch() -> Result<PathValue, Error> {
+    let directory = tempfile::Builder::new()
+        .prefix("uwe-nextflow-")
+        .tempdir()
+        .map_err(|error| Error::Thrown {
+            exception: Rc::new(Exception::new(
+                "IOException",
+                format!("cannot reserve operator scratch: {error}"),
+            )),
+            span: Span::default(),
+        })?;
+    let path = PathValue::parse(&directory.path().to_string_lossy(), "/");
+    SCRATCH.with_borrow_mut(|folders| folders.push(directory));
+    Ok(path)
+}
+
 /// What the interpreter needs from its surroundings.
 pub trait Host {
     /// Writes text to standard output, as `print` and `println` do.
@@ -59,22 +76,10 @@ pub trait Host {
             .unwrap_or_else(|_| "/".into())
     }
 
-    /// Reserves operator scratch. The default is a folder in the system temporary folder, which
-    /// is removed when the thread ends; custom storage hosts may override it.
+    /// Reserves operator scratch. The default is [`thread_scratch`]; hosts that run workflows
+    /// override it with a folder of the run.
     fn operator_directory(&mut self) -> Result<PathValue, Error> {
-        let directory = tempfile::Builder::new()
-            .prefix("uwe-nextflow-")
-            .tempdir()
-            .map_err(|error| Error::Thrown {
-                exception: Rc::new(Exception::new(
-                    "IOException",
-                    format!("cannot reserve operator scratch: {error}"),
-                )),
-                span: Span::default(),
-            })?;
-        let path = PathValue::parse(&directory.path().to_string_lossy(), "/");
-        SCRATCH.with_borrow_mut(|folders| folders.push(directory));
-        Ok(path)
+        thread_scratch()
     }
 
     /// A local copy of a remote file, like one on `https://`. The default has none.

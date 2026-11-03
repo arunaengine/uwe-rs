@@ -1264,15 +1264,9 @@ impl Run {
                 .find(|tasks| !tasks.is_empty())
                 .unwrap_or_default(),
             NodeKind::StepGroup | NodeKind::TaskGroup => {
-                let mut tasks = Vec::new();
-                for &child in &node.children {
-                    for task in self.outbound(child) {
-                        if !tasks.contains(&task) {
-                            tasks.push(task);
-                        }
-                    }
-                }
-                tasks
+                let mut seen = HashSet::new();
+                let children = node.children.iter().flat_map(|&child| self.outbound(child));
+                children.filter(|&task| seen.insert(task)).collect()
             }
             NodeKind::Dag => self.dag_outbound(index),
             NodeKind::Skipped | NodeKind::Suspend => Vec::new(),

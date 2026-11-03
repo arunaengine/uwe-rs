@@ -7,7 +7,7 @@
 # Needs docker, kind, kubectl and helm, the static binary of `just release-binary` (UWE),
 # a checkout of kubedal (KUBEDAL, default ../kubedal) and its image (KUBEDAL_IMAGE, default
 # kubedal:e2e). MODES picks some of self, image-volume, init-container, kubedal, credentials and
-# shared-claim;
+# shared-claim; without a kubedal checkout the default leaves out kubedal;
 # KIND_CLUSTER names the cluster (default uwe-staging); KEEP_CLUSTER=1 keeps the cluster
 # and the S3 server after the run.
 set -euo pipefail
@@ -17,6 +17,9 @@ binary="$(realpath "${UWE:-$repository/target/x86_64-unknown-linux-musl/release/
 kubedal="${KUBEDAL:-$repository/../kubedal}"
 kubedal_image="${KUBEDAL_IMAGE:-kubedal:e2e}"
 cluster="${KIND_CLUSTER:-uwe-staging}"
+modes="self image-volume init-container kubedal credentials shared-claim"
+[ -d "$kubedal" ] || modes="${modes/kubedal /}"
+modes="${MODES:-$modes}"
 server="$cluster-s3"
 work="$(mktemp -d)"
 # The folder that this machine and the node share, for the cache of shared paths.
@@ -58,10 +61,13 @@ printf 'FROM scratch\nCOPY uwe /uwe\n' > "$work/helper/Dockerfile"
 # Another run may build its own helper image at the same time.
 helper="uwe-helper:$cluster"
 docker build -q -t "$helper" "$work/helper" > /dev/null
-kind load docker-image --name "$cluster" "$helper" debian:stable-slim "$kubedal_image"
-helm upgrade --install kubedal "$kubedal/charts/kubedal" --namespace kube-system \
-    --set image.repository="${kubedal_image%%:*}" --set image.tag="${kubedal_image##*:}" \
-    --set image.pullPolicy=Never --wait --timeout 180s > /dev/null
+kind load docker-image --name "$cluster" "$helper" debian:stable-slim
+case " $modes " in *" kubedal "*)
+    kind load docker-image --name "$cluster" "$kubedal_image"
+    helm upgrade --install kubedal "$kubedal/charts/kubedal" --namespace kube-system \
+        --set image.repository="${kubedal_image%%:*}" --set image.tag="${kubedal_image##*:}" \
+        --set image.pullPolicy=Never --wait --timeout 180s > /dev/null
+esac
 kubectl create namespace uwe > /dev/null
 kubectl apply -f - > /dev/null <<EOF
 apiVersion: v1
@@ -81,16 +87,6 @@ stringData:
     region = "us-east-1"
     access_key_id = "staging-user"
     secret_access_key = "staging-secret-4410"
----
-apiVersion: kubedal.arunaengine.org/v1alpha1
-kind: DataNode
-metadata: {name: staging, namespace: uwe}
-spec:
-  backend: S3
-  read_only: false
-  limit: 1Gi
-  secretRef: {name: staging-credentials}
-  config: {bucket: staging, endpoint: "$endpoint", region: us-east-1, root: /kubedal}
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -119,7 +115,20 @@ keys() {
 }
 export XDG_CONFIG_HOME="$work/config" UWE_SITE_CONFIG=""
 status=0
-for mode in ${MODES:-self image-volume init-container kubedal credentials shared-claim}; do
+case " $modes " in *" kubedal "*)
+    kubectl apply -f - > /dev/null <<EOF
+apiVersion: kubedal.arunaengine.org/v1alpha1
+kind: DataNode
+metadata: {name: staging, namespace: uwe}
+spec:
+  backend: S3
+  read_only: false
+  limit: 1Gi
+  secretRef: {name: staging-credentials}
+  config: {bucket: staging, endpoint: "$endpoint", region: us-east-1, root: /kubedal}
+EOF
+esac
+for mode in $modes; do
     echo "=== $mode"
     export XDG_CACHE_HOME="$work/cache"
     staging="staging = \"object-store\"

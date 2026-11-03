@@ -1,6 +1,8 @@
-//! Cursors that make the entries of a loop, one item at a time.
+//! The entries of a step group or a DAG task, and the cursors that make loop entries from items.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::rc::Rc;
 
 use argo_parser::Node;
 
@@ -18,6 +20,8 @@ pub(crate) type Build = fn(String, Node, &str, Vec<ArtifactValue>) -> Expanded;
 pub(crate) struct Cursor {
     /// The step or task name, which names the entries.
     pub name: String,
+    /// The position of the step in its group; zero for a DAG task.
+    pub slot: usize,
     /// The step or task with the scope substituted, before the item is.
     pub node: Node,
     pub template: String,
@@ -27,6 +31,29 @@ pub(crate) struct Cursor {
     pub strict: bool,
     pub next: usize,
     pub build: Build,
+}
+
+/// The entries made so far, in the order they were made, with the node of each once it exists.
+#[derive(Debug, Default)]
+pub(crate) struct Entries {
+    pub list: Vec<Rc<Expanded>>,
+    /// The position of the step of each entry in its group; zero in a DAG.
+    pub slots: Vec<usize>,
+    pub nodes: Vec<Option<usize>>,
+    /// Whether the node of each entry runs its template, rather than ending at once.
+    pub runs: Vec<bool>,
+    /// The entries whose node, or hooks, may still change.
+    pub open: Vec<usize>,
+}
+
+impl Entries {
+    pub fn push(&mut self, slot: usize, entry: Expanded) {
+        self.open.push(self.list.len());
+        self.list.push(Rc::new(entry));
+        self.slots.push(slot);
+        self.nodes.push(None);
+        self.runs.push(false);
+    }
 }
 
 impl Run {

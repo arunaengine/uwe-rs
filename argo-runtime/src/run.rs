@@ -730,14 +730,7 @@ impl Run {
             NodeKind::Dag => self.execute_dag(index),
             NodeKind::Retry => self.continue_retry(index),
             NodeKind::Suspend => self.suspend(index),
-            NodeKind::TaskGroup => {
-                for child in self.nodes[index].children.clone() {
-                    if !self.nodes[child].phase.fulfilled() {
-                        self.reenter(child)?;
-                    }
-                }
-                Ok(())
-            }
+            NodeKind::TaskGroup => self.continue_group(index),
             _ => Ok(()),
         }
     }
@@ -1121,7 +1114,7 @@ impl Run {
             tasks: Vec::new(),
             outcomes: Vec::new(),
             processed: None,
-            expanded: None,
+            entries: None,
             exit_hook: None,
             hooks: Vec::new(),
             depth: call.depth,

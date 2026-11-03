@@ -44,8 +44,6 @@ The official examples of the four languages that uwe runs, each run with plain
 container. On a laptop or workstation every task is a Docker container: see
 [On a laptop with Docker](#on-a-laptop-with-docker).
 
-| Folder | Example | Source |
-|---|---|---|
 | File | Example | Source |
 |---|---|---|
 | `nextflow/main.nf` | `nextflow run hello`, the first example of nextflow.io | [nextflow-io/hello](https://github.com/nextflow-io/hello) 3c2cdc98 |

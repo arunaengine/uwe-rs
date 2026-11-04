@@ -6,7 +6,7 @@
   <img src="docs/uwe.svg" width="128" height="128" alt="The uwe icon: two task boxes joined into one amber result">
 </p>
 
-<h1 align="center">uwe-rs</h1>
+<h1 align="center">A Universal Workflow Executor</h1>
 
 uwe (Universal Workflow Executor) runs Nextflow, Snakemake, CWL and Argo workflows from one Rust binary. It reads all four languages itself, plans them into one task graph, runs every task in a container, and stores every result once, by its content digest. A Snakemake rule and a Nextflow process that run the same command in the same image on the same inputs, without network access, share one cache entry.
 

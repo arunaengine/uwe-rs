@@ -24,108 +24,6 @@ enum Step {
 /// Bound requests retained by the runtime until the executor returns their outcomes.
 const MAX_OUTSTANDING: usize = 128;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use nextflow_evaluator::interpreter::Host;
-
-    struct Silent;
-    impl Host for Silent {
-        fn print(&mut self, _: &str) {}
-    }
-
-    struct Drain;
-    impl Behaviour for Drain {
-        fn run(&mut self, context: &mut Context) -> Result<State, Error> {
-            while context.read(0).is_some() {}
-            Ok(State::Running)
-        }
-    }
-
-    #[test]
-    fn releases_stopped_subscriptions() {
-        let mut network = Network::default();
-        let channel = network.channel(false);
-        let output = network.channel(false);
-        network.add(
-            "take",
-            &[channel],
-            Box::new(crate::operator::Single {
-                kind: crate::operator::Each::Take(1),
-                output,
-            }),
-        );
-        network.add("drain", &[channel], Box::new(Drain));
-        let mut host = Silent;
-        let mut interpreter = Interpreter::new(&mut host);
-        network.ignite(&mut interpreter).unwrap();
-        for _ in 0..100 {
-            for _ in 0..100 {
-                network.channels[channel.0 as usize].write(Message::Value(Value::Null));
-            }
-            network.enqueue(0);
-            network.enqueue(1);
-            network.run(&mut interpreter).unwrap();
-            let Channel::Queue { messages, .. } = &network.channels[channel.0 as usize] else {
-                panic!("queue")
-            };
-            assert!(messages.is_empty());
-        }
-        assert_eq!(network.readers[channel.0 as usize], [1]);
-    }
-
-    #[test]
-    fn yields_factory_values() {
-        struct Count {
-            count: Rc<std::cell::Cell<usize>>,
-        }
-        impl Behaviour for Count {
-            fn run(&mut self, context: &mut Context) -> Result<State, Error> {
-                let Channel::Queue { messages, .. } = &context.channels[0] else {
-                    panic!("queue")
-                };
-                assert!(messages.len() <= 1, "factory emitted ahead of its reader");
-                while let Some(message) = context.read(0) {
-                    let Channel::Queue { messages, .. } = &context.channels[0] else {
-                        panic!("queue")
-                    };
-                    assert!(messages.len() <= 1, "factory retained unread messages");
-                    if matches!(message, Message::Stop) {
-                        return Ok(State::Stopped);
-                    }
-                    self.count.set(self.count.get() + 1);
-                }
-                Ok(State::Running)
-            }
-        }
-        let mut network = Network::default();
-        let output = network.channel(false);
-        network.add(
-            "factory",
-            &[],
-            Box::new(crate::operator::Factory {
-                values: vec![Value::Null; 10_000],
-                output,
-                close: true,
-                failure: None,
-            }),
-        );
-        let count = Rc::new(std::cell::Cell::new(0));
-        network.add(
-            "count",
-            &[output],
-            Box::new(Count {
-                count: count.clone(),
-            }),
-        );
-        let mut host = Silent;
-        let mut interpreter = Interpreter::new(&mut host);
-        network.ignite(&mut interpreter).unwrap();
-        assert_eq!(count.get(), 10_000);
-        assert!(network.running().is_empty());
-    }
-}
-
 /// What a node does with the messages of its inputs.
 pub(crate) trait Behaviour {
     /// Starts the node when the network is ignited; factories emit here.
@@ -571,5 +469,107 @@ impl Network {
             self.queued[index] = true;
             self.waiting.push_back(index);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nextflow_evaluator::interpreter::Host;
+
+    struct Silent;
+    impl Host for Silent {
+        fn print(&mut self, _: &str) {}
+    }
+
+    struct Drain;
+    impl Behaviour for Drain {
+        fn run(&mut self, context: &mut Context) -> Result<State, Error> {
+            while context.read(0).is_some() {}
+            Ok(State::Running)
+        }
+    }
+
+    #[test]
+    fn releases_stopped_subscriptions() {
+        let mut network = Network::default();
+        let channel = network.channel(false);
+        let output = network.channel(false);
+        network.add(
+            "take",
+            &[channel],
+            Box::new(crate::operator::Single {
+                kind: crate::operator::Each::Take(1),
+                output,
+            }),
+        );
+        network.add("drain", &[channel], Box::new(Drain));
+        let mut host = Silent;
+        let mut interpreter = Interpreter::new(&mut host);
+        network.ignite(&mut interpreter).unwrap();
+        for _ in 0..100 {
+            for _ in 0..100 {
+                network.channels[channel.0 as usize].write(Message::Value(Value::Null));
+            }
+            network.enqueue(0);
+            network.enqueue(1);
+            network.run(&mut interpreter).unwrap();
+            let Channel::Queue { messages, .. } = &network.channels[channel.0 as usize] else {
+                panic!("queue")
+            };
+            assert!(messages.is_empty());
+        }
+        assert_eq!(network.readers[channel.0 as usize], [1]);
+    }
+
+    #[test]
+    fn yields_factory_values() {
+        struct Count {
+            count: Rc<std::cell::Cell<usize>>,
+        }
+        impl Behaviour for Count {
+            fn run(&mut self, context: &mut Context) -> Result<State, Error> {
+                let Channel::Queue { messages, .. } = &context.channels[0] else {
+                    panic!("queue")
+                };
+                assert!(messages.len() <= 1, "factory emitted ahead of its reader");
+                while let Some(message) = context.read(0) {
+                    let Channel::Queue { messages, .. } = &context.channels[0] else {
+                        panic!("queue")
+                    };
+                    assert!(messages.len() <= 1, "factory retained unread messages");
+                    if matches!(message, Message::Stop) {
+                        return Ok(State::Stopped);
+                    }
+                    self.count.set(self.count.get() + 1);
+                }
+                Ok(State::Running)
+            }
+        }
+        let mut network = Network::default();
+        let output = network.channel(false);
+        network.add(
+            "factory",
+            &[],
+            Box::new(crate::operator::Factory {
+                values: vec![Value::Null; 10_000],
+                output,
+                close: true,
+                failure: None,
+            }),
+        );
+        let count = Rc::new(std::cell::Cell::new(0));
+        network.add(
+            "count",
+            &[output],
+            Box::new(Count {
+                count: count.clone(),
+            }),
+        );
+        let mut host = Silent;
+        let mut interpreter = Interpreter::new(&mut host);
+        network.ignite(&mut interpreter).unwrap();
+        assert_eq!(count.get(), 10_000);
+        assert!(network.running().is_empty());
     }
 }

@@ -2,9 +2,11 @@
 <!-- Copyright (c) 2026 The uwe Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
-<img src="docs/uwe.svg" width="96" height="96" align="right" alt="The uwe icon: two task boxes joined into one amber result">
+<p align="center">
+  <img src="docs/uwe.svg" width="128" height="128" alt="The uwe icon: two task boxes joined into one amber result">
+</p>
 
-# uwe
+<h1 align="center">uwe-rs</h1>
 
 uwe (Universal Workflow Executor) runs Nextflow, Snakemake, CWL and Argo workflows from one Rust binary. It reads all four languages itself, plans them into one task graph, runs every task in a container, and stores every result once, by its content digest. A Snakemake rule and a Nextflow process that run the same command in the same image on the same inputs, without network access, share one cache entry.
 
@@ -110,21 +112,74 @@ uwe run demo/snakemake/hello.smk
 uwe runs
 ```
 
-The example uses a Debian image and writes greetings to `demo/snakemake/hello/`. The `demo/` folder has examples for every language:
+The example uses a Debian image and writes greetings to `demo/snakemake/hello/`. `uwe help` lists all commands, and `uwe run -help` lists all run options.
+
+## Running workflows
+
+`uwe run` takes a workflow file, a folder or a repository. It tells the language from the file, or from `-lang`. uwe options take one hyphen (`-profile`). Workflow parameters take two (`--outdir`).
+
+### Nextflow
 
 ```sh
 uwe run demo/nextflow/main.nf
-uwe run demo/cwl/hello_world.cwl demo/cwl/hello_world-job.json -default-image debian:stable-slim
-uwe run demo/argo/hello-world.yaml
-```
-
-Pipelines also run straight from a repository:
-
-```sh
+uwe run demo/nextflow/main.nf -resume
 uwe run nf-core/demo -r 1.2.0 -profile test,docker --outdir results
 ```
 
-`uwe help` lists all commands, and `uwe run -help` lists all run options. uwe options take one hyphen (`-profile`), workflow parameters take two (`--outdir`).
+The second run takes all results from the cache. Parameters follow the workflow, like `--outdir results` or `--input samples.csv`. `-profile` picks profiles of `nextflow.config`, `-entry` picks a named workflow, and `-c FILE` adds a Nextflow config file.
+
+### Snakemake
+
+```sh
+uwe run demo/snakemake/hello.smk
+uwe run demo/snakemake/hello.smk hello/Hola.txt
+uwe run demo/snakemake/hello.smk -forcerun collect
+```
+
+Targets, files or rules, follow the Snakefile. `--config name=value` sets config values. `-until`, `-omit-from`, `-forcerun` and `-forceall` work as in Snakemake. Every rule needs a `container:`, or a `-default-image` for those without one.
+
+### CWL
+
+```sh
+uwe run demo/cwl/hello_world.cwl demo/cwl/hello_world-job.json -default-image debian:stable-slim
+uwe run demo/cwl/hello_world.cwl --message "Hola mundo" -default-image debian:stable-slim
+uwe run demo/cwl/scatter-workflow.cwl demo/cwl/scatter-job.yml -default-image debian:stable-slim
+```
+
+The job file, JSON or YAML, follows the CWL document. Inputs can also be given as `--name value`. A tool without a `DockerRequirement` runs in the `-default-image`. Outputs go to the current folder, or to `-output-dir FOLDER`.
+
+### Argo Workflows
+
+```sh
+uwe run demo/argo/hello-world.yaml
+uwe run demo/argo/dag-diamond.yaml
+```
+
+Workflow parameters are given as `--name value`, like `--message "hola mundo"`.
+
+### Where tasks run
+
+Tasks run in local Docker or Podman containers by default. Other executors take the same workflows:
+
+```sh
+uwe run main.nf -executor slurm
+uwe run main.nf -executor kubernetes -kubeconfig ~/.kube/config
+uwe run main.nf -executor tes -tes-server https://tes.example.org
+uwe run main.nf -executor simulator
+```
+
+The simulator plans the whole run and makes placeholder outputs, without running a tool. [Remote executors and staging](docs/remote-executors.md) explains how SLURM, Kubernetes and TES jobs get their files.
+
+### Before and after a run
+
+```sh
+uwe check demo/nextflow/main.nf
+uwe inputs demo/cwl/hello_world.cwl -format text
+uwe runs
+uwe page
+```
+
+`uwe check` finds problems before any task starts. `uwe inputs` lists the inputs of a workflow. `uwe runs` lists recorded runs, and `uwe page` shows them in the browser.
 
 ## Documentation
 

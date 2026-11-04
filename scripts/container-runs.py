@@ -3,6 +3,7 @@
 # Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
+import hashlib
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
@@ -187,9 +188,9 @@ def recorded(folder):
                                  (run[0],)).fetchall()
         attempts = database.execute("SELECT exit_code, reused, image FROM attempts "
                                     "WHERE run = ? ORDER BY task", (run[0],)).fetchall()
-        logs = database.execute("SELECT text FROM logs WHERE run = ? AND stream = 'stdout' "
+        logs = database.execute("SELECT digest FROM logs WHERE run = ? AND stream = 'stdout' "
                                 "ORDER BY task", (run[0],)).fetchall()
-    return run, tasks, attempts, [text.encode() for (text,) in logs]
+    return run, tasks, attempts, [digest for (digest,) in logs]
 
 
 def summary(output, state, count, ran, reused, failed):
@@ -202,8 +203,10 @@ def outputs(folder, name, logs):
     if name == "snakemake":
         assert (folder / "hello/all.txt").read_bytes() == (FIXTURES / "snakemake_hello.txt").read_bytes()
     elif name in ("nextflow", "argo"):
-        expected = (FIXTURES / f"{name}_stdout.txt").read_bytes()
-        assert b"".join(sorted(logs)) == expected, (logs, expected)
+        # Each task prints one line of the fixture. Deferred logs keep only their digest.
+        expected = sorted(f"sha256:{hashlib.sha256(line).hexdigest()}" for line in
+                          (FIXTURES / f"{name}_stdout.txt").read_bytes().splitlines(keepends=True))
+        assert sorted(logs) == expected, (logs, expected)
     elif name == "cwl":
         found = sorted((folder / "results").glob("*.txt"))
         assert [path.name for path in found] == ["first.txt", "second.txt"], found

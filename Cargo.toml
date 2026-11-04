@@ -91,21 +91,21 @@ boa_engine = { version = "0.22.0", default-features = false, features = [
 ] }
 bytes = "1.12.1"
 calamine = "0.38.0"
-fancy-regex = "0.19.2"
+fancy-regex = "0.20.0"
 flate2 = "1.1.10"
 futures-util = { version = "0.3.34", default-features = false }
-granit-parser = "1.3.0"
+granit-parser = "2.1.0"
 # Git over HTTPS in Rust, for repository sources and Argo git artifacts: no git program.
-gix = { version = "0.89.0", default-features = false, features = [
+gix = { version = "0.90.0", default-features = false, features = [
     "blocking-http-transport-reqwest-rust-tls",
     "sha1",
 ] }
 http = "1.5.0"
 indexmap = "2.14.2"
 jiff = "0.2.38"
-jsonschema = { version = "0.58.6", default-features = false }
-k8s-openapi = { version = "0.28.0", features = ["latest"] }
-kube = { version = "4.2.0", default-features = false, features = [
+jsonschema = { version = "0.60.2", default-features = false }
+k8s-openapi = { version = "0.29.0", features = ["latest"] }
+kube = { version = "5.0.0", default-features = false, features = [
     "client",
     "rustls-tls",
     "aws-lc-rs",
@@ -133,22 +133,22 @@ rattler_solve = { version = "12.0.3", default-features = false, features = [
     "resolvo",
 ] }
 rattler_repodata_gateway = { version = "0.38.1", features = ["gateway"] }
-saphyr = "0.1.0"
+saphyr = "0.3.3"
 reqwest = { version = "0.13.5", default-features = false, features = [
     "blocking",
     "rustls",
 ] }
 reqsign-azure-storage = { version = "3.3.0", default-features = false }
 reqsign-core = { version = "3.3.2", default-features = false }
-ruff_python_ast = "=0.0.17"
-ruff_python_parser = "=0.0.17"
-ruff_text_size = "=0.0.17"
-rusqlite = { version = "0.40.2", features = ["bundled", "fallible_uint"] }
+ruff_python_ast = "=0.0.20"
+ruff_python_parser = "=0.0.20"
+ruff_text_size = "=0.0.20"
+rusqlite = { version = "0.41.1", features = ["bundled", "fallible_uint"] }
 rustix = { version = "1.1.5", default-features = false, features = [
     "fs",
     "std",
 ] }
-saphyr-parser = "0.1.0"
+saphyr-parser = "0.3.3"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_jcs = "0.2.0"
 sha1 = { version = "0.11.0", default-features = false }

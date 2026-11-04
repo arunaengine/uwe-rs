@@ -244,7 +244,7 @@ fn problem(error: &ValidationError<'_>, simulated: bool, assumes_values: bool) -
             (at, message)
         }
         Kind::Enum { options } => {
-            let options: Vec<String> = match options {
+            let options: Vec<String> = match &**options {
                 Json::Array(options) => options.iter().map(plain).collect(),
                 other => vec![plain(other)],
             };

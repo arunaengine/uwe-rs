@@ -8,9 +8,9 @@
 
 <h1 align="center">A <ins>U</ins>niversal <ins>W</ins>orkflow <ins>E</ins>xecutor</h1>
 
-uwe (Universal Workflow Executor) runs Nextflow, Snakemake, CWL and Argo workflows from one Rust binary. It reads all four languages itself, plans them into one task graph, runs every task in a container, and stores every result once, by its content digest. A Snakemake rule and a Nextflow process that run the same command in the same image on the same inputs, without network access, share one cache entry.
+uwe (Universal Workflow Executor) runs [Nextflow](https://www.nextflow.io), [Snakemake](https://snakemake.github.io), [CWL](https://www.commonwl.org) and [Argo](https://argoproj.github.io/workflows/) workflows from a single Rust binary. It reads all four languages itself, plans them into one task graph, runs every task in a container, and stores every result once, by its content digest. A Snakemake rule and a Nextflow process that run the same command in the same image on the same inputs, without network access, share one cache entry.
 
-The machine that runs uwe needs no Python, Groovy, JavaScript or Java. A static Linux build is a single file. The repository is called uwe-rs, the command is `uwe`.
+The machine that runs uwe needs no Python, Groovy, JavaScript or Java. A static Linux build is a single file.
 
 ```console
 $ uwe run hello.smk
@@ -30,11 +30,11 @@ Done in 4s: 6 tasks, 6 ran, 0 from the cache, 0 failed
 
 ## Why
 
-Bioinformatics has many workflow languages, and each has its own strengths and weaknesses. I kept running into the same problems with them. I was also annoyed that some of the useful features were only available in cloud offerings, or were paid features tied to API keys.
+Bioinformatics and science in general has many workflow languages, and each has its own strengths and weaknesses. I kept running into the same problems with them and was always annoyed by their lack of compatibility. I was also annoyed that some of the useful features were only available in cloud offerings, or were paid features tied to API keys.
 
 Most engines have limited or uneven support for containers and Kubernetes, or they need a shared working directory. Almost none can use several cloud storage providers at once, for example two different S3 services. Caches belong to one language or even to one workflow, so the same tool with the same inputs runs again just because a different workflow called it. So I started an experiment: can one Rust binary do all of that?
 
-So far it can. A Snakemake rule and a Nextflow process that run the same command in the same image on the same inputs share one cache entry. A run moves from a laptop to a cluster or the cloud without changes to the workflow. Every run can be repeated later with its recorded inputs, images and code. And every task runs in a container, without exceptions, which makes runs reproducible and supports the FAIR principles.
+So far it looks like it can. A Snakemake rule and a Nextflow process that run the same command in the same image on the same inputs share one cache entry. A run moves from a laptop to a cluster or the cloud without changes to the workflow. Every run can be repeated later with its recorded inputs, images and code. And every task runs in a container, without exceptions, which makes runs reproducible and supports the FAIR principles.
 
 ## What it does
 
@@ -42,10 +42,10 @@ So far it can. A Snakemake rule and a Nextflow process that run the same command
 
 | Language | Supported |
 | --- | --- |
-| Nextflow DSL2 | Processes, workflows, channels and operators, configs and profiles, `publishDir`, `storeDir` and `-entry`. Groovy is evaluated in Rust, without a JVM. |
-| Snakemake | Rules, wildcards, checkpoints, shadow rules, embedded Python, lifecycle hooks, yte and jinja2 templates, and `cwl:` rules, which use the CWL runtime of uwe. Python is evaluated in Rust. |
-| CWL | CommandLineTools and workflows with scatter, `when`, `valueFrom`, secondary files, and JavaScript expressions through the Boa engine, without Node.js. |
-| Argo Workflows | Steps, DAGs, loops, conditions, artifacts, retries, timeouts, exit hooks, mutexes, semaphores, suspend and resume, sidecars and daemon steps. |
+| [Nextflow](https://www.nextflow.io) DSL2 | Processes, workflows, channels and operators, configs and profiles, `publishDir`, `storeDir` and `-entry`. Groovy is evaluated in Rust, without a JVM. |
+| [Snakemake](https://snakemake.github.io) | Rules, wildcards, checkpoints, shadow rules, embedded Python, lifecycle hooks, yte and jinja2 templates, and `cwl:` rules, which use the CWL runtime of uwe. Python is evaluated in Rust. |
+| [CWL](https://www.commonwl.org) | CommandLineTools and workflows with scatter, `when`, `valueFrom`, secondary files, and JavaScript expressions through the Boa engine, without Node.js. |
+| [Argo Workflows](https://argoproj.github.io/workflows/) | Steps, DAGs, loops, conditions, artifacts, retries, timeouts, exit hooks, mutexes, semaphores, suspend and resume, sidecars and daemon steps. |
 
 Each language is a native subset, not a wrapper around the original engine. `uwe check` tells you before a run whether a workflow uses something uwe does not support.
 
@@ -197,7 +197,7 @@ uwe page
 
 ## Status
 
-uwe is young. It runs real pipelines such as nf-core/demo, locally and on SLURM, but each language is a subset of the original, so check a workflow with `uwe check` before you rely on it. [What uwe supports](docs/support.md) lists what is tested and how. Not every combination of executor, storage provider and container engine has been tested on live systems yet.
+uwe is still an experiment. It runs real pipelines such as some nf-core pipelines, locally and on SLURM, but each language is a subset of the original, so check a workflow with `uwe check` before you rely on it. [What uwe supports](docs/support.md) lists what is tested and how. Not every combination of executor, storage provider and container engine has been tested on live systems yet.
 
 ## License
 

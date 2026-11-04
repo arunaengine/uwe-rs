@@ -11,7 +11,7 @@ Thanks for helping with uwe. This page lists what a change needs before it is se
 Install Rust with [rustup](https://rustup.rs), Docker or Podman, Python 3, and [just](https://github.com/casey/just). The pinned toolchain in [rust-toolchain.toml](rust-toolchain.toml) is fetched on the first build. Formatting and Clippy use the pinned nightly named in the [justfile](justfile):
 
 ```sh
-rustup toolchain install nightly-2026-09-14 --component rustfmt,clippy
+rustup toolchain install nightly-2026-11-03 --component rustfmt,clippy
 ```
 
 ## Check a change

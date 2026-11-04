@@ -27,14 +27,14 @@ jobs:
           persist-credentials: false
       - name: Install pinned toolchains
         run: |
-          rustup toolchain install 1.97.1 --profile minimal
-          rustup toolchain install nightly-2026-09-14 --profile minimal --component rustfmt,clippy
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup toolchain install nightly-2026-11-03 --profile minimal --component rustfmt,clippy
       - name: Fetch locked dependencies
         if: matrix.check != 'format'
-        run: cargo +1.97.1 fetch --locked
+        run: cargo +1.99.1 fetch --locked
       - name: Formatting
         if: matrix.check == 'format'
-        run: cargo +nightly-2026-09-14 fmt --all -- --check
+        run: cargo +nightly-2026-11-03 fmt --all -- --check
       - name: Style
         if: matrix.check == 'format'
         run: |
@@ -43,16 +43,16 @@ jobs:
           python3 scripts/dev/check_style.py
       - name: Clippy
         if: matrix.check == 'clippy'
-        run: cargo +nightly-2026-09-14 clippy --offline --locked --workspace --all-targets --all-features -j 2 -- -D warnings
+        run: cargo +nightly-2026-11-03 clippy --offline --locked --workspace --all-targets --all-features -j 2 -- -D warnings
       - name: Build native CWL JavaScript helper
         if: matrix.check == 'tests'
         run: |
           docker info
-          cargo +1.97.1 build --offline --locked -p uwe -j 2
+          cargo +1.99.1 build --offline --locked -p uwe -j 2
           python3 scripts/cwl-js-image.py target/debug/uwe
       - name: Workspace tests
         if: matrix.check == 'tests'
-        run: cargo +1.97.1 test --offline --locked --workspace --all-targets --all-features -j 2
+        run: cargo +1.99.1 test --offline --locked --workspace --all-targets --all-features -j 2
       - name: Package container run binary
         if: matrix.check == 'tests'
         run: |
@@ -69,11 +69,11 @@ jobs:
       - name: Dependency policy
         if: matrix.check == 'deny'
         run: |
-          cargo +1.97.1 install --locked cargo-deny --version 0.20.2
-          cargo +1.97.1 deny --locked check
+          cargo +1.99.1 install --locked cargo-deny --version 0.20.2
+          cargo +1.99.1 deny --locked check
       - name: Doctests
         if: matrix.check == 'doctests'
-        run: cargo +1.97.1 test --offline --locked --workspace --all-features --doc -j 2
+        run: cargo +1.99.1 test --offline --locked --workspace --all-features --doc -j 2
 
   container-runs:
     needs: source

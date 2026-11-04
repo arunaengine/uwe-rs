@@ -42,10 +42,10 @@ jobs:
           sudo apt-get install --no-install-recommends -y build-essential musl-tools cmake binutils file
       - name: Build locked candidate
         run: |
-          rustup toolchain install 1.97.1 --profile minimal
-          rustup target add --toolchain 1.97.1 x86_64-unknown-linux-musl
-          cargo +1.97.1 fetch --locked --target x86_64-unknown-linux-musl
-          nice -n 19 cargo +1.97.1 build --release --offline --locked --target x86_64-unknown-linux-musl -p uwe -j 8
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup target add --toolchain 1.99.1 x86_64-unknown-linux-musl
+          cargo +1.99.1 fetch --locked --target x86_64-unknown-linux-musl
+          nice -n 19 cargo +1.99.1 build --release --offline --locked --target x86_64-unknown-linux-musl -p uwe -j 8
           strip --strip-debug target/x86_64-unknown-linux-musl/release/uwe
           target/x86_64-unknown-linux-musl/release/uwe help
       - name: Build and export native CWL JavaScript helper
@@ -62,7 +62,7 @@ jobs:
           cp -r scripts containers "dist/$package/"
           cp dist/CWL_JS_IMAGE_ID "dist/$package/"
           printf '%s\n' "$GITHUB_SHA" > "dist/$package/SOURCE_REVISION"
-          rustc +1.97.1 -vV > "dist/$package/TOOLCHAIN"
+          rustc +1.99.1 -vV > "dist/$package/TOOLCHAIN"
           sha256sum Cargo.lock > "dist/$package/DEPENDENCIES.sha256"
           file "dist/$package/uwe" > "dist/$package/BINARY.file"
           grep -Eq 'static(-pie)? linked' "dist/$package/BINARY.file"

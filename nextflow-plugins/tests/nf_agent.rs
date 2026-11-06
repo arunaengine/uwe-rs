@@ -181,6 +181,18 @@ fn fails_model_calls() {
 }
 
 #[test]
+fn stops_without_credentials() {
+    // Nextflow stops the run before the model call, whatever the agent's `errorStrategy` says.
+    let directory = pipeline(SCRIPT, "agent.errorStrategy = 'ignore'\n");
+    let (error, printed) = run(directory.path(), false);
+    let error = error.expect("a stopped run");
+    let message = "Missing LLM provider credential for agent model `openai/gpt-5-mini` - set \
+         `agent.apiKey` in the Nextflow configuration, or the `OPENAI_API_KEY` environment \
+         variable; the credential namespace is `openai`";
+    assert!(error.contains(message), "{error}\n{printed:?}");
+}
+
+#[test]
 fn refuses_features() {
     let config = "agent.baseUrl = 'http://127.0.0.1:9/v1'\n";
     let tools = SCRIPT.replace(
@@ -209,6 +221,11 @@ struct Printed(Rc<RefCell<String>>);
 impl Host for Printed {
     fn print(&mut self, text: &str) {
         self.0.borrow_mut().push_str(text);
+    }
+
+    // No credential of the machine reaches the runs.
+    fn environment(&self, _: &str) -> Option<String> {
+        None
     }
 }
 

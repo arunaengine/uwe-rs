@@ -350,10 +350,11 @@ impl Nextflow {
     /// The container tasks of the requests of the network, which are kept until they finish.
     fn tasks(&mut self, requests: Vec<TaskRequest>) -> Result<Vec<Task>, DriverError> {
         let host = self.settings.host.as_mut();
-        let requests: Vec<TaskRequest> = (requests.into_iter())
-            .filter_map(|request| self.calls.ask(request, host))
-            .collect();
-        requests
+        let mut asked = Vec::new();
+        for request in requests {
+            asked.extend(self.calls.ask(request, host).map_err(DriverError::new)?);
+        }
+        asked
             .into_iter()
             .map(|request| {
                 let names = crate::task::secrets(&request.directives).map_err(error)?;

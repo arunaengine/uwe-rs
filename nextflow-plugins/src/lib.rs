@@ -35,6 +35,8 @@ mod nf_snapshot;
 mod nf_sqldb;
 mod nf_storagemetrics;
 mod nf_synapse;
+#[expect(dead_code, reason = "nf-tower, its first user, follows")]
+mod nf_tower;
 mod nf_trino;
 #[path = "validation.rs"]
 mod nf_validation;

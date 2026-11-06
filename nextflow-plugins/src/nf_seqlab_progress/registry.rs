@@ -47,12 +47,10 @@ thread_local! {
 }
 
 /// Forgets the registrations of an earlier run of this thread.
-#[expect(dead_code, reason = "the progress observer uses it")]
 pub(crate) fn clear() {
     REGISTRY.with(|registry| *registry.borrow_mut() = Registry::default());
 }
 
-#[expect(dead_code, reason = "the progress observer uses it")]
 pub(crate) fn snapshot() -> Registry {
     REGISTRY.with(|registry| registry.borrow().clone())
 }

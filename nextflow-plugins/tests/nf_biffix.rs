@@ -137,3 +137,33 @@ fn reports_failure() {
         Some(json!("run_failed"))
     );
 }
+
+#[test]
+fn stops_after_refusal() {
+    let fake =
+        Fake::start(json!([{"match": "/events", "status": 401, "body": {"error": "bad token"}}]));
+    let (directory, finished) = run("main.nf", &fake, "biffix_refused");
+    assert!(finished);
+    assert_eq!(fake.requests().len(), 1, "posting stops after the refusal");
+    assert_eq!(
+        events(directory.path()).len(),
+        9,
+        "the file keeps every event"
+    );
+}
+
+#[test]
+fn splits_rejected_batches() {
+    let fake = Fake::start(json!([{"match": "/events", "status": 413, "body": "too large"}]));
+    let (directory, finished) = run("main.nf", &fake, "biffix_rejected");
+    assert!(finished);
+    let sizes: Vec<usize> = (fake.requests().iter())
+        .map(|request| request.json()["events"].as_array().map_or(0, Vec::len))
+        .collect();
+    let single = sizes.iter().filter(|size| **size == 1).count();
+    assert_eq!(
+        single, 9,
+        "each event is tried alone before it is dropped: {sizes:?}"
+    );
+    assert_eq!(events(directory.path()).len(), 9);
+}

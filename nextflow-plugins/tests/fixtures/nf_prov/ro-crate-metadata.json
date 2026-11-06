@@ -1,0 +1,400 @@
+{
+    "@context": "https://w3id.org/ro/crate/1.1/context",
+    "@graph": [
+        {
+            "@id": "ro-crate-metadata.json",
+            "@type": "CreativeWork",
+            "about": {
+                "@id": "./"
+            },
+            "conformsTo": [
+                {
+                    "@id": "https://w3id.org/ro/crate/1.1"
+                },
+                {
+                    "@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0"
+                }
+            ]
+        },
+        {
+            "@id": "./",
+            "@type": "Dataset",
+            "author": {
+                "@id": "https://orcid.org/0000-0000-0000-0000"
+            },
+            "publisher": {
+                "@id": "https://ror.org/000000000"
+            },
+            "datePublished": "2026-11-06",
+            "conformsTo": [
+                {
+                    "@id": "https://w3id.org/ro/wfrun/process/0.1"
+                },
+                {
+                    "@id": "https://w3id.org/ro/wfrun/workflow/0.1"
+                },
+                {
+                    "@id": "https://w3id.org/ro/wfrun/provenance/0.1"
+                },
+                {
+                    "@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0"
+                }
+            ],
+            "name": "Workflow run of probe-prov",
+            "description": "Tiny probe workflow",
+            "hasPart": [
+                {
+                    "@id": "main.nf"
+                },
+                {
+                    "@id": "https://spdx.org/licenses/MIT"
+                },
+                {
+                    "@id": "nextflow.config"
+                },
+                {
+                    "@id": "file:///LAUNCH/input.txt"
+                },
+                {
+                    "@id": "split/part_00.txt"
+                },
+                {
+                    "@id": "split/part_01.txt"
+                },
+                {
+                    "@id": "split/part_02.txt"
+                },
+                {
+                    "@id": "shout/part_02.up.txt"
+                },
+                {
+                    "@id": "shout/part_01.up.txt"
+                },
+                {
+                    "@id": "shout/part_00.up.txt"
+                }
+            ],
+            "mainEntity": {
+                "@id": "main.nf"
+            },
+            "mentions": [
+                {
+                    "@id": "#1249a800-d04e-4200-889a-50e986f1b13e"
+                },
+                {
+                    "@id": "#task/ebeb1580730eca9136be4403bf992a51"
+                },
+                {
+                    "@id": "#task/65e1361a534a87c72538a461fe50c888"
+                },
+                {
+                    "@id": "#task/0a5742999b23d15aa6cfd2f0a8e79ed5"
+                },
+                {
+                    "@id": "#task/cfd82fd271ef1f2d74d39a75879d0ec4"
+                },
+                {
+                    "@id": "#task/ebeb1580730eca9136be4403bf992a51/part_00.txt"
+                },
+                {
+                    "@id": "#task/ebeb1580730eca9136be4403bf992a51/part_01.txt"
+                },
+                {
+                    "@id": "#task/ebeb1580730eca9136be4403bf992a51/part_02.txt"
+                },
+                {
+                    "@id": "#task/65e1361a534a87c72538a461fe50c888/part_02.up.txt"
+                },
+                {
+                    "@id": "#task/0a5742999b23d15aa6cfd2f0a8e79ed5/part_01.up.txt"
+                },
+                {
+                    "@id": "#task/cfd82fd271ef1f2d74d39a75879d0ec4/part_00.up.txt"
+                },
+                {
+                    "@id": "#publish/ebeb1580730eca9136be4403bf992a51/part_00.txt"
+                },
+                {
+                    "@id": "#publish/ebeb1580730eca9136be4403bf992a51/part_01.txt"
+                },
+                {
+                    "@id": "#publish/ebeb1580730eca9136be4403bf992a51/part_02.txt"
+                },
+                {
+                    "@id": "#publish/65e1361a534a87c72538a461fe50c888/part_02.up.txt"
+                },
+                {
+                    "@id": "#publish/0a5742999b23d15aa6cfd2f0a8e79ed5/part_01.up.txt"
+                },
+                {
+                    "@id": "#publish/cfd82fd271ef1f2d74d39a75879d0ec4/part_00.up.txt"
+                }
+            ],
+            "license": "https://spdx.org/licenses/MIT"
+        },
+        {
+            "@id": "https://w3id.org/ro/wfrun/process/0.1",
+            "@type": "CreativeWork",
+            "name": "Process Run Crate",
+            "version": "0.1"
+        },
+        {
+            "@id": "https://w3id.org/ro/wfrun/workflow/0.1",
+            "@type": "CreativeWork",
+            "name": "Workflow Run Crate",
+            "version": "0.1"
+        },
+        {
+            "@id": "https://w3id.org/ro/wfrun/provenance/0.1",
+            "@type": "CreativeWork",
+            "name": "Provenance Run Crate",
+            "version": "0.1"
+        },
+        {
+            "@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0",
+            "@type": "CreativeWork",
+            "name": "Workflow RO-Crate",
+            "version": "1.0"
+        },
+        {
+            "@id": "main.nf",
+            "@type": [
+                "File",
+                "SoftwareSourceCode",
+                "ComputationalWorkflow",
+                "HowTo"
+            ],
+            "conformsTo": {
+                "@id": "https://bioschemas.org/profiles/ComputationalWorkflow/1.0-RELEASE"
+            },
+            "name": "probe-prov",
+            "description": "Tiny probe workflow",
+            "programmingLanguage": {
+                "@id": "https://w3id.org/workflowhub/workflow-ro-crate#nextflow"
+            },
+            "license": "MIT",
+            "encodingFormat": "application/nextflow",
+            "runtimePlatform": "Nextflow 26.04.6",
+            "hasPart": [
+                {
+                    "@id": "#module/SHOUT"
+                },
+                {
+                    "@id": "#module/SPLIT"
+                }
+            ],
+            "input": [
+                {
+                    "@id": "#param/input"
+                },
+                {
+                    "@id": "#param/greeting"
+                },
+                {
+                    "@id": "#param/count"
+                }
+            ],
+            "output": [
+                
+            ],
+            "step": [
+                {
+                    "@id": "#process-step/SPLIT"
+                },
+                {
+                    "@id": "#process-step/SHOUT"
+                }
+            ]
+        },
+        {
+            "@id": "https://w3id.org/workflowhub/workflow-ro-crate#nextflow",
+            "@type": "ComputerLanguage",
+            "name": "Nextflow",
+            "identifier": "https://www.nextflow.io/",
+            "url": "https://www.nextflow.io/",
+            "version": "26.04.6"
+        },
+        {
+            "@id": "main.nf#software-application",
+            "@type": "SoftwareApplication",
+            "name": "Nextflow 26.04.6"
+        },
+        {
+            "@id": "#module/SHOUT",
+            "@type": "SoftwareApplication",
+            "name": "SHOUT",
+            "url": "file:///LAUNCH/main.nf"
+        },
+        {
+            "@id": "#module/SPLIT",
+            "@type": "SoftwareApplication",
+            "name": "SPLIT",
+            "url": "file:///LAUNCH/main.nf"
+        },
+        {
+            "@id": "#param/input",
+            "@type": "FormalParameter",
+            "additionalType": "Text",
+            "conformsTo": {
+                "@id": "https://bioschemas.org/profiles/FormalParameter/1.0-RELEASE"
+            },
+            "name": "input"
+        },
+        {
+            "@id": "#param/greeting",
+            "@type": "FormalParameter",
+            "additionalType": "Text",
+            "conformsTo": {
+                "@id": "https://bioschemas.org/profiles/FormalParameter/1.0-RELEASE"
+            },
+            "name": "greeting"
+        },
+        {
+            "@id": "#param/count",
+            "@type": "FormalParameter",
+            "additionalType": "Number",
+            "conformsTo": {
+                "@id": "https://bioschemas.org/profiles/FormalParameter/1.0-RELEASE"
+            },
+            "name": "count"
+        },
+        {
+            "@id": "#process-step/SPLIT",
+            "@type": "HowToStep",
+            "workExample": null,
+            "position": 1
+        },
+        {
+            "@id": "#process-step/SHOUT",
+            "@type": "HowToStep",
+            "workExample": null,
+            "position": 2
+        },
+        {
+            "@id": "main.nf#organize",
+            "@type": "OrganizeAction",
+            "agent": {
+                "@id": "https://orcid.org/0000-0000-0000-0000"
+            },
+            "instrument": {
+                "@id": "main.nf#software-application"
+            },
+            "name": "Run of Nextflow 26.04.6",
+            "object": [
+                {
+                    "@id": "#process-control/SPLIT"
+                },
+                {
+                    "@id": "#process-control/SHOUT"
+                }
+            ],
+            "result": {
+                "@id": "#1249a800-d04e-4200-889a-50e986f1b13e"
+            },
+            "startTime": "2026-11-06T10:22:01.778900519+01:00",
+            "endTime": "2026-11-06T10:22:02.859227393+01:00"
+        },
+        {
+            "@id": "#1249a800-d04e-4200-889a-50e986f1b13e",
+            "@type": "CreateAction",
+            "agent": {
+                "@id": "https://orcid.org/0000-0000-0000-0000"
+            },
+            "name": "Nextflow workflow run 1249a800-d04e-4200-889a-50e986f1b13e",
+            "startTime": "2026-11-06T10:22:01.778900519+01:00",
+            "endTime": "2026-11-06T10:22:02.859227393+01:00",
+            "instrument": {
+                "@id": "main.nf"
+            },
+            "object": [
+                {
+                    "@id": "#param/input/value"
+                },
+                {
+                    "@id": "#param/greeting/value"
+                },
+                {
+                    "@id": "#param/count/value"
+                },
+                {
+                    "@id": "file:///LAUNCH/input.txt"
+                }
+            ],
+            "result": [
+                {
+                    "@id": "split/part_00.txt"
+                },
+                {
+                    "@id": "split/part_01.txt"
+                },
+                {
+                    "@id": "split/part_02.txt"
+                },
+                {
+                    "@id": "shout/part_02.up.txt"
+                },
+                {
+                    "@id": "shout/part_01.up.txt"
+                },
+                {
+                    "@id": "shout/part_00.up.txt"
+                }
+            ]
+        },
+        {
+            "@id": "https://orcid.org/0000-0000-0000-0000",
+            "@type": "Person",
+            "name": "Test Agent",
+            "contactPoint": {
+                "@id": "mailto:agent@example.org"
+            },
+            "affiliation": {
+                "@id": "https://ror.org/000000000"
+            }
+        },
+        {
+            "@id": "https://ror.org/000000000",
+            "@type": "Organization",
+            "name": "Test Org"
+        },
+        {
+            "@id": "mailto:agent@example.org",
+            "@type": "ContactPoint",
+            "email": "agent@example.org",
+            "url": "https://orcid.org/0000-0000-0000-0000"
+        },
+        {
+            "@id": "https://spdx.org/licenses/MIT",
+            "@type": "CreativeWork"
+        },
+        {
+            "@id": "nextflow.config",
+            "@type": "File",
+            "name": "Resolved Nextflow configuration",
+            "description": "The resolved Nextflow configuration for the workflow run.",
+            "encodingFormat": "text/plain"
+        },
+        {
+            "@id": "#param/input/value",
+            "@type": "PropertyValue",
+            "exampleOfWork": {
+                "@id": "#param/input"
+            },
+            "name": "input",
+            "value": "file:///LAUNCH/input.txt"
+        },
+        {
+            "@id": "#param/greeting/value",
+            "@type": "PropertyValue",
+            "exampleOfWork": {
+                "@id": "#param/greeting"
+            },
+            "name": "greeting",
+            "value": "hello"
+        },
+        {
+            "@id": "#param/count/value",
+            "@type": "PropertyValue",
+            "exampleOfWork": {
+                "@id": "#param/count"
+            },

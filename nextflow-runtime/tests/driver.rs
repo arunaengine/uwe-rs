@@ -166,6 +166,24 @@ fn passes_placement_hints() {
     assert_eq!(options["accelerator"]["type"], "nvidia.com");
 }
 
+/// The HTCondor and PBS executors get all cluster options of their schedulers, like Gadi's.
+#[test]
+fn passes_cluster_options() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let script = "process P {\n script:\n 'true'\n}\nworkflow { P() }";
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    let config =
+        "process {\n executor = 'pbspro'\n clusterOptions = '-P ab12 -l storage=gdata/ab12'\n}\n";
+    std::fs::write(directory.path().join("nextflow.config"), config).expect("writes the config");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        ..Launch::default()
+    };
+    let graph = run(directory.path(), launch);
+    let options = &graph.nodes[0].task.resources.options;
+    assert_eq!(options["clusterOptions"], "-P ab12 -l storage=gdata/ab12");
+}
+
 #[test]
 fn builds_task_graph() {
     let directory = tempfile::tempdir().expect("a temporary directory");

@@ -54,7 +54,8 @@ pub struct Arguments {
     pub forceall: bool,
     /// `-rerun-triggers`: Snakemake checks that can require existing outputs to run again.
     pub rerun_triggers: Option<Vec<String>>,
-    /// `-executor simulator|local|tes|slurm|kubernetes`; `None` uses config, else local for runs.
+    /// `-executor simulator|local|tes|slurm|kubernetes|aws-batch`; `None` uses config, else
+    /// local for runs.
     pub executor: Option<String>,
     /// `-graph file`: where to write the execution graph.
     pub graph: Option<PathBuf>,
@@ -635,7 +636,10 @@ const OPTIONS: &[(&str, &[&str])] = &[
     ),
     ("-forceall", &["run", "graph", "check", "check-order"]),
     ("-rerun-triggers <a,b>", &["run"]),
-    ("-executor <simulator|local|tes|slurm|kubernetes>", BACKEND),
+    (
+        "-executor <simulator|local|tes|slurm|kubernetes|aws-batch>",
+        BACKEND,
+    ),
     (
         "-store <folder|address>",
         &[

@@ -35,7 +35,14 @@ const SECTIONS: &[&str] = &[
 ];
 
 /// The executors that `-executor` and `default` of `[executor]` may name.
-pub(crate) const EXECUTORS: &[&str] = &["simulator", "local", "tes", "slurm", "kubernetes"];
+pub(crate) const EXECUTORS: &[&str] = &[
+    "simulator",
+    "local",
+    "tes",
+    "slurm",
+    "kubernetes",
+    "aws-batch",
+];
 
 /// What the config files set up for a command; the default is what no config file sets up.
 #[derive(Default)]
@@ -124,6 +131,8 @@ pub struct Executors {
     /// `[executor.kubernetes] kubedal_data_node` and the other kubedal settings, for
     /// `staging = "kubedal"`.
     pub kubernetes_kubedal: Option<kubernetes_executor::Kubedal>,
+    /// `[executor.aws-batch]`: the jobs, their staging root and their helper.
+    pub aws_batch: crate::aws_batch::Config,
 }
 
 /// A site of `[executor.tes.sites.<name>]`: a TES server, and the address prefixes or folders
@@ -151,8 +160,12 @@ impl Executors {
             "tes",
             "slurm",
             "kubernetes",
+            "aws-batch",
         ];
         section.only(&keys)?;
+        if let Some(batch) = section.table("aws-batch")? {
+            settings.aws_batch = crate::aws_batch::Config::read(&batch)?;
+        }
         if let Some(local) = section.table("local")? {
             local.only(&["engine", "cpus", "memory_bytes"])?;
             settings.engine = local.text("engine")?;
@@ -455,7 +468,7 @@ fn helper(slurm: &Table<'_>) -> Result<Option<slurm_executor::Helper>, ConfigErr
 
 /// The file of `helper_file`, or else the running binary, unless the table names where the jobs
 /// get the binary already.
-fn helper_file(table: &Table<'_>, named: bool) -> Result<Option<PathBuf>, ConfigError> {
+pub(crate) fn helper_file(table: &Table<'_>, named: bool) -> Result<Option<PathBuf>, ConfigError> {
     match (table.text("helper_file")?, named) {
         (Some(_), true) => {
             let message = "takes no other helper setting; name one place for the binary";

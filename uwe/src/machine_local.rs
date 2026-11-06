@@ -46,7 +46,7 @@ pub(super) fn engine(
             report.add(State::Ready, part, text);
         }
         Err(error) => match arguments.executor.as_deref() {
-            Some(executor @ ("tes" | "slurm" | "kubernetes")) => report.add(
+            Some(executor @ ("tes" | "slurm" | "kubernetes" | "aws-batch")) => report.add(
                 State::NotSetUp,
                 part,
                 format!(

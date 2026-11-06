@@ -8,6 +8,7 @@ pub mod forms;
 pub mod hosted;
 
 mod arguments;
+mod aws_batch;
 mod changes;
 mod check;
 mod clean;

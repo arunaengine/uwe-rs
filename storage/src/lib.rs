@@ -7,6 +7,7 @@ pub mod aws;
 mod azure;
 mod backend;
 mod blocking;
+pub mod cas;
 pub mod cbor;
 mod downloads;
 pub mod drs;
@@ -234,6 +235,7 @@ impl Storage {
             Provider::new(Source::Lakefs, prefixes(&["lakefs://"])),
             Provider::new(Source::Lamin, prefixes(&["lamin://"])),
             Provider::new(Source::Quilt, prefixes(&["quilt+s3://"])),
+            Provider::new(Source::Cas, prefixes(&["cas://"])),
         ];
         Storage {
             inner: Arc::new(Inner {

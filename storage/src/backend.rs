@@ -8,6 +8,7 @@ use base64::Engine;
 use config_file::{ConfigError, Origin, Secret};
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 
+use crate::cas::{self, Cas};
 use crate::drs::{self, Drs};
 use crate::error::Problem;
 use crate::folder::Folder;
@@ -51,6 +52,8 @@ pub(crate) enum Source {
     Lamin,
     /// `quilt+s3` addresses that no provider serves, with the AWS settings of the environment.
     Quilt,
+    /// `cas` addresses that no provider serves, with the `cas` scope of a Nextflow config.
+    Cas,
 }
 
 impl Source {
@@ -70,6 +73,7 @@ impl Source {
                     Source::Lakefs => "lakefs",
                     Source::Lamin => "lamin",
                     Source::Quilt => "quilt",
+                    Source::Cas => "cas",
                     Source::Configured(_) => unreachable!(),
                 }
                 .into(),
@@ -133,6 +137,17 @@ impl Source {
                 value.endpoint.clone().unwrap_or_default(),
                 value.access_key.clone().unwrap_or_default(),
             ],
+            Kind::Cas(value) => {
+                let mut identity =
+                    vec!["cas".to_owned(), value.writable.clone().unwrap_or_default()];
+                identity.extend(
+                    value
+                        .stores
+                        .iter()
+                        .map(|(alias, location)| format!("{alias}={location}")),
+                );
+                identity
+            }
             Kind::Quilt(value) => vec![
                 "quilt".into(),
                 value
@@ -171,6 +186,7 @@ impl Source {
             Source::Lakefs => "lakeFS, with the lakefs scope of the Nextflow config".to_owned(),
             Source::Lamin => "LaminDB, with the API key of the environment".to_owned(),
             Source::Quilt => "Quilt packages, with the AWS settings of the environment".to_owned(),
+            Source::Cas => "the content-addressed stores of the cas scope".to_owned(),
         }
     }
 }
@@ -189,6 +205,7 @@ pub(crate) enum Backend {
     Lakefs(Lakefs),
     Lamin(Lamin),
     Quilt(Quilt),
+    Cas(Cas),
 }
 
 /// A provider's client and the secrets that its messages must not show.
@@ -216,6 +233,7 @@ impl Connection {
             Source::Lakefs => Backend::Lakefs(Lakefs::new(lakefs::scope()).map_err(failed)?),
             Source::Lamin => Backend::Lamin(Lamin::new(lamin::scope()).map_err(failed)?),
             Source::Quilt => Backend::Quilt(Quilt::new(quilt::environment()).map_err(failed)?),
+            Source::Cas => Backend::Cas(Cas::new(cas::scope()).map_err(failed)?),
             Source::Configured(settings) => match &settings.kind {
                 Kind::S3(s3) => {
                     let service = s3_service(s3, settings, &mut secrets)?;
@@ -308,6 +326,14 @@ impl Connection {
                     };
                     Backend::Lakefs(Lakefs::new(options).map_err(failed)?)
                 }
+                Kind::Cas(settings) => {
+                    let options = cas::Options {
+                        stores: settings.stores.clone(),
+                        resolve: settings.resolve.clone(),
+                        writable: settings.writable.clone(),
+                    };
+                    Backend::Cas(Cas::new(options).map_err(failed)?)
+                }
                 Kind::Quilt(s3) => {
                     let service = s3_service(s3, settings, &mut secrets)?;
                     Backend::Quilt(Quilt::new(service).map_err(failed)?)
@@ -372,6 +398,7 @@ impl Connection {
             Backend::Lakefs(lakefs) => lakefs.stat(target).await,
             Backend::Lamin(lamin) => lamin.stat(target).await,
             Backend::Quilt(quilt) => quilt.stat(target).await,
+            Backend::Cas(cas) => cas.stat(target).await,
         }
     }
 
@@ -391,6 +418,7 @@ impl Connection {
             Backend::Lakefs(lakefs) => lakefs.list(target).await,
             Backend::Lamin(lamin) => lamin.list(target).await,
             Backend::Quilt(quilt) => quilt.list(target).await,
+            Backend::Cas(cas) => cas.list(target).await,
         }
     }
 
@@ -415,6 +443,7 @@ impl Connection {
             Backend::Lakefs(lakefs) => lakefs.download(target, file).await,
             Backend::Lamin(lamin) => lamin.download(target, file).await,
             Backend::Quilt(quilt) => quilt.download(target, file).await,
+            Backend::Cas(cas) => cas.download(target, file).await,
         }
     }
 

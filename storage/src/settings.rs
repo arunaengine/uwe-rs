@@ -50,6 +50,7 @@ pub enum Kind {
     Lamin(Lamin),
     /// Quilt packages in S3 buckets, with the settings of an S3 provider.
     Quilt(S3),
+    Cas(Cas),
 }
 
 /// AWS S3, or a service that speaks its API: MinIO, Ceph, Cloudflare R2, RustFS and others.
@@ -187,6 +188,16 @@ pub struct Lamin {
     pub hub_credentials: Option<bool>,
 }
 
+/// Content-addressed stores of nf-blocks: local folders or S3 prefixes by alias.
+#[derive(Clone, Debug, Default)]
+pub struct Cas {
+    pub stores: Vec<(String, String)>,
+    /// The aliases in the order reads look in.
+    pub resolve: Vec<String>,
+    /// The alias that publishing writes to.
+    pub writable: Option<String>,
+}
+
 /// A folder on this machine, which holds the objects of the addresses it serves, like a mirror
 /// of a bucket.
 #[derive(Clone, Debug)]
@@ -195,7 +206,7 @@ pub struct Folder {
 }
 
 /// The `type` of each kind of provider.
-const TYPES: [&str; 13] = [
+const TYPES: [&str; 14] = [
     "s3",
     "google-cloud-storage",
     "azure-blob-storage",
@@ -209,6 +220,7 @@ const TYPES: [&str; 13] = [
     "lakefs",
     "lamin",
     "quilt",
+    "cas",
 ];
 
 impl Settings {
@@ -469,6 +481,21 @@ fn kind_of(name: &str) -> Option<(&'static [&'static str], &'static [&'static st
                 }))
             },
         ),
+        "cas" => (&["stores", "resolve", "writable"], &["cas"], |table| {
+            let mut stores = Vec::new();
+            if let Some(table) = table.table("stores")? {
+                for alias in table.keys() {
+                    if let Some(location) = table.text(alias)? {
+                        stores.push((alias.to_owned(), location));
+                    }
+                }
+            }
+            Ok(Kind::Cas(Cas {
+                stores,
+                resolve: table.texts("resolve")?.unwrap_or_default(),
+                writable: table.text("writable")?,
+            }))
+        }),
         "synapse" => (&["endpoint", "token"], &["syn"], |table| {
             Ok(Kind::Synapse(Synapse {
                 endpoint: web_address(table, "endpoint")?,

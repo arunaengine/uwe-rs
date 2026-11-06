@@ -29,6 +29,7 @@ mod nf_gc;
 mod nf_iridanext;
 mod nf_irods;
 mod nf_jev;
+mod nf_labrobotics;
 mod nf_lakefs;
 mod nf_lamin;
 mod nf_logsaver;
@@ -72,6 +73,7 @@ use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::value::{Native, Object, State as ObjectState, Value};
 
 use crate::catalogue::{Kind, Plugin, State};
+pub use crate::nf_labrobotics::Lab;
 
 /// Parameters as nf-schema validates them, according to the selected plugin version.
 pub fn schema_params(params: &Value, config: &Config) -> Value {
@@ -143,6 +145,13 @@ pub fn cleanup(config: &Config) -> bool {
     let boost =
         configured.iter().any(|id| id == "nf-boost") && nf_boost::cleanup(config).unwrap_or(false);
     boost || nf_gc::mode(config).is_ok_and(|mode| mode.is_some())
+}
+
+/// What the `labrobotics` executor of nf-labrobotics adds to its tasks, when the config names
+/// the plugin.
+pub fn labrobotics(config: &Config, session: &str) -> Option<Lab> {
+    let configured = catalogue::configured(config);
+    (configured.iter().any(|id| id == "nf-labrobotics")).then(|| Lab::of(config, session))
 }
 
 /// The functions of a plugin that uwe runs, or `None` for a plugin uwe does not run.

@@ -221,6 +221,17 @@ a run of a config whose `plugins` block names nf-jev starts, where the plugin do
 include is loaded. A network error after three attempts gives the error's text where the
 plugin gives `null`.
 
+## src/nf_labrobotics.rs
+
+nf-labrobotics 0.1.0 needs Nextflow 26.10, so it was specified, not run. Its `labrobotics`
+executor runs a task with uwe's own executor; for a script task whose `executor` directive is
+`labrobotics`, the driver adds `NF_LAB_ADAPTER`, `NF_LAB_POLL` and `NF_LAB_GRACE` of the
+`labrobotics` scope, `NF_LAB_SESSION` (uwe's session id is the run name), the capability of the
+`hints` directive as `NF_LAB_CAPABILITY` and the `queue` as `NF_LAB_QUEUE`. uwe accepts `hints`
+like the other placement hints, which it reports and ignores. A stopped container task gets
+`SIGTERM` and 10 seconds before it is killed, which gives `labctl` time for its safe stop. The
+plugin's start and end lines are template greetings and are not printed.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

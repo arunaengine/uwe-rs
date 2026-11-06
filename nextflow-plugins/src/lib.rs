@@ -102,9 +102,13 @@ pub fn cgroup_metrics(config: &Config) -> bool {
 }
 
 /// Whether the plugins of the config free the intermediate files of the run while it runs:
-/// nf-gc. A config that it rejects turns it off; its observer reports it.
+/// nf-gc, or nf-boost with `boost.cleanup`. A config that they reject turns it off; their
+/// observers report it.
 pub fn cleanup(config: &Config) -> bool {
-    nf_gc::mode(config).is_ok_and(|mode| mode.is_some())
+    let configured = catalogue::configured(config);
+    let boost =
+        configured.iter().any(|id| id == "nf-boost") && nf_boost::cleanup(config).unwrap_or(false);
+    boost || nf_gc::mode(config).is_ok_and(|mode| mode.is_some())
 }
 
 /// The functions of a plugin that uwe runs, or `None` for a plugin uwe does not run.

@@ -23,6 +23,7 @@ mod nf_drs;
 mod nf_emoji;
 mod nf_fairscape;
 mod nf_fgbio;
+mod nf_fl86;
 mod nf_flowviewer;
 mod nf_gc;
 mod nf_iridanext;

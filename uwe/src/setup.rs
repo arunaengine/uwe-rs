@@ -45,6 +45,8 @@ pub(crate) const EXECUTORS: &[&str] = &[
     "google-batch",
     "azure-batch",
     "nomad",
+    "htcondor",
+    "pbs",
 ];
 
 /// What the config files set up for a command; the default is what no config file sets up.
@@ -150,6 +152,9 @@ pub struct Executors {
     pub azure_batch: crate::azure_batch::Config,
     /// `[executor.nomad]`: the agent, the jobs, their staging and helper.
     pub nomad: crate::nomad::Config,
+    /// `[executor.htcondor]` and `[executor.pbs]`: the jobs, their staging and helper.
+    pub htcondor: crate::grid::Config,
+    pub pbs: crate::grid::Config,
 }
 
 /// A site of `[executor.tes.sites.<name>]`: a TES server, and the address prefixes or folders
@@ -181,6 +186,8 @@ impl Executors {
             "google-batch",
             "azure-batch",
             "nomad",
+            "htcondor",
+            "pbs",
         ];
         section.only(&keys)?;
         if let Some(batch) = section.table("aws-batch")? {
@@ -194,6 +201,12 @@ impl Executors {
         }
         if let Some(nomad) = section.table("nomad")? {
             settings.nomad = crate::nomad::Config::read(&nomad)?;
+        }
+        if let Some(htcondor) = section.table("htcondor")? {
+            settings.htcondor = crate::grid::Config::read(&htcondor, false)?;
+        }
+        if let Some(pbs) = section.table("pbs")? {
+            settings.pbs = crate::grid::Config::read(&pbs, true)?;
         }
         if let Some(local) = section.table("local")? {
             local.only(&["engine", "cpus", "memory_bytes"])?;
@@ -489,7 +502,7 @@ fn shared_volume(shared: &Table<'_>) -> Result<kubernetes_executor::Volumes, Con
 
 /// Where the SLURM jobs get the uwe binary: `helper_path` on the nodes, or `helper_url` with
 /// its `helper_sha256`.
-fn helper(slurm: &Table<'_>) -> Result<Option<slurm_executor::Helper>, ConfigError> {
+pub(crate) fn helper(slurm: &Table<'_>) -> Result<Option<slurm_executor::Helper>, ConfigError> {
     let (path, url) = (slurm.text("helper_path")?, slurm.text("helper_url")?);
     let sha256 = slurm.text("helper_sha256")?;
     match (path, url, sha256) {
@@ -759,13 +772,16 @@ impl Setup {
     }
 
     /// Names the task engine for Nextflow metadata and config scope selection.
-    /// Uses the SLURM runtime or this machine's Docker/Podman engine.
+    /// Uses the runtime of the cluster nodes or this machine's Docker/Podman engine.
     pub fn engine_kind(&self, arguments: &Arguments) -> String {
-        engine_kind(
-            arguments.executor.as_deref(),
-            self.slurm_container(arguments),
-            &self.engine(),
-        )
+        let nodes = |config: &crate::grid::Config| config.container.clone();
+        let runtime = match arguments.executor.as_deref() {
+            Some("htcondor") => nodes(&self.executors.htcondor),
+            Some("pbs") => nodes(&self.executors.pbs),
+            _ => Some(self.slurm_container(arguments).to_owned()),
+        };
+        let runtime = runtime.unwrap_or_else(|| "apptainer".to_owned());
+        engine_kind(arguments.executor.as_deref(), &runtime, &self.engine())
     }
 
     /// The container runtime of SLURM jobs: `-slurm-container`, else `container` of
@@ -817,11 +833,11 @@ impl Setup {
     }
 }
 
-/// The kind of the engine that runs the tasks of `executor`: the SLURM runtime `slurm`, or the
-/// engine of this machine, `local`.
+/// The kind of the engine that runs the tasks of `executor`: the runtime of the cluster nodes
+/// `slurm`, or the engine of this machine, `local`.
 fn engine_kind(executor: Option<&str>, slurm: &str, local: &str) -> String {
     match executor {
-        Some("slurm") => slurm.to_owned(),
+        Some("slurm" | "htcondor" | "pbs") => slurm.to_owned(),
         _ if local.contains("podman") => "podman".to_owned(),
         _ => "docker".to_owned(),
     }

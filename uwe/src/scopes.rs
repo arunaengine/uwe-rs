@@ -1,5 +1,5 @@
 //! Fills executor settings that the config file of uwe leaves unset from the scopes of a
-//! Nextflow config: `nomad`, `k8s`, `slurm_no_memory`, `tes` and `tencentcloud`.
+//! Nextflow config: `nomad`, `k8s`, `slurm_no_memory`, `ospool`, `tes` and `tencentcloud`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -470,6 +470,35 @@ pub(crate) fn slurm(config: &Config, executors: &mut crate::setup::Executors) {
         let named = |option: &String| option == "-A" || option.starts_with("--account");
         if !options.iter().any(named) {
             options.push(format!("--account={account}"));
+        }
+    }
+}
+
+/// Warns once for each setting of nf-ospool's `executor.$ospool` that uwe's HTCondor executor
+/// does without, as it keeps its submit files and stages the files of each job itself.
+pub(crate) fn ospool(config: &Config) {
+    let scope = Scope(config);
+    let staged = "uwe stages the files of each job itself";
+    for (name, why) in [
+        (
+            "submitFileDir",
+            "uwe keeps each submit file in the folder of its attempt",
+        ),
+        (
+            "sharedFilesystem",
+            "`staging` of [executor.htcondor] tells how jobs get files",
+        ),
+        ("pathMappings", staged),
+        ("autoStageDirectories", staged),
+        ("stageBinDir", staged),
+        ("unstageOutputs", staged),
+        (
+            "getenv",
+            "uwe gives the jobs only the variables that they need",
+        ),
+    ] {
+        if scope.get(&["executor", "$ospool", name]).is_some() {
+            tracing::warn!("uwe ignores executor.$ospool.{name}: {why}");
         }
     }
 }

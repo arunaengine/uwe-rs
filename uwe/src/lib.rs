@@ -20,6 +20,7 @@ mod failure;
 mod fetched;
 mod git;
 mod google_batch;
+mod grid;
 mod inputs;
 mod insight;
 mod kubernetes;

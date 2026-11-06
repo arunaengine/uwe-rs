@@ -323,12 +323,12 @@ pub fn driver(
         secret_env: !matches!(
             arguments.executor.as_deref(),
             Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
-                | Some("nomad")
+                | Some("nomad" | "htcondor" | "pbs")
         ),
         local_options: !matches!(
             arguments.executor.as_deref(),
             Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
-                | Some("nomad")
+                | Some("nomad" | "htcondor" | "pbs")
         ),
         repository: crate::repository::origin(
             arguments.target.as_deref(),
@@ -372,9 +372,12 @@ pub(crate) const EXECUTORS: &[(&str, &str)] = &[
     ("local", "local"),
     ("awsbatch", "aws-batch"),
     ("azurebatch", "azure-batch"),
+    ("condor", "htcondor"),
     ("google-batch", "google-batch"),
     ("k8s", "kubernetes"),
     ("nomad", "nomad"),
+    ("ospool", "htcondor"),
+    ("pbspro", "pbs"),
     ("slurm", "slurm"),
     ("slurm_no_memory", "slurm"),
     ("tencentcloud-omics", "tes"),
@@ -396,7 +399,7 @@ pub fn pipeline_executor(
         named,
         Some(
             "aws-batch" | "google-batch" | "azure-batch" | "kubernetes" | "nomad" | "slurm" | "tes"
-        )
+        ) | Some("htcondor" | "pbs")
     );
     if language != Language::Nextflow {
         return Ok(None);
@@ -434,6 +437,9 @@ pub fn pipeline_executor(
         let provider = crate::scopes::nomad(&config, &mut setup.executors.nomad)
             .map_err(|message| crate::Failure::usage(format!("uwe: {message}")))?;
         setup.storage = setup.storage.with_providers(provider.into_iter().collect());
+    }
+    if named == Some("htcondor") || picked.as_deref() == Some("htcondor") {
+        crate::scopes::ospool(&config);
     }
     if named == Some("slurm") || picked.as_deref() == Some("slurm") {
         crate::scopes::slurm(&config, &mut setup.executors);

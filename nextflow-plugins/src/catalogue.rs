@@ -195,7 +195,9 @@ pub const PLUGINS: &[Plugin] = &[
     // array jobs or machine details. nf-google: GCS and the `google-batch` executor; no Fusion,
     // array jobs or machine types per process.
     Plugin::new("nf-amazon", Kind::Executor, State::Partial),
-    planned("nf-azure", Kind::Executor),
+    // nf-azure: Blob Storage and the `azure-batch` executor; no Fusion, file shares or VM size
+    // patterns.
+    Plugin::new("nf-azure", Kind::Executor, State::Partial),
     Plugin::new("nf-google", Kind::Executor, State::Partial),
     // Other executors.
     planned("nf-ccloud", Kind::Executor),

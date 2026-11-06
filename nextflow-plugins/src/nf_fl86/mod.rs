@@ -1,5 +1,3 @@
-//! nf-fl86 0.6.4: guards and records a run in `<outdir>/pipeline_info`, and gives
-//! `getAWSSecret` and `call_seqera_action`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

@@ -14,7 +14,7 @@ const LIMIT: usize = 10;
 
 /// Where S3 requests go: the endpoint of `aws.client.endpoint` with path-style addresses, else
 /// the regional virtual-hosted endpoint.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct Store {
     pub access: Access,
     pub endpoint: Option<String>,

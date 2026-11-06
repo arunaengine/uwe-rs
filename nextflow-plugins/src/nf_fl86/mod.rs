@@ -271,7 +271,7 @@ struct Action {
 }
 
 /// The settings that the worker needs.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct Settings {
     beginning: Option<String>,
     completion: Option<String>,

@@ -25,8 +25,11 @@ engine then records the task, which has neither a command nor an image, like the
 `exec:` section. uwe's own cache keys tasks by their image, so answers are kept apart: one file
 per call in `<scratch>/nextflow/agents`, named by the SHA-256 of the task name, model, endpoint,
 messages, output schema and the size and change time of the input files. A run with `-resume`
-reads them for first attempts; `cache false` neither reads nor writes them. Prompts and keys
-are never logged, and addresses in messages leave out credentials.
+reads them for first attempts and sets the time of each file it reads; `uwe clean` removes the
+answers that no kept or ongoing run used since it started. `cache false` neither reads nor
+writes them. A missing or withheld credential stops the run, as in Nextflow, while a wrong
+model id fails only its task. Prompts and keys are never logged, and addresses in messages
+leave out credentials.
 
 ## src/inputs.rs
 

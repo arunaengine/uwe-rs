@@ -41,6 +41,7 @@ mod resume;
 mod revision;
 pub mod run;
 mod runs;
+mod scopes;
 pub mod setup;
 mod slurm;
 mod sources;

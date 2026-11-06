@@ -179,7 +179,6 @@ pub struct Folder {
 }
 
 /// The `type` of each kind of provider.
-const TYPES: [&str; 11] = [
     "s3",
     "google-cloud-storage",
     "azure-blob-storage",

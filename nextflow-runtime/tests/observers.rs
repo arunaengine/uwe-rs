@@ -405,3 +405,49 @@ fn hears_workflow_outputs() {
     };
     assert_eq!(end.outputs, [output]);
 }
+
+/// Fails every run at its end, as nf-snapshot fails a run whose files changed.
+struct Refusing(Rc<RefCell<Vec<Event>>>);
+
+impl Observer for Refusing {
+    fn notify(&mut self, event: &Event) {
+        self.0.borrow_mut().push(event.clone());
+    }
+
+    fn check(&mut self) -> Result<(), String> {
+        Err("nf-snapshot: 1 difference(s) from snapshot".into())
+    }
+}
+
+#[test]
+fn checks_fail_runs() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(directory.path().join("main.nf"), OUTPUTS).expect("writes the script");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        output_dir: Some(directory.path().join("results")),
+        ..Launch::default()
+    };
+    let mut driver = Nextflow::new(&launch, Settings::default()).expect("a driver");
+    let events = Rc::new(RefCell::new(Vec::new()));
+    driver.observe(Box::new(Refusing(events.clone())));
+    let execution = Engine::new(&mut Making).run("main.nf", &mut driver);
+    let error = execution.error.map(|error| error.to_string());
+    assert_eq!(
+        error.as_deref(),
+        Some("nf-snapshot: 1 difference(s) from snapshot")
+    );
+    let events = events.borrow();
+    let ends: Vec<&Event> = (events.iter())
+        .filter(|event| matches!(event, Event::RunEnded(_)))
+        .collect();
+    let [Event::RunEnded(end)] = ends.as_slice() else {
+        panic!("the run ends once: {ends:?}");
+    };
+    assert!(!end.success);
+    assert_eq!(
+        end.error.as_deref(),
+        Some("nf-snapshot: 1 difference(s) from snapshot")
+    );
+}

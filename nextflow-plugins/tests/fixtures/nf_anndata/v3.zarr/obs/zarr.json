@@ -1,0 +1,15 @@
+{
+  "attributes": {
+    "_index": "cell_id",
+    "column-order": [
+      "kind",
+      "flag",
+      "small",
+      "score",
+      "count"
+    ]
+  },
+  "zarr_format": 3,
+  "consolidated_metadata": null,
+  "node_type": "group"
+}

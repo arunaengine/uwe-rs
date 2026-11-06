@@ -3,11 +3,13 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashMap;
+
 use md5::{Digest, Md5};
 use serde_json::Value as JsonValue;
 
-use crate::observer::{End, Start, Task};
-use crate::report_format::{Json, NEXTFLOW_VERSION};
+use crate::observer::{End, Event, Start, Task};
+use crate::report_format::{Json, NEXTFLOW_VERSION, now};
 
 /// The build number and build time of Nextflow 26.04.6, as `workflow.nextflow` shows them.
 pub(crate) const NEXTFLOW_BUILD: i64 = 12646;
@@ -85,6 +87,7 @@ pub(crate) struct Run {
     pub(crate) start: Start,
     /// The MD5 of the main script's text in hex, as Nextflow's `workflow.scriptId`.
     pub(crate) script_id: Option<String>,
+    pub(crate) stats: Stats,
     pub(crate) ending: Option<Ending>,
 }
 
@@ -129,6 +132,7 @@ impl Run {
                 .collect()
         });
         Run {
+            stats: Stats::new(start),
             start: start.clone(),
             script_id,
             ending: None,
@@ -137,6 +141,7 @@ impl Run {
 
     pub(crate) fn end(&mut self, end: &End) {
         self.ending = Some(Ending::of(end));
+        self.stats.ended = true;
     }
 
     /// Nextflow's `workflow` map without `stats`, with times as `time` writes them.
@@ -299,5 +304,336 @@ fn absolute(launch: &str, path: &str) -> String {
     match path.starts_with('/') || path.contains("://") {
         true => path.to_owned(),
         false => format!("{launch}/{}", path.trim_start_matches("./")),
+    }
+}
+
+/// The task counts of a run and of each process, as Nextflow's workflow statistics.
+#[derive(Default)]
+pub(crate) struct Stats {
+    processes: Vec<Counter>,
+    /// Where each task is: its process in `processes` and its last state.
+    tasks: HashMap<i64, (usize, &'static str)>,
+    total: Counter,
+    /// When the counts last changed, in milliseconds since 1970; zero before.
+    changed: i64,
+    succeed_millis: i64,
+    cached_millis: i64,
+    failed_millis: i64,
+    /// CPU milliseconds of the tasks that ran: run time by CPUs.
+    cpu_millis: f64,
+    pub(crate) ended: bool,
+}
+
+/// The counts of one process, or of the whole run.
+#[derive(Clone, Default)]
+struct Counter {
+    name: String,
+    hash: Option<String>,
+    task_name: Option<String>,
+    submitted: u64,
+    running: u64,
+    succeeded: u64,
+    cached: u64,
+    failed: u64,
+    retries: u64,
+    load_cpus: u64,
+    load_memory: u64,
+    peak_running: u64,
+    peak_cpus: u64,
+    peak_memory: u64,
+}
+
+impl Stats {
+    /// The counts of a run with the processes of its start.
+    pub(crate) fn new(start: &Start) -> Stats {
+        let processes = (start.processes.iter())
+            .map(|process| Counter {
+                name: process.name.clone(),
+                ..Counter::default()
+            })
+            .collect();
+        Stats {
+            processes,
+            ..Stats::default()
+        }
+    }
+
+    /// Counts a task event; other events change nothing.
+    pub(crate) fn count(&mut self, event: &Event) {
+        let (task, state) = match event {
+            Event::TaskSubmitted(task) => (task, "submitted"),
+            Event::TaskStarted(task) => (task, "running"),
+            Event::TaskCompleted(task) => (task, "succeeded"),
+            Event::TaskCached(task) => (task, "cached"),
+            Event::TaskFailed(task) => (task, "failed"),
+            _ => return,
+        };
+        let id = trace_number(task, "task_id").unwrap_or_default() as i64;
+        let process = trace_text(task, "process");
+        let index = match self.processes.iter().position(|item| item.name == process) {
+            Some(index) => index,
+            None => {
+                self.processes.push(Counter {
+                    name: process.to_owned(),
+                    ..Counter::default()
+                });
+                self.processes.len() - 1
+            }
+        };
+        let cpus = trace_number(task, "cpus").unwrap_or(1.0) as u64;
+        let memory = trace_number(task, "memory").unwrap_or_default() as u64;
+        let realtime = trace_number(task, "realtime").unwrap_or_default() as i64;
+        let previous = self
+            .tasks
+            .insert(id, (index, state))
+            .map(|(_, state)| state);
+        for counter in [&mut self.processes[index], &mut self.total] {
+            counter.leave(previous, state, cpus, memory);
+            counter.enter(state, cpus, memory);
+            if state != "submitted" && state != "running" {
+                counter.hash = Some(trace_text(task, "hash").to_owned());
+                counter.task_name = Some(trace_text(task, "name").to_owned());
+            }
+        }
+        match state {
+            "succeeded" => self.succeed_millis += realtime,
+            "cached" => self.cached_millis += realtime,
+            "failed" => self.failed_millis += realtime,
+            _ => {}
+        }
+        if matches!(state, "succeeded" | "failed") {
+            self.cpu_millis += realtime as f64 * cpus as f64;
+        }
+        self.changed = now();
+    }
+
+    /// The counts as nf-tower's `progress` object.
+    pub(crate) fn progress(&self) -> Json {
+        let total = &self.total;
+        Json::object([
+            ("aborted", Json::from(0u64)),
+            ("cached", Json::from(total.cached)),
+            ("failed", Json::from(total.failed)),
+            ("ignored", Json::from(0u64)),
+            ("loadCpus", Json::from(total.load_cpus)),
+            ("loadMemory", Json::from(total.load_memory)),
+            ("peakCpus", Json::from(total.peak_cpus)),
+            ("peakMemory", Json::from(total.peak_memory)),
+            ("peakRunning", Json::from(total.peak_running)),
+            ("pending", Json::from(0u64)),
+            ("processes", self.process_list(false)),
+            ("retries", Json::from(total.retries)),
+            ("running", Json::from(total.running)),
+            ("submitted", Json::from(total.submitted)),
+            ("succeeded", Json::from(total.succeeded)),
+        ])
+    }
+
+    /// The counts as `workflow.stats`; `detailed` adds the fields of each process that
+    /// nf-weblog sends.
+    pub(crate) fn workflow(&self, detailed: bool) -> Json {
+        let total = &self.total;
+        let count = total.succeeded + total.cached + total.failed;
+        let percent = |part: u64| match count {
+            0 => 0.0,
+            _ => (part as f64 * 1000.0 / count as f64).round() / 10.0,
+        };
+        let hours = self.cpu_millis / 3_600_000.0;
+        let compute = match hours < 0.1 {
+            true => "(a few seconds)".to_owned(),
+            false => format!("{hours:.1}"),
+        };
+        Json::object([
+            ("changeTimestamp", Json::from(self.changed)),
+            ("succeededCount", Json::from(total.succeeded)),
+            ("cachedCount", Json::from(total.cached)),
+            ("failedCount", Json::from(total.failed)),
+            ("ignoredCount", Json::from(0u64)),
+            ("pendingCount", Json::from(0u64)),
+            ("submittedCount", Json::from(total.submitted)),
+            ("runningCount", Json::from(total.running)),
+            ("retriesCount", Json::from(total.retries)),
+            ("abortedCount", Json::from(0u64)),
+            ("loadCpus", Json::from(total.load_cpus)),
+            ("loadMemory", Json::from(total.load_memory)),
+            ("peakRunning", Json::from(total.peak_running)),
+            ("peakCpus", Json::from(total.peak_cpus)),
+            ("peakMemory", Json::from(total.peak_memory)),
+            ("cachedCountFmt", Json::from(grouped(total.cached))),
+            ("cachedDuration", Json::from(self.cached_millis)),
+            ("cachedPct", Json::from(percent(total.cached))),
+            ("computeTimeFmt", Json::from(compute)),
+            ("effectiveFailedCount", Json::from(total.failed)),
+            ("effectiveFailedPct", Json::from(percent(total.failed))),
+            ("failedCountFmt", Json::from(grouped(total.failed))),
+            ("failedDuration", Json::from(self.failed_millis)),
+            ("ignoredCountFmt", Json::from("0")),
+            ("ignoredPct", Json::from(0.0)),
+            ("loadMemoryFmt", Json::from(memory_text(total.load_memory))),
+            ("peakMemoryFmt", Json::from(memory_text(total.peak_memory))),
+            ("processes", self.process_list(detailed)),
+            ("progressLength", Json::from(self.processes.len() as u64)),
+            ("succeedCount", Json::from(total.succeeded)),
+            ("succeedCountFmt", Json::from(grouped(total.succeeded))),
+            ("succeedDuration", Json::from(self.succeed_millis)),
+            ("succeedPct", Json::from(percent(total.succeeded))),
+            ("totalCount", Json::from(count)),
+        ])
+    }
+
+    /// The counts of each process. Their tasks' work directories are unknown to uwe.
+    fn process_list(&self, detailed: bool) -> Json {
+        let entries = self.processes.iter().enumerate().map(|(index, counter)| {
+            let mut entries = vec![
+                ("index", Json::from(index as u64 + 1)),
+                ("name", Json::from(&counter.name)),
+            ];
+            if detailed {
+                entries.push(("hash", Json::from(counter.hash.clone())));
+            }
+            entries.push(("workDir", Json::Null));
+            if detailed {
+                entries.push(("taskName", Json::from(counter.task_name.clone())));
+            }
+            entries.extend([
+                ("pending", Json::from(0u64)),
+                ("submitted", Json::from(counter.submitted)),
+                ("running", Json::from(counter.running)),
+                ("succeeded", Json::from(counter.succeeded)),
+                ("cached", Json::from(counter.cached)),
+                ("failed", Json::from(counter.failed)),
+                ("aborted", Json::from(0u64)),
+                ("stored", Json::from(0u64)),
+                ("ignored", Json::from(0u64)),
+                ("retries", Json::from(counter.retries)),
+                ("terminated", Json::from(self.ended)),
+            ]);
+            if detailed {
+                entries.push(("errored", Json::from(counter.failed > 0)));
+            }
+            entries.extend([
+                ("loadCpus", Json::from(counter.load_cpus)),
+                ("loadMemory", Json::from(counter.load_memory)),
+                ("peakRunning", Json::from(counter.peak_running)),
+                ("peakCpus", Json::from(counter.peak_cpus)),
+                ("peakMemory", Json::from(counter.peak_memory)),
+            ]);
+            if detailed {
+                let done = counter.succeeded + counter.cached + counter.failed;
+                entries.push(("completedCount", Json::from(done)));
+                let all = done + counter.submitted + counter.running;
+                entries.push(("totalCount", Json::from(all)));
+            }
+            Json::object(entries)
+        });
+        Json::List(entries.collect())
+    }
+}
+
+impl Counter {
+    /// Takes a task out of the state it was in; a failed task that is submitted again is a
+    /// retry.
+    fn leave(&mut self, previous: Option<&str>, next: &str, cpus: u64, memory: u64) {
+        match previous {
+            Some("submitted") => self.submitted = self.submitted.saturating_sub(1),
+            Some("running") => {
+                self.running = self.running.saturating_sub(1);
+                self.load_cpus = self.load_cpus.saturating_sub(cpus);
+                self.load_memory = self.load_memory.saturating_sub(memory);
+            }
+            Some("failed") if next == "submitted" => {
+                self.failed = self.failed.saturating_sub(1);
+                self.retries += 1;
+            }
+            _ => {}
+        }
+    }
+
+    fn enter(&mut self, state: &str, cpus: u64, memory: u64) {
+        match state {
+            "submitted" => self.submitted += 1,
+            "running" => {
+                self.running += 1;
+                self.load_cpus += cpus;
+                self.load_memory += memory;
+                self.peak_running = self.peak_running.max(self.running);
+                self.peak_cpus = self.peak_cpus.max(self.load_cpus);
+                self.peak_memory = self.peak_memory.max(self.load_memory);
+            }
+            "succeeded" => self.succeeded += 1,
+            "cached" => self.cached += 1,
+            _ => self.failed += 1,
+        }
+    }
+}
+
+/// A count with thousands separated by commas, as `%,d` prints it.
+fn grouped(count: u64) -> String {
+    let digits = count.to_string();
+    let mut text = String::new();
+    for (place, digit) in digits.chars().enumerate() {
+        if place > 0 && (digits.len() - place) % 3 == 0 {
+            text.push(',');
+        }
+        text.push(digit);
+    }
+    text
+}
+
+fn memory_text(bytes: u64) -> String {
+    nextflow_evaluator::units::memory_text(i64::try_from(bytes).unwrap_or(i64::MAX))
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use crate::observer::Task;
+
+    fn task(id: i64, process: &str, realtime: i64) -> Task {
+        let record = serde_json::json!({
+            "task_id": id, "process": process, "name": format!("{process} ({id})"),
+            "hash": "ab/cdef01", "cpus": 2, "realtime": realtime,
+        });
+        Task {
+            record: record.as_object().cloned().unwrap_or_default(),
+            process_id: None,
+            hash: String::new(),
+            executor: "local".into(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            values: Vec::new(),
+            stdout: String::new(),
+            stderr: String::new(),
+        }
+    }
+
+    #[test]
+    fn counts_task_states() {
+        let mut stats = Stats::default();
+        stats.count(&Event::TaskSubmitted(task(1, "SAY", 0)));
+        stats.count(&Event::TaskSubmitted(task(2, "SAY", 0)));
+        stats.count(&Event::TaskStarted(task(1, "SAY", 0)));
+        stats.count(&Event::TaskStarted(task(2, "SAY", 0)));
+        stats.count(&Event::TaskFailed(task(1, "SAY", 5)));
+        stats.count(&Event::TaskSubmitted(task(1, "SAY", 0)));
+        stats.count(&Event::TaskCompleted(task(2, "SAY", 7)));
+        let progress = stats.progress();
+        let field = |name: &str| progress.get(name).cloned();
+        assert_eq!(field("submitted"), Some(Json::from(1u64)));
+        assert_eq!(field("succeeded"), Some(Json::from(1u64)));
+        assert_eq!(field("failed"), Some(Json::from(0u64)));
+        assert_eq!(field("retries"), Some(Json::from(1u64)));
+        assert_eq!(field("peakRunning"), Some(Json::from(2u64)));
+        assert_eq!(field("peakCpus"), Some(Json::from(4u64)));
+        let workflow = stats.workflow(false);
+        assert_eq!(workflow.get("succeedDuration"), Some(&Json::from(7i64)));
+        assert_eq!(workflow.get("succeedPct"), Some(&Json::from(100.0)));
+    }
+
+    #[test]
+    fn groups_thousands() {
+        assert_eq!(grouped(0), "0");
+        assert_eq!(grouped(1234567), "1,234,567");
+        assert_eq!(grouped(123), "123");
     }
 }

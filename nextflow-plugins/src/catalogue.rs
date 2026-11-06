@@ -206,15 +206,33 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-ccloud", Kind::Executor),
     planned("nf-flyte", Kind::Executor),
     planned("nf-fovus", Kind::Executor),
-    planned("nf-ga4gh", Kind::Executor),
+    // nf-ga4gh: the `tes` scope on uwe's TES executor, which counts memory in GB of 10^9 bytes
+    // as the TES specification does; its `drs://` paths are those of nf-drs.
+    Plugin {
+        scopes: &["tes"],
+        ..Plugin::new("nf-ga4gh", Kind::Executor, State::Partial)
+    },
     planned("nf-gadi", Kind::Executor),
     planned("nf-iac", Kind::Executor),
-    planned("nf-k8s", Kind::Executor),
-    planned("nf-nomad", Kind::Executor),
-    planned("nf-nomad-s5cmd", Kind::Executor),
+    // nf-k8s: the `k8s` scope and `pod` options on uwe's Kubernetes executor; no bare pods,
+    // `k8s.client` or debug YAML, and no privileged pods.
+    Plugin {
+        scopes: &["k8s"],
+        ..Plugin::new("nf-k8s", Kind::Executor, State::Partial)
+    },
+    // nf-nomad: the `nomad` executor; no secrets provider, constraint closures, debug JSON or
+    // HPC drivers, and no privileged containers.
+    Plugin {
+        scopes: &["nomad"],
+        ..Plugin::new("nf-nomad", Kind::Executor, State::Partial)
+    },
+    // nf-nomad-s5cmd: its work dir and S3 settings map onto uwe's object-store staging; uwe
+    // runs no s5cmd.
+    Plugin::new("nf-nomad-s5cmd", Kind::Executor, State::Partial),
     planned("nf-ospool", Kind::Executor),
     planned("nf-rest", Kind::Executor),
-    planned("nf-slurm-no-memory", Kind::Executor),
+    // nf-slurm-no-memory: `slurm_no_memory` is uwe's SLURM executor with `memory_per_cpu_gb`.
+    Plugin::new("nf-slurm-no-memory", Kind::Executor, State::Implemented),
     // nf-tencentcloud: its executor on uwe's TES executor, `cos://` on an S3 provider, and its
     // metadata file; the shape of that file was not recorded.
     crate::nf_tencentcloud::PLUGIN,

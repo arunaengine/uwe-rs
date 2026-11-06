@@ -1,0 +1,36 @@
+{
+    "BIG": [
+        {
+            "sus": "0.01",
+            "walltime": "00:00:02",
+            "cputime": "00:00:01",
+            "cpus": "2",
+            "memory": "11.5MB",
+            "efficiency": "0.25",
+            "exitCode": "0",
+            "requestedMemory": "1.0GB",
+            "requestedWalltime": "01:00:00",
+            "requestedJobFS": "100.0MB",
+            "usedJobFS": "0B",
+            "queue": "normal",
+            "name": "BIG"
+        }
+    ],
+    "SMALL": [
+        {
+            "sus": "0.02",
+            "walltime": "00:00:03",
+            "cputime": "00:00:02",
+            "cpus": "4",
+            "memory": "12.5MB",
+            "efficiency": "0.17",
+            "exitCode": "0",
+            "requestedMemory": "2.0GB",
+            "requestedWalltime": "01:00:00",
+            "requestedJobFS": "100.0MB",
+            "usedJobFS": "0B",
+            "queue": "normal",
+            "name": "SMALL"
+        }
+    ]
+}

@@ -433,6 +433,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "azure-batch-executor"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "config-file",
+ "content-store",
+ "executor",
+ "hmac 0.13.0",
+ "jiff",
+ "reqwest",
+ "serde_json",
+ "sha2 0.11.0",
+ "storage",
+ "task-model",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "backon"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

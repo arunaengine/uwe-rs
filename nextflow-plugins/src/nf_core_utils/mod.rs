@@ -13,25 +13,25 @@ use nextflow_evaluator::value::{Value, tree};
 use crate::Context;
 use crate::catalogue::{Kind, Plugin, State};
 
-/// `functions.nf` ports some functions, and calls the helpers of `call` for the config,
-/// conda, mail and webhooks.
+/// `functions.nf` defines every function but `getGenomeAttribute`, and calls the helpers of
+/// `call` for the config, conda, mail and webhooks.
 pub(crate) const PLUGIN: Plugin = Plugin {
     functions: FUNCTIONS,
-    supported: Some(PORTED),
     call: Some(call),
     script: Some(include_str!("functions.nf")),
     scopes: &["mail"],
-    ..Plugin::new("nf-core-utils", Kind::Functions, State::Partial)
+    ..Plugin::new("nf-core-utils", Kind::Functions, State::Implemented)
 };
 
-/// The functions of nf-core-utils 0.5.0. Those that `functions.nf` defines run as
-/// script code; the others are not supported yet.
+/// The functions of the releases 0.5.0 to 0.7.0. Those that the pinned release lacks fail
+/// when called.
 const FUNCTIONS: &[&str] = &[
     "autoToolBibliographyText",
     "autoToolCitationText",
     "checkCondaChannels",
     "checkConfigProvided",
     "checkProfileProvided",
+    "citationsOnTheFly",
     "collectCitationsFromFiles",
     "collectVersions",
     "completionEmail",
@@ -46,6 +46,9 @@ const FUNCTIONS: &[&str] = &[
     "generateYamlFromEvalSyntax",
     "getCitation",
     "getGenomeAttribute",
+    "getReferenceAttribute",
+    "getReferenceMetadata",
+    "getReferencePath",
     "getReferencesFile",
     "getReferencesValue",
     "getWorkflowVersion",
@@ -61,18 +64,8 @@ const FUNCTIONS: &[&str] = &[
     "softwareVersionsToYAML",
     "toolBibliographyText",
     "toolCitationText",
+    "toolsFromVersionsTopic",
     "workflowVersionToChannel",
-];
-
-/// The functions of nf-core-utils that `functions.nf` defines.
-const PORTED: &[&str] = &[
-    "getGenomeAttribute",
-    "getWorkflowVersion",
-    "checkConfigProvided",
-    "checkProfileProvided",
-    "completionSummary",
-    "dumpParametersToJSON",
-    "softwareVersionsToYAML",
 ];
 
 /// The release that a config without a pinned version gets, the latest.

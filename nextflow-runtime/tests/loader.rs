@@ -239,19 +239,17 @@ fn loads_plugin_scripts() {
     );
     write(
         root.path(),
-        "email.nf",
-        "include { completionEmail } from 'plugin/nf-core-utils'\n\
-         workflow {\n    completionEmail([:], 'a@b.c', null, false, 'out', true, [])\n}\n",
+        "pinned.nf",
+        "include { getReferencesFile } from 'plugin/nf-core-utils'\n\
+         workflow {\n    getReferencesFile([], null, 'fasta', '/base')\n}\n",
     );
     let module = Loader::default()
-        .load(&root.path().join("email.nf"))
+        .load(&root.path().join("pinned.nf"))
         .expect("loads");
     let error = nextflow_runtime::run(&module, &mut Output::default()).unwrap_err();
     let error = error.to_string();
     assert!(
-        error.ends_with(
-            "email.nf:3:5: Not supported yet: the function `completionEmail` of the plugin `nf-core-utils`"
-        ),
+        error.ends_with("`getReferencesFile` is not a function of nf-core-utils 0.7.0"),
         "{error}"
     );
 }

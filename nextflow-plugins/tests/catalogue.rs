@@ -75,18 +75,14 @@ fn lists_registry_plugins() {
         (Kind::Functions, State::Implemented)
     );
     let utils = catalogue::find("nf-core-utils").expect("nf-core-utils");
-    assert_eq!(utils.state, State::Partial);
+    assert_eq!(utils.state, State::Implemented);
     let capabilities = nextflow_plugins::capabilities();
     let aspera = &capabilities["nf-aspera"];
     assert_eq!(aspera["kind"], "file system");
     assert_eq!(aspera["state"], "not implementable");
     assert_eq!(aspera["reason"], "it needs IBM's closed FASP protocol");
     let core = &capabilities["nf-core-utils"];
-    assert_eq!(core["supported"].as_array().map(Vec::len), Some(7));
-    assert!(
-        core["unavailable"]
-            .as_array()
-            .is_some_and(|names| names.len() == 28)
-    );
+    assert_eq!(core["supported"].as_array().map(Vec::len), Some(40));
+    assert_eq!(core["unavailable"], serde_json::json!([]));
     assert_eq!(capabilities["nf-prov"]["state"], "planned");
 }

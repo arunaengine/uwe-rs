@@ -136,6 +136,19 @@ variable `SYNAPSE_AUTH_TOKEN`; uwe does not look that name up among its secrets,
 plugin reads the first one. A path's name is the last part of the address, like
 `syn100.fastq.gz`, not the entity's `name`, so a staged input keeps the address's name.
 
+## src/nf_irods.rs
+
+nf-irods 0.1.2 hands its `irods` scope (`host`, `port`, `username`, `password`, `zone`,
+`authenticationScheme`, `sslNegotiationPolicy`) to the iRODS provider of the `storage` crate
+when the run starts, which then reads and writes `irods://` paths for every language, over
+uwe's own client of the iRODS protocol of iRODS 4.3 and later, without icommands. Unset values
+come from the `IRODS_*` variables and the iRODS environment file, as in the plugin. uwe does not
+read the obfuscated password file `.irodsA`, so a PAM password must come from the config or
+`IRODS_PASSWORD`. Without a policy, uwe asks the server for `CS_NEG_REFUSE`. A Nextflow path
+keeps one slash after the scheme, so `irods:///zone/a` reaches uwe as `irods://zone/a`, which
+names the same data object. A copy between `irods://` paths goes through this machine instead
+of the server, and making a directory makes nothing, as a write makes its collections.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

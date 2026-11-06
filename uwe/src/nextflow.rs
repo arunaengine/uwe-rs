@@ -323,10 +323,12 @@ pub fn driver(
         secret_env: !matches!(
             arguments.executor.as_deref(),
             Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
+                | Some("nomad")
         ),
         local_options: !matches!(
             arguments.executor.as_deref(),
             Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
+                | Some("nomad")
         ),
         repository: crate::repository::origin(
             arguments.target.as_deref(),
@@ -372,6 +374,7 @@ pub(crate) const EXECUTORS: &[(&str, &str)] = &[
     ("azurebatch", "azure-batch"),
     ("google-batch", "google-batch"),
     ("k8s", "kubernetes"),
+    ("nomad", "nomad"),
     ("slurm", "slurm"),
     ("tes", "tes"),
 ];

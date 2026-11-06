@@ -27,6 +27,7 @@ nextflow-evaluator.workspace = true
 nextflow-parser.workspace = true
 nextflow-plugins.workspace = true
 nextflow-runtime.workspace = true
+nomad-executor.workspace = true
 run-crate.workspace = true
 run-database.workspace = true
 run-page.workspace = true

@@ -27,6 +27,7 @@ mod local;
 mod logging;
 mod machine;
 mod nextflow;
+mod nomad;
 mod order;
 mod page;
 mod preview;

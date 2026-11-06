@@ -166,17 +166,8 @@ impl Nextflow {
             return Ok(());
         }
         let host = self.settings.host.as_mut();
-        // A project directory runs its `manifest.mainScript`, else `main.nf`. The parent of a
-        // bare file name like `main.nf` is empty, which stands for the launch directory.
         let target = &self.launch.target;
-        let project = if target.is_dir() {
-            target.clone()
-        } else {
-            let parent = target
-                .parent()
-                .filter(|parent| !parent.as_os_str().is_empty());
-            parent.unwrap_or(Path::new(".")).to_owned()
-        };
+        let project = project_folder(target);
         let (mut config, mut files) = load_config(&project, &self.launch, host, false)?;
         let script = if target.is_dir() {
             let main = config
@@ -747,6 +738,29 @@ fn load_error(error: LoadError) -> DriverError {
             message.contains("not supported yet") || message.contains("not supported (decision")
         }),
         message: error.to_string(),
+    }
+}
+
+/// The project directory of a target: the target when it is a directory, which runs its
+/// `manifest.mainScript`, else the folder of the script. A bare file name like `main.nf` is in
+/// the launch directory.
+fn project_folder(target: &Path) -> PathBuf {
+    if target.is_dir() {
+        return target.to_owned();
+    }
+    let parent = target
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty());
+    parent.unwrap_or(Path::new(".")).to_owned()
+}
+
+/// The warnings about the plugins of the config of a launch that a run skips, which `uwe
+/// check` lists. A config that does not load gives none; the check reports its error.
+pub fn plugin_warnings(launch: &Launch, host: &mut dyn Host) -> Vec<String> {
+    let project = project_folder(&launch.target);
+    match load_config(&project, launch, host, false) {
+        Ok((config, _)) => nextflow_plugins::catalogue::warnings(&config),
+        Err(_) => Vec::new(),
     }
 }
 

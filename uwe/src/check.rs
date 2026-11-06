@@ -378,6 +378,11 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             None
         }
     };
+    if language == Language::Nextflow {
+        for warning in crate::nextflow::plugin_warnings(&launch, &setup) {
+            report.add(Kind::Warning, warning);
+        }
+    }
     let workflow = format!("{} ({})", shown(&target), language_name(language));
     print!("{}", report.text(&workflow, graph.as_ref()));
     match report.code() {

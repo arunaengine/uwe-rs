@@ -332,6 +332,12 @@ pub fn driver(
     Ok(Box::new(Nextflow::new(launch, settings)?))
 }
 
+/// The plugins of the config of a launch that a run skips, as warnings for `uwe check`.
+pub fn plugin_warnings(launch: &Launch, setup: &Setup) -> Vec<String> {
+    let mut console = console(true, setup);
+    nextflow_runtime::driver::plugin_warnings(launch, &mut console)
+}
+
 /// `uwe config`: the config of a project in the flat form of `nextflow config -flat`.
 pub fn print_config(launch: &Launch, setup: &Setup) -> Result<(), DriverError> {
     let mut console = console(false, setup);

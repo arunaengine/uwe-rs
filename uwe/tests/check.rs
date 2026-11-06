@@ -289,3 +289,19 @@ fn warns_made_outputs() {
     let (code, text) = check(directory.path(), &["main.nf"]);
     assert_eq!(code, 1, "{text}");
 }
+
+#[test]
+fn lists_skipped_plugins() {
+    let config = "plugins {\n    id 'nf-schema@2.1.0'\n    id 'nf-aspera'\n}\n";
+    let script = "process SAY {\n    container 'debian:stable-slim'\n    script:\n    \
+                  'echo hi'\n}\n\nworkflow {\n    SAY()\n}\n";
+    let directory = folder(&[("main.nf", script), ("nextflow.config", config)]);
+    let (code, stdout) = check(directory.path(), &["main.nf"]);
+    assert_eq!(code, 0, "{stdout}");
+    assert_eq!(
+        stdout,
+        "warning: The plugin `nf-aspera` cannot be implemented in uwe (it needs IBM's closed \
+         FASP protocol); its features are skipped\nmain.nf (Nextflow): nothing would stop a \
+         real run of 1 task in 1 step; 1 warning.\n"
+    );
+}

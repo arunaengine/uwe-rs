@@ -226,8 +226,15 @@ impl Interpreter<'_> {
         if let Some(plugin) = &target.plugin {
             let result = self.host.plugin_function(plugin, &target_name, arguments);
             let result = result.map_err(|error| error.or_at(span));
+            // A call that matches no signature fails before the call by reflection.
+            let unmatched = |error: &Error| {
+                (error.exception()).is_some_and(|e| e.class == "MissingMethodException")
+            };
             return match reflective {
-                true => result.map_err(super::call::invoked),
+                true => result.map_err(|error| match unmatched(&error) {
+                    true => error,
+                    false => super::call::invoked(error),
+                }),
                 false => result,
             };
         }

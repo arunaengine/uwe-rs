@@ -447,10 +447,99 @@ fn walk(path: &Path, text: &str, into: &mut Vec<String>) {
     }
 }
 
-/// The execution record of a task.
+/// The execution record of a task, with zeros and empty texts for what is not known.
 fn execution(task: &Task, pending: i64) -> Json {
-    let _ = (task, pending);
-    Json::Object(Vec::new())
+    let record = &task.record;
+    let int = |key: &str| {
+        Json::from(
+            record
+                .get(key)
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(0),
+        )
+    };
+    let float = |key: &str| record.get(key).and_then(serde_json::Value::as_f64);
+    let field = |key: &str| record.get(key).unwrap_or(&serde_json::Value::Null);
+    let words = |key: &str| Json::from(text(field(key)));
+    let millis = |key: &str| record.get(key).and_then(serde_json::Value::as_i64);
+    let wait = millis("start")
+        .zip(millis("submit"))
+        .map(|(start, submit)| (start - submit) as f64 / 1000.0);
+    let seconds = |key: &str| Json::from(float(key).unwrap_or_default() / 1000.0);
+    let time = |key: &str| Json::from(millis(key).map(instant).unwrap_or_default());
+    Json::object([
+        ("id", Json::from(field("task_id").to_string())),
+        ("runtimeInSeconds", seconds("realtime")),
+        ("executedAt", time("start")),
+        ("avgCPU", Json::from(float("%cpu").unwrap_or_default())),
+        ("readBytes", int("rchar")),
+        ("writtenBytes", int("wchar")),
+        ("memoryInBytes", int("rss")),
+        ("machines", Json::List(Vec::new())),
+        ("peak_vmem", int("peak_vmem")),
+        ("peak_rss", int("peak_rss")),
+        ("vol_ctxt", int("vol_ctxt")),
+        ("inv_ctxt", int("inv_ctxt")),
+        (
+            "command",
+            Json::object([
+                ("program", words("script")),
+                ("arguments", Json::List(Vec::new())),
+            ]),
+        ),
+        (
+            "bigbrother",
+            Json::object([
+                (
+                    "requested",
+                    Json::object([
+                        ("cpus", int("cpus")),
+                        ("memoryInBytes", int("memory")),
+                        ("diskInBytes", int("disk")),
+                        ("timeInMillis", int("time")),
+                    ]),
+                ),
+                (
+                    "timing",
+                    Json::object([
+                        ("pendingAt", Json::from(instant(pending))),
+                        ("submittedAt", time("submit")),
+                        ("completedAt", time("complete")),
+                        ("queueWaitSeconds", wait.into()),
+                        ("durationSeconds", seconds("duration")),
+                    ]),
+                ),
+                (
+                    "outcome",
+                    Json::object([
+                        ("attempt", int("attempt")),
+                        ("exitStatus", Json::from(text(field("exit")))),
+                        ("status", words("status")),
+                        ("errorAction", words("error_action")),
+                    ]),
+                ),
+                (
+                    "placement",
+                    Json::object([
+                        ("queue", words("queue")),
+                        ("executor", task.executor.as_str().into()),
+                        ("container", words("container")),
+                        ("cpuModel", words("cpu_model")),
+                        ("hostname", words("hostname")),
+                        ("nativeId", words("native_id")),
+                    ]),
+                ),
+                (
+                    "identity",
+                    Json::object([
+                        ("process", words("process")),
+                        ("tag", words("tag")),
+                        ("hash", words("hash")),
+                    ]),
+                ),
+            ]),
+        ),
+    ])
 }
 
 /// The execution record of a task that never finished: defaults throughout.

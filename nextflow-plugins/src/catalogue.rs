@@ -170,7 +170,7 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-biffix", Kind::Observer),
     planned("nf-crg-genomics-lims", Kind::Observer),
     planned("nf-crukci-support", Kind::Observer),
-    planned("nf-lamin", Kind::Observer),
+    crate::nf_lamin::PLUGIN,
     planned("nf-llm-debugger", Kind::Observer),
     crate::nf_prometheus::PLUGIN,
     crate::nf_slack::PLUGIN,

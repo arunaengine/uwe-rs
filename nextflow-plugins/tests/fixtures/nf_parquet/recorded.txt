@@ -1,0 +1,3 @@
+Written with pyarrow in the pandas/pandas:pip-all image by the generator of the nf-parquet spec, and read with nf-parquet 0.2.3 on Nextflow 26.04.6, which printed the rows that nf_parquet.rs expects.
+simple.parquet: 7 rows of id int64, name string and score double in row groups of 3; empty.parquet: the same columns without rows.
+col_<column>.parquet: id int64 and one column of the named type; col_bin and col_fixed_bin are binary columns, which the plugin refuses.

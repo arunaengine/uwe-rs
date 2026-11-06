@@ -25,6 +25,7 @@ EXTERNAL_NAMES = {}
 SMALL_DOMAINS = {
     "nextflow-evaluator/src/number": "grouped shared-prefix domain; hoisting recreates number_*",
     "nextflow-plugins/src/nf_anndata": "plugin module with its store readers, as the plugin README asks",
+    "nextflow-plugins/src/nf_arts": "plugin module with its drawing and image parts",
     "nextflow-plugins/src/nf_bids": "plugin module with its file table, config and grouping parts",
     "nextflow-plugins/src/nf_cmgg": "plugin module with its worksheet, sheet and expression parts",
     "nextflow-plugins/src/nf_fairscape": "plugin module with its task, file and evidence graph parts",

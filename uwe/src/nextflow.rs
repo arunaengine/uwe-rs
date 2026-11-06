@@ -325,12 +325,14 @@ pub fn driver(
             Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
                 | Some("nomad" | "htcondor" | "pbs")
                 | Some("flyte" | "snowflake")
+                | Some("jarvice")
         ),
         local_options: !matches!(
             arguments.executor.as_deref(),
             Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
                 | Some("nomad" | "htcondor" | "pbs")
                 | Some("flyte" | "snowflake")
+                | Some("jarvice")
         ),
         repository: crate::repository::origin(
             arguments.target.as_deref(),
@@ -377,6 +379,7 @@ pub(crate) const EXECUTORS: &[(&str, &str)] = &[
     ("condor", "htcondor"),
     ("flyte", "flyte"),
     ("google-batch", "google-batch"),
+    ("jarvice", "jarvice"),
     ("k8s", "kubernetes"),
     ("nomad", "nomad"),
     ("ospool", "htcondor"),
@@ -404,6 +407,7 @@ pub fn pipeline_executor(
         Some(
             "aws-batch" | "google-batch" | "azure-batch" | "kubernetes" | "nomad" | "slurm" | "tes"
         ) | Some("htcondor" | "pbs" | "flyte" | "snowflake")
+            | Some("jarvice")
     );
     if language != Language::Nextflow {
         return Ok(None);
@@ -441,6 +445,9 @@ pub fn pipeline_executor(
         let provider = crate::scopes::nomad(&config, &mut setup.executors.nomad)
             .map_err(|message| crate::Failure::usage(format!("uwe: {message}")))?;
         setup.storage = setup.storage.with_providers(provider.into_iter().collect());
+    }
+    if named == Some("jarvice") || picked.as_deref() == Some("jarvice") {
+        crate::scopes::jarvice(&config, &mut setup.executors.jarvice);
     }
     if named == Some("htcondor") || picked.as_deref() == Some("htcondor") {
         crate::scopes::ospool(&config);

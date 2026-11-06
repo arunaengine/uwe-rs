@@ -310,7 +310,8 @@ pub fn resources(request: &TaskRequest) -> Result<Resources, String> {
 }
 
 /// The options of executors that the directives of a task give: all `pod` options in one list,
-/// the last `nomadOptions` and `clusterOptions`, and the named options of `accelerator`.
+/// the last `nomadOptions`, `clusterOptions` and `machineType`, and the named options of
+/// `accelerator`.
 fn executor_options(
     directives: &[TaskDirective],
 ) -> std::collections::BTreeMap<String, serde_json::Value> {
@@ -332,7 +333,7 @@ fn executor_options(
     if !pod.is_empty() {
         options.insert("pod".to_owned(), Json::Array(pod));
     }
-    for name in ["nomadOptions", "clusterOptions"] {
+    for name in ["nomadOptions", "clusterOptions", "machineType"] {
         if let Some(value) = directive(directives, name) {
             let value = crate::inputs::to_json(&value);
             if !value.is_null() {

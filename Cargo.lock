@@ -8067,6 +8067,7 @@ dependencies = [
  "hmac 0.13.0",
  "htcondor-executor",
  "input-schema",
+ "jarvice-executor",
  "jiff",
  "k8s-openapi",
  "kube",

@@ -68,6 +68,7 @@ flyte-executor = { path = "flyte-executor" }
 google-batch-executor = { path = "google-batch-executor" }
 htcondor-executor = { path = "htcondor-executor" }
 input-schema = { path = "input-schema" }
+jarvice-executor = { path = "jarvice-executor" }
 kubernetes-executor = { path = "kubernetes-executor" }
 nextflow-config = { path = "nextflow-config" }
 nextflow-evaluator = { path = "nextflow-evaluator" }

@@ -87,6 +87,16 @@ not read. The AI section is one Anthropic Messages API call through the shared H
 with uwe's own instruction, `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, and
 `ANTHROPIC_BASE_URL`; the run's end waits up to 150 seconds for it.
 
+## src/nf_flowviewer.rs
+
+nf-flowviewer 1.0.0 sends the plugin's requests from a `Background` worker. Two fields are
+uwe's own: `fileSystem` of an artifact is the URI scheme of its source, `file` for a local
+file, where the plugin sends a Java object text; and the graph of `POST /api/processes` is
+uwe's process graph: a `PROCESS` vertex per process, numbered from 0, an edge per channel
+between processes and an open end for each input and output, all without labels, since uwe's
+graph has no operator vertices. `hash` of an artifact is empty, as stored files are not in a
+Nextflow work directory. Trace fields that uwe does not measure are null.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

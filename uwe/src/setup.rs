@@ -148,6 +148,8 @@ pub struct Executors {
     /// `[executor.kubernetes] service_account` and `pod`: the service account and the pod
     /// options of every Job, as Nextflow's `pod` directive takes them.
     pub kubernetes_pod: kubernetes_executor::PodOptions,
+    /// `[executor.kubernetes.cws]`: the Common Workflow Scheduler that places the pods.
+    pub kubernetes_cws: Option<kubernetes_executor::cws::Settings>,
     /// `[executor.aws-batch]`: the jobs, their staging root and their helper.
     pub aws_batch: crate::aws_batch::Config,
     /// `[executor.google-batch]`: the jobs, their staging root and their helper.
@@ -351,6 +353,7 @@ impl Executors {
                 "context",
                 "service_account",
                 "pod",
+                "cws",
             ]);
             keys.extend(crate::staging::Settings::KEYS);
             kubernetes.only(&keys)?;
@@ -363,6 +366,20 @@ impl Executors {
                 let pods = &mut settings.kubernetes_pod;
                 pods.add(&pod)
                     .map_err(|message| kubernetes.invalid("pod", message))?;
+            }
+            if let Some(cws) = kubernetes.table("cws")? {
+                cws.only(&["address", "strategy", "cost_function", "scheduler_name"])?;
+                let address = (cws.text("address")?)
+                    .ok_or_else(|| cws.missing("address", "the address of the scheduler"))?;
+                if !address.starts_with("http://") && !address.starts_with("https://") {
+                    return Err(cws.invalid("address", "must be an http:// or https:// address"));
+                }
+                let mut scheduler = kubernetes_executor::cws::Settings::new(&address);
+                scheduler.strategy = cws.text("strategy")?.unwrap_or(scheduler.strategy);
+                scheduler.cost_function = cws.text("cost_function")?;
+                let name = cws.text("scheduler_name")?;
+                scheduler.scheduler_name = name.unwrap_or(scheduler.scheduler_name);
+                settings.kubernetes_cws = Some(scheduler);
             }
             if let Some(references) = kubernetes.table("references")? {
                 for reference in references.tables()? {
@@ -1095,6 +1112,16 @@ mod tests {
             settings.kubernetes_pod.service_account.as_deref(),
             Some("runner")
         );
+        let text = "[executor.kubernetes.cws]\naddress = 'http://cws.lab:8080/'\n\
+                    strategy = 'rank_max-fair'\n";
+        let cws = read(text)
+            .expect("settings")
+            .kubernetes_cws
+            .expect("a scheduler");
+        assert_eq!(cws.address, "http://cws.lab:8080");
+        assert_eq!(cws.strategy, "rank_max-fair");
+        assert_eq!(cws.scheduler_name, "workflow-scheduler");
+        assert!(read("[executor.kubernetes.cws]\nstrategy = 'fifo'\n").is_err());
         let error = read("[executor.kubernetes]\npod = [{ privileged = true }]\n");
         assert!(
             error

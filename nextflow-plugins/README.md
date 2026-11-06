@@ -232,6 +232,16 @@ like the other placement hints, which it reports and ignores. A stopped containe
 `SIGTERM` and 10 seconds before it is killed, which gives `labctl` time for its safe stop. The
 plugin's start and end lines are template greetings and are not printed.
 
+## src/nf_databricks.rs
+
+nf-databricks 0.1.0 is nf-sqldb 0.7.0 with Databricks' JDBC driver. uwe runs the same functions
+and maps `jdbc:databricks:` URLs of SQL warehouses (`httpPath=/sql/1.0/warehouses/<id>`) onto
+the SQL Statement Execution API: the password is the personal access token, `ConnCatalog` and
+`ConnSchema` or the URL's schema pick the catalog and schema, and `ssl=0` selects HTTP. A batch
+of `sqlInsert` is one statement with named parameters. Refused with a message: clusters
+(`/sql/protocolv1/...`), OAuth (`AuthMech` other than 3), and results larger than the inline
+limit of the API (`EXTERNAL_LINKS` is not read).
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

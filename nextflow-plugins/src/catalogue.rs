@@ -161,7 +161,7 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-flowviewer", Kind::Observer),
     planned("nf-gc", Kind::Observer),
     crate::nf_logsaver::PLUGIN,
-    planned("nf-metalog", Kind::Observer),
+    crate::nf_metalog::PLUGIN,
     crate::nf_prov::PLUGIN,
     planned("nf-runinsights", Kind::Observer),
     crate::nf_snapshot::PLUGIN,

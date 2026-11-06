@@ -43,6 +43,7 @@ fn request(eval: &[&str], env: &[&str], container: Option<&str>) -> TaskRequest 
         eval: eval.iter().map(|command| (*command).to_owned()).collect(),
         stdout: false,
         made: None,
+        agent: None,
     }
 }
 

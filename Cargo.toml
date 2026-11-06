@@ -84,6 +84,13 @@ axum = { version = "0.8.9", default-features = false, features = [
 base64 = "0.23.1"
 bollard = "0.21.1"
 oxrdf = "0.3.4"
+# Parquet files in Rust for nf-parquet, without Arrow; LZ4, Snappy, gzip and zstd pages.
+parquet = { version = "60.0.0", default-features = false, features = [
+    "flate2-zlib-rs",
+    "lz4",
+    "snap",
+    "zstd",
+] }
 oxrdfxml = { version = "0.2.4", default-features = false }
 oxttl = { version = "0.2.4", default-features = false }
 boa_engine = { version = "0.22.0", default-features = false, features = [

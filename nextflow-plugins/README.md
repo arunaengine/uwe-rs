@@ -149,6 +149,18 @@ keeps one slash after the scheme, so `irods:///zone/a` reaches uwe as `irods://z
 names the same data object. A copy between `irods://` paths goes through this machine instead
 of the server, and making a directory makes nothing, as a write makes its collections.
 
+## src/nf_python/mod.rs
+
+nf-python 0.1.4 runs each `pyFunction` call as a fresh Python process in a container, never on
+the host: the image of `nf_python.container`, else the Python 3.12 image of uwe's Snakemake
+support, with the launch folder and the call folder mounted at their own paths. The program
+of `nf_python.executable` or `_executable` is the one inside the image; `conda_env` fails with
+a message, as uwe runs no conda program. The call folder is `<workDir>/.nf-python/<h2>/<h30>`,
+where the work directory is `workDir` of the config, else `work` in the launch folder; uwe's
+own `nf_python` module goes to `<workDir>/.nf-python/lib`. The container gets only the call's
+variables, not the environment of the run. Integers of any size come back, where the plugin
+fails above 32 bits, and a `VersionNumber` comes back as its text.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

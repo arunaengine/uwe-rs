@@ -223,3 +223,18 @@ fn report(first: &str, program: &str, script: &Path, code: i32, folder: &Path) -
         script.display()
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dedents_like_plugin() {
+        let code = "\n      import sys\n      print(1)\n  ";
+        let script = format!("\nfrom nf_python import nf\n\n{}", dedent(code));
+        assert_eq!(
+            script,
+            "\nfrom nf_python import nf\n\n\nimport sys\nprint(1)\n  "
+        );
+    }
+}

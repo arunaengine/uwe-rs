@@ -415,6 +415,20 @@ text; a failed run sends once, where Nextflow 26.04.6 runs the end twice; the me
 file comes from a short table of extensions, else `application/octet-stream`. Logged addresses
 leave out user names, passwords and query strings.
 
+## src/nf_biffix/mod.rs
+
+nf-biffix 0.6.2 is partly implemented. With `BIFFIX_RUN_ID`, `BIFFIX_INGEST_URL` and
+`BIFFIX_INGEST_TOKEN`, the run's events go in biffix's engine event format to the events file and,
+in batches within the limits of `ingest-limits.json`, to the ingest route, with the plugin's
+retries, splits and messages. A task is created when its attempt starts, and a cached one when
+the cache answers it, so each appears once; its dependencies are the tasks whose outputs it
+reads, and its index, for the key of a tagged task, is its place among the submitted tasks of its
+process. With `BIFFIX_IMAGE_MAP_FILE`, every container goes through the map, by its reference as
+written or its normalised form, and a container outside the map stops the run with the plugin's
+message. Not implemented: the AWS Batch parts (`task_submitted` with the job id, task verdicts and
+the `biffix:project` tag of job definitions), as uwe's `aws-batch` executor reports no job ids to
+run observers.
+
 ## src/nf_crukci_support.rs
 
 nf-crukci-support 1.1.3 is partly implemented: `javaMemoryOptions`, `javaMemMB`, `sizeOf`,

@@ -118,3 +118,78 @@ fn reports_store_errors() {
         ]
     );
 }
+
+/// Writes a script that runs `body` with `anndata` included, in a new folder.
+fn script(body: &str) -> (tempfile::TempDir, PathBuf) {
+    let folder = tempfile::tempdir().expect("a folder");
+    let path = folder.path().join("main.nf");
+    let text =
+        format!("include {{ anndata }} from 'plugin/nf-anndata'\n\nworkflow {{\n{body}\n}}\n");
+    std::fs::write(&path, text).expect("writes");
+    (folder, path)
+}
+
+#[test]
+fn reads_zarr_stores() {
+    let (_folder, path) = script(
+        "    ['v2.zarr', 'v3.zarr'].each { s ->\n        \
+        def ad = anndata(file(\"${params.base}/${s}\"))\n        \
+        println \"${s} ${ad.n_obs} ${ad.n_vars} ${ad.obs.index.name} ${ad.obs.colnames as List} ${ad.var.colnames as List} ${ad.layers as List} ${ad.uns as List} ${ad.obs_names[299]}\"\n        \
+        ['kind', 'flag', 'small', 'score', 'count'].each { c ->\n            \
+        def d = ad.obs.get(c).data\n            \
+        def shown = (d[0..5] + [d[19], d[299]]).collect { v -> \"${v}<${v == null ? 'null' : v.getClass().simpleName}>\" }\n            \
+        println \"${c} ${d.size()} ${shown.join(' ')}\"\n        }\n    }",
+    );
+    let base = fixtures().to_string_lossy().into_owned();
+    let (lines, result) = run(&path, &format!("    base = '{base}'"));
+    result.expect("the script runs");
+    let mut expected = Vec::new();
+    for store in ["v2.zarr", "v3.zarr"] {
+        expected.extend([
+            format!("{store} 300 2 cell_id [kind, flag, small, score, count] [] [counts] [neighbors] c299"),
+            "kind 300 null<null> A<String> B<String> null<null> A<String> B<String> A<String> B<String>".into(),
+            "flag 300 true<Boolean> false<Boolean> true<Boolean> false<Boolean> true<Boolean> false<Boolean> false<Boolean> false<Boolean>".into(),
+            // Unsigned bytes of Zarr stores are signed, as in the plugin: 133 is -123.
+            "small 300 0<Integer> 7<Integer> 14<Integer> 21<Integer> 28<Integer> 35<Integer> -123<Integer> 45<Integer>".into(),
+            "score 300 0.0<Double> 0.25<Double> 0.5<Double> 0.75<Double> 1.0<Double> 1.25<Double> 4.75<Double> 74.75<Double>".into(),
+            "count 300 null<null> 10<Long> 20<Long> 30<Long> 40<Long> null<null> 190<Long> 2990<Long>".into(),
+        ]);
+    }
+    assert_eq!(lines, expected);
+}
+
+#[test]
+fn checks_zarr_groups() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let group = |path: &str, attributes: &str| {
+        let directory = folder.path().join(path);
+        std::fs::create_dir_all(&directory).expect("creates");
+        std::fs::write(directory.join(".zgroup"), "{\"zarr_format\": 2}").expect("writes");
+        std::fs::write(directory.join(".zattrs"), attributes).expect("writes");
+    };
+    for name in ["layers", "obs", "var", "obsm", "varm", "obsp"] {
+        group(&format!("missing.zarr/{name}"), "{}");
+        group(&format!("plainstore/{name}"), "{}");
+    }
+    group("missing.zarr", "{}");
+    group("missing.zarr/.varp", "{}");
+    group("plainstore", "{}");
+    group("plainstore/varp", "{}");
+    group("plainstore/uns", "{}");
+    group("plainstore/obs", "{\"_index\": \"nope\"}");
+    let (_folder, path) = script(
+        "    ['missing.zarr', 'plainstore'].each { s ->\n        \
+        try { anndata(file(\"${params.base}/${s}\")) }\n        \
+        catch (Exception e) { println \"${s}: ${e.cause.message.replace(params.base, '<inputs>')}\" }\n    }",
+    );
+    let base = folder.path().to_string_lossy().into_owned();
+    let (lines, result) = run(&path, &format!("    base = '{base}'"));
+    result.expect("the script runs");
+    assert_eq!(
+        lines,
+        [
+            "missing.zarr: Missing fields: [varp, uns]",
+            "plainstore: Index 'nope' not found in group: file://<inputs>/plainstore/obs",
+        ]
+    );
+}

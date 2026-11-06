@@ -1,5 +1,5 @@
-//! Runs small Nextflow workflows through fake HTCondor and PBS tools, which run each job here:
-//! on shared folders, and through a staging root with the uwe binary as the helper.
+//! Runs small Nextflow workflows through fake HTCondor, PBS and SLURM tools, which run each job
+//! here: on shared folders, and through a staging root with the uwe binary as the helper.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -129,9 +129,61 @@ printf '}}\n'
 
 const QDEL: &str = "#!/bin/bash\necho \"$1\" >> \"$(dirname \"$0\")/state/removed\"\n";
 
-/// Writes the fake tools into `folder/bin`.
+/// Runs the job script in its `--chdir` folder with both streams to `--output` before it
+/// answers, and prints the job id.
+const SBATCH: &str = r#"#!/bin/bash
+state="$(dirname "$0")/state"
+mkdir -p "$state"
+for argument in "$@"; do
+    case $argument in
+        --chdir=*) chdir=${argument#--chdir=} ;;
+        --output=*) output=${argument#--output=} ;;
+        --job-name=*) name=${argument#--job-name=} ;;
+    esac
+    script=$argument
+done
+exec 9> "$state/ids.lock"
+flock -x 9
+id=$(( $(cat "$state/last" 2>/dev/null || echo 100) + 1 ))
+echo "$id" > "$state/last"
+flock -u 9
+echo "$name" > "$state/$id.name"
+echo "$script" > "$state/$id.command"
+(cd "$chdir" && bash "$script") > "$output" 2>&1
+echo $? > "$state/$id.exit"
+echo "$id"
+"#;
+
+/// Answers for the jobs of `--jobs` in the columns of `--format`; it refuses `--json`, as
+/// SLURM before 21.08 does.
+const SQUEUE: &str = r#"#!/bin/bash
+state="$(dirname "$0")/state"
+for argument in "$@"; do
+    case $argument in
+        --jobs=*) jobs=${argument#--jobs=} ;;
+        --format=*) format=${argument#--format=} ;;
+        --json) echo "squeue: unrecognized option '--json'" >&2; exit 1 ;;
+    esac
+done
+for id in ${jobs//,/ }; do
+    [ "$(cat "$state/$id.exit" 2>/dev/null)" = 0 ] && job=COMPLETED || job=FAILED
+    case $format in
+        '%i %T') echo "$id $job" ;;
+        '%i %T %r') echo "$id $job None" ;;
+        '%i|%T|%j|%V|%o') echo "$id|$job|$(cat "$state/$id.name")|2026-11-06T00:00:00|$(cat "$state/$id.command")" ;;
+    esac
+done
+"#;
+
+/// A cluster without accounting.
+const SACCT: &str = "#!/bin/bash\necho 'sacct: accounting storage is disabled' >&2\nexit 1\n";
+
+const SCANCEL: &str = "#!/bin/bash\necho \"$1\" >> \"$(dirname \"$0\")/state/removed\"\n";
+
+/// Writes the fake tools into `folder/tools`. Not `bin`: every task gets the pipeline's `bin`
+/// folder as an input, and the job state there would change it, so `-resume` would miss.
 fn tools(folder: &Path) -> PathBuf {
-    let bin = folder.join("bin");
+    let bin = folder.join("tools");
     std::fs::create_dir_all(&bin).expect("makes the folder");
     for (name, text) in [
         ("condor_submit", CONDOR_SUBMIT),
@@ -141,6 +193,10 @@ fn tools(folder: &Path) -> PathBuf {
         ("qsub", QSUB),
         ("qstat", QSTAT),
         ("qdel", QDEL),
+        ("sbatch", SBATCH),
+        ("squeue", SQUEUE),
+        ("sacct", SACCT),
+        ("scancel", SCANCEL),
         ("apptainer", APPTAINER),
     ] {
         // A child process writes the command, so that no test holds it open for writing.
@@ -201,7 +257,7 @@ fn runs_ospool_pipelines() {
     let (code, output) = run(folder.path(), config, settings, &[]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("big"), "{output}");
-    let state = folder.path().join("bin/state");
+    let state = folder.path().join("tools/state");
     let submitted = std::fs::read_to_string(state.join("1001.condor")).expect("a submit file");
     for line in [
         "request_cpus = 2\nmachine_count = 1\nrequest_memory = 4096\nrequest_disk = 10485760\n",
@@ -229,7 +285,7 @@ fn runs_staged_jobs() {
     let (code, output) = run(folder.path(), "", &settings, &["-executor", "htcondor"]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("big"), "{output}");
-    let state = folder.path().join("bin/state");
+    let state = folder.path().join("tools/state");
     let submitted = std::fs::read_to_string(state.join("1001.condor")).expect("a submit file");
     assert!(
         submitted.contains("should_transfer_files = YES\n"),
@@ -252,7 +308,7 @@ fn runs_gadi_pipelines() {
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("big"), "{output}");
     assert!(!output.contains("`clusterOptions` is ignored"), "{output}");
-    let script = std::fs::read_to_string(folder.path().join("bin/state/1.sh")).expect("a job");
+    let script = std::fs::read_to_string(folder.path().join("tools/state/1.sh")).expect("a job");
     for line in [
         "#!/bin/bash\n#PBS -P ab12 -l storage=gdata/ab12\n#PBS -N uwe-",
         "#PBS -j oe\n#PBS -q normal\n#PBS -l ncpus=2\n#PBS -l mem=4096mb\n",
@@ -285,5 +341,28 @@ fn runs_snakemake_rules() {
     assert_eq!(code, 0, "{output}");
     let count = std::fs::read_to_string(folder.path().join("count.txt")).expect("a count");
     assert_eq!(count.trim(), "3");
-    assert!(folder.path().join("bin/state/1.sh").is_file());
+    assert!(folder.path().join("tools/state/1.sh").is_file());
+}
+
+/// `-resume` takes every task of an earlier run of a digest-pinned pipeline, through HTCondor,
+/// PBS and SLURM, and submits no job again.
+#[test]
+fn resumes_pinned_pipelines() {
+    let pinned = SCRIPT.replace(
+        "debian:stable-slim",
+        "debian@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    );
+    for (executor, last) in [("htcondor", "1002"), ("pbs", "2"), ("slurm", "102")] {
+        let folder = tempfile::tempdir().expect("a folder");
+        std::fs::write(folder.path().join("main.nf"), &pinned).expect("writes the script");
+        let settings = format!("[executor.{executor}]\n");
+        let options = ["-executor", executor, "-resume"];
+        let (code, output) = uwe(folder.path(), "main.nf", &settings, &options);
+        assert_eq!(code, 0, "{output}");
+        let (code, output) = uwe(folder.path(), "main.nf", &settings, &options);
+        assert_eq!(code, 0, "{output}");
+        assert!(output.contains("big"), "{output}");
+        let submitted = std::fs::read_to_string(folder.path().join("tools/state/last"));
+        assert_eq!(submitted.expect("a job count").trim(), last, "{output}");
+    }
 }

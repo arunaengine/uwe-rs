@@ -346,6 +346,7 @@ name = "aws-batch-executor"
 version = "0.1.0"
 dependencies = [
  "config-file",
+ "executor",
  "serde_json",
  "sha2 0.11.0",
  "storage",

@@ -4,6 +4,8 @@
 
 mod client;
 pub mod definition;
+pub mod outcome;
+pub mod script;
 mod settings;
 pub mod submit;
 

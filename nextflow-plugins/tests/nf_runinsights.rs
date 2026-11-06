@@ -67,6 +67,7 @@ fn task(number: u64, submit: i64, start: i64, realtime: i64) -> Event {
         inputs: Vec::new(),
         outputs: Vec::new(),
         values: Vec::new(),
+        declared: Vec::new(),
         stdout: String::new(),
         stderr: String::new(),
     })

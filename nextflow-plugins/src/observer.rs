@@ -64,10 +64,23 @@ pub struct Task {
     pub outputs: Vec<File>,
     /// The values of its inputs, one per input declaration; a tuple is a list.
     pub values: Vec<serde_json::Value>,
+    /// Its output declarations, each with its parts, as they were known when it was asked for.
+    pub declared: Vec<Vec<Part>>,
     /// The standard output and error of an attempt that ended, as far as the executor kept
     /// them; empty before it ended.
     pub stdout: String,
     pub stderr: String,
+}
+
+/// A part of an output declaration of a task.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Part {
+    /// The value of a `val` part.
+    Value(serde_json::Value),
+    /// The glob patterns of a `path` part, which match the names of [`Task::outputs`].
+    Files(Vec<String>),
+    /// An `env`, `eval` or `stdout` part.
+    Other,
 }
 
 /// A file of a task.

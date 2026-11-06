@@ -91,6 +91,7 @@ struct Details {
     executor: String,
     inputs: Vec<observer::File>,
     values: Vec<serde_json::Value>,
+    declared: Vec<Vec<observer::Part>>,
 }
 
 impl Details {
@@ -120,6 +121,7 @@ impl Details {
             executor: directive("executor").unwrap_or_else(|| "local".to_owned()),
             inputs,
             values: request.values.iter().map(crate::inputs::to_json).collect(),
+            declared: request.declared.clone(),
         }
     }
 }
@@ -405,6 +407,7 @@ impl Reports {
                 inputs: Vec::new(),
                 outputs: Vec::new(),
                 values: Vec::new(),
+                declared: Vec::new(),
                 stdout: String::new(),
                 stderr: String::new(),
             };
@@ -438,6 +441,7 @@ impl Reports {
             inputs,
             outputs,
             values: details.values.clone(),
+            declared: details.declared.clone(),
             stdout: outcome
                 .map(|outcome| outcome.stdout.clone())
                 .unwrap_or_default(),

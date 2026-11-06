@@ -16,6 +16,7 @@ use nextflow_evaluator::lowered::{Input, Module, Process};
 use nextflow_evaluator::units::{parse_duration, parse_memory};
 use nextflow_evaluator::value::{ChannelId, Key, ListKind, MapKind, PathValue, Value};
 use nextflow_parser::ast::BodyKind;
+use nextflow_plugins::observer::Part;
 
 use crate::channel::Message;
 use crate::network::{Behaviour, Context, Definition, State};
@@ -97,6 +98,8 @@ pub struct TaskRequest {
     pub staged: Vec<(PathValue, String)>,
     /// The value of each input declaration, for run observers.
     pub values: Vec<Value>,
+    /// The parts of each output declaration, for run observers.
+    pub declared: Vec<Vec<Part>>,
     pub input_environment: Vec<(Rc<str>, Value)>,
     pub stdin: Option<Value>,
     /// The glob patterns of the output files, relative to the task directory.
@@ -563,6 +566,7 @@ impl ProcessNode {
             directives,
             staged: frame.staged.clone(),
             values: values.clone(),
+            declared: rendered.outputs.iter().map(declared).collect(),
             input_environment: frame.input_environment.clone(),
             stdin: frame.stdin.clone(),
             output_patterns: Vec::new(),
@@ -883,6 +887,19 @@ impl ProcessNode {
         }
         Ok(State::Running)
     }
+}
+
+/// The parts of an output declaration as run observers see them.
+fn declared(output: &RenderedOutput) -> Vec<Part> {
+    let parts = output.parts.iter();
+    (parts.map(|part| match part {
+        RenderedPart::Value(value) => Part::Value(crate::inputs::to_json(value)),
+        RenderedPart::Path { patterns, .. } | RenderedPart::Files { patterns, .. } => {
+            Part::Files(patterns.clone())
+        }
+        _ => Part::Other,
+    }))
+    .collect()
 }
 
 fn scheduling_hint(directive: &TaskDirective) -> bool {

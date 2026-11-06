@@ -551,3 +551,338 @@ def workflowVersionToChannel() {
     ]
 }
 
+// --- Citations ---
+
+// The `[tool, info]` pairs of the `tools` list of a module's meta.yml.
+def metaTools(metaFile) {
+    def meta = new org.yaml.snakeyaml.Yaml().load(metaFile.text)
+    def tools = meta instanceof Map && meta.tools instanceof List ? meta.tools : []
+    def pairs = []
+    tools.each { entry ->
+        if (entry instanceof Map) {
+            entry.each { tool, info -> pairs << [tool.toString(), info] }
+        }
+    }
+    return pairs
+}
+
+def shortCitation(tool, info) {
+    if (info.doi) {
+        return "${tool} (DOI: ${info.doi})".toString()
+    }
+    return info.description ? "${tool} (${info.description})".toString() : tool.toString()
+}
+
+def bibliographyEntry(tool, info) {
+    if (minorRelease() < 7) {
+        def parts = [info.author, info.year, info.title ?: tool, info.journal, info.doi ? "doi: ${info.doi}" : null]
+        def text = parts.findAll { part -> part }.join('. ')
+        if (info.homepage) {
+            text += ". <a href='${info.homepage}'>${info.homepage}</a>"
+        }
+        return "<li>${text}</li>".toString()
+    }
+    def publication = info.publication instanceof Map ? info.publication :
+        [author: info.author, year: info.year, title: info.title, source: info.journal].findAll { key, value -> value }
+    def parts = []
+    if (publication) {
+        [publication.author ? publication.author.toString().replaceAll(/[.\s]+$/, '') : null,
+         publication.year ? "(${publication.year})" : null,
+         publication.title,
+         publication.source].each { part -> if (part) { parts << part } }
+    }
+    else {
+        parts << tool
+    }
+    def link = referenceLink(info)
+    if (link) {
+        parts << link
+    }
+    return "<li>${parts.join('. ')}.</li>".toString()
+}
+
+def referenceLink(info) {
+    if (info.doi) {
+        return "doi: <a href='https://doi.org/${info.doi}'>${info.doi}</a>"
+    }
+    return info.homepage ? "<a href='${info.homepage}'>${info.homepage}</a>" : null
+}
+
+def toolCitation(tool, info) {
+    return [citation: shortCitation(tool, info), bibliography: bibliographyEntry(tool, info)]
+}
+
+def generateModuleToolCitation(metaFilePath) {
+    def metaFile = file(metaFilePath.toString())
+    if (!metaFile.exists()) {
+        throw new IllegalArgumentException("meta.yml file not found at: ${metaFile.toAbsolutePath()}")
+    }
+    def citations = [:]
+    metaTools(metaFile).each { pair ->
+        def tool = pair[0]
+        def info = pair[1]
+        citations[tool] = info instanceof Map ? toolCitation(tool, info) : [citation: tool, bibliography: null]
+    }
+    return citations
+}
+
+def citationsFromFiles(paths, warning) {
+    def citations = [:]
+    (paths ?: []).each { path ->
+        try {
+            citations.putAll(generateModuleToolCitation(path))
+        }
+        catch (Exception e) {
+            coreWarn("${warning} ${path}: ${e.message}")
+        }
+    }
+    return citations
+}
+
+def collectCitationsFromFiles(paths) {
+    return citationsFromFiles(paths, 'Could not process meta.yml at')
+}
+
+def processCitationsFromFile(paths) {
+    return citationsFromFiles(paths, 'Could not process citation file')
+}
+
+def toolCitationText(citations) {
+    if (!citations) {
+        return 'No tools used in the workflow.'
+    }
+    return "Tools used in the workflow included: ${citations.values().collect { entry -> entry.citation }.join(', ')}.".toString()
+}
+
+def toolBibliographyText(citations) {
+    if (!citations) {
+        return 'No bibliography entries found.'
+    }
+    return citations.values().collect { entry -> entry.bibliography }.findAll { entry -> entry != null }.join(' ')
+}
+
+def methodsDescriptionText(mqcMethodsYamlPath, citations = [:], meta = [:]) {
+    def binding = [:]
+    binding.putAll(meta ?: [:])
+    if (!binding.containsKey('workflow')) {
+        binding.workflow = workflow
+    }
+    if (!binding.containsKey('manifest_map')) {
+        binding.manifest_map = workflow.manifest
+    }
+    def dois = (workflow.manifest.doi ?: '').toString().tokenize(',')
+        .collect { doi -> doi.replace('https://doi.org/', '').replace(' ', '') }
+        .findAll { doi -> doi }
+    binding.doi_text = dois.collect { doi -> "(doi: <a href='https://doi.org/${doi}'>${doi}</a>)" }.join(', ')
+    binding.nodoi_text = dois ? '' : '<li>If available, make sure to update the text to include the Zenodo DOI of version of the pipeline used. </li>'
+    if (!binding.containsKey('tool_citations')) {
+        binding.tool_citations = toolCitationText(citations ?: [:])
+    }
+    if (!binding.containsKey('tool_bibliography')) {
+        binding.tool_bibliography = toolBibliographyText(citations ?: [:])
+    }
+    def template = file(mqcMethodsYamlPath.toString())
+    return new groovy.text.SimpleTemplateEngine().createTemplate(template.text).make(binding).toString()
+}
+
+def citationReport(metaFilePaths, mqcMethodsYamlPath) {
+    def citations = collectCitationsFromFiles(metaFilePaths)
+    def methods = ''
+    if (mqcMethodsYamlPath && file(mqcMethodsYamlPath.toString()).exists()) {
+        try {
+            methods = methodsDescriptionText(mqcMethodsYamlPath, citations)
+        }
+        catch (Exception e) {
+            coreWarn("Could not generate methods description: ${e.message}")
+        }
+    }
+    return [
+        tool_citations: toolCitationText(citations),
+        tool_bibliography: toolBibliographyText(citations),
+        methods_description: methods,
+        citations_map: citations,
+    ]
+}
+
+def generateComprehensiveReport(topicVersions, legacyVersions = [], metaFilePaths = [], mqcMethodsYamlPath = null) {
+    return generateVersionReport(topicVersions, legacyVersions) + citationReport(metaFilePaths, mqcMethodsYamlPath)
+}
+
+def generateVersionReport(topicVersions, legacyVersions = []) {
+    return [versions_yaml: versionsText((topicVersions ?: []) + (legacyVersions ?: []), null)]
+}
+
+def generateCitationReport(metaFilePaths, mqcMethodsYamlPath = null) {
+    return citationReport(metaFilePaths, mqcMethodsYamlPath)
+}
+
+def processCitationsFromTopic(topicData) {
+    def citations = [:]
+    (topicData ?: []).each { tuple ->
+        if (tuple instanceof List && tuple.size() >= 3) {
+            def tool = tuple[1].toString()
+            def data = tuple[2]
+            citations[tool] = data instanceof Map ? toolCitation(tool, data) :
+                [citation: data.toString(), bibliography: "<li>${data}</li>".toString()]
+        }
+    }
+    return citations
+}
+
+def processMixedCitationSources(topicCitations, citationFiles) {
+    def citations = processCitationsFromTopic(topicCitations)
+    citations.putAll(processCitationsFromFile(citationFiles))
+    return citations
+}
+
+def convertMetaYamlToTopicFormat(metaFilePath, moduleName = null) {
+    def metaFile = file(metaFilePath.toString())
+    if (!metaFile.exists()) {
+        return []
+    }
+    try {
+        def module = moduleName ?: metaFile.parent.name
+        return metaTools(metaFile).collect { pair -> [module, pair[0], pair[1]] }
+    }
+    catch (Exception e) {
+        coreWarn("Could not convert meta.yml to topic format: ${e.message}")
+        return []
+    }
+}
+
+def getCitation(metaYmlPath) {
+    def metaFile = file(metaYmlPath.toString())
+    if (!metaFile.exists()) {
+        coreWarn("meta.yml not found at ${metaYmlPath}")
+        return []
+    }
+    try {
+        def parts = metaYmlPath.toString().tokenize('/')
+        def last = parts.lastIndexOf('meta.yml')
+        def module = last > 0 ? parts[last - 1] : file('.').toAbsolutePath().name
+        return metaTools(metaFile).findAll { pair -> pair[1] instanceof Map }
+            .collect { pair -> [module.toUpperCase(), pair[0], pair[1]] }
+    }
+    catch (Exception e) {
+        coreWarn("Failed to extract citation from ${metaYmlPath}: ${e.message}")
+        return []
+    }
+}
+
+// The `[module, tool, info]` tuples of a list of tuples or of lists of them.
+def citationTuples(topicCitations) {
+    def tuples = []
+    (topicCitations ?: []).each { item ->
+        if (item instanceof List && item.size() == 3) {
+            tuples << item
+        }
+        else if (item instanceof List) {
+            item.each { inner -> if (inner instanceof List && inner.size() == 3) { tuples << inner } }
+        }
+    }
+    return tuples
+}
+
+def autoToolCitationText(topicCitations = []) {
+    return toolCitationText(processCitationsFromTopic(citationTuples(topicCitations)))
+}
+
+def autoToolBibliographyText(topicCitations = []) {
+    return toolBibliographyText(processCitationsFromTopic(citationTuples(topicCitations)))
+}
+
+def toolsFromVersionsTopic(topicVersions) {
+    requireRelease('toolsFromVersionsTopic', 6)
+    if (!topicVersions) {
+        return []
+    }
+    def tuples = topicVersions.findAll { item -> item instanceof List && item.size() >= 2 }
+    if (!tuples) {
+        coreWarn("toolsFromVersionsTopic received ${topicVersions.size()} item(s) but no [process, tool, version] tuples \u2014 collect the versions topic with .collect(flat: false) to preserve tuples")
+        return []
+    }
+    return tuples.collect { tuple -> tuple[1]?.toString()?.trim() }.findAll { tool -> tool }.unique().sort()
+}
+
+// The short form of an author list: the surname, with `et al.` for several authors.
+def shortAuthor(author) {
+    def authors = author.toString().trim().split(/\s*&\s*|\s+and\s+/) as List
+    def first = authors[0].split(',').collect { part -> part.trim() }
+    def harvard = first.size() > 1 && first[1] ==~ /([A-Z]\.?\s*)+/
+    def surname = harvard ? first[0] : first[0].tokenize(' ')[0]
+    def several = authors.size() > 1 || author.toString().toLowerCase().contains('et al') || first.size() > (harvard ? 2 : 1)
+    return several ? "${surname} <em>et al.</em>".toString() : surname
+}
+
+def citationsOnTheFly(topicVersions, metaFilePaths, extraTools = []) {
+    requireRelease('citationsOnTheFly', 6)
+    def used = (toolsFromVersionsTopic(topicVersions) + (extraTools ?: []).collect { tool -> tool.toString() }).unique().sort()
+    def exact = [:]
+    (topicVersions ?: []).each { tuple ->
+        if (tuple instanceof List && tuple.size() >= 3) {
+            def tool = tuple[1]?.toString()?.trim()
+            if (tool && !exact.containsKey(tool)) {
+                exact[tool] = tuple[2]
+            }
+        }
+    }
+    def versions = [:]
+    exact.each { tool, version -> versions[tool.toLowerCase()] = version }
+    def infos = [:]
+    (metaFilePaths ?: []).each { path ->
+        getCitation(path).each { tuple ->
+            if (!infos.containsKey(tuple[1])) {
+                infos[tuple[1]] = tuple[2]
+            }
+        }
+    }
+    def citations = [:]
+    used.each { tool ->
+        def name = infos.containsKey(tool) ? tool : infos.keySet().find { known -> known.equalsIgnoreCase(tool) }
+        if (name == null) {
+            coreWarn("No citation metadata found for tool '${tool}' \u2014 add it to the module's meta.yml 'tools:' section")
+            return
+        }
+        if (citations.containsKey(name)) {
+            return
+        }
+        def info = infos[name]
+        def parts = []
+        def version = versions[name.toLowerCase()]
+        if (version != null) {
+            parts << version.toString()
+        }
+        def reference = shortReference(info)
+        if (reference) {
+            parts << reference
+        }
+        def citation = parts ? "${name} (${parts.join(', ')})".toString() : name
+        citations[name] = [citation: citation, bibliography: bibliographyEntry(name, info)]
+    }
+    return citations
+}
+
+// The linked short reference of a tool for `citationsOnTheFly`, or null.
+def shortReference(info) {
+    def publication = info.publication instanceof Map ? info.publication : [:]
+    def author = publication.author ?: info.author
+    def year = publication.year ?: info.year
+    def text = null
+    if (author) {
+        text = shortAuthor(author) + (year ? " (${year})" : '')
+    }
+    else if (info.doi) {
+        text = "doi: ${info.doi}"
+    }
+    else {
+        text = info.homepage ?: info.description
+    }
+    if (!text) {
+        return null
+    }
+    if (info.doi) {
+        return "<a href='https://doi.org/${info.doi}'>${text}</a>".toString()
+    }
+    return info.homepage ? "<a href='${info.homepage}'>${text}</a>".toString() : text.toString()
+}
+

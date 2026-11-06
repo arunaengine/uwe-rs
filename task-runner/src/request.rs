@@ -171,6 +171,7 @@ pub fn request(
             offline: task.network == Network::Denied,
             queue: resources.queue.clone(),
             labels: resources.labels.clone(),
+            options: resources.options.clone(),
             ..Placement::default()
         },
     }

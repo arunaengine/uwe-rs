@@ -285,7 +285,48 @@ pub fn resources(request: &TaskRequest) -> Result<Resources, String> {
                 .collect(),
             _ => Default::default(),
         },
+        options: executor_options(directives),
     })
+}
+
+/// The options of executors that the directives of a task give: all `pod` options in one list,
+/// the last `nomadOptions`, and the named options of `accelerator`, like its `type`.
+fn executor_options(
+    directives: &[TaskDirective],
+) -> std::collections::BTreeMap<String, serde_json::Value> {
+    use serde_json::Value as Json;
+    let mut options = std::collections::BTreeMap::new();
+    let mut pod = Vec::new();
+    for directive in directives
+        .iter()
+        .filter(|directive| &*directive.name == "pod")
+    {
+        for value in &directive.arguments {
+            match crate::inputs::to_json(value) {
+                Json::Array(items) => pod.extend(items),
+                Json::Null => {}
+                item => pod.push(item),
+            }
+        }
+    }
+    if !pod.is_empty() {
+        options.insert("pod".to_owned(), Json::Array(pod));
+    }
+    if let Some(value) = directive(directives, "nomadOptions") {
+        let value = crate::inputs::to_json(&value);
+        if !value.is_null() {
+            options.insert("nomadOptions".to_owned(), value);
+        }
+    }
+    let accelerator = (directives.iter().rev())
+        .find(|directive| &*directive.name == "accelerator")
+        .and_then(|directive| {
+            (directive.arguments.iter()).find(|value| matches!(value, Value::Map(_)))
+        });
+    if let Some(named) = accelerator {
+        options.insert("accelerator".to_owned(), crate::inputs::to_json(named));
+    }
+    options
 }
 
 /// Java's truncating `longValue`, but without wrapping large integers or saturating floats.

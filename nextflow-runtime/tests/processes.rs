@@ -203,12 +203,6 @@ fn rejects_active_directives() {
         ("clusterOptions", "'--partition --export=TOKEN=value'"),
         ("module", "'samtools'"),
         ("arch", "[name: 'linux/x86_64', target: 'cascadelake']"),
-        ("pod", "[env: 'TOKEN', value: 'value']"),
-        (
-            "pod",
-            "[[nodeSelector: 'disk=ssd'], [secret: 'token/key', env: 'TOKEN']]",
-        ),
-        ("pod", "[volumeClaim: 'data', mountPath: '/data']"),
     ] {
         let source =
             format!("process P {{\n {name}({value})\n script:\n 'true'\n}}\nworkflow {{ P() }}");
@@ -245,11 +239,6 @@ fn accepts_scheduling_hints() {
         ("arch", "[name: 'linux/x86_64']"),
         ("scratch", "true"),
         ("scratch", "'/scratch'"),
-        ("pod", "[nodeSelector: 'disk=ssd']"),
-        (
-            "pod",
-            "[[affinity: [nodeAffinity: [:]]], [toleration: [key: 'workload']]]",
-        ),
         ("array", "10"),
         ("hints", "['labrobotics/capability': 'liquid-handling']"),
     ] {

@@ -28,8 +28,10 @@ pub(crate) fn call(
     context: &mut Context,
 ) -> Result<Value, Error> {
     // Named arguments come first as a map; nf-schema also takes a map of options as the last
-    // argument of `samplesheetToList`. From 3.0.0 on, help takes its param as an option.
+    // argument of `samplesheetToList`. From 3.0.0 on, summaries take the workflow of the run
+    // and help takes its param as an option.
     let modern = since(context, [3, 0, 0]);
+    let workflow = context.workflow.clone();
     match (name, arguments.as_slice()) {
         ("samplesheetToList", [sheet, schema]) => {
             samplesheet::to_list(sheet, schema, None, context)
@@ -38,16 +40,29 @@ pub(crate) fn call(
         | ("samplesheetToList", [sheet, schema, options]) => {
             samplesheet::to_list(sheet, schema, Some(options), context)
         }
-        ("validate", [options @ Value::Map(_), input, schema]) => {
+        ("validate", [options @ Value::Map(_), input, schema])
+        | ("validate", [input, schema, options @ Value::Map(_)]) => {
             validate(Some(options), input, schema, context)
         }
         ("validate", [input, schema]) => validate(None, input, schema, context),
         ("validateParameters", []) => params::validate(None, context),
         ("validateParameters", [options]) => params::validate(Some(options), context),
-        ("paramsSummaryMap", [workflow]) => summary::map(None, workflow, context),
-        ("paramsSummaryMap", [options, workflow]) => summary::map(Some(options), workflow, context),
-        ("paramsSummaryLog", [workflow]) => summary::log(None, workflow, context),
-        ("paramsSummaryLog", [options, workflow]) => summary::log(Some(options), workflow, context),
+        ("paramsSummaryMap", []) if modern => summary::map(None, &workflow, context),
+        ("paramsSummaryMap", [options @ Value::Map(_)]) if modern => {
+            summary::map(Some(options), &workflow, context)
+        }
+        ("paramsSummaryMap", [workflow]) if !modern => summary::map(None, workflow, context),
+        ("paramsSummaryMap", [options, workflow]) if !modern => {
+            summary::map(Some(options), workflow, context)
+        }
+        ("paramsSummaryLog", []) if modern => summary::log(None, &workflow, context),
+        ("paramsSummaryLog", [options @ Value::Map(_)]) if modern => {
+            summary::log(Some(options), &workflow, context)
+        }
+        ("paramsSummaryLog", [workflow]) if !modern => summary::log(None, workflow, context),
+        ("paramsSummaryLog", [options, workflow]) if !modern => {
+            summary::log(Some(options), workflow, context)
+        }
         ("paramsHelp", []) => help::text(None, None, context),
         ("paramsHelp", [options @ Value::Map(_)]) => help::text(Some(options), None, context),
         ("paramsHelp", [parameter @ Value::String(_)]) if !modern => {
@@ -56,7 +71,9 @@ pub(crate) fn call(
         ("paramsHelp", [options @ Value::Map(_), parameter]) if !modern => {
             help::text(Some(options), Some(parameter.to_string()), context)
         }
-        ("paramsHelp", _) => Err(no_signature(name, &arguments)),
+        ("paramsHelp" | "paramsSummaryMap" | "paramsSummaryLog", _) => {
+            Err(no_signature(name, &arguments))
+        }
         _ => Err(Error::Unsupported {
             message: format!(
                 "the function `{name}` of the plugin `nf-schema` with these arguments"

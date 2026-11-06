@@ -105,3 +105,17 @@ fn runs_chosen_executor() {
     assert!(output.contains("needs a project"), "{output}");
     assert_eq!(fake.requests("POST /v1/").len(), 1);
 }
+
+/// `-resume` takes the task of an earlier run, so the second run creates no job.
+#[test]
+fn resumes_earlier_runs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeGoogle::start(&folder.path().join("fake"));
+    let config = "process.executor = 'google-batch'\ngoogle.project = 'lab'\n";
+    for _ in 0..2 {
+        let (code, output) = run(folder.path(), &fake, config, &["-resume"]);
+        assert_eq!(code, 0, "{output}");
+        assert!(output.contains("HELLO GOOGLE"), "{output}");
+    }
+    assert_eq!(fake.requests("POST /v1/").len(), 1);
+}

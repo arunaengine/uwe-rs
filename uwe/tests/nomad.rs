@@ -128,3 +128,21 @@ fn runs_chosen_executor() {
     assert!(output.contains("never starts privileged"), "{output}");
     assert_eq!(fake.requests("POST /v1/jobs").len(), 1);
 }
+
+/// `-resume` takes the task of an earlier run, so the second run registers no job.
+#[test]
+fn resumes_earlier_runs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeNomad::start(&folder.path().join("fake"));
+    let config = format!(
+        "process.executor = 'nomad'\nnomad.client.address = '{}'\n",
+        fake.address
+    );
+    let settings = "[executor.nomad]\npoll_seconds = 1\n";
+    for _ in 0..2 {
+        let (code, output) = run(folder.path(), &config, settings, &["-resume"]);
+        assert_eq!(code, 0, "{output}");
+        assert!(output.contains("HELLO NOMAD"), "{output}");
+    }
+    assert_eq!(fake.requests("POST /v1/jobs").len(), 1);
+}

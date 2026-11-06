@@ -34,6 +34,7 @@ mod nf_jev;
 mod nf_labrobotics;
 mod nf_lakefs;
 mod nf_lamin;
+mod nf_llm_debugger;
 mod nf_logsaver;
 mod nf_metalog;
 mod nf_oci;

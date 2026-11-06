@@ -26,9 +26,10 @@ Each language is a subset that uwe implements in Rust. The exact limits are in [
 | `kubernetes` | The container runtime of the cluster | `shared-path`, `object-store`, `kubedal` |
 | `tes` | The runtime of the TES server, for example Funnel | Server-side, or `object-store` |
 | `aws-batch` | The compute environments of an AWS Batch job queue, on EC2 or Fargate | `object-store` |
+| `google-batch` | The VMs of Google Batch in one project and location | `object-store` |
 | `simulator` | None, outputs are placeholders | None |
 
-Object-store staging on SLURM, Kubernetes and AWS Batch needs a static Linux build of uwe for the machine type of the nodes. Tasks with several containers need `shared-path`. See [Remote executors and staging](remote-executors.md).
+Object-store staging on SLURM, Kubernetes, AWS Batch and Google Batch needs a static Linux build of uwe for the machine type of the nodes. Tasks with several containers need `shared-path`. See [Remote executors and staging](remote-executors.md).
 
 ## Storage providers
 
@@ -56,5 +57,6 @@ uwe builds and runs on Linux and macOS, and on Windows through WSL 2. The static
 | Kubernetes | `just kind-staging-test` against a local kind cluster |
 | SLURM | Tests with simulated SLURM tools, and use on a real cluster |
 | AWS Batch | Tests against a local fake of AWS Batch and CloudWatch Logs; not yet run on AWS |
+| Google Batch | Tests against a local fake of Google Batch, its token endpoint and Cloud Logging; not yet run on Google Cloud |
 
 Not yet tested on live systems as part of a release: rootless Podman and Docker, managed Kubernetes services, cloud TES services, and recovery after a crash of the machine that runs uwe on every remote executor.

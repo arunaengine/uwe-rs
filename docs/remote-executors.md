@@ -1,15 +1,15 @@
-<!-- How SLURM, Kubernetes, TES and AWS Batch jobs get their files, with or without shared folders. -->
+<!-- How SLURM, Kubernetes, TES, AWS Batch and Google Batch jobs get their files, with or without shared folders. -->
 <!-- Copyright (c) 2026 The uwe Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
 # Remote executors and staging
 
-SLURM, Kubernetes, TES and AWS Batch take a `staging` setting in `[executor.slurm]`, `[executor.kubernetes]`, `[executor.tes]` or `[executor.aws-batch]` of the config file. It decides how a job gets its inputs and how its outputs come back. In every mode the task container runs the original image of the task, unchanged.
+SLURM, Kubernetes, TES, AWS Batch and Google Batch take a `staging` setting in `[executor.slurm]`, `[executor.kubernetes]`, `[executor.tes]`, `[executor.aws-batch]` or `[executor.google-batch]` of the config file. It decides how a job gets its inputs and how its outputs come back. In every mode the task container runs the original image of the task, unchanged.
 
 | Mode | Executors | What the nodes need |
 | --- | --- | --- |
 | `shared-path` (default) | SLURM, Kubernetes | The store and scratch folders at the same paths as on the machine that runs uwe |
-| `object-store` | SLURM, Kubernetes, TES, AWS Batch | Network access to the staging root in an object store |
+| `object-store` | SLURM, Kubernetes, TES, AWS Batch, Google Batch | Network access to the staging root in an object store |
 | `kubedal` | Kubernetes | The [kubedal](https://github.com/arunaengine/kubedal) CSI driver |
 
 ## Shared paths
@@ -190,6 +190,7 @@ When no `-executor` is given, the `process.executor` of a Nextflow pipeline pick
 | `process.executor` | uwe executor |
 | --- | --- |
 | `awsbatch` | `aws-batch` |
+| `google-batch` | `google-batch` |
 | `k8s` | `kubernetes` |
 | `slurm` | `slurm` |
 | `tes` | `tes` |
@@ -204,6 +205,72 @@ The directives `queue`, `cpus`, `memory`, `accelerator`, `time`, `disk` (on Farg
 ### Snakemake, CWL and Argo
 
 Their tasks use `queue` of `[executor.aws-batch]`. A Snakemake rule names another queue with `resources: queue="..."`. CPUs, memory, GPUs, time and disk come from the resources of the task, as on the other executors.
+
+## Google Batch
+
+`-executor google-batch` runs each attempt of a task as one Google Batch job. uwe calls the Google Batch and Cloud Logging REST APIs itself, with OAuth access tokens, so it needs no gcloud and no Google SDK. The jobs share no folders with this machine, so this executor always uses object-store staging with presigned requests.
+
+```toml
+[executor.google-batch]
+project = "my-project"                      # else the project_id of the key file, or GOOGLE_CLOUD_PROJECT
+location = "europe-west4"                   # else us-central1
+staging = "object-store"
+staging_root = "gs://bucket/uwe-staging"
+helper_path = "/opt/uwe/uwe"                # the static uwe binary on the VM image
+# helper_url = "https://example.org/uwe"    # or an address that a first runnable downloads, with helper_sha256
+# helper_file = "/home/me/uwe-x86_64"       # or a binary that uwe uploads to the staging root
+# helper_download_image = "mirror.example.org/alpine"   # the image that downloads it, else docker.io/library/alpine
+# credential_file = "/home/me/key.json"     # a service account key or user credentials
+# service_account = "jobs@my-project.iam.gserviceaccount.com"   # the identity of the VMs
+# machine_type = "n2-standard-8"            # or "template://<name>" for an instance template; else Google picks
+# accelerator_type = "nvidia-tesla-t4"      # for GPU tasks that name no type
+# spot = true                               # or preemptible = true
+# max_spot_attempts = 3                     # runs a task again when its spot VM went away
+# boot_disk_image = "batch-debian"
+# boot_disk_gb = 50                         # for tasks without a disk of their own
+# cpu_platform = "Intel Ice Lake"
+# install_gpu_drivers = true                # for instance templates with GPUs
+# install_ops_agent = true
+# allowed_locations = ["zones/europe-west4-a"]
+# network = "projects/p/global/networks/n"  # with subnetwork, and private_address = true for no external IP
+# network_tags = ["uwe"]
+# logs_path = "gs://bucket/logs"            # else Cloud Logging
+# poll_seconds = 10
+# task_folder = "/tmp/uwe"                  # the folder of the VM where a job makes the folder of its attempt
+# batch_endpoint = "https://batch.googleapis.com"       # other addresses, for tests
+# logging_endpoint = "https://logging.googleapis.com"
+```
+
+The credentials come from the first of: `credential_file`, the file of `GOOGLE_APPLICATION_CREDENTIALS`, gcloud's application default credentials (`application_default_credentials.json` in `CLOUDSDK_CONFIG` or `~/.config/gcloud`), and the metadata server of a Google VM (`GCE_METADATA_HOST` names another). A service account key gets its token through a signed JWT at its `token_uri`; user credentials refresh theirs. Other kinds of credentials files, like workload identity federation, are refused, and so is a key of another project than `project`, as Nextflow does. The identity needs `roles/batch.jobsEditor` and `roles/iam.serviceAccountUser` on the job service account. That account needs `roles/batch.agentReporter` and `roles/logging.logWriter`, and both need access to the bucket. uwe signs the requests of the staging root with the service account key of its storage provider (`credential_file` in `[storage.<name>]`).
+
+A task runs like this:
+
+1. uwe uploads the inputs and the wrapper of the task to the staging root and writes the plan.
+2. uwe creates the job `uwe-<attempt>-<milliseconds>` with one task: the CPUs, the memory in MiB and the disk of the task as its boot disk, a time limit of the task's time plus `staging_minutes`, its labels on the job and the VMs, and the VM settings above.
+3. Without `helper_path`, a first runnable in `helper_download_image` downloads the helper into `task_folder` and checks its SHA-256. The task runnable runs the image of the task with `task_folder` mounted. It stages the inputs in, runs the wrapper of the task within its time, and sends the outputs back.
+4. uwe asks about the job every `poll_seconds`. A cancelled task deletes its job, which stops it.
+5. When a job fails before its task has an exit code, the error of the task shows the end of its Cloud Logging log.
+
+Limits:
+
+- Google Batch runs the entrypoint of the image around the commands of the job. An image whose entrypoint does not run its arguments as a command cannot run tasks.
+- The image needs `sh`. The `task_folder` of the VM must allow running programs. With `helper_path` it must also be writable for the user of the image; the download runnable makes it writable for all.
+- Google's exit codes from 50001 to 50006 (spot VM preempted, VM stopped reporting, VM rebooted, VM and task not answering, maximum run time, VM recreated) fail the attempt as a failure of the machine. 50005 with a time of the task counts as a task that ran too long (exit code 143). With `max_spot_attempts`, Google Batch runs the task again itself on exit code 50001.
+- Containers never run privileged: uwe has no setting for it, `containerOptions` refuses `--privileged`, and Nextflow's `fusion.enabled = true` is refused.
+- `staging_access = "credentials"` is refused; the jobs use presigned requests.
+- Tasks without network, tasks of several containers, tasks that run as a named user, and inputs at absolute paths are refused. A GPU task needs a GPU type, from the task or `accelerator_type`.
+- Array jobs, a machine type per process, scratch disks of a type, machine type patterns and Seqera's Cloud Info are not supported. The jobs stay in Google Batch after they end, as with Nextflow.
+- The tests run against a local fake of Google Batch, its token endpoint and Cloud Logging, and `just emulator-test` stages a job through fake-gcs-server. Runs on a real Google Cloud project are not verified yet.
+
+### Nextflow pipelines
+
+`process.executor = 'google-batch'` picks this executor, as the table under AWS Batch shows. The `google` scope fills the settings that `[executor.google-batch]` leaves unset: `google.project`, `google.location`, and `google.batch.serviceAccountEmail`, `network`, `subnetwork`, `usePrivateAddress`, `spot`, `preemptible`, `maxSpotAttempts`, `autoRetryExitCodes`, `bootDiskImage`, `bootDiskSize`, `cpuPlatform`, `installGpuDrivers`, `installOpsAgent`, `allowedLocations`, `networkTags` and `logsPath`, and `executor.$google-batch.pollInterval`. A `gs://` `workDir` becomes the staging root when none is set. uwe ignores `google.batch.gcsfuseOptions`, `google.enableRequesterPaysBuckets` and `executor.$google-batch.jobName`, with a warning.
+
+The directives `cpus`, `memory`, `accelerator`, `time`, `disk` and `resourceLabels` go into the job. Google Batch has no queues, so `queue` has no effect. uwe does not read the `machineType` directive; set `machine_type` instead.
+
+### Snakemake, CWL and Argo
+
+Their tasks use the settings of `[executor.google-batch]`. CPUs, memory, GPUs, time and disk come from the resources of the task, as on the other executors.
 
 ## Default task time
 

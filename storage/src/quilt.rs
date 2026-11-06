@@ -1,15 +1,19 @@
-//! Reads Quilt packages of `quilt+s3://` addresses through their manifests.
+//! Reads Quilt packages of `quilt+s3://` addresses through their manifests, and writes files
+//! into packages, which [`crate::quilt_package::push`] then publishes.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+
+use sha2::{Digest, Sha256};
+use tokio::io::AsyncReadExt;
 
 use crate::error::Problem;
 use crate::objects::{Objects, Service, problem};
 use crate::quilt_package::{self, Entry as Item};
-use crate::{Downloaded, Entry, Metadata};
+use crate::{Downloaded, Entry, Metadata, Written};
 
 /// A Quilt+ address: a package in a bucket, maybe of one version, and a path inside it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -113,6 +117,18 @@ impl Address {
     }
 }
 
+/// The files written into packages in this process, by bucket and package, with the client
+/// that wrote them, until [`crate::quilt_package::push`] takes them.
+pub(crate) static WRITTEN: Mutex<Vec<Kept>> = Mutex::new(Vec::new());
+
+/// A file written into a package.
+pub(crate) struct Kept {
+    pub bucket: String,
+    pub package: String,
+    pub item: Item,
+    pub objects: Arc<Objects>,
+}
+
 /// The entries of each manifest read so far, by bucket and top hash.
 type Manifests = HashMap<(String, String), Arc<Vec<Item>>>;
 
@@ -196,6 +212,31 @@ impl Quilt {
         })
     }
 
+    /// Uploads a file to `s3://<bucket>/<package>/<path>` and keeps it for the push of its
+    /// package, with its size and SHA-256.
+    pub async fn upload(&self, file: &Path, target: &str) -> Result<Written, Problem> {
+        let address = Address::parse(target).map_err(Problem::fixed)?;
+        if address.path.is_empty() {
+            return Err(Problem::fixed(format!(
+                "{target} names no path inside the package"
+            )));
+        }
+        let physical = format!(
+            "s3://{}/{}/{}",
+            address.bucket, address.package, address.path
+        );
+        let hash = file_hash(file).await?;
+        let written = self.objects.upload(file, &physical).await?;
+        let item = Item {
+            logical_key: address.path.clone(),
+            physical_key: physical,
+            size: written.size,
+            hash,
+        };
+        remember(&address.bucket, &address.package, item, &self.objects);
+        Ok(written)
+    }
+
     /// The entries of the package version of an address; `None` when it has no manifest.
     async fn items(&self, address: &Address) -> Result<Option<Arc<Vec<Item>>>, Problem> {
         let operator = self.objects.at(&format!("s3://{}/", address.bucket))?;
@@ -224,6 +265,24 @@ impl Quilt {
     }
 }
 
+/// Keeps a file of a package for its push; a later file with the same logical key wins.
+pub(crate) fn remember(bucket: &str, package: &str, item: Item, objects: &Arc<Objects>) {
+    let mut written = WRITTEN.lock().unwrap_or_else(|poison| poison.into_inner());
+    written.retain(|kept| {
+        (
+            kept.bucket.as_str(),
+            kept.package.as_str(),
+            kept.item.logical_key.as_str(),
+        ) != (bucket, package, item.logical_key.as_str())
+    });
+    written.push(Kept {
+        bucket: bucket.to_owned(),
+        package: package.to_owned(),
+        item,
+        objects: objects.clone(),
+    });
+}
+
 /// The text of a small object; `None` when it is missing.
 pub(crate) async fn read(
     operator: &opendal::Operator,
@@ -234,6 +293,25 @@ pub(crate) async fn read(
         Err(error) if error.kind() == opendal::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(problem(error)),
     }
+}
+
+/// The SHA-256 of a file in hex.
+pub(crate) async fn file_hash(file: &Path) -> Result<String, Problem> {
+    let mut source =
+        (tokio::fs::File::open(file).await).map_err(|error| Problem::local(file, error))?;
+    let mut digest = Sha256::new();
+    let mut buffer = vec![0; 1 << 20];
+    loop {
+        let read = (source.read(&mut buffer).await).map_err(|error| Problem::local(file, error))?;
+        if read == 0 {
+            return Ok(hex(&digest.finalize()));
+        }
+        digest.update(&buffer[..read]);
+    }
+}
+
+pub(crate) fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// The `key=value` pairs of a query or fragment, decoded; pairs without exactly one `=` are

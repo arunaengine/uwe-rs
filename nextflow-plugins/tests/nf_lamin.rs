@@ -37,12 +37,16 @@ fn instance() -> Value {
 }
 
 /// A run of `script` with nf-lamin and the extra `lamin` settings, with its project name, its
-/// error and what it printed.
+/// error and what it printed. Each test names its run, which keys what the functions share.
 fn run(script: &str, fake: &Fake, extra: &str, name: &str) -> (String, Option<String>, String) {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let folder = directory.path();
     let text = std::fs::read_to_string(common::fixtures("nf_lamin").join(script))
         .expect("reads the script");
+    let text = match script {
+        "annotate.nf" => text + "workflow.onComplete { log.info \"done=${getRunUid()}\" }\n",
+        _ => text,
+    };
     let results = format!("publishDir '{}/results'", folder.display());
     let text = text.replace("publishDir 'results'", &results);
     std::fs::write(folder.join("main.nf"), text).expect("writes the script");
@@ -162,8 +166,13 @@ fn links_files() {
                  } }\n  }\n  output_artifacts {\n    include_paths = \
                  ['s3://demo-bucket/results/out.txt', 's3://demo-bucket/results/skip.log']\n    \
                  rules { logs { type = 'exclude'; pattern = '.*\\\\.log$' } }\n  }\n";
-    let (_, error, printed) = run("main.nf", &fake, extra, "special_varahamihira");
+    let (_, error, printed) = run("annotate.nf", &fake, extra, "special_varahamihira");
     assert_eq!(error, None, "{printed}");
+    assert!(
+        printed.contains("lamin instance=demo-org/demo-inst"),
+        "{printed}"
+    );
+    assert!(printed.contains("done=RUN0001"), "{printed}");
     let requests = fake.requests();
     let upserts = |model: &str| bodies(&requests, "PUT", &format!("/core/{model}/upsert"));
     assert_eq!(
@@ -179,11 +188,16 @@ fn links_files() {
         [json!([{"run_id": 5, "ulabel_id": 3}, {"run_id": 5, "ulabel_id": 601}])]
     );
     let made = bodies(&requests, "POST", "/artifacts/create");
-    assert_eq!(
-        made[0]["kwargs"],
-        json!({"kind": "dataset",
-               "description": "Input artifact at s3:///demo-bucket/inputs/sheet.csv"})
-    );
+    let recorded_made: Vec<Value> = (recorded(include_str!("fixtures/nf_lamin/req-annotate.log"))
+        .into_iter())
+    .filter(|line| {
+        line["path"]
+            .as_str()
+            .is_some_and(|path| path.ends_with("/artifacts/create"))
+    })
+    .map(|line| line["body"].clone())
+    .collect();
+    assert_eq!(made[0], recorded_made[0], "the input of the rule");
     let outputs: Vec<&Value> = made[1..].iter().map(|body| &body["path"]).collect();
     assert_eq!(
         outputs,
@@ -199,6 +213,17 @@ fn links_files() {
     assert_eq!(
         upserts("artifact_input_of_runs"),
         [json!([{"artifact_id": 9, "run_id": 5}])]
+    );
+    let annotated = bodies(&requests, "PATCH", "/core/artifact/ARTIFACT9");
+    assert_eq!(
+        annotated,
+        [json!({"kind": "dataset", "description": "Annotated output"})]
+    );
+    let names = bodies(&requests, "PUT", "/core/ulabel");
+    let names: Vec<&Value> = names.iter().filter(|body| body.is_object()).collect();
+    assert_eq!(
+        names,
+        [&json!({"name": "nextflow"}), &json!({"name": "annotated"})]
     );
     let ended = bodies(&requests, "PATCH", "/core/run/RUN0001");
     assert_eq!(

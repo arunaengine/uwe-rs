@@ -149,7 +149,7 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-r-ipc", Kind::Functions),
     planned("nf-report", Kind::Functions),
     planned("nf-seqlab-progress", Kind::Functions),
-    planned("nf-sqldb", Kind::Functions),
+    crate::nf_sqldb::PLUGIN,
     planned("nf-trino", Kind::Functions),
     // Observers that write local files.
     planned("nf-arts", Kind::Observer),

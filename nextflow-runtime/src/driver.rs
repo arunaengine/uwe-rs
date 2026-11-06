@@ -260,6 +260,8 @@ impl Nextflow {
                 .collect(),
             command_line: self.settings.command_line.clone(),
             exec_folder: Some(self.folder().join("exec")),
+            cleanup: (!self.launch.simulated && nextflow_plugins::cleanup(&loaded.config))
+                .then(|| std::path::absolute(self.folder()).unwrap_or_else(|_| self.folder())),
         }
     }
 

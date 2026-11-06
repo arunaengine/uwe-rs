@@ -10,6 +10,7 @@ use nextflow_evaluator::interpreter::{Error, Interpreter};
 use nextflow_evaluator::value::{ChannelId, Value};
 
 use crate::channel::{Channel, Cursor, Message};
+use crate::cleanup::Cleanup;
 use workflow_graph::Delivery;
 
 use crate::process::{TaskId, TaskOutcome, TaskRequest};
@@ -112,6 +113,12 @@ pub struct Network {
     /// Topics by name: the channel of `channel.topic(name)`, if a script reads it, and the
     /// process outputs that write to the topic.
     topics: indexmap::IndexMap<Rc<str>, (Option<ChannelId>, Vec<ChannelId>)>,
+    /// Frees the files of the run's folder that no node can pass on any more, when it is on.
+    cleanup: Option<Cleanup>,
+    /// The nodes that ever read each channel and the channels that each node ever wrote, which
+    /// stay when nodes stop, for the cleanup.
+    consumers: Vec<Vec<usize>>,
+    wrote: Vec<Vec<ChannelId>>,
 }
 
 /// What a running node can see: its inputs, the channels it writes, and the interpreter for
@@ -135,6 +142,8 @@ pub(crate) struct Context<'n, 'i, 'h> {
     /// that read what it wrote.
     again: bool,
     again_first: bool,
+    /// The values that the node sent, kept only for the cleanup.
+    sent: Option<Vec<Value>>,
 }
 
 impl Context<'_, '_, '_> {
@@ -230,6 +239,9 @@ impl Context<'_, '_, '_> {
     }
 
     pub fn write(&mut self, channel: ChannelId, message: Message) {
+        if let (Some(sent), Message::Value(value)) = (&mut self.sent, &message) {
+            sent.push(value.clone());
+        }
         self.channels[channel.0 as usize].write(message);
         self.written.push(channel);
     }
@@ -239,6 +251,9 @@ impl Context<'_, '_, '_> {
     }
 
     pub fn source(&mut self, channel: ChannelId, values: Vec<Value>, close: bool) {
+        if let Some(sent) = &mut self.sent {
+            sent.extend(values.iter().cloned());
+        }
         self.channels[channel.0 as usize].source(values, close);
         self.written.push(channel);
     }
@@ -257,6 +272,7 @@ impl Network {
             Channel::queue()
         });
         self.readers.push(Vec::new());
+        self.consumers.push(Vec::new());
         let channel = ChannelId(self.channels.len() as u32 - 1);
         self.fresh.push(channel);
         channel
@@ -304,6 +320,7 @@ impl Network {
             .iter()
             .map(|channel| {
                 self.readers[channel.0 as usize].push(index);
+                self.consumers[channel.0 as usize].push(index);
                 Input {
                     channel: *channel,
                     cursor: self.channels[channel.0 as usize].subscribe(),
@@ -319,6 +336,37 @@ impl Network {
             state: State::Running,
         });
         self.queued.push(false);
+        self.wrote.push(Vec::new());
+    }
+
+    /// Frees the files of the run's folder once no node can pass them on any more.
+    pub(crate) fn clean(&mut self, folder: std::path::PathBuf) {
+        self.cleanup = Some(Cleanup::new(folder));
+    }
+
+    /// Deletes the files of the run's folder that no node can pass on any more: every node that
+    /// sent one and every node that reads what they write have stopped, and none publishes.
+    fn sweep(&mut self) {
+        let Some(mut cleanup) = self.cleanup.take() else {
+            return;
+        };
+        cleanup.sweep(|node| self.finished(node));
+        self.cleanup = Some(cleanup);
+    }
+
+    /// Whether a node and every node that reads what it writes have stopped, and none is a
+    /// workflow output. A reader that passes a file on sends it, and counts as its sender.
+    fn finished(&self, node: usize) -> bool {
+        let channels = self.nodes[node].outputs.iter().chain(&self.wrote[node]);
+        let readers = channels.flat_map(|channel| &self.consumers[channel.0 as usize]);
+        std::iter::once(&node).chain(readers).all(|index| {
+            let node = &self.nodes[*index];
+            let output = node
+                .behaviour
+                .as_ref()
+                .is_some_and(|node| node.output().is_some());
+            node.state == State::Stopped && !output
+        })
     }
 
     /// The processes of the network in the order they were called, numbered from 1, each with
@@ -454,7 +502,9 @@ impl Network {
         };
         self.step(index, interpreter, Step::Complete(outcome))?;
         self.enqueue(index);
-        self.run(interpreter)
+        self.run(interpreter)?;
+        self.sweep();
+        Ok(())
     }
 
     /// The nodes that have not stopped, by name; after a run, they wait for input that will
@@ -497,6 +547,7 @@ impl Network {
             interpreter,
             again: false,
             again_first: false,
+            sent: self.cleanup.is_some().then(Vec::new),
         };
         let result = match step {
             Step::Ignite => behaviour.ignite(&mut context),
@@ -504,6 +555,12 @@ impl Network {
             Step::Complete(outcome) => behaviour.complete(&mut context, outcome),
         };
         let written = std::mem::take(&mut context.written);
+        if let (Some(cleanup), Some(sent)) = (&mut self.cleanup, context.sent.take()) {
+            sent.iter().for_each(|value| cleanup.sent(index, value));
+            for delivery in &context.deliveries {
+                cleanup.delivered(&delivery.location);
+            }
+        }
         let mut requests = std::mem::take(&mut context.requests);
         if let Some(failure) = context.failure.take() {
             self.failure.get_or_insert(failure);
@@ -521,6 +578,11 @@ impl Network {
         self.requests.extend(requests);
         self.deliveries.append(&mut context.deliveries);
         node.behaviour = Some(behaviour);
+        for channel in &written {
+            if !node.outputs.contains(channel) && !self.wrote[index].contains(channel) {
+                self.wrote[index].push(*channel);
+            }
+        }
         node.state = result?;
         if node.state == State::Stopped {
             for input in &node.inputs {

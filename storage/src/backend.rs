@@ -14,6 +14,7 @@ use crate::folder::Folder;
 use crate::ftp::Ftp;
 use crate::irods::{self, Irods};
 use crate::lakefs::{self, Lakefs};
+use crate::lamin::{self, Lamin};
 use crate::objects::{Objects, Service};
 use crate::oci::{self, Oci};
 use crate::public::PublicBuckets;
@@ -45,6 +46,8 @@ pub(crate) enum Source {
     Oci,
     /// `lakefs` addresses that no provider serves, with the `lakefs` scope of a Nextflow config.
     Lakefs,
+    /// `lamin` addresses that no provider serves, with the `lamin` scope of a Nextflow config.
+    Lamin,
 }
 
 impl Source {
@@ -62,6 +65,7 @@ impl Source {
                     Source::Irods => "irods",
                     Source::Oci => "oci",
                     Source::Lakefs => "lakefs",
+                    Source::Lamin => "lamin",
                     Source::Configured(_) => unreachable!(),
                 }
                 .into(),
@@ -125,6 +129,7 @@ impl Source {
                 value.endpoint.clone().unwrap_or_default(),
                 value.access_key.clone().unwrap_or_default(),
             ],
+            Kind::Lamin(value) => vec!["lamin".into(), value.hub.clone().unwrap_or_default()],
             Kind::Oci(value) => vec![
                 "oci".into(),
                 value.profile.clone().unwrap_or_default(),
@@ -151,6 +156,7 @@ impl Source {
             Source::Irods => "an iRODS zone, with the account of the environment".to_owned(),
             Source::Oci => "OCI Object Storage, with the API key of the environment".to_owned(),
             Source::Lakefs => "lakeFS, with the lakefs scope of the Nextflow config".to_owned(),
+            Source::Lamin => "LaminDB, with the API key of the environment".to_owned(),
         }
     }
 }
@@ -167,6 +173,7 @@ pub(crate) enum Backend {
     Irods(Irods),
     Oci(Oci),
     Lakefs(Lakefs),
+    Lamin(Lamin),
 }
 
 /// A provider's client and the secrets that its messages must not show.
@@ -192,6 +199,7 @@ impl Connection {
             Source::Irods => Backend::Irods(Irods::new(irods::scope()).map_err(failed)?),
             Source::Oci => Backend::Oci(Oci::new(oci::scope()).map_err(failed)?),
             Source::Lakefs => Backend::Lakefs(Lakefs::new(lakefs::scope()).map_err(failed)?),
+            Source::Lamin => Backend::Lamin(Lamin::new(lamin::scope()).map_err(failed)?),
             Source::Configured(settings) => match &settings.kind {
                 Kind::S3(s3) => {
                     let service = s3_service(s3, settings, &mut secrets)?;
@@ -284,6 +292,15 @@ impl Connection {
                     };
                     Backend::Lakefs(Lakefs::new(options).map_err(failed)?)
                 }
+                Kind::Lamin(settings) => {
+                    let options = lamin::Options {
+                        api_key: secrets.reveal(&settings.api_key)?,
+                        hub: settings.hub.clone(),
+                        anon_key: secrets.reveal(&settings.anon_key)?,
+                        hub_credentials: settings.hub_credentials,
+                    };
+                    Backend::Lamin(Lamin::new(options).map_err(failed)?)
+                }
             },
         };
         // Credentials that a client found in the environment are secrets too.
@@ -293,6 +310,7 @@ impl Connection {
             Backend::Irods(client) => secrets.0.extend(client.secrets()),
             Backend::Oci(client) => secrets.0.extend(client.secrets()),
             Backend::Lakefs(client) => secrets.0.extend(client.secrets()),
+            Backend::Lamin(client) => secrets.0.extend(client.secrets()),
             _ => {}
         }
         Ok(Connection {
@@ -331,6 +349,7 @@ impl Connection {
             Backend::Irods(irods) => irods.stat(target).await,
             Backend::Oci(oci) => oci.stat(target).await,
             Backend::Lakefs(lakefs) => lakefs.stat(target).await,
+            Backend::Lamin(lamin) => lamin.stat(target).await,
         }
     }
 
@@ -348,6 +367,7 @@ impl Connection {
             Backend::Irods(irods) => irods.list(target).await,
             Backend::Oci(oci) => oci.list(target).await,
             Backend::Lakefs(lakefs) => lakefs.list(target).await,
+            Backend::Lamin(lamin) => lamin.list(target).await,
         }
     }
 
@@ -370,6 +390,7 @@ impl Connection {
             Backend::Irods(irods) => irods.download(target, file).await,
             Backend::Oci(oci) => oci.download(target, file, offset).await,
             Backend::Lakefs(lakefs) => lakefs.download(target, file).await,
+            Backend::Lamin(lamin) => lamin.download(target, file).await,
         }
     }
 

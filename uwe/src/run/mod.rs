@@ -163,6 +163,19 @@ fn execute_with(
     let (target, language) = target_and_language(arguments)?;
     let target = &target;
     let launch = launch(arguments, target.clone());
+    let picked;
+    let arguments =
+        match crate::nextflow::pipeline_executor(language, &launch, arguments, &mut setup)? {
+            Some(executor) => {
+                picked = Arguments {
+                    executor: Some(executor),
+                    executor_default: false,
+                    ..arguments.clone()
+                };
+                &picked
+            }
+            None => arguments,
+        };
     let run = chosen.unwrap_or_else(run_id);
     let name = arguments.executor.as_deref().unwrap_or("local");
     if let Some(network) = network {

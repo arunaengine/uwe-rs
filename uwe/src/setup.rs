@@ -643,6 +643,7 @@ impl Defaults {
             && arguments.preset.is_none()
         {
             arguments.executor = self.executor.or_else(|| Some("local".into()));
+            arguments.executor_default = true;
         } else if matches!(command, "graph" | "check-order" | "inputs" | "outputs")
             && arguments.executor.is_none()
             && arguments.preset.is_none()

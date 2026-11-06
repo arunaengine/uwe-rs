@@ -11,7 +11,7 @@ use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
 use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_runtime::driver::{Nextflow, Settings, run_folder};
 use storage::{Blocking, StorageError};
-use workflow_graph::{Driver, DriverError, Launch};
+use workflow_graph::{Driver, DriverError, Language, Launch};
 
 use crate::arguments::Arguments;
 use crate::setup::Setup;
@@ -351,8 +351,258 @@ pub fn print_config(launch: &Launch, setup: &Setup) -> Result<(), DriverError> {
     Ok(())
 }
 
+/// Nextflow's executors in `process.executor` and the uwe executors that they pick when no
+/// `-executor` is given; uwe refuses the others.
+pub(crate) const EXECUTORS: &[(&str, &str)] = &[
+    ("local", "local"),
+    ("awsbatch", "aws-batch"),
+    ("k8s", "kubernetes"),
+    ("slurm", "slurm"),
+    ("tes", "tes"),
+];
+
+/// For a Nextflow run: the uwe executor that the pipeline's `process.executor` picks, when no
+/// `-executor` chose one; and for AWS Batch the settings of the `aws` scope.
+pub fn pipeline_executor(
+    language: Language,
+    launch: &Launch,
+    arguments: &Arguments,
+    setup: &mut Setup,
+) -> Result<Option<String>, crate::Failure> {
+    let chosen = arguments.executor.is_some() && !arguments.executor_default;
+    let batch = arguments.executor.as_deref() == Some("aws-batch");
+    if language != Language::Nextflow || (chosen && !batch) {
+        return Ok(None);
+    }
+    let mut console = console(true, setup);
+    // A config that does not load fails the run in the driver, with its own message.
+    let Ok(config) = nextflow_runtime::driver::config(&launch.target, launch, &mut console) else {
+        return Ok(None);
+    };
+    let picked = match chosen {
+        true => None,
+        false => {
+            choice(&config).map_err(|message| crate::Failure::usage(format!("uwe: {message}")))?
+        }
+    };
+    if batch || picked.as_deref() == Some("aws-batch") {
+        aws_scope(&config, &mut setup.executors.aws_batch);
+    }
+    Ok(picked)
+}
+
+/// The uwe executor of `process.executor` and of the executors of the process selectors, which
+/// must all be the same, as uwe runs all tasks of a run with one executor.
+fn choice(config: &nextflow_config::Config) -> Result<Option<String>, String> {
+    let base = config
+        .get(&["process", "executor"])
+        .and_then(|value| text(&value));
+    let mut named = vec![("process.executor".to_owned(), base.clone())];
+    if let Some(Value::Map(scope)) = config.get(&["process"]) {
+        for (key, body) in &scope.borrow().entries {
+            let key = key.0.to_string();
+            if let Value::Map(body) = body
+                && (key.starts_with("withName:") || key.starts_with("withLabel:"))
+            {
+                let executor = body
+                    .borrow()
+                    .entries
+                    .iter()
+                    .find(|(name, _)| name.0.to_string() == "executor")
+                    .and_then(|(_, value)| text(value));
+                if executor.is_some() {
+                    named.push((key, executor));
+                }
+            }
+        }
+    }
+    let mut picked: Vec<(String, &str)> = Vec::new();
+    for (place, name) in &named {
+        // Processes without an executor run on Nextflow's default, `local`.
+        let name = name.as_deref().unwrap_or("local");
+        let Some((_, uwe)) = EXECUTORS.iter().find(|(nextflow, _)| *nextflow == name) else {
+            return Err(format!(
+                "uwe has no executor for Nextflow's `{name}` of {place}; choose one with \
+                 -executor"
+            ));
+        };
+        picked.push((format!("`{name}` for {place}"), uwe));
+    }
+    if picked.iter().any(|(_, uwe)| *uwe != picked[0].1) {
+        let named: Vec<String> = picked.into_iter().map(|(place, _)| place).collect();
+        return Err(format!(
+            "the pipeline names several executors ({}), but uwe runs all tasks of a run with \
+             one; choose it with -executor",
+            named.join(", ")
+        ));
+    }
+    Ok(base.map(|_| picked[0].1.to_owned()))
+}
+
+/// Fills the AWS Batch settings that `[executor.aws-batch]` leaves unset from the Nextflow
+/// `aws` scope, `executor.$awsbatch` and an `s3://` work directory.
+fn aws_scope(config: &nextflow_config::Config, batch: &mut crate::aws_batch::Config) {
+    let get = |path: &[&str]| {
+        config
+            .get(path)
+            .filter(|value| !matches!(value, Value::Null))
+    };
+    let text_of = |path: &[&str]| get(path).as_ref().and_then(text);
+    let settings = &mut batch.settings;
+    let fill = |slot: &mut Option<String>, path: &[&str]| {
+        if slot.is_none() {
+            *slot = text_of(path);
+        }
+    };
+    fill(&mut settings.region, &["aws", "region"]);
+    fill(&mut settings.profile, &["aws", "profile"]);
+    fill(&mut settings.job_role, &["aws", "batch", "jobRole"]);
+    fill(
+        &mut settings.execution_role,
+        &["aws", "batch", "executionRole"],
+    );
+    fill(&mut settings.logs_group, &["aws", "batch", "logsGroup"]);
+    fill(&mut settings.share, &["aws", "batch", "shareIdentifier"]);
+    let keys = (text_of(&["aws", "accessKey"])).zip(text_of(&["aws", "secretKey"]));
+    if settings.keys.is_none()
+        && let Some((id, secret)) = keys
+    {
+        settings.keys = Some(storage::aws::Keys {
+            id,
+            secret,
+            token: None,
+        });
+    }
+    let number = |path: &[&str]| text_of(path).and_then(|text| text.trim().parse::<i64>().ok());
+    if settings.spot_attempts == 0 {
+        let attempts = number(&["aws", "batch", "maxSpotAttempts"])
+            .and_then(|count| u32::try_from(count).ok());
+        settings.spot_attempts = attempts.unwrap_or(0);
+    }
+    if settings.priority == 0 {
+        settings.priority = number(&["aws", "batch", "schedulingPriority"]).unwrap_or(0);
+    }
+    if !settings.terminate_unschedulable {
+        let stop = text_of(&["aws", "batch", "terminateUnschedulableJobs"]);
+        settings.terminate_unschedulable = stop.as_deref() == Some("true");
+    }
+    if !settings.fargate {
+        settings.fargate = text_of(&["aws", "batch", "platformType"]).as_deref() == Some("fargate");
+    }
+    if settings.volumes.is_empty() {
+        let volumes = match get(&["aws", "batch", "volumes"]) {
+            Some(Value::List(list)) => list.borrow().items.iter().filter_map(text).collect(),
+            Some(value) => text(&value)
+                .map(|text| text.split(',').map(|part| part.trim().to_owned()).collect())
+                .unwrap_or_default(),
+            None => Vec::new(),
+        };
+        for volume in volumes.iter().filter(|volume| !volume.is_empty()) {
+            match aws_batch_executor::Volume::parse(volume) {
+                Ok(volume) => settings.volumes.push(volume),
+                Err(message) => {
+                    tracing::warn!(message, "uwe ignores a volume of aws.batch.volumes")
+                }
+            }
+        }
+    }
+    let poll = match get(&["executor", "$awsbatch", "pollInterval"]) {
+        Some(Value::Duration(millis)) => Some(millis),
+        Some(value) => {
+            text(&value).and_then(|text| nextflow_evaluator::units::parse_duration(&text).ok())
+        }
+        None => None,
+    };
+    if let Some(millis) = poll.filter(|millis| *millis >= 1000) {
+        settings.poll = std::time::Duration::from_millis(millis as u64);
+    }
+    if get(&["aws", "batch", "cliPath"]).is_some() {
+        tracing::warn!("uwe ignores aws.batch.cliPath; its AWS Batch jobs need no AWS CLI");
+    }
+    let work = text_of(&["workDir"]).filter(|work| work.starts_with("s3://"));
+    if batch.staging.root.is_none()
+        && let Some(work) = work
+    {
+        batch.staging.root = Some(work);
+        batch.staging.mode = crate::staging::Mode::ObjectStore;
+    }
+}
+
+/// The text of a config value, without quotes; `None` for one without text.
+fn text(value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::String(text) | Value::GString(text) => Some(text.to_string()),
+        Value::Path(path) => Some(path.uri()),
+        Value::List(_) | Value::Map(_) => None,
+        value => Some(value.to_string()),
+    }
+    .filter(|text| !text.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
+    /// The config of a pipeline whose `nextflow.config` is `text`.
+    fn loaded(text: &str) -> nextflow_config::Config {
+        let folder = tempfile::tempdir().expect("a folder");
+        std::fs::write(folder.path().join("main.nf"), "workflow {}\n").expect("writes");
+        std::fs::write(folder.path().join("nextflow.config"), text).expect("writes");
+        let launch = workflow_graph::Launch {
+            target: folder.path().to_owned(),
+            ..workflow_graph::Launch::default()
+        };
+        let mut host = super::console(true, &crate::setup::Setup::default());
+        nextflow_runtime::driver::config(&launch.target, &launch, &mut host).expect("a config")
+    }
+
+    #[test]
+    fn picks_pipeline_executors() {
+        let choice = |text: &str| super::choice(&loaded(text));
+        assert_eq!(choice(""), Ok(None));
+        let batch = choice("process.executor = 'awsbatch'\n");
+        assert_eq!(batch, Ok(Some("aws-batch".to_owned())));
+        let same = "process {\n executor = 'k8s'\n withName: FOO { executor = 'k8s' }\n}\n";
+        assert_eq!(choice(same), Ok(Some("kubernetes".to_owned())));
+        let mixed = "process {\n executor = 'awsbatch'\n withName: FOO { executor = 'local' }\n}\n";
+        let error = choice(mixed).expect_err("mixed executors");
+        assert!(error.contains("`local` for withName:FOO"), "{error}");
+        let error = choice("process.executor = 'sge'\n").expect_err("an unknown executor");
+        assert!(error.contains("Nextflow's `sge`"), "{error}");
+        // The processes that no selector names run on Nextflow's default, `local`.
+        let selected = "process {\n withLabel: big { executor = 'awsbatch' }\n}\n";
+        assert!(choice(selected).is_err());
+    }
+
+    #[test]
+    fn maps_aws_scope() {
+        let text = "workDir = 's3://probe/work'\nprocess.executor = 'awsbatch'\n\
+                    aws {\n region = 'eu-west-1'\n batch {\n  jobRole = 'arn:role'\n  \
+                    maxSpotAttempts = 3\n  volumes = ['/scratch', '/refs:/refs:ro']\n  \
+                    logsGroup = '/probe/batch'\n  shareIdentifier = 'blue'\n  \
+                    schedulingPriority = 10\n  terminateUnschedulableJobs = true\n }\n}\n\
+                    executor {\n $awsbatch {\n  pollInterval = '30 sec'\n }\n}\n";
+        let config = loaded(text);
+        let mut batch = crate::aws_batch::Config::default();
+        batch.settings.region = Some("us-east-1".into());
+        super::aws_scope(&config, &mut batch);
+        let settings = &batch.settings;
+        assert_eq!(
+            settings.region.as_deref(),
+            Some("us-east-1"),
+            "uwe's own setting wins"
+        );
+        assert_eq!(settings.job_role.as_deref(), Some("arn:role"));
+        assert_eq!((settings.spot_attempts, settings.priority), (3, 10));
+        assert_eq!(settings.volumes.len(), 2);
+        assert!(settings.volumes[1].read_only);
+        assert_eq!(settings.logs_group.as_deref(), Some("/probe/batch"));
+        assert_eq!(settings.share.as_deref(), Some("blue"));
+        assert!(settings.terminate_unschedulable);
+        assert_eq!(settings.poll, std::time::Duration::from_secs(30));
+        assert_eq!(batch.staging.root.as_deref(), Some("s3://probe/work"));
+        assert_eq!(batch.staging.mode, crate::staging::Mode::ObjectStore);
+    }
+
     #[test]
     fn writes_local_parents() {
         let root = tempfile::tempdir().unwrap();

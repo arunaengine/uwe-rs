@@ -59,6 +59,9 @@ takes the channel first. When a script includes it from `plugin/<id>`, `ch.group
 calls that function with `ch`, which builds on the built-in operators. A name that the plugin
 runs natively, like nf-boost's `scan`, stays a built-in operator.
 
+nf-gc and nf-boost's `boost.cleanup` turn on the cleanup of the runtime, whose contract is in
+the README of `nextflow-runtime`, section `src/cleanup.rs`.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

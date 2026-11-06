@@ -6,6 +6,7 @@
 mod client;
 pub mod job;
 pub mod options;
+pub mod outcome;
 mod settings;
 
 pub use client::{Client, NomadError};

@@ -158,7 +158,7 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_co2footprint::PLUGIN,
     planned("nf-emoji", Kind::Observer),
     crate::nf_fairscape::PLUGIN,
-    planned("nf-flowviewer", Kind::Observer),
+    crate::nf_flowviewer::PLUGIN,
     crate::nf_gc::PLUGIN,
     crate::nf_logsaver::PLUGIN,
     crate::nf_metalog::PLUGIN,

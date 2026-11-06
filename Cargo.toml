@@ -24,6 +24,7 @@ members = [
     "nextflow-parser",
     "nextflow-plugins",
     "nextflow-runtime",
+    "nomad-executor",
     "python-evaluator",
     "run-crate",
     "run-database",
@@ -66,6 +67,7 @@ nextflow-evaluator = { path = "nextflow-evaluator" }
 nextflow-parser = { path = "nextflow-parser" }
 nextflow-plugins = { path = "nextflow-plugins" }
 nextflow-runtime = { path = "nextflow-runtime" }
+nomad-executor = { path = "nomad-executor" }
 python-evaluator = { path = "python-evaluator" }
 run-crate = { path = "run-crate" }
 run-database = { path = "run-database" }

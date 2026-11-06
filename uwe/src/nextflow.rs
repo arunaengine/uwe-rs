@@ -376,6 +376,7 @@ pub(crate) const EXECUTORS: &[(&str, &str)] = &[
     ("k8s", "kubernetes"),
     ("nomad", "nomad"),
     ("slurm", "slurm"),
+    ("slurm_no_memory", "slurm"),
     ("tes", "tes"),
 ];
 
@@ -392,7 +393,7 @@ pub fn pipeline_executor(
     let named = arguments.executor.as_deref();
     let batch = matches!(
         named,
-        Some("aws-batch" | "google-batch" | "azure-batch" | "nomad")
+        Some("aws-batch" | "google-batch" | "azure-batch" | "nomad" | "slurm")
     );
     if language != Language::Nextflow || (chosen && !batch) {
         return Ok(None);
@@ -423,6 +424,9 @@ pub fn pipeline_executor(
         let provider = crate::scopes::nomad(&config, &mut setup.executors.nomad)
             .map_err(|message| crate::Failure::usage(format!("uwe: {message}")))?;
         setup.storage = setup.storage.with_providers(provider.into_iter().collect());
+    }
+    if named == Some("slurm") || picked.as_deref() == Some("slurm") {
+        crate::scopes::slurm(&config, &mut setup.executors);
     }
     Ok(picked)
 }

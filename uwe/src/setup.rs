@@ -107,6 +107,9 @@ pub struct Executors {
     pub slurm_helper_file: Option<PathBuf>,
     /// `[executor.slurm] node_folder`: the folder of the nodes for the files of a job.
     pub slurm_node_folder: Option<String>,
+    /// `[executor.slurm] memory_per_cpu_gb`: for a cluster that gives each CPU a fixed memory,
+    /// the GB per CPU; the jobs then ask for CPUs instead of memory.
+    pub slurm_cpu_memory: Option<f64>,
     /// `[executor.slurm] staging_secret_file`: the storage providers of the staging root for
     /// `staging_access = "credentials"`, in a file that only its owner may read.
     pub slurm_secret_file: Option<PathBuf>,
@@ -246,6 +249,7 @@ impl Executors {
                 "pull",
                 "node_folder",
                 "query_seconds",
+                "memory_per_cpu_gb",
             ];
             keys.push("staging_secret_file");
             keys.extend(["helper_path", "helper_url", "helper_sha256", "helper_file"]);
@@ -265,6 +269,12 @@ impl Executors {
                 settings.slurm_helper_file = None;
             }
             settings.slurm_container = slurm.text("container")?;
+            if let Some(gb) = slurm.number("memory_per_cpu_gb")? {
+                if !(gb > 0.0 && gb.is_finite()) {
+                    return Err(slurm.invalid("memory_per_cpu_gb", "must be above 0"));
+                }
+                settings.slurm_cpu_memory = Some(gb);
+            }
             settings.slurm_options = slurm.texts("options")?;
             if let Some(pull) = slurm.table("pull")? {
                 settings.slurm_pull = pull_resources(&pull)?;
@@ -1018,6 +1028,9 @@ mod tests {
         let settings = read("[executor.slurm]\nquery_seconds = 120\n").expect("settings");
         assert_eq!(settings.slurm_query, Some(120));
         assert!(read("[executor.slurm]\nquery_seconds = 0\n").is_err());
+        let settings = read("[executor.slurm]\nmemory_per_cpu_gb = 4.5\n").expect("settings");
+        assert_eq!(settings.slurm_cpu_memory, Some(4.5));
+        assert!(read("[executor.slurm]\nmemory_per_cpu_gb = 0\n").is_err());
     }
 
     #[test]

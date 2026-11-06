@@ -12,9 +12,13 @@ mod nf_schema;
 mod nf_validation;
 pub mod observer;
 
+use std::any::Any;
+use std::cell::{RefCell, RefMut};
+use std::rc::Rc;
+
 use nextflow_config::Config;
 use nextflow_evaluator::interpreter::{Error, Host};
-use nextflow_evaluator::value::{State as ObjectState, Value};
+use nextflow_evaluator::value::{Native, Object, State as ObjectState, Value};
 
 use crate::catalogue::{Kind, Plugin, State};
 
@@ -68,12 +72,6 @@ const NF_VALIDATION_PLUGIN: Plugin = Plugin {
     factories: &["fromSamplesheet"],
     scopes: &["validation"],
     ..Plugin::new("nf-validation", Kind::Functions, State::Implemented)
-};
-
-const NF_FGBIO_PLUGIN: Plugin = Plugin {
-    functions: &["readStructure"],
-    call: Some(|name, arguments, _| nf_fgbio::call(name, arguments)),
-    ..Plugin::new("nf-fgbio", Kind::Functions, State::Implemented)
 };
 
 const NF_ANNDATA_PLUGIN: Plugin = Plugin {
@@ -152,6 +150,27 @@ pub fn method(
         Some(methods) => methods(object, name, arguments, context),
         None => Ok(None),
     }
+}
+
+/// A new object of a plugin class with its state.
+pub(crate) fn object(class: &'static str, state: impl Native) -> Value {
+    Value::Object(Rc::new(RefCell::new(Object {
+        class,
+        state: ObjectState::Plugin(Box::new(state)),
+    })))
+}
+
+/// The state of a plugin object, if the value is an object of that state.
+pub(crate) fn native<T: Native>(value: &Value) -> Option<RefMut<'_, T>> {
+    let Value::Object(object) = value else {
+        return None;
+    };
+    let borrowed = object.try_borrow_mut().ok()?;
+    RefMut::filter_map(borrowed, |object| match &mut object.state {
+        ObjectState::Plugin(native) => (native.as_mut() as &mut dyn Any).downcast_mut::<T>(),
+        _ => None,
+    })
+    .ok()
 }
 
 /// Calls a function of a plugin.

@@ -127,7 +127,7 @@ pub const PLUGINS: &[Plugin] = &[
     crate::NF_SCHEMA_PLUGIN,
     crate::NF_VALIDATION_PLUGIN,
     crate::nf_core_utils::PLUGIN,
-    crate::NF_FGBIO_PLUGIN,
+    crate::nf_fgbio::PLUGIN,
     crate::NF_ANNDATA_PLUGIN,
     // Functions.
     planned("nf-bactopia", Kind::Functions),

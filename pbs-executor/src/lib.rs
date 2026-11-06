@@ -4,16 +4,20 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod head;
+mod summary;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use executor::CONTROL;
+use executor::wrapper::STDERR;
 use serde_json::Value;
-use slurm_executor::executable;
 use slurm_executor::grid::{GridBackend, Scheduler, State, Submission, call};
+use slurm_executor::{LOG, executable};
 use tokio::process::Command;
 
 pub use head::head;
+pub use summary::summary;
 
 /// The PBS tools that the backend runs.
 pub const TOOLS: [&str; 3] = ["qsub", "qstat", "qdel"];
@@ -114,6 +118,22 @@ impl Scheduler for Pbs {
             true => Ok(()),
             false => Err(error.trim().to_owned()),
         }
+    }
+
+    /// Adds the resource summary that sites like Gadi write at the end of the job log to the
+    /// standard error of the task, where reports read it.
+    fn ended(&self, root: &Path) -> std::io::Result<()> {
+        use std::io::Write;
+        let control = root.join(CONTROL);
+        let Ok(log) = std::fs::read_to_string(control.join(LOG)) else {
+            return Ok(());
+        };
+        let Some(block) = summary(&log) else {
+            return Ok(());
+        };
+        let mut file =
+            (std::fs::OpenOptions::new().create(true).append(true)).open(control.join(STDERR))?;
+        file.write_all(block.as_bytes())
     }
 }
 

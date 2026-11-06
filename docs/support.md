@@ -28,9 +28,10 @@ Each language is a subset that uwe implements in Rust. The exact limits are in [
 | `aws-batch` | The compute environments of an AWS Batch job queue, on EC2 or Fargate | `object-store` |
 | `google-batch` | The VMs of Google Batch in one project and location | `object-store` |
 | `azure-batch` | The pools of an Azure Batch account | `object-store` |
+| `nomad` | The `docker` or `podman` driver of a Nomad cluster | `shared-path`, `object-store` |
 | `simulator` | None, outputs are placeholders | None |
 
-Object-store staging on SLURM, Kubernetes, AWS Batch, Google Batch and Azure Batch needs a static Linux build of uwe for the machine type of the nodes. Tasks with several containers need `shared-path`. See [Remote executors and staging](remote-executors.md).
+Object-store staging on SLURM, Kubernetes, AWS Batch, Google Batch, Azure Batch and Nomad needs a static Linux build of uwe for the machine type of the nodes. Tasks with several containers need `shared-path`. See [Remote executors and staging](remote-executors.md).
 
 ## Storage providers
 
@@ -52,6 +53,8 @@ Inputs can come from S3 (and S3-compatible services), Google Cloud Storage, Azur
 
 `cas://` addresses read and write the content-addressed stores of nf-blocks: local folders or `s3://` prefixes (read with the AWS settings of the environment), each with an alias. `cas://<cid>/<name>` names file content by its CID (CIDv1, SHA-256, base32), and a run, collection or item CID followed by a publish path or item and leaf names reaches the file of a leaf. `cas://<alias>/<path>` is a publish coordinate: writing there stores the content as a read-only block `blocks/<xx>/<cid>` of the writable store and the coordinate as a one-line file under `coords/`. Reads look in the stores in their resolve order. A `[storage.<name>]` table of type `cas` sets `stores` (a table of alias and location), `resolve` and `writable`. Without one, the `cas` scope of a Nextflow config with nf-blocks serves these addresses.
 
+`cos://` addresses read and write Tencent Cloud Object Storage through its S3 API. A `[storage.<name>]` table of type `s3` with `prefixes = ["cos://"]` and `endpoint = "https://cos.<region>.myqcloud.com"` serves them. Without one, the `tencentcloud` scope of a Nextflow config with nf-tencentcloud does: `region`, `secretId`, `secretKey` and `sessionToken`.
+
 A Nextflow config with `cloudcache.enabled = true` (nf-cloudcache) puts uwe's store at `cloudcache.path`, else at the address of the environment variable `NXF_CLOUDCACHE_PATH`, else at `workDir`, unless `-store` names a store. A place on this machine is refused. The address needs a storage provider that can write there. The store keeps uwe's own format, not Nextflow's cache files. `uwe clean` and other commands do not read the Nextflow config, so they need `-store` with the same address.
 
 ## Hosts
@@ -72,5 +75,6 @@ uwe builds and runs on Linux and macOS, and on Windows through WSL 2. The static
 | AWS Batch | Tests against a local fake of AWS Batch and CloudWatch Logs; not yet run on AWS |
 | Google Batch | Tests against a local fake of Google Batch, its token endpoint and Cloud Logging; not yet run on Google Cloud |
 | Azure Batch | Tests against a local fake of Azure Batch and the Entra ID token endpoints; not yet run on Azure |
+| Nomad | Tests against a local fake of the Nomad HTTP API; not yet run on a Nomad cluster |
 
 Not yet tested on live systems as part of a release: rootless Podman and Docker, managed Kubernetes services, cloud TES services, and recovery after a crash of the machine that runs uwe on every remote executor.

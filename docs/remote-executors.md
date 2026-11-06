@@ -1,15 +1,15 @@
-<!-- How SLURM, Kubernetes, TES, AWS Batch, Google Batch and Azure Batch jobs get their files, with or without shared folders. -->
+<!-- How SLURM, Kubernetes, TES, AWS Batch, Google Batch, Azure Batch and Nomad jobs get their files, with or without shared folders. -->
 <!-- Copyright (c) 2026 The uwe Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
 # Remote executors and staging
 
-SLURM, Kubernetes, TES, AWS Batch, Google Batch and Azure Batch take a `staging` setting in `[executor.slurm]`, `[executor.kubernetes]`, `[executor.tes]`, `[executor.aws-batch]`, `[executor.google-batch]` or `[executor.azure-batch]` of the config file. It decides how a job gets its inputs and how its outputs come back. In every mode the task container runs the original image of the task, unchanged.
+SLURM, Kubernetes, TES, AWS Batch, Google Batch, Azure Batch and Nomad take a `staging` setting in `[executor.slurm]`, `[executor.kubernetes]`, `[executor.tes]`, `[executor.aws-batch]`, `[executor.google-batch]`, `[executor.azure-batch]` or `[executor.nomad]` of the config file. It decides how a job gets its inputs and how its outputs come back. In every mode the task container runs the original image of the task, unchanged.
 
 | Mode | Executors | What the nodes need |
 | --- | --- | --- |
-| `shared-path` (default) | SLURM, Kubernetes | The store and scratch folders at the same paths as on the machine that runs uwe |
-| `object-store` | SLURM, Kubernetes, TES, AWS Batch, Google Batch, Azure Batch | Network access to the staging root in an object store |
+| `shared-path` (default) | SLURM, Kubernetes, Nomad | The store and scratch folders at the same paths as on the machine that runs uwe |
+| `object-store` | SLURM, Kubernetes, TES, AWS Batch, Google Batch, Azure Batch, Nomad | Network access to the staging root in an object store |
 | `kubedal` | Kubernetes | The [kubedal](https://github.com/arunaengine/kubedal) CSI driver |
 
 ## Shared paths
@@ -193,7 +193,10 @@ When no `-executor` is given, the `process.executor` of a Nextflow pipeline pick
 | `azurebatch` | `azure-batch` |
 | `google-batch` | `google-batch` |
 | `k8s` | `kubernetes` |
+| `nomad` | `nomad` |
 | `slurm` | `slurm` |
+| `slurm_no_memory` | `slurm`, with `memory_per_cpu_gb` (see [SLURM memory per CPU](#slurm-memory-per-cpu)) |
+| `tencentcloud-omics` | `tes`, with `platform = "tencent-omics"` |
 | `tes` | `tes` |
 | `local` | `local` |
 
@@ -353,6 +356,117 @@ The directive `queue` names the pool. `cpus`, `memory`, `time` and `resourceLabe
 ### Snakemake, CWL and Argo
 
 Their tasks use `pool` of `[executor.azure-batch]`, or auto pools. A Snakemake rule names another pool with `resources: queue="..."`. CPUs, memory and time come from the resources of the task, as on the other executors.
+
+## Nomad
+
+`-executor nomad` runs each attempt of a task as one HashiCorp Nomad batch job with one task, through the Nomad HTTP API with the ACL token in `X-Nomad-Token`. uwe needs no `nomad` program. The task runs with the `docker` driver, or with `podman`.
+
+```toml
+[executor.nomad]
+address = "https://nomad.example.org:4646"  # else NOMAD_ADDR, else http://127.0.0.1:4646
+token = { environment = "NOMAD_TOKEN" }     # else NOMAD_TOKEN
+namespace = "lab"                           # else NOMAD_NAMESPACE
+# region = "eu"                             # else NOMAD_REGION
+# datacenters = ["dc1"]
+# node_pool = "highmem"
+# driver = "podman"                         # else "docker"
+# network_mode = "bridge"
+# cpu_mode = "cpu"                          # MHz, 1000 per CPU; else "cores"
+# device = "nvidia/gpu"                     # the device of GPUs that name no device of their own
+# priority = 80                             # 1 to 100
+# meta = { owner = "team-x" }
+# constraints = [{ attribute = "${attr.cpu.arch}", operator = "=", value = "amd64" }]
+# affinities = [{ attribute = "${node.class}", value = "fast", weight = 50 }]
+# spreads = [{ attribute = "${node.datacenter}", weight = 100, targets = { dc1 = 70, dc2 = 30 } }]
+# volumes = [{ type = "host", name = "scratch", path = "/shared", read_only = false }]   # or type = "csi"
+# restart_attempts = 0                      # restarts on the same node
+# reschedule_attempts = 1                   # placements on another node
+# cleanup = "on-success"                    # purges successful jobs; or "always", "never"
+# fail_unplaced = true                      # fails a job at once when no node fits it
+# placement_minutes = 30                    # else how long a job may wait for a node
+# poll_seconds = 1
+```
+
+With `staging = "shared-path"` (the default) the Nomad clients see the store and scratch folders at the same paths as this machine. A folder on one of `volumes` (a host or CSI volume mounted at the same path) needs nothing more; every other folder of the task is a bind mount of the driver, which needs `volumes.enabled = true` in the docker plugin of the clients. The container runs the wrapper of the task as the user and group that own the scratch folder.
+
+With `staging = "object-store"` the jobs get their files through the staging root with presigned requests, as on the other remote executors. Nomad downloads the helper before the task starts, as an `artifact` with its SHA-256 checksum, so the image needs no download tool: from `helper_url` with `helper_sha256`, or the binary of `helper_file` (else the running binary) that uwe uploads to the staging root. With `helper_path` the job mounts the folder of the binary on the hosts read-only. The task copies the helper into `task_folder` (default `/tmp/uwe`), stages the inputs, runs the wrapper and sends the outputs back.
+
+A task runs like this:
+
+1. uwe registers the job `uwe-<attempt>` with `POST /v1/jobs`: the image and command of the task, its CPUs as cores (or MHz), its memory in MiB (1024 when it names none) also as `MemoryMaxMB`, its GPUs as devices, the datacenters, node pool, priority, `Meta`, constraints, affinities, spreads and volumes of the settings and of the task, and the restart and reschedule policies.
+2. uwe reads the allocations of the job every `poll_seconds`. Without an allocation, it reads the latest evaluation: with `fail_unplaced`, a job that every node was filtered out for fails at once; a job that waits only for busy nodes waits on. A job without a node after `placement_minutes` fails.
+3. A job ends when its task is `dead` or its allocation `complete`, `failed` or `lost`. The exit code that the wrapper recorded wins; else the exit code of the task's last `Terminated` event. A task that Nomad stopped for lack of memory gets a note. A job that could not run its task shows the end of its standard error, read through the client file system API.
+4. uwe purges the job as `cleanup` says. A cancelled task stops its job.
+
+Limits:
+
+- Containers never run privileged: uwe sends `privileged = false` and `no-new-privileges`, and refuses `nomad.jobs.privileged = true` and `privileged` in `nomadOptions`. nf-nomad starts privileged containers by default.
+- Nomad has no time limit for batch jobs, so the wrapper stops the task at its time, and uwe stops a job that runs longer than its time and `staging_minutes`.
+- Tasks of several containers, tasks that run as a named user, and, with object-store staging, tasks without network and inputs at absolute paths are refused. With shared paths a task without network gets `network_mode = "none"`.
+- Nextflow's secrets provider of Nomad Variables, the `slurm` and `pbs` drivers of nf-nomad and constraint closures are not supported.
+- The tests run against a local fake of the Nomad HTTP API. Runs on a real Nomad cluster are not verified yet. Nomad documents the durations of restart and reschedule policies in nanoseconds, which uwe sends; nf-nomad sends milliseconds.
+
+### Nextflow pipelines
+
+`process.executor = 'nomad'` picks this executor. The `nomad` scope of nf-nomad fills the settings that `[executor.nomad]` leaves unset: `nomad.client.address`, `token` and `pollInterval`, and `nomad.jobs.datacenters`, `region`, `namespace`, `nodePool`, `driver`, `networkMode`, `cpuMode`, `acceleratorDeviceName`, `meta`, `constraints`, `affinities` and `spreads` (as lists of maps), `volumes`, `restartAttempts`, `rescheduleAttempts`, `cleanup` or `deleteOnCompletion`, `failOnPlacementFailure` and `placementFailureTimeout`. uwe ignores `nomad.jobs.secrets`, `dockerVolume` and `nomad.debug`, with a warning.
+
+The `nomadOptions` of a process (from the process config) add `datacenters`, `nodePool`, `priority` (`critical` 100, `high` 80, `normal` 50, `low` 30, `min` 1, or a number), `meta`, `constraints`, `affinity`, `spread`, `volumes`, `shutdownDelay`, `failures.restart` and `failures.reschedule`, `resources.memoryMax`, `resources.cpu` or `resources.cores`, `resources.device` and `driver`. Other keys are refused before the job starts.
+
+nf-nomad-s5cmd is not needed: with `nomad.s5cmd.enabled` and its distributed work dir (`nomad.s5cmd.workDir.enabled`, `bucket` and `prefix`), uwe stages through `s3://<bucket>/<prefix>` with its helper and serves that bucket with the S3 settings of `nomad.s5cmd.s3` (`endpoint`, `region`, `usePathStyle`, `accessKeyId`, `secretAccessKey`). The other `nomad.s5cmd` settings and the s5cmd host volume are unused, with one warning.
+
+### Snakemake, CWL and Argo
+
+Their tasks use the settings of `[executor.nomad]`. CPUs, memory, GPUs and time come from the resources of the task, as on the other executors.
+
+## Kubernetes pod options
+
+`pod` in `[executor.kubernetes]` gives every Job pod options in the form of Nextflow's `pod` directive, `service_account` its service account, and `context` the context of the kubeconfig:
+
+```toml
+[executor.kubernetes]
+context = "lab"
+service_account = "runner"
+pod = [
+    { nodeSelector = "disktype=ssd" },
+    { toleration = { key = "gpu", operator = "Exists", effect = "NoSchedule" } },
+    { env = "TOKEN", secret = "creds/token" },
+    { volumeClaim = "refs", mountPath = "/refs", readOnly = true },
+    { label = "team", value = "genomics" },
+]
+```
+
+The options are `env` with `value`, `secret`, `config` or `fieldPath`; volumes of `secret`, `config`, `volumeClaim`, `emptyDir`, `hostPath` or `csi` with `mountPath` (and `subPath`, `readOnly`); `label` and `annotation` with `value`; `nodeSelector`, `affinity`, `toleration`; `imagePullPolicy`, `imagePullSecret`; `priorityClassName`, `schedulerName`, `runtimeClassName`; `automountServiceAccountToken`; `runAsUser` and `securityContext`; and `ttlSecondsAfterFinished`. The `pod` directive of a Nextflow process adds its options after these. Resource labels become Job labels, cleaned as Nextflow cleans them. A task's disk becomes `ephemeral-storage`, and the `type` of Nextflow's `accelerator` names the GPU resource (`amd` gives `amd.com/gpu`). uwe's own labels, its architecture selector and the security of its containers stay: `privileged`, and a `runAsUser` of 0 or another root `securityContext`, are refused with a clear message.
+
+With `process.executor = 'k8s'` the `k8s` scope fills these settings: `k8s.namespace`, `context`, `serviceAccount`, `pod`, `imagePullPolicy`, `runAsUser`, `securityContext`, and with shared paths `storageClaimName` with `storageMountPath` as the shared volume. uwe still needs `-kubeconfig`, `kubeconfig` in `[executor.kubernetes]` or `in_cluster`; it does not read `KUBECONFIG` or `~/.kube/config`. It always runs Jobs, also with `k8s.computeResourceType = 'Pod'`, and ignores `k8s.client`, `storageSubPath` and `autoMountHostPaths` with a warning. Containers always get a CPU limit, whatever `k8s.cpuLimits` says.
+
+## SLURM memory per CPU
+
+Some clusters give each CPU a fixed amount of memory and refuse `--mem`. With `memory_per_cpu_gb` in `[executor.slurm]`, the jobs ask for no memory and instead for enough CPUs to cover the memory of the task, at that many GB (of 2^30 bytes) per CPU: a task of 2 CPUs and 10 GB gets `--cpus-per-task=3` at 4 GB per CPU. The image pull jobs do the same. The task itself keeps its CPUs and its memory limit in the container.
+
+```toml
+[executor.slurm]
+memory_per_cpu_gb = 4
+```
+
+Nextflow's `process.executor = 'slurm_no_memory'` (nf-slurm-no-memory) picks the SLURM executor with `memory_per_cpu_gb` from `executor.$slurm_no_memory.memoryPerCore`, 4 when it is unset, and the account of `executor.$slurm_no_memory.account`.
+
+## TES authentication and endpoints
+
+Besides a bearer token (`token`, or `UWE_TES_TOKEN`) and HTTP Basic (`user`, `password`), `[executor.tes]` takes an API key, which goes in a query parameter or a header, and a timeout for each request:
+
+```toml
+[executor.tes]
+api_key = { environment = "TES_API_KEY" }
+api_key_name = "key"                        # the name of the parameter or header
+api_key_mode = "header"                     # else "query"
+timeout_seconds = 30                        # else 120
+```
+
+uwe adds the API path `/ga4gh/tes/v1` to the address of the server, unless it ends with that path or with `/v1`.
+
+With `process.executor = 'tes'` the `tes` scope of nf-ga4gh fills these settings: `tes.endpoint` with `/v1` added, as nf-ga4gh adds it, `oauthToken`, `basicUsername` and `basicPassword`, `apiKey`, `apiKeyParamName` and `apiKeyParamMode`, `timeout` and `tags`. uwe does not read `tes.pollInterval`. TES counts memory and disk in GB of 10^9 bytes, as the TES specification says, and so does uwe; nf-ga4gh sends GiB, so the same `memory` directive asks for about 7% more there.
+
+With `platform = "tencent-omics"` (or Nextflow's `process.executor = 'tencentcloud-omics'` of nf-tencentcloud, whose `tencentcloud.omics.endpoint` and `accessToken` name the server), tasks get the tags `runUuid` (from the environment variable `RUN_ID`), `WorkingDir` and `DestDir`, spot VMs from the resource label `preemptible = 'true'`, and the backend parameters `gpuType` and `gpuCount` from the resource labels of those names or from the GPUs of the task. Which addresses of inputs and outputs the platform accepts is not verified. `tencentcloud.metadata.enabled` writes the run and its task events to `tencentcloud.metadata.file` (default `metadata.json` in the launch directory).
 
 ## Default task time
 

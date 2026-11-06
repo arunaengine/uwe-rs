@@ -14,6 +14,7 @@ use crate::folder::Folder;
 use crate::ftp::Ftp;
 use crate::irods::{self, Irods};
 use crate::objects::{Objects, Service};
+use crate::oci::{self, Oci};
 use crate::public::PublicBuckets;
 use crate::settings::{self, Kind, ProviderSettings};
 use crate::synapse::{self, Synapse};
@@ -39,6 +40,8 @@ pub(crate) enum Source {
     Synapse,
     /// `irods` addresses that no provider serves, with the `irods` scope of a Nextflow config.
     Irods,
+    /// `oci` addresses that no provider serves, with the `oci` scope of a Nextflow config.
+    Oci,
 }
 
 impl Source {
@@ -54,6 +57,7 @@ impl Source {
                     Source::Drs => "drs",
                     Source::Synapse => "synapse",
                     Source::Irods => "irods",
+                    Source::Oci => "oci",
                     Source::Configured(_) => unreachable!(),
                 }
                 .into(),
@@ -112,6 +116,13 @@ impl Source {
             Kind::Synapse(value) => {
                 vec!["synapse".into(), value.endpoint.clone().unwrap_or_default()]
             }
+            Kind::Oci(value) => vec![
+                "oci".into(),
+                value.profile.clone().unwrap_or_default(),
+                value.region.clone().unwrap_or_default(),
+                value.user.clone().unwrap_or_default(),
+                value.endpoint.clone().unwrap_or_default(),
+            ],
         });
         identity
     }
@@ -129,6 +140,7 @@ impl Source {
             Source::Drs => "a DRS server, with the credential of the environment".to_owned(),
             Source::Synapse => "Synapse, with the token of the environment".to_owned(),
             Source::Irods => "an iRODS zone, with the account of the environment".to_owned(),
+            Source::Oci => "OCI Object Storage, with the API key of the environment".to_owned(),
         }
     }
 }
@@ -143,6 +155,7 @@ pub(crate) enum Backend {
     Drs(Drs),
     Synapse(Synapse),
     Irods(Irods),
+    Oci(Oci),
 }
 
 /// A provider's client and the secrets that its messages must not show.
@@ -166,6 +179,7 @@ impl Connection {
             Source::Drs => Backend::Drs(Drs::new(drs::scope()).map_err(failed)?),
             Source::Synapse => Backend::Synapse(Synapse::new(synapse::scope()).map_err(failed)?),
             Source::Irods => Backend::Irods(Irods::new(irods::scope()).map_err(failed)?),
+            Source::Oci => Backend::Oci(Oci::new(oci::scope()).map_err(failed)?),
             Source::Configured(settings) => match &settings.kind {
                 Kind::S3(s3) => {
                     let service = s3_service(s3, settings, &mut secrets)?;
@@ -235,6 +249,18 @@ impl Connection {
                     };
                     Backend::Irods(Irods::new(options).map_err(failed)?)
                 }
+                Kind::Oci(settings) => {
+                    let options = oci::Options {
+                        profile: settings.profile.clone(),
+                        region: settings.region.clone(),
+                        tenancy: settings.tenancy.clone(),
+                        user: settings.user.clone(),
+                        fingerprint: settings.fingerprint.clone(),
+                        private_key: secrets.reveal(&settings.private_key)?,
+                        endpoint: settings.endpoint.clone(),
+                    };
+                    Backend::Oci(Oci::new(options).map_err(failed)?)
+                }
             },
         };
         // Credentials that a client found in the environment are secrets too.
@@ -242,6 +268,7 @@ impl Connection {
             Backend::Drs(client) => secrets.0.extend(client.secrets()),
             Backend::Synapse(client) => secrets.0.extend(client.secrets()),
             Backend::Irods(client) => secrets.0.extend(client.secrets()),
+            Backend::Oci(client) => secrets.0.extend(client.secrets()),
             _ => {}
         }
         Ok(Connection {
@@ -259,7 +286,11 @@ impl Connection {
     pub fn writes(&self) -> bool {
         matches!(
             self.backend,
-            Backend::Objects(_) | Backend::Folder(_) | Backend::Synapse(_) | Backend::Irods(_)
+            Backend::Objects(_)
+                | Backend::Folder(_)
+                | Backend::Synapse(_)
+                | Backend::Irods(_)
+                | Backend::Oci(_)
         )
     }
 
@@ -273,6 +304,7 @@ impl Connection {
             Backend::Drs(drs) => drs.stat(target).await,
             Backend::Synapse(synapse) => synapse.stat(target).await,
             Backend::Irods(irods) => irods.stat(target).await,
+            Backend::Oci(oci) => oci.stat(target).await,
         }
     }
 
@@ -288,6 +320,7 @@ impl Connection {
             // Synapse lists nothing, so that cleanups of `syn://` folders find nothing to do.
             Backend::Synapse(_) => Ok(Vec::new()),
             Backend::Irods(irods) => irods.list(target).await,
+            Backend::Oci(oci) => oci.list(target).await,
         }
     }
 
@@ -308,6 +341,7 @@ impl Connection {
             Backend::Drs(drs) => drs.download(target, file).await,
             Backend::Synapse(synapse) => synapse.download(target, file).await,
             Backend::Irods(irods) => irods.download(target, file).await,
+            Backend::Oci(oci) => oci.download(target, file, offset).await,
         }
     }
 
@@ -322,6 +356,7 @@ impl Connection {
             Backend::Folder(folder) => folder.upload(file, &folder.path(prefix, target)?).await,
             Backend::Synapse(synapse) => synapse.upload(file, target).await,
             Backend::Irods(irods) => irods.upload(file, target).await,
+            Backend::Oci(oci) => oci.upload(file, target).await,
             _ => Err(Problem::fixed("the provider only reads")),
         }
     }

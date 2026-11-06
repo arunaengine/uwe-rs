@@ -45,6 +45,7 @@ pub enum Kind {
     Drs(Drs),
     Synapse(Synapse),
     Irods(Irods),
+    Oci(Oci),
 }
 
 /// AWS S3, or a service that speaks its API: MinIO, Ceph, Cloudflare R2, RustFS and others.
@@ -143,6 +144,20 @@ pub struct Irods {
     pub negotiation: Option<String>,
 }
 
+/// Oracle Cloud Object Storage, with the API key of a user. Unset values come from the
+/// environment and the OCI config file.
+#[derive(Clone, Debug, Default)]
+pub struct Oci {
+    pub profile: Option<String>,
+    pub region: Option<String>,
+    pub tenancy: Option<String>,
+    pub user: Option<String>,
+    pub fingerprint: Option<String>,
+    /// The API key as PEM text.
+    pub private_key: Option<Secret>,
+    pub endpoint: Option<String>,
+}
+
 /// A folder on this machine, which holds the objects of the addresses it serves, like a mirror
 /// of a bucket.
 #[derive(Clone, Debug)]
@@ -151,7 +166,7 @@ pub struct Folder {
 }
 
 /// The `type` of each kind of provider.
-const TYPES: [&str; 9] = [
+const TYPES: [&str; 10] = [
     "s3",
     "google-cloud-storage",
     "azure-blob-storage",
@@ -161,6 +176,7 @@ const TYPES: [&str; 9] = [
     "drs",
     "synapse",
     "irods",
+    "oci",
 ];
 
 impl Settings {
@@ -353,6 +369,29 @@ fn kind_of(name: &str) -> Option<(&'static [&'static str], &'static [&'static st
             ],
             &["irods"],
             |table| Ok(Kind::Irods(irods(table)?)),
+        ),
+        "oci" => (
+            &[
+                "profile",
+                "region",
+                "tenancy",
+                "user",
+                "fingerprint",
+                "private_key",
+                "endpoint",
+            ],
+            &["oci"],
+            |table| {
+                Ok(Kind::Oci(Oci {
+                    profile: table.text("profile")?,
+                    region: table.text("region")?,
+                    tenancy: table.text("tenancy")?,
+                    user: table.text("user")?,
+                    fingerprint: table.text("fingerprint")?,
+                    private_key: table.secret("private_key")?,
+                    endpoint: web_address(table, "endpoint")?,
+                }))
+            },
         ),
         "synapse" => (&["endpoint", "token"], &["syn"], |table| {
             Ok(Kind::Synapse(Synapse {

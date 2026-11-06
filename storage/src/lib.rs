@@ -225,6 +225,7 @@ impl Storage {
             Provider::new(Source::Drs, prefixes(&["drs://"])),
             Provider::new(Source::Synapse, prefixes(&["syn://"])),
             Provider::new(Source::Irods, prefixes(&["irods://"])),
+            Provider::new(Source::Oci, prefixes(&["oci://"])),
         ];
         Storage {
             inner: Arc::new(Inner {

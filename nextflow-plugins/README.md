@@ -250,3 +250,11 @@ boolean `true` turns it on, also without a `plugins` line. A local place fails t
 plugin's message. The store keeps uwe's format, not Nextflow's `index.<run name>` and task
 entries. The warning for a path without `enabled` has a colon where the plugin has a long dash.
 `-with-cloudcache` is not an option of uwe.
+
+## src/nf_oci.rs
+
+nf-oci 0.0.1 hands its `oci` scope (`profile`, `region`, `tenantId`, `userId`, `fingerprint`,
+`privateKey`) to the OCI provider of the `storage` crate when the run starts, which then reads
+and writes `oci://` paths for every language through the native Object Storage API, with the
+API key of `~/.oci/config` or the four values of the scope. Each object is written with one
+`PUT`, so objects over 50 GiB fail; copies between `oci://` paths go through this machine.

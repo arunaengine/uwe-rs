@@ -6,8 +6,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use aws_batch_executor::{Helper, TASK_FOLDER};
 use config_file::{ConfigError, Table};
+use executor::batch::{Helper, TASK_FOLDER, helper};
 
 /// The Batch location of the jobs when none is set, as Nextflow's `google.location`.
 pub const LOCATION: &str = "us-central1";
@@ -206,7 +206,7 @@ impl Settings {
                 _ => settings.logging_endpoint = address,
             }
         }
-        settings.helper = aws_batch_executor::helper(table)?;
+        settings.helper = helper(table)?;
         Ok(settings)
     }
 

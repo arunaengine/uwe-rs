@@ -1,9 +1,49 @@
-//! The command of a job: it gets the uwe helper, stages the inputs in, runs the wrapper of the
-//! task within its time, and sends the outputs and control records back.
+//! What the cloud batch executors share: where a job finds the uwe helper, and the job command
+//! that stages the inputs in, runs the wrapper of the task and sends the outputs back.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use executor::wrapper::timed;
+use config_file::{ConfigError, Table};
+
+use crate::wrapper::timed;
+
+/// The folder of the container where each job makes the folder of its attempt, by default.
+pub const TASK_FOLDER: &str = "/tmp/uwe";
+
+/// Where a job finds the static uwe binary that stages the files of its task.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Helper {
+    /// A path on the hosts, like a folder of their machine image; the job mounts its folder
+    /// read-only.
+    Path(String),
+    /// An address that the job downloads with `curl` or `wget`, and the SHA-256 of the file.
+    Download { url: String, sha256: String },
+}
+
+/// Where the jobs get the uwe binary: `helper_path` on the hosts, or `helper_url` with its
+/// `helper_sha256`.
+pub fn helper(table: &Table<'_>) -> Result<Option<Helper>, ConfigError> {
+    let (path, url) = (table.text("helper_path")?, table.text("helper_url")?);
+    match (path, url, table.text("helper_sha256")?) {
+        (None, None, None) => Ok(None),
+        (Some(path), None, None) if path.starts_with('/') => Ok(Some(Helper::Path(path))),
+        (Some(_), None, None) => Err(table.invalid("helper_path", "must be an absolute path")),
+        (None, Some(url), Some(sha256))
+            if sha256.len() == 64 && sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) =>
+        {
+            let sha256 = sha256.to_ascii_lowercase();
+            Ok(Some(Helper::Download { url, sha256 }))
+        }
+        (None, Some(_), _) => Err(table.invalid(
+            "helper_sha256",
+            "must be the SHA-256 of the file at helper_url, as 64 hex digits",
+        )),
+        _ => Err(table.invalid(
+            "helper_path",
+            "takes no helper_url; name the binary on the hosts or the address to download",
+        )),
+    }
+}
 
 /// Where the job gets the helper.
 #[derive(Clone, Copy, Debug)]

@@ -2951,7 +2951,6 @@ dependencies = [
 name = "google-batch-executor"
 version = "0.1.0"
 dependencies = [
- "aws-batch-executor",
  "base64 0.23.1",
  "config-file",
  "content-store",

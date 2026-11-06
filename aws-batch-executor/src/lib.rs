@@ -6,10 +6,9 @@ mod backend;
 mod client;
 pub mod definition;
 pub mod outcome;
-pub mod script;
 mod settings;
 pub mod submit;
 
 pub use backend::BatchBackend;
 pub use client::{BatchError, Client, LOG_GROUP};
-pub use settings::{Helper, Settings, TASK_FOLDER, Volume, helper};
+pub use settings::{Settings, Volume};

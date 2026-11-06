@@ -6,11 +6,12 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use executor::batch::Helper;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::client::{BatchError, Client, LOG_GROUP};
-use crate::settings::{Helper, Settings};
+use crate::settings::Settings;
 
 /// The prefix of the names of the job definitions that uwe registers, which keeps them apart
 /// from those of Nextflow, whose command and settings differ.

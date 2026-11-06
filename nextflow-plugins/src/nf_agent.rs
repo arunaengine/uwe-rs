@@ -31,6 +31,14 @@ pub struct Endpoint {
     pub warnings: Vec<String>,
 }
 
+/// Why a model call cannot start: a wrong model id fails its task, while a missing or withheld
+/// credential stops the run, as Nextflow does.
+#[derive(Debug)]
+pub enum Refused {
+    Task(String),
+    Run(String),
+}
+
 /// One request of an agent task: the messages for the model and the schema of its answer.
 pub struct Question {
     pub agent: String,
@@ -119,14 +127,14 @@ pub fn endpoint(
     options: &Options,
     model: &str,
     variable: &dyn Fn(&str) -> Option<String>,
-) -> Result<Endpoint, String> {
+) -> Result<Endpoint, Refused> {
     let Some((prefix, _)) = model
         .split_once('/')
         .filter(|(p, m)| !p.is_empty() && !m.is_empty())
     else {
-        return Err(format!(
+        return Err(Refused::Task(format!(
             "Invalid model id `{model}` - expected `provider/model`"
-        ));
+        )));
     };
     let prefix = prefix.to_lowercase();
     let mut url = (options.base_url.clone()).or_else(|| variable("NXF_AGENT_BASE_URL"));
@@ -172,11 +180,11 @@ pub fn endpoint(
         }
     }
     if prefix != "openai" {
-        return Err(format!(
+        return Err(Refused::Task(format!(
             "Unsupported agent model provider `{prefix}` - only the `openai` wire protocol is \
              supported; to reach an OpenAI-compatible endpoint keep the `openai/` prefix and \
              set `agent.baseUrl`"
-        ));
+        )));
     }
     let key = match (key, &shown, host) {
         (Some(key), _, _) => key,
@@ -185,13 +193,13 @@ pub fn endpoint(
                 Some(url) => format!("the endpoint {url}"),
                 None => "the default `openai` endpoint".into(),
             };
-            return Err(format!(
+            return Err(Refused::Run(format!(
                 "The `{namespace}` credential resolved for agent model `{model}` was withheld \
                  from {target} - that endpoint is not one `{namespace}` owns; set \
                  `agent.apiKey` in the Nextflow configuration, or the `NXF_AGENT_API_KEY` \
                  environment variable, to the credential it does accept, or \
                  `agent.apiProvider` to name the namespace it belongs to"
-            ));
+            )));
         }
         (None, Some(url), Some(provider)) => {
             let name = variables(provider)
@@ -199,12 +207,12 @@ pub fn endpoint(
                 .first()
                 .copied()
                 .unwrap_or("NXF_AGENT_API_KEY");
-            return Err(format!(
+            return Err(Refused::Run(format!(
                 "Missing `{provider}` credential for the agent endpoint {url} - set \
                  `agent.apiKey` in the Nextflow configuration, or the `{name}` environment \
                  variable; the `{provider}` namespace was inferred from the endpoint host, so \
                  set `agent.apiProvider` to name a different one"
-            ));
+            )));
         }
         (None, Some(_), None) => NO_KEY.into(),
         (None, None, _) => {
@@ -216,12 +224,12 @@ pub fn endpoint(
                 true => "",
                 false => ", and name the credential namespace with `agent.apiProvider`",
             };
-            return Err(format!(
+            return Err(Refused::Run(format!(
                 "Missing LLM provider credential for agent model `{model}` - set \
                  `agent.apiKey` in the Nextflow configuration, or the `{names}` environment \
                  variable; the credential namespace is `{namespace}`, set \
                  `agent.apiProvider` to name a different one{unknown}"
-            ));
+            )));
         }
     };
     Ok(Endpoint {

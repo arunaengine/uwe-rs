@@ -25,7 +25,9 @@ fn resolve(options: &Options, model: &str, set: &[(&str, &str)]) -> Result<Endpo
             .find(|(key, _)| *key == name)
             .map(|(_, value)| (*value).to_owned())
     };
-    endpoint(options, model, &variable)
+    endpoint(options, model, &variable).map_err(|refused| match refused {
+        Refused::Task(message) | Refused::Run(message) => message,
+    })
 }
 
 #[test]

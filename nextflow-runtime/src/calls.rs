@@ -13,7 +13,7 @@ use nextflow_config::Config;
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::value::Value;
-use nextflow_plugins::nf_agent::{self, Endpoint, Options, Question};
+use nextflow_plugins::nf_agent::{self, Endpoint, Options, Question, Refused};
 use serde_json::{Value as Json, json};
 
 use crate::agent::Call;
@@ -67,34 +67,39 @@ impl Calls {
     }
 
     /// Starts the model call of an agent task, unless its answer is known: then it gives the
-    /// request back, as for any other task.
-    pub(crate) fn ask(&mut self, request: TaskRequest, host: &mut dyn Host) -> Option<TaskRequest> {
+    /// request back, as for any other task. A missing credential stops the run.
+    pub(crate) fn ask(
+        &mut self,
+        request: TaskRequest,
+        host: &mut dyn Host,
+    ) -> Result<Option<TaskRequest>, String> {
         let identity = (request.id, request.attempt);
         let Some(call) = request.agent.as_deref() else {
-            return Some(request);
+            return Ok(Some(request));
         };
         if self.answers.contains_key(&identity) {
-            return Some(request);
+            return Ok(Some(request));
         }
         if self.simulated {
             let answer =
                 (call.schema.as_ref()).map_or(String::new(), |s| placeholder(s).to_string());
             self.answers.insert(identity, Ok(answer));
-            return Some(request);
+            return Ok(Some(request));
         }
         let prepared = match self.prepare(&request, call, host) {
             Ok(prepared) => prepared,
-            Err(message) => {
+            Err(Refused::Task(message)) => {
                 self.answers.insert(identity, Err(message));
-                return Some(request);
+                return Ok(Some(request));
             }
+            Err(Refused::Run(message)) => return Err(message),
         };
         let stored = (prepared.key.as_deref())
             .filter(|_| self.resume && request.attempt == 1)
             .and_then(|key| self.stored(key));
         if let Some(answer) = stored {
             self.answers.insert(identity, Ok(answer));
-            return Some(request);
+            return Ok(Some(request));
         }
         let (sender, answer) = mpsc::channel();
         let Prepared {
@@ -112,7 +117,7 @@ impl Calls {
             answer,
         });
         self.next_look.get_or_insert_with(|| Instant::now() + POLL);
-        None
+        Ok(None)
     }
 
     /// When the driver should look for answers again.
@@ -180,11 +185,11 @@ impl Calls {
         request: &TaskRequest,
         call: &Call,
         host: &mut dyn Host,
-    ) -> Result<Prepared, String> {
+    ) -> Result<Prepared, Refused> {
         let options = match &self.options {
             Some(Ok(options)) => options,
-            Some(Err(message)) => return Err(message.clone()),
-            None => return Err("the agent options were not read".into()),
+            Some(Err(message)) => return Err(Refused::Run(message.clone())),
+            None => return Err(Refused::Task("the agent options were not read".into())),
         };
         let endpoint = nf_agent::endpoint(options, &call.model, &|name| host.environment(name))?;
         for warning in &endpoint.warnings {

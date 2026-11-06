@@ -1,0 +1,30 @@
+# HELP nf_task_cpus_requested_total Sum of CPUs requested by completed tasks, by process
+# TYPE nf_task_cpus_requested_total counter
+nf_task_cpus_requested_total{run_name="romantic_koch",process="BAD"} 1
+nf_task_cpus_requested_total{run_name="romantic_koch",process="SLOW"} 1
+# HELP nf_task_peak_rss_bytes_max Maximum peak RSS observed among tasks, by process
+# TYPE nf_task_peak_rss_bytes_max gauge
+nf_task_peak_rss_bytes_max{run_name="romantic_koch",process="SLOW"} 7081984
+# HELP nf_task_queue_seconds_total Total time tasks spent queued (submit to start), by process
+# TYPE nf_task_queue_seconds_total counter
+nf_task_queue_seconds_total{run_name="romantic_koch",process="BAD"} 0.037
+nf_task_queue_seconds_total{run_name="romantic_koch",process="SLOW"} 0.039
+# HELP nf_task_realtime_seconds_total Total task execution wall time, by process
+# TYPE nf_task_realtime_seconds_total counter
+nf_task_realtime_seconds_total{run_name="romantic_koch",process="BAD"} 0.018
+nf_task_realtime_seconds_total{run_name="romantic_koch",process="SLOW"} 6.007
+# HELP nf_tasks_total Tasks by process and final status
+# TYPE nf_tasks_total counter
+nf_tasks_total{run_name="romantic_koch",process="BAD",status="failed"} 1
+nf_tasks_total{run_name="romantic_koch",process="BAD",status="submitted"} 1
+nf_tasks_total{run_name="romantic_koch",process="SLOW",status="completed"} 1
+nf_tasks_total{run_name="romantic_koch",process="SLOW",status="submitted"} 1
+# HELP nf_workflow_duration_seconds Wall clock duration of the workflow run
+# TYPE nf_workflow_duration_seconds gauge
+nf_workflow_duration_seconds{run_name="romantic_koch"} 6.913
+# HELP nf_workflow_info Workflow run information (always 1)
+# TYPE nf_workflow_info gauge
+nf_workflow_info{run_name="romantic_koch",session_id="cd84b89c-e4ed-4094-8d34-df096aa2f4bf"} 1
+# HELP nf_workflow_status Workflow status: 0=running 1=complete 2=error
+# TYPE nf_workflow_status gauge
+nf_workflow_status{run_name="romantic_koch"} 2

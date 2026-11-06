@@ -53,8 +53,8 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         .clone();
     if executor == "simulator" {
         return Err(Failure::usage(
-            "uwe: a replay runs the task for real; use -executor local, tes, slurm or \
-             kubernetes",
+            "uwe: a replay runs the task for real; use -executor local or another executor \
+             that runs tasks",
         ));
     }
     if arguments.store.is_none() {

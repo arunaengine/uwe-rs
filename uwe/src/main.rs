@@ -196,7 +196,8 @@ options:
   -page                               serves the web page of the run while it goes on
   -report <file>                      writes the report of the run when it ends: one HTML
                                       file with the page of the run, to open without a server;
-                                      for `compare`, the report of the comparison as JSON
+                                      for `compare`, the report of the comparison: JSON for
+                                      .json, Markdown for .md, else one HTML page
   -fail-on-change                     `compare` ends with exit code 3 when the runs differ
   -address <ip>, -port <number>       where the page listens (default: 127.0.0.1, a free port)
   -database <file>                    the run database (default: runs.sqlite in the cache)

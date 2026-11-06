@@ -66,22 +66,20 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     }
 }
 
-/// Writes the report in the format of the file name: JSON for `.json`.
+/// Writes the report in the format of the file name: JSON for `.json`, Markdown for `.md`,
+/// else one HTML page.
 fn write_report(file: &Path, report: &serde_json::Value) -> Result<(), Failure> {
-    let format = file
+    let extension = file
         .extension()
         .and_then(|end| end.to_str())
         .unwrap_or_default();
-    let text = match format {
-        "json" => {
-            serde_json::to_string_pretty(report).map_err(|error| failure(error.to_string()))?
-        }
-        _ => {
-            return Err(Failure::usage(format!(
-                "uwe: `uwe compare -report` writes .json files, not {}",
-                file.display()
-            )));
-        }
+    let (format, text) = match extension {
+        "json" => (
+            "json",
+            serde_json::to_string_pretty(report).unwrap_or_default(),
+        ),
+        "md" | "markdown" => ("md", super::compare_report::markdown(report)),
+        _ => ("html", super::compare_report::html(report)),
     };
     std::fs::write(file, text)
         .map_err(|error| failure(format!("uwe: cannot write {}: {error}", file.display())))?;

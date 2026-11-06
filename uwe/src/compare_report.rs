@@ -601,6 +601,416 @@ fn outputs(comparison: &Comparison, details: &Details) -> Vec<Json> {
     rows
 }
 
+/// A part of a page of the report: a heading, an optional note, and what it shows.
+struct Section {
+    id: &'static str,
+    title: &'static str,
+    note: Option<String>,
+    blocks: Vec<Block>,
+}
+
+enum Block {
+    Table(Vec<&'static str>, Vec<Vec<String>>),
+    Heading(String),
+    Items(Vec<String>),
+    Text(String),
+}
+
+/// The report as Markdown, with the sections of nf-diff's Markdown report.
+pub(super) fn markdown(report: &Json) -> String {
+    let mut out = format!(
+        "# Run comparison report\n\n> Generated {} · meaningful changes only\n",
+        text(&report["generatedAt"])
+    );
+    for section in sections(report) {
+        out.push_str(&format!("\n## {}\n\n", section.title));
+        if let Some(note) = &section.note {
+            out.push_str(&format!("> {note}\n\n"));
+        }
+        for block in &section.blocks {
+            match block {
+                Block::Table(headers, rows) => {
+                    out.push_str(&format!("| {} |\n", headers.join(" | ")));
+                    out.push_str(&format!("|{}\n", "---|".repeat(headers.len())));
+                    for row in rows {
+                        let cells: Vec<String> =
+                            row.iter().map(|cell| cell.replace('|', "\\|")).collect();
+                        out.push_str(&format!("| {} |\n", cells.join(" | ")));
+                    }
+                    out.push('\n');
+                }
+                Block::Heading(heading) => out.push_str(&format!("### {heading}\n\n")),
+                Block::Items(items) => {
+                    for item in items {
+                        out.push_str(&format!("- {item}\n"));
+                    }
+                    out.push('\n');
+                }
+                Block::Text(line) => out.push_str(&format!("_{line}_\n\n")),
+            }
+        }
+    }
+    out
+}
+
+/// The report as one self-contained HTML page, with a light and a dark theme.
+pub(super) fn html(report: &Json) -> String {
+    let (a, b) = (&report["runA"], &report["runB"]);
+    let short = |run: &Json| text(&run["sessionId"]).chars().take(8).collect::<String>();
+    let title = format!(
+        "Run comparison · {} ({}) vs {} ({})",
+        text(&a["runName"]),
+        short(a),
+        text(&b["runName"]),
+        short(b)
+    );
+    let mut body = String::new();
+    let mut links = String::new();
+    for section in sections(report) {
+        links.push_str(&format!(
+            "<a href=\"#{}\">{}</a>",
+            section.id,
+            escape(section.title)
+        ));
+        body.push_str(&format!(
+            "<section id=\"{}\"><h2>{}</h2>",
+            section.id,
+            escape(section.title)
+        ));
+        if let Some(note) = &section.note {
+            body.push_str(&format!("<p class=\"note\">{}</p>", escape(note)));
+        }
+        for block in &section.blocks {
+            match block {
+                Block::Table(headers, rows) => {
+                    body.push_str("<table><tr>");
+                    for header in headers {
+                        body.push_str(&format!("<th>{}</th>", escape(header)));
+                    }
+                    body.push_str("</tr>");
+                    for row in rows {
+                        body.push_str("<tr>");
+                        for cell in row {
+                            body.push_str(&format!("<td>{}</td>", escape(cell)));
+                        }
+                        body.push_str("</tr>");
+                    }
+                    body.push_str("</table>");
+                }
+                Block::Heading(heading) => body.push_str(&format!("<h3>{}</h3>", escape(heading))),
+                Block::Items(items) => {
+                    body.push_str("<ul>");
+                    for item in items {
+                        body.push_str(&format!("<li>{}</li>", escape(item)));
+                    }
+                    body.push_str("</ul>");
+                }
+                Block::Text(line) => body.push_str(&format!("<p><em>{}</em></p>", escape(line))),
+            }
+        }
+        body.push_str("</section>");
+    }
+    format!(
+        "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\
+         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+         <title>{}</title><style>{STYLE}</style></head><body><nav>{links}</nav><main>\
+         <h1>Run comparison</h1><p class=\"note\">Generated {}</p>{body}</main></body></html>\n",
+        escape(&title),
+        escape(&text(&report["generatedAt"])),
+    )
+}
+
+const STYLE: &str = "\
+:root{--text:#1d2329;--muted:#5b6670;--line:#d5dbe0;--back:#ffffff;--head:#f2f4f6}\
+@media (prefers-color-scheme:dark){:root{--text:#e3e7ea;--muted:#9aa5ae;--line:#3a434b;\
+--back:#161b20;--head:#20272e}}\
+body{margin:0;font:15px/1.5 system-ui,sans-serif;color:var(--text);background:var(--back)}\
+nav{position:sticky;top:0;display:flex;flex-wrap:wrap;gap:12px;padding:8px 16px;\
+background:var(--head);border-bottom:1px solid var(--line)}\
+nav a{color:var(--text)}main{max-width:1100px;margin:0 auto;padding:16px}\
+table{border-collapse:collapse;margin:8px 0 16px;display:block;overflow-x:auto}\
+th,td{border:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}\
+th{background:var(--head)}.note{color:var(--muted)}";
+
+fn escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// A value as a cell shows it: text without quotes, `-` for none.
+fn text(value: &Json) -> String {
+    match value {
+        Json::Null => "-".into(),
+        Json::String(text) => text.clone(),
+        other => other.to_string(),
+    }
+}
+
+fn percent(value: &Json) -> String {
+    value
+        .as_f64()
+        .map_or("-".into(), |ratio| format!("{:.0}%", ratio * 100.0))
+}
+
+fn rows(value: &Json) -> &[Json] {
+    value.as_array().map_or(&[], Vec::as_slice)
+}
+
+/// The sections of the pages, from the JSON report.
+fn sections(report: &Json) -> Vec<Section> {
+    let summary = &report["summary"];
+    let (a, b) = (&report["runA"], &report["runB"]);
+    let count = |key: &str| text(&summary[key]);
+    let mut sections = vec![Section {
+        id: "summary",
+        title: "Summary",
+        note: None,
+        blocks: vec![Block::Table(
+            vec![
+                "Changed",
+                "Only in B",
+                "Only in A",
+                "Unchanged",
+                "Recomputed",
+                "Software",
+                "Regressions",
+            ],
+            vec![
+                [
+                    "tasksChanged",
+                    "tasksAdded",
+                    "tasksRemoved",
+                    "tasksUnchanged",
+                    "tasksRecomputed",
+                    "softwareChanged",
+                    "regressions",
+                ]
+                .map(count)
+                .to_vec(),
+            ],
+        )],
+    }];
+    let runs = [
+        ("Run name", "runName"),
+        ("Session id", "sessionId"),
+        ("Status", "status"),
+        ("Revision", "revision"),
+        ("Command", "command"),
+        ("Launched", "launched"),
+        ("Wall time (ms)", "wallDurationMillis"),
+        ("Tasks", "taskCount"),
+        ("Cached", "cachedTasks"),
+    ];
+    let runs = runs
+        .iter()
+        .map(|(label, key)| vec![label.to_string(), text(&a[key]), text(&b[key])]);
+    sections.push(Section {
+        id: "runs",
+        title: "Runs",
+        note: None,
+        blocks: vec![Block::Table(vec!["", "Run A", "Run B"], runs.collect())],
+    });
+    let changed = |key: &str| -> Vec<&Json> {
+        rows(&report[key])
+            .iter()
+            .filter(|row| row["changed"] == true && row["obvious"] == false)
+            .collect()
+    };
+    let fields = |key: &str, empty: &str, source: bool| {
+        let found = changed(key);
+        if found.is_empty() {
+            return vec![Block::Text(empty.into())];
+        }
+        let rows = found.iter().map(|row| {
+            let mut cells = vec![
+                text(&row["field"]),
+                text(&row["valueA"]),
+                text(&row["valueB"]),
+            ];
+            if source {
+                cells.push(format!(
+                    "A:{} B:{}",
+                    text(&row["sourceA"]),
+                    text(&row["sourceB"])
+                ));
+            }
+            cells
+        });
+        let mut headers = vec!["Field", "Run A", "Run B"];
+        if source {
+            headers.push("Source");
+        }
+        vec![Block::Table(headers, rows.collect())]
+    };
+    sections.push(Section {
+        id: "metadata",
+        title: "Run metadata",
+        note: None,
+        blocks: fields("metadata", "No metadata changes.", false),
+    });
+    sections.push(Section {
+        id: "params",
+        title: "Parameters & options",
+        note: None,
+        blocks: fields("params", "No parameter changes.", true),
+    });
+    sections.push(Section {
+        id: "config",
+        title: "Resolved configuration",
+        note: Some(text(&report["configNote"])),
+        blocks: Vec::new(),
+    });
+    let processes = rows(&report["processes"]).iter().map(|row| {
+        ["process", "countA", "countB", "status"]
+            .map(|key| text(&row[key]))
+            .to_vec()
+    });
+    sections.push(Section {
+        id: "processes",
+        title: "Process topology",
+        note: None,
+        blocks: vec![Block::Table(
+            vec!["Process", "Run A", "Run B", "Status"],
+            processes.collect(),
+        )],
+    });
+    let software: Vec<Vec<String>> = rows(&report["software"])
+        .iter()
+        .filter(|row| row["status"] == "changed")
+        .map(|row| {
+            let join = |key: &str| {
+                rows(&row[key])
+                    .iter()
+                    .map(text)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            vec![
+                text(&row["process"]),
+                join("containersA"),
+                join("containersB"),
+            ]
+        })
+        .collect();
+    let software = match software.is_empty() {
+        true => vec![Block::Text(
+            "No container changes: every process ran with the same images.".into(),
+        )],
+        false => vec![Block::Table(
+            vec!["Process", "Containers A", "Containers B"],
+            software,
+        )],
+    };
+    sections.push(Section {
+        id: "software",
+        title: "Software & versions",
+        note: None,
+        blocks: software,
+    });
+    let threshold = text(&report["perfThreshold"]);
+    let regressions: Vec<Vec<String>> = rows(&report["regressions"])
+        .iter()
+        .map(|row| {
+            let mut cells = ["key", "metric", "valueA", "valueB"]
+                .map(|key| text(&row[key]))
+                .to_vec();
+            cells.push(format!("{:+}%", row["deltaPct"].as_f64().unwrap_or(0.0)));
+            cells.push(if row["sameWork"] == true { "yes" } else { "no" }.into());
+            cells
+        })
+        .collect();
+    let regressions = match regressions.is_empty() {
+        true => vec![Block::Text(format!(
+            "No task metric changed by ≥ {threshold}% between the runs."
+        ))],
+        false => vec![Block::Table(
+            vec!["Task", "Metric", "Run A", "Run B", "Change", "Same work"],
+            regressions,
+        )],
+    };
+    sections.push(Section {
+        id: "regressions",
+        title: "Performance regressions",
+        note: None,
+        blocks: regressions,
+    });
+    let efficiency = rows(&report["efficiency"]).iter().map(|row| {
+        let class = |key: &str| text(&row[key]);
+        vec![
+            text(&row["process"]),
+            percent(&row["cpuEfficiencyA"]),
+            percent(&row["cpuEfficiencyB"]),
+            class("cpuClassB"),
+            percent(&row["memEfficiencyA"]),
+            percent(&row["memEfficiencyB"]),
+            class("memClassB"),
+        ]
+    });
+    sections.push(Section {
+        id: "efficiency",
+        title: "Resource efficiency",
+        note: Some("Peak usage against what each process asked for: over-provisioned below 50 %, tight at 90 % or more.".into()),
+        blocks: vec![Block::Table(vec!["Process", "CPU eff. A", "CPU eff. B", "CPU class", "Mem eff. A", "Mem eff. B", "Mem class"], efficiency.collect())],
+    });
+    let mut tasks = Vec::new();
+    for task in rows(&report["tasks"]) {
+        tasks.push(Block::Heading(format!(
+            "{} ({})",
+            text(&task["key"]),
+            text(&task["kind"])
+        )));
+        let mut items: Vec<String> = rows(&task["fields"])
+            .iter()
+            .map(|row| {
+                format!(
+                    "{}: `{}` → `{}`",
+                    text(&row["field"]),
+                    text(&row["valueA"]),
+                    text(&row["valueB"])
+                )
+            })
+            .collect();
+        items.extend(rows(&task["notes"]).iter().map(text));
+        if !items.is_empty() {
+            tasks.push(Block::Items(items));
+        }
+    }
+    if tasks.is_empty() {
+        tasks.push(Block::Text("No task changes.".into()));
+    }
+    sections.push(Section {
+        id: "tasks",
+        title: "Task detail",
+        note: None,
+        blocks: tasks,
+    });
+    let mut outputs = Vec::new();
+    for task in rows(&report["outputs"]) {
+        outputs.push(Block::Heading(text(&task["key"])));
+        let files = rows(&task["files"]).iter().map(|file| {
+            ["file", "sizeA", "sizeB", "status"]
+                .map(|key| text(&file[key]))
+                .to_vec()
+        });
+        outputs.push(Block::Table(
+            vec!["File", "Bytes A", "Bytes B", "Status"],
+            files.collect(),
+        ));
+    }
+    if outputs.is_empty() {
+        outputs.push(Block::Text("No output file differences.".into()));
+    }
+    sections.push(Section {
+        id: "outputs",
+        title: "Output files",
+        note: Some(text(&report["outputsNote"])),
+        blocks: outputs,
+    });
+    sections
+}
+
 #[cfg(test)]
 mod tests {
     use run_database::{Attempt, FileRow, Side, TaskRow};
@@ -742,5 +1152,27 @@ mod tests {
             .filter_map(|row| row["field"].as_str())
             .collect();
         assert_eq!(names, ["status", "exit", "container"]);
+    }
+
+    #[test]
+    fn renders_report_pages() {
+        let mut comparison = Comparison {
+            first: run("a"),
+            second: run("b"),
+            changes: Vec::new(),
+            tasks: Vec::new(),
+        };
+        comparison.second.parameters = vec![("greeting".into(), "<hi>".into())];
+        let report = report(&comparison, &Details::default(), 0);
+        let markdown = markdown(&report);
+        assert!(
+            markdown.starts_with("# Run comparison report\n\n> Generated 1970-01-01T00:00:00.000Z")
+        );
+        assert!(markdown.contains("## Parameters & options\n\n| Field | Run A | Run B | Source |\n|---|---|---|---|\n| --greeting | - | <hi> | A:- B:CLI |\n"), "{markdown}");
+        assert!(markdown.contains("## Task detail\n\n_No task changes._"));
+        let page = html(&report);
+        assert!(page.contains("<title>Run comparison · a (a) vs b (b)</title>"));
+        assert!(page.contains("<section id=\"tasks\">") && page.contains("&lt;hi&gt;"));
+        assert!(!page.contains("<hi>"));
     }
 }

@@ -79,7 +79,7 @@ Conda environments are solved in Rust (rattler and resolvo) and turned into cont
 - `uwe changes <run>` shows which workflow files, inputs and images changed since a run. `uwe repeat <run>` runs it again with its kept workflow files and inputs, and with the recorded image digests where it has them.
 - `uwe why` explains why a task ran. `uwe origin` tells where a result came from.
 - `uwe page` opens a local web page with all runs. `uwe run -page` shows the run live while it runs.
-- `uwe export` writes an RO-Crate. `uwe time`, `uwe compare` and `uwe report` show where the time went and how two runs differ.
+- `uwe export` writes an RO-Crate. `uwe time`, `uwe compare` and `uwe report` show where the time went and how two runs differ. `uwe compare -report diff.html` writes the comparison as an HTML, JSON (`.json`) or Markdown (`.md`) report, and `-fail-on-change` ends with exit code 3 when the runs differ.
 
 ### Checks before a run
 

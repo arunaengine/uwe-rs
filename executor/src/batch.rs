@@ -57,6 +57,13 @@ pub enum Source<'a> {
         sha256: &'a str,
         machine: Option<&'a str>,
     },
+    /// A file that the job got before it started, like an Azure Batch resource file, with the
+    /// SHA-256 and machine as for a download.
+    Fetched {
+        path: &'a str,
+        sha256: &'a str,
+        machine: Option<&'a str>,
+    },
 }
 
 /// Gets the helper `$3` with the SHA-256 `$4` next to the folder `$1` of the attempt.
@@ -64,6 +71,11 @@ const DOWNLOAD: &str = "helper=\"$1.uwe\"\n{ curl -fsSL -o \"$helper\" \"$3\" ||
                         \"$helper\" \"$3\"; } && echo \"$4  $helper\" | sha256sum -c - > \
                         /dev/null && chmod +x \"$helper\" || { echo \"uwe: cannot get the \
                         helper; the image needs curl or wget and sha256sum\" >&2; exit 125; }\n";
+
+/// Checks the helper `$3` that the job got against its SHA-256 `$4`.
+const FETCHED: &str = "helper=\"$3\"\necho \"$4  $helper\" | sha256sum -c - > /dev/null || { echo \
+                       \"uwe: the helper does not match its SHA-256; the image needs sha256sum\" \
+                       >&2; exit 125; }\n";
 
 /// The words of the job command for the folder `root` of the attempt in the container, the
 /// plan at `plan`, and a task that may run `seconds`.
@@ -80,15 +92,18 @@ pub fn command(root: &str, plan: &str, source: Source<'_>, seconds: Option<u64>)
             sha256,
             machine,
         } => {
-            // A downloaded binary runs only on its own machine.
-            if let Some(machine) = machine {
-                script.push_str(&format!(
-                    "[ \"$(uname -m)\" = {machine} ] || {{ echo \"uwe: the helper runs on \
-                     {machine}, but this host is $(uname -m)\" >&2; exit 125; }}\n"
-                ));
-            }
+            script.push_str(&same_machine(machine));
             script.push_str(DOWNLOAD);
             words.extend([url.to_owned(), sha256.to_owned()]);
+        }
+        Source::Fetched {
+            path,
+            sha256,
+            machine,
+        } => {
+            script.push_str(&same_machine(machine));
+            script.push_str(FETCHED);
+            words.extend([path.to_owned(), sha256.to_owned()]);
         }
     }
     let run = timed("sh \"$1/control/wrapper.sh\"", seconds).replace('\n', "\n    ");
@@ -100,6 +115,17 @@ pub fn command(root: &str, plan: &str, source: Source<'_>, seconds: Option<u64>)
     let mut command = vec!["sh".to_owned(), "-c".to_owned(), script, "uwe".to_owned()];
     command.extend(words);
     command
+}
+
+/// A line that stops the job on a host of another machine than `machine`, as a static binary
+/// runs only on its own; empty when the machine is not known.
+fn same_machine(machine: Option<&str>) -> String {
+    machine.map_or(String::new(), |machine| {
+        format!(
+            "[ \"$(uname -m)\" = {machine} ] || {{ echo \"uwe: the helper runs on {machine}, but \
+             this host is $(uname -m)\" >&2; exit 125; }}\n"
+        )
+    })
 }
 
 #[cfg(test)]
@@ -133,5 +159,14 @@ mod tests {
         );
         assert!(words[2].contains("sha256sum -c -"), "{}", words[2]);
         assert!(words[2].contains("sleep 60"), "{}", words[2]);
+        let source = Source::Fetched {
+            path: "./uwe",
+            sha256: "cd",
+            machine: None,
+        };
+        let words = command("/tmp/uwe/a", "plan.json", source, None);
+        assert_eq!(words[6..], ["./uwe", "cd"]);
+        assert!(words[2].contains("helper=\"$3\"\necho \"$4  $helper\" | sha256sum"));
+        assert!(!words[2].contains("uname"), "{}", words[2]);
     }
 }

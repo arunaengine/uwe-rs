@@ -12,6 +12,9 @@ pub mod drs;
 mod error;
 mod folder;
 mod ftp;
+// The iRODS storage provider of the next change uses it.
+#[allow(dead_code)]
+mod irods_protocol;
 mod journal;
 mod objects;
 mod public;

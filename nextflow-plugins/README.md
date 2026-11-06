@@ -51,11 +51,37 @@ read a property `x` through `getX()` or `x()`, and set it through `setX(value)`.
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace
-observers: run start (run name, session id, launch, work and project directories, script,
-command line, profile, params, config and start time); per task submitted, started,
-completed, cached and failed, each with the task's trace record under Nextflow's trace
-field names; each file published, with its source and target; and run end (success, error
-message, counts and end time). A simulated run, like `uwe check`, has no observers.
+observers. A simulated run, like `uwe check`, has no observers.
+
+| Event | Carries |
+| --- | --- |
+| `RunStarted(Start)` | run name, session id, launch, work and project directories, main script, project name, repository, commit id and revision of a pulled pipeline, command line, profile, config files, params, config, `manifest` scope, process graph, start time |
+| `TaskSubmitted`, `TaskStarted`, `TaskCompleted`, `TaskCached`, `TaskFailed` (`Task`) | trace record, process id, full hash, executor, staged input files, output files (end events), input values |
+| `FilePublished { source, target }` | each file of a `publishDir` or a workflow output |
+| `RunEnded(End)` | success, error message, counts, the task whose failure ended the run, workflow outputs with their files and index file, end time |
+
+The process graph lists the processes in the order the workflow calls them, numbered from
+1, each with its qualified and definition name, its script file and the processes that its
+outputs reach through channels and operators. Operators are not vertices of it.
+
+The trace record has Nextflow's field names, with times in milliseconds since 1970,
+durations in milliseconds and sizes in bytes. uwe fills `task_id`, `name`, `process`,
+`status`, `exit`, `attempt`, `container`, `submit`, `start`, `complete`, `duration`,
+`realtime`, `cpus`, `memory`, `disk`, `time`, `%cpu`, `peak_rss`, `read_bytes`,
+`write_bytes`, `script`, `tag`, `queue` and `hash`. `hash` is the short form, like
+`ab/cdef01`, of the SHA-256 by which a resumed run finds the task, not Nextflow's own hash.
+These stay null, because uwe does not know or measure them: `workdir` (executors keep task
+folders to themselves), `native_id`, `cpu_model`, `rchar`, `wchar`, `rss`, `vmem`,
+`peak_vmem`, `%mem`, `vol_ctxt` and `inv_ctxt`. Input digests are known at the end of a task
+when the executor hashed its inputs.
+
+Nextflow's pending event has no event of its own: it marks a task that waits for its
+executor, which is the moment uwe submits the task to the engine, so `TaskSubmitted` covers
+it, and `TaskStarted` comes when the executor takes the attempt.
+
+`Observer::check` runs at the end of a run whose tasks succeeded, before `RunEnded`. An
+error fails the run with its message, and the observers then hear a failed
+`RunEnded`; nf-snapshot uses it.
 
 A task is submitted when the driver hands it to the engine, and an attempt starts when the
 executor has it. The executor answers a task from the cache on resume, so such a task is

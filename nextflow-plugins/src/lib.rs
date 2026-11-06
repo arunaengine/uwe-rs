@@ -197,6 +197,12 @@ pub fn start(context: &mut Context) -> Result<(), Error> {
     {
         nf_bactopia::start(context)?;
     }
+    if catalogue::configured(context.config)
+        .iter()
+        .any(|id| id == "nf-fl86")
+    {
+        nf_fl86::start(context)?;
+    }
     Ok(())
 }
 
@@ -208,6 +214,12 @@ pub fn finish(context: &mut Context) {
         .any(|id| id == "nf-bactopia")
     {
         nf_bactopia::finish(context);
+    }
+    if catalogue::configured(context.config)
+        .iter()
+        .any(|id| id == "nf-fl86")
+    {
+        nf_fl86::finish(context);
     }
 }
 

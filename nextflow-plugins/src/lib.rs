@@ -36,6 +36,7 @@ mod nf_ped;
 mod nf_pregex;
 mod nf_prometheus;
 mod nf_prov;
+mod nf_python;
 mod nf_quilt;
 mod nf_runinsights;
 mod nf_schema;

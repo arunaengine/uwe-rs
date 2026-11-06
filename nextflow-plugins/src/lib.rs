@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+pub mod catalogue;
 pub mod everit;
 mod nf_anndata;
 mod nf_fgbio;
@@ -13,6 +14,8 @@ pub mod observer;
 use nextflow_config::Config;
 use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::value::Value;
+
+use crate::catalogue::{Kind, Plugin, State};
 
 /// Parameters as nf-schema validates them, according to the selected plugin version.
 pub fn schema_params(params: &Value, config: &Config) -> Value {
@@ -91,56 +94,73 @@ const NF_CORE_UTILS: &[&str] = &[
     "workflowVersionToChannel",
 ];
 
-/// The functions of a plugin, or `None` for a plugin uwe does not have.
+/// The functions of nf-core-utils that `nf_core_utils.nf` defines.
+const NF_CORE_PORTED: &[&str] = &[
+    "getGenomeAttribute",
+    "getWorkflowVersion",
+    "checkConfigProvided",
+    "checkProfileProvided",
+    "completionSummary",
+    "dumpParametersToJSON",
+    "softwareVersionsToYAML",
+];
+
+const NF_SCHEMA_PLUGIN: Plugin = Plugin {
+    functions: NF_SCHEMA,
+    call: Some(nf_schema::call),
+    scopes: &["validation"],
+    ..Plugin::new("nf-schema", Kind::Functions, State::Implemented)
+};
+
+const NF_VALIDATION_PLUGIN: Plugin = Plugin {
+    functions: nf_validation::FUNCTIONS,
+    call: Some(nf_validation::call),
+    factories: &["fromSamplesheet"],
+    scopes: &["validation"],
+    ..Plugin::new("nf-validation", Kind::Functions, State::Implemented)
+};
+
+const NF_CORE_PLUGIN: Plugin = Plugin {
+    functions: NF_CORE_UTILS,
+    supported: Some(NF_CORE_PORTED),
+    script: Some(include_str!("nf_core_utils.nf")),
+    ..Plugin::new("nf-core-utils", Kind::Functions, State::Partial)
+};
+
+const NF_FGBIO_PLUGIN: Plugin = Plugin {
+    functions: &["readStructure"],
+    call: Some(|name, arguments, _| nf_fgbio::call(name, arguments)),
+    ..Plugin::new("nf-fgbio", Kind::Functions, State::Implemented)
+};
+
+const NF_ANNDATA_PLUGIN: Plugin = Plugin {
+    functions: &["anndata"],
+    supported: Some(&[]),
+    call: Some(nf_anndata::call),
+    ..Plugin::new("nf-anndata", Kind::Functions, State::Partial)
+};
+
+/// The functions of a plugin that uwe runs, or `None` for a plugin uwe does not run.
 pub fn functions(plugin: &str) -> Option<&'static [&'static str]> {
-    match plugin {
-        "nf-anndata" => Some(&["anndata"]),
-        "nf-core-utils" => Some(NF_CORE_UTILS),
-        "nf-fgbio" => Some(&["readStructure"]),
-        "nf-schema" => Some(NF_SCHEMA),
-        "nf-validation" => Some(nf_validation::FUNCTIONS),
-        _ => None,
-    }
+    let plugin = catalogue::find(plugin).filter(|plugin| plugin.works())?;
+    Some(plugin.functions)
 }
 
-/// Native plugin coverage, including functions recognized but not implemented.
+/// Native plugin coverage: every plugin of the catalogue, with the functions that work.
 pub fn capabilities() -> serde_json::Value {
-    let core = [
-        "getGenomeAttribute",
-        "getWorkflowVersion",
-        "checkConfigProvided",
-        "checkProfileProvided",
-        "completionSummary",
-        "dumpParametersToJSON",
-        "softwareVersionsToYAML",
-    ];
-    let unavailable: Vec<_> = NF_CORE_UTILS
-        .iter()
-        .filter(|name| !core.contains(name))
-        .collect();
-    serde_json::json!({
-        "nf-schema": {"supported": NF_SCHEMA, "unavailable": []},
-        "nf-validation": {"supported": nf_validation::FUNCTIONS, "unavailable": []},
-        "nf-fgbio": {"supported": ["readStructure"], "unavailable": []},
-        "nf-core-utils": {"supported": core, "unavailable": unavailable},
-        "nf-anndata": {"supported": [], "unavailable": ["anndata"]}
-    })
+    catalogue::capabilities()
 }
 
 /// The plugin of a channel factory that a plugin adds, like `Channel.fromSamplesheet`.
 pub fn factory_plugin(name: &str) -> Option<&'static str> {
-    match name {
-        "fromSamplesheet" => Some("nf-validation"),
-        _ => None,
-    }
+    let plugins = catalogue::PLUGINS.iter();
+    let mut adding = plugins.filter(|plugin| plugin.factories.contains(&name));
+    adding.next().map(|plugin| plugin.id)
 }
 
 /// The script that ports functions of a plugin to Nextflow script, if there is one.
 pub fn script(plugin: &str) -> Option<&'static str> {
-    match plugin {
-        "nf-core-utils" => Some(include_str!("nf_core_utils.nf")),
-        _ => None,
-    }
+    catalogue::find(plugin)?.script
 }
 
 /// What plugin functions can see of the run.
@@ -164,12 +184,9 @@ pub fn call(
     arguments: Vec<Value>,
     context: &mut Context,
 ) -> Result<Value, Error> {
-    match plugin {
-        "nf-anndata" => nf_anndata::call(name, arguments, context),
-        "nf-fgbio" => nf_fgbio::call(name, arguments),
-        "nf-schema" => nf_schema::call(name, arguments, context),
-        "nf-validation" => nf_validation::call(name, arguments, context),
-        _ => Err(Error::Unsupported {
+    match catalogue::find(plugin).and_then(|plugin| plugin.call) {
+        Some(call) => call(name, arguments, context),
+        None => Err(Error::Unsupported {
             message: format!("the function `{name}` of the plugin `{plugin}`"),
             span: Default::default(),
         }),

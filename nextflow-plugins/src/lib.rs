@@ -14,11 +14,13 @@ mod nf_dotenv;
 mod nf_fgbio;
 mod nf_ped;
 mod nf_pregex;
+mod nf_prov;
 mod nf_schema;
 #[path = "validation.rs"]
 mod nf_validation;
 mod nf_versions;
 pub mod observer;
+mod report_format;
 
 use std::any::Any;
 use std::cell::{RefCell, RefMut};

@@ -23,6 +23,7 @@ nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-parser.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 storage.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

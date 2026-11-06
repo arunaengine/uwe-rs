@@ -1,5 +1,5 @@
 //! Fills executor settings that the config file of uwe leaves unset from the scopes of a
-//! Nextflow config: `nomad` with nf-nomad-s5cmd's `nomad.s5cmd`, and `slurm_no_memory`.
+//! Nextflow config: `nomad`, `slurm_no_memory`, `tes` and `tencentcloud`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -237,11 +237,7 @@ fn s5cmd(
         }
     }
     let s3 = |name: &'static str| scope.text(&key(&["s3", name]));
-    let origin = Origin {
-        file: Arc::from(Path::new("nextflow.config")),
-        line: 0,
-    };
-    let secret = |name: &'static str| s3(name).map(|value| Secret::written(value, origin.clone()));
+    let secret = |name: &'static str| s3(name).map(|value| Secret::written(value, origin()));
     let settings = S3 {
         endpoint: s3("endpoint"),
         region: s3("region").or_else(|| Some("us-east-1".into())),
@@ -254,8 +250,107 @@ fn s5cmd(
         name: "nomad.s5cmd".into(),
         prefixes: vec![format!("s3://{bucket}/")],
         kind: Kind::S3(settings),
-        origin,
+        origin: origin(),
     }))
+}
+
+/// Where the values of a Nextflow config come from, for errors of secrets.
+fn origin() -> Origin {
+    Origin {
+        file: Arc::from(Path::new("nextflow.config")),
+        line: 0,
+    }
+}
+
+/// Fills the TES settings from nf-ga4gh's `tes` scope, and for nf-tencentcloud's executor
+/// `tencentcloud-omics` from `tencentcloud.omics`. A Nextflow endpoint gets `/v1`, as there.
+pub(crate) fn tes(config: &Config, executors: &mut crate::setup::Executors) -> Result<(), String> {
+    let scope = Scope(config);
+    let secret = |path: &[&str]| {
+        scope
+            .text(path)
+            .map(|value| Secret::written(value, origin()))
+    };
+    let key = |name: &'static str| ["tes", name];
+    if executors.tes_server.is_none() {
+        let endpoint = scope.text(&key("endpoint"));
+        executors.tes_server =
+            endpoint.map(|endpoint| format!("{}/v1", endpoint.trim_end_matches('/')));
+    }
+    if executors.tes_token.is_none() {
+        executors.tes_token = secret(&key("oauthToken"));
+    }
+    let settings = &mut executors.tes;
+    let (user, password) = (secret(&key("basicUsername")), secret(&key("basicPassword")));
+    if settings.user.is_none() && user.is_some() && password.is_some() {
+        (settings.user, settings.password) = (user, password);
+    }
+    let (api_key, name) = (secret(&key("apiKey")), scope.text(&key("apiKeyParamName")));
+    if settings.api_key.is_none() && api_key.is_some() && name.is_some() {
+        (settings.api_key, settings.api_key_name) = (api_key, name);
+        settings.api_key_header = scope.text(&key("apiKeyParamMode")).as_deref() == Some("header");
+    }
+    if let Some(seconds) = scope.number(&key("timeout")).filter(|seconds| *seconds > 0) {
+        settings.timeout.get_or_insert(Duration::from_secs(seconds));
+    }
+    if let Some(Json::Object(tags)) = scope.json(&key("tags")) {
+        for (name, value) in tags {
+            if name.starts_with("uwe-") {
+                return Err(format!("tes.tags.{name} is a tag that uwe sets itself"));
+            }
+            let value = value
+                .as_str()
+                .map_or_else(|| value.to_string(), str::to_owned);
+            settings.tags.entry(name).or_insert(value);
+        }
+    }
+    if !names_executor(config, "tencentcloud-omics") {
+        return Ok(());
+    }
+    let omics = |name: &'static str| ["tencentcloud", "omics", name];
+    let endpoint = scope.text(&omics("endpoint"));
+    let endpoint = endpoint.ok_or("tencentcloud.omics.endpoint must be specified!")?;
+    let endpoint = endpoint.trim_end_matches('/');
+    executors.tes_server = Some(match endpoint.ends_with("/v1") {
+        true => endpoint.to_owned(),
+        false => format!("{endpoint}/v1"),
+    });
+    let token = secret(&omics("accessToken"));
+    let token = token.ok_or("tencentcloud.omics.accessToken must be specified!")?;
+    executors.tes_token.get_or_insert(token);
+    executors
+        .tes
+        .platform
+        .get_or_insert(tes_executor::Platform::TencentOmics);
+    Ok(())
+}
+
+/// The S3 provider of `cos://` addresses that nf-tencentcloud's `tencentcloud` scope names:
+/// Tencent Cloud Object Storage speaks the S3 API at `cos.<region>.myqcloud.com`.
+pub(crate) fn cos(config: &Config) -> Option<ProviderSettings> {
+    let scope = Scope(config);
+    let key = |name: &'static str| ["tencentcloud", name];
+    let region = scope.text(&key("region"))?;
+    let secret = |name| {
+        scope
+            .text(&key(name))
+            .map(|value| Secret::written(value, origin()))
+    };
+    let settings = S3 {
+        endpoint: Some(format!("https://cos.{region}.myqcloud.com")),
+        region: Some(region),
+        path_style: Some(false),
+        access_key_id: secret("secretId"),
+        secret_access_key: secret("secretKey"),
+        session_token: secret("sessionToken"),
+        ..S3::default()
+    };
+    Some(ProviderSettings {
+        name: "tencentcloud".into(),
+        prefixes: vec!["cos://".into()],
+        kind: Kind::S3(settings),
+        origin: origin(),
+    })
 }
 
 /// Whether `process.executor` or the executor of a process selector is `name`.
@@ -373,6 +468,56 @@ mod tests {
         let refused = loaded("nomad.jobs.privileged = true\n");
         let error = super::nomad(&refused, &mut crate::nomad::Config::default());
         assert!(error.is_err_and(|error| error.contains("never starts privileged")));
+    }
+
+    #[test]
+    fn maps_tes_scope() {
+        let text = "process.executor = 'tes'\ntes {\n endpoint = 'http://127.0.0.1:8000/'\n \
+                    oauthToken = 't'\n apiKey = 'k'\n apiKeyParamName = 'key'\n \
+                    apiKeyParamMode = 'header'\n timeout = 30\n \
+                    tags { project = 'demo'; owner = 'lab' }\n}\n";
+        let mut executors = crate::setup::Executors::default();
+        super::tes(&loaded(text), &mut executors).expect("a mapping");
+        assert_eq!(
+            executors.tes_server.as_deref(),
+            Some("http://127.0.0.1:8000/v1")
+        );
+        assert!(executors.tes_token.is_some());
+        let settings = &executors.tes;
+        assert_eq!(settings.api_key_name.as_deref(), Some("key"));
+        assert!(settings.api_key_header);
+        assert_eq!(settings.timeout, Some(Duration::from_secs(30)));
+        assert_eq!(settings.tags["project"], "demo");
+        assert_eq!(settings.platform, None);
+        let text = "process.executor = 'tencentcloud-omics'\ntencentcloud {\n \
+                    region = 'ap-guangzhou'\n secretId = 'id'\n secretKey = 'key'\n \
+                    omics {\n  endpoint = 'http://127.0.0.1:1/'\n  accessToken = 't'\n }\n}\n";
+        let config = loaded(text);
+        let mut executors = crate::setup::Executors::default();
+        super::tes(&config, &mut executors).expect("a mapping");
+        assert_eq!(
+            executors.tes_server.as_deref(),
+            Some("http://127.0.0.1:1/v1")
+        );
+        assert_eq!(
+            executors.tes.platform,
+            Some(tes_executor::Platform::TencentOmics)
+        );
+        let cos = super::cos(&config).expect("a provider");
+        assert_eq!(cos.prefixes, ["cos://"]);
+        let Kind::S3(s3) = cos.kind else {
+            panic!("an S3 provider");
+        };
+        assert_eq!(
+            s3.endpoint.as_deref(),
+            Some("https://cos.ap-guangzhou.myqcloud.com")
+        );
+        let missing = loaded("process.executor = 'tencentcloud-omics'\n");
+        let error = super::tes(&missing, &mut crate::setup::Executors::default());
+        assert_eq!(
+            error,
+            Err("tencentcloud.omics.endpoint must be specified!".into())
+        );
     }
 
     #[test]

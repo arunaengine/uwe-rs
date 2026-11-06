@@ -15,6 +15,7 @@ mod nf_co2footprint;
 mod nf_core_utils;
 mod nf_csvext;
 mod nf_dotenv;
+mod nf_fairscape;
 mod nf_fgbio;
 mod nf_gc;
 mod nf_logsaver;

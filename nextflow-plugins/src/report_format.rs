@@ -38,12 +38,35 @@ impl Json {
     }
 
     /// Adds an entry to an object, or replaces the entry of the same key.
-    pub(crate) fn insert(&mut self, key: &str, value: Json) {
+    pub(crate) fn insert(&mut self, key: &str, value: impl Into<Json>) {
+        let value = value.into();
         if let Json::Object(entries) = self {
             match entries.iter_mut().find(|(name, _)| name == key) {
                 Some(entry) => entry.1 = value,
                 None => entries.push((key.to_owned(), value)),
             }
+        }
+    }
+
+    /// The object with this entry added, for building an object in one expression.
+    pub(crate) fn with(mut self, key: &str, value: impl Into<Json>) -> Json {
+        self.insert(key, value);
+        self
+    }
+
+    pub(crate) fn get_mut(&mut self, key: &str) -> Option<&mut Json> {
+        match self {
+            Json::Object(entries) => (entries.iter_mut())
+                .find(|(name, _)| name == key)
+                .map(|(_, value)| value),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_str(&self) -> Option<&str> {
+        match self {
+            Json::Text(text) => Some(text),
+            _ => None,
         }
     }
 
@@ -83,6 +106,44 @@ impl Json {
         let mut text = String::new();
         self.write_compact(&mut text);
         text
+    }
+
+    /// The text that Python's `json.dump(indent=2)` gives: two spaces a level, and `[]` and
+    /// `{}` when empty.
+    pub(crate) fn python(&self) -> String {
+        let mut text = String::new();
+        self.write_python(&mut text, 0);
+        text
+    }
+
+    fn write_python(&self, text: &mut String, level: usize) {
+        let items: Vec<(Option<&str>, &Json)> = match self {
+            Json::List(items) => items.iter().map(|item| (None, item)).collect(),
+            Json::Object(entries) => (entries.iter())
+                .map(|(key, value)| (Some(key.as_str()), value))
+                .collect(),
+            scalar => return scalar.write_compact(text),
+        };
+        let (open, close) = if matches!(self, Json::List(_)) {
+            ('[', ']')
+        } else {
+            ('{', '}')
+        };
+        text.push(open);
+        for (index, (key, value)) in items.iter().enumerate() {
+            text.push_str(if index > 0 { ",\n" } else { "\n" });
+            text.push_str(&"  ".repeat(level + 1));
+            if let Some(key) = key {
+                quote(text, key);
+                text.push_str(": ");
+            }
+            value.write_python(text, level + 1);
+        }
+        if !items.is_empty() {
+            text.push('\n');
+            text.push_str(&"  ".repeat(level));
+        }
+        text.push(close);
     }
 
     fn write_pretty(&self, text: &mut String, level: usize) {
@@ -197,6 +258,12 @@ impl From<String> for Json {
 impl From<&String> for Json {
     fn from(value: &String) -> Json {
         Json::Text(value.clone())
+    }
+}
+
+impl From<Vec<Json>> for Json {
+    fn from(items: Vec<Json>) -> Json {
+        Json::List(items)
     }
 }
 
@@ -337,6 +404,16 @@ pub(crate) fn now() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn writes_python_layout() {
+        let value = Json::Object(Vec::new())
+            .with("b", vec![Json::from(1i64), Json::from("x")])
+            .with("a", Json::List(Vec::new()))
+            .with("c", Json::Object(Vec::new()).with("d", true));
+        let python = "{\n  \"b\": [\n    1,\n    \"x\"\n  ],\n  \"a\": [],\n  \"c\": {\n    \"d\": true\n  }\n}";
+        assert_eq!(value.python(), python);
+    }
 
     #[test]
     fn prints_like_groovy() {

@@ -396,3 +396,7 @@ fn call_id() -> String {
         &hex[20..]
     )
 }
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;

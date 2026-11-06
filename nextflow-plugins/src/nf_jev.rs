@@ -96,8 +96,8 @@ impl Provider {
     }
 }
 
-/// The settings of the `jev` scope after the plugin's checks.
-#[derive(Clone, Debug)]
+/// The settings of the `jev` scope after the plugin's checks; no `Debug`, as it holds the key.
+#[derive(Clone)]
 struct Settings {
     provider: Provider,
     endpoint: String,
@@ -351,9 +351,10 @@ fn send(settings: &Settings, key: &str, body: &str) -> Result<String, String> {
             .header("Content-Type", "application/json")
             .body(body.to_owned());
         let answer = runtime.block_on(async {
-            let response = request.send().await.map_err(|error| error.to_string())?;
+            let failed = |error: reqwest::Error| error.without_url().to_string();
+            let response = request.send().await.map_err(failed)?;
             let status = response.status().as_u16();
-            let text = response.text().await.map_err(|error| error.to_string())?;
+            let text = response.text().await.map_err(failed)?;
             Ok::<_, String>((status, text))
         });
         match answer {

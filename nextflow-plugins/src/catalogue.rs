@@ -173,7 +173,7 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-lamin", Kind::Observer),
     planned("nf-llm-debugger", Kind::Observer),
     planned("nf-prometheus", Kind::Observer),
-    planned("nf-slack", Kind::Observer),
+    crate::nf_slack::PLUGIN,
     planned("nf-teams", Kind::Observer),
     crate::nf_tower::PLUGIN,
     crate::nf_weblog::PLUGIN,

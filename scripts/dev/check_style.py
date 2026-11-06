@@ -97,6 +97,7 @@ ASSET_LAYOUTS = {
     "nextflow-evaluator/tests/fixtures/oracle/gunzip": "native Nextflow oracle layout",
     "nextflow-evaluator/tests/fixtures/oracle/org_json": "native Groovy oracle layout",
     "nextflow-plugins/tests/fixtures/nf_core_utils": "native plugin oracle layout",
+    "nextflow-plugins/tests/fixtures/nf_schema": "native plugin oracle layout",
     "nextflow-plugins/tests/fixtures/nf_validation": "native plugin oracle layout",
     "nextflow-plugins/tests/fixtures/params": "native plugin oracle layout",
     "nextflow-runtime/tests/fixtures/exec": "native Nextflow oracle layout",

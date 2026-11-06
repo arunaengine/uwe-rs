@@ -465,3 +465,28 @@ fn text_or(value: Option<Value>, default: &str) -> String {
     value.map_or_else(|| default.to_owned(), |value| value.to_string())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::read;
+
+    #[test]
+    fn collects_worksheet_errors() {
+        let text = include_str!("../../tests/fixtures/nf_cmgg/bad-worksheet.yml");
+        let expected = include_str!("../../tests/fixtures/nf_cmgg/bad-worksheet.txt");
+        let error = read("bad-worksheet.yml", text).unwrap_err();
+        // uwe's regex errors have their own words, which only the log shows.
+        let java = "Unclosed character class near index 9\n([unclosed\n         ^";
+        let own = super::Pattern::new("([unclosed").unwrap_err().message;
+        assert_eq!(format!("{error}\n"), expected.replace(java, &own));
+    }
+
+    #[test]
+    fn reads_worksheet() {
+        let text = include_str!("../../tests/fixtures/nf_cmgg/worksheet.yml");
+        let worksheet = read("worksheet.yml", text).unwrap();
+        assert_eq!(worksheet.id_field, "sample");
+        assert_eq!(worksheet.split_by.as_deref(), Some("tag"));
+        let names: Vec<&str> = worksheet.sheets.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["all.yaml", "dna.yaml"]);
+    }
+}

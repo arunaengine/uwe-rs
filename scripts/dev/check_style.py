@@ -68,6 +68,8 @@ HEADER_EXCEPTIONS = {
     "nextflow-plugins/tests/fixtures/nf_core_utils/modules/nf-core/samtools/sort/meta.yml": "probe input of the recorded plugin runs",
     "nextflow-plugins/tests/fixtures/nf_core_utils/versions_fastqc.yml": "probe input of the recorded plugin runs",
     "nextflow-plugins/tests/fixtures/nf_core_utils/versions_flat.yml": "probe input of the recorded plugin runs",
+    "nextflow-plugins/tests/fixtures/nf_cmgg/bad-worksheet.yml": "probe input of the recorded plugin runs",
+    "nextflow-plugins/tests/fixtures/nf_cmgg/worksheet.yml": "probe input of the recorded plugin runs",
     "python-evaluator/tests/fixtures/python/library.py": "the program prints its own first source line",
     "snakemake-runtime/tests/fixtures/embedded/preambles/scripts/test.rs": "fragment included in a generated preamble",
     "snakemake-runtime/tests/fixtures/embedded/preambles/scripts/test.sh": "fragment included in a generated preamble",

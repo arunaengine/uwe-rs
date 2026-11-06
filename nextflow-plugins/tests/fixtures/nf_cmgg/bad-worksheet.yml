@@ -1,0 +1,28 @@
+name: probe/pipe
+id_field: nosuch
+input:
+  sample:
+    type: number
+values:
+  both:
+    value: 1
+    func: '1'
+  neither:
+  oldstyle:
+    func: 'input.sample + data.sample'
+  forbidden:
+    func: 'data.sample.split("x")'
+output:
+  bam:
+    pattern: '([unclosed'
+metrics:
+  m:
+    pattern: 'x'
+    filetype: xml
+samplesheets:
+  - name: a.yaml
+    include_func: 'data.missingfield == 1'
+    fields:
+      sample:
+        type: date
+      other:

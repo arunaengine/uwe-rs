@@ -1,0 +1,48 @@
+name: probe/pipe
+id_field: sample
+input:
+  sample:
+  tag:
+    default: none
+  kind:
+    source: kind
+  reads:
+    type: integer
+    default: 0
+values:
+  constant:
+    value: fixed
+  derived:
+    func: 'data.tag + "_" + data.kind?.toLowerCase()'
+output:
+  bam:
+    pattern: '.*\.bam$'
+  fastq:
+    pattern: '.*\.fastq\.gz$'
+metrics:
+  yield:
+    pattern: 'metrics\.tsv$'
+    id: Sample
+    field: yield
+samplesheets:
+  - name: all.yaml
+    fields:
+      sample:
+      tag:
+      bam:
+      fastq:
+      derived:
+      constant:
+      yield:
+      reads:
+        type: string
+  - name: dna.yaml
+    include_func: 'data.kind?.toLowerCase() == "dna"'
+    filter_func: 'data.yield?.toLong() >= params.min_reads'
+    fields:
+      id:
+        source: sample
+      cram:
+        source: bam
+samplesheets_settings:
+  split_by: tag

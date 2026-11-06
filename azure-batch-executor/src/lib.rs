@@ -4,6 +4,7 @@
 
 pub mod auth;
 mod client;
+pub mod outcome;
 mod settings;
 pub mod task;
 

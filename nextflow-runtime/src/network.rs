@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 use nextflow_evaluator::interpreter::{Error, Interpreter};
@@ -38,6 +38,17 @@ pub(crate) trait Behaviour {
     fn complete(&mut self, _context: &mut Context, _outcome: TaskOutcome) -> Result<State, Error> {
         Ok(State::Running)
     }
+
+    /// The process that the node runs, for a process node.
+    fn definition(&self) -> Option<Definition> {
+        None
+    }
+}
+
+/// A process definition: its name and the script file that defines it.
+pub(crate) struct Definition {
+    pub name: Rc<str>,
+    pub script: Option<Rc<str>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,6 +67,8 @@ struct Input {
 struct Node {
     name: Rc<str>,
     inputs: Vec<Input>,
+    /// The channels made for the node, which it writes.
+    outputs: Vec<ChannelId>,
     behaviour: Option<Box<dyn Behaviour>>,
     state: State,
 }
@@ -67,6 +80,8 @@ pub struct Network {
     nodes: Vec<Node>,
     /// The nodes that read each channel.
     readers: Vec<Vec<usize>>,
+    /// The channels made since the last node: the builder makes a node's outputs before it.
+    fresh: Vec<ChannelId>,
     /// Nodes with messages waiting, in the order they got them.
     waiting: VecDeque<usize>,
     queued: Vec<bool>,
@@ -237,7 +252,9 @@ impl Network {
             Channel::queue()
         });
         self.readers.push(Vec::new());
-        ChannelId(self.channels.len() as u32 - 1)
+        let channel = ChannelId(self.channels.len() as u32 - 1);
+        self.fresh.push(channel);
+        channel
     }
 
     /// The channel of a topic, as `channel.topic(name)` gives it.
@@ -246,6 +263,8 @@ impl Network {
             return *channel;
         }
         let channel = self.channel(false);
+        // The mix of the topic's sources writes it, when the network ignites.
+        self.fresh.retain(|fresh| *fresh != channel);
         self.topics.entry(name.into()).or_default().0 = Some(channel);
         channel
     }
@@ -257,6 +276,7 @@ impl Network {
 
     /// Binds a value channel now, as a plain process argument is at call time.
     pub(crate) fn bind(&mut self, channel: ChannelId, value: Value) {
+        self.fresh.retain(|fresh| *fresh != channel);
         self.channels[channel.0 as usize].write(Message::Value(value));
     }
 
@@ -289,10 +309,57 @@ impl Network {
         self.nodes.push(Node {
             name: name.into(),
             inputs,
+            outputs: std::mem::take(&mut self.fresh),
             behaviour: Some(behaviour),
             state: State::Running,
         });
         self.queued.push(false);
+    }
+
+    /// The processes of the network in the order they were called, numbered from 1, each with
+    /// the processes that its outputs reach through other nodes.
+    pub(crate) fn processes(&self) -> Vec<nextflow_plugins::observer::Process> {
+        let mut ids = HashMap::new();
+        for (index, node) in self.nodes.iter().enumerate() {
+            if let Some(behaviour) = &node.behaviour
+                && behaviour.definition().is_some()
+            {
+                ids.insert(index, ids.len() as u32 + 1);
+            }
+        }
+        let mut processes = Vec::new();
+        for (index, node) in self.nodes.iter().enumerate() {
+            let (Some(id), Some(definition)) = (
+                ids.get(&index),
+                node.behaviour.as_ref().and_then(|node| node.definition()),
+            ) else {
+                continue;
+            };
+            let mut feeds = BTreeSet::new();
+            let mut seen: HashSet<ChannelId> = node.outputs.iter().copied().collect();
+            let mut channels = node.outputs.clone();
+            while let Some(channel) = channels.pop() {
+                for reader in &self.readers[channel.0 as usize] {
+                    match ids.get(reader) {
+                        Some(id) => {
+                            feeds.insert(*id);
+                        }
+                        None => {
+                            let outputs = &self.nodes[*reader].outputs;
+                            channels.extend(outputs.iter().filter(|output| seen.insert(**output)));
+                        }
+                    }
+                }
+            }
+            processes.push(nextflow_plugins::observer::Process {
+                id: *id,
+                name: node.name.to_string(),
+                definition: definition.name.to_string(),
+                script: definition.script.map(|script| script.to_string()),
+                feeds: feeds.into_iter().collect(),
+            });
+        }
+        processes
     }
 
     /// Starts every node in the order it was created, then runs until nothing is waiting.
@@ -308,6 +375,7 @@ impl Network {
             }
             let closed = vec![false; sources.len()];
             let mix = crate::operator::Mix { output, closed };
+            self.fresh = vec![output];
             self.add(&format!("topic {name}"), &sources, Box::new(mix));
         }
         for index in 0..self.nodes.len() {

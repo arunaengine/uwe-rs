@@ -18,7 +18,7 @@ use nextflow_evaluator::value::{ChannelId, Key, ListKind, MapKind, PathValue, Va
 use nextflow_parser::ast::BodyKind;
 
 use crate::channel::Message;
-use crate::network::{Behaviour, Context, State};
+use crate::network::{Behaviour, Context, Definition, State};
 use crate::publish;
 use crate::strategy::{self, Strategy};
 
@@ -193,6 +193,13 @@ pub(crate) struct InFlight {
 impl Behaviour for ProcessNode {
     fn ignite(&mut self, _: &mut Context) -> Result<State, Error> {
         Ok(State::Running)
+    }
+
+    fn definition(&self) -> Option<Definition> {
+        Some(Definition {
+            name: self.process.name.clone(),
+            script: self.module.path.borrow().clone(),
+        })
     }
 
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {

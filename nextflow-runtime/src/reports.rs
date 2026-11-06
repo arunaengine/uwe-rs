@@ -73,6 +73,8 @@ pub(crate) struct Reports {
     attempts: HashMap<TaskId, u32>,
     /// What the observers hear of each task besides its trace row.
     details: HashMap<TaskId, Details>,
+    /// The number of each process, by its qualified name.
+    process_ids: HashMap<String, u32>,
     /// Whether the observers heard the end of the run, after which they hear nothing.
     closed: bool,
 }
@@ -184,6 +186,7 @@ impl Reports {
             counts: Counts::default(),
             attempts: HashMap::new(),
             details: HashMap::new(),
+            process_ids: HashMap::new(),
             closed: false,
         }
     }
@@ -197,11 +200,24 @@ impl Reports {
         self.wanted.is_empty() && self.observers.is_empty()
     }
 
-    /// Tells the observers that the run starts, with its options.
-    pub fn run_started(&mut self, options: &crate::Options, launch_dir: &Path) {
+    /// Tells the observers that the run starts, with its options, its processes and where
+    /// the pipeline came from.
+    pub fn run_started(
+        &mut self,
+        options: &crate::Options,
+        launch_dir: &Path,
+        processes: Vec<observer::Process>,
+        repository: Option<&crate::driver::Repository>,
+    ) {
         if self.observers.is_empty() {
             return;
         }
+        self.process_ids = (processes.iter())
+            .map(|process| (process.name.clone(), process.id))
+            .collect();
+        let folder = Path::new(&options.project_dir).file_name();
+        let folder = folder.map(|name| name.to_string_lossy().into_owned());
+        let manifest = options.config.get(&["manifest"]);
         let start = Start {
             run_name: options.run_name.clone(),
             session_id: options.run_name.clone(),
@@ -209,13 +225,24 @@ impl Reports {
             work_dir: launch_dir.join("work").to_string_lossy().into_owned(),
             project_dir: options.project_dir.clone(),
             script: options.script_file.clone(),
+            project_name: (repository.map(|repository| repository.name.clone()))
+                .or(folder)
+                .unwrap_or_default(),
+            repository: repository.map(|repository| repository.url.clone()),
+            commit_id: repository.and_then(|repository| repository.commit_id.clone()),
+            revision: repository.and_then(|repository| repository.revision.clone()),
             command_line: options.command_line.clone(),
             profile: options.profile.clone(),
+            config_files: options.config_files.clone(),
             params: crate::inputs::to_json(&options.config.params()),
             config: crate::inputs::to_json(&options.config.tree),
+            manifest: manifest.map_or(serde_json::json!({}), |manifest| {
+                crate::inputs::to_json(&manifest)
+            }),
+            processes,
             start: self.started,
         };
-        self.notify(Event::RunStarted(start));
+        self.notify(Event::RunStarted(Box::new(start)));
     }
 
     /// Tells the observers that a file went to where the workflow publishes it.
@@ -343,6 +370,7 @@ impl Reports {
         let Some(details) = self.details.get(&id) else {
             return observer::Task {
                 record,
+                process_id: None,
                 hash: String::new(),
                 executor: "local".to_owned(),
                 inputs: Vec::new(),
@@ -372,6 +400,7 @@ impl Reports {
                 .collect();
         }
         observer::Task {
+            process_id: self.process_ids.get(&self.asked[&id].0.step).copied(),
             record,
             hash: details.hash.clone(),
             executor: details.executor.clone(),

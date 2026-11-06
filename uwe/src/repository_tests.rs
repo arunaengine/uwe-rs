@@ -285,3 +285,23 @@ fn fetches_plain_git() {
         .unwrap();
     assert_eq!(again, folder);
 }
+
+#[test]
+fn describes_pulled_origin() {
+    let checkout = tempfile::tempdir().expect("a temporary directory");
+    let commit = "0123456789abcdef0123456789abcdef01234567";
+    std::fs::write(checkout.path().join(MARKER), commit).expect("writes the marker");
+    let named = Path::new("nf-core/no-such-local-folder");
+    let pulled = origin(Some(named), Some("dev"), checkout.path()).expect("a pulled pipeline");
+    assert_eq!(
+        pulled.url,
+        "https://github.com/nf-core/no-such-local-folder"
+    );
+    assert_eq!(pulled.name, "nf-core/no-such-local-folder");
+    assert_eq!(pulled.commit_id.as_deref(), Some(commit));
+    assert_eq!(pulled.revision.as_deref(), Some("dev"));
+    assert!(
+        origin(Some(checkout.path()), None, checkout.path()).is_none(),
+        "a local folder"
+    );
+}

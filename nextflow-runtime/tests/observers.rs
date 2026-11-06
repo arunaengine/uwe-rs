@@ -36,7 +36,7 @@ process SECOND {
 }
 
 workflow {
-    SECOND(FIRST())
+    SECOND(FIRST().map { file -> file })
 }
 "#;
 
@@ -168,7 +168,8 @@ fn summary(event: &Event) -> String {
 fn hears_run_events() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), PIPELINE).expect("writes the script");
-    let config = "plugins {\n    id 'nf-prov@1.4.0'\n}\nparams.greeting = 'hi'\n";
+    let config = "plugins {\n    id 'nf-prov@1.4.0'\n}\nparams.greeting = 'hi'\n\
+                  manifest.name = 'demo'\n";
     std::fs::write(directory.path().join("nextflow.config"), config).expect("writes the config");
     let launch = Launch {
         target: directory.path().to_owned(),
@@ -230,6 +231,20 @@ fn hears_run_events() {
     assert_eq!(start.run_name, "uwe");
     assert_eq!(start.params["greeting"], "hi");
     assert!(start.script.ends_with("main.nf"), "{}", start.script);
+    assert_eq!(start.manifest["name"], "demo");
+    assert!(start.config_files[0].ends_with("nextflow.config"));
+    let folder = directory
+        .path()
+        .file_name()
+        .map(|name| name.to_string_lossy());
+    assert_eq!(Some(start.project_name.as_str()), folder.as_deref());
+    assert_eq!((&start.repository, &start.commit_id), (&None, &None));
+    let graph: Vec<(u32, &str, &[u32])> = (start.processes.iter())
+        .map(|process| (process.id, process.name.as_str(), process.feeds.as_slice()))
+        .collect();
+    assert_eq!(graph, [(1, "FIRST", &[2][..]), (2, "SECOND", &[][..])]);
+    let script = start.processes[0].script.as_deref().unwrap_or_default();
+    assert!(script.ends_with("main.nf"), "{script}");
     let Event::TaskSubmitted(submitted) = &events[1] else {
         panic!("FIRST is submitted");
     };
@@ -241,6 +256,7 @@ fn hears_run_events() {
     let short = format!("{}/{}", &submitted.hash[..2], &submitted.hash[2..8]);
     assert_eq!(record["hash"], short.as_str());
     assert_eq!(submitted.executor, "local");
+    assert_eq!(submitted.process_id, Some(1));
     assert!(
         record["script"]
             .as_str()
@@ -275,6 +291,7 @@ fn hears_run_events() {
     );
     assert_eq!(record["attempt"], 1);
     assert_eq!(failed.inputs, [made]);
+    assert_eq!(failed.process_id, Some(2));
     assert_eq!(failed.values, [serde_json::json!("/work/out.txt")]);
     for unknown in [
         "workdir",

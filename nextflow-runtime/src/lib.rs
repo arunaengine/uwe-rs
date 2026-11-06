@@ -196,6 +196,11 @@ impl Run {
         self.network.take_deliveries()
     }
 
+    /// The processes that the workflow calls, with the processes that each one feeds.
+    pub(crate) fn processes(&self) -> Vec<nextflow_plugins::observer::Process> {
+        self.network.processes()
+    }
+
     /// Consumes the native output-check verdict of the task just completed.
     pub fn take_acceptance(&mut self, task: TaskId) -> bool {
         self.network.take_acceptance(task)

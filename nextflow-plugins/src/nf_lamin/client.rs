@@ -288,6 +288,16 @@ impl Client {
             .filter(Value::is_object)
             .ok_or_else(|| "POST transforms gave no transform".to_owned())
     }
+
+    /// Creates the artifact of a storage path, or finds the one with the same content.
+    pub(super) fn artifact(&mut self, body: &Value) -> Result<Value, String> {
+        let path = format!("/instances/{}/artifacts/create", self.instance_id);
+        let created = self.call(Method::POST, &path, Some(body), "POST artifacts")?;
+        let artifact = created.map(|created| created["body"]["artifact"].clone());
+        artifact
+            .filter(Value::is_object)
+            .ok_or_else(|| "POST artifacts gave no artifact".to_owned())
+    }
 }
 
 /// A LaminHub function refused the token.

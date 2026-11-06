@@ -26,6 +26,7 @@ fn routes(settings: Value) -> Value {
         {"method": "POST", "match": "/core/ulabel/", "body": {"id": 601, "uid": "ulabRUN000000001"}},
         {"method": "POST", "match": "/core/ulabel?", "body": []},
         {"method": "PUT", "match": "/core/ulabel", "body": [{"id": 3, "uid": "LABEL3"}]},
+        {"match": "/artifacts/create", "body": {"body": {"artifact": {"id": 9, "uid": "ARTIFACT9"}}}},
         {"match": "/", "body": {}}
     ])
 }
@@ -153,10 +154,14 @@ fn marks_failed_run() {
 }
 
 #[test]
-fn links_labels() {
+fn links_files() {
     let fake = Fake::start(routes(instance()));
     let extra = "  project_uids = ['projDEMO00000001']\n  ulabel_uids = ['+nextflow']\n  \
-                 run { ulabel_uids = ['ulabRUN000000001'] }\n";
+                 run { ulabel_uids = ['ulabRUN000000001'] }\n  input_artifacts {\n    rules { \
+                 sheet { include_paths = ['s3://demo-bucket/inputs/sheet.csv']; kind = 'dataset' \
+                 } }\n  }\n  output_artifacts {\n    include_paths = \
+                 ['s3://demo-bucket/results/out.txt', 's3://demo-bucket/results/skip.log']\n    \
+                 rules { logs { type = 'exclude'; pattern = '.*\\\\.log$' } }\n  }\n";
     let (_, error, printed) = run("main.nf", &fake, extra, "special_varahamihira");
     assert_eq!(error, None, "{printed}");
     let requests = fake.requests();
@@ -172,6 +177,28 @@ fn links_labels() {
     assert_eq!(
         upserts("runulabel"),
         [json!([{"run_id": 5, "ulabel_id": 3}, {"run_id": 5, "ulabel_id": 601}])]
+    );
+    let made = bodies(&requests, "POST", "/artifacts/create");
+    assert_eq!(
+        made[0]["kwargs"],
+        json!({"kind": "dataset",
+               "description": "Input artifact at s3:///demo-bucket/inputs/sheet.csv"})
+    );
+    let outputs: Vec<&Value> = made[1..].iter().map(|body| &body["path"]).collect();
+    assert_eq!(
+        outputs,
+        [
+            "s3://demo-bucket/results/out.txt",
+            "s3://demo-bucket/results/skip.log"
+        ]
+    );
+    assert_eq!(
+        made[1]["kwargs"],
+        json!({"run_id": 5, "description": "Output artifact for run 5"})
+    );
+    assert_eq!(
+        upserts("artifact_input_of_runs"),
+        [json!([{"artifact_id": 9, "run_id": 5}])]
     );
     let ended = bodies(&requests, "PATCH", "/core/run/RUN0001");
     assert_eq!(

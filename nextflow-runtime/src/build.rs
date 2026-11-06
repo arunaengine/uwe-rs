@@ -60,6 +60,7 @@ const OPERATORS: &[&str] = &[
     "multiMap",
     "randomSample",
     "reduce",
+    "scan",
     "set",
     "splitCsv",
     "splitFasta",
@@ -583,6 +584,15 @@ impl Host for Builder<'_> {
                     Kind::Each(Each::Take(if count < 0 { -1 } else { count })),
                     false,
                 )
+            }
+            ("scan", [Value::Closure(closure)]) => {
+                let running = Value::Null;
+                let closure = closure.clone();
+                (Kind::Each(Each::Scan { closure, running }), same_kind)
+            }
+            ("scan", [seed, Value::Closure(closure)]) => {
+                let (closure, running) = (closure.clone(), seed.clone());
+                (Kind::Each(Each::Scan { closure, running }), same_kind)
             }
             ("until", [Value::Closure(closure)]) => {
                 (Kind::Each(Each::Until(closure.clone())), same_kind)

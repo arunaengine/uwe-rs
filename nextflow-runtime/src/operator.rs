@@ -74,6 +74,12 @@ pub(crate) enum Each {
         by: Option<Vec<usize>>,
         remainder: bool,
     },
+    /// nf-boost's `scan`: each value combined with the running value by the closure, or the
+    /// value itself while there is none, becomes the running value and is emitted.
+    Scan {
+        closure: Rc<Closure>,
+        running: Value,
+    },
 }
 
 pub(crate) struct Single {
@@ -195,6 +201,17 @@ impl Behaviour for Single {
                         return Ok(State::Stopped);
                     }
                     context.emit(self.output, value);
+                }
+                Each::Scan { closure, running } => {
+                    let next = match std::mem::replace(running, Value::Null) {
+                        Value::Null => value,
+                        previous => {
+                            let arguments = vec![previous, value];
+                            context.interpreter.call_closure(closure, arguments)?
+                        }
+                    };
+                    *running = next.clone();
+                    context.emit(self.output, next);
                 }
                 Each::Transpose { by, remainder } => {
                     spread_transposed(context.interpreter.host(), &value, by.as_deref());

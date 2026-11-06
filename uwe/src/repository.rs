@@ -410,10 +410,8 @@ pub(crate) fn prepare(
         // A long path without `.git` is a repository only if the server answers as Git.
         let accounts = accounts()?;
         if !repository.url.ends_with(".git") {
-            let account = match &accounts {
-                Some(accounts) => (accounts.0)(&repository.url).map_err(Failure::setup)?,
-                None => None,
-            };
+            let account =
+                crate::git::account(&repository.url, accounts.as_ref()).map_err(Failure::setup)?;
             if !runtime.block_on(speaks_git(&repository.url, account)) {
                 return Ok(target.to_owned());
             }

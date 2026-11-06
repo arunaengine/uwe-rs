@@ -190,7 +190,9 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_quilt::PLUGIN,
     crate::nf_synapse::PLUGIN,
     // Pipeline sources and images.
-    planned("nf-codecommit", Kind::Other),
+    // nf-codecommit: Git over HTTPS with SigV4 passwords, keys from an https storage provider
+    // or AWS's chain; no Nextflow SCM file and no CodeCommit API reads (uwe clones).
+    Plugin::new("nf-codecommit", Kind::Other, State::Partial),
     planned("nf-diff", Kind::Other),
     planned("nf-kuberun", Kind::Executor),
     planned("nf-wave", Kind::Other),

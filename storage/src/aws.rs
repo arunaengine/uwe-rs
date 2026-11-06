@@ -118,30 +118,83 @@ async fn signed(
         message,
         retryable: false,
     };
-    let keys = match credentials {
-        Credentials::Keys(keys) => keys,
-        Credentials::Chain { environment, home } => {
-            let context = Context::new()
-                .with_file_read(TokioFileRead)
-                .with_http_send(Web)
-                .with_env(StaticEnv {
-                    home_dir: home,
-                    envs: environment,
-                });
-            let found = (DefaultCredentialProvider::new()
-                .provide_credential(&context)
-                .await)
-                .map_err(|error| failed(error.to_string()))?;
-            let found = found.ok_or_else(|| failed("no AWS credentials were found".to_owned()))?;
-            Keys {
-                id: found.access_key_id,
-                secret: found.secret_access_key,
-                token: found.session_token,
-            }
-        }
-    };
+    let keys = keys_of(credentials).await.map_err(failed)?;
     let time = time.unwrap_or_else(jiff::Timestamp::now);
     sign(&request, &keys, time).map_err(failed)
+}
+
+/// The keys of the credentials, from AWS's default chain when they name none.
+pub fn resolve(credentials: &Credentials) -> Result<Keys, StorageError> {
+    let credentials = credentials.clone();
+    run(async move {
+        keys_of(credentials)
+            .await
+            .map_err(|message| StorageError::Failed {
+                action: "find",
+                address: "AWS credentials".to_owned(),
+                provider: "aws".to_owned(),
+                message,
+                retryable: false,
+            })
+    })
+}
+
+async fn keys_of(credentials: Credentials) -> Result<Keys, String> {
+    let (environment, home) = match credentials {
+        Credentials::Keys(keys) => return Ok(keys),
+        Credentials::Chain { environment, home } => (environment, home),
+    };
+    let context = Context::new()
+        .with_file_read(TokioFileRead)
+        .with_http_send(Web)
+        .with_env(StaticEnv {
+            home_dir: home,
+            envs: environment,
+        });
+    let found = (DefaultCredentialProvider::new()
+        .provide_credential(&context)
+        .await)
+        .map_err(|error| error.to_string())?;
+    let found = found.ok_or("no AWS credentials were found")?;
+    Ok(Keys {
+        id: found.access_key_id,
+        secret: found.secret_access_key,
+        token: found.session_token,
+    })
+}
+
+/// The user and password of Git over HTTPS to AWS CodeCommit at `time`: the key ID (with
+/// `%` and the session token) and the SigV4 signature of a `GIT` request for the URL path.
+pub fn git_account(
+    url: &str,
+    keys: &Keys,
+    time: jiff::Timestamp,
+) -> Result<(String, String), String> {
+    let uri: http::Uri = (url.parse()).map_err(|error: http::uri::InvalidUri| error.to_string())?;
+    let host = uri.host().unwrap_or_default();
+    let parts: Vec<&str> = host.split('.').collect();
+    let region = match parts.as_slice() {
+        [_, region, _, _, ..] => *region,
+        _ => return Err(format!("Cannot detect AWS region from URI {url}")),
+    };
+    let utc = time.to_zoned(jiff::tz::TimeZone::UTC);
+    let stamp = utc.strftime("%Y%m%dT%H%M%S").to_string();
+    let day = &stamp[..8];
+    let canonical = format!("GIT\n{}\n\nhost:{host}\n\nhost\n", uri.path());
+    let text = format!(
+        "AWS4-HMAC-SHA256\n{stamp}\n{day}/{region}/codecommit/aws4_request\n{}",
+        hex(&Sha256::digest(canonical.as_bytes()))
+    );
+    let mut key = format!("AWS4{}", keys.secret).into_bytes();
+    for part in [day, region, "codecommit", "aws4_request"] {
+        key = hmac(&key, part.as_bytes())?;
+    }
+    let signature = hex(&hmac(&key, text.as_bytes())?);
+    let user = match &keys.token {
+        Some(token) => format!("{}%{token}", keys.id),
+        None => keys.id.clone(),
+    };
+    Ok((user, format!("{stamp}Z{signature}")))
 }
 
 /// Signature Version 4 as AWS documents it: the canonical request, the string to sign and the
@@ -431,6 +484,32 @@ mod tests {
         assert_eq!(
             header("x-amz-security-token").map(String::as_str),
             Some("token")
+        );
+    }
+
+    /// The password computed separately from the rule that AWS's Git credential helper uses.
+    #[test]
+    fn derives_git_account() {
+        let mut keys = Keys {
+            id: "AKIAIOSFODNN7EXAMPLE".into(),
+            secret: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".into(),
+            token: None,
+        };
+        let url = "https://git-codecommit.us-east-2.amazonaws.com/v1/repos/MyDemoRepo";
+        let time: jiff::Timestamp = "2026-11-06T11:22:33Z".parse().expect("a time");
+        let (user, password) = git_account(url, &keys, time).expect("an account");
+        assert_eq!(user, "AKIAIOSFODNN7EXAMPLE");
+        assert_eq!(
+            password,
+            "20261106T112233Z058a08801f361d45784a3678fc492bcf211059e494a161875ad1077a4986fc10"
+        );
+        keys.token = Some("session".into());
+        let (user, _) = git_account(url, &keys, time).expect("an account");
+        assert_eq!(user, "AKIAIOSFODNN7EXAMPLE%session");
+        let short = git_account("https://codecommit.aws/v1/repos/x", &keys, time);
+        assert_eq!(
+            short.unwrap_err(),
+            "Cannot detect AWS region from URI https://codecommit.aws/v1/repos/x"
         );
     }
 

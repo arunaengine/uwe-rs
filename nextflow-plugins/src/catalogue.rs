@@ -139,7 +139,6 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_pregex::PLUGIN,
     crate::nf_versions::PLUGIN,
     // Functions that read data, query services or run code in containers.
-    planned("nf-crg-report", Kind::Functions),
     crate::nf_csvext::PLUGIN,
     planned("nf-fl86", Kind::Functions),
     planned("nf-jev", Kind::Functions),

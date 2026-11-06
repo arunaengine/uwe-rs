@@ -1,0 +1,33 @@
+# Manifest of google-batch-executor, which runs tasks as Google Batch jobs.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "google-batch-executor"
+description = "Runs tasks as Google Batch jobs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+aws-batch-executor.workspace = true
+base64.workspace = true
+config-file.workspace = true
+executor.workspace = true
+jiff.workspace = true
+reqwest.workspace = true
+rsa = { workspace = true, features = ["sha2"] }
+serde_json.workspace = true
+storage.workspace = true
+task-model.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs", "sync", "time"] }
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+content-store.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }

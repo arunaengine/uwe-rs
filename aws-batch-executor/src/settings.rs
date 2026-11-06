@@ -226,8 +226,8 @@ impl Settings {
 }
 
 /// Where the jobs get the uwe binary: `helper_path` on the hosts, or `helper_url` with its
-/// `helper_sha256`.
-fn helper(table: &Table<'_>) -> Result<Option<Helper>, ConfigError> {
+/// `helper_sha256`. The Google Batch executor reads the same keys.
+pub fn helper(table: &Table<'_>) -> Result<Option<Helper>, ConfigError> {
     let (path, url) = (table.text("helper_path")?, table.text("helper_url")?);
     match (path, url, table.text("helper_sha256")?) {
         (None, None, None) => Ok(None),

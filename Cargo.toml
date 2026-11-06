@@ -14,6 +14,7 @@ members = [
     "cwl-parser",
     "cwl-runtime",
     "executor",
+    "google-batch-executor",
     "input-schema",
     "uwe",
     "kubernetes-executor",
@@ -173,6 +174,8 @@ reqsign-aws-core = { version = "3.2.0", default-features = false }
 reqsign-azure-storage = { version = "3.3.0", default-features = false }
 reqsign-core = { version = "3.3.2", default-features = false }
 reqsign-file-read-tokio = "3.0.7"
+# RS256 signing of the JWTs that exchange a Google service account key for an access token.
+rsa = "0.9.10"
 ruff_python_ast = "=0.0.20"
 ruff_python_parser = "=0.0.20"
 ruff_text_size = "=0.0.20"

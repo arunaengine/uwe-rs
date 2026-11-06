@@ -2948,6 +2948,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "google-batch-executor"
+version = "0.1.0"
+dependencies = [
+ "aws-batch-executor",
+ "base64 0.23.1",
+ "config-file",
+ "content-store",
+ "executor",
+ "jiff",
+ "reqwest",
+ "rsa",
+ "serde_json",
+ "storage",
+ "task-model",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "granit-parser"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

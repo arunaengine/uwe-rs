@@ -9,6 +9,7 @@ mod nf_core_utils;
 mod nf_dotenv;
 mod nf_fgbio;
 mod nf_ped;
+mod nf_pregex;
 mod nf_schema;
 #[path = "validation.rs"]
 mod nf_validation;

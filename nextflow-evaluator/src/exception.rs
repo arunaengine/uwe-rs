@@ -98,6 +98,11 @@ const CLASSES: &[(&str, &str, &str)] = &[
         "IllegalArgumentException",
     ),
     (
+        "PatternSyntaxException",
+        "java.util.regex.PatternSyntaxException",
+        "IllegalArgumentException",
+    ),
+    (
         "IllegalStateException",
         "java.lang.IllegalStateException",
         "RuntimeException",

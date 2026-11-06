@@ -4,10 +4,15 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use nextflow_evaluator::interpreter::Host;
 use nextflow_evaluator::value::Value;
 use nextflow_plugins::observer::{Counts, End, Event, Observer, Start};
+use nextflow_runtime::driver::{Nextflow, Settings};
+use workflow_graph::{
+    Attempt, Engine, Executor, Files, Launch, LocalFiles, Outcome, OutputFile, Running,
+};
 
 struct Quiet;
 
@@ -221,4 +226,80 @@ fn follows_settings() {
         !launch.path().join("work/samplesheets").exists(),
         "an invalid worksheet"
     );
+}
+
+/// Writes the files that a task's script writes with `>`, in a folder of its own, as a
+/// local executor would; `metrics.tsv` gets the yields of the probe.
+struct Writer(PathBuf);
+
+impl Executor for Writer {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let task = &attempt.task;
+        let folder = self.0.join(task.id.to_string());
+        std::fs::create_dir_all(&folder).expect("creates");
+        let script = task.script.clone().unwrap_or_default();
+        let names = script
+            .split("> ")
+            .skip(1)
+            .filter_map(|rest| rest.split_whitespace().next());
+        let mut files = Vec::new();
+        for name in names {
+            let text = match name {
+                "metrics.tsv" => "Sample\tyield\nS1\t150\nS2\t50\nS10\t300\nS99\t1\n",
+                _ => "x\n",
+            };
+            let location = folder.join(name);
+            std::fs::write(&location, text).expect("writes");
+            files.push(OutputFile {
+                path: name.into(),
+                location: location.to_string_lossy().into_owned(),
+                ..OutputFile::default()
+            });
+        }
+        let id = task.id;
+        Running::ended(Ok(Outcome {
+            id,
+            files,
+            ..Outcome::default()
+        }))
+    }
+
+    fn files(&self) -> Option<Arc<dyn Files>> {
+        Some(Arc::new(LocalFiles))
+    }
+}
+
+#[test]
+fn hears_real_publishes() {
+    let launch = tempfile::tempdir().expect("a folder");
+    let folder = launch.path();
+    // The driver launches in the current folder, so the probe names its files absolutely.
+    let at = folder.to_string_lossy();
+    let probe = format!(
+        "plugins {{ id 'nf-cmgg@0.5.0' }}\nmanifest.name = 'probe/pipe'\n\
+         params.outdir = '{at}/results'\nparams.input = '{at}/samples.csv'\n\
+         params.min_reads = 100\ncmgg {{\n    done.enabled = true\n    samplesheets {{\n        \
+         enabled = true\n        worksheets = ['{at}/worksheet.yml']\n    }}\n}}\n"
+    );
+    std::fs::write(folder.join("nextflow.config"), probe).expect("writes");
+    for name in ["main.nf", "worksheet.yml", "samples.csv"] {
+        std::fs::copy(fixtures().join(name), folder.join(name)).expect("copies");
+    }
+    let run = Launch {
+        target: folder.to_owned(),
+        scratch: folder.join("scratch"),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        host: Box::new(Quiet),
+        ..Settings::default()
+    };
+    let mut driver = Nextflow::new(&run, settings).expect("a driver");
+    let execution = Engine::new(&mut Writer(folder.join("tasks"))).run("main.nf", &mut driver);
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    let sheets = folder.join("results/samplesheets");
+    let expected =
+        std::fs::read_to_string(fixtures().join("run2-samplesheets.txt")).expect("reads");
+    assert_eq!(listing(&sheets, folder), expected);
+    assert!(folder.join("results/DONE").is_file());
 }

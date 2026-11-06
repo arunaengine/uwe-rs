@@ -432,6 +432,7 @@ impl ProcessNode {
                 ("spack", _) if !self.spack_enabled => false,
                 // nf-nomad's setting of the process config, which the Nomad executor reads.
                 ("nomadOptions", _) => false,
+                ("clusterOptions", _) if takes_cluster(&directives) => false,
                 (name, _) if HINT_DIRECTIVES.contains(&name) => !scheduling_hint(directive),
                 (name, _) if REFUSED_DIRECTIVES.contains(&name) => {
                     directive.arguments.iter().any(Value::truth)
@@ -904,6 +905,15 @@ fn declared(output: &RenderedOutput) -> Vec<Part> {
         _ => Part::Other,
     }))
     .collect()
+}
+
+/// Whether the task's executor is HTCondor or PBS Pro, whose uwe executors take all cluster
+/// options of their schedulers.
+fn takes_cluster(directives: &[TaskDirective]) -> bool {
+    let executor = (directives.iter().rev())
+        .find(|directive| &*directive.name == "executor")
+        .and_then(|directive| directive.arguments.last());
+    matches!(executor, Some(Value::String(name)) if matches!(&**name, "condor" | "ospool" | "pbspro"))
 }
 
 fn scheduling_hint(directive: &TaskDirective) -> bool {

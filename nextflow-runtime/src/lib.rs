@@ -130,6 +130,7 @@ impl Run {
             operator_directory: &mut operator_directory,
         };
         let started = (|| {
+            session.start_plugins()?;
             {
                 let mut builder = build::Builder {
                     network: &mut network,

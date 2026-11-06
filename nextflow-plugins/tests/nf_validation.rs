@@ -57,6 +57,7 @@ fn run(name: &str, params: Value, arguments: Vec<Value>) -> Result<String, Error
         params,
         project_dir: &directory,
         cli_params: &[],
+        workflow: Value::Null,
     };
     call("nf-validation", name, arguments, &mut context).map(|value| value.to_string())
 }
@@ -212,6 +213,7 @@ fn requires_path_format() {
         params,
         project_dir: &text,
         cli_params: &[],
+        workflow: Value::Null,
     };
     let error = call(
         "nf-validation",

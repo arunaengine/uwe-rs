@@ -82,6 +82,7 @@ fn to_list_in(directory: &Path, sheet: &str, schema: &str) -> Result<String, Err
         params: Value::map([]),
         project_dir: &directory,
         cli_params: &[],
+        workflow: Value::Null,
     };
     let arguments = vec![Value::string(sheet), Value::string(schema)];
     call("nf-schema", "samplesheetToList", arguments, &mut context).map(|rows| rows.to_string())
@@ -270,6 +271,7 @@ fn validates_schema_values() {
         params: Value::map([]),
         project_dir: &directory,
         cli_params: &[],
+        workflow: Value::Null,
     };
     let mut validate = |arguments: Vec<Value>| {
         call("nf-schema", "validate", arguments, &mut context).map(|errors| errors.to_string())
@@ -340,6 +342,7 @@ fn params_call_in(
         params,
         project_dir: &directory,
         cli_params: &[],
+        workflow: Value::Null,
     };
     call("nf-schema", name, arguments, &mut context).map(|value| value.to_string())
 }
@@ -461,6 +464,7 @@ fn casts_command_line() {
             params: Value::map([text("outdir", "res"), text("n", "5"), text("flag", "false")]),
             project_dir: &directory,
             cli_params: &names,
+            workflow: Value::Null,
         };
         call("nf-schema", "validateParameters", arguments, &mut context)
             .map_err(|error| error.to_string())
@@ -714,6 +718,7 @@ fn validates_known_parameters() {
             params,
             project_dir: &directory,
             cli_params: &[],
+            workflow: Value::Null,
         };
         call("nf-schema", "validateParameters", vec![], &mut context).map(|_| ())
     };

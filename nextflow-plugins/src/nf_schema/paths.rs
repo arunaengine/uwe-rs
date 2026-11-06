@@ -274,6 +274,7 @@ mod tests {
             params: Value::map([]),
             project_dir: "/",
             cli_params: &[],
+            workflow: Value::Null,
         };
         let schema = json!({
             "$defs": {"file": {"$anchor": "file", "format": "file-path", "exists": true}},
@@ -304,6 +305,7 @@ mod tests {
             params: Value::map([]),
             project_dir: &launch,
             cli_params: &[],
+            workflow: Value::Null,
         };
         let path = json!({"type": "string", "format": "file-path", "exists": true});
         let reference = json!({"$defs": {"file": path}, "$ref": "#/$defs/file"});

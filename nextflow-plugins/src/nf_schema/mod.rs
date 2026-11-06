@@ -56,6 +56,11 @@ pub(crate) fn call(
     }
 }
 
+/// What nf-schema does when a run starts, before the script runs.
+pub(crate) fn start(_context: &mut Context) -> Result<(), Error> {
+    Ok(())
+}
+
 /// `validate`: the errors of a value against a schema. With `exitOnError`, which is on by
 /// default, errors fail the call instead.
 fn validate(

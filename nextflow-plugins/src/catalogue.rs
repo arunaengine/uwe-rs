@@ -213,6 +213,12 @@ pub const PLUGINS: &[Plugin] = &[
     Plugin::new("nf-azure", Kind::Executor, State::Partial),
     Plugin::new("nf-google", Kind::Executor, State::Partial),
     // Other executors.
+    // nf-cws: the `cws` scope on uwe's Kubernetes executor, which registers the run, its
+    // processes and tasks; no graph edges, batches, memory prediction, WOW or scheduler pod.
+    Plugin {
+        scopes: &["cws"],
+        ..Plugin::new("nf-cws", Kind::Executor, State::Partial)
+    },
     // nf-flyte: the `flyte` executor, one Flyte run per attempt with uwe's staging; no child
     // actions of a running Flyte run, token command or Flyte caching.
     Plugin {
@@ -228,6 +234,9 @@ pub const PLUGINS: &[Plugin] = &[
     // nf-gadi: its usage report from the job summaries that uwe's PBS executor reads;
     // `publishTo` only to a local path, and no start and end lines.
     crate::nf_gadi::PLUGIN,
+    // nf-jarvice: the `jarvice` executor with nf-jarvice's process settings, on the vault or
+    // through a staging root; no banner and no copy of the `NXF_*` variables into the jobs.
+    Plugin::new("nf-jarvice", Kind::Executor, State::Implemented),
     // nf-k8s: the `k8s` scope and `pod` options on uwe's Kubernetes executor; no bare pods,
     // `k8s.client` or debug YAML, and no privileged pods.
     Plugin {
@@ -248,6 +257,9 @@ pub const PLUGINS: &[Plugin] = &[
     Plugin::new("nf-ospool", Kind::Executor, State::Partial),
     // nf-slurm-no-memory: `slurm_no_memory` is uwe's SLURM executor with `memory_per_cpu_gb`.
     Plugin::new("nf-slurm-no-memory", Kind::Executor, State::Implemented),
+    // nf-wr: the `wr` executor over the manager's REST API with its token and CA, on shared
+    // folders or through a staging root; uwe checks the host name of the certificate.
+    Plugin::new("nf-wr", Kind::Executor, State::Implemented),
     // nf-tencentcloud: its executor on uwe's TES executor, `cos://` on an S3 provider, and its
     // metadata file; the shape of that file was not recorded.
     crate::nf_tencentcloud::PLUGIN,
@@ -342,15 +354,12 @@ pub const PLUGINS: &[Plugin] = &[
     // Unmaintained: no release in the year before 2026-11-06.
     unmaintained("nf-biofuse", Kind::FileSystem, NEVER),
     unmaintained("nf-command-archiver", Kind::Observer, NEVER),
-    unmaintained("nf-cws", Kind::Executor, "no release since 2025-05-28"),
     unmaintained("nf-demo", Kind::Other, NEVER),
     unmaintained("nf-hello", Kind::Functions, "no release since 2024-03-06"),
-    unmaintained("nf-jarvice", Kind::Executor, "no release since 2023-05-09"),
     unmaintained("nf-mlflow", Kind::Observer, NEVER),
     unmaintained("nf-notion", Kind::Observer, NEVER),
     unmaintained("nf-sample-sheet", Kind::Functions, NEVER),
     unmaintained("nf-skypilot", Kind::Executor, NEVER),
-    unmaintained("nf-wr", Kind::Executor, "no release since 2022-02-28"),
 ];
 
 /// The plugin with this id, without a version like `@1.2.0`.

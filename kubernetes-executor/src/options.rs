@@ -383,3 +383,7 @@ fn plain(value: &Value) -> Option<String> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+#[path = "options_tests.rs"]
+mod tests;

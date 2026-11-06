@@ -1,5 +1,4 @@
 //! nf-report 1.1.1: writes the execution, task status and sample status reports of a run as
-//! JSON, TSV and HTML, during the run and at its end.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -14,7 +13,6 @@ use nextflow_config::Config;
 use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::value::Value;
 
-use entries::{Finished, STATUSES, event_cell, filtered, sample, samples, status, task_entry};
 use settings::{Kind as Report, Settings};
 
 use crate::Context;
@@ -30,7 +28,6 @@ pub(crate) const PLUGIN: Plugin = Plugin {
     ..Plugin::new("nf-report", Kind::Observer, State::Partial)
 };
 
-/// The functions of nf-report.
 pub(crate) const FUNCTIONS: &[&str] = &["getReportConfig", "isReportEnabled", "getReportsDir"];
 
 pub(crate) fn call(
@@ -62,7 +59,6 @@ pub(crate) fn call(
     }
 }
 
-/// The observer of nf-report; `None` when the scope turns the plugin off.
 fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
     let settings = Settings::of(config);
     if !settings.enabled {
@@ -166,7 +162,6 @@ impl Reporter {
     }
 
     fn path(&self, report: &settings::Report, format: &str) -> PathBuf {
-        let suffix = report.suffix.clone().unwrap_or_default();
         let name = format!("{}{}{suffix}.{format}", report.prefix, report.name);
         self.launch.join(&report.folder).join(name)
     }
@@ -219,7 +214,6 @@ impl Reporter {
             .map(|status| (*status, Vec::new()))
             .collect();
         for (task, status) in self.tasks.iter().zip(&statuses) {
-            let entry = task_entry(task, Vec::new());
             // The plugin filters the fields of finished tasks but not of cached ones.
             let entry = if task.cached {
                 entry
@@ -231,7 +225,6 @@ impl Reporter {
             }
         }
         let count = |status: &str| statuses.iter().filter(|known| **known == status).count() as i64;
-        let summary = Json::object([
             ("total_tasks", Json::from(statuses.len() as i64)),
             ("completed", Json::from(count("COMPLETED"))),
             ("cached", Json::from(count("CACHED"))),
@@ -243,7 +236,6 @@ impl Reporter {
         let mut data = Json::object([
             ("report_type", Json::from(Report::Task.name())),
             ("generated_at", Json::from(files::now())),
-            ("summary", summary),
         ]);
         data.insert(
             "tasks_by_status",
@@ -337,7 +329,6 @@ impl Reporter {
             Report::Task => {
                 let entries: Vec<Json> = (self.tasks.iter())
                     .map(|task| {
-                        let entry = task_entry(task, Vec::new());
                         if task.cached {
                             entry
                         } else {

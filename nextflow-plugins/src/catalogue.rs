@@ -145,7 +145,6 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-jev", Kind::Functions),
     planned("nf-labrobotics", Kind::Functions),
     crate::nf_parquet::PLUGIN,
-    planned("nf-python", Kind::Functions),
     planned("nf-r-ipc", Kind::Functions),
     planned("nf-report", Kind::Functions),
     planned("nf-seqlab-progress", Kind::Functions),

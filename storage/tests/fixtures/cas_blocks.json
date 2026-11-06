@@ -1,0 +1,184 @@
+{
+ "file": "bafyreibqglpqhaux2sflocjeh7qsm5dffl44lqqpvs7bivke2b2jn4qqbe",
+ "value": {
+  "kind": "ItemLineage",
+  "items": [
+   {
+    "item": {
+     "/": "bafyreibmrz7pvkcsyl5rcgb3rlldzz3v53grk6i4k5pze2knhvczyj6wie"
+    },
+    "tasks": [
+     {
+      "tag": "A",
+      "hash": "48afb88d70d6faec6a4d6b33ea9d7546",
+      "process": "ALIGN"
+     }
+    ],
+    "inputs": []
+   },
+   {
+    "item": {
+     "/": "bafyreieyev4dwko4hmnsjh3s3nauggdnmgdc3sqtabapo23qnxq4ic4qhm"
+    },
+    "tasks": [
+     {
+      "tag": "B",
+      "hash": "88ed2168516b586fff4ca51e2fb2b248",
+      "process": "ALIGN"
+     }
+    ],
+    "inputs": []
+   }
+  ],
+  "schema": 1,
+  "input_set": {
+   "/": "bafyreihmtkpebxtwdjupf5iscrfbgfyspzjlctl5v7zmio57cnsf6aahwu"
+  },
+  "asserted_by": "tester@example.org"
+ }
+}
+{
+ "file": "bafyreicnx62le63oc5syovippyzgkmaexqa36kdlryjqjzal47rprng3cm",
+ "value": {
+  "run": {
+   "/": "bafyreibxj36scb2wjhgj6p2oef2wirthoao3hu3znseygvjhgn5jfxvita"
+  },
+  "kind": "OutputCollection",
+  "name": "aligned",
+  "items": [
+   {
+    "/": "bafyreibmrz7pvkcsyl5rcgb3rlldzz3v53grk6i4k5pze2knhvczyj6wie"
+   },
+   {
+    "/": "bafyreieyev4dwko4hmnsjh3s3nauggdnmgdc3sqtabapo23qnxq4ic4qhm"
+   }
+  ],
+  "paths": [
+   [
+    "A/A.bam"
+   ],
+   [
+    "B/B.bam"
+   ]
+  ],
+  "schema": 1,
+  "asserted_by": "tester@example.org"
+ }
+}
+{
+ "file": "bafyreieyev4dwko4hmnsjh3s3nauggdnmgdc3sqtabapo23qnxq4ic4qhm",
+ "value": {
+  "kind": "OutputItem",
+  "value": [
+   {
+    "sample": "B"
+   },
+   {
+    "kind": "Leaf",
+    "name": "B.bam",
+    "size": 6,
+    "reason": null,
+    "address": {
+     "/": "bafkreifsfjlickyg7pec4omfkjcxteycwag6af4clpsuh2ur2jrmja567m"
+    }
+   }
+  ],
+  "schema": 2
+ }
+}
+{
+ "file": "bafyreibmrz7pvkcsyl5rcgb3rlldzz3v53grk6i4k5pze2knhvczyj6wie",
+ "value": {
+  "kind": "OutputItem",
+  "value": [
+   {
+    "sample": "A"
+   },
+   {
+    "kind": "Leaf",
+    "name": "A.bam",
+    "size": 6,
+    "reason": null,
+    "address": {
+     "/": "bafkreif7gwanofb74dnqxnb5667ubt6si4johxp6om37lwtpzqslahruwm"
+    }
+   }
+  ],
+  "schema": 2
+ }
+}
+{
+ "file": "bafyreibxj36scb2wjhgj6p2oef2wirthoao3hu3znseygvjhgn5jfxvita",
+ "value": {
+  "kind": "RunManifest",
+  "config": "plugins = ['nf-blocks@0.11.0-beta.1']\n\nlineage {\n   enabled = true\n   store {\n      location = 'cas://lab'\n   }\n}\n\ncas {\n   stores {\n      lab {\n         location = '[redacted-location]'\n      }\n   }\n   asserted_by = 'tester@example.org'\n   pipeline = 'probe-pipeline'\n}\n\nrunName = 'stoic_shirley'\noutputFormat = 'text'\nworkDir = 'work'\n",
+  "params": {},
+  "schema": 1,
+  "script": null,
+  "resumed": false,
+  "pipeline": "probe-pipeline",
+  "revision": null,
+  "run_name": "stoic_shirley",
+  "commit_id": null,
+  "repository": null,
+  "session_id": "4aa74591-7adc-42aa-8e5d-6874f2de1738",
+  "started_at": "2026-11-06T11:35:45.628Z",
+  "asserted_by": "tester@example.org",
+  "nf_run_hash": "fbdefda03f3f72e54d70c7f864cb6ffc",
+  "nextflow_version": "26.04.6"
+ }
+}
+{
+ "file": "bafyreihmtkpebxtwdjupf5iscrfbgfyspzjlctl5v7zmio57cnsf6aahwu",
+ "value": {
+  "kind": "InputSet",
+  "inputs": [],
+  "schema": 2,
+  "asserted_by": "tester@example.org"
+ }
+}
+{
+ "file": "bafyreietl3zbyd6nfvyf7aozwwnhacsfod7qhzxusqh2wstwptnvvjn6z4",
+ "value": {
+  "run": {
+   "/": "bafyreibxj36scb2wjhgj6p2oef2wirthoao3hu3znseygvjhgn5jfxvita"
+  },
+  "kind": "RunCompletion",
+  "error": null,
+  "schema": 3,
+  "status": "succeeded",
+  "anomalies": {
+   "declined": 0,
+   "unjoined": 0,
+   "unaddressed": 0,
+   "unresolvable": 0,
+   "never_published": 0
+  },
+  "input_set": {
+   "/": "bafyreihmtkpebxtwdjupf5iscrfbgfyspzjlctl5v7zmio57cnsf6aahwu"
+  },
+  "providers": {
+   "head-node": [
+    {
+     "/": "bafkreif7gwanofb74dnqxnb5667ubt6si4johxp6om37lwtpzqslahruwm"
+    },
+    {
+     "/": "bafkreifsfjlickyg7pec4omfkjcxteycwag6af4clpsuh2ur2jrmja567m"
+    }
+   ]
+  },
+  "started_at": "2026-11-06T11:35:45.628Z",
+  "asserted_by": "tester@example.org",
+  "collections": [
+   {
+    "/": "bafyreicnx62le63oc5syovippyzgkmaexqa36kdlryjqjzal47rprng3cm"
+   }
+  ],
+  "exit_status": 0,
+  "finished_at": "2026-11-06T11:35:46.647Z",
+  "item_lineage": {
+   "/": "bafyreibqglpqhaux2sflocjeh7qsm5dffl44lqqpvs7bivke2b2jn4qqbe"
+  },
+  "possibly_incomplete": false
+ }
+}

@@ -1,0 +1,23 @@
+°dkindkRunManifestfconfigyQplugins = ['nf-blocks@0.11.0-beta.1']
+
+lineage {
+   enabled = true
+   store {
+      location = 'cas://lab'
+   }
+}
+
+cas {
+   stores {
+      lab {
+         location = '[redacted-location]'
+      }
+   }
+   asserted_by = 'tester@example.org'
+   pipeline = 'probe-pipeline'
+}
+
+runName = 'stoic_shirley'
+outputFormat = 'text'
+workDir = 'work'
+fparams fschemafscriptögresumedôhpipelinenprobe-pipelinehrevisionöhrun_namemstoic_shirleyicommit_idöjrepositoryöjsession_idx$4aa74591-7adc-42aa-8e5d-6874f2de1738jstarted_atx2026-11-06T11:35:45.628Zkasserted_byrtester@example.orgknf_run_hashx fbdefda03f3f72e54d70c7f864cb6ffcpnextflow_versiong26.04.6
